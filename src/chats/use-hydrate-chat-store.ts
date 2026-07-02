@@ -18,6 +18,7 @@ import {
   getTriggerPromptForThread,
   isChatThreadDeleted,
   saveMessagesWithContextUpdate,
+  saveStreamingAssistantMessage,
 } from '@/dal'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
@@ -27,7 +28,7 @@ import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -120,6 +121,18 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       updateSession(id, { chatThread: thread })
       navigate(`/chats/${id}`, { relative: 'path' })
     }
+  }
+
+  /**
+   * Crash-recovery save for the in-flight assistant message during streaming.
+   * Deliberately bypasses {@link saveMessages}: the thread already exists and is
+   * navigated to by the time the assistant streams, so the thread create / title
+   * / navigation work — and the DAL's redundant thread + last-message SELECTs —
+   * are all avoidable per token. The authoritative complete save runs in the
+   * chat instance's `onFinish` via {@link saveMessages}.
+   */
+  const saveStreamingMessage: SaveStreamingMessageFunction = async ({ threadId, message, parentId }) => {
+    await saveStreamingAssistantMessage(db, threadId, message, parentId)
   }
 
   const hydrateChatStore = async () => {
@@ -270,5 +283,5 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     maybePrewarmBuiltInAgent(selectedAgent, defaultModel)
   }
 
-  return { hydrateChatStore, isReady, saveMessages }
+  return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }
 }

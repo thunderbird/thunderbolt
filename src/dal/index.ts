@@ -50,6 +50,7 @@ export {
   getChatMessages,
   getLastMessage,
   saveMessagesWithContextUpdate,
+  saveStreamingAssistantMessage,
   updateMessage,
 } from './chat-messages'
 

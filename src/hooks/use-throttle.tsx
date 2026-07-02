@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 /**
  * Hook that throttles a value
@@ -46,15 +46,17 @@ export const useThrottle = <T,>(value: T, interval: number): T => {
 }
 
 /**
- * Hook that returns a throttled callback
+ * Hook that returns a throttled callback.
  * @param callback - The callback to throttle
  * @param interval - The minimum time in milliseconds between calls
- * @returns The throttled callback
+ * @returns The throttled callback, augmented with `cancel()` to drop a pending
+ *   trailing call (e.g. when the source of the calls has ended and a later save
+ *   would clobber fresher state).
  */
 export const useThrottledCallback = <T extends (...args: any[]) => any>(
   callback: T,
   interval: number,
-): ((...args: Parameters<T>) => void) => {
+): ((...args: Parameters<T>) => void) & { cancel: () => void } => {
   const lastCallTime = useRef<number>(0)
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const callbackRef = useRef(callback)
@@ -69,8 +71,8 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
     }
   }, [])
 
-  return useCallback(
-    (...args: Parameters<T>) => {
+  return useMemo(() => {
+    const throttled = (...args: Parameters<T>) => {
       const now = Date.now()
       const timeSinceLastCall = now - lastCallTime.current
 
@@ -85,11 +87,20 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
         }
 
         timeoutRef.current = setTimeout(() => {
+          timeoutRef.current = undefined
           lastCallTime.current = Date.now()
           callbackRef.current(...args)
         }, interval - timeSinceLastCall)
       }
-    },
-    [interval],
-  )
+    }
+
+    throttled.cancel = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = undefined
+      }
+    }
+
+    return throttled
+  }, [interval])
 }

@@ -67,6 +67,18 @@ export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDat
 export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
 
 /**
+ * Persists a single in-flight assistant message during streaming (crash-recovery
+ * fast path). `parentId` is supplied by the caller so the DAL can skip the
+ * per-save thread and last-message lookups. See
+ * {@link import('@/dal').saveStreamingAssistantMessage}.
+ */
+export type SaveStreamingMessageFunction = (params: {
+  threadId: string
+  message: ThunderboltUIMessage
+  parentId: string | null
+}) => Promise<void>
+
+/**
  * Helper type to make specific keys required (non-null).
  * Used to create application types from row types where certain fields
  * should be guaranteed to be present for non-deleted records.

@@ -11,6 +11,13 @@ import { act, cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 
+type StreamingSaveParams = { threadId: string; message: ThunderboltUIMessage; parentId: string | null }
+
+/** Flip a mock chat instance's read-only `status` for a rerender. */
+const setStatus = (instance: ReturnType<typeof createMockChatInstance>, status: 'streaming' | 'ready' | 'error') => {
+  ;(instance as unknown as { status: string }).status = status
+}
+
 describe('SavePartialAssistantMessagesHandler', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -34,11 +41,10 @@ describe('SavePartialAssistantMessagesHandler', () => {
   })
 
   it('should render children without modification', () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const mockChatInstance = createMockChatInstance()
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -50,7 +56,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
     })
 
     const { container } = render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
         <div data-testid="child">Test Child</div>
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
@@ -61,7 +67,7 @@ describe('SavePartialAssistantMessagesHandler', () => {
   })
 
   it('should not save messages when not streaming', async () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const messages: ThunderboltUIMessage[] = [
       {
         id: 'msg-1',
@@ -72,7 +78,6 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -84,22 +89,21 @@ describe('SavePartialAssistantMessagesHandler', () => {
     })
 
     render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
-    // Wait a bit to ensure no saves happen
     await act(async () => {
-      await getClock().tickAsync(500)
+      await getClock().tickAsync(600)
     })
 
-    expect(mockSaveMessages).not.toHaveBeenCalled()
+    expect(mockSaveStreamingMessage).not.toHaveBeenCalled()
   })
 
   it('should not save messages when latest message is not from assistant', async () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const messages: ThunderboltUIMessage[] = [
       {
         id: 'msg-1',
@@ -110,7 +114,6 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -122,23 +125,27 @@ describe('SavePartialAssistantMessagesHandler', () => {
     })
 
     render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
-    // Wait a bit to ensure no saves happen
     await act(async () => {
-      await getClock().tickAsync(500)
+      await getClock().tickAsync(600)
     })
 
-    expect(mockSaveMessages).not.toHaveBeenCalled()
+    expect(mockSaveStreamingMessage).not.toHaveBeenCalled()
   })
 
   it('should save partial assistant message when streaming', async () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const messages: ThunderboltUIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hi' }],
+      },
       {
         id: 'msg-1',
         role: 'assistant',
@@ -148,7 +155,6 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -160,69 +166,23 @@ describe('SavePartialAssistantMessagesHandler', () => {
     })
 
     render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
-    // Wait for throttle delay (200ms) plus a bit more
-    await act(async () => {
-      await getClock().tickAsync(250)
-    })
-
-    expect(mockSaveMessages).toHaveBeenCalled()
-    expect(mockSaveMessages).toHaveBeenCalledWith({
-      id: 'thread-1',
-      messages: [messages[0]],
+    // The first throttled call fires immediately (no clock tick needed).
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+    expect(mockSaveStreamingMessage).toHaveBeenCalledWith({
+      threadId: 'thread-1',
+      message: messages[1],
+      parentId: 'user-1',
     })
   })
 
-  it('should use throttled callback to save messages', async () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
-    const messages: ThunderboltUIMessage[] = [
-      {
-        id: 'msg-1',
-        role: 'assistant',
-        parts: [{ type: 'text', text: 'Streaming message' }],
-      },
-    ]
-    const mockChatInstance = createMockChatInstance(messages, 'streaming')
-    const mockUseChat = createMockUseChat(mockChatInstance)
-
-    // Use the real store and hydrate it with test data
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
-
-    render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
-        Test
-      </SavePartialAssistantMessagesHandler>,
-      { wrapper: createQueryTestWrapper() },
-    )
-
-    // Wait for throttle delay (200ms) plus a bit more
-    await act(async () => {
-      await getClock().tickAsync(250)
-    })
-
-    // Should have been called (throttling is handled by useThrottledCallback, tested separately)
-    expect(mockSaveMessages).toHaveBeenCalled()
-    expect(mockSaveMessages).toHaveBeenCalledWith({
-      id: 'thread-1',
-      messages: [messages[0]],
-    })
-  })
-
-  it('should save message with correct thread id', async () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
+  it('should save with correct thread id', async () => {
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const threadId = 'custom-thread-id'
     const messages: ThunderboltUIMessage[] = [
       {
@@ -234,7 +194,6 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -246,25 +205,22 @@ describe('SavePartialAssistantMessagesHandler', () => {
     })
 
     render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
-    // Wait for throttle delay (200ms) plus a bit more
-    await act(async () => {
-      await getClock().tickAsync(250)
-    })
-
-    expect(mockSaveMessages).toHaveBeenCalledWith({
-      id: threadId,
-      messages: [messages[0]],
+    // No user message before it → parent is null.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledWith({
+      threadId,
+      message: messages[0],
+      parentId: null,
     })
   })
 
-  it('should handle messages array with multiple messages and save only the latest', async () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
+  it('should save only the latest message and derive parent from the one before it', async () => {
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const messages: ThunderboltUIMessage[] = [
       {
         id: 'msg-1',
@@ -285,7 +241,6 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -297,29 +252,24 @@ describe('SavePartialAssistantMessagesHandler', () => {
     })
 
     render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
-    // Wait for throttle delay (200ms) plus a bit more
-    await act(async () => {
-      await getClock().tickAsync(250)
-    })
-
-    expect(mockSaveMessages).toHaveBeenCalledWith({
-      id: 'thread-1',
-      messages: [messages[2]], // Should save only the latest message
+    expect(mockSaveStreamingMessage).toHaveBeenCalledWith({
+      threadId: 'thread-1',
+      message: messages[2], // only the latest message
+      parentId: 'msg-2', // the message immediately before it
     })
   })
 
   it('should not save when messages array is empty', async () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const mockChatInstance = createMockChatInstance([], 'streaming')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -331,21 +281,223 @@ describe('SavePartialAssistantMessagesHandler', () => {
     })
 
     render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
     await act(async () => {
-      await getClock().tickAsync(500)
+      await getClock().tickAsync(600)
     })
 
-    expect(mockSaveMessages).not.toHaveBeenCalled()
+    expect(mockSaveStreamingMessage).not.toHaveBeenCalled()
+  })
+
+  it('should throttle rapid partial updates', async () => {
+    const mockSaveStreamingMessage = mock((_params: StreamingSaveParams) => Promise.resolve())
+    const mockChatInstance = createMockChatInstance(
+      [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'a' }] },
+      ],
+      'streaming',
+    )
+    const mockUseChat = createMockUseChat(mockChatInstance)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
+    const { rerender } = render(
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+        Test
+      </SavePartialAssistantMessagesHandler>,
+      { wrapper: createQueryTestWrapper() },
+    )
+
+    // First render → immediate save.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    // Rapid subsequent partials within the throttle window are coalesced.
+    await act(async () => {
+      mockChatInstance.messages = [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'ab' }] },
+      ]
+      rerender(
+        <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+          Test
+        </SavePartialAssistantMessagesHandler>,
+      )
+      mockChatInstance.messages = [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'abc' }] },
+      ]
+      rerender(
+        <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+          Test
+        </SavePartialAssistantMessagesHandler>,
+      )
+    })
+
+    // Still only the immediate call — the trailing one is pending.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await getClock().tickAsync(600)
+    })
+
+    // Trailing call flushed once with the freshest snapshot.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(2)
+    expect(mockSaveStreamingMessage.mock.calls[1]?.[0]).toEqual({
+      threadId: 'thread-1',
+      message: { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'abc' }] },
+      parentId: 'user-1',
+    })
+  })
+
+  it('should cancel a pending trailing save when streaming stops (no stale overwrite)', async () => {
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
+    const mockChatInstance = createMockChatInstance(
+      [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'partial' }] },
+      ],
+      'streaming',
+    )
+    const mockUseChat = createMockUseChat(mockChatInstance)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
+    const { rerender } = render(
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+        Test
+      </SavePartialAssistantMessagesHandler>,
+      { wrapper: createQueryTestWrapper() },
+    )
+
+    // Immediate first save.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    // A later partial within the window schedules a trailing save.
+    await act(async () => {
+      mockChatInstance.messages = [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'partial-more' }] },
+      ]
+      rerender(
+        <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+          Test
+        </SavePartialAssistantMessagesHandler>,
+      )
+    })
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    // Stream ends before the trailing timer fires (mirrors onFinish taking over).
+    await act(async () => {
+      setStatus(mockChatInstance, 'ready')
+      rerender(
+        <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+          Test
+        </SavePartialAssistantMessagesHandler>,
+      )
+    })
+
+    // Advance well past the throttle interval: the trailing save must NOT fire,
+    // so it can't clobber onFinish's complete save with a stale snapshot.
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('should keep the pending trailing save when the stream ends with an error', async () => {
+    // onFinish does NOT persist on an error terminal (see chat-instance.ts), so
+    // the pending trailing partial is the only record of what streamed before the
+    // error — it must still fire rather than be cancelled.
+    const mockSaveStreamingMessage = mock((_params: StreamingSaveParams) => Promise.resolve())
+    const mockChatInstance = createMockChatInstance(
+      [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'partial' }] },
+      ],
+      'streaming',
+    )
+    const mockUseChat = createMockUseChat(mockChatInstance)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
+    const { rerender } = render(
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+        Test
+      </SavePartialAssistantMessagesHandler>,
+      { wrapper: createQueryTestWrapper() },
+    )
+
+    // Immediate first (leading-edge) save.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    // A later partial within the throttle window schedules a trailing save.
+    await act(async () => {
+      mockChatInstance.messages = [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'partial-more' }] },
+      ]
+      rerender(
+        <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+          Test
+        </SavePartialAssistantMessagesHandler>,
+      )
+    })
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    // Stream ends with an error before the trailing timer fires.
+    await act(async () => {
+      setStatus(mockChatInstance, 'error')
+      rerender(
+        <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+          Test
+        </SavePartialAssistantMessagesHandler>,
+      )
+    })
+
+    // The trailing save fires (was NOT cancelled), persisting the error partial.
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(2)
+    expect(mockSaveStreamingMessage.mock.calls[1]?.[0]).toMatchObject({
+      message: { parts: [{ text: 'partial-more' }] },
+    })
   })
 
   it('should work with dependency injection for useChat', async () => {
-    const mockSaveMessages = mock(() => Promise.resolve())
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const messages: ThunderboltUIMessage[] = [
       {
         id: 'msg-1',
@@ -356,7 +508,6 @@ describe('SavePartialAssistantMessagesHandler', () => {
     const mockChatInstance = createMockChatInstance(messages, 'streaming')
     const mockUseChat = createMockUseChat(mockChatInstance)
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -368,18 +519,12 @@ describe('SavePartialAssistantMessagesHandler', () => {
     })
 
     render(
-      <SavePartialAssistantMessagesHandler saveMessages={mockSaveMessages} useChat={mockUseChat}>
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
         Test
       </SavePartialAssistantMessagesHandler>,
       { wrapper: createQueryTestWrapper() },
     )
 
-    // Wait for throttle delay (200ms) plus a bit more
-    await act(async () => {
-      await getClock().tickAsync(250)
-    })
-
-    // Should have been called (useChatStore and useThrottledCallback use real hooks)
-    expect(mockSaveMessages).toHaveBeenCalled()
+    expect(mockSaveStreamingMessage).toHaveBeenCalled()
   })
 })

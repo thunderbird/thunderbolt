@@ -89,13 +89,18 @@ export const saveMessagesWithContextUpdate = async (
         if (!isInsertConflictError(err)) {
           throw err
         }
+        // Deliberately omit `parentId`: a message's position in the tree is fixed
+        // at insert time. Re-saving the same id (streaming partials, then the
+        // `onFinish` complete save) must never restructure the tree. Recomputing
+        // it here from `getLastMessage` would return the row being written and
+        // make the message its own parent — corrupting the tree and hanging the
+        // descendant BFS on delete.
         await tx
           .update(chatMessagesTable)
           .set({
             content: msg.content,
             parts: msg.parts,
             role: msg.role,
-            parentId: msg.parentId,
             metadata: msg.metadata,
           })
           .where(eq(chatMessagesTable.id, msg.id))
@@ -112,6 +117,44 @@ export const saveMessagesWithContextUpdate = async (
   })
 
   return dbChatMessages
+}
+
+/**
+ * Fast path for persisting an in-flight assistant message while it streams.
+ *
+ * Unlike {@link saveMessagesWithContextUpdate}, this skips the per-save thread
+ * existence lookup and the `getLastMessage` parent lookup — during a single
+ * streaming turn the thread already exists (created when the user message was
+ * saved) and the parent never changes, so those two SELECTs are pure overhead
+ * repeated every throttle interval. The caller supplies `parentId` (read once
+ * from the in-memory message list), and the conflict-update rewrites only the
+ * mutable `content`/`parts`/`metadata` — never `parentId` — so repeat saves of
+ * the same row cannot make the message its own parent.
+ *
+ * Context-size bookkeeping is intentionally left to the authoritative `onFinish`
+ * save; partial saves exist solely for crash recovery.
+ */
+export const saveStreamingAssistantMessage = async (
+  db: AnyDrizzleDatabase,
+  threadId: string,
+  message: ThunderboltUIMessage,
+  parentId: string | null,
+): Promise<void> => {
+  const dbMessage = convertUIMessageToDbChatMessage(message, threadId, parentId)
+
+  // Insert-first (PowerSync views don't support ON CONFLICT). The first partial
+  // save inserts the row; every later save falls through to the update.
+  try {
+    await db.insert(chatMessagesTable).values(dbMessage)
+  } catch (err) {
+    if (!isInsertConflictError(err)) {
+      throw err
+    }
+    await db
+      .update(chatMessagesTable)
+      .set({ content: dbMessage.content, parts: dbMessage.parts, metadata: dbMessage.metadata })
+      .where(eq(chatMessagesTable.id, dbMessage.id))
+  }
 }
 
 /**

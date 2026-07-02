@@ -49,6 +49,11 @@ export const MemoizedMarkdown = memo(({ content, id, components }: MemoizedMarkd
   const parseStateRef = useRef<IncrementalMarkdownState | null>(null)
   const blocks = useMemo(() => {
     const { blocks, state } = parseMarkdownIntoBlocksIncremental(content, parseStateRef.current)
+    // Render-phase ref write, safe by construction: parse state is a pure function
+    // of `content`. StrictMode double-invocation and concurrent renders that never
+    // commit therefore produce equally valid state. Worst case a discarded/stale
+    // state isn't a clean prefix of the next content, so `parseMarkdownIntoBlocksIncremental`
+    // just falls back to one full re-parse — never wrong output, only a one-render cost.
     parseStateRef.current = state
     return blocks
   }, [content])

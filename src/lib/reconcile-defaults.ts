@@ -4,7 +4,7 @@
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { Model, ModelProfile } from '@/types'
-import { createSetting, updateSettings } from '@/dal'
+import { createSetting } from '@/dal'
 import { eq, inArray, isNull } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
@@ -230,7 +230,15 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, 'key')
 
     if (canOverwriteModels) {
-      await updateSettings(tx, { [modelsVersionKey]: modelsSource.version })
+      // Inline upsert: `updateSettings` wraps its writes in its own transaction
+      // and PowerSync's drizzle driver forbids nested transactions. We already
+      // know from `readAppliedVersion` whether the row exists, so branch here.
+      const versionValue = String(modelsSource.version)
+      if (storedModelsVersion === null) {
+        await tx.insert(settingsTable).values({ key: modelsVersionKey, value: versionValue })
+      } else {
+        await tx.update(settingsTable).set({ value: versionValue }).where(eq(settingsTable.key, modelsVersionKey))
+      }
     }
 
     // Initialize anonymous ID for analytics (unique per user)

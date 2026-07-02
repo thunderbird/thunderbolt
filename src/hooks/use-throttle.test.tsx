@@ -131,6 +131,67 @@ describe('useThrottledCallback', () => {
     expect(callback).toHaveBeenCalledTimes(2)
   })
 
+  it('supersedes a pending trailing call when a delayed leading call runs first', async () => {
+    const callback = mock((..._args: string[]) => {})
+    const { result } = renderHook(() => useThrottledCallback(callback, 100))
+    const clock = getClock()
+    const base = Date.now()
+
+    act(() => {
+      result.current('first') // immediate (leading)
+      result.current('second') // schedules trailing at base + 100
+    })
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    // Busy main thread: wall-clock advances past the trailing timer's due time,
+    // but its callback hasn't been dispatched yet (setSystemTime moves Date.now
+    // without firing pending timers).
+    clock.setSystemTime(base + 150)
+
+    // A fresh leading call now runs first and must supersede the stale trailing.
+    act(() => {
+      result.current('third')
+    })
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(callback.mock.calls[1]?.[0]).toBe('third')
+
+    // The superseded trailing timer must never fire with its older 'second' args.
+    await act(async () => {
+      await clock.runAllAsync()
+    })
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(callback.mock.calls[1]?.[0]).toBe('third')
+  })
+
+  it('flush() is a no-op after a leading call superseded a pending trailing', async () => {
+    const callback = mock((..._args: string[]) => {})
+    const { result } = renderHook(() => useThrottledCallback(callback, 100))
+    const clock = getClock()
+    const base = Date.now()
+
+    act(() => {
+      result.current('first') // immediate (leading)
+      result.current('second') // schedules trailing
+    })
+    clock.setSystemTime(base + 150)
+    act(() => {
+      result.current('third') // leading — supersedes the trailing and its args
+    })
+    expect(callback).toHaveBeenCalledTimes(2)
+
+    // flush() must not resurrect the superseded trailing (stale 'second').
+    act(() => {
+      result.current.flush()
+    })
+    expect(callback).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      await clock.runAllAsync()
+    })
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(callback.mock.calls[1]?.[0]).toBe('third')
+  })
+
   it('should be a no-op to flush when nothing is pending', async () => {
     const callback = mock((..._args: string[]) => {})
     const { result } = renderHook(() => useThrottledCallback(callback, 100))

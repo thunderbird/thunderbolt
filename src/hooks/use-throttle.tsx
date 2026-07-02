@@ -81,7 +81,15 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
       const timeSinceLastCall = now - lastCallTime.current
 
       if (timeSinceLastCall >= interval) {
-        // Enough time has passed, call immediately
+        // Enough time has passed, call immediately. A fresh leading call
+        // supersedes any pending trailing call: drop the queued timer and its
+        // stale args so a timer delayed by a busy main thread can't fire
+        // afterwards with older args and clobber this fresher result.
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current)
+          timeoutRef.current = undefined
+        }
+        pendingArgsRef.current = undefined
         lastCallTime.current = now
         callbackRef.current(...args)
       } else {

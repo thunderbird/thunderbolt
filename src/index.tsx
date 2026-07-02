@@ -8,8 +8,7 @@ import './polyfills'
 
 // Self-hosted fonts (offline-capable). Variable fonts ship all weights in one file.
 import '@fontsource-variable/mona-sans'
-import '@fontsource-variable/dm-sans'
-import '@fontsource-variable/mozilla-text'
+import '@fontsource-variable/eb-garamond'
 import '@fontsource/space-mono/400.css'
 import '@fontsource/space-mono/700.css'
 

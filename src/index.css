@@ -13,10 +13,15 @@
   /* Typography — self-hosted via @fontsource (imported in src/index.tsx).
      --font-sans powers the default body/UI font; --font-mono powers code;
      --font-heading is applied to headings in the base layer below. */
-  --font-sans:
-    'Mona Sans Variable', 'DM Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-heading: 'Mozilla Text Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Mona Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-heading: 'EB Garamond Variable', ui-serif, Georgia, 'Times New Roman', serif;
   --font-mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* No pure white/black anywhere — remap Tailwind's white/black utilities
+     (bg-white, text-white, bg-black/40 overlays, etc.) to the theme's off-white
+     and slate so nothing renders as #ffffff or #000000. */
+  --color-white: #fafafa;
+  --color-black: #1a2329;
 
   --color-background: #f5f5f5;
   --color-foreground: #211d1d;

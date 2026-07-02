@@ -24,6 +24,7 @@ import {
 import { type AttachmentData, type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
+import { AnimatePresence, m } from 'framer-motion'
 import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
@@ -531,7 +532,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     return (
       <>
         <div
-          className="relative flex w-full flex-col gap-3 rounded-2xl"
+          className="relative flex w-full flex-col rounded-2xl"
           onDragOver={(e) => {
             e.preventDefault()
             setIsDragging(true)
@@ -561,17 +562,59 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               e.target.value = ''
             }}
           />
-          <ChatSkillsBar
-            onAddToChat={handleAddChipFromBar}
-            onAddInstruction={insertInstructionText}
-            // Pinning is a "starting a new chat" affordance — once the thread
-            // has any message, hide the bar so chips don't compete for space.
-            hidden={messages.length > 0}
-          />
+          {/* Chips + error banner ride in an overlay anchored to the composer's TOP
+              edge, so the composer is a fixed anchor: the overlay is out of flow
+              (only `bottom` pinned → content-height, grows UPWARD), so the composer's
+              box never reacts to the banner — it stays put in every state (empty,
+              mid-chat, after a send). `pb-2` gives the chips their normal resting gap
+              above the composer; when the banner grows in it pushes the chips up, and
+              they slide back down on dismiss. pointer-events gated so the empty
+              overlay area doesn't eat clicks behind it. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-full flex flex-col">
+            {/* Chips keep their normal resting gap above the composer (pb-2). */}
+            <div className="pointer-events-auto pb-2">
+              <ChatSkillsBar
+                onAddToChat={handleAddChipFromBar}
+                onAddInstruction={insertInstructionText}
+                // Pinning is a "starting a new chat" affordance — once the thread
+                // has any message, hide the bar so chips don't compete for space.
+                hidden={messages.length > 0}
+              />
+            </div>
+            <AnimatePresence initial={false}>
+              {attachError && (
+                <m.div
+                  key="attach-error"
+                  // marginBottom pulls the banner's bottom -12px below the composer's
+                  // top edge so it's hidden behind the composer's opaque z-10 body
+                  // (the "emerges from behind" look). Animated in lockstep with height
+                  // so dismiss collapses cleanly without over-pulling the chips.
+                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
+                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
+                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
+                  className="pointer-events-auto overflow-hidden"
+                >
+                  <div className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive">
+                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 flex-1">{attachError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachError(null)}
+                      aria-label="Dismiss"
+                      className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                </m.div>
+              )}
+            </AnimatePresence>
+          </div>
           <PromptInput
             ref={formRef}
             headerSlot={
-              attachments.length > 0 || attachError ? (
+              attachments.length > 0 ? (
                 <div className="flex flex-wrap items-start gap-2 pb-2">
                   {attachments.map((attachment) => (
                     <FileCard
@@ -582,20 +625,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                       onRemove={() => removeAttachment(attachment.localFileId)}
                     />
                   ))}
-                  {attachError && (
-                    <div className="flex w-full items-center gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[length:var(--font-size-xs)] text-destructive">
-                      <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                      <span className="min-w-0 flex-1">{attachError}</span>
-                      <button
-                        type="button"
-                        onClick={() => setAttachError(null)}
-                        aria-label="Dismiss"
-                        className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    </div>
-                  )}
                 </div>
               ) : undefined
             }
@@ -611,7 +640,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onStop={stop}
             autoFocus={!isMobile}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-            className="flex flex-col w-full gap-0 rounded-2xl border bg-card p-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
+            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border bg-card p-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
             footerStartElements={footerStartElements}
             renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}
             popoverSlot={

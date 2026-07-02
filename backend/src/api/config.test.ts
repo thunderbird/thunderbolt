@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestSettings } from '@/test-utils/settings'
+import { defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { createConfigRoutes } from './config'
 
 const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) => {
@@ -52,6 +53,12 @@ describe('Config Routes', () => {
     it('does not require authentication', async () => {
       const { status } = await fetchConfig(createTestSettings())
       expect(status).toBe(200)
+    })
+
+    it('ships models defaults with their shared version', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body.defaults.models.version).toBe(defaultModelsVersion)
+      expect(body.defaults.models.data).toEqual(defaultModels)
     })
   })
 })

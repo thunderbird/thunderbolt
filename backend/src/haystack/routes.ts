@@ -157,6 +157,7 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
           },
           pipelineId: descriptor.pipelineId,
           pipelineName: descriptor.pipelineName,
+          supportsFiles: descriptor.supportedContent.files,
           settings,
           deps,
         })

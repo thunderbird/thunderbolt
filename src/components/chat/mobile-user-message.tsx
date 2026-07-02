@@ -8,13 +8,14 @@ import { extractTextFromParts } from '@/lib/message-utils'
 import type { UIMessage } from 'ai'
 import { Copy } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { MessageBubbles } from './message-bubbles'
+import { MessageBubbles, type ResendAttachmentHandler } from './message-bubbles'
 
 type MobileUserMessageProps = {
   message: UIMessage
+  onResendAttachment?: ResendAttachmentHandler
 }
 
-export const MobileUserMessage = ({ message }: MobileUserMessageProps) => {
+export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMessageProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
   const { copy } = useCopyToClipboard()
@@ -31,7 +32,7 @@ export const MobileUserMessage = ({ message }: MobileUserMessageProps) => {
     <div data-message-id={message.id}>
       <div {...longPressHandlers} className={isMenuOpen ? 'relative z-50 select-none' : 'select-none'}>
         <div className={isMenuOpen ? 'transition-transform scale-[1.02]' : undefined}>
-          <MessageBubbles message={message} />
+          <MessageBubbles message={message} onResendAttachment={onResendAttachment} />
         </div>
         {isMenuOpen && (
           <div className="flex justify-end mt-2">

@@ -3,7 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { createHandleError, isRateLimitError } from './error-utils'
+import {
+  createHandleError,
+  getErrorRetryable,
+  getErrorStatusCode,
+  isContentRejectionError,
+  isContextOverflowError,
+  isRateLimitError,
+} from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
 
 describe('isRateLimitError', () => {
@@ -34,6 +41,11 @@ describe('isRateLimitError', () => {
 
   it('returns false for unrelated errors', () => {
     expect(isRateLimitError(new Error('Network timeout'))).toBe(false)
+  })
+
+  it('content rejection is not a rate limit', () => {
+    const error = new Error(JSON.stringify({ error: 'content.str: Input should be a valid string', status: 400 }))
+    expect(isRateLimitError(error)).toBe(false)
   })
 
   it('returns false for null', () => {
@@ -196,5 +208,98 @@ describe('createHandleError', () => {
 
     expect(error.message).toBe(longMessage)
     expect(error.message.length).toBe(1000)
+  })
+})
+
+describe('getErrorStatusCode', () => {
+  it('reads `status` from a serialized stream error', () => {
+    expect(getErrorStatusCode(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(400)
+  })
+
+  it('reads `statusCode` (DefaultChatTransport path)', () => {
+    expect(getErrorStatusCode(new Error(JSON.stringify({ error: 'x', statusCode: 422 })))).toBe(422)
+  })
+
+  it('is undefined for a non-JSON message (e.g. a bare "Bad Request")', () => {
+    expect(getErrorStatusCode(new Error('Bad Request'))).toBeUndefined()
+  })
+
+  it('is undefined for null', () => {
+    expect(getErrorStatusCode(null)).toBeUndefined()
+  })
+})
+
+describe('isContentRejectionError', () => {
+  it('detects the file-part rejection 400 (e.g. content.str)', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(true)
+  })
+
+  it('detects a 422 (the tag minted for a file-part UnsupportedFunctionalityError)', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'x', statusCode: 422 })))).toBe(true)
+  })
+
+  it('does NOT treat auth (401/403) as a content rejection', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Unauthorized', status: 401 })))).toBe(false)
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Forbidden', status: 403 })))).toBe(false)
+  })
+
+  it('does NOT treat a timeout (408) or not-found (404) as a content rejection', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Request Timeout', status: 408 })))).toBe(false)
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Not Found', status: 404 })))).toBe(false)
+  })
+
+  it('does NOT treat a 5xx, rate limit, or context overflow as a content rejection', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Server error', status: 500 })))).toBe(false)
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Too many requests', status: 429 })))).toBe(false)
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'prompt is too long', status: 400 })))).toBe(false)
+  })
+
+  it('returns false for null / no status', () => {
+    expect(isContentRejectionError(null)).toBe(false)
+    expect(isContentRejectionError(new Error('Network timeout'))).toBe(false)
+  })
+})
+
+describe('getErrorRetryable', () => {
+  it('reads the SDK isRetryable verdict from the serialized envelope', () => {
+    expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 400, isRetryable: false })))).toBe(false)
+    expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 408, isRetryable: true })))).toBe(true)
+  })
+
+  it('is undefined when no isRetryable field is present', () => {
+    expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 500 })))).toBeUndefined()
+    expect(getErrorRetryable(new Error('Network timeout'))).toBeUndefined()
+    expect(getErrorRetryable(null)).toBeUndefined()
+  })
+})
+
+describe('isContextOverflowError', () => {
+  it("detects Anthropic's 'prompt is too long' overflow", () => {
+    const error = new Error(
+      JSON.stringify({ error: 'prompt is too long: 250000 tokens > 200000 maximum', status: 400 }),
+    )
+    expect(isContextOverflowError(error)).toBe(true)
+  })
+
+  it("detects OpenAI's context_length_exceeded", () => {
+    const error = new Error(JSON.stringify({ error: 'context_length_exceeded', statusCode: 400 }))
+    expect(isContextOverflowError(error)).toBe(true)
+  })
+
+  it("detects 'maximum context length' phrasing", () => {
+    expect(isContextOverflowError(new Error("This model's maximum context length is 128000 tokens"))).toBe(true)
+  })
+
+  it('does not match a content rejection', () => {
+    const error = new Error(JSON.stringify({ error: 'content.str: Input should be a valid string', status: 400 }))
+    expect(isContextOverflowError(error)).toBe(false)
+  })
+
+  it('does not match a rate limit', () => {
+    expect(isContextOverflowError(new Error('Too many requests'))).toBe(false)
+  })
+
+  it('returns false for null', () => {
+    expect(isContextOverflowError(null)).toBe(false)
   })
 })

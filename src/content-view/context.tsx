@@ -169,6 +169,11 @@ export const useShowPreview = (): ((url: string) => void) | undefined => {
   return useContext(ContentViewContext)?.showPreview
 }
 
+/** Returns showSideview when inside ContentViewProvider, undefined otherwise. */
+export const useShowSideview = (): ContentViewContextType['showSideview'] | undefined => {
+  return useContext(ContentViewContext)?.showSideview
+}
+
 /** Returns setPreviewHidden when inside ContentViewProvider, undefined otherwise. */
 export const useSetPreviewHidden = (): ((hidden: boolean) => void) | undefined => {
   return useContext(ContentViewContext)?.setPreviewHidden

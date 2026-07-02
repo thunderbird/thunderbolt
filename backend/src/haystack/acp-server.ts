@@ -121,6 +121,18 @@ const searchSessionResponseSchema = z.object({
   search_session_id: z.string().min(1),
 })
 
+/** Zod schema for the Deepset `temporary_files` upload response. */
+const temporaryFileResponseSchema = z.object({
+  file_id: z.string().min(1),
+})
+
+/** A file pulled out of an ACP embedded `resource` block, ready to upload. */
+type PromptResource = {
+  filename: string
+  mimeType: string
+  bytes: Uint8Array<ArrayBuffer>
+}
+
 export type HaystackAcpDeps = {
   /** Injected so tests can mock the Deepset upstream. */
   fetchFn?: typeof fetch
@@ -145,6 +157,13 @@ export type HaystackAcpServerOptions = {
   pipelineId: string
   /** Deepset pipeline URL slug — used in the `/pipelines/${pipelineName}/chat-stream` path. */
   pipelineName: string
+  /**
+   * Whether this pipeline accepts file attachments. When true, the server
+   * advertises ACP `promptCapabilities.embeddedContext` and runs prompts via
+   * `temporary_files` upload + `search-stream` (generative pipelines) instead
+   * of `search_sessions` + `chat-stream`. Defaults to false.
+   */
+  supportsFiles?: boolean
   settings: Settings
   deps?: HaystackAcpDeps
 }
@@ -180,6 +199,7 @@ export class HaystackAcpServer {
   private readonly send: Sender
   private readonly pipelineId: string
   private readonly pipelineName: string
+  private readonly supportsFiles: boolean
   private readonly settings: Settings
   private readonly fetchFn: typeof fetch
   private readonly generateSessionId: () => string
@@ -190,6 +210,7 @@ export class HaystackAcpServer {
     this.send = opts.send
     this.pipelineId = opts.pipelineId
     this.pipelineName = opts.pipelineName
+    this.supportsFiles = opts.supportsFiles ?? false
     this.settings = opts.settings
     this.fetchFn = opts.deps?.fetchFn ?? globalThis.fetch
     this.generateSessionId = opts.deps?.generateSessionId ?? (() => crypto.randomUUID())
@@ -269,6 +290,10 @@ export class HaystackAcpServer {
    * can resume a session after a WebSocket reconnect. Resume is backed by a
    * module-level `persistentSearchSessions` map that retains the Deepset
    * `search_session_id` for each ACP session id across socket lifetimes.
+   *
+   * `embeddedContext` mirrors {@link supportsFiles}: file-capable pipelines
+   * advertise it so the client sends PDFs as embedded `resource` blocks, which
+   * we forward via `temporary_files` + `search-stream`.
    */
   private buildInitializeResponse(): InitializeResponse {
     return {
@@ -279,7 +304,7 @@ export class HaystackAcpServer {
         promptCapabilities: {
           image: false,
           audio: false,
-          embeddedContext: false,
+          embeddedContext: this.supportsFiles,
         },
       },
     }
@@ -303,6 +328,18 @@ export class HaystackAcpServer {
     const params = req.params as LoadSessionRequest | undefined
     if (!params || typeof params.sessionId !== 'string') {
       this.sendError(req.id, rpcErrors.invalidRequest, 'session/load requires sessionId')
+      return
+    }
+    // File-capable (generative) pipelines never bootstrap a Deepset
+    // `search_session_id` — each turn re-uploads its files to `temporary_files`
+    // and runs `search-stream` statelessly — so they're absent from the
+    // persistent map. They're still resumable: restore with a null search
+    // session and the next prompt proceeds normally. Without this, a persisted
+    // file-pipeline session would `resourceNotFound` on every `session/load`
+    // and the client would keep retrying a doomed restore.
+    if (this.supportsFiles) {
+      this.registerSession(params.sessionId, null)
+      this.sendResult(req.id, {} satisfies LoadSessionResponse)
       return
     }
     const searchSessionId = this.persistentSearchSessions.get(params.sessionId)
@@ -379,14 +416,9 @@ export class HaystackAcpServer {
     const userText = extractUserText(params)
 
     try {
-      if (ctx.searchSessionId === null) {
-        ctx.searchSessionId = await this.createSearchSession(ctx, turnAbort.signal)
-        this.rememberSearchSession(ctx.sessionId, ctx.searchSessionId)
-      }
-
-      const streamResponse = await this.openChatStream(ctx, userText, turnAbort.signal)
+      const streamResponse = await this.openStream(ctx, params, userText, turnAbort.signal)
       if (!streamResponse.body) {
-        this.sendError(req.id, rpcErrors.internalError, 'haystack chat-stream response has no body')
+        this.sendError(req.id, rpcErrors.internalError, 'haystack pipeline stream response has no body')
         return
       }
 
@@ -415,6 +447,80 @@ export class HaystackAcpServer {
         ctx.currentTurnAbort = null
       }
     }
+  }
+
+  /**
+   * Open the upstream SSE stream for a turn, picking the run path by pipeline
+   * type. File-capable (generative) pipelines upload any attached resources to
+   * `temporary_files` and run `search-stream` with their ids — no
+   * `search_session`, since generative pipelines don't carry chat history.
+   * Chat pipelines keep the lazy `search_session` bootstrap + `chat-stream`.
+   */
+  private openStream(
+    ctx: HaystackSessionContext,
+    params: PromptRequest,
+    query: string,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    if (this.supportsFiles) {
+      return this.openSearchStream(ctx, query, extractResources(params), signal)
+    }
+    return this.openChatStreamWithSession(ctx, query, signal)
+  }
+
+  /** Bootstrap (if needed) the search session, then open the chat stream. */
+  private async openChatStreamWithSession(
+    ctx: HaystackSessionContext,
+    query: string,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    if (ctx.searchSessionId === null) {
+      ctx.searchSessionId = await this.createSearchSession(ctx, signal)
+      this.rememberSearchSession(ctx.sessionId, ctx.searchSessionId)
+    }
+    return this.openChatStream(ctx, query, signal)
+  }
+
+  /**
+   * Open the SSE search stream for a generative pipeline. Uploads each attached
+   * resource to `temporary_files` (ephemeral, never indexed) and passes their
+   * ids as `files`, so the file reaches the pipeline run without ever being
+   * persisted in a workspace.
+   */
+  private async openSearchStream(
+    ctx: HaystackSessionContext,
+    query: string,
+    resources: PromptResource[],
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const files = await Promise.all(resources.map((resource) => this.uploadTemporaryFile(resource, signal)))
+    const url = `${this.workspaceBaseUrl()}/pipelines/${ctx.pipelineName}/search-stream`
+    return this.fetchWithPipelineRetry(url, {
+      method: 'POST',
+      headers: { ...this.jsonHeaders(), accept: 'text/event-stream' },
+      body: JSON.stringify({ query, files, include_result: true }),
+      signal,
+    })
+  }
+
+  /** Upload one resource as an ephemeral Deepset temporary file, return its id. */
+  private async uploadTemporaryFile(resource: PromptResource, signal: AbortSignal): Promise<string> {
+    const url = `${this.workspaceBaseUrl()}/temporary_files`
+    // A FormData body is single-use, so build a fresh one per attempt — a cold-
+    // pipeline retry on a consumed multipart stream would otherwise upload nothing.
+    const response = await this.fetchWithPipelineRetry(url, () => {
+      const form = new FormData()
+      form.append('file', new Blob([resource.bytes], { type: resource.mimeType }), resource.filename)
+      return {
+        method: 'POST',
+        // No content-type: fetch sets the multipart boundary from the FormData.
+        headers: this.authHeaders(),
+        body: form,
+        signal,
+      }
+    })
+    const data = (await response.json()) as unknown
+    return temporaryFileResponseSchema.parse(data).file_id
   }
 
   /** Bootstrap a Deepset `search_session_id` for this ACP session. */
@@ -450,22 +556,29 @@ export class HaystackAcpServer {
    * Retry a fetch while a cold Deepset pipeline wakes from idle, then surface
    * a structured error on anything else.
    *
+   * `init` may be a factory rather than a static object: a `FormData` (multipart)
+   * body is single-use — fetch consumes its stream — so reusing one `init` across
+   * retries would resend an empty body. Callers with such bodies pass a thunk that
+   * builds a fresh `RequestInit` (and a fresh `FormData`) per attempt; JSON-string
+   * callers can keep passing a plain object since strings are freely re-sendable.
+   *
    * The body is read exactly once per non-OK response because the retry
    * decision depends on it (see {@link isTransientPipelineWake}) — status
    * alone is insufficient. Reading it to completion also drains and releases
    * the underlying socket, so a discarded retry response leaks nothing. When
    * we DON'T retry, the already-read text is reused in the thrown error.
    */
-  private async fetchWithPipelineRetry(url: string, init: RequestInit): Promise<Response> {
+  private async fetchWithPipelineRetry(url: string, init: RequestInit | (() => RequestInit)): Promise<Response> {
     for (let attempt = 0; attempt < maxRetryAttempts; attempt++) {
-      const response = await this.fetchFn(url, init)
+      const requestInit = typeof init === 'function' ? init() : init
+      const response = await this.fetchFn(url, requestInit)
       if (response.ok) {
         return response
       }
       const bodyText = await response.text().catch(() => '')
       const isLastAttempt = attempt === maxRetryAttempts - 1
       if (!isLastAttempt && isTransientPipelineWake(response.status, bodyText)) {
-        await this.abortableSleep(this.backoffDelayMs(attempt, response), init.signal ?? null)
+        await this.abortableSleep(this.backoffDelayMs(attempt, response), requestInit.signal ?? null)
         continue
       }
       throw new Error(
@@ -589,11 +702,15 @@ export class HaystackAcpServer {
     return `${base}/api/v1/workspaces/${this.settings.haystackWorkspace}`
   }
 
+  private authHeaders(): Record<string, string> {
+    return this.settings.haystackApiKey ? { authorization: `Bearer ${this.settings.haystackApiKey}` } : {}
+  }
+
   private jsonHeaders(): Record<string, string> {
     return {
       'content-type': 'application/json',
       accept: 'application/json',
-      ...(this.settings.haystackApiKey ? { authorization: `Bearer ${this.settings.haystackApiKey}` } : {}),
+      ...this.authHeaders(),
     }
   }
 
@@ -635,6 +752,44 @@ const extractUserText = (params: PromptRequest): string => {
     }
   }
   return texts.join('\n')
+}
+
+/**
+ * Pull uploadable files out of an ACP `PromptRequest`. We only forward
+ * *binary* embedded resources (the `blob` variant — base64 bytes); text
+ * resources are left to {@link extractUserText}. The blob is decoded to raw
+ * bytes here so the caller can stream it straight into a multipart upload.
+ */
+const extractResources = (params: PromptRequest): PromptResource[] => {
+  const resources: PromptResource[] = []
+  for (const block of params.prompt ?? []) {
+    if (block.type !== 'resource' || !('blob' in block.resource) || typeof block.resource.blob !== 'string') {
+      continue
+    }
+    resources.push({
+      filename: filenameFromUri(block.resource.uri),
+      // `||` not `??`: an empty-string mimeType should fall back too, not just null/undefined.
+      mimeType: block.resource.mimeType || 'application/octet-stream',
+      bytes: Uint8Array.from(Buffer.from(block.resource.blob, 'base64')),
+    })
+  }
+  return resources
+}
+
+/** Derive a filename from a resource URI, falling back to a generic name. */
+const filenameFromUri = (uri: string): string => {
+  const lastSegment = uri.split('?')[0].split('/').pop()
+  if (!lastSegment || lastSegment.length === 0) {
+    return 'attachment'
+  }
+  // A user-chosen name with a bare `%` (e.g. `Q1%.pdf`) is not valid percent-
+  // encoding and makes decodeURIComponent throw — fall back to the raw segment
+  // rather than aborting the whole prompt turn.
+  try {
+    return decodeURIComponent(lastSegment)
+  } catch {
+    return lastSegment
+  }
 }
 
 const isAbortError = (err: unknown): boolean => {

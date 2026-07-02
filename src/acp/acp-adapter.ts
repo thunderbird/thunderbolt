@@ -39,6 +39,7 @@ import type {
   Agent as AcpSdkAgent,
   ClientSideConnection,
   Client,
+  ContentBlock,
   InitializeResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
@@ -47,6 +48,9 @@ import type {
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
+import { blobToBase64, getAttachments, type HydratedAttachment } from '@/lib/attachments'
+import { getTransformer } from '@/files/transformers'
+import { getAttachment } from '@/lib/file-blob-storage'
 import { openTransport } from './transports'
 import type { AcpTransport } from './types'
 import { createTranslatorStream, toAcpCommands, type AcpCommand } from './translators/acp-to-ai-sdk'
@@ -125,14 +129,133 @@ const messageText = (message: ThunderboltUIMessage): string =>
     .map((p) => p.text)
     .join('\n')
 
-/** Extract the trailing user-message text from the AI SDK request body. We
- *  forward only the last user message's concatenated text parts to ACP. */
-const extractUserPrompt = (init: RequestInit): string => {
+/**
+ * Build the ACP prompt content blocks from the AI SDK request body. The
+ * built-in transport posts `{ messages: ThunderboltUIMessage[], id }`; we
+ * forward the last user message's text parts as a `text` block.
+ *
+ * An ACP agent is itself a harness (it does its own file reading/parsing), so
+ * the right default is native bytes: when the agent advertises `embeddedContext`
+ * each attachment is hydrated from IndexedDB and sent as an embedded `resource`
+ * block (base64) — the backend forwards these to the pipeline via
+ * `temporary_files`.
+ *
+ * Without `embeddedContext` (the ACP baseline — only `Text`/`ResourceLink` are
+ * guaranteed) the agent can't take embedded bytes, so rather than silently
+ * dropping the file we degrade: a text-extractable file (PDF/docx) is sent as
+ * an extracted `text` block, and anything else gets a visible "could not be
+ * delivered" note in the prompt. This is graceful degradation, NOT the
+ * remediation chain — we never rasterize for ACP (a harness wants the real
+ * bytes, not our lossy page images).
+ */
+/** Injectable file deps for {@link buildPromptBlocks} — overridden in tests to avoid IndexedDB/pdfjs. */
+export type PromptBlockDeps = {
+  getTransformer: typeof getTransformer
+  getAttachment: typeof getAttachment
+}
+
+const defaultPromptBlockDeps: PromptBlockDeps = { getTransformer, getAttachment }
+
+export const buildPromptBlocks = async (
+  init: RequestInit,
+  skillInstructions: string[] | undefined,
+  embeddedContext: boolean,
+  deps: PromptBlockDeps = defaultPromptBlockDeps,
+  priorTranscript?: string,
+): Promise<ContentBlock[]> => {
   const lastUser = [...parseRequestMessages(init)].reverse().find((m) => m.role === 'user')
   if (!lastUser) {
     throw new Error('ACP adapter: no user message in request body')
   }
-  return messageText(lastUser)
+  const userText = messageText(lastUser)
+  // Skill instructions + (fallback) prior transcript ride the text block (ACP
+  // has no system channel) — see composeAcpPrompt.
+  const text = composeAcpPrompt(skillInstructions, userText, priorTranscript)
+
+  const attachments = getAttachments(lastUser)
+  if (attachments.length === 0) {
+    return [{ type: 'text', text }]
+  }
+
+  if (embeddedContext) {
+    // Native-first: send raw bytes as embedded resources. But remediation may have
+    // set deliverAs: 'text' on an attachment (the model couldn't read the native
+    // form) — honor that by sending extracted text instead. We never rasterize for
+    // ACP (deliverAs: 'images'), so that case also falls back to text extraction.
+    // Files missing from IndexedDB get a visible note rather than vanishing.
+    const resolved = await Promise.all(attachments.map((attachment) => resolveEmbeddedDelivery(attachment, deps)))
+    const blocks = resolved.flatMap((r): ContentBlock[] => {
+      if (r.kind === 'resource') {
+        return [
+          {
+            type: 'resource',
+            resource: {
+              // The backend derives the filename from the URI's last path segment.
+              uri: `attachment://${r.attachment.localFileId}/${r.attachment.filename}`,
+              mimeType: r.attachment.mimeType,
+              blob: r.attachment.base64,
+            },
+          },
+        ]
+      }
+      return r.kind === 'text' ? [{ type: 'text', text: r.text }] : []
+    })
+    const undeliverable = resolved.flatMap((r) => (r.kind === 'undeliverable' ? [r.filename] : []))
+    return [{ type: 'text', text: text + undeliverableNote(undeliverable) }, ...blocks]
+  }
+
+  // No embedded context: deliver text-extractable files as text blocks; flag the rest.
+  const resolved = await Promise.all(attachments.map((attachment) => resolveTextDelivery(attachment, deps)))
+  const textBlocks = resolved.flatMap((r) => (r.kind === 'text' ? [{ type: 'text' as const, text: r.text }] : []))
+  const undeliverable = resolved.flatMap((r) => (r.kind === 'undeliverable' ? [r.filename] : []))
+  return [{ type: 'text', text: text + undeliverableNote(undeliverable) }, ...textBlocks]
+}
+
+/** A trailing prompt note listing files that couldn't be delivered, or '' when none. */
+const undeliverableNote = (filenames: string[]): string =>
+  filenames.length > 0
+    ? `\n\n${filenames.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')}`
+    : ''
+
+/**
+ * Resolve one attachment for the embedded-context path: native bytes as a
+ * `resource` by default, extracted text when remediation set `deliverAs` away
+ * from native (text/images — ACP never rasterizes, so images degrades to text),
+ * or `undeliverable` when the file is missing from IndexedDB or has no text layer
+ * to fall back to.
+ */
+const resolveEmbeddedDelivery = async (
+  attachment: ReturnType<typeof getAttachments>[number],
+  deps: PromptBlockDeps,
+): Promise<
+  | { kind: 'resource'; attachment: HydratedAttachment }
+  | { kind: 'text'; text: string }
+  | { kind: 'undeliverable'; filename: string }
+> => {
+  if (attachment.deliverAs === undefined) {
+    const file = await deps.getAttachment(attachment.localFileId)
+    if (!file) {
+      return { kind: 'undeliverable', filename: attachment.filename }
+    }
+    return { kind: 'resource', attachment: { ...attachment, base64: await blobToBase64(file.blob) } }
+  }
+  return resolveTextDelivery(attachment, deps)
+}
+
+/** Resolve one attachment to an extracted-text block, or mark it undeliverable (no text transformer). */
+const resolveTextDelivery = async (
+  attachment: ReturnType<typeof getAttachments>[number],
+  deps: PromptBlockDeps,
+): Promise<{ kind: 'text'; text: string } | { kind: 'undeliverable'; filename: string }> => {
+  const transformer = await deps.getTransformer(attachment.mimeType, 'text')
+  const file = transformer ? await deps.getAttachment(attachment.localFileId) : null
+  if (transformer && file) {
+    const output = await transformer(file)
+    if ('text' in output) {
+      return { kind: 'text', text: `[Attachment: ${attachment.filename}]\n\n${output.text}` }
+    }
+  }
+  return { kind: 'undeliverable', filename: attachment.filename }
 }
 
 /** Render the conversation *before* the trailing user turn as a plain-text
@@ -400,7 +523,13 @@ export const connectAcpAdapter = async (
       await context.onAcpSessionId(sessionId)
     }
     const priorTranscript = isFirstSendOfFreshSession ? extractPriorTranscript(init) : undefined
-    const promptText = composeAcpPrompt(context.skillInstructions, extractUserPrompt(init), priorTranscript)
+    const prompt = await buildPromptBlocks(
+      init,
+      context.skillInstructions,
+      capabilities.promptCapabilities.embeddedContext,
+      defaultPromptBlockDeps,
+      priorTranscript,
+    )
 
     const { body, translator, close } = createTranslatorStream({
       textDeltaThrottleMs: deps.textDeltaThrottleMs,
@@ -447,7 +576,7 @@ export const connectAcpAdapter = async (
       try {
         const response = await connection.prompt({
           sessionId,
-          prompt: [{ type: 'text', text: promptText }],
+          prompt,
         })
         // The Haystack adapter mirrors citation metadata on the terminal
         // `agent_message_chunk` AND on the `PromptResponse._meta`. Ingesting

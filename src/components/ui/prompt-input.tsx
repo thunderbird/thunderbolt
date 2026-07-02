@@ -26,6 +26,10 @@ type PromptInputProps = {
   placeholder?: string
   showSubmitButton?: boolean
   onSubmit?: () => void
+  /** Overrides the default "enabled only when there's text" rule for the submit
+   *  button and Enter — e.g. to allow sending an attachment with no typed text.
+   *  Defaults to "there is non-whitespace text". */
+  canSubmit?: boolean
   isLoading?: boolean
   autoFocus?: boolean
   className?: string
@@ -51,6 +55,9 @@ type PromptInputProps = {
    * input.
    */
   popoverSlot?: ReactNode
+  /** Optional slot rendered at the top of the composer box, above the textarea
+   *  (e.g. pending attachment preview cards). */
+  headerSlot?: ReactNode
   /** Receives every keydown so callers can intercept ↑↓/Enter/Esc for autocomplete. */
   onTextareaKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void
   /** Fires on selection change so callers can track the caret position. */
@@ -71,6 +78,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       placeholder = 'Say something...',
       showSubmitButton = true,
       onSubmit,
+      canSubmit,
       isLoading = false,
       autoFocus = false,
       className = 'flex flex-col w-full gap-0 p-2',
@@ -85,6 +93,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       onModelChange,
       renderOverlay,
       popoverSlot,
+      headerSlot,
       onTextareaKeyDown,
       onTextareaSelect,
       onTextareaScroll,
@@ -102,12 +111,17 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
     const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)
 
+    // Whether a send is allowed right now — defaults to "there's text", but a
+    // caller can widen it (e.g. an attachment with no text). Keeps the submit
+    // button and the Enter key in agreement.
+    const submittable = canSubmit ?? value.trim().length > 0
+
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       onTextareaKeyDown?.(e)
       if (e.defaultPrevented) {
         return
       }
-      if (!isStreaming && submitOnEnter && e.key === 'Enter' && !e.shiftKey) {
+      if (!isStreaming && submitOnEnter && e.key === 'Enter' && !e.shiftKey && submittable) {
         e.preventDefault()
         onSubmit?.()
       }
@@ -140,7 +154,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           type="submit"
           variant="default"
           className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
-          disabled={isLoading || !value.trim()}
+          disabled={isLoading || !submittable}
         >
           <ArrowUp className="size-[var(--icon-size-default)]" />
         </Button>
@@ -148,6 +162,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
     const content = (
       <>
+        {headerSlot}
         <div className="relative w-full">
           {popoverSlot}
           {renderOverlay && (

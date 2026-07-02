@@ -58,14 +58,22 @@ export const defaultModelOpus48: Model = {
   userId: null,
 }
 
-export const defaultModelDeepseekV4Pro: Model = {
-  id: '019e70af-e5b2-76d0-9ede-f22d8265bb14',
-  name: 'DeepSeek V4 Pro',
-  provider: 'tinfoil',
-  model: 'deepseek-v4-pro',
+/**
+ * Flash ships under a fresh id — not the retired V4 Pro id. Reusing Pro's id
+ * would flip isConfidential 1→0 on threads that were created encrypted
+ * (isEncrypted mirrors the model's isConfidential at creation), stranding them
+ * because the model picker and send guard both enforce isEncrypted === isConfidential.
+ * cleanupRemovedDefaults soft-deletes the Pro row instead, so those threads
+ * surface as "model retired" rather than broken.
+ */
+export const defaultModelDeepseekV4Flash: Model = {
+  id: '019f227e-d640-727d-ba12-d51bd7d0a3d6',
+  name: 'DeepSeek V4 Flash',
+  provider: 'thunderbolt',
+  model: 'deepseek-v4-flash',
   isSystem: 1,
   enabled: 1,
-  isConfidential: 1,
+  isConfidential: 0,
   contextWindow: 131072,
   toolUsage: 1,
   startWithReasoning: 0,
@@ -75,28 +83,7 @@ export const defaultModelDeepseekV4Pro: Model = {
   url: null,
   defaultHash: null,
   vendor: 'deepseek',
-  description: 'Confidential reasoning via Tinfoil',
-  userId: null,
-}
-
-export const defaultModelKimiK26: Model = {
-  id: '019e7580-2b0c-77d6-8b99-16a99abe4591',
-  name: 'Kimi K2.6',
-  provider: 'tinfoil',
-  model: 'kimi-k2-6',
-  isSystem: 1,
-  enabled: 1,
-  isConfidential: 1,
-  contextWindow: 131072,
-  toolUsage: 1,
-  startWithReasoning: 0,
-  supportsParallelToolCalls: 0,
-  deletedAt: null,
-  apiKey: null,
-  url: null,
-  defaultHash: null,
-  vendor: 'moonshot',
-  description: 'Confidential chat via Tinfoil',
+  description: 'Fast DeepSeek reasoning',
   userId: null,
 }
 
@@ -127,7 +114,6 @@ export const defaultModelGlm52: Model = {
  */
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelOpus48,
-  defaultModelDeepseekV4Pro,
-  defaultModelKimiK26,
+  defaultModelDeepseekV4Flash,
   defaultModelGlm52,
 ] as const

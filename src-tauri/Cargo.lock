@@ -5420,11 +5420,14 @@ name = "thunderbolt"
 version = "0.1.105"
 dependencies = [
  "anyhow",
+ "hex",
  "objc2-foundation",
  "objc2-ui-kit",
+ "reqwest 0.12.28",
  "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",

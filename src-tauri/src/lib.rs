@@ -4,6 +4,7 @@
 
 // These modules are used by Tauri's command system through macros
 // The compiler can't see the usage, so we allow dead_code warnings
+pub mod cli_installer;
 #[allow(dead_code)]
 pub mod commands;
 pub mod oauth_server;
@@ -48,6 +49,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             commands::capabilities,
             commands::set_interface_style,
             commands::start_oauth_server,
+            commands::install_thunderbolt_cli,
         ]);
 
     #[cfg(debug_assertions)]

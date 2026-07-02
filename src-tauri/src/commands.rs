@@ -108,3 +108,16 @@ const OAUTH_PORTS: &[u16] = &[17421, 17422, 17423];
 pub async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
     crate::oauth_server::start(app, OAUTH_PORTS)
 }
+
+// === Thunderbolt CLI install =================================================================
+
+/// Download, verify and install the standalone `thunderbolt` CLI into
+/// `~/.local/bin`, deriving the release URL from this app's version. Desktop
+/// macOS/Linux only — other platforms return `Unsupported` (see [`crate::cli_installer`]).
+#[command]
+pub async fn install_thunderbolt_cli(
+    app: tauri::AppHandle,
+) -> Result<crate::cli_installer::CliInstallResult, crate::cli_installer::CliInstallError> {
+    let version = app.package_info().version.to_string();
+    crate::cli_installer::install_cli(&version).await
+}

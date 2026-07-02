@@ -23,7 +23,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createToolset, getAvailableTools } from '@/lib/tools'
+import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
 import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
@@ -506,13 +506,16 @@ export const aiFetchStreamingResponse = async ({
   const supportsTools = model.toolUsage !== 0
 
   const sourceCollector: SourceMetadata[] = []
+  // Dedupe identical read-only tool calls within this send (same lifetime as
+  // sourceCollector — one request, no cross-turn state).
+  const toolCallCache: ToolCallCache = new Map()
 
   let toolset: Record<string, Tool> = {}
   let mcpServersSummary: string | undefined
   let mcpToolsMetadata: UIMessageMetadata['mcpTools']
   if (supportsTools) {
     const availableTools = await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
-    toolset = { ...createToolset(availableTools) }
+    toolset = createToolset(availableTools, toolCallCache)
 
     const merged = await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))
     mcpServersSummary = merged.summary

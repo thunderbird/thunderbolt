@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { EvalCriteria, EvalResult, EvalScenario, ParsedStream } from './types'
+import { toolCallKey } from '@/lib/stable-stringify'
+import type { EvalCriteria, EvalResult, EvalScenario, ParsedStream, ToolCallInfo } from './types'
 
 const reviewSiteDomains = [
   'wirecutter.com',
@@ -92,6 +93,19 @@ export const isReviewSite = (url: string): boolean => {
   }
 }
 
+/** Count tool calls whose (toolName, finalized input) repeated an earlier call */
+export const countDuplicateToolCalls = (toolCalls: ToolCallInfo[]): number => {
+  const seen = new Set<string>()
+  return toolCalls.reduce((duplicates, call) => {
+    const key = toolCallKey(call.toolName, call.input)
+    if (seen.has(key)) {
+      return duplicates + 1
+    }
+    seen.add(key)
+    return duplicates
+  }, 0)
+}
+
 /** Score a parsed response against scenario criteria */
 export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durationMs: number): EvalResult => {
   const { criteria } = scenario
@@ -121,6 +135,7 @@ export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durati
     homepageUrls,
     reviewSiteUrls,
     toolCallCount: parsed.toolCalls.length,
+    duplicateToolCallCount: countDuplicateToolCalls(parsed.toolCalls),
     retryCount: parsed.retryCount,
     durationMs: Math.round(durationMs),
     error: parsed.error,
@@ -158,5 +173,9 @@ const checkCriteria = (
 
   if (criteria.maxSteps !== undefined && parsed.stepCount > criteria.maxSteps) {
     failures.push(`Too many steps: ${parsed.stepCount} (max: ${criteria.maxSteps})`)
+  }
+
+  if (criteria.maxToolCalls !== undefined && parsed.toolCalls.length > criteria.maxToolCalls) {
+    failures.push(`Too many tool calls: ${parsed.toolCalls.length} (max: ${criteria.maxToolCalls})`)
   }
 }

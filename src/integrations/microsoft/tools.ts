@@ -333,10 +333,16 @@ export const getOneDriveFileContent = async (
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  */
 export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
+  // These reads are `cacheable` only because Microsoft currently ships no
+  // mail- or drive-mutating tool (no draft/send/move/delete/upload), so a
+  // cached read can't go stale within a request. Adding such a write tool must
+  // revisit this — cf. the non-cacheable Gmail reads, which google_draft_email
+  // mutates within the same request.
   {
     name: 'microsoft_list_messages',
     description: 'List Microsoft Outlook messages with optional filtering',
     verb: 'Listing Microsoft messages',
+    cacheable: true,
     parameters: listMessagesSchema,
     execute: (params: ListMessagesParams) => listMessages(params, httpClient),
   },
@@ -344,6 +350,7 @@ export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
     name: 'microsoft_get_message',
     description: 'Get a specific Microsoft Outlook message by ID',
     verb: 'Getting Microsoft message',
+    cacheable: true,
     parameters: getMessageSchema,
     execute: (params: GetMessageParams) => getMessage(params, httpClient),
   },
@@ -351,6 +358,7 @@ export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
     name: 'microsoft_search_onedrive',
     description: 'Search OneDrive files by name or content',
     verb: 'Searching OneDrive',
+    cacheable: true,
     parameters: searchOneDriveSchema,
     execute: (params: SearchOneDriveParams) => searchOneDrive(params, httpClient),
   },
@@ -359,6 +367,7 @@ export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
     description:
       'Get text content from a OneDrive file. Currently supports text files only. For unsupported types (PDFs, Office docs, images, etc.), returns file metadata with extraction_failed=true - explain the limitation helpfully to the user.',
     verb: 'Getting OneDrive file content',
+    cacheable: true,
     parameters: getOneDriveFileContentSchema,
     execute: (params: GetOneDriveFileContentParams) => getOneDriveFileContent(params, httpClient),
   },

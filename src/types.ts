@@ -185,6 +185,12 @@ export type ToolConfig = {
   verb: string
   parameters: z.ZodObject<any, any>
   execute: (params: any) => Promise<any>
+  /**
+   * When true, identical calls within a single streaming response reuse the
+   * first result instead of re-executing (see `createTool`). Set ONLY on
+   * deterministic, read-only tools — never on side-effecting/write tools.
+   */
+  cacheable?: boolean
 }
 
 export type AuthProviderBackendConfig = {

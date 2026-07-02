@@ -10,6 +10,7 @@ import { createConfigs as createGoogleConfigs } from '@/integrations/google/tool
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
 import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
+import { toolCallKey } from '@/lib/stable-stringify'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
@@ -65,22 +66,54 @@ export const getAvailableTools = async (
 
 export const tools = [...Object.values(tasksTools)]
 
-export const createTool = (config: ToolConfig) => {
-  return tool({
+/**
+ * Per-request memo of tool executions, keyed by tool name + finalized input.
+ * Created fresh per streaming response in `aiFetchStreamingResponse`, so it
+ * never spans conversation turns and needs no TTL or invalidation.
+ */
+export type ToolCallCache = Map<string, Promise<unknown>>
+
+/**
+ * Wrap a `cacheable` tool's executor so identical calls within one streaming
+ * response reuse the first (in-flight or settled) result instead of
+ * re-executing — removing duplicate round trips. The in-flight promise is
+ * cached so concurrent identical calls share one request; a rejected execution
+ * is evicted so the error surfaces and the next call re-runs (never cache a
+ * failure).
+ *
+ * Note: AI SDK execute-options (abortSignal, messages, toolCallId) are NOT
+ * forwarded to the wrapped executor — only `cacheable` read-only tools whose
+ * execute ignores those options may opt in.
+ */
+const dedupedExecute =
+  (config: ToolConfig, cache: ToolCallCache) =>
+  (input: unknown): Promise<unknown> => {
+    const key = toolCallKey(config.name, input)
+    const cached = cache.get(key)
+    if (cached) {
+      return cached
+    }
+    const result = config.execute(input)
+    cache.set(key, result)
+    result.catch(() => cache.delete(key))
+    return result
+  }
+
+/**
+ * Build an AI SDK tool from a {@link ToolConfig}. When a {@link ToolCallCache}
+ * is supplied and the tool opts in via `cacheable` (deterministic, read-only),
+ * its executor is wrapped to dedupe identical calls within the request. Tools
+ * without `cacheable` (notably side-effecting/write tools) always execute.
+ */
+export const createTool = (config: ToolConfig, cache?: ToolCallCache) =>
+  tool({
     description: config.description,
     inputSchema: config.parameters,
-    execute: config.execute,
+    execute: cache && config.cacheable ? dedupedExecute(config, cache) : config.execute,
   })
-}
 
-export const createToolset = (tools: ToolConfig[]) => {
-  return {
-    ...tools.reduce(
-      (acc, tool) => {
-        acc[tool.name] = createTool(tool)
-        return acc
-      },
-      {} as Record<string, Tool>,
-    ),
-  }
-}
+export const createToolset = (tools: ToolConfig[], cache?: ToolCallCache): Record<string, Tool> =>
+  tools.reduce<Record<string, Tool>>((acc, tool) => {
+    acc[tool.name] = createTool(tool, cache)
+    return acc
+  }, {})

@@ -65,32 +65,48 @@ const previewResult = (result: unknown): string => {
   return truncate(text.split('\n').slice(0, PREVIEW_LINES).join('\n'), PREVIEW_MAX)
 }
 
-/** Writes the colored header that announces a tool invocation. */
-const renderToolStart = (toolName: string, args: unknown): void => {
+/**
+ * Formats the colored header that announces a tool invocation, e.g.
+ * `⏺ bash npm test`. Returns a single line with no surrounding whitespace so
+ * callers can frame it for their medium (stdout stream or a TUI component).
+ *
+ * @param toolName - the tool being invoked
+ * @param args - the tool's arguments, summarized to one line
+ * @returns the styled, single-line header
+ */
+export const formatToolStart = (toolName: string, args: unknown): string => {
   const header = `${symbols.tool} ${cyan(toolName)}`
   const summary = truncate(summarizeArgs(args), ARGS_MAX)
-  process.stdout.write(`\n${summary ? `${header} ${gray(summary)}` : header}\n`)
-}
-
-/** Writes the success/failure marker for a finished tool call, with a preview. */
-const renderToolEnd = (isError: boolean, result: unknown): void => {
-  const mark = isError ? red(symbols.fail) : green(symbols.ok)
-  const preview = previewResult(result)
-  process.stdout.write(preview ? `${mark} ${gray(preview)}\n` : `${mark}\n`)
+  return summary ? `${header} ${gray(summary)}` : header
 }
 
 /**
- * Surfaces a turn that ended in a provider error (auth failure, rate limit, a
+ * Formats the success/failure marker for a finished tool call, with a short
+ * result preview. Returns a single line with no surrounding whitespace.
+ *
+ * @param isError - whether the tool result is an error
+ * @param result - the tool result to preview
+ * @returns the styled, single-line marker
+ */
+export const formatToolEnd = (isError: boolean, result: unknown): string => {
+  const mark = isError ? red(symbols.fail) : green(symbols.ok)
+  const preview = previewResult(result)
+  return preview ? `${mark} ${gray(preview)}` : mark
+}
+
+/**
+ * Formats a turn that ended in a provider error (auth failure, rate limit, a
  * bad request). Pi resolves the turn instead of throwing — the failure rides on
- * the assistant message's `stopReason`/`errorMessage` — so without this the CLI
- * would print nothing and look like a silent no-op.
+ * the assistant message's `stopReason`/`errorMessage` — so without surfacing it
+ * the CLI would print nothing and look like a silent no-op.
  *
  * @param message - the assistant message attached to a `turn_end` event
+ * @returns the styled error line, or `undefined` when the turn did not error
  */
-const renderTurnError = (message: AgentMessage): void => {
-  if (!('stopReason' in message) || message.stopReason !== 'error') return
+export const formatTurnError = (message: AgentMessage): string | undefined => {
+  if (!('stopReason' in message) || message.stopReason !== 'error') return undefined
   const detail = message.errorMessage ?? 'the request failed'
-  process.stderr.write(`\n${red(`${symbols.fail} ${detail}`)}\n`)
+  return red(`${symbols.fail} ${detail}`)
 }
 
 /**
@@ -116,14 +132,16 @@ export const attachRenderer = (harness: AgentHarness): void => {
         break
       }
       case 'tool_execution_start':
-        renderToolStart(event.toolName, event.args)
+        process.stdout.write(`\n${formatToolStart(event.toolName, event.args)}\n`)
         break
       case 'tool_execution_end':
-        renderToolEnd(event.isError, event.result)
+        process.stdout.write(`${formatToolEnd(event.isError, event.result)}\n`)
         break
-      case 'turn_end':
-        renderTurnError(event.message)
+      case 'turn_end': {
+        const error = formatTurnError(event.message)
+        if (error) process.stderr.write(`\n${error}\n`)
         break
+      }
     }
   })
 }

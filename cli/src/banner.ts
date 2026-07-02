@@ -13,19 +13,29 @@ import { VERSION } from './cli.ts'
 const useColor = (): boolean => !process.env.NO_COLOR && process.stdout.isTTY === true
 
 /**
- * Prints a small colored header for the interactive REPL: the thunderbolt
- * title, version, and a one-line hint. No-op-safe in non-TTY environments
- * (the text still prints, just without color).
+ * Builds the two-line REPL header (title + version, then a one-line hint) as a
+ * string. Color is applied only on an interactive TTY. Returned rather than
+ * written so the TUI can wrap it in a component instead of touching stdout,
+ * which would corrupt the differential renderer.
  */
-export const printBanner = (): void => {
+export const bannerText = (): string => {
   const color = useColor()
   const bold = color ? '\x1b[1m' : ''
   const yellow = color ? '\x1b[33m' : ''
   const dim = color ? '\x1b[2m' : ''
   const reset = color ? '\x1b[0m' : ''
 
-  process.stdout.write(
+  return (
     `${bold}${yellow}⚡ thunderbolt${reset} ${dim}v${VERSION}${reset}\n` +
-      `${dim}type a task, or 'exit' to quit${reset}\n\n`,
+    `${dim}type a task, or 'exit' to quit${reset}`
   )
+}
+
+/**
+ * Prints the REPL header to stdout for the plain (non-TUI) interactive loop.
+ * No-op-safe in non-TTY environments (the text still prints, just without
+ * color).
+ */
+export const printBanner = (): void => {
+  process.stdout.write(`${bannerText()}\n\n`)
 }

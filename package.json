@@ -6,8 +6,8 @@
   "type": "module",
   "license": "MPL-2.0",
   "scripts": {
-    "test": "bun test --cwd=src --timeout 5000 --randomize && bun test shared/*.test.ts scripts/create-release.test.ts ./.github/scripts/post-pr-metrics.test.js --timeout 5000 --randomize",
-    "test:5x": "bun test --cwd=src --timeout 5000 --randomize --rerun-each 5 && bun test shared/*.test.ts scripts/create-release.test.ts ./.github/scripts/post-pr-metrics.test.js --timeout 5000 --randomize --rerun-each 5",
+    "test": "bun test --cwd=src --timeout 5000 --randomize && bun test shared/*.test.ts scripts/create-release.test.ts ./.github/scripts/post-pr-metrics.test.js ./.github/scripts/review-orchestrator.test.mjs --timeout 5000 --randomize",
+    "test:5x": "bun test --cwd=src --timeout 5000 --randomize --rerun-each 5 && bun test shared/*.test.ts scripts/create-release.test.ts ./.github/scripts/post-pr-metrics.test.js ./.github/scripts/review-orchestrator.test.mjs --timeout 5000 --randomize --rerun-each 5",
     "test:watch": "bun test --cwd=src --watch",
     "test:backend": "cd backend && bun test --timeout 5000 --randomize",
     "test:backend:5x": "cd backend && bun test --timeout 5000 --randomize --rerun-each 5",

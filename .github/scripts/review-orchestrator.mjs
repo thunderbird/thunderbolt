@@ -88,6 +88,11 @@ const NO_ISSUES_MARKER = '<!-- thunder-deep-review-no-issues -->';
 // Severity enum the model output is validated against. Anything else is dropped.
 const SEVERITY_ENUM = ['blocking', 'convention', 'nit'];
 
+// Confidence enum for the model's INTERNAL precision-gate grounding field. An
+// out-of-enum value normalizes to null — it never drops the finding (unlike an
+// out-of-enum severity, which does).
+const CONFIDENCE_ENUM = ['high', 'medium', 'low'];
+
 // Deterministic deep-mode gate. Diff bigger than this => deep mode.
 const DEEP_MODE_CHANGED_LINES = 600; // tunable for the team's PR sizes.
 const DEEP_MODE_FILE_COUNT = 40; // tunable for the team's PR sizes.
@@ -489,31 +494,20 @@ const buildSkipList = async () => {
 // UNCHANGED by the inline-review redesign.
 // =============================================================================
 
-/**
- * Fetch the PR's changed files ONCE (paginated, capped at the 3000-file cliff) —
- * the single source that feeds BOTH the deep-mode size gate and the reconstructed
- * unified diff. Best-effort like the rest of the advisory bot: a hard failure
- * after retries yields an empty set, degrading the run to an empty-diff / non-deep
- * no-op instead of a red check (the next push retries).
- */
-const fetchPrFiles = async () => {
+const computeDeepMode = async () => {
+  let fileCount = 0;
+  let changedLines = 0;
+  let truncated = false;
   try {
     const url = apiUrl(`/pulls/${env.prNumber}/files?per_page=100`);
-    return await paginateAll(url, { cap: PR_FILES_TRUNCATION_CAP });
+    const { items, truncated: t } = await paginateAll(url, { cap: PR_FILES_TRUNCATION_CAP });
+    truncated = t;
+    fileCount = items.length;
+    for (const f of items) changedLines += (f.additions ?? 0) + (f.deletions ?? 0);
   } catch (err) {
-    log('pre: PR files fetch failed — degrading to empty diff / non-deep:', err.message);
-    return { items: [], truncated: false };
+    log('deep-mode: file list failed, defaulting to non-deep bounded:', err.message);
   }
-};
 
-/**
- * Deterministic deep-mode gate over the already-fetched file list: code, never
- * the model, decides when to spend on deep mode. `truncated` (past the 3000-file
- * cliff) flips bounded mode so the diff is clipped to a reviewable subset.
- */
-const computeDeepMode = (files, truncated) => {
-  const fileCount = files.length;
-  const changedLines = files.reduce((n, f) => n + (f.additions ?? 0) + (f.deletions ?? 0), 0);
   const sizeTriggered = changedLines >= DEEP_MODE_CHANGED_LINES || fileCount >= DEEP_MODE_FILE_COUNT;
   return {
     deepMode: env.hasDeepLabel || sizeTriggered,
@@ -536,9 +530,14 @@ const computeDeepMode = (files, truncated) => {
 // Expected JSON shape (the action step's prompt must enforce this):
 //   { "findings": [ { "severity": "blocking"|"convention"|"nit",
 //                     "file": "src/x.ts", "line": 42, "side": "RIGHT"|"LEFT",
-//                     "title": "…", "body": "…", "rule": "optional-invariant-id" } ] }
+//                     "title": "…", "body": "…", "rule": "optional-invariant-id",
+//                     "confidence": "high"|"medium"|"low",
+//                     "evidence": "quoted offending source line"|null } ] }
 // `side` is optional and defaults to RIGHT (the added/changed side). A finding
 // whose line is not in the diff falls back to a file-level / summary comment.
+// `confidence` and `evidence` are INTERNAL-ONLY grounding for the precision
+// gate: they are validated + carried through, but NEVER rendered into any
+// human-facing comment body or summary bullet.
 // =============================================================================
 
 /**
@@ -559,21 +558,40 @@ const computeDeepMode = (files, truncated) => {
  * The placement tag distinguishes the three key spaces (`code:`/`file:`/`text:`),
  * so an inline finding can never collide with a file-level one.
  *
+ * SEVERITY-INVARIANT: severity is deliberately NOT hashed. The precision gate
+ * is allowed to DEMOTE a finding's severity (blocking→convention,
+ * convention→nit) between runs, and the recall model can re-classify the same
+ * issue across runs — either would re-key the thread and post a duplicate
+ * comment for an issue that already has one. Confidence/evidence are likewise
+ * excluded (internal grounding, drift-prone across runs). The residual-collision
+ * trade-off below still applies: the same file+rule+liveness key at DIFFERENT
+ * severities is the same issue collapsing to one hash, and the safe failure
+ * mode is under-report.
+ *
+ * MIGRATION: threads stamped before this change carry old-format (severity-
+ * bearing) hashes and re-key exactly once when re-flagged — the same accepted
+ * one-time re-post path as the legacy liveness-key migration.
+ *
  * RESIDUAL COLLISION: findings that share a namespaced key collapse to one hash
  * and the second is dropped — two inline findings on byte-identical trimmed code,
- * or two file-level findings on the same file, each with the same rule+severity.
+ * or two file-level findings on the same file, each with the same rule.
  * Rare and the safe failure mode (under-report, never a false-resolve); the
  * alternative — folding the model's drift-prone title back in — would reopen the
  * duplicate gap this design exists to close, so we accept it.
  */
 const findingHash = (f) =>
-  normalizeKey([f.file ?? '', f.rule ?? '', f.severity, f.livenessKey ?? ''].join(' '));
+  normalizeKey([f.file ?? '', f.rule ?? '', f.livenessKey ?? ''].join(' '));
 
-const readModelFindings = async () => {
-  const raw = await readFile(FINDINGS_FILE, 'utf8');
-  const parsed = JSON.parse(raw); // throws on malformed => fail-soft upstream.
+/**
+ * normalizeFindings — validate + normalize the already-JSON.parsed model output
+ * into the array of usable findings. Extracted from readModelFindings as a PURE
+ * function (no fs/env) so the trust-boundary validation — the model's output is
+ * untrusted input — is unit-testable in isolation. Drops anything with an
+ * out-of-enum severity; every other bad field degrades to a safe default
+ * instead of dropping the finding.
+ */
+const normalizeFindings = (parsed) => {
   const list = Array.isArray(parsed?.findings) ? parsed.findings : [];
-  // Validate + normalize. Drop anything with an out-of-enum severity.
   const valid = [];
   for (const f of list) {
     const severity = String(f.severity ?? '').toLowerCase();
@@ -582,6 +600,10 @@ const readModelFindings = async () => {
       continue;
     }
     const side = String(f.side ?? 'RIGHT').toUpperCase() === 'LEFT' ? 'LEFT' : 'RIGHT';
+    // Internal-only precision-gate fields. A bad value normalizes to null but
+    // NEVER drops the finding — precision grounding is advisory, not identity.
+    const confidence = String(f.confidence ?? '').toLowerCase();
+    const evidence = typeof f.evidence === 'string' && f.evidence.trim() ? f.evidence.slice(0, 1000) : null;
     valid.push({
       severity,
       file: typeof f.file === 'string' ? f.file : null,
@@ -592,9 +614,17 @@ const readModelFindings = async () => {
       title: String(f.title ?? '').slice(0, 300),
       body: String(f.body ?? '').slice(0, 4000),
       rule: f.rule ? String(f.rule).slice(0, 80) : null,
+      confidence: CONFIDENCE_ENUM.includes(confidence) ? confidence : null,
+      evidence,
     });
   }
   return valid;
+};
+
+const readModelFindings = async () => {
+  const raw = await readFile(FINDINGS_FILE, 'utf8');
+  const parsed = JSON.parse(raw); // throws on malformed => fail-soft upstream.
+  return normalizeFindings(parsed);
 };
 
 // =============================================================================
@@ -798,43 +828,43 @@ const loadDiffIndex = async () => {
 };
 
 /**
- * Reconstruct one file's section of a git unified diff from a List-pull-request-
- * files entry. The API's `patch` is the HUNK BODY ONLY (`@@ … @@` + content
- * lines); we prepend the `diff --git` + `---`/`+++` headers parseUnifiedDiff (and
- * GitHub's own review-anchor validator) key on, so the rebuilt section is faithful
- * enough that the SAME (path, line, side) anchors POST /pulls/{n}/reviews
- * validates round-trip exactly.
- *
- * `added`/`removed` carry `/dev/null` on the absent side, so a deleted file is
- * correctly NON-anchorable at head — parity with the real v3.diff. A file with no
- * `patch` (binary, or a text file GitHub omitted as too large — lockfiles,
- * generated snapshots) yields a HEADER-ONLY section: recorded as changed, but
- * with no commentable lines, exactly as the real diff truncates it.
+ * Deterministically clip a unified diff to its first `limit` per-file sections.
+ * Each file section starts at a `diff --git ` line, so cutting on that boundary
+ * always yields a still-valid patch (no half-file/half-hunk). Returns the
+ * original patch unchanged when it has `limit` files or fewer.
  */
-const fileSectionToDiff = (file) => {
-  const newPath = file.filename;
-  const oldPath = file.previous_filename ?? newPath;
-  const header = `diff --git a/${oldPath} b/${newPath}`;
-  if (!file.patch) return header;
-  const fromTo =
-    file.status === 'added'
-      ? ['--- /dev/null', `+++ b/${newPath}`]
-      : file.status === 'removed'
-        ? [`--- a/${oldPath}`, '+++ /dev/null']
-        : [`--- a/${oldPath}`, `+++ b/${newPath}`];
-  return [header, ...fromTo, file.patch].join('\n');
+const clipDiffToFileLimit = (patch, limit) => {
+  const lines = patch.split('\n');
+  let fileCount = 0;
+  const kept = [];
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      fileCount += 1;
+      if (fileCount > limit) break;
+    }
+    kept.push(line);
+  }
+  return { clipped: fileCount > limit, fileCount: Math.min(fileCount, limit), text: kept.join('\n') };
 };
 
 /**
- * Reconstruct the PR's FULL unified diff from the List-pull-request-files API —
- * the path GitHub itself recommends when the `.diff` media type 406s past its
- * 20k-line / 1 MB cap (which silently broke this whole job on large PRs). The
- * files endpoint paginates and has no per-diff line cap, so it covers PRs the
- * `.diff` endpoint refuses; the only ceiling is the 3000-file cliff, already
- * handled by bounded mode. Concatenated `diff --git` sections — the exact shape
- * parseUnifiedDiff consumes.
+ * In bounded mode, rewrite DIFF_FILE in place to its first
+ * BOUNDED_MODE_FILE_LIMIT file sections so the model gets a REAL, deterministic
+ * scope — not just a prompt asking it to self-limit. No-op when not bounded or
+ * the diff already fits. Best-effort: a read/write failure leaves the full diff.
  */
-const buildUnifiedDiff = (files) => `${files.map(fileSectionToDiff).join('\n')}\n`;
+const enforceBoundedDiff = async (boundedMode) => {
+  if (!boundedMode) return;
+  try {
+    const patch = await readFile(DIFF_FILE, 'utf8');
+    const { clipped, fileCount, text } = clipDiffToFileLimit(patch, BOUNDED_MODE_FILE_LIMIT);
+    if (!clipped) return;
+    await writeFile(DIFF_FILE, text);
+    log(`pre: bounded mode — clipped diff to first ${fileCount} files (${BOUNDED_MODE_FILE_LIMIT} cap).`);
+  } catch (err) {
+    log('pre: bounded-diff clip failed (continuing with full diff):', err.message);
+  }
+};
 
 /**
  * Classify each finding against the diff index and attach its convergence keys:
@@ -1178,6 +1208,8 @@ const renderCommentBody = (f) => {
   // Rule/invariant ids (f.rule) are INTERNAL grounding only — used for the
   // dedup hash and the model's self-validation. They're meaningless to a human
   // in a PR comment, so they are never rendered into the comment body.
+  // `confidence` and `evidence` are likewise internal-only (precision-gate
+  // grounding) and intentionally not rendered.
   const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title}**`;
   // Hidden stamps: the finding hash (dedup) + the base64 liveness key (the
   // offending-line code, or the file path for file-level findings — so the next
@@ -1365,15 +1397,8 @@ const selectFindingsToPost = (findings, { openHashes, humanResolvedHashes, summa
  * runPost calls this (rather than inlining the branch) so logic and tests share
  * one source and can't drift.
  */
-const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, openThreadsRemain, diffAvailable = true }) => {
+const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, openThreadsRemain }) => {
   if (findingCount === 0) {
-    // Never affirm "no issues" when we never actually had a diff to review. A
-    // real PR always has ≥1 changed file, so an empty file set means the Files
-    // API fetch failed (persistent 403/429/5xx) and runPre wrote an empty diff —
-    // posting a clean review there would launder a broken run into fake green,
-    // exactly the failure mode the loud-fail persist guards exist to prevent.
-    // Skip silently; the next push retries with a real diff.
-    if (!diffAvailable) return { action: 'skip', reason: 'diff-unavailable' };
     if (eventAction === 'reopened') return { action: 'skip', reason: 'reopened-no-findings' };
     if (openThreadsRemain) return { action: 'skip', reason: 'open-threads-remain' };
     if (latestOwnReviewIsNoIssues(ownReviewBodies)) return { action: 'skip', reason: 'already-no-issues' };
@@ -1389,22 +1414,16 @@ const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, open
 /** PRE phase: poll A's bots, then write the skip-list + deep-mode flag for the model step. */
 const runPre = async () => {
   await pollForBots();
-  const [skipList, prFiles] = await Promise.all([buildSkipList(), fetchPrFiles()]);
-  const deepInfo = computeDeepMode(prFiles.items, prFiles.truncated);
-  // Build the unified diff IN-SCRIPT from the List-pull-request-files API. The
-  // `.diff` media type caps at 20k lines / 1 MB and returns 406 on large PRs (the
-  // failure this fixes), so we reconstruct from /pulls/{n}/files — the same
-  // merge-base..head "Files changed" set GitHub validates review anchors against,
-  // just delivered per-file and paginated. In bounded mode (past the 3000-file
-  // cliff) we clip to the first BOUNDED_MODE_FILE_LIMIT files so the model's scope
-  // is a REAL, enforced limit, not just a prompt hint.
-  const diffFiles = deepInfo.boundedMode ? prFiles.items.slice(0, BOUNDED_MODE_FILE_LIMIT) : prFiles.items;
-  await Promise.all([
-    writeFile(DIFF_FILE, buildUnifiedDiff(diffFiles)),
-    writeFile(SKIPLIST_FILE, JSON.stringify({ headSha: env.headSha, skipList }, null, 2)),
-    writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2)),
-  ]);
-  log(`pre: wrote ${diffFiles.length}-file diff, ${skipList.length} skip-list entries; deepMode=${deepInfo.deepMode} (${deepInfo.reason}).`);
+  const [skipList, deepInfo] = await Promise.all([buildSkipList(), computeDeepMode()]);
+  await writeFile(SKIPLIST_FILE, JSON.stringify({ headSha: env.headSha, skipList }, null, 2));
+  await writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2));
+  // The DIFF_FILE itself is produced by a separate deterministic workflow step
+  // (the GitHub API's PR diff, Accept: v3.diff — the exact merge-base..head set
+  // GitHub validates review anchors against). This script never shells out to
+  // git; it only does GitHub REST I/O. But when the PR overran the file cap we
+  // clip that diff here so bounded mode is an ENFORCED scope, not a prompt hint.
+  await enforceBoundedDiff(deepInfo.boundedMode);
+  log(`pre: wrote ${skipList.length} skip-list entries; deepMode=${deepInfo.deepMode} (${deepInfo.reason}).`);
 };
 
 /**
@@ -1501,10 +1520,6 @@ const runPost = async () => {
     eventAction: env.eventAction,
     ownReviewBodies,
     openThreadsRemain,
-    // A real PR always has ≥1 changed file; fileCount 0 (or a missing deep-mode
-    // file) means the Files API fetch failed and the diff is empty — don't post
-    // an affirmative "no issues" review off a diff we never actually got.
-    diffAvailable: (deepInfo.fileCount ?? 0) > 0,
   });
   if (decision.action === 'no-issues') {
     await postNoIssuesReview(buildNoIssuesPayload({ deepInfo, skipCount }));
@@ -1547,9 +1562,8 @@ if (argv[1] && fileURLToPath(import.meta.url) === argv[1]) main();
 // convergence + precision-gate terminal logic lives here — keep it covered.
 export {
   parseUnifiedDiff,
-  buildUnifiedDiff,
-  computeDeepMode,
   normalizeDiffText,
+  normalizeFindings,
   findingHash,
   classifyFindings,
   livenessStamp,

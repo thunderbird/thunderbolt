@@ -6,23 +6,20 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import type { UIMessage } from 'ai'
 import { memo } from 'react'
 import { DesktopUserMessage } from './desktop-user-message'
-import type { ResendAttachmentHandler } from './message-bubbles'
 import { MobileUserMessage } from './mobile-user-message'
 
 type UserMessageProps = {
   message: UIMessage
-  /** Set on the latest turn only — re-delivers one attachment as text/images and re-runs. */
-  onResendAttachment?: ResendAttachmentHandler
 }
 
-export const UserMessage = memo(({ message, onResendAttachment }: UserMessageProps) => {
+export const UserMessage = memo(({ message }: UserMessageProps) => {
   const { isMobile } = useIsMobile()
 
   if (isMobile) {
-    return <MobileUserMessage message={message} onResendAttachment={onResendAttachment} />
+    return <MobileUserMessage message={message} />
   }
 
-  return <DesktopUserMessage message={message} onResendAttachment={onResendAttachment} />
+  return <DesktopUserMessage message={message} />
 })
 
 UserMessage.displayName = 'UserMessage'

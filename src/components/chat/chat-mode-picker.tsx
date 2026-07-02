@@ -5,7 +5,6 @@
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { useHaptics } from '@/hooks/use-haptics'
 import { ModeSelector } from '@/components/ui/mode-selector'
-import { isBuiltInAgent } from '@/defaults/agents'
 import { useCallback } from 'react'
 
 type ChatModePickerProps = {
@@ -34,7 +33,7 @@ export const ChatModePicker = ({ iconOnly = false }: ChatModePickerProps) => {
     [chatThreadId, setSelectedMode, triggerSelection],
   )
 
-  if (!isBuiltInAgent(selectedAgent) || modes.length === 0) {
+  if (selectedAgent.type !== 'built-in' || modes.length === 0) {
     return null
   }
 

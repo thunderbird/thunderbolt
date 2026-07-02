@@ -9,7 +9,7 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
-import { defaultModelOpus48 } from '@/defaults/models'
+import { defaultModelOpus48 } from '@shared/defaults/models'
 import { defaultModeChat } from '@/defaults/modes'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'

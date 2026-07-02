@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelKimiK26 } from '@/defaults/models'
+import { defaultModelKimiK26 } from '@shared/defaults/models'
 
 export const defaultModelProfileKimiK26: ModelProfile = {
   modelId: defaultModelKimiK26.id,

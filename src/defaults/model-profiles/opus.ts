@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelOpus48 } from '@/defaults/models'
+import { defaultModelOpus48 } from '@shared/defaults/models'
 
 export const defaultModelProfileOpus48: ModelProfile = {
   modelId: defaultModelOpus48.id,

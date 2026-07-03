@@ -57,9 +57,26 @@ export type AttachmentData = {
   deliverAs?: 'text' | 'images'
 }
 
-/** Custom `data-*` parts on Thunderbolt messages (`data-attachment` → {@link AttachmentData}). */
+/**
+ * A passage the user quoted from an earlier message to reply to (see the quote-
+ * reply flow). Like {@link AttachmentData} it's a reference-only, UI-first part:
+ * it renders as a chip in the composer and a blockquote in the sent bubble, and
+ * is hydrated into a `> …` text part at send time so the model sees the context.
+ */
+export type QuoteData = {
+  /** The verbatim selected text. */
+  text: string
+  /** The message the passage was quoted from — provenance for a future "jump to source". */
+  sourceMessageId?: string
+}
+
+/**
+ * Custom `data-*` parts on Thunderbolt messages (`data-attachment` →
+ * {@link AttachmentData}, `data-quote` → {@link QuoteData}).
+ */
 export type ThunderboltUIDataTypes = {
   attachment: AttachmentData
+  quote: QuoteData
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>

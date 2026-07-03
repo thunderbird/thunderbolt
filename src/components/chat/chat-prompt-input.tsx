@@ -4,6 +4,7 @@
 
 import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { useCurrentChatSession } from '@/chats/chat-store'
+import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
@@ -35,6 +36,8 @@ import { PromptInput } from '../ui/prompt-input'
 import { ChatModePicker } from './chat-mode-picker'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
+import { buildQuotePart } from '@/lib/quotes'
+import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
 import { FileCard } from './file-card'
 
@@ -206,6 +209,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const [attachments, setAttachments] = useState<AttachmentData[]>([])
     const [attachError, setAttachError] = useState<string | null>(null)
+    // Quote-reply passages pulled in from the "Reply" button on a response. Held
+    // in a per-thread store (not local state) so that button — which lives deep
+    // in the message list — can add to the composer without prop-drilling.
+    const quotes = usePendingQuotes(chatThreadId)
+    const removeQuote = usePendingQuotesStore((s) => s.removeQuote)
+    const setQuotes = usePendingQuotesStore((s) => s.setQuotes)
+    const clearQuotes = usePendingQuotesStore((s) => s.clearQuotes)
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
@@ -406,9 +416,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const handleSubmit = async () => {
       try {
-        // Prevent submitting while streaming, or with neither text nor attachments
+        // Prevent submitting while streaming, or with no text, attachments, or quotes
         const textToSend = input.trim()
-        if (isStreaming || (!textToSend && attachments.length === 0)) {
+        if (isStreaming || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
 
@@ -420,20 +430,28 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // Reference-only attachment parts — bytes stay in IndexedDB and are
         // hydrated per-agent at send time (see the file transports).
         const attachmentParts = attachments.map(buildAttachmentPart)
+        // Quote parts render as blockquotes and hydrate to `> …` text for the model.
+        const quoteParts = quotes.map(buildQuotePart)
 
-        // Clear input, draft, and pending attachments immediately for responsive UX
+        // Clear input, draft, pending attachments, and quotes immediately for responsive UX
         clearDraft()
         setAttachments([])
+        clearQuotes(chatThreadId)
         setAttachError(null)
 
         await sendMessage({
-          parts: [...(textToSend ? [{ type: 'text' as const, text: textToSend }] : []), ...attachmentParts],
+          parts: [
+            ...quoteParts,
+            ...(textToSend ? [{ type: 'text' as const, text: textToSend }] : []),
+            ...attachmentParts,
+          ],
         })
       } catch (error) {
         console.error('Error submitting message:', error)
         // Send failed — the chips were cleared optimistically but the blobs are
         // still in IndexedDB, so restore them rather than orphaning the bytes.
         setAttachments(attachments)
+        setQuotes(chatThreadId, quotes)
       }
     }
 
@@ -624,17 +642,32 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           <PromptInput
             ref={formRef}
             headerSlot={
-              attachments.length > 0 ? (
-                <div className="flex flex-wrap items-start gap-2 pb-2">
-                  {attachments.map((attachment) => (
-                    <FileCard
-                      key={attachment.localFileId}
-                      localFileId={attachment.localFileId}
-                      filename={attachment.filename}
-                      mimeType={attachment.mimeType}
-                      onRemove={() => removeAttachment(attachment.localFileId)}
-                    />
-                  ))}
+              attachments.length > 0 || quotes.length > 0 ? (
+                <div className="flex flex-col gap-2 pb-2">
+                  {quotes.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      {quotes.map((quote, index) => (
+                        <QuoteChip
+                          key={`${index}-${quote.sourceMessageId ?? ''}`}
+                          text={quote.text}
+                          onRemove={() => removeQuote(chatThreadId, index)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {attachments.length > 0 && (
+                    <div className="flex flex-wrap items-start gap-2">
+                      {attachments.map((attachment) => (
+                        <FileCard
+                          key={attachment.localFileId}
+                          localFileId={attachment.localFileId}
+                          filename={attachment.filename}
+                          mimeType={attachment.mimeType}
+                          onRemove={() => removeAttachment(attachment.localFileId)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : undefined
             }
@@ -644,7 +677,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             showSubmitButton
             onSubmit={handleSubmit}
             // Allow sending an attachment even with no typed text (matches the Enter behavior).
-            canSubmit={input.trim().length > 0 || attachments.length > 0}
+            canSubmit={input.trim().length > 0 || attachments.length > 0 || quotes.length > 0}
             isLoading={isStreaming || isConnecting}
             isStreaming={isStreaming}
             onStop={stop}

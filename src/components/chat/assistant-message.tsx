@@ -191,6 +191,7 @@ export const AssistantMessage = memo(
     return (
       <div
         data-message-id={message.id}
+        data-quotable-message-id={message.id}
         className={showCopyOnHover ? 'group' : undefined}
         style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}
       >

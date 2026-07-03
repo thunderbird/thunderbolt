@@ -582,6 +582,56 @@ describe('SavePartialAssistantMessagesHandler', () => {
     expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(2)
   })
 
+  it('should fire the direct error-save exactly once across parent re-renders (stable identity)', async () => {
+    // With an error terminal on screen the effect's inputs (messages/status/thread)
+    // are stable, so re-running only happens if `saveStreamingMessage`'s identity
+    // churns. The real hook now returns a `useCallback`-stable function, so parent
+    // re-renders must NOT re-fire the direct error-save (a redundant idempotent
+    // upsert + E2EE encrypt/upload). We model that stability with one mock instance.
+    const mockSaveStreamingMessage = mock((_params: StreamingSaveParams) => Promise.resolve())
+    const messages: ThunderboltUIMessage[] = [
+      { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+      { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'partial before error' }] },
+    ]
+    const mockChatInstance = createMockChatInstance(messages, 'error')
+    const mockUseChat = createMockUseChat(mockChatInstance)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
+    const { rerender } = render(
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+        Test
+      </SavePartialAssistantMessagesHandler>,
+      { wrapper: createQueryTestWrapper() },
+    )
+
+    // Error terminal on first render → direct error-save fires once.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    // Force several parent re-renders with the SAME (stable) props.
+    await act(async () => {
+      for (let i = 0; i < 3; i++) {
+        rerender(
+          <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+            Test
+          </SavePartialAssistantMessagesHandler>,
+        )
+      }
+      await getClock().tickAsync(1000)
+    })
+
+    // Still exactly once — the stable identity keeps the effect from re-running.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+  })
+
   it('should work with dependency injection for useChat', async () => {
     const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const messages: ThunderboltUIMessage[] = [

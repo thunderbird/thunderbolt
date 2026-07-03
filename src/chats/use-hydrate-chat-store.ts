@@ -30,7 +30,7 @@ import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
@@ -131,9 +131,16 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
    * are all avoidable per token. The authoritative complete save runs in the
    * chat instance's `onFinish` via {@link saveMessages}.
    */
-  const saveStreamingMessage: SaveStreamingMessageFunction = async ({ threadId, message, parentId }) => {
-    await saveStreamingAssistantMessage(db, threadId, message, parentId)
-  }
+  // Stable identity (deps: the stable `db` context value) so it can sit in the
+  // partial-save effect's dependency array without re-firing on every parent
+  // render — otherwise an on-screen error terminal would re-run the direct
+  // error-save (a redundant idempotent upsert + E2EE encrypt/upload) per render.
+  const saveStreamingMessage: SaveStreamingMessageFunction = useCallback(
+    async ({ threadId, message, parentId }) => {
+      await saveStreamingAssistantMessage(db, threadId, message, parentId)
+    },
+    [db],
+  )
 
   const hydrateChatStore = async () => {
     const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModes, setModels } =

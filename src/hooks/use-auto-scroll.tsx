@@ -32,7 +32,10 @@ type UseAutoScrollReturn = {
   scrollToBottom: (smooth?: boolean, programmatic?: boolean) => boolean
   /** Scrolls to element matching selector with optional offset from top. Returns true if scroll was performed, false if container not ready. Fallback to scrollToBottom if element not found. */
   scrollToElement: (selector: string, offsetFromTop?: number, smooth?: boolean, programmatic?: boolean) => boolean
+  /** Engages auto-follow: subsequent content growth scrolls the viewport to the bottom. */
   resetUserScroll: () => void
+  /** Disables auto-follow (as if the user scrolled away), so callers can pin the viewport elsewhere. */
+  disableAutoScroll: () => void
   scrollHandlers: {
     onWheel: (e: WheelEvent) => void
     onTouchStart: (e: TouchEvent) => void
@@ -176,19 +179,63 @@ export const useAutoScroll = ({
     [scrollContainer, scrollToBottom, scrollToPosition],
   )
 
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (e.deltaY < 0) {
-      userHasScrolledRef.current = true
+  /**
+   * Aborts an in-flight smooth (rAF-driven) scroll so a real user scroll can
+   * take over immediately. Without this, the easing loop keeps writing scrollTop
+   * on the next frame and yanks the user back toward the animation's target,
+   * defeating their opt-out. No-op when no animation is running, so the natural
+   * opt-out path (nothing in flight) keeps its existing semantics.
+   */
+  const cancelSmoothScroll = useCallback(() => {
+    if (animationFrameRef.current === null) {
+      return
     }
+    cancelAnimationFrame(animationFrameRef.current)
+    animationFrameRef.current = null
+    // The cancelled animation may have owned the programmatic-scroll flag (which
+    // it only clears in its final step). The user has taken over, so release the
+    // flag now — otherwise the IntersectionObserver would mistake the user's own
+    // scroll-to-bottom for a programmatic one and skip re-engaging follow.
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+    isProgrammaticScrollRef.current = false
   }, [])
+
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      if (e.deltaY === 0) {
+        return
+      }
+      // A real user wheel pre-empts any in-flight smooth programmatic scroll.
+      cancelSmoothScroll()
+      if (e.deltaY < 0) {
+        userHasScrolledRef.current = true
+      }
+    },
+    [cancelSmoothScroll],
+  )
 
   // Any touch interaction disables auto-scroll - user wants control
   const handleTouchStart = useCallback(() => {
     userHasScrolledRef.current = true
-  }, [])
+    cancelSmoothScroll()
+  }, [cancelSmoothScroll])
 
   const resetUserScroll = useCallback(() => {
     userHasScrolledRef.current = false
+  }, [])
+
+  /**
+   * Disables auto-follow (as if the user had scrolled away). Used when a caller
+   * intentionally positions the viewport somewhere other than the bottom (e.g.
+   * pinning a freshly-sent question near the top) so streamed content can't drag
+   * the view back down. The IntersectionObserver still re-engages follow if the
+   * user later scrolls to the bottom.
+   */
+  const disableAutoScroll = useCallback(() => {
+    userHasScrolledRef.current = true
   }, [])
 
   // IntersectionObserver for bottom detection - runs when elements are available
@@ -274,6 +321,7 @@ export const useAutoScroll = ({
     scrollToBottom,
     scrollToElement,
     resetUserScroll,
+    disableAutoScroll,
     scrollHandlers: { onWheel: handleWheel, onTouchStart: handleTouchStart },
   }
 }

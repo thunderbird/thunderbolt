@@ -74,7 +74,9 @@ describe('useChatScrollHandler', () => {
   // Helper to create mock useAutoScroll with spy-able scrollToBottom
   const createMockUseAutoScroll = (): any => {
     const mockScrollToBottom = mock(() => true)
+    const mockScrollToElement = mock(() => true)
     const mockResetUserScroll = mock()
+    const mockDisableAutoScroll = mock()
     const mockOnWheel = mock()
     const mockOnTouchStart = mock()
     const mockScrollContainerRef = mock()
@@ -84,7 +86,9 @@ describe('useChatScrollHandler', () => {
       scrollContainerRef: mockScrollContainerRef,
       scrollTargetRef: mockScrollTargetRef,
       scrollToBottom: mockScrollToBottom,
+      scrollToElement: mockScrollToElement,
       resetUserScroll: mockResetUserScroll,
+      disableAutoScroll: mockDisableAutoScroll,
       scrollHandlers: {
         onWheel: mockOnWheel,
         onTouchStart: mockOnTouchStart,
@@ -95,7 +99,9 @@ describe('useChatScrollHandler', () => {
     return {
       mockUseAutoScroll,
       mockScrollToBottom,
+      mockScrollToElement,
       mockResetUserScroll,
+      mockDisableAutoScroll,
       mockScrollContainerRef,
       mockScrollTargetRef,
     }
@@ -180,6 +186,73 @@ describe('useChatScrollHandler', () => {
 
         // Should NOT scroll
         expect(mockScrollToBottom).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('follow engagement on submit', () => {
+      it('engages follow on the first exchange (< 3 messages) and does not disable it', () => {
+        const { mockUseAutoScroll, mockScrollToBottom, mockResetUserScroll, mockDisableAutoScroll } =
+          createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
+        const firstMessages = [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }]
+
+        const { rerender } = renderHook(
+          ({ status }) =>
+            useChatScrollHandler({
+              useAutoScroll: mockUseAutoScroll,
+              useChat: createMockUseChat(status, firstMessages),
+              useCurrentChatSession: mockUseCurrentChatSession,
+            }),
+          { initialProps: { status: 'idle' } },
+        )
+
+        mockResetUserScroll.mockClear()
+        mockDisableAutoScroll.mockClear()
+
+        act(() => {
+          rerender({ status: 'submitted' })
+        })
+
+        // First exchange: follow engaged, viewport tracks the streaming answer.
+        expect(mockResetUserScroll).toHaveBeenCalledTimes(1)
+        expect(mockDisableAutoScroll).not.toHaveBeenCalled()
+        expect(mockScrollToBottom).toHaveBeenCalledWith(true, true)
+      })
+
+      it('disables follow and pins the question on subsequent exchanges (>= 3 messages)', () => {
+        const { mockUseAutoScroll, mockScrollToElement, mockResetUserScroll, mockDisableAutoScroll } =
+          createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
+        // First answer already complete; the user has just sent a second question.
+        const laterMessages = [
+          { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Q1' }] },
+          { id: 'asst-1', role: 'assistant', parts: [{ type: 'text', text: 'A1' }] },
+          { id: 'user-2', role: 'user', parts: [{ type: 'text', text: 'Q2' }] },
+        ]
+
+        const { rerender } = renderHook(
+          ({ status }) =>
+            useChatScrollHandler({
+              useAutoScroll: mockUseAutoScroll,
+              useChat: createMockUseChat(status, laterMessages),
+              useCurrentChatSession: mockUseCurrentChatSession,
+            }),
+          { initialProps: { status: 'idle' } },
+        )
+
+        mockResetUserScroll.mockClear()
+        mockDisableAutoScroll.mockClear()
+        mockScrollToElement.mockClear()
+
+        act(() => {
+          rerender({ status: 'submitted' })
+        })
+
+        // Subsequent exchange: pin the new question near the top, follow OFF so
+        // streamed tokens don't drag the view back down (no leaked follow state).
+        expect(mockDisableAutoScroll).toHaveBeenCalledTimes(1)
+        expect(mockResetUserScroll).not.toHaveBeenCalled()
+        expect(mockScrollToElement).toHaveBeenCalledWith('[data-message-id="user-2"]', 20, true, true)
       })
     })
 

@@ -79,6 +79,7 @@ export const useChatScrollHandler = ({
     scrollToBottom: rawScrollToBottom,
     scrollToElement: rawScrollToElement,
     resetUserScroll,
+    disableAutoScroll,
     scrollHandlers,
     isAtBottom,
   } = useAutoScroll({
@@ -92,8 +93,21 @@ export const useChatScrollHandler = ({
     hasScrolledForFirstTokenRef.current = false
 
     if (!shouldUseViewportPositioning(messages.length)) {
+      // First exchange: the user just sent from the bottom of an (empty) thread,
+      // so engage bottom-follow for the streaming answer. resetUserScroll clears
+      // the follow-disabled-by-default flag; the wheel/touch opt-out and the
+      // observer's re-engage-at-bottom still apply on top of this. Subsequent
+      // exchanges keep their pin-question-at-top positioning (the else branch)
+      // and deliberately do NOT engage follow.
+      resetUserScroll()
       rawScrollToBottom(true, true)
     } else {
+      // Subsequent exchanges pin the just-sent question near the top. Disable
+      // follow so streamed tokens don't drag the viewport back to the bottom and
+      // undo the pin — otherwise follow left enabled by a prior exchange (e.g.
+      // the first one) would leak in. The observer re-engages follow if the user
+      // scrolls to the bottom.
+      disableAutoScroll()
       const userMessage = messages[messages.length - 1]
 
       if (userMessage?.role === 'user') {

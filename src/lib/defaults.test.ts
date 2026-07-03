@@ -79,6 +79,7 @@ describe('defaults-hash', () => {
       model: model.model,
       url: model.url,
       apiKey: model.apiKey,
+      providerId: model.providerId,
       isSystem: model.isSystem,
       toolUsage: model.toolUsage,
       isConfidential: model.isConfidential,

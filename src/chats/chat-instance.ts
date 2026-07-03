@@ -13,6 +13,7 @@ import { getDb as defaultGetDb } from '@/db/database'
 import { isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
+import { getActiveTrustDomain } from '@/stores/trust-domain-registry'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
@@ -379,7 +380,12 @@ export const createChatInstance = (
       throw new Error('No selected model')
     }
 
-    if (chatThread && chatThread.isEncrypted !== selectedModel.isConfidential) {
+    // In standalone there is no E2E key hierarchy: encryption is off and threads
+    // are always unencrypted. A confidential (e.g. Tinfoil) model's confidentiality
+    // is a transport/attestation property there, not a stored-encryption contract,
+    // so the encrypted-thread⇄confidential-model coupling must not gate the send.
+    const isStandalone = getActiveTrustDomain()?.kind === 'standalone'
+    if (!isStandalone && chatThread && chatThread.isEncrypted !== selectedModel.isConfidential) {
       throw new Error(
         `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
       )

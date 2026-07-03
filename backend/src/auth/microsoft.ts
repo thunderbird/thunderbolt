@@ -6,21 +6,35 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings, isOAuthRedirectUriAllowed } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { Elysia, t } from 'elysia'
+import { Elysia, type AnyElysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
 const microsoftTokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
 // Must match scopes requested by the frontend (see integrations/microsoft/auth.ts)
 const scopes = 'https://graph.microsoft.com/mail.read User.Read offline_access'
 
+type OAuthProxyOptions = {
+  /** See google.ts — standalone (no-account) public brokering with IP rate limit. */
+  ipRateLimit?: AnyElysia
+}
+
 /**
  * Microsoft OAuth confidential client proxy — keeps the client secret server-side
- * so the Tauri frontend doesn't need to embed it.
+ * so the Tauri frontend doesn't need to embed it. When `ipRateLimit` is passed
+ * the routes are unauthenticated (standalone); otherwise a session is required.
  */
-export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
-  return new Elysia({ prefix: '/auth/microsoft' })
-    .onError(safeErrorHandler)
-    .use(createAuthMacro(auth))
+export const createMicrosoftAuthRoutes = (
+  auth: Auth,
+  fetchFn: typeof fetch = globalThis.fetch,
+  options: OAuthProxyOptions = {},
+) => {
+  const requireAuth = !options.ipRateLimit
+  const authGuard = requireAuth ? { auth: true as const } : {}
+  const base = new Elysia({ prefix: '/auth/microsoft' }).onError(safeErrorHandler).use(createAuthMacro(auth))
+  if (options.ipRateLimit) {
+    base.use(options.ipRateLimit)
+  }
+  return base
     .get(
       '/config',
       async () => {
@@ -31,7 +45,7 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
           configured: Boolean(settings.microsoftClientId && settings.microsoftClientSecret),
         }
       },
-      { auth: true },
+      { ...authGuard },
     )
 
     .post(
@@ -104,7 +118,7 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
         }
       },
       {
-        auth: true,
+        ...authGuard,
         body: t.Object({
           code: t.String(),
           code_verifier: t.String(),
@@ -176,7 +190,7 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
         }
       },
       {
-        auth: true,
+        ...authGuard,
         body: t.Object({
           refresh_token: t.String(),
         }),

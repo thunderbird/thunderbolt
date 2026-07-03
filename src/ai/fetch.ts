@@ -13,6 +13,9 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
+import { hydrateProviderModel } from '@/lib/providers/resolve-model'
+import { freeModelId, freeTierProviderId } from '@/lib/providers/free-model'
+import { getPublicServerUrl } from '@/lib/discovery'
 import { requireActiveWorkspaceId } from '@/lib/active-workspace'
 import { getMessage } from '@/dal/chat-messages'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -22,7 +25,7 @@ import { getActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
-import type { FetchFn } from '@/lib/proxy-fetch'
+import { createFreeProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
@@ -261,6 +264,23 @@ export const mergeMcpTools = async (
 }
 
 export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
+  // Free-tier models (spec-standalone §8) route through the PUBLIC server's
+  // unauthenticated `/v1/proxy/free` slice, which injects the hosted OpenRouter
+  // key server-side and rate-limits per device. Detected by the sentinel
+  // providerId rather than the provider enum, so no user key is required.
+  if (modelConfig.providerId === freeTierProviderId) {
+    const publicServerUrl = getPublicServerUrl()
+    if (!publicServerUrl) {
+      throw new Error('The free tier requires a public server URL (VITE_THUNDERBOLT_PUBLIC_URL).')
+    }
+    const free = createOpenAICompatible({
+      name: 'free',
+      baseURL: 'https://openrouter.ai/api/v1',
+      fetch: createFreeProxyFetch(publicServerUrl),
+    })
+    return free(modelConfig.model ?? freeModelId)
+  }
+
   // The thunderbolt provider goes through its own SSO-aware fetch below; all
   // other providers route through the universal proxy. We resolve the proxy
   // fetch lazily so a settings change between chat creation and this call
@@ -463,11 +483,15 @@ export const aiFetchStreamingResponse = async ({
 
   const integrationStatus = await getIntegrationStatus(db)
 
-  const model = await getModel(db, workspaceId, modelId)
+  const rawModel = await getModel(db, workspaceId, modelId)
 
-  if (!model) {
+  if (!rawModel) {
     throw new Error('Model not found')
   }
+
+  // Provider-backed models resolve their key/base URL from the local provider
+  // secret; system/legacy models pass through unchanged.
+  const model = await hydrateProviderModel(db, workspaceId, rawModel)
 
   const profile = await getModelProfile(db, workspaceId, modelId)
 
@@ -479,7 +503,7 @@ export const aiFetchStreamingResponse = async ({
   let mcpServersSummary: string | undefined
   let mcpToolsMetadata: UIMessageMetadata['mcpTools']
   if (supportsTools) {
-    const availableTools = await getAvailableTools(httpClient, sourceCollector)
+    const availableTools = await getAvailableTools(httpClient, sourceCollector, getProxyFetch)
     toolset = { ...createToolset(availableTools) }
 
     const merged = await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))

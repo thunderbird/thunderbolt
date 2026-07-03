@@ -2,165 +2,140 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { useState } from 'react'
 import { useSettings } from '@/hooks/use-settings'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
+import { useOnboardingFlow } from '@/hooks/use-onboarding-flow'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
 import { OnboardingAuthStep } from './onboarding-auth-step'
 import { OnboardingNameStep } from './onboarding-name-step'
 import { OnboardingLocationStep } from './onboarding-location-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
+import { OnboardingModelProviderStep } from './onboarding-model-provider-step'
+import { OnboardingSearchProviderStep } from './onboarding-search-provider-step'
 import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { cn } from '@/lib/utils'
 
+/**
+ * Full-screen onboarding step-router (spec-standalone §11). Replaces the old
+ * modal wizard: the step sequence is derived from the trust domain (standalone
+ * adds model/search provider steps; server skips them) by {@link useOnboardingFlow},
+ * while per-step field logic still comes from {@link useOnboardingState}. Provider
+ * steps are self-contained (own their connect/skip buttons); the shared steps use
+ * the common action bar. Per-step persistence and the returning-user bypass are
+ * preserved.
+ */
 export const OnboardingDialog = () => {
-  const { isMobile } = useIsMobile()
-  const { userHasCompletedOnboarding } = useSettings({
-    user_has_completed_onboarding: false,
-  })
-  const [isOpen, setIsOpen] = useState(false)
+  const { userHasCompletedOnboarding } = useSettings({ user_has_completed_onboarding: false })
+  const flow = useOnboardingFlow()
   const { state, actions } = useOnboardingState()
 
-  useEffect(() => {
-    if (import.meta.env.VITE_SKIP_ONBOARDING === 'true') {
-      return
-    }
-    if (!userHasCompletedOnboarding.isLoading && !userHasCompletedOnboarding.value) {
-      setIsOpen(true)
-    }
-  }, [userHasCompletedOnboarding.value, userHasCompletedOnboarding.isLoading])
-
-  const handleClose = () => {
-    setIsOpen(false)
-  }
-
-  // Celebration step completion handler
   const [isCompleting, setIsCompleting] = useState(false)
   const [isFormDirty, setIsFormDirty] = useState(false)
-  const { onboardingCurrentStep } = useSettings({
-    onboarding_current_step: '1',
-  })
 
-  const handleCelebrationComplete = async () => {
+  const skipOnboarding = import.meta.env.VITE_SKIP_ONBOARDING === 'true'
+  const isLoading = userHasCompletedOnboarding.isLoading || flow.isLoading
+  const shouldShow = !skipOnboarding && !isLoading && !userHasCompletedOnboarding.value
+  if (!shouldShow) {
+    return null
+  }
+
+  const step = flow.currentStep
+
+  const handleComplete = async () => {
     setIsCompleting(true)
-    await Promise.all([userHasCompletedOnboarding.setValue(true), onboardingCurrentStep.setValue('1')])
+    await flow.complete()
     setIsCompleting(false)
-    handleClose()
   }
 
-  // Unified action handlers
   const handleContinue = async () => {
-    if (state.currentStep === 5) {
-      // Special handling for celebration step
-      handleCelebrationComplete()
-    } else if (state.currentStep === 2) {
-      // Auth step - only allow continue if connected
-      if (state.isProviderConnected) {
-        actions.nextStep()
-      }
-    } else if (state.currentStep === 3) {
-      // Name step - save name to database before proceeding
+    if (step === 'celebration') {
+      await handleComplete()
+      return
+    }
+    if (step === 'name') {
       if (state.isNameValid && state.nameValue) {
-        try {
-          await actions.submitName(state.nameValue)
-          actions.nextStep()
-        } catch (error) {
-          console.error('Failed to save name:', error)
-        }
+        await actions.submitName(state.nameValue)
+        await flow.goNext()
       }
-    } else if (state.canGoNext) {
-      actions.nextStep()
+      return
     }
+    await flow.goNext()
   }
 
-  const handleBackAction = () => {
-    if (state.canGoBack) {
-      actions.prevStep()
+  const continueDisabled = (() => {
+    if (step === 'privacy') {
+      return !state.privacyAgreed
     }
-  }
+    if (step === 'integrations') {
+      return !state.isProviderConnected
+    }
+    if (step === 'name') {
+      return !state.isNameValid
+    }
+    if (step === 'location') {
+      return !state.isLocationValid
+    }
+    if (step === 'celebration') {
+      return isCompleting
+    }
+    return false
+  })()
 
-  const handleSkipAction = () => {
-    if (state.canSkip) {
-      actions.skipStep()
-    }
-  }
+  const isProviderStep = step === 'model-provider' || step === 'search-provider'
 
   return (
-    <Dialog open={isOpen}>
-      <DialogContent
-        className={cn('p-0 overflow-hidden', !isMobile && 'h-[650px]')}
-        showCloseButton={false}
-        useTransparentOverlay={!isMobile}
-        fullScreen={isMobile}
+    <div className="fixed inset-0 z-50 flex flex-col items-center bg-background overflow-y-auto">
+      <div
+        className="flex flex-col items-center w-full max-w-[520px] flex-1"
+        style={{
+          paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
+          paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
+        }}
       >
-        <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
-        <DialogDescription className="sr-only">
-          Complete the setup process to get started with Thunderbolt
-        </DialogDescription>
-        <div
-          className={cn('flex flex-col items-center', isMobile && 'h-dvh')}
-          style={{
-            paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
-            paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
-          }}
-        >
-          <div className="flex items-center justify-center px-4 relative w-full pb-2">
-            <StepIndicators currentStep={state.currentStep} totalSteps={5} />
-            <div className="absolute -bottom-5.5 w-full h-6 bg-gradient-to-b from-background to-transparent" />
-          </div>
-          <div className="flex flex-1 flex-col px-6 overflow-scroll py-4">
-            {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
-            {state.currentStep === 2 && (
-              <OnboardingAuthStep
-                isProcessing={state.processingOAuth}
-                isConnected={state.isProviderConnected}
-                onConnectionChange={actions.setProviderConnected}
-              />
-            )}
-            {state.currentStep === 3 && (
-              <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-            )}
-            {state.currentStep === 4 && (
-              <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-            )}
-            {state.currentStep === 5 && <OnboardingCelebrationStep />}
-          </div>
-          <div className="flex w-full px-5 pt-2 relative">
-            <div className="absolute -top-5.5 w-full h-6 bg-gradient-to-b from-transparent to-background" />
+        <div className="flex items-center justify-center px-4 w-full pb-2">
+          <StepIndicators currentStep={flow.stepNumber} totalSteps={flow.totalSteps} />
+        </div>
+
+        <div className="flex flex-1 flex-col w-full px-6 py-4">
+          {step === 'model-provider' && <OnboardingModelProviderStep onComplete={flow.goNext} onSkip={flow.skip} />}
+          {step === 'search-provider' && <OnboardingSearchProviderStep onComplete={flow.goNext} onSkip={flow.skip} />}
+          {step === 'privacy' && <OnboardingPrivacyStep state={state} actions={actions} />}
+          {step === 'integrations' && (
+            <OnboardingAuthStep
+              isProcessing={state.processingOAuth}
+              isConnected={state.isProviderConnected}
+              onConnectionChange={actions.setProviderConnected}
+            />
+          )}
+          {step === 'name' && <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />}
+          {step === 'location' && (
+            <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+          )}
+          {step === 'celebration' && <OnboardingCelebrationStep />}
+        </div>
+
+        {!isProviderStep && (
+          <div className="flex w-full px-5 pt-2">
             <OnboardingActionButtons
-              onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
-              onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}
+              onBack={flow.isFirstStep || step === 'celebration' ? undefined : flow.goBack}
+              onSkip={step !== 'celebration' && flow.canSkip ? flow.skip : undefined}
               onContinue={handleContinue}
-              showBack={state.currentStep === 5 ? false : state.canGoBack}
-              showSkip={state.currentStep === 5 ? false : state.canSkip}
+              showBack={!flow.isFirstStep && step !== 'celebration'}
+              showSkip={step !== 'celebration' && flow.canSkip}
               skipDisabled={
-                (state.currentStep === 2 && state.isProviderConnected) ||
-                (state.currentStep === 3 && state.isNameValid) ||
-                (state.currentStep === 4 && isFormDirty)
+                (step === 'integrations' && state.isProviderConnected) ||
+                (step === 'name' && state.isNameValid) ||
+                (step === 'location' && isFormDirty)
               }
-              continueDisabled={
-                state.currentStep === 1
-                  ? !state.privacyAgreed
-                  : state.currentStep === 2
-                    ? !state.isProviderConnected
-                    : state.currentStep === 3
-                      ? !state.isNameValid
-                      : state.currentStep === 4
-                        ? !state.isLocationValid
-                        : state.currentStep === 5
-                          ? isCompleting
-                          : true
-              }
+              continueDisabled={continueDisabled}
               continueText={
-                state.currentStep === 5 ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'
+                step === 'celebration' ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'
               }
             />
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        )}
+      </div>
+    </div>
   )
 }

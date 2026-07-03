@@ -57,6 +57,7 @@ describe('ModelsPage reactivity', () => {
     })
 
     const { triggerChange } = renderWithReactivity(<ModelsPage />, {
+      route: '/settings/models',
       tables: ['models'],
     })
 
@@ -103,6 +104,7 @@ describe('ModelsPage — permission gating', () => {
 
   it('renders the header Add button when add_models is allowed', async () => {
     renderWithReactivity(<ModelsPage useWorkspacePermission={fakeUseWorkspacePermission(true)} />, {
+      route: '/settings/models',
       tables: ['models'],
     })
 
@@ -115,6 +117,7 @@ describe('ModelsPage — permission gating', () => {
 
   it('hides every Add Model affordance when add_models is denied', async () => {
     renderWithReactivity(<ModelsPage useWorkspacePermission={fakeUseWorkspacePermission(false)} />, {
+      route: '/settings/models',
       tables: ['models'],
     })
 
@@ -134,6 +137,7 @@ describe('ModelsPage — permission gating', () => {
     })
 
     renderWithReactivity(<ModelsPage useWorkspacePermission={fakeUseWorkspacePermission(false)} />, {
+      route: '/settings/models',
       tables: ['models'],
     })
 

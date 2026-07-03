@@ -39,7 +39,7 @@ import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorBoundary } from './components/app-error-boundary'
 import { AppErrorScreen } from './components/app-error-screen'
-import { ModePicker } from './components/boot/mode-picker'
+import { EntryScreen } from './components/boot/entry-screen'
 import { UpgradeRequired } from './components/upgrade-required'
 import { useConfigStore } from '@/api/config-store'
 import { compareSemver } from '@/lib/compare-semver'
@@ -84,6 +84,8 @@ const TasksPage = lazy(() => import('@/tasks'))
 const Settings = lazy(() => import('@/settings/index'))
 const PreferencesSettingsPage = lazy(() => import('@/settings/preferences'))
 const ModelsPage = lazy(() => import('@/settings/models'))
+const ProvidersPage = lazy(() => import('@/settings/providers'))
+const ProviderDetailPage = lazy(() => import('@/settings/providers/detail'))
 const DevicesSettingsPage = lazy(() => import('@/settings/devices'))
 const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
 const SkillsPage = lazy(() => import('@/settings/skills'))
@@ -126,6 +128,8 @@ const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatu
     <Route path="settings" element={<SettingsLayout />}>
       <Route index element={<Settings />} />
       <Route path="preferences" element={<PreferencesSettingsPage />} />
+      <Route path="providers" element={<ProvidersPage />} />
+      <Route path="providers/:providerId" element={<ProviderDetailPage />} />
       <Route path="models" element={<ModelsPage />} />
       <Route path="devices" element={<DevicesSettingsPage />} />
       <Route path="mcp-servers" element={<McpServersPage />} />
@@ -305,7 +309,7 @@ export const App = () => {
     }
 
     if (initError?.code === 'NO_TRUST_DOMAIN') {
-      return <ModePicker />
+      return <EntryScreen />
     }
     if (initError) {
       if (initError.code === 'STORAGE_UNAVAILABLE') {

@@ -155,6 +155,13 @@
       "when": 1782408136496,
       "tag": "0021_brave_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783038411398,
+      "tag": "0022_ancient_red_ghost",
+      "breakpoints": true
     }
   ]
 }

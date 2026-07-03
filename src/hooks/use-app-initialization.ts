@@ -23,6 +23,7 @@ import {
 } from '@/migrations/pre-workspaces-attach'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { resolveBootTrustDomain } from '@/lib/resolve-boot-trust-domain'
+import { runPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
@@ -95,6 +96,92 @@ const initializePostHogSafely = async (httpClient: HttpClient): Promise<PostHog 
   }
 }
 
+/**
+ * Standalone (fully local, unsynced) initialization path. Mirrors the storage /
+ * app-dir / DB / HTTP-client / tray / PostHog steps of the server path but skips
+ * every server-only concern: no pre-Workspaces migration, no sync `.connect()`
+ * (that lives in post-auth bootstrap, which standalone never runs), and no hard
+ * requirement for a cloud URL. The public server URL — when configured — backs
+ * standalone integrations OAuth proxy, the free tier, and discovery.
+ */
+const runStandaloneInit = async (totalStartedAt: number, httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
+  const storageAvailable = await time('step0_5_storage_check', () => isIndexedDbAvailable())
+  if (!storageAvailable) {
+    const storageError = createHandleError('STORAGE_UNAVAILABLE', 'Storage (IndexedDB) is unavailable')
+    trackError(storageError, { initialization_step: 'storage_check' })
+    return { success: false, error: storageError }
+  }
+
+  let appDirPath: string
+  try {
+    appDirPath = await time('step1_create_app_dir', () => createAppDirectory())
+  } catch (error) {
+    console.error('Failed to create app directory:', error)
+    const appDirError = createHandleError('APP_DIR_CREATION_FAILED', 'Failed to create app directory', error)
+    trackError(appDirError, { initialization_step: 'app_directory' })
+    return { success: false, error: appDirError }
+  }
+
+  let db: AnyDrizzleDatabase
+  try {
+    const result = await time('step2_initialize_database', () => initializeDatabase(appDirPath))
+    db = result.db
+  } catch (error) {
+    console.error('Failed to initialize database:', error)
+    const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)
+    trackError(dbError, { initialization_step: 'database_init' })
+    return { success: false, error: dbError }
+  }
+
+  // First-run local data: resolve/create the personal workspace for the device's
+  // localUserId and reconcile default rows. No sync connect. Failure is fatal —
+  // an empty DB with no workspace would render a broken app.
+  try {
+    const { localUserId } = useTrustDomainRegistry.getState()
+    await time('step_standalone_bootstrap', () => runPostAuthBootstrap({ kind: 'standalone', userId: localUserId }))
+  } catch (error) {
+    console.error('Failed to run standalone bootstrap:', error)
+    const bootstrapError = createHandleError('STANDALONE_BOOTSTRAP_FAILED', 'Failed to seed local workspace', error)
+    trackError(bootstrapError, { initialization_step: 'standalone_bootstrap' })
+    return { success: false, error: bootstrapError }
+  }
+
+  const { experimentalFeatureTasks } = await time('step5_get_settings', () =>
+    getSettings(db, { experimental_feature_tasks: false }),
+  )
+
+  // Public server URL (integrations OAuth proxy, free tier, discovery). Optional:
+  // when unset the app runs fully offline and those affordances degrade gracefully.
+  const cloudUrl =
+    (import.meta.env.VITE_THUNDERBOLT_PUBLIC_URL as string | undefined) ??
+    (import.meta.env.VITE_THUNDERBOLT_CLOUD_URL as string | undefined) ??
+    ''
+
+  let client: HttpClient
+  if (httpClient) {
+    client = httpClient
+  } else {
+    try {
+      client = await time('step6_create_http_client', async () => createAuthenticatedClient(cloudUrl, getAuthToken))
+    } catch (error) {
+      console.error('Failed to initialize HTTP client:', error)
+      const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
+      trackError(httpClientError, { initialization_step: 'http_client' })
+      return { success: false, error: httpClientError }
+    }
+  }
+
+  const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
+
+  const initTotalMs = Math.round(performance.now() - totalStartedAt)
+  console.info(`[init] complete — standalone (total ${initTotalMs}ms)`)
+
+  return {
+    success: true,
+    data: { db, cloudUrl, experimentalFeatureTasks, posthogClient, httpClient: client, ...tray },
+  }
+}
+
 const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
   beginInitRun()
   const totalStartedAt = performance.now()
@@ -144,19 +231,15 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     trackError(error, { initialization_step: 'trust_domain' })
     return { success: false, error }
   }
-  // Standalone end-to-end is deferred post-v1 (addendum §1 + §6): the DB lifecycle, the
-  // local-user surface, and the first-run workspace creation paths aren't wired yet.
-  // The flag and the resolver branch ship now so the mode picker (PR 5) can exercise the
-  // plumbing in dev — but we refuse the boot until the downstream wiring lands rather than
-  // let it silently degrade into scattered no-auth / no-encryption failures.
+  // Standalone: fully local, unsynced boot. No auth/session, no server bootstrap,
+  // no pre-Workspaces migration, E2E encryption off (config store's `e2eeEnabled`
+  // stays falsy because we never fetch a server config that enables it). Uses the
+  // already-minted `localUserId` as identity. See spec-standalone-onboarding §4/§6.
   if (resolution.trustDomain.kind === 'standalone') {
-    const error = createHandleError(
-      'STANDALONE_NOT_SUPPORTED',
-      'Standalone mode is not implemented yet — disable VITE_STANDALONE_MODE_ENABLED',
-      undefined,
-    )
-    trackError(error, { initialization_step: 'trust_domain' })
-    return { success: false, error }
+    // Persist the standalone domain so the DB path resolver namespaces to
+    // `standalone.db` and returning boots skip the entry screen. Idempotent.
+    useTrustDomainRegistry.getState().activateStandalone()
+    return await runStandaloneInit(totalStartedAt, httpClient)
   }
   // Standalone is short-circuited above; only server-kind resolutions reach this point.
   // The resolver's contract guarantees a `serverEntry` whenever the trust domain is server.

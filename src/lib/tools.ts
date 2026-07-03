@@ -17,6 +17,7 @@ import { tool, type Tool } from 'ai'
 export const getAvailableTools = async (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
+  getProxyFetch: () => typeof fetch = () => fetch,
 ): Promise<ToolConfig[]> => {
   // Check Thunderbolt Pro access and integration enabled state
   const db = getDb()
@@ -32,7 +33,7 @@ export const getAvailableTools = async (
   const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
 
   if (shouldIncludeProTools) {
-    baseTools.push(...createProConfigs(httpClient, sourceCollector))
+    baseTools.push(...createProConfigs(httpClient, sourceCollector, getProxyFetch))
   }
 
   if (integrationStatus.googleEnabled) {

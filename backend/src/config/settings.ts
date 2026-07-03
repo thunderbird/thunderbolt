@@ -92,6 +92,21 @@ const settingsSchema = z
     waitlistEnabled: z.boolean().default(false),
     waitlistAutoApproveDomains: z.string().default(''),
 
+    // Standalone onboarding — email → server discovery (§10). JSON object mapping an
+    // exact email OR a domain to its server URL, e.g.
+    // {"acme.com":"https://acme.thunderbolt.io","vip@x.com":"https://vip.example"}.
+    // The /discovery response is UNIFORM regardless of match (privacy): unmatched
+    // emails fall back to `discoveryDefaultServerUrl` (this public server), so the
+    // endpoint never leaks which emails/domains map to which servers.
+    discoveryServerMap: z.string().default('{}'),
+    // Fallback server URL returned by /discovery for unmatched emails. Should point at
+    // the public server. Falls back to `appUrl` when unset so local dev works.
+    discoveryDefaultServerUrl: z.string().default(''),
+
+    // Standalone onboarding — free-tier hosted model key (§8/§12). Injected server-side
+    // by /proxy/free for the free model upstream ONLY; never sent to the client.
+    freeTierOpenrouterKey: z.string().default(''),
+
     // PowerSync settings
     powersyncUrl: z.string().default(''),
     powersyncJwtKid: z.string().default(''),
@@ -213,6 +228,9 @@ const parseSettings = (): Settings => {
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
     waitlistAutoApproveDomains: process.env.WAITLIST_AUTO_APPROVE_DOMAINS || '',
+    discoveryServerMap: process.env.DISCOVERY_SERVER_MAP || '{}',
+    discoveryDefaultServerUrl: process.env.DISCOVERY_DEFAULT_SERVER_URL || '',
+    freeTierOpenrouterKey: process.env.FREE_TIER_OPENROUTER_KEY || '',
     // Localhost defaults apply only in development. In any other NODE_ENV the
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
@@ -314,6 +332,46 @@ export const getEnabledAgentsList = (settings: Pick<Settings, 'enabledAgents'>):
     .split(',')
     .map((id) => id.trim())
     .filter((id) => id.length > 0)
+}
+
+/**
+ * Parse the JSON discovery map (email/domain → server URL). Keys are lower-cased.
+ * Returns {} on invalid JSON or a non-object payload so a malformed env var never
+ * throws in the request path — discovery just falls back to the default server.
+ */
+export const getDiscoveryServerMap = (settings: Pick<Settings, 'discoveryServerMap'>): Record<string, string> => {
+  try {
+    const parsed: unknown = JSON.parse(settings.discoveryServerMap)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {}
+    }
+    const out: Record<string, string> = {}
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'string' && value.length > 0) {
+        out[key.toLowerCase()] = value
+      }
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Resolve the server URL for an email via the discovery map. Matches an exact email
+ * first, then its domain. Returns the configured default (this public server) when
+ * there is no match — the caller returns a UNIFORM shape regardless, so the endpoint
+ * never leaks which emails/domains map to which servers (§10, mirrors the waitlist).
+ */
+export const resolveDiscoveryServerUrl = (
+  email: string,
+  settings: Pick<Settings, 'discoveryServerMap' | 'discoveryDefaultServerUrl' | 'appUrl'>,
+): string => {
+  const normalized = email.toLowerCase().trim()
+  const map = getDiscoveryServerMap(settings)
+  const domain = normalized.slice(normalized.indexOf('@') + 1)
+  const fallback = settings.discoveryDefaultServerUrl || settings.appUrl
+  return map[normalized] ?? map[domain] ?? fallback
 }
 
 /** Parse comma-separated auto-approved domains into a list */

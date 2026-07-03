@@ -145,6 +145,332 @@ export type CreateUniversalProxyRoutesOptions = {
   dnsLookup?: DnsLookup
 }
 
+/** Optional hooks that let a proxy variant constrain or augment each hop without
+ *  duplicating the SSRF/redirect/streaming pipeline. Used by the free-tier slice
+ *  ({@link createFreeProxyRoutes}); the authenticated proxy passes none, so its
+ *  behaviour is unchanged. */
+export type ProxyHooks = {
+  /** Reject a hop's target host (free-tier allowlist). Return an error message to
+   *  short-circuit with 403, or undefined to allow. Runs on the initial target and
+   *  on every redirect hop. */
+  guardTarget?: (url: URL) => string | undefined
+  /** Mutate the per-hop outbound headers before the upstream fetch (free-tier key
+   *  injection). Runs after passthrough + Host headers are assembled. */
+  mutateOutboundHeaders?: (url: URL, headers: Headers) => void
+}
+
+type RunProxyRequestParams = {
+  request: Request
+  proxyStartedAt: number
+  proxyRequestId: string
+  proxyTargetUrl: string
+  userId: string
+  fetchFn: typeof fetch
+  observability: ObservabilityRecorder
+  dnsLookup?: DnsLookup
+  hooks?: ProxyHooks
+}
+
+/** Core proxy pipeline shared by the authenticated and free-tier routes. Handles
+ *  target validation, SSRF DNS-pinning, the redirect loop, streaming + body caps,
+ *  and observability. Auth and rate limiting are applied by the caller's Elysia
+ *  wrapper; behaviour differences between variants are expressed via {@link ProxyHooks}. */
+const runProxyRequest = async ({
+  request,
+  proxyStartedAt,
+  proxyRequestId,
+  proxyTargetUrl,
+  userId,
+  fetchFn,
+  observability,
+  dnsLookup,
+  hooks,
+}: RunProxyRequestParams): Promise<Response> => {
+  const method = request.method.toUpperCase()
+
+  /** Emit a final observability event. `bytesIn`/`bytesOut` default to 0
+   *  for paths that never opened an upstream connection. */
+  const emit = (params: {
+    response: Response
+    targetUrl: string
+    bytesIn: number
+    bytesOut: number
+    errorType?: ProxyErrorType
+  }) => {
+    observability.proxyRequest({
+      method,
+      target_url: params.targetUrl,
+      status: params.response.status,
+      duration_ms: Math.round(performance.now() - proxyStartedAt),
+      bytes_in: params.bytesIn,
+      bytes_out: params.bytesOut,
+      user_id: userId,
+      request_id: proxyRequestId,
+      error_type: params.errorType,
+    })
+  }
+
+  /** Build + emit a failure Response in one shot. Status is derived
+   *  from the textResponse, so observability never disagrees with
+   *  what the caller actually sees. */
+  const fail = (status: number, body: string, errorType: ProxyErrorType, targetUrl = ''): Response => {
+    const response = textResponse(status, body)
+    emit({ response, targetUrl, bytesIn: 0, bytesOut: 0, errorType })
+    return response
+  }
+
+  if (!allowedMethods.has(method)) {
+    return fail(405, 'Method not allowed', 'invalid_target')
+  }
+
+  // Read target URL from header (not path). Keeps user-supplied paths/queries
+  // out of standard HTTP access logs which only record method + path.
+  const targetHeader = proxyTargetUrl
+  if (!targetHeader || targetHeader.trim() === '') {
+    return fail(400, `Missing ${targetUrlHeader} header`, 'invalid_target')
+  }
+  if (!isPrintableAscii(targetHeader)) {
+    return fail(400, `Invalid ${targetUrlHeader} header`, 'invalid_target')
+  }
+
+  const normalised = normaliseTargetUrl(targetHeader)
+  if ('error' in normalised) {
+    return fail(400, normalised.error, 'invalid_target')
+  }
+
+  // Strip userinfo before any further processing (matches validateAndPin).
+  normalised.username = ''
+  normalised.password = ''
+  const targetUrl = normalised.toString()
+  const initialOrigin = normalised.origin
+
+  // Variant allowlist (free tier): reject disallowed hosts before opening anything.
+  const initialGuard = hooks?.guardTarget?.(normalised)
+  if (initialGuard) {
+    return fail(403, initialGuard, 'invalid_target', targetUrl)
+  }
+
+  // Pre-check Content-Length to short-circuit oversized uploads before
+  // opening any upstream connection. Streaming bodies without a header
+  // are caught later by capStream.
+  if (!bodylessMethods.has(method)) {
+    const contentLength = request.headers.get('content-length')
+    if (contentLength) {
+      const cl = parseInt(contentLength, 10)
+      if (Number.isFinite(cl) && cl > maxBodyBytes) {
+        return fail(413, 'Request body too large', 'cap_exceeded', targetUrl)
+      }
+    }
+  }
+
+  // Strict literal match — anything other than 'true'/'false' falls back to default.
+  const followRedirectsValue = request.headers.get(followRedirectsHeaderLower)?.toLowerCase()
+  const followOverride = followRedirectsValue === 'true' ? true : followRedirectsValue === 'false' ? false : null
+
+  const initialHeadersResult = buildOutboundHeaders(request.headers)
+  if ('error' in initialHeadersResult) {
+    return fail(400, initialHeadersResult.error, 'invalid_target', targetUrl)
+  }
+  const initialPassthroughHeaders = initialHeadersResult
+
+  // Decide whether redirect-following will need a buffered body.
+  // - GET/HEAD have no body, so we can stream the initial hop and follow
+  //   redirects safely (each hop is a fresh fetch).
+  // - For other methods, default behaviour is "do not follow" (return 3xx as-is).
+  //   If the caller explicitly opts in via X-Proxy-Follow-Redirects: true we
+  //   buffer the body so it can be replayed on 307/308.
+  const needsBodyBuffer = !bodylessMethods.has(method) && followOverride === true
+
+  let bufferedBody: ArrayBuffer | null = null
+  if (needsBodyBuffer && request.body) {
+    // Stream the body into a bounded accumulator. Reading via Response#arrayBuffer
+    // would materialise the FULL upload into memory before any size check, letting
+    // a chunked upload (no Content-Length) OOM the server. Here we early-terminate
+    // the moment we exceed maxBodyBytes so worst-case memory is ~one chunk over.
+    const reader = (request.body as ReadableStream<Uint8Array>).getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) {
+          break
+        }
+        total += value.byteLength
+        if (total > maxBodyBytes) {
+          reader.cancel().catch(() => {})
+          return fail(413, 'Request body too large', 'cap_exceeded', targetUrl)
+        }
+        chunks.push(value)
+      }
+    } finally {
+      reader.releaseLock()
+    }
+    const merged = new Uint8Array(total)
+    let offset = 0
+    for (const chunk of chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    bufferedBody = merged.buffer
+  }
+
+  // Per-hop redirect loop: hop 0 = initial fetch; hops 1..maxHops = follows.
+  let currentUrl = targetUrl
+  let currentMethod = method
+  let currentBufferedBody: ArrayBuffer | null = bufferedBody
+  let dropAuthorizationOnHop = false
+
+  for (let hop = 0; hop <= maxHops; hop++) {
+    // DNS-pin each hop so cross-origin redirects can't bypass SSRF.
+    let pinnedUrl: string
+    let pinnedExtraHeaders: Headers
+    try {
+      ;[pinnedUrl, pinnedExtraHeaders] = await withDnsTimeout(validateAndPin(currentUrl, undefined, dnsLookup))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const isTimeout = msg === 'DNS_TIMEOUT'
+      if (hop === 0) {
+        return fail(400, `Blocked: ${msg}`, isTimeout ? 'dns_timeout' : 'ssrf', currentUrl)
+      }
+      return fail(502, 'Bad gateway (SSRF or DNS error on redirect)', isTimeout ? 'dns_timeout' : 'ssrf', currentUrl)
+    }
+
+    // Compose hop-specific headers: passthrough + Host (for SNI).
+    const hopHeadersResult =
+      hop === 0
+        ? initialPassthroughHeaders
+        : buildOutboundHeaders(request.headers, { dropAuthorization: dropAuthorizationOnHop })
+    if ('error' in hopHeadersResult) {
+      return fail(400, hopHeadersResult.error, 'invalid_target', currentUrl)
+    }
+    const hopHeaders = new Headers(hopHeadersResult)
+    pinnedExtraHeaders.forEach((value, key) => {
+      hopHeaders.set(key, value)
+    })
+
+    // Variant header augmentation (free tier): inject the hosted key for the model
+    // host only. Runs last so it overrides any client-supplied Authorization.
+    hooks?.mutateOutboundHeaders?.(new URL(currentUrl), hopHeaders)
+
+    const upstreamCtl = new AbortController()
+    const isInitialHopStream = hop === 0 && !needsBodyBuffer && !bodylessMethods.has(currentMethod)
+
+    // Wrap the inbound stream with capStream on the streaming initial hop so
+    // body-size and idle-timeout limits still apply without buffering. The
+    // returned `bytesRead()` gives observability the real upload size.
+    const requestCap =
+      isInitialHopStream && request.body
+        ? capStream(request.body, {
+            maxBytes: streamCapBytes,
+            idleTimeoutMs: streamIdleMs,
+            onAbort: () => upstreamCtl.abort(),
+          })
+        : null
+
+    const upstreamBody: BodyInit | null = requestCap?.stream ?? currentBufferedBody ?? null
+
+    // Bun-specific fetch options: `decompress: false` lets the original
+    // compressed bytes (and `content-encoding`) pass through unchanged so
+    // the browser decodes; `duplex: 'half'` enables streaming request
+    // bodies. Both are absent from the standard `RequestInit` type.
+    // Bun (>=1.3) auto-decompresses but ALSO keeps `content-encoding` on the
+    // Response — without `decompress: false` we would forward gzip headers
+    // with already-decoded bodies and the browser would corrupt the result.
+    // Verified empirically on Bun 1.3.10; if Bun ever changes this, the
+    // routes.test.ts "passes decompress: false" assertion will still pass
+    // but real responses will silently break — add an integration test
+    // before bumping Bun major.
+    const response = await fetchFn(pinnedUrl, {
+      method: currentMethod,
+      headers: hopHeaders,
+      body: upstreamBody,
+      redirect: 'manual',
+      signal: upstreamCtl.signal,
+      decompress: false,
+      duplex: 'half',
+    } as RequestInit & { decompress: boolean; duplex: 'half' })
+
+    /** Bytes uploaded to upstream. Buffered bodies have a fixed size known
+     *  up-front; for streamed bodies we expose a late-read getter so the
+     *  observability emission (which fires from the *response* stream's
+     *  onComplete) sees the final value after the upload has actually
+     *  drained, not the in-flight count at the moment response headers
+     *  were received. */
+    const bytesIn: () => number =
+      requestCap !== null ? requestCap.bytesRead : () => currentBufferedBody?.byteLength ?? 0
+
+    if (!redirectStatuses.has(response.status)) {
+      return buildProxyResponse(response, upstreamCtl, currentUrl, {
+        emit,
+        targetUrl: currentUrl,
+        bytesIn,
+      })
+    }
+
+    const defaultFollow = bodylessMethods.has(currentMethod)
+    const shouldFollow = followOverride !== null ? followOverride : defaultFollow
+    if (!shouldFollow) {
+      return buildProxyResponse(response, upstreamCtl, currentUrl, {
+        emit,
+        targetUrl: currentUrl,
+        bytesIn,
+      })
+    }
+
+    const location = response.headers.get('location')
+    if (!location) {
+      return buildProxyResponse(response, upstreamCtl, currentUrl, {
+        emit,
+        targetUrl: currentUrl,
+        bytesIn,
+      })
+    }
+
+    // Resolve relative Location and auto-upgrade http://.
+    const nextRaw = new URL(location, currentUrl).toString()
+    const nextNormalised = normaliseTargetUrl(nextRaw)
+    if ('error' in nextNormalised) {
+      upstreamCtl.abort()
+      return fail(502, 'Redirect target is not http(s)', 'invalid_target', currentUrl)
+    }
+    nextNormalised.username = ''
+    nextNormalised.password = ''
+    const nextUrl = nextNormalised.toString()
+
+    // Variant allowlist (free tier): a redirect must land on a permitted host too.
+    const redirectGuard = hooks?.guardTarget?.(nextNormalised)
+    if (redirectGuard) {
+      upstreamCtl.abort()
+      return fail(403, redirectGuard, 'invalid_target', currentUrl)
+    }
+
+    if (nextNormalised.origin !== initialOrigin) {
+      dropAuthorizationOnHop = true
+    }
+
+    // RFC 7231: 303 always becomes GET; 301/302 become GET for non-GET/HEAD.
+    let nextMethod = currentMethod
+    let nextBody = currentBufferedBody
+    if (response.status === 303) {
+      nextMethod = 'GET'
+      nextBody = null
+    } else if ((response.status === 301 || response.status === 302) && !bodylessMethods.has(currentMethod)) {
+      nextMethod = 'GET'
+      nextBody = null
+    }
+
+    // Release the current hop before opening the next.
+    upstreamCtl.abort()
+
+    currentUrl = nextUrl
+    currentMethod = nextMethod
+    currentBufferedBody = nextBody
+  }
+
+  return fail(502, 'Too many redirects', 'upstream_5xx', currentUrl)
+}
+
 export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOptions) => {
   const { auth, rateLimit, dnsLookup } = options
   const fetchFn = options.fetchFn ?? globalThis.fetch
@@ -166,286 +492,96 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
         }))
         .all(
           '/',
-          async (ctx) => {
-            const method = ctx.request.method.toUpperCase()
-            const userId = (ctx.user as { id?: string } | undefined)?.id ?? 'unknown'
-
-            /** Emit a final observability event. `bytesIn`/`bytesOut` default to 0
-             *  for paths that never opened an upstream connection. */
-            const emit = (params: {
-              response: Response
-              targetUrl: string
-              bytesIn: number
-              bytesOut: number
-              errorType?: ProxyErrorType
-            }) => {
-              observability.proxyRequest({
-                method,
-                target_url: params.targetUrl,
-                status: params.response.status,
-                duration_ms: Math.round(performance.now() - ctx.proxyStartedAt),
-                bytes_in: params.bytesIn,
-                bytes_out: params.bytesOut,
-                user_id: userId,
-                request_id: ctx.proxyRequestId,
-                error_type: params.errorType,
-              })
-            }
-
-            /** Build + emit a failure Response in one shot. Status is derived
-             *  from the textResponse, so observability never disagrees with
-             *  what the caller actually sees. */
-            const fail = (status: number, body: string, errorType: ProxyErrorType, targetUrl = ''): Response => {
-              const response = textResponse(status, body)
-              emit({ response, targetUrl, bytesIn: 0, bytesOut: 0, errorType })
-              return response
-            }
-
-            if (!allowedMethods.has(method)) {
-              return fail(405, 'Method not allowed', 'invalid_target')
-            }
-
-            // Read target URL from header (not path). Keeps user-supplied paths/queries
-            // out of standard HTTP access logs which only record method + path.
-            const targetHeader = ctx.proxyTargetUrl
-            if (!targetHeader || targetHeader.trim() === '') {
-              return fail(400, `Missing ${targetUrlHeader} header`, 'invalid_target')
-            }
-            if (!isPrintableAscii(targetHeader)) {
-              return fail(400, `Invalid ${targetUrlHeader} header`, 'invalid_target')
-            }
-
-            const normalised = normaliseTargetUrl(targetHeader)
-            if ('error' in normalised) {
-              return fail(400, normalised.error, 'invalid_target')
-            }
-
-            // Strip userinfo before any further processing (matches validateAndPin).
-            normalised.username = ''
-            normalised.password = ''
-            const targetUrl = normalised.toString()
-            const initialOrigin = normalised.origin
-
-            // Pre-check Content-Length to short-circuit oversized uploads before
-            // opening any upstream connection. Streaming bodies without a header
-            // are caught later by capStream.
-            if (!bodylessMethods.has(method)) {
-              const contentLength = ctx.request.headers.get('content-length')
-              if (contentLength) {
-                const cl = parseInt(contentLength, 10)
-                if (Number.isFinite(cl) && cl > maxBodyBytes) {
-                  return fail(413, 'Request body too large', 'cap_exceeded', targetUrl)
-                }
-              }
-            }
-
-            // Strict literal match — anything other than 'true'/'false' falls back to default.
-            const followRedirectsValue = ctx.request.headers.get(followRedirectsHeaderLower)?.toLowerCase()
-            const followOverride =
-              followRedirectsValue === 'true' ? true : followRedirectsValue === 'false' ? false : null
-
-            const initialHeadersResult = buildOutboundHeaders(ctx.request.headers)
-            if ('error' in initialHeadersResult) {
-              return fail(400, initialHeadersResult.error, 'invalid_target', targetUrl)
-            }
-            const initialPassthroughHeaders = initialHeadersResult
-
-            // Decide whether redirect-following will need a buffered body.
-            // - GET/HEAD have no body, so we can stream the initial hop and follow
-            //   redirects safely (each hop is a fresh fetch).
-            // - For other methods, default behaviour is "do not follow" (return 3xx as-is).
-            //   If the caller explicitly opts in via X-Proxy-Follow-Redirects: true we
-            //   buffer the body so it can be replayed on 307/308.
-            const needsBodyBuffer = !bodylessMethods.has(method) && followOverride === true
-
-            let bufferedBody: ArrayBuffer | null = null
-            if (needsBodyBuffer && ctx.request.body) {
-              // Stream the body into a bounded accumulator. Reading via Response#arrayBuffer
-              // would materialise the FULL upload into memory before any size check, letting
-              // a chunked upload (no Content-Length) OOM the server. Here we early-terminate
-              // the moment we exceed maxBodyBytes so worst-case memory is ~one chunk over.
-              const reader = (ctx.request.body as ReadableStream<Uint8Array>).getReader()
-              const chunks: Uint8Array[] = []
-              let total = 0
-              try {
-                for (;;) {
-                  const { done, value } = await reader.read()
-                  if (done) {
-                    break
-                  }
-                  total += value.byteLength
-                  if (total > maxBodyBytes) {
-                    reader.cancel().catch(() => {})
-                    return fail(413, 'Request body too large', 'cap_exceeded', targetUrl)
-                  }
-                  chunks.push(value)
-                }
-              } finally {
-                reader.releaseLock()
-              }
-              const merged = new Uint8Array(total)
-              let offset = 0
-              for (const chunk of chunks) {
-                merged.set(chunk, offset)
-                offset += chunk.byteLength
-              }
-              bufferedBody = merged.buffer
-            }
-
-            // Per-hop redirect loop: hop 0 = initial fetch; hops 1..maxHops = follows.
-            let currentUrl = targetUrl
-            let currentMethod = method
-            let currentBufferedBody: ArrayBuffer | null = bufferedBody
-            let dropAuthorizationOnHop = false
-
-            for (let hop = 0; hop <= maxHops; hop++) {
-              // DNS-pin each hop so cross-origin redirects can't bypass SSRF.
-              let pinnedUrl: string
-              let pinnedExtraHeaders: Headers
-              try {
-                ;[pinnedUrl, pinnedExtraHeaders] = await withDnsTimeout(
-                  validateAndPin(currentUrl, undefined, dnsLookup),
-                )
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err)
-                const isTimeout = msg === 'DNS_TIMEOUT'
-                if (hop === 0) {
-                  return fail(400, `Blocked: ${msg}`, isTimeout ? 'dns_timeout' : 'ssrf', currentUrl)
-                }
-                return fail(
-                  502,
-                  'Bad gateway (SSRF or DNS error on redirect)',
-                  isTimeout ? 'dns_timeout' : 'ssrf',
-                  currentUrl,
-                )
-              }
-
-              // Compose hop-specific headers: passthrough + Host (for SNI).
-              const hopHeadersResult =
-                hop === 0
-                  ? initialPassthroughHeaders
-                  : buildOutboundHeaders(ctx.request.headers, { dropAuthorization: dropAuthorizationOnHop })
-              if ('error' in hopHeadersResult) {
-                return fail(400, hopHeadersResult.error, 'invalid_target', currentUrl)
-              }
-              const hopHeaders = new Headers(hopHeadersResult)
-              pinnedExtraHeaders.forEach((value, key) => {
-                hopHeaders.set(key, value)
-              })
-
-              const upstreamCtl = new AbortController()
-              const isInitialHopStream = hop === 0 && !needsBodyBuffer && !bodylessMethods.has(currentMethod)
-
-              // Wrap the inbound stream with capStream on the streaming initial hop so
-              // body-size and idle-timeout limits still apply without buffering. The
-              // returned `bytesRead()` gives observability the real upload size.
-              const requestCap =
-                isInitialHopStream && ctx.request.body
-                  ? capStream(ctx.request.body, {
-                      maxBytes: streamCapBytes,
-                      idleTimeoutMs: streamIdleMs,
-                      onAbort: () => upstreamCtl.abort(),
-                    })
-                  : null
-
-              const upstreamBody: BodyInit | null = requestCap?.stream ?? currentBufferedBody ?? null
-
-              // Bun-specific fetch options: `decompress: false` lets the original
-              // compressed bytes (and `content-encoding`) pass through unchanged so
-              // the browser decodes; `duplex: 'half'` enables streaming request
-              // bodies. Both are absent from the standard `RequestInit` type.
-              // Bun (>=1.3) auto-decompresses but ALSO keeps `content-encoding` on the
-              // Response — without `decompress: false` we would forward gzip headers
-              // with already-decoded bodies and the browser would corrupt the result.
-              // Verified empirically on Bun 1.3.10; if Bun ever changes this, the
-              // routes.test.ts "passes decompress: false" assertion will still pass
-              // but real responses will silently break — add an integration test
-              // before bumping Bun major.
-              const response = await fetchFn(pinnedUrl, {
-                method: currentMethod,
-                headers: hopHeaders,
-                body: upstreamBody,
-                redirect: 'manual',
-                signal: upstreamCtl.signal,
-                decompress: false,
-                duplex: 'half',
-              } as RequestInit & { decompress: boolean; duplex: 'half' })
-
-              /** Bytes uploaded to upstream. Buffered bodies have a fixed size known
-               *  up-front; for streamed bodies we expose a late-read getter so the
-               *  observability emission (which fires from the *response* stream's
-               *  onComplete) sees the final value after the upload has actually
-               *  drained, not the in-flight count at the moment response headers
-               *  were received. */
-              const bytesIn: () => number =
-                requestCap !== null ? requestCap.bytesRead : () => currentBufferedBody?.byteLength ?? 0
-
-              if (!redirectStatuses.has(response.status)) {
-                return buildProxyResponse(response, upstreamCtl, currentUrl, {
-                  emit,
-                  targetUrl: currentUrl,
-                  bytesIn,
-                })
-              }
-
-              const defaultFollow = bodylessMethods.has(currentMethod)
-              const shouldFollow = followOverride !== null ? followOverride : defaultFollow
-              if (!shouldFollow) {
-                return buildProxyResponse(response, upstreamCtl, currentUrl, {
-                  emit,
-                  targetUrl: currentUrl,
-                  bytesIn,
-                })
-              }
-
-              const location = response.headers.get('location')
-              if (!location) {
-                return buildProxyResponse(response, upstreamCtl, currentUrl, {
-                  emit,
-                  targetUrl: currentUrl,
-                  bytesIn,
-                })
-              }
-
-              // Resolve relative Location and auto-upgrade http://.
-              const nextRaw = new URL(location, currentUrl).toString()
-              const nextNormalised = normaliseTargetUrl(nextRaw)
-              if ('error' in nextNormalised) {
-                upstreamCtl.abort()
-                return fail(502, 'Redirect target is not http(s)', 'invalid_target', currentUrl)
-              }
-              nextNormalised.username = ''
-              nextNormalised.password = ''
-              const nextUrl = nextNormalised.toString()
-
-              if (nextNormalised.origin !== initialOrigin) {
-                dropAuthorizationOnHop = true
-              }
-
-              // RFC 7231: 303 always becomes GET; 301/302 become GET for non-GET/HEAD.
-              let nextMethod = currentMethod
-              let nextBody = currentBufferedBody
-              if (response.status === 303) {
-                nextMethod = 'GET'
-                nextBody = null
-              } else if ((response.status === 301 || response.status === 302) && !bodylessMethods.has(currentMethod)) {
-                nextMethod = 'GET'
-                nextBody = null
-              }
-
-              // Release the current hop before opening the next.
-              upstreamCtl.abort()
-
-              currentUrl = nextUrl
-              currentMethod = nextMethod
-              currentBufferedBody = nextBody
-            }
-
-            return fail(502, 'Too many redirects', 'upstream_5xx', currentUrl)
-          },
+          async (ctx) =>
+            runProxyRequest({
+              request: ctx.request,
+              proxyStartedAt: ctx.proxyStartedAt,
+              proxyRequestId: ctx.proxyRequestId,
+              proxyTargetUrl: ctx.proxyTargetUrl,
+              userId: (ctx.user as { id?: string } | undefined)?.id ?? 'unknown',
+              fetchFn,
+              observability,
+              dnsLookup,
+            }),
           { parse: 'none' },
         )
     })
+}
+
+/** Free-tier upstream allowlist (spec §12): the hosted model host (OpenRouter) and
+ *  DuckDuckGo's keyless HTML endpoint. Everything else is 403'd so the
+ *  unauthenticated slice can never be turned into an open proxy. */
+const freeTierModelHost = 'openrouter.ai'
+const freeTierSearchHost = 'html.duckduckgo.com'
+const freeTierAllowedHosts = new Set([freeTierModelHost, freeTierSearchHost])
+
+/** Build the hooks that constrain the free-tier proxy to its allowlisted upstreams
+ *  and inject the hosted model key server-side (model host only). */
+const buildFreeTierHooks = (openrouterKey: string): ProxyHooks => ({
+  guardTarget: (url) =>
+    freeTierAllowedHosts.has(url.hostname) ? undefined : 'Upstream not permitted on the free tier',
+  mutateOutboundHeaders: (url, headers) => {
+    // Model host ONLY — search (DDG) is keyless. Overwrites any client-supplied
+    // Authorization so the free key can't be swapped out or exfiltrated.
+    if (url.hostname === freeTierModelHost && openrouterKey) {
+      headers.set('authorization', `Bearer ${openrouterKey}`)
+    }
+  },
+})
+
+export type CreateFreeProxyRoutesOptions = {
+  /** Hosted model key injected server-side for the model upstream. Never sent to the client. */
+  openrouterKey: string
+  fetchFn?: typeof fetch
+  rateLimit?: AnyElysia
+  observability?: ObservabilityRecorder
+  dnsLookup?: DnsLookup
+}
+
+/**
+ * Unauthenticated, rate-limited slice of the universal proxy for the standalone
+ * free tier (spec §12): serves the hosted free model and keyless DuckDuckGo search
+ * with no Thunderbolt account. Speaks the same wire protocol as `/proxy`, but:
+ *  - requires no auth token (no auth macro / guard),
+ *  - is rate-limited per-device (X-Device-ID) / per-IP by the injected middleware,
+ *  - only permits the free-tier upstreams ({@link freeTierAllowedHosts}),
+ *  - injects the hosted model key server-side for the model host only.
+ * Inbound identifiers (cookies, Authorization, User-Agent, …) are already stripped
+ * by the shared passthrough-prefix contract — only X-Proxy-Passthrough-* is forwarded.
+ */
+export const createFreeProxyRoutes = (options: CreateFreeProxyRoutesOptions) => {
+  const { rateLimit, dnsLookup, openrouterKey } = options
+  const fetchFn = options.fetchFn ?? globalThis.fetch
+  const observability = options.observability ?? noopObservability
+  const hooks = buildFreeTierHooks(openrouterKey)
+
+  const app = new Elysia({ prefix: '/proxy/free' }).onError(safeErrorHandler)
+  if (rateLimit) {
+    app.use(rateLimit)
+  }
+
+  return app
+    .derive(({ request }) => ({
+      proxyStartedAt: performance.now(),
+      proxyRequestId: crypto.randomUUID(),
+      proxyTargetUrl: request.headers.get(targetUrlHeaderLower) ?? '',
+    }))
+    .all(
+      '/',
+      async (ctx) =>
+        runProxyRequest({
+          request: ctx.request,
+          proxyStartedAt: ctx.proxyStartedAt,
+          proxyRequestId: ctx.proxyRequestId,
+          proxyTargetUrl: ctx.proxyTargetUrl,
+          userId: 'free-tier',
+          fetchFn,
+          observability,
+          dnsLookup,
+          hooks,
+        }),
+      { parse: 'none' },
+    )
 }
 
 /** Wrap the upstream response: cap+idle on the response body, force security

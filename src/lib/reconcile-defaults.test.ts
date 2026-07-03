@@ -35,6 +35,7 @@ const buildRetiredModel = (overrides: Partial<Model> = {}): Model => {
     supportsParallelToolCalls: 0,
     deletedAt: null,
     apiKey: null,
+    providerId: null,
     url: null,
     defaultHash: null,
     vendor: 'mistral',

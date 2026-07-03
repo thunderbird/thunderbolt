@@ -20,8 +20,8 @@ import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
 // `Lock` is paired with the temporarily-hidden Permissions entry below — keep
 // the import commented so re-enabling the menu is a one-spot uncomment.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { ArrowLeft, Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
+
+import { ArrowLeft, Bot, Boxes, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -50,7 +50,7 @@ export const SettingsSidebarContent = ({
   const activeWorkspace = useActiveWorkspace()
   // `isAdmin` is currently only used by the commented-out Permissions entry
   // below — keep the call so re-enabling is a single comment-flip.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const { isAdmin: _isAdmin } = useActiveWorkspaceMembership()
   // Members is visible to every member of a shared workspace — the page is
   // read-friendly without action permissions, and individual actions (invite /
@@ -113,6 +113,17 @@ export const SettingsSidebarContent = ({
               >
                 <Plug className="size-4" />
                 <span>Integrations</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/providers')}
+                tooltip="Providers"
+                className="cursor-pointer"
+                isActive={subPath.startsWith('/settings/providers')}
+              >
+                <Boxes className="size-4" />
+                <span>Providers</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

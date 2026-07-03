@@ -6,19 +6,38 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings, isOAuthRedirectUriAllowed } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { Elysia, t } from 'elysia'
+import { Elysia, type AnyElysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
 const googleTokenUrl = 'https://oauth2.googleapis.com/token'
 
+type OAuthProxyOptions = {
+  /**
+   * When set, mount an IP rate-limit plugin and DO NOT require a Thunderbolt
+   * session — needed so standalone (no-account) integrations can broker OAuth
+   * through the public server (spec-standalone §12). The client secret stays
+   * server-side and the redirect_uri allowlist + rate limit bound abuse.
+   */
+  ipRateLimit?: AnyElysia
+}
+
 /**
  * Google OAuth confidential client proxy — keeps the client secret server-side
- * so the Tauri frontend doesn't need to embed it.
+ * so the Tauri frontend doesn't need to embed it. When `ipRateLimit` is passed
+ * the routes are unauthenticated (standalone); otherwise a session is required.
  */
-export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
-  return new Elysia({ prefix: '/auth/google' })
-    .onError(safeErrorHandler)
-    .use(createAuthMacro(auth))
+export const createGoogleAuthRoutes = (
+  auth: Auth,
+  fetchFn: typeof fetch = globalThis.fetch,
+  options: OAuthProxyOptions = {},
+) => {
+  const requireAuth = !options.ipRateLimit
+  const authGuard = requireAuth ? { auth: true as const } : {}
+  const base = new Elysia({ prefix: '/auth/google' }).onError(safeErrorHandler).use(createAuthMacro(auth))
+  if (options.ipRateLimit) {
+    base.use(options.ipRateLimit)
+  }
+  return base
     .get(
       '/config',
       async () => {
@@ -29,7 +48,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
           configured: Boolean(settings.googleClientId && settings.googleClientSecret),
         }
       },
-      { auth: true },
+      { ...authGuard },
     )
 
     .post(
@@ -101,7 +120,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
         }
       },
       {
-        auth: true,
+        ...authGuard,
         body: t.Object({
           code: t.String(),
           code_verifier: t.String(),
@@ -172,7 +191,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
         }
       },
       {
-        auth: true,
+        ...authGuard,
         body: t.Object({
           refresh_token: t.String(),
         }),

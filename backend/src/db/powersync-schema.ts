@@ -258,6 +258,7 @@ export const modelsTable = powersyncSchema.table(
     vendor: text('vendor'),
     description: text('description'),
     apiKey: text('api_key'),
+    providerId: text('provider_id'),
     userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
     workspaceId: text('workspace_id')
       .notNull()
@@ -270,6 +271,39 @@ export const modelsTable = powersyncSchema.table(
     primaryKey({ columns: [table.id, table.workspaceId] }),
     index('idx_models_user_id').on(table.userId),
     index('idx_models_workspace_id').on(table.workspaceId),
+  ],
+)
+
+/**
+ * Provider connections — a connected account at an infra company (OpenRouter,
+ * Exa, Tinfoil, Anthropic, …) that advertises one or more capabilities
+ * (`models`, `search`). Synced metadata only; the credential lives in the
+ * local-only `providers_secrets` table (frontend, never synced). Scope-aware
+ * like models/agents.
+ */
+export const providersTable = powersyncSchema.table(
+  'providers',
+  {
+    id: text('id').notNull(),
+    type: text('type').notNull(),
+    label: text('label'),
+    baseUrl: text('base_url'),
+    enabledCapabilities: text('enabled_capabilities'),
+    enabled: integer('enabled').default(1),
+    deletedAt: timestamp('deleted_at'),
+    defaultHash: text('default_hash'),
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.id, table.workspaceId] }),
+    index('idx_providers_user_id').on(table.userId),
+    index('idx_providers_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -481,6 +515,7 @@ export const powersyncTablesByName = {
   model_profiles: modelProfilesTable,
   devices: devicesTable,
   agents: agentsTable,
+  providers: providersTable,
   workspaces: workspacesTable,
   workspace_memberships: workspaceMembershipsTable,
   workspace_pending_memberships: workspacePendingMembershipsTable,
@@ -514,6 +549,7 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
   agents: agentsTable.id,
+  providers: providersTable.id,
   workspaces: workspacesTable.id,
   workspace_memberships: workspaceMembershipsTable.id,
   workspace_pending_memberships: workspacePendingMembershipsTable.id,
@@ -538,6 +574,7 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   model_profiles: [modelProfilesTable.id, modelProfilesTable.workspaceId],
   devices: [devicesTable.id],
   agents: [agentsTable.id, agentsTable.workspaceId],
+  providers: [providersTable.id, providersTable.workspaceId],
   workspaces: [workspacesTable.id],
   workspace_memberships: [workspaceMembershipsTable.id],
   workspace_pending_memberships: [workspacePendingMembershipsTable.id],

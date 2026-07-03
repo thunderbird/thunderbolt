@@ -13,12 +13,15 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-type RateLimitTier = 'inference' | 'pro' | 'auth'
+type RateLimitTier = 'inference' | 'pro' | 'auth' | 'free'
 
 type RateLimitTierConfig = {
   max: number
   durationSecs: number
 }
+
+/** One day, in seconds — the free-tier proxy window. */
+const oneDaySecs = 24 * 60 * 60
 
 export type RateLimitSettings = {
   enabled: boolean
@@ -33,6 +36,8 @@ const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
   inference: { max: 60, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
+  // Free-tier proxy: unauthenticated hosted model + search, capped per device per day.
+  free: { max: 100, durationSecs: oneDaySecs },
 }
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
@@ -131,6 +136,34 @@ const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: 
     })
     .as('scoped')
 
+/**
+ * Per-device rate limit middleware for the unauthenticated free-tier proxy.
+ * Keys by the `X-Device-ID` header when present, falling back to the client IP.
+ * Fails CLOSED like the IP limiter: an unidentifiable client shares a single
+ * `ip:unknown` bucket rather than skipping the limit.
+ *
+ * Registered directly on the free-proxy app (no auth guard), so `onBeforeHandle`
+ * runs before the handler and can reject with 429.
+ */
+const createDeviceRateLimitMiddleware = (
+  limiter: RateLimiterDrizzle,
+  trustedProxy: IpRateLimitSettings['trustedProxy'],
+) =>
+  new Elysia()
+    .onBeforeHandle(async (ctx) => {
+      const { set } = ctx
+      const deviceId = ctx.request.headers.get('x-device-id')?.trim()
+      if (deviceId) {
+        return consumeOrReject(limiter, `device:${deviceId}`, set)
+      }
+      // `|| 'unknown'` (not `??`): a degenerate empty-string address folds into the
+      // same shared fail-closed bucket as a missing one, never a stray `ip:` key.
+      const socketIp = ctx.server?.requestIP(ctx.request)?.address || 'unknown'
+      const clientIp = extractClientIp(ctx.request.headers, socketIp, trustedProxy)
+      return consumeOrReject(limiter, `ip:${clientIp}`, set)
+    })
+    .as('scoped')
+
 /** Create rate limit middleware for inference routes (keyed by user). */
 export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) {
@@ -156,4 +189,13 @@ export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateL
   }
   const limiter = createLimiter(database, 'auth')
   return createIpRateLimitMiddleware(limiter, settings.trustedProxy)
+}
+
+/** Create per-device daily rate limit middleware for the free-tier proxy. */
+export const createFreeTierRateLimit = (database: typeof DbType, settings: IpRateLimitSettings) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  const limiter = createLimiter(database, 'free')
+  return createDeviceRateLimitMiddleware(limiter, settings.trustedProxy)
 }

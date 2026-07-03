@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/contexts'
 import { isAnonymousAuthEnabled, isSsoMode, isWaitlistBypassed } from '@/lib/auth-mode'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 
 export type AuthRequirement = 'authenticated' | 'unauthenticated'
 
@@ -34,6 +35,7 @@ export type AuthGateState =
  */
 export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   const authClient = useAuth()
+  const isStandalone = useTrustDomainRegistry((s) => s.activeTrustDomain?.kind === 'standalone')
   const { data: session, isPending } = authClient.useSession()
   const isAuthenticated = !!session?.user
 
@@ -71,6 +73,13 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
     }
     void run()
   }, [isPending, isAuthenticated, require, isAnonymousAllowed, authClient])
+
+  // Standalone mode has no Better Auth session — identity is the local user id
+  // (spec-standalone §2). Authenticated routes are always allowed; the
+  // login/waitlist (unauthenticated) routes redirect home.
+  if (isStandalone) {
+    return require === 'authenticated' ? { status: 'allowed' } : { status: 'redirect', target: 'home' }
+  }
 
   if (isPending) {
     return { status: 'loading' }

@@ -39,9 +39,18 @@ import { ScopePicker } from '@/components/scope-picker'
 import { ScopeBadge } from '@/components/scope-badge'
 import { useScopePickerEnabled } from '@/hooks/use-scope-picker-enabled'
 import { useActiveUserId } from '@/stores/trust-domain-registry'
-import { useActiveWorkspaceId } from '@/lib/active-workspace'
+import { useActiveWorkspaceId, useWorkspaceNavigate } from '@/lib/active-workspace'
 import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
-import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
+import {
+  createModel as createModelDAL,
+  deleteModel,
+  getAllModels,
+  resetModelToDefault,
+  updateModel,
+  useProviders,
+} from '@/dal'
+import { getProviderDefinition, type ProviderType } from '@shared/providers'
+import { groupModelsByProvider } from './group-models'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
@@ -387,6 +396,8 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
   const currentUserId = useActiveUserId()
   const scopePickerEnabled = useScopePickerEnabled()
   const getProxyFetch = useProxyFetchGetter()
+  const workspaceNavigate = useWorkspaceNavigate()
+  const providers = useProviders()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
   // Workspace `add_models` / `remove_models` — BE enforces; FE hides
@@ -410,6 +421,9 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
     query: toCompilableQuery(getAllModels(db, workspaceId ?? '')),
     enabled: !!workspaceId,
   })
+
+  const providersById = useMemo(() => new Map(providers.map((provider) => [provider.id, provider])), [providers])
+  const modelGroups = useMemo(() => groupModelsByProvider(models), [models])
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
@@ -562,6 +576,7 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
         contextWindow: null,
         tokenizer: null,
         deletedAt: null,
+        providerId: null,
         defaultHash: null, // User-created, not based on a default
         vendor: null,
         description: null,
@@ -915,6 +930,17 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
     }
   }
 
+  const groupLabel = (group: ReturnType<typeof groupModelsByProvider>[number]): string => {
+    if (group.providerId) {
+      const provider = providersById.get(group.providerId)
+      if (provider) {
+        return provider.label?.trim() || getProviderDefinition(provider.type as ProviderType).name
+      }
+      return 'Disconnected provider'
+    }
+    return getProviderDisplay(group.provider)
+  }
+
   const getModelInitial = (model: Model) => {
     return model.name[0].toUpperCase()
   }
@@ -1236,127 +1262,147 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
         </Dialog>
       </PageHeader>
 
-      <div className="grid gap-4">
-        {models.map((model) => {
-          const isEnabled = model.enabled === 1
-          const isSystemModel = model.isSystem === 1
-
-          return (
-            <Card key={model.id} className="border border-border">
-              <CardHeader className="py-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0 mt-1.5">
-                      {getModelInitial(model)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="text-lg font-medium flex flex-row items-center gap-2">
-                        {!!model.isConfidential && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Lock className="size-3.5" />
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom">
-                                <p>Encrypted</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        {needsApiKey(model) && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AlertTriangle className="size-3.5 text-amber-500" />
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom">
-                                <p>API key not configured</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        <ModificationIndicator
-                          hasModifications={isModelModified(model) && canAddModels}
-                          onReset={() => handleResetModel(model.id)}
-                          customMessage="You've customized this model."
-                          ariaLabel="Modified model"
-                          requireConfirmation={false}
-                        >
-                          {model.name}
-                        </ModificationIndicator>
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        {getProviderDisplay(model.provider)} - {model.model}
-                      </p>
-                      <ScopeBadge scope={model.scope} show={scopePickerEnabled} className="mt-1" />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div>
-                            <Switch
-                              checked={isEnabled}
-                              disabled={!canAddModels}
-                              onCheckedChange={(checked) =>
-                                toggleModelMutation.mutate({ id: model.id, enabled: checked })
-                              }
-                              className="cursor-pointer"
-                            />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p>{isEnabled ? 'Disable model' : 'Enable model'}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    <ButtonGroup size="icon">
-                      <ButtonGroupItem
-                        variant="outline"
-                        onClick={() => setEditingModel(model)}
-                        disabled={isSystemModel || !canAddModels}
-                      >
-                        <Pen className="h-3 w-3" />
-                      </ButtonGroupItem>
-                      {canRemoveModels && (
-                        <ButtonGroupItem
-                          variant="outline"
-                          onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
-                          disabled={isSystemModel}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </ButtonGroupItem>
-                      )}
-                    </ButtonGroup>
-                  </div>
-                </div>
-              </CardHeader>
-              {isEnabled && (
-                <CardContent className="pt-0 border-t">
-                  <div className="space-y-3 pt-4">
-                    {model.provider !== 'thunderbolt' && model.apiKey && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">API Key</span>
-                        <span className="text-sm font-mono">{'•'.repeat(8)}</span>
-                      </div>
-                    )}
-                    {model.url && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">URL</span>
-                        <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
-                      </div>
-                    )}
-                    {model.provider === 'thunderbolt' && (
-                      <div className="text-sm text-muted-foreground">Uses Thunderbolt cloud service</div>
-                    )}
-                  </div>
-                </CardContent>
+      <div className="flex flex-col gap-8">
+        {modelGroups.map((group) => (
+          <div key={group.key} className="grid gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[length:var(--font-size-sm)] font-medium text-muted-foreground">
+                {groupLabel(group)}
+              </h2>
+              {group.providerId && providersById.has(group.providerId) && canAddModels && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg"
+                  onClick={() => workspaceNavigate(`/settings/providers/${group.providerId}`)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add models
+                </Button>
               )}
-            </Card>
-          )
-        })}
+            </div>
+            {group.models.map((model) => {
+              const isEnabled = model.enabled === 1
+              const isSystemModel = model.isSystem === 1
+
+              return (
+                <Card key={model.id} className="border border-border">
+                  <CardHeader className="py-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
+                        <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0 mt-1.5">
+                          {getModelInitial(model)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <CardTitle className="text-lg font-medium flex flex-row items-center gap-2">
+                            {!!model.isConfidential && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Lock className="size-3.5" />
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p>Encrypted</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            {needsApiKey(model) && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <AlertTriangle className="size-3.5 text-amber-500" />
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p>API key not configured</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            <ModificationIndicator
+                              hasModifications={isModelModified(model) && canAddModels}
+                              onReset={() => handleResetModel(model.id)}
+                              customMessage="You've customized this model."
+                              ariaLabel="Modified model"
+                              requireConfirmation={false}
+                            >
+                              {model.name}
+                            </ModificationIndicator>
+                          </CardTitle>
+                          <p className="text-sm text-muted-foreground">
+                            {getProviderDisplay(model.provider)} - {model.model}
+                          </p>
+                          <ScopeBadge scope={model.scope} show={scopePickerEnabled} className="mt-1" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div>
+                                <Switch
+                                  checked={isEnabled}
+                                  disabled={!canAddModels}
+                                  onCheckedChange={(checked) =>
+                                    toggleModelMutation.mutate({ id: model.id, enabled: checked })
+                                  }
+                                  className="cursor-pointer"
+                                />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <p>{isEnabled ? 'Disable model' : 'Enable model'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <ButtonGroup size="icon">
+                          <ButtonGroupItem
+                            variant="outline"
+                            onClick={() => setEditingModel(model)}
+                            disabled={isSystemModel || !canAddModels}
+                          >
+                            <Pen className="h-3 w-3" />
+                          </ButtonGroupItem>
+                          {canRemoveModels && (
+                            <ButtonGroupItem
+                              variant="outline"
+                              onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
+                              disabled={isSystemModel}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </ButtonGroupItem>
+                          )}
+                        </ButtonGroup>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  {isEnabled && (
+                    <CardContent className="pt-0 border-t">
+                      <div className="space-y-3 pt-4">
+                        {model.provider !== 'thunderbolt' && model.apiKey && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">API Key</span>
+                            <span className="text-sm font-mono">{'•'.repeat(8)}</span>
+                          </div>
+                        )}
+                        {model.url && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">URL</span>
+                            <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
+                          </div>
+                        )}
+                        {model.provider === 'thunderbolt' && (
+                          <div className="text-sm text-muted-foreground">Uses Thunderbolt cloud service</div>
+                        )}
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
+        ))}
 
         {models.length === 0 && (
           <Card className="border-dashed border-2 border-muted-foreground/25">

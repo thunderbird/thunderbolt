@@ -70,6 +70,13 @@ export const handlers: Record<PowerSyncTableName, UploadHandler> = {
     softDeleteColumn: 'deleted_at',
   }),
 
+  providers: createWorkspaceScopedHandler({
+    tableName: 'providers',
+    userPrivate: false,
+    scopeAware: true,
+    softDeleteColumn: 'deleted_at',
+  }),
+
   // Workspace registry tables — bespoke handlers (commit 2).
   workspaces: workspacesHandler,
   workspace_memberships: workspaceMembershipsHandler,

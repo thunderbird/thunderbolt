@@ -217,6 +217,23 @@ export {
 export { builtInAgent } from '../defaults/agents'
 export { refreshSystemAgents, type RefreshSystemAgentsResult } from '../db/seeding/seed-agents'
 
+// Providers (BYO model/search accounts)
+export {
+  createProvider,
+  deleteProvider,
+  deleteProviderCredentials,
+  getAllProviders,
+  getProviderById,
+  getProviderCredentials,
+  setProviderCredentials,
+  updateProvider,
+  useProviders,
+  type CreateProviderInput,
+  type Provider,
+  type ProviderCredentials,
+  type UpdateProviderPatch,
+} from './providers'
+
 // Export (user-data backup)
 export { exportFormat, exportSchemaVersion, exportUserData, exportedTableNames, type UserDataExport } from './export'
 

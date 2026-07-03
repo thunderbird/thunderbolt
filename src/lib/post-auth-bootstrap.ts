@@ -72,7 +72,13 @@ const runBootstrapInternal = async (ctx: BootstrapContext): Promise<void> => {
   }
 
   if (ctx.kind === 'standalone') {
-    throw new Error('NOT_IMPLEMENTED: standalone post-auth bootstrap (post-v1)')
+    // Fully local: create the personal workspace for the device's localUserId and
+    // reconcile defaults. No sync connect, no pre-Workspaces migration (there is no
+    // legacy server DB to attach), no data migrations gated on server cohorts.
+    const workspace = await ensurePersonalWorkspace(db, ctx.userId)
+    await reconcileDefaults(db, workspace.id)
+    await runDataMigrations(db, workspace.id)
+    return
   }
 
   // Pre-Workspaces v1 data migration — step 3. ATTACH the legacy

@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { HttpClient } from '@/contexts'
+import { getDb } from '@/db/database'
+import { requireActiveWorkspaceId } from '@/lib/active-workspace'
 import { http } from '@/lib/http'
 import { deriveSiteName } from '@/lib/source-utils'
 import type { ToolConfig } from '@/types'
@@ -15,6 +17,7 @@ import {
   type SearchParams,
   type SearchResultData,
 } from './schemas'
+import { runWebSearch } from './web-search'
 
 // Re-export everything from api for backward compatibility
 export { fetchContent, fetchContentSchema, search, searchSchema }
@@ -27,7 +30,11 @@ const sourceRegistryCap = 200
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  * @param sourceCollector - Optional shared array to accumulate source metadata during tool execution
  */
-export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMetadata[]): ToolConfig[] => {
+export const createConfigs = (
+  httpClient: HttpClient,
+  sourceCollector?: SourceMetadata[],
+  getProxyFetch: () => typeof fetch = () => fetch,
+): ToolConfig[] => {
   let nextIndex = (sourceCollector?.length ?? 0) + 1
 
   return [
@@ -37,21 +44,27 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
       verb: 'searching for {query}',
       parameters: searchSchema,
       execute: async (params: SearchParams) => {
-        const results = await search(params, httpClient)
+        const db = getDb()
+        const workspaceId = await requireActiveWorkspaceId(db)
+        const results = await runWebSearch(
+          { db, workspaceId, httpClient, fetchFn: getProxyFetch() },
+          params.query,
+          params.max_results,
+        )
 
         return results.map((result) => {
-          const existingSource = sourceCollector?.find((s) => s.url === result.pageUrl)
+          const existingSource = sourceCollector?.find((s) => s.url === result.url)
           const sourceIndex = existingSource ? existingSource.index : nextIndex
 
           if (!existingSource && sourceCollector && sourceCollector.length < sourceRegistryCap) {
             sourceCollector.push({
               index: sourceIndex,
-              url: result.pageUrl,
+              url: result.url,
               title: result.title,
-              description: undefined,
-              image: result.previewImageUrl,
-              favicon: result.faviconUrl,
-              siteName: deriveSiteName(result.pageUrl),
+              description: result.snippet || undefined,
+              image: result.image,
+              favicon: result.favicon,
+              siteName: deriveSiteName(result.url),
               author: null,
               publishedDate: null,
               toolName: 'search',
@@ -60,7 +73,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           } else if (!existingSource) {
             if (sourceCollector && sourceCollector.length >= sourceRegistryCap) {
               console.warn(
-                `Source registry cap (${sourceRegistryCap}) reached — dropping source [${sourceIndex}]: ${result.pageUrl}`,
+                `Source registry cap (${sourceRegistryCap}) reached — dropping source [${sourceIndex}]: ${result.url}`,
               )
             }
             nextIndex++

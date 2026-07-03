@@ -5,6 +5,7 @@
 import type { WidgetCacheData } from '@/widgets'
 import type { UIMessage } from 'ai'
 import type { UIMessageMetadata } from '@/types'
+import type { ProviderCapability, ProviderType } from '../../shared/providers'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { workspacePermissionKeys, workspacePermissionRoles } from '../../shared/workspaces'
@@ -108,6 +109,7 @@ export const modelsTable = sqliteTable(
     vendor: text('vendor'),
     description: text('description'),
     apiKey: text('api_key'),
+    providerId: text('provider_id'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
     scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
@@ -119,6 +121,41 @@ export const modelsTable = sqliteTable(
     index('idx_models_workspace_id').on(table.workspaceId),
   ],
 )
+
+/**
+ * Provider connections (synced via PowerSync — metadata only, no secret). A
+ * connected account at an infra company (OpenRouter, Exa, Tinfoil, …) that
+ * advertises one or more capabilities. Credentials live in the local-only
+ * `providersSecretsTable`. Scope-aware like models/agents.
+ */
+export const providersTable = sqliteTable(
+  'providers',
+  {
+    id: text('id').primaryKey(),
+    type: text('type').$type<ProviderType>().notNull(),
+    label: text('label'),
+    baseUrl: text('base_url'),
+    enabledCapabilities: text('enabled_capabilities', { mode: 'json' }).$type<ProviderCapability[]>(),
+    enabled: integer('enabled').default(1),
+    deletedAt: text('deleted_at'),
+    defaultHash: text('default_hash'),
+    userId: text('user_id'),
+    workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
+  },
+  (table) => [
+    index('idx_providers_active')
+      .on(table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_providers_workspace_id').on(table.workspaceId),
+  ],
+)
+
+/** Local-only table for provider credentials. Never synced via PowerSync. */
+export const providersSecretsTable = sqliteTable('providers_secrets', {
+  providerId: text('id').primaryKey(), // = providers.id
+  credentials: text('credentials'), // JSON: { apiKey } | { access_token, refresh_token, expires_at }
+})
 
 /** Local-only table for integration credentials (Google, Microsoft OAuth tokens). Never synced via PowerSync. */
 export const integrationsSecretsTable = sqliteTable('integrations_secrets', {

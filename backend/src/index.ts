@@ -14,8 +14,14 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
-import { createUniversalProxyRoutes } from '@/proxy/routes'
+import {
+  createAuthIpRateLimit,
+  createFreeTierRateLimit,
+  createInferenceRateLimit,
+  createProRateLimit,
+} from '@/middleware/rate-limit'
+import { createFreeProxyRoutes, createUniversalProxyRoutes } from '@/proxy/routes'
+import { createDiscoveryRoutes } from '@/discovery/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
 import { createSearchRoutes } from '@/api/search'
@@ -115,8 +121,14 @@ export const createApp = async (deps?: AppDeps) => {
       .use(betterAuthPlugin)
       // Mount route groups
       .use(createMainRoutes(auth, fetchFn))
-      .use(createGoogleAuthRoutes(auth, fetchFn))
-      .use(createMicrosoftAuthRoutes(auth, fetchFn))
+      // Unauthenticated + IP-rate-limited so standalone (no-account) integrations
+      // can broker OAuth through the public server (spec-standalone §12). The
+      // client secret stays server-side; redirect_uri allowlist + rate limit
+      // bound abuse.
+      .use(createGoogleAuthRoutes(auth, fetchFn, { ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings) }))
+      .use(
+        createMicrosoftAuthRoutes(auth, fetchFn, { ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings) }),
+      )
       .use(createOidcConfigRoutes())
       .use(createSsoDesktopCallbackRoutes(settings))
       .use(createProToolsRoutes(auth, proRateLimit))
@@ -129,6 +141,19 @@ export const createApp = async (deps?: AppDeps) => {
           dnsLookup: deps?.dnsLookup,
         }),
       )
+      // Unauthenticated free-tier proxy slice (standalone onboarding §12): hosted
+      // model + keyless DuckDuckGo search, rate-limited per device/day, no account.
+      .use(
+        createFreeProxyRoutes({
+          openrouterKey: settings.freeTierOpenrouterKey,
+          fetchFn,
+          rateLimit: createFreeTierRateLimit(database, ipRateLimitSettings),
+          observability: proxyObservability,
+          dnsLookup: deps?.dnsLookup,
+        }),
+      )
+      // Email → server discovery (standalone onboarding §10). Public, IP rate-limited.
+      .use(createDiscoveryRoutes(settings, { ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings) }))
       .use(createTinfoilRoutes({ auth, fetchFn, rateLimit: proRateLimit }))
       .use(
         createUniversalProxyWsRoutes({

@@ -199,6 +199,23 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
   return Object.assign(proxyFetch, { preconnect: () => Promise.resolve(false) })
 }
 
+/**
+ * Build a fetch that routes through the PUBLIC server's unauthenticated
+ * `/v1/proxy/free` slice (spec-standalone §8). Same request/response framing as
+ * {@link createProxyFetch} (target-URL header + passthrough prefixing) but with
+ * NO Authorization — the backend injects the hosted key server-side and applies
+ * a per-device daily rate limit. Used for free-tier model inference.
+ */
+export const createFreeProxyFetch = (publicServerUrl: string, fetchImpl: typeof fetch = globalThis.fetch): FetchFn => {
+  const proxyUrl = `${publicServerUrl.replace(/\/$/, '')}/v1/proxy/free`
+  const freeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const proxyRequest = buildHostedRequest(proxyUrl, input as RequestInfo | URL, init)
+    const response = await fetchImpl(proxyRequest)
+    return unwrapHostedResponse(response)
+  }
+  return Object.assign(freeFetch, { preconnect: () => Promise.resolve(false) })
+}
+
 /** Build a WebSocket constructor that hides Hosted/Standalone mode from callers.
  *
  *  Hosted: connects to `${cloudWsUrl}/proxy/ws` with the bearer token and

@@ -155,6 +155,33 @@ export const defaultSettingIntegrationsDoNotAskAgain: Setting = {
 }
 
 /**
+ * Active web-search provider (a `providersTable` row id whose
+ * `enabledCapabilities` includes `'search'`). Empty means no user provider is
+ * set, so search falls back to the backend Exa system default. See spec.md §7.
+ */
+export const defaultSettingSearchProviderId: Setting = {
+  key: 'search_provider_id',
+  value: '',
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+/**
+ * Set when the user skipped a provider/search onboarding step without connecting
+ * one. Surfaces a persistent "connect a provider" nag (banner/empty-state)
+ * pointing at Settings › Providers. Cleared once a provider is connected. See
+ * spec-standalone-onboarding.md §7–§8.
+ */
+export const defaultSettingProviderSetupSkipped: Setting = {
+  key: 'provider_setup_skipped',
+  value: 'false',
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+/**
  * Array of all default settings for iteration
  */
 export const defaultSettings: ReadonlyArray<Setting> = [
@@ -174,4 +201,6 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingUserHasCompletedOnboarding,
   defaultSettingContentViewWidth,
   defaultSettingIntegrationsDoNotAskAgain,
+  defaultSettingSearchProviderId,
+  defaultSettingProviderSetupSkipped,
 ] as const

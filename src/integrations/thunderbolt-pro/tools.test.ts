@@ -2,13 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setupTestDatabase, teardownTestDatabase, testUserId } from '@/dal/test-utils'
 import { createClient, type HttpClient } from '@/lib/http'
+import type { SearchResult } from '@/lib/providers/search'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import type { SourceMetadata } from '@/types/source'
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import * as api from './api'
-import type { SearchResultData } from './schemas'
 import type { FetchContentParams, SearchParams } from './tools'
 import { createConfigs, fetchContent, search } from './tools'
+import * as webSearch from './web-search'
+
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
 
 const createMockHttpClient = (response: unknown): HttpClient => {
   const mockFetch = async (): Promise<Response> => {
@@ -147,23 +158,28 @@ describe('createConfigs source collector', () => {
   let searchSpy: ReturnType<typeof spyOn>
   let fetchContentSpy: ReturnType<typeof spyOn>
 
-  const mockSearchResults: SearchResultData[] = [
+  const mockSearchResults: SearchResult[] = [
     {
       title: 'Article A',
-      pageUrl: 'https://a.com/article',
-      faviconUrl: 'https://a.com/favicon.ico',
-      previewImageUrl: 'https://a.com/image.jpg',
+      url: 'https://a.com/article',
+      snippet: 'Snippet A',
+      favicon: 'https://a.com/favicon.ico',
+      image: 'https://a.com/image.jpg',
     },
     {
       title: 'Article B',
-      pageUrl: 'https://b.com/article',
-      faviconUrl: null,
-      previewImageUrl: null,
+      url: 'https://b.com/article',
+      snippet: 'Snippet B',
+      favicon: null,
+      image: null,
     },
   ]
 
   beforeEach(() => {
-    searchSpy = spyOn(api, 'search')
+    // The `search` tool resolves the active workspace via the trust-domain registry;
+    // the global test beforeEach seeds a server domain with no user, so override it.
+    useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'standalone' }, localUserId: testUserId })
+    searchSpy = spyOn(webSearch, 'runWebSearch')
     fetchContentSpy = spyOn(api, 'fetchContent')
   })
 
@@ -216,11 +232,12 @@ describe('createConfigs source collector', () => {
   })
 
   it('caps source registry at 200 entries', async () => {
-    const bulkResults: SearchResultData[] = Array.from({ length: 10 }, (_, i) => ({
+    const bulkResults: SearchResult[] = Array.from({ length: 10 }, (_, i) => ({
       title: `Site ${i}`,
-      pageUrl: `https://site-${i}.com`,
-      faviconUrl: null,
-      previewImageUrl: null,
+      url: `https://site-${i}.com`,
+      snippet: '',
+      favicon: null,
+      image: null,
     }))
     searchSpy.mockResolvedValue(bulkResults)
 

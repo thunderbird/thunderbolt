@@ -70,6 +70,7 @@ sync_rules:
           - SELECT * FROM powersync.modes WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
           - SELECT * FROM powersync.model_profiles WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
           - SELECT * FROM powersync.agents WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+          - SELECT * FROM powersync.providers WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
 
       # User-private workspace resources — same 8 resource tables, but the row
       # is only visible to its author. Bucket fans out one entry per
@@ -88,6 +89,7 @@ sync_rules:
           - SELECT * FROM powersync.modes WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
           - SELECT * FROM powersync.model_profiles WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
           - SELECT * FROM powersync.agents WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
+          - SELECT * FROM powersync.providers WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
 
 client_auth:
   supabase: false

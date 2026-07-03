@@ -8,6 +8,7 @@ import Loading from '@/loading'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { Outlet } from 'react-router'
+import { useActiveUserId, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 
 /**
  * Renders main-app routes only once the user's personal workspace exists in
@@ -23,8 +24,13 @@ import { Outlet } from 'react-router'
 export const WorkspaceGate = () => {
   const db = useDatabase()
   const authClient = useAuth()
+  const isStandalone = useTrustDomainRegistry((s) => s.activeTrustDomain?.kind === 'standalone')
   const { data: session } = authClient.useSession()
-  const userId = session?.user?.id
+  const standaloneUserId = useActiveUserId()
+  // Standalone has no Better Auth session — identity is the local user id, for
+  // whom `runPostAuthBootstrap` created the personal workspace. Server mode keeps
+  // using the session (authoritative, avoids a mirror-population race).
+  const userId = isStandalone ? standaloneUserId : session?.user?.id
 
   // Live query: the existence of the personal workspace row IS the bootstrap
   // signal. PowerSync re-runs this when the row appears (sync download or

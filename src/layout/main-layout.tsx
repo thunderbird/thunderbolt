@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { ProviderSetupBanner } from '@/components/provider-setup-banner'
 import { DownloadAppBannerDesktop } from '@/components/download-app-banner-desktop'
 import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
 import { Header } from '@/components/ui/header'
@@ -115,6 +116,7 @@ export default function Page() {
                 paddingBottom: 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
               }}
             >
+              <ProviderSetupBanner />
               <Suspense fallback={<PageFallback />}>
                 <Outlet />
               </Suspense>

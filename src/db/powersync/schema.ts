@@ -23,6 +23,7 @@ export const syncedTables = {
   model_profiles: tables.modelProfilesTable,
   devices: tables.devicesTable,
   agents: tables.agentsTable,
+  providers: tables.providersTable,
   workspaces: tables.workspacesTable,
   workspace_memberships: tables.workspaceMembershipsTable,
   workspace_pending_memberships: tables.workspacePendingMembershipsTable,
@@ -49,6 +50,10 @@ export const localOnlyTables = {
   } satisfies DrizzleTableWithPowerSyncOptions,
   agents_secrets: {
     tableDefinition: tables.agentsSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+  providers_secrets: {
+    tableDefinition: tables.providersSecretsTable,
     options: { localOnly: true },
   } satisfies DrizzleTableWithPowerSyncOptions,
 }

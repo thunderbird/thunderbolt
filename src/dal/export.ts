@@ -17,6 +17,9 @@ type AllTableName = keyof typeof syncedTables | keyof typeof localOnlyTables
  * - `devices`: per-device trust state, meaningless on the importing device.
  * - `integrations_secrets`: third-party OAuth tokens (Google / Microsoft).
  *   The importing user re-authenticates instead.
+ * - `providers_secrets`: BYO provider credentials (device-local, never synced).
+ *   The importing device re-enters the key (spec.md §2.2), same posture as
+ *   `integrations_secrets`. The `providers` metadata row is still exported.
  * - `agents_system`: backend-hydrated catalog, not user content.
  *
  * Typed against {@link AllTableName} so a future schema rename/removal trips
@@ -25,6 +28,7 @@ type AllTableName = keyof typeof syncedTables | keyof typeof localOnlyTables
 const excludedFromExport = [
   'devices',
   'integrations_secrets',
+  'providers_secrets',
   'agents_system',
 ] as const satisfies readonly AllTableName[]
 type ExcludedTableName = (typeof excludedFromExport)[number]

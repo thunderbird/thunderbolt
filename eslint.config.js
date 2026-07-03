@@ -15,6 +15,9 @@ import globals from 'globals'
 import { sharedParserOptions, sharedRules } from './shared/eslint/base.js'
 
 export default [
+  // Local-only adversarial risk-repro harnesses (gitignored, never committed) —
+  // keep them out of `eslint src` so their throwaway files can't fail `bun run check`.
+  { ignores: ['**/.risk-repro/**'] },
   js.configs.recommended,
   prettier,
   {

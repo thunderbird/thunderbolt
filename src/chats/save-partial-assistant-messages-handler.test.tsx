@@ -501,6 +501,87 @@ describe('SavePartialAssistantMessagesHandler', () => {
     expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(2)
   })
 
+  it('should persist the FINAL content when the last delta and the error land in one commit', async () => {
+    // Coalesced terminal: the final content delta and the `error` status flip
+    // arrive in the SAME React commit. A blind `flush()` would replay the
+    // *previous* delta's args (the last snapshot handed to the throttle while
+    // streaming) and permanently drop this final chunk. The handler must instead
+    // persist the freshest live message directly.
+    const mockSaveStreamingMessage = mock((_params: StreamingSaveParams) => Promise.resolve())
+    const mockChatInstance = createMockChatInstance(
+      [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'delta-1' }] },
+      ],
+      'streaming',
+    )
+    const mockUseChat = createMockUseChat(mockChatInstance)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
+    const { rerender } = render(
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+        Test
+      </SavePartialAssistantMessagesHandler>,
+      { wrapper: createQueryTestWrapper() },
+    )
+
+    // Leading save with the first delta.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    // A second delta within the throttle window schedules a trailing save whose
+    // pending args hold `delta-2`.
+    await act(async () => {
+      mockChatInstance.messages = [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'delta-2' }] },
+      ]
+      rerender(
+        <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+          Test
+        </SavePartialAssistantMessagesHandler>,
+      )
+    })
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    // Coalesced commit: the final delta AND the error status flip land together.
+    await act(async () => {
+      mockChatInstance.messages = [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+        { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'delta-final' }] },
+      ]
+      setStatus(mockChatInstance, 'error')
+      rerender(
+        <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+          Test
+        </SavePartialAssistantMessagesHandler>,
+      )
+    })
+
+    // The freshest snapshot (`delta-final`) is persisted — NOT the stale
+    // `delta-2` a blind flush would have replayed.
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(2)
+    expect(mockSaveStreamingMessage.mock.calls[1]?.[0]).toEqual({
+      threadId: 'thread-1',
+      message: { id: 'msg-1', role: 'assistant', parts: [{ type: 'text', text: 'delta-final' }] },
+      parentId: 'user-1',
+    })
+
+    // The now-redundant pending trailing must not fire afterwards.
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(2)
+  })
+
   it('should work with dependency injection for useChat', async () => {
     const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const messages: ThunderboltUIMessage[] = [

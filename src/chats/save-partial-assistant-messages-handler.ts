@@ -52,35 +52,34 @@ export const SavePartialAssistantMessagesHandler = ({
   }, streamingSaveThrottleMs)
 
   useEffect(() => {
+    // The parent is the message immediately before the in-flight assistant turn
+    // (its user prompt). Reading it from the in-memory list avoids a per-save
+    // `getLastMessage` query and can never self-reference the row being written.
+    const latestMessage = messages[messages.length - 1]
+    const parentId = messages[messages.length - 2]?.id ?? null
+    const isAssistantLatest = latestMessage?.role === 'assistant'
+
     if (!isStreaming) {
       // Stream ended (or never started). On a success/abort terminal `onFinish`
       // performs the authoritative final save (see chat-instance.ts), so drop any
       // pending trailing partial to stop it firing *after* onFinish and clobbering
       // it with a stale, mid-stream snapshot. On an *error* terminal onFinish does
-      // NOT persist, so the pending trailing partial is the only record of what
-      // streamed before the error — flush it *now* so the save is deterministic
-      // rather than left to the ≤500ms trailing timer (which a fast remediation
-      // regenerate could pre-empt by leaving 'error' before it fires, dropping the
-      // sole record). Flushing is a no-op when nothing is pending.
-      if (status === 'error') {
-        throttledSave.flush()
-      } else {
-        throttledSave.cancel()
+      // NOT persist, so this partial is the only record of what streamed before
+      // the error — persist the *freshest* live message directly (a blind
+      // `flush()` would replay the previous delta's args and drop the final chunk
+      // when the last delta and the `error` flip coalesce into one commit), then
+      // drop the now-redundant pending trailing.
+      if (status === 'error' && isAssistantLatest) {
+        saveStreamingMessage({ threadId: chatThreadId, message: latestMessage, parentId })
       }
+      throttledSave.cancel()
       return
     }
 
-    const latestMessage = messages[messages.length - 1]
-
-    if (latestMessage?.role === 'assistant') {
-      // The parent is the message immediately before the in-flight assistant
-      // turn (its user prompt). Reading it from the in-memory list avoids a
-      // per-save `getLastMessage` query and can never self-reference the row
-      // being written.
-      const parentId = messages[messages.length - 2]?.id ?? null
+    if (isAssistantLatest) {
       throttledSave(latestMessage, parentId)
     }
-  }, [messages, isStreaming, status, throttledSave])
+  }, [messages, isStreaming, status, throttledSave, saveStreamingMessage, chatThreadId])
 
   return children
 }

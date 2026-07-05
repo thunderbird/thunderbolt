@@ -7,6 +7,7 @@ import {
   type GroupedUIPart,
   groupMessageParts,
   type ReasoningGroupUIPart,
+  type ToolOrDynamicToolUIPart,
 } from '@/lib/assistant-message'
 import { extractTextFromParts } from '@/lib/message-utils'
 import { splitPartType } from '@/lib/utils'
@@ -14,6 +15,7 @@ import type { HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } f
 import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
+import { ArtifactMessagePart } from './artifact-message-part'
 import { CopyMessageButton } from './copy-message-button'
 import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
@@ -90,6 +92,10 @@ export const mountMessageParts = (
             haystackReferences={haystackReferences}
           />,
         )
+        break
+      case 'tool':
+        // groupMessageParts only lifts render_html tool parts out of the group.
+        partElements.push(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />)
         break
     }
   })

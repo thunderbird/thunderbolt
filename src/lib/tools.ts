@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { renderHtmlTool } from '@/artifacts/render-html-tool'
 import type { HttpClient } from '@/contexts'
 import { getIntegrationStatus, getSettings } from '@/dal'
 import { getDb } from '@/db/database'
@@ -45,7 +46,8 @@ export const getAvailableTools = async (
     integrationStatus,
   } = context ?? (await loadToolAvailabilityContext())
 
-  const baseTools: ToolConfig[] = experimentalFeatureTasks ? [...Object.values(tasksTools)] : []
+  // render_html is a core capability, always available regardless of integrations.
+  const baseTools: ToolConfig[] = [renderHtmlTool, ...(experimentalFeatureTasks ? Object.values(tasksTools) : [])]
 
   const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
 

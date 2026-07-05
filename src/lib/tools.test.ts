@@ -159,9 +159,9 @@ const context = (overrides: Partial<ToolAvailabilityContext> = {}): ToolAvailabi
 // read (the duplicate the DI removed) would surface here. This locks in the
 // dedup from the hot send path (`aiFetchStreamingResponse`).
 describe('getAvailableTools (injected context)', () => {
-  it('returns no tools when every gate is disabled', async () => {
+  it('returns only the always-available render_html tool when every gate is disabled', async () => {
     const tools = await getAvailableTools(stubHttpClient, undefined, context())
-    expect(tools).toEqual([])
+    expect(tools.map((tool) => tool.name)).toEqual(['render_html'])
   })
 
   it('includes task tools when experimentalFeatureTasks is enabled', async () => {

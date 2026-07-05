@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { renderHtmlToolName } from '@/artifacts/constants'
 import {
   type DynamicToolUIPart,
+  getToolName,
   isToolOrDynamicToolUIPart,
   type ReasoningUIPart,
   type TextUIPart,
@@ -44,24 +46,35 @@ export type ReasoningGroupUIPart = {
 export type GroupedUIPart = GroupableUIPart | ReasoningGroupUIPart
 
 /**
+ * A render_html part that should render as its own artifact rather than a generic
+ * tool card: a live streaming preview once it has HTML to show, or the finished,
+ * verified result. A not-yet-started or failed call stays an ordinary tool call.
+ */
+const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolean => {
+  if (part.state === 'output-available') {
+    const output = part.output as { ok?: boolean } | undefined
+    return output?.ok === true
+  }
+  if (part.state === 'input-streaming' || part.state === 'input-available') {
+    const input = part.input as { html?: string } | undefined
+    return typeof input?.html === 'string' && input.html.length > 0
+  }
+  return false
+}
+
+/**
  * Groups consecutive reasoning/tool parts into `reasoning_group` nodes for batch rendering.
  *
- * **Context**: Called by `AssistantMessage` component after filtering to organize tool calls for display.
- * Reasoning and Tool calls (like `read_file`, `grep`, etc.) are grouped together to show as a compact
- * panel rather than scattered individually throughout the message.
+ * **Context**: Called by `AssistantMessage` after filtering, to organize tool calls for display.
+ * Reasoning and tool calls (like `read_file`, `grep`, etc.) are grouped into a compact panel rather
+ * than scattered through the message. A streaming or verified `render_html` part is lifted out to
+ * render as its own artifact instead of joining the group.
  *
  * **Grouping logic**:
- * - Consecutive reasoning/tool parts → grouped into single `ReasoningGroupUIPart`
+ * - Consecutive reasoning/tool parts → grouped into a single `ReasoningGroupUIPart`
  * - Text parts → kept as-is and break any active group
  *
- * **Example transformation**:
- * ```
- * [tool-read_file, reasoning, tool-grep, text, tool-search] →
- * [ReasoningGroupUIPart([...]), text, ReasoningGroupUIPart([...])]
- * ```
- *
  * @param parts - Filtered message parts (output from `filterMessageParts`)
- * @param messageId - Message id used to compute stable ids for grouped items
  * @returns Parts with consecutive reasoning/tool parts grouped into `ReasoningGroupUIPart` nodes
  */
 export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => {
@@ -90,6 +103,15 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
   // Both typed `tool-<name>` parts and MCP `dynamic-tool` parts group as tool items.
   parts.forEach((part) => {
     if (isToolOrDynamicToolUIPart(part)) {
+      // An artifact renders on its own (live preview while streaming, then the
+      // verified result). Before it has HTML — or if it failed — it stays in the
+      // group and shows as an ordinary tool call.
+      if (getToolName(part) === renderHtmlToolName && artifactRendersStandalone(part)) {
+        flushGroup()
+        grouped.push(part)
+        return
+      }
+
       currentItems.push({ type: 'tool', content: part, id: part.toolCallId })
       return
     }

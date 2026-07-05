@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useArtifactTarget } from '@/artifacts/artifact-target-store'
-import type { ArtifactTarget, RenderHtmlInput, RenderHtmlOutput } from '@/artifacts/render-html-tool'
+import type { RenderHtmlInput, RenderHtmlOutput } from '@/artifacts/render-html-tool'
 import { Button } from '@/components/ui/button'
-import { useShowArtifact } from '@/content-view/context'
+import { useContentView } from '@/content-view/context'
 import { useThrottledValue } from '@/hooks/use-throttled-value'
 import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
-import { AppWindow, Minimize2 } from 'lucide-react'
+import { PanelRight } from 'lucide-react'
 import { InlineArtifactCard } from './inline-artifact-card'
 
 /** How often the live streaming preview refreshes, so rapid token updates don't thrash the iframe. */
@@ -20,11 +19,11 @@ type ArtifactMessagePartProps = {
 
 /**
  * Renders a `render_html` tool call as a first-class artifact in the transcript.
- * While its HTML streams in, it shows a live inline preview (scripts off) so you
- * can watch it come together; once verified it becomes the real interactive
- * artifact — inline, or a compact chip if moved to the side panel. A failed or
- * not-yet-started call renders nothing here (it stays an ordinary tool call in
- * the reasoning group).
+ * From the moment the call starts it shows an inline card that streams into place
+ * (scripts off) and then becomes the interactive artifact once verified. It lives
+ * in exactly one place at a time: inline, OR the side panel — while it's open in
+ * the panel the transcript shows a slim placeholder instead. A finished-but-failed
+ * call renders nothing here (it stays an ordinary tool call in the group).
  */
 export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
   const artifactId = part.toolCallId
@@ -32,73 +31,44 @@ export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
   const title = input.title?.trim() || 'Artifact'
 
   const streaming = part.state === 'input-streaming' || part.state === 'input-available'
-  const output = part.state === 'output-available' ? (part.output as RenderHtmlOutput | undefined) : undefined
-  const verified = output?.ok === true
+  const verified = part.state === 'output-available' && (part.output as RenderHtmlOutput | undefined)?.ok === true
 
   // Throttle the streaming HTML into the preview iframe; render the exact HTML once verified.
   const throttledHtml = useThrottledValue(input.html ?? '', artifactPreviewThrottleMs)
   const html = streaming ? throttledHtml : (input.html ?? '')
 
-  const fallbackTarget: ArtifactTarget = verified && output ? output.target : 'inline'
-  const { target, setTarget } = useArtifactTarget(artifactId, fallbackTarget)
-  const showArtifact = useShowArtifact()
+  const { state, showArtifact, close } = useContentView()
+  const shownInPanel = state.type === 'artifact' && state.data.artifactId === artifactId
 
-  // Nothing to render until there's HTML, and nothing here for a finished-but-failed call.
-  if (!html || (part.state === 'output-available' && !verified) || part.state === 'output-error') {
+  // Live inline card from the moment the call starts (even before any HTML arrives).
+  if (streaming) {
+    return <InlineArtifactCard html={html} title={title} streaming />
+  }
+  // Finished but not verified — it stays an ordinary tool call in the group.
+  if (!verified) {
     return null
   }
-
-  const openInPanel = showArtifact
-    ? () => {
-        setTarget('panel')
-        showArtifact({ html, title, artifactId })
-      }
-    : undefined
-
-  if (verified && target === 'panel') {
-    return <PanelArtifactChip title={title} onOpen={openInPanel} onShowInline={() => setTarget('inline')} />
+  // Verified: exactly one of inline or the side panel — never both.
+  if (shownInPanel) {
+    return <ArtifactPanelBar title={title} onShowInline={close} />
   }
-
   return (
-    <InlineArtifactCard
-      html={html}
-      title={title}
-      streaming={streaming}
-      onOpenInPanel={verified ? openInPanel : undefined}
-    />
+    <InlineArtifactCard html={html} title={title} onOpenInPanel={() => showArtifact({ html, title, artifactId })} />
   )
 }
 
-type PanelArtifactChipProps = {
+type ArtifactPanelBarProps = {
   title: string
-  onOpen?: () => void
   onShowInline: () => void
 }
 
-const PanelArtifactChip = ({ title, onOpen, onShowInline }: PanelArtifactChipProps) => (
-  <div className="mx-4 my-2 flex items-center gap-2 rounded-xl border border-border bg-card pr-2">
-    <button
-      type="button"
-      onClick={onOpen}
-      disabled={!onOpen}
-      className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
-    >
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-        <AppWindow className="size-4 text-muted-foreground" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{title}</div>
-        <div className="text-xs text-muted-foreground">Open artifact in side panel</div>
-      </div>
-    </button>
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-8 w-8 shrink-0 rounded-full"
-      title="Show inline"
-      onClick={onShowInline}
-    >
-      <Minimize2 className="size-4" />
+/** Slim placeholder shown in the transcript while the artifact is open in the side panel. */
+const ArtifactPanelBar = ({ title, onShowInline }: ArtifactPanelBarProps) => (
+  <div className="my-2 flex items-center gap-2 rounded-xl border border-dashed border-border bg-card/50 px-3 py-2">
+    <PanelRight className="size-4 shrink-0 text-muted-foreground" />
+    <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{title} — shown in side panel</span>
+    <Button variant="ghost" size="sm" className="h-7 shrink-0" onClick={onShowInline}>
+      Show inline
     </Button>
   </div>
 )

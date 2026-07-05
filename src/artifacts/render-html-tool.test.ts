@@ -5,15 +5,14 @@
 import { describe, expect, it } from 'bun:test'
 import { type RenderHtmlOutput, renderHtmlTool } from './render-html-tool'
 
-const exec = (input: { html: string; title: string; target?: 'inline' | 'panel' }) =>
-  renderHtmlTool.execute(input) as Promise<RenderHtmlOutput>
+const exec = (input: { html: string; title: string }) => renderHtmlTool.execute(input) as Promise<RenderHtmlOutput>
 
 describe('renderHtmlTool', () => {
-  it('exposes a stable name and a schema that validates target', () => {
+  it('exposes a stable name and a schema requiring html + title', () => {
     expect(renderHtmlTool.name).toBe('render_html')
-    expect(() => renderHtmlTool.parameters.parse({ html: '<p>x</p>', title: 'X', target: 'inline' })).not.toThrow()
-    expect(() => renderHtmlTool.parameters.parse({ html: '<p>x</p>', title: 'X', target: 'nope' })).toThrow()
+    expect(() => renderHtmlTool.parameters.parse({ html: '<p>x</p>', title: 'X' })).not.toThrow()
     expect(() => renderHtmlTool.parameters.parse({ title: 'no html' })).toThrow()
+    expect(() => renderHtmlTool.parameters.parse({ html: '<p>x</p>' })).toThrow()
   })
 
   // The success path renders in a real iframe (covered by verify-html tests + the

@@ -15,8 +15,24 @@ export type StaticIssue = {
 
 type InlineScript = { code: string; module: boolean }
 
-/** `<script>` types the browser runs as JS. Everything else (importmap, JSON/text data islands, templates) is not JS and must not be parsed as such. */
-const jsScriptTypes = new Set(['', 'module', 'text/javascript', 'application/javascript'])
+/**
+ * `<script>` types the browser runs as JS (the WHATWG JavaScript MIME-type set, plus `''`/`module`).
+ * Everything else (importmap, JSON/text data islands, templates) is not JS and must not be parsed as such.
+ */
+const jsScriptTypes = new Set([
+  '',
+  'module',
+  'text/javascript',
+  'application/javascript',
+  'text/ecmascript',
+  'application/ecmascript',
+  'text/x-javascript',
+  'application/x-javascript',
+  'text/x-ecmascript',
+  'application/x-ecmascript',
+  'text/jscript',
+  'text/livescript',
+])
 
 /**
  * Extract inline JS `<script>` (no `src`) and `<style>` blocks with the platform's

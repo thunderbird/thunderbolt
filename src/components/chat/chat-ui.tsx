@@ -46,12 +46,7 @@ export default function ChatUI() {
 
   return (
     <div className="h-full w-full" style={{ paddingBottom: 'var(--kb, 0px)' }}>
-      <div
-        className={cn(
-          'flex flex-col h-full overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]',
-          isMobile && 'pb-0',
-        )}
-      >
+      <div className={cn('flex flex-col h-full overflow-hidden w-full', isMobile && 'pb-0')}>
         <AnimatePresence mode="wait">
           {hasMessages ? (
             <div key="messages" className="relative flex-1 min-h-0">
@@ -62,10 +57,13 @@ export default function ChatUI() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="h-full px-3 pt-4 pb-0 md:px-4 space-y-4 max-w-dvw overflow-y-auto hide-scrollbar"
+                className="h-full overflow-y-auto hide-scrollbar"
               >
-                <ChatMessages />
-                <div ref={scrollTargetRef} className="shrink-0 !mt-0 h-2 md:h-3" />
+                {/* Scroll captures the full width; the content stays centered. */}
+                <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-4 pb-0 md:px-4">
+                  <ChatMessages />
+                  <div ref={scrollTargetRef} className="shrink-0 !mt-0 h-2 md:h-3" />
+                </div>
               </m.div>
               <ScrollToBottomButton
                 isVisible={!isAtBottom}

@@ -55,6 +55,13 @@ describe('staticCheckHtml', () => {
     expect(issues[0]?.source).toBe('js')
   })
 
+  it('checks scripts with legacy-but-executable JS MIME types (e.g. text/ecmascript)', async () => {
+    const html = page('', '<script type="text/ecmascript">const x = ;</script>')
+    const issues = await staticCheckHtml(html)
+    expect(issues).toHaveLength(1)
+    expect(issues[0]?.source).toBe('js')
+  })
+
   it('aggregates issues across multiple blocks', async () => {
     const html = page('<style>h1 color: red }</style>', '<script>function(</script>')
     const issues = await staticCheckHtml(html)

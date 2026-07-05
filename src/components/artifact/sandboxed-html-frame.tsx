@@ -4,7 +4,13 @@
 
 import { formatHarnessError, parseHarnessMessage, wrapArtifactHtml } from '@/artifacts/harness'
 import { cn } from '@/lib/utils'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+
+/** Height used before the page reports its own, and the floor/ceiling for the reported height. */
+const defaultAutoHeightPx = 400
+const minAutoHeightPx = 60
+// Ceiling so a page (which knows its own nonce) can't report a huge height and blow out the transcript.
+const maxAutoHeightPx = 20000
 
 export type SandboxedHtmlFrameProps = {
   /** Complete, self-contained HTML document to render. */
@@ -18,6 +24,12 @@ export type SandboxedHtmlFrameProps = {
    * spurious errors) — only HTML/CSS render. No harness is injected in that mode.
    */
   allowScripts?: boolean
+  /**
+   * Size the iframe to its content's height (reported by the harness) instead of
+   * filling its container — so a tall artifact grows the card rather than scrolling
+   * inside a fixed frame (which would trap the page scroll). Needs `allowScripts`.
+   */
+  autoHeight?: boolean
   /** Fired once the page has loaded and run its initial synchronous script. */
   onReady?: () => void
   /** Fired if the page reports a runtime error (including after load, during use). */
@@ -37,6 +49,7 @@ export const SandboxedHtmlFrame = ({
   title,
   className,
   allowScripts = true,
+  autoHeight = false,
   onReady,
   onError,
 }: SandboxedHtmlFrameProps) => {
@@ -45,6 +58,7 @@ export const SandboxedHtmlFrame = ({
   const nonce = useMemo(() => crypto.randomUUID(), [])
   // With scripts on, wrap with the harness; with scripts off (preview) render raw HTML/CSS.
   const srcDoc = useMemo(() => (allowScripts ? wrapArtifactHtml(html, nonce) : html), [html, nonce, allowScripts])
+  const [contentHeight, setContentHeight] = useState<number | null>(null)
 
   // Keep the latest callbacks in refs so the message subscription is set up once
   // per document, not re-subscribed on every parent render.
@@ -65,6 +79,11 @@ export const SandboxedHtmlFrame = ({
       if (data.type === 'artifact-error') {
         onErrorRef.current?.(formatHarnessError(data))
       }
+      if (data.type === 'artifact-height') {
+        const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
+        // Ignore sub-pixel jitter so a self-measuring page can't oscillate.
+        setContentHeight((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))
+      }
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
@@ -76,7 +95,8 @@ export const SandboxedHtmlFrame = ({
       title={title}
       sandbox={allowScripts ? 'allow-scripts' : ''}
       srcDoc={srcDoc}
-      className={cn('h-full w-full border-0 bg-white', className)}
+      style={autoHeight ? { height: contentHeight ?? defaultAutoHeightPx } : undefined}
+      className={cn('w-full border-0 bg-white', autoHeight ? '' : 'h-full', className)}
     />
   )
 }

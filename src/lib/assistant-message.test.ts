@@ -154,12 +154,10 @@ describe('assistant-message utilities', () => {
       expect(groupMessageParts([executing])).toEqual([executing])
     })
 
-    it('keeps a not-yet-started artifact (no HTML) in the group as an ordinary tool call', () => {
+    it('lifts out a not-yet-started artifact so the card can show immediately', () => {
       const pending = createPendingArtifactPart('a1')
 
-      expect(groupMessageParts([pending])).toEqual([
-        { type: 'reasoning_group', items: [{ type: 'tool', content: pending, id: pending.toolCallId }] },
-      ])
+      expect(groupMessageParts([pending])).toEqual([pending])
     })
 
     it('keeps a failed attempt in the group and lifts out only the successful retry', () => {

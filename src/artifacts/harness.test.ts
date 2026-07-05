@@ -22,6 +22,13 @@ describe('wrapArtifactHtml', () => {
     expect(wrapped.indexOf('postMessage')).toBeLessThan(wrapped.indexOf('<body>'))
   })
 
+  it('does not mistake <header> for <head> (word-boundary match)', () => {
+    const wrapped = wrapArtifactHtml('<!doctype html><html><body><header>hi</header></body></html>', 'n')
+    expect(wrapped).toContain('<head>')
+    // Harness lands in the created <head> before <body>, not spliced inside <header>.
+    expect(wrapped.indexOf('postMessage')).toBeLessThan(wrapped.indexOf('<body>'))
+  })
+
   it('injects after the doctype when there is no <html>/<head>', () => {
     const wrapped = wrapArtifactHtml('<!doctype html><p>hi</p>', 'n')
     expect(wrapped.toLowerCase().indexOf('<!doctype')).toBe(0)

@@ -9,10 +9,11 @@
  */
 export type HarnessMessage =
   | { artifactNonce: string; type: 'artifact-ready' }
+  | { artifactNonce: string; type: 'artifact-height'; height: number }
   | {
       artifactNonce: string
       type: 'artifact-error'
-      reason: 'exception' | 'unhandled-rejection' | 'resource-load-failed'
+      reason: 'exception' | 'unhandled-rejection'
       detail: string
     }
 
@@ -30,12 +31,7 @@ const cspMetaTag = (): string =>
 
 /** Turn a harness error message into a single human-readable line. */
 export const formatHarnessError = (message: Extract<HarnessMessage, { type: 'artifact-error' }>): string => {
-  const label =
-    message.reason === 'resource-load-failed'
-      ? 'Failed to load resource'
-      : message.reason === 'unhandled-rejection'
-        ? 'Unhandled promise rejection'
-        : 'Uncaught error'
+  const label = message.reason === 'unhandled-rejection' ? 'Unhandled promise rejection' : 'Uncaught error'
   return `${label}: ${message.detail}`
 }
 
@@ -65,9 +61,10 @@ export const parseHarnessMessage = (
  * artifact document so it wins the race to install listeners before any
  * agent-authored script can throw or overwrite `window.onerror`.
  *
- * Uses a capture-phase `error` listener so it also catches failed subresource
- * loads (`<img>`/`<script src>`/`<link>`), which do not bubble and never reach
- * `window.onerror`.
+ * A capture-phase `error` listener is used so real script exceptions are caught
+ * before any agent handler. Failed subresource loads (a 404 image/font/CDN asset)
+ * are deliberately ignored — a non-essential asset shouldn't fail an otherwise
+ * working page, and a missing essential script surfaces as an exception anyway.
  */
 const harnessScript = (nonce: string): string => `<script>
 (function () {
@@ -78,8 +75,8 @@ const harnessScript = (nonce: string): string => `<script>
   }
   window.addEventListener('error', function (e) {
     var t = e.target;
+    // Ignore failed subresource loads (img/script/link 404s); only report real exceptions.
     if (t && t !== window && t.tagName) {
-      send({ type: 'artifact-error', reason: 'resource-load-failed', detail: t.tagName.toLowerCase() + ' ' + (t.src || t.href || '') });
       return;
     }
     send({ type: 'artifact-error', reason: 'exception', detail: (e.message || 'Error') + (e.filename ? ' @ ' + e.filename : '') + (e.lineno ? ':' + e.lineno : '') });
@@ -88,9 +85,18 @@ const harnessScript = (nonce: string): string => `<script>
     var r = e.reason;
     send({ type: 'artifact-error', reason: 'unhandled-rejection', detail: (r && (r.stack || r.message)) || String(r) });
   });
+  function reportHeight() {
+    var el = document.documentElement;
+    var h = Math.max(el ? el.scrollHeight : 0, document.body ? document.body.scrollHeight : 0);
+    send({ type: 'artifact-height', height: h });
+  }
   window.addEventListener('load', function () {
     setTimeout(function () {
       send({ type: 'artifact-ready' });
+      reportHeight();
+      if (typeof ResizeObserver !== 'undefined' && document.documentElement) {
+        new ResizeObserver(reportHeight).observe(document.documentElement);
+      }
     }, 0);
   });
 })();
@@ -106,13 +112,13 @@ const harnessScript = (nonce: string): string => `<script>
 export const wrapArtifactHtml = (html: string, nonce: string): string => {
   const injected = `${cspMetaTag()}${harnessScript(nonce)}`
 
-  const headMatch = html.match(/<head[^>]*>/i)
+  const headMatch = html.match(/<head\b[^>]*>/i)
   if (headMatch?.index !== undefined) {
     const at = headMatch.index + headMatch[0].length
     return html.slice(0, at) + injected + html.slice(at)
   }
 
-  const htmlMatch = html.match(/<html[^>]*>/i)
+  const htmlMatch = html.match(/<html\b[^>]*>/i)
   if (htmlMatch?.index !== undefined) {
     const at = htmlMatch.index + htmlMatch[0].length
     return html.slice(0, at) + `<head>${injected}</head>` + html.slice(at)

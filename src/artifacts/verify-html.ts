@@ -73,11 +73,14 @@ export const runIframeVerification: RuntimeVerifier = (html, opts) =>
         finish({ ok: false, errors: [formatHarnessError(data)] })
         return
       }
-      // Loaded and ran the sync path, so the "never finishes loading" case is
-      // disproven: cancel the hard timeout and keep only a short window for a
-      // late async error before declaring success.
-      clearTimeout(hardTimer)
-      graceTimer = setTimeout(() => finish({ ok: true, errors: [] }), readyGraceMs)
+      if (data.type === 'artifact-ready') {
+        // Loaded and ran the sync path, so the "never finishes loading" case is
+        // disproven: cancel the hard timeout and keep only a short window for a
+        // late async error before declaring success.
+        clearTimeout(hardTimer)
+        graceTimer = setTimeout(() => finish({ ok: true, errors: [] }), readyGraceMs)
+      }
+      // artifact-height messages are ignored — verification only cares about ready/error.
     }
 
     const hardTimer = setTimeout(

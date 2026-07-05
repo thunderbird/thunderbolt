@@ -46,20 +46,20 @@ export type ReasoningGroupUIPart = {
 export type GroupedUIPart = GroupableUIPart | ReasoningGroupUIPart
 
 /**
- * A render_html part that should render as its own artifact rather than a generic
- * tool card: a live streaming preview once it has HTML to show, or the finished,
- * verified result. A not-yet-started or failed call stays an ordinary tool call.
+ * A render_html part that should render as its own artifact card rather than a
+ * generic tool card. It lifts out as soon as the call starts (so the card shows
+ * immediately and streams into place) and while verifying; only a finished call
+ * that failed — or errored — stays an ordinary tool call in the group.
  */
 const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolean => {
+  if (part.state === 'output-error') {
+    return false
+  }
   if (part.state === 'output-available') {
     const output = part.output as { ok?: boolean } | undefined
     return output?.ok === true
   }
-  if (part.state === 'input-streaming' || part.state === 'input-available') {
-    const input = part.input as { html?: string } | undefined
-    return typeof input?.html === 'string' && input.html.length > 0
-  }
-  return false
+  return true
 }
 
 /**

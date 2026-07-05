@@ -24,10 +24,13 @@ describe('SandboxedHtmlFrame', () => {
     expect(container.querySelector('iframe')?.getAttribute('sandbox')).not.toContain('allow-same-origin')
   })
 
-  it('renders raw HTML with no harness when scripts are disabled (streaming preview)', () => {
+  it('injects the offline CSP but no harness when scripts are disabled (streaming preview)', () => {
     const { container } = render(<SandboxedHtmlFrame html="<p>partial</p>" title="t" allowScripts={false} />)
-    const srcdoc = container.querySelector('iframe')?.getAttribute('srcdoc') ?? ''
-    expect(srcdoc).toBe('<p>partial</p>')
-    expect(container.querySelector('iframe')?.getAttribute('sandbox')).toBe('')
+    const iframe = container.querySelector('iframe')
+    const srcdoc = iframe?.getAttribute('srcdoc') ?? ''
+    expect(srcdoc).toContain('<p>partial</p>')
+    expect(srcdoc).toContain('Content-Security-Policy') // preview is still offline
+    expect(srcdoc).not.toContain('postMessage') // but no harness — scripts are off
+    expect(iframe?.getAttribute('sandbox')).toBe('')
   })
 })

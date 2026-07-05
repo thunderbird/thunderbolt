@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { artifactCsp, parseHarnessMessage, wrapArtifactHtml } from './harness'
+import { artifactCsp, parseHarnessMessage, wrapArtifactHtml, wrapArtifactPreviewHtml } from './harness'
 
 describe('wrapArtifactHtml', () => {
   it('injects the harness at the start of an existing <head>, before agent content', () => {
@@ -40,9 +40,17 @@ describe('wrapArtifactHtml', () => {
     expect(wrapped.indexOf('postMessage')).toBeLessThan(wrapped.indexOf('<div>'))
   })
 
-  it('omits the CSP meta tag while the network policy is unrestricted', () => {
-    expect(artifactCsp).toBeNull()
-    expect(wrapArtifactHtml('<div>hi</div>', 'n')).not.toContain('Content-Security-Policy')
+  it('injects the offline CSP meta tag into every artifact', () => {
+    expect(artifactCsp).toContain("default-src 'none'")
+    const wrapped = wrapArtifactHtml('<div>hi</div>', 'n')
+    expect(wrapped).toContain('http-equiv="Content-Security-Policy"')
+    expect(wrapped).toContain(artifactCsp as string)
+  })
+
+  it('injects the CSP but NOT the harness for the scripts-off streaming preview', () => {
+    const wrapped = wrapArtifactPreviewHtml('<!doctype html><html><head></head><body>x</body></html>')
+    expect(wrapped).toContain('http-equiv="Content-Security-Policy"')
+    expect(wrapped).not.toContain('postMessage')
   })
 })
 

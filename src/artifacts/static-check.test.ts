@@ -33,8 +33,25 @@ describe('staticCheckHtml', () => {
     expect(await staticCheckHtml(html)).toEqual([])
   })
 
-  it('ignores external scripts (cannot statically check remote code)', async () => {
-    const html = page('', '<script src="https://cdn.example.com/lib.js"></script>')
+  it('flags external scripts and stylesheets as blocked resources (offline artifacts must inline)', async () => {
+    const scriptIssues = await staticCheckHtml(page('', '<script src="https://cdn.example.com/lib.js"></script>'))
+    expect(scriptIssues).toHaveLength(1)
+    expect(scriptIssues[0]?.source).toBe('resource')
+    expect(scriptIssues[0]?.message).toContain('offline')
+
+    const linkIssues = await staticCheckHtml(page('<link rel="stylesheet" href="https://cdn.example.com/a.css">', ''))
+    expect(linkIssues.some((i) => i.source === 'resource')).toBe(true)
+
+    // Protocol-relative is external too.
+    const protoRel = await staticCheckHtml(page('', '<script src="//cdn.example.com/lib.js"></script>'))
+    expect(protoRel[0]?.source).toBe('resource')
+  })
+
+  it('does not flag inline scripts, data: URIs, or relative paths as external resources', async () => {
+    const html = page(
+      '<style>.a{color:red}</style>',
+      '<script>const x = 1; void x</script><img src="data:image/gif;base64,AAAA">',
+    )
     expect(await staticCheckHtml(html)).toEqual([])
   })
 

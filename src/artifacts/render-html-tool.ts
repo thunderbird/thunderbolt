@@ -18,7 +18,7 @@ const renderHtmlParameters = z.object({
   html: z
     .string()
     .describe(
-      "A complete, self-contained HTML document. Inline all CSS in <style> and all JS in <script>, or load libraries from a CDN via <script src>. It must run on its own with no build step and no references to local project files. It renders in a chat-width card sized to the content's natural height, so size sections to their content and avoid full-viewport (100vh/100dvh) layouts.",
+      "A complete, self-contained HTML document that runs fully OFFLINE. Inline all CSS in <style> and all JS in <script>, and embed any images/fonts as data: URIs. It has no network access — external resources (CDN scripts/styles, web fonts, remote images) and fetch/XHR are blocked, so never reference them; draw visuals with inline canvas/SVG/CSS. No build step, no local project files. It renders in a chat-width card sized to the content's natural height, so size sections to their content and avoid full-viewport (100vh/100dvh) layouts.",
     ),
   title: z.string().describe('A short, human-readable title for the artifact (e.g. "Sales dashboard").'),
 })

@@ -9,7 +9,7 @@ import { useAppSettled } from '@/hooks/use-app-settled'
 import { useOnScreen } from '@/hooks/use-on-screen'
 import { cn } from '@/lib/utils'
 import { AlertTriangle, AppWindow, PanelRight } from 'lucide-react'
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 
 /**
  * Whether the (possibly partial) HTML has anything renderable in `<body>` yet.
@@ -51,7 +51,13 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
   const onScreen = useOnScreen(containerRef)
   // Run the artifact's scripts only once the app has settled after its initial load AND it's on screen.
   const active = settled && onScreen
-  const showContent = useMemo(() => !streaming || hasRenderableBody(html), [streaming, html])
+  // Latch once the body has content (or streaming ends) so we don't re-parse the growing
+  // HTML with DOMParser on every streamed token — once shown, it stays shown.
+  const shownRef = useRef(false)
+  if (!shownRef.current && (!streaming || hasRenderableBody(html))) {
+    shownRef.current = true
+  }
+  const showContent = shownRef.current
 
   // While generating the header is inert: no collapse, no hover, not focusable.
   const interactive = !streaming

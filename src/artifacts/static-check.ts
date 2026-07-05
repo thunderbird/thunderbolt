@@ -5,15 +5,18 @@
 import type * as acornNs from 'acorn'
 import type * as csstreeNs from 'css-tree'
 
-/** A syntax-level problem found in an artifact's inline JS or CSS. */
+/** A problem found before render: an inline JS/CSS syntax error, or an external resource the offline CSP blocks. */
 export type StaticIssue = {
-  source: 'js' | 'css'
+  source: 'js' | 'css' | 'resource'
   message: string
   line?: number
   column?: number
 }
 
 type InlineScript = { code: string; module: boolean }
+
+/** Absolute `http(s)://` or protocol-relative `//` URL — the kind the offline CSP blocks. data:/blob:/relative are fine. */
+const isExternalUrl = (url: string): boolean => /^(?:https?:)?\/\//i.test(url.trim())
 
 /**
  * `<script>` types the browser runs as JS (the WHATWG JavaScript MIME-type set, plus `''`/`module`).
@@ -40,7 +43,9 @@ const jsScriptTypes = new Set([
  * matches how a browser tokenizes the document. Non-JS scripts (importmaps, JSON
  * data islands, templates) are skipped so they aren't falsely flagged as bad JS.
  */
-const extractInlineBlocks = (html: string): { scripts: InlineScript[]; styles: string[] } => {
+const extractInlineBlocks = (
+  html: string,
+): { scripts: InlineScript[]; styles: string[]; externalResources: string[] } => {
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
   const scripts = [...doc.querySelectorAll('script')]
@@ -59,7 +64,20 @@ const extractInlineBlocks = (html: string): { scripts: InlineScript[]; styles: s
     .map((el) => el.textContent ?? '')
     .filter((code) => code.trim().length > 0)
 
-  return { scripts, styles }
+  // External scripts/stylesheets the offline CSP blocks — without the page's logic or styles
+  // it renders broken, but nothing throws, so flag them here rather than let verification pass blank.
+  const externalResources = [
+    ...[...doc.querySelectorAll('script[src]')]
+      .map((el) => el.getAttribute('src') ?? '')
+      .filter(isExternalUrl)
+      .map((src) => `<script src="${src}">`),
+    ...[...doc.querySelectorAll('link[rel~="stylesheet"][href]')]
+      .map((el) => el.getAttribute('href') ?? '')
+      .filter(isExternalUrl)
+      .map((href) => `<link rel="stylesheet" href="${href}">`),
+  ]
+
+  return { scripts, styles, externalResources }
 }
 
 /** Parse each inline `<script>` with acorn; a thrown SyntaxError means invalid JS. */
@@ -86,10 +104,10 @@ const checkScripts = (scripts: InlineScript[], acorn: typeof acornNs): StaticIss
  * error is collected (not just the first). Browsers silently drop invalid CSS,
  * so this is the only layer that surfaces broken stylesheets at all.
  */
-const checkStyles = (styles: string[], csstree: typeof csstreeNs): StaticIssue[] => {
+const checkStyles = (styles: string[], parseCss: typeof csstreeNs.parse): StaticIssue[] => {
   const issues: StaticIssue[] = []
   for (const css of styles) {
-    csstree.parse(css, {
+    parseCss(css, {
       // Inline type on purpose: css-tree's runtime SyntaxError carries line/column,
       // but @types/css-tree's SyntaxParseError omits them — don't "fix" to that type.
       onParseError: (error: { message?: string; rawMessage?: string; line?: number; column?: number }) =>
@@ -112,10 +130,17 @@ const checkStyles = (styles: string[], csstree: typeof csstreeNs): StaticIssue[]
  * artifact verification pays for them.
  */
 export const staticCheckHtml = async (html: string): Promise<StaticIssue[]> => {
-  const { scripts, styles } = extractInlineBlocks(html)
+  const { scripts, styles, externalResources } = extractInlineBlocks(html)
+  const resourceIssues: StaticIssue[] = externalResources.map((ref) => ({
+    source: 'resource',
+    message: `External resources are not allowed — artifacts run fully offline. Inline it instead of loading ${ref}.`,
+  }))
   if (scripts.length === 0 && styles.length === 0) {
-    return []
+    return resourceIssues
   }
-  const [acorn, csstree] = await Promise.all([import('acorn'), import('css-tree')])
-  return [...checkScripts(scripts, acorn), ...checkStyles(styles, csstree)]
+  // `css-tree/parser` is the lean, parse-only entry: its import graph never reaches the
+  // lexer or the ~739 KB mdn-data grammar, so those tree-shake out of the on-demand chunk
+  // while syntax parsing (all we need) is unchanged. See css-tree-parser.d.ts for its type.
+  const [acorn, csstreeParser] = await Promise.all([import('acorn'), import('css-tree/parser')])
+  return [...resourceIssues, ...checkScripts(scripts, acorn), ...checkStyles(styles, csstreeParser.default)]
 }

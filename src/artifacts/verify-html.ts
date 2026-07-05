@@ -26,6 +26,9 @@ const defaultTimeoutMs = 4000
 const readyGraceMs = 250
 
 const formatStaticIssue = (issue: StaticIssue): string => {
+  if (issue.source === 'resource') {
+    return issue.message
+  }
   const location = issue.line ? ` (line ${issue.line}${issue.column ? `:${issue.column}` : ''})` : ''
   return `Invalid ${issue.source.toUpperCase()}${location}: ${issue.message}`
 }

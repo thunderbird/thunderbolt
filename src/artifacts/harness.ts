@@ -19,12 +19,21 @@ export type HarnessMessage =
 
 /**
  * Content-Security-Policy applied to every rendered artifact via an injected
- * `<meta http-equiv>` tag. `null` means unrestricted network — the iframe
- * `sandbox` (which never includes `allow-same-origin`) still isolates the
- * parent origin's DOM, cookies, and storage. This is the single knob to tighten
- * what artifacts may load/connect to (e.g. `default-src 'self'; connect-src 'none'`).
+ * `<meta http-equiv>` tag. Artifacts are fully self-contained and OFFLINE: inline
+ * JS/CSS run (and may `eval`), and images/fonts/media may use `data:`/`blob:` URIs,
+ * but all network access is denied — `connect-src` falls back to `default-src
+ * 'none'`, so no `fetch`/XHR/WebSocket, and no external scripts, styles, fonts, or
+ * images can load. Combined with the iframe `sandbox` (never `allow-same-origin`),
+ * an artifact can neither reach the parent origin nor exfiltrate over the network.
+ *
+ * Residual limitation (no clean CSP/sandbox token closes it): a script can still
+ * navigate its OWN frame (`location = ...`, `<meta http-equiv=refresh>`), which
+ * issues an outbound GET the fetch directives never see — so an artifact must not
+ * be trusted with sensitive user-entered input. Set to `null` to lift the network
+ * restriction (e.g. to allow CDN libraries).
  */
-export const artifactCsp: string | null = null
+export const artifactCsp: string | null =
+  "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; media-src data: blob:; worker-src blob:; base-uri 'none'; form-action 'none'"
 
 const cspMetaTag = (): string =>
   artifactCsp ? `<meta http-equiv="Content-Security-Policy" content="${artifactCsp}">` : ''
@@ -62,9 +71,11 @@ export const parseHarnessMessage = (
  * agent-authored script can throw or overwrite `window.onerror`.
  *
  * A capture-phase `error` listener is used so real script exceptions are caught
- * before any agent handler. Failed subresource loads (a 404 image/font/CDN asset)
- * are deliberately ignored — a non-essential asset shouldn't fail an otherwise
- * working page, and a missing essential script surfaces as an exception anyway.
+ * before any agent handler. Failed subresource loads (a 404 or CSP-blocked
+ * image/font/script) are deliberately ignored so a non-essential asset can't fail
+ * an otherwise-working page. Inline-JS syntax errors are caught earlier by the
+ * static check, and external scripts (which the offline CSP blocks) are rejected
+ * there too — so ignoring subresource errors here loses no real coverage.
  */
 const harnessScript = (nonce: string): string => `<script>
 (function () {
@@ -85,15 +96,25 @@ const harnessScript = (nonce: string): string => `<script>
     var r = e.reason;
     send({ type: 'artifact-error', reason: 'unhandled-rejection', detail: (r && (r.stack || r.message)) || String(r) });
   });
-  function reportHeight() {
-    var el = document.documentElement;
-    var h = Math.max(el ? el.scrollHeight : 0, document.body ? document.body.scrollHeight : 0);
+  function measureAndSend() {
+    // body.scrollHeight (not documentElement) so the frame can also SHRINK — the root's
+    // scrollHeight is floored at the viewport height the parent just set, which would make
+    // the reported height monotonic and leave dead space under short/collapsing artifacts.
+    var h = document.body ? document.body.scrollHeight : (document.documentElement ? document.documentElement.scrollHeight : 0);
     send({ type: 'artifact-height', height: h });
+  }
+  var rafPending = false;
+  function reportHeight() {
+    // Coalesce ResizeObserver bursts (animations, transitions) to one report per frame so
+    // we don't postMessage — and re-render the parent — dozens of times per second.
+    if (rafPending) { return; }
+    rafPending = true;
+    requestAnimationFrame(function () { rafPending = false; measureAndSend(); });
   }
   window.addEventListener('load', function () {
     setTimeout(function () {
       send({ type: 'artifact-ready' });
-      reportHeight();
+      measureAndSend();
       if (typeof ResizeObserver !== 'undefined' && document.documentElement) {
         new ResizeObserver(reportHeight).observe(document.documentElement);
       }
@@ -102,16 +123,8 @@ const harnessScript = (nonce: string): string => `<script>
 })();
 </script>`
 
-/**
- * Wrap agent-authored HTML with the network-policy `<meta>` and the
- * error-reporting harness, injected at the very start of `<head>` (created if
- * absent) so the harness runs before any agent script. Used identically for
- * hidden verification and visible rendering, so what we verify is exactly what
- * we show.
- */
-export const wrapArtifactHtml = (html: string, nonce: string): string => {
-  const injected = `${cspMetaTag()}${harnessScript(nonce)}`
-
+/** Splice `injected` markup into the document `<head>` (creating one if absent), before any agent content. */
+const injectIntoHead = (html: string, injected: string): string => {
   const headMatch = html.match(/<head\b[^>]*>/i)
   if (headMatch?.index !== undefined) {
     const at = headMatch.index + headMatch[0].length
@@ -132,3 +145,27 @@ export const wrapArtifactHtml = (html: string, nonce: string): string => {
 
   return injected + html
 }
+
+/**
+ * Wrap agent-authored HTML with the network-policy `<meta>` and the
+ * error-reporting harness, injected at the very start of `<head>` (created if
+ * absent) so the harness runs before any agent script. Used identically for
+ * hidden verification and visible rendering, so what we verify is exactly what
+ * we show.
+ *
+ * SECURITY INVARIANT: a visible render only happens after verification passes,
+ * and both use this exact wrapping — so if the injection ever lands somewhere
+ * inert (e.g. a page that hides `<head>` inside a comment), verification simply
+ * never fires `artifact-ready` and the artifact is rejected rather than shown
+ * without its CSP. Do not add a render path that skips verification.
+ */
+export const wrapArtifactHtml = (html: string, nonce: string): string =>
+  injectIntoHead(html, `${cspMetaTag()}${harnessScript(nonce)}`)
+
+/**
+ * Wrap the (partial) HTML for the scripts-off streaming preview: inject ONLY the
+ * offline CSP `<meta>` (no harness — the preview iframe runs no scripts), so the
+ * live preview is bound by the same no-network policy and a streaming artifact
+ * cannot beacon out via a subresource (`<img>`, CSS `url()`) before it's verified.
+ */
+export const wrapArtifactPreviewHtml = (html: string): string => injectIntoHead(html, cspMetaTag())

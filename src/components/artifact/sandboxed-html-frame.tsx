@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { formatHarnessError, parseHarnessMessage, wrapArtifactHtml } from '@/artifacts/harness'
+import { formatHarnessError, parseHarnessMessage, wrapArtifactHtml, wrapArtifactPreviewHtml } from '@/artifacts/harness'
 import { cn } from '@/lib/utils'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -56,8 +56,12 @@ export const SandboxedHtmlFrame = ({
   const iframeRef = useRef<HTMLIFrameElement>(null)
   // One nonce per mounted frame; correlates the harness's messages with this iframe.
   const nonce = useMemo(() => crypto.randomUUID(), [])
-  // With scripts on, wrap with the harness; with scripts off (preview) render raw HTML/CSS.
-  const srcDoc = useMemo(() => (allowScripts ? wrapArtifactHtml(html, nonce) : html), [html, nonce, allowScripts])
+  // Scripts on: wrap with the harness. Scripts off (streaming preview): still inject the
+  // offline CSP so the preview can't beacon out via a subresource before verification.
+  const srcDoc = useMemo(
+    () => (allowScripts ? wrapArtifactHtml(html, nonce) : wrapArtifactPreviewHtml(html)),
+    [html, nonce, allowScripts],
+  )
   const [contentHeight, setContentHeight] = useState<number | null>(null)
 
   // Keep the latest callbacks in refs so the message subscription is set up once
@@ -79,7 +83,7 @@ export const SandboxedHtmlFrame = ({
       if (data.type === 'artifact-error') {
         onErrorRef.current?.(formatHarnessError(data))
       }
-      if (data.type === 'artifact-height') {
+      if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
         const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
         // Ignore sub-pixel jitter so a self-measuring page can't oscillate.
         setContentHeight((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))

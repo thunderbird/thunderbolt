@@ -22,8 +22,11 @@ export const mockIntersectionObserver = (isIntersecting = true): (() => void) =>
     thresholds: ReadonlyArray<number> = []
     private readonly callback: IntersectionObserverCallback
 
-    constructor(callback: IntersectionObserverCallback) {
+    // Accept the real 2-arg signature (callback, options) so call sites like
+    // `new IntersectionObserver(cb, { rootMargin })` aren't flagged as passing a superfluous arg.
+    constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
       this.callback = callback
+      this.rootMargin = options?.rootMargin ?? ''
     }
 
     observe(target: Element) {

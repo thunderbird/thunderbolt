@@ -191,11 +191,6 @@ export const useShowSideview = (): ContentViewContextType['showSideview'] | unde
   return useContext(ContentViewContext)?.showSideview
 }
 
-/** Returns showArtifact when inside ContentViewProvider, undefined otherwise. */
-export const useShowArtifact = (): ((data: ArtifactViewData) => void) | undefined => {
-  return useContext(ContentViewContext)?.showArtifact
-}
-
 /** Returns setPreviewHidden when inside ContentViewProvider, undefined otherwise. */
 export const useSetPreviewHidden = (): ((hidden: boolean) => void) | undefined => {
   return useContext(ContentViewContext)?.setPreviewHidden

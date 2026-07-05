@@ -77,22 +77,27 @@ export const runIframeVerification: RuntimeVerifier = (html, opts) =>
         return
       }
       if (data.type === 'artifact-ready') {
-        // Loaded and ran the sync path, so the "never finishes loading" case is
-        // disproven: cancel the hard timeout and keep only a short window for a
-        // late async error before declaring success.
-        clearTimeout(hardTimer)
-        graceTimer = setTimeout(() => finish({ ok: true, errors: [] }), readyGraceMs)
+        // Handle only the FIRST ready: cancel the hard timeout and open a short grace window
+        // for a late async error. Ignoring repeat 'ready' messages avoids stacking grace timers
+        // and — since the hard timer is now gone — stops a page deferring completion forever by
+        // re-sending 'ready'.
+        if (graceTimer === undefined) {
+          clearTimeout(hardTimer)
+          graceTimer = setTimeout(() => finish({ ok: true, errors: [] }), readyGraceMs)
+        }
       }
       // artifact-height messages are ignored — verification only cares about ready/error.
     }
 
+    // NOTE: this only guards ASYNC hangs / never-renders. A sandboxed srcdoc iframe shares the
+    // parent's main thread, so a SYNCHRONOUS infinite loop (`while (true) {}`) blocks the event
+    // loop and this timer can't fire — verification would hang. True isolation needs a Worker or
+    // cross-origin OOPIF; accepted for now since artifacts are model-authored, not adversarial.
     const hardTimer = setTimeout(
       () =>
         finish({
           ok: false,
-          errors: [
-            'Timed out waiting for the page to finish loading (possible infinite loop or a page that never renders).',
-          ],
+          errors: ['Timed out waiting for the page to load (it never rendered or an async task never settled).'],
         }),
       timeoutMs,
     )

@@ -11,6 +11,7 @@ const validHtml = '<!doctype html><html><head></head><body><h1>ok</h1></body></h
 describe('verifyArtifactHtml', () => {
   it('short-circuits on a static syntax error without running the iframe pass', async () => {
     const runtime = mock(async () => ({ ok: true, errors: [] }))
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- test literal, not a DOM sink; the real path renders in a sandboxed iframe.
     const result = await verifyArtifactHtml('<script>const x = ;</script>', { runtime })
     expect(result.ok).toBe(false)
     expect(result.errors[0]).toContain('Invalid JS')

@@ -1028,6 +1028,106 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     expect(profile?.deletedAt).toBeNull()
   })
 
+  test('OTA that retires a bundle-known model does not strand its profile (fresh device)', async () => {
+    const db = getDb()
+
+    // Server retires the first bundle model by omitting it from `data`. On a
+    // fresh device the models pass never inserts it; the profiles pass must
+    // NOT hit `insertMissing` for its profile — otherwise we'd have a profile
+    // row pointing at a model that doesn't exist locally.
+    const [retired, ...remaining] = defaultModels
+    const otaSource: ModelsDefaults = {
+      version: defaultModelsVersion + 1,
+      data: [...remaining],
+    }
+
+    await reconcileDefaults(db, { models: otaSource })
+
+    const ghostModel = await db.select().from(modelsTable).where(eq(modelsTable.id, retired.id)).get()
+    expect(ghostModel).toBeUndefined()
+    const ghostProfile = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, retired.id))
+      .get()
+    expect(ghostProfile).toBeUndefined()
+  })
+
+  test('OTA that retires a bundle-known model does not resurrect its cleanup-soft-deleted profile', async () => {
+    const db = getDb()
+
+    // Prime with the current bundle so both model and profile carry their
+    // authoring hashes.
+    await reconcileDefaults(db)
+
+    // Server ships a higher version that drops the first model.
+    // `cleanupRemovedDefaults` will soft-delete both the model and its profile
+    // (their content still matches authoring hashes). The profiles pass then
+    // runs — with the pre-fix logic it would enter the resurrect branch on
+    // the profile (hash match, canResurrect open) and un-delete an orphan.
+    const [retired, ...remaining] = defaultModels
+    const otaSource: ModelsDefaults = {
+      version: defaultModelsVersion + 1,
+      data: [...remaining],
+    }
+
+    await reconcileDefaults(db, { models: otaSource })
+
+    const modelRow = await db.select().from(modelsTable).where(eq(modelsTable.id, retired.id)).get()
+    expect(modelRow?.deletedAt).not.toBeNull()
+    const profileRow = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, retired.id))
+      .get()
+    expect(profileRow?.deletedAt).not.toBeNull()
+  })
+
+  test('OTA cannot flip isConfidential or provider on a bundle-known id (frozen fields)', async () => {
+    const db = getDb()
+
+    // Seed at the current bundle so all rows have their authoring hash.
+    await reconcileDefaults(db)
+
+    // Server ships a higher-version payload that flips `isConfidential` and
+    // `provider` on an existing bundle-known id, plus a legitimate change to
+    // `name` and `description`. Frozen fields must survive; unfrozen ones must
+    // still update.
+    const target = defaultModels[0]
+    const flipped: SharedModel = {
+      ...target,
+      name: 'Renamed Via OTA',
+      description: 'renamed description',
+      isConfidential: target.isConfidential === 1 ? 0 : 1,
+      provider: target.provider === 'thunderbolt' ? 'openai' : 'thunderbolt',
+    }
+    const otaSource: ModelsDefaults = {
+      version: defaultModelsVersion + 1,
+      data: [flipped, ...defaultModels.slice(1)],
+    }
+
+    await reconcileDefaults(db, { models: otaSource })
+
+    const row = await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()
+    // Frozen fields keep the original values...
+    expect(row?.isConfidential).toBe(target.isConfidential)
+    expect(row?.provider).toBe(target.provider)
+    // ...while unfrozen fields adopt the OTA payload.
+    expect(row?.name).toBe('Renamed Via OTA')
+    expect(row?.description).toBe('renamed description')
+
+    // The stored hash must match a hash of the effective (post-freeze) row, or
+    // the next reconcile would treat this row as user-edited and never update.
+    const effectiveExpected = { ...flipped, isConfidential: target.isConfidential, provider: target.provider }
+    expect(row?.defaultHash).toBe(hashModel(effectiveExpected))
+
+    // A follow-up reconcile with the same payload is a no-op on this row.
+    await reconcileDefaults(db, { models: otaSource })
+    const rowAgain = await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()
+    expect(rowAgain?.name).toBe('Renamed Via OTA')
+    expect(rowAgain?.defaultHash).toBe(hashModel(effectiveExpected))
+  })
+
   test('OTA models without a bundled profile are dropped and do not advance the marker', async () => {
     const db = getDb()
 

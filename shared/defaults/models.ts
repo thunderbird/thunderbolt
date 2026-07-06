@@ -94,6 +94,11 @@ export const defaultModelOpus48: SharedModel = {
  * `isEncrypted === isConfidential`. The retired Pro row is instead
  * soft-deleted by `cleanupRemovedDefaults`, so encrypted threads bound to it
  * surface as "model retired" rather than broken chats.
+ *
+ * The reconciler's `frozenFields: ['isConfidential', 'provider']` guard
+ * enforces the same invariant from the OTA side — an OTA payload that ships
+ * an existing id with `isConfidential` flipped is silently ignored on those
+ * two columns. New values for either field must ship under a fresh id.
  */
 export const defaultModelDeepseekV4Flash: SharedModel = {
   id: '019f227e-d640-727d-ba12-d51bd7d0a3d6',

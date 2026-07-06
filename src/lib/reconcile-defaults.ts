@@ -74,12 +74,22 @@ const readAppliedVersion = async (
  *   mid-sync must not, because its local "soft-deleted" flag may just be
  *   partial delivery of an authoritative retirement. Defaults to
  *   `canOverwrite` for callers that don't split the two signals.
+ * @property frozenFields - Field names that must never change on an existing
+ *   row via reconcile. When updating, the existing row's value is kept for
+ *   each listed field and the stored `defaultHash` reflects that
+ *   post-freeze state. Protects identity-critical columns whose values
+ *   establish downstream contracts — e.g. `isConfidential` on models
+ *   (encrypted threads bind to it at creation) and `provider` (routing).
+ *   A server-shipped OTA payload cannot flip these on a bundle-known id;
+ *   a new value ships under a fresh id. Only applies to updates — inserts
+ *   use the default as-is.
  */
 export type ReconcileDefaultsForTableOptions = {
   keyField?: string
   canOverwrite?: boolean
   insertMissing?: boolean
   canResurrect?: boolean
+  frozenFields?: readonly string[]
 }
 
 /**
@@ -107,7 +117,13 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   hashFn: (item: any) => string,
   options: ReconcileDefaultsForTableOptions = {},
 ): Promise<ReconcileDefaultsForTableResult> => {
-  const { keyField = 'id', canOverwrite = true, insertMissing = canOverwrite, canResurrect = canOverwrite } = options
+  const {
+    keyField = 'id',
+    canOverwrite = true,
+    insertMissing = canOverwrite,
+    canResurrect = canOverwrite,
+    frozenFields = [],
+  } = options
 
   if (defaults.length === 0) {
     return { mutated: false }
@@ -174,10 +190,10 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 
     // Exists - check if user modified by comparing hashes
     const currentHash = hashFn(existing)
-    const defaultHashValue = hashFn(defaultItem)
 
     if (!existing.defaultHash) {
       // No defaultHash - set it to the default hash to enable modification tracking
+      const defaultHashValue = hashFn(defaultItem)
       await db.update(table).set({ defaultHash: defaultHashValue }).where(eq(table[keyField], keyValue))
       mutated = true
       continue
@@ -188,9 +204,20 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       continue
     }
 
-    // Skip update if default hasn't changed (prevents empty PATCH operations)
-    // TODO: needs more testing
-    if (existing.defaultHash === defaultHashValue) {
+    // Compute the effective default: for each `frozenFields` entry, keep the
+    // existing row's value instead of the incoming default. Hash covers the
+    // effective (post-freeze) state so future reconciles still recognize the
+    // row as unedited. Skips the copy entirely when no fields are frozen.
+    const effectiveDefault =
+      frozenFields.length === 0
+        ? defaultItem
+        : (frozenFields.reduce<T>((acc, field) => ({ ...acc, [field]: (existing as any)[field] }), defaultItem) as T)
+    const effectiveHash = frozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
+
+    // Skip update if the effective default matches what's already stored
+    // (prevents empty PATCH operations, and collapses OTA payloads that only
+    // touch frozen fields to a no-op).
+    if (existing.defaultHash === effectiveHash) {
       continue
     }
 
@@ -198,7 +225,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     // This handles localization settings (distance_unit, etc.) where the user explicitly
     // set a value via recomputeHash, but the code default is null.
     // For non-settings tables, 'value' is undefined so this check is safely skipped.
-    const wouldOverwriteUserValue = existing.value !== null && (defaultItem as any).value === null
+    const wouldOverwriteUserValue = existing.value !== null && (effectiveDefault as any).value === null
 
     if (wouldOverwriteUserValue) {
       continue
@@ -208,8 +235,8 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     await db
       .update(table)
       .set({
-        ...defaultItem,
-        defaultHash: defaultHashValue,
+        ...effectiveDefault,
+        defaultHash: effectiveHash,
       })
       .where(eq(table[keyField], keyValue))
     mutated = true
@@ -354,9 +381,21 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // AI models. `canResurrect` uses initialSyncCompleted so an older-bundle
     // but fully-synced device can still un-delete a pre-THU-637 mistake, while
     // a mid-sync device stays non-mutating.
+    //
+    // `frozenFields` protects two identity-critical columns from OTA drift:
+    // - `isConfidential`: an encrypted thread binds `isEncrypted` to the
+    //   model's `isConfidential` at creation and the send guard enforces
+    //   equality; a server slip that flips this on a live row would strand
+    //   every encrypted thread bound to that id (see the Flash-fresh-id
+    //   comment in `shared/defaults/models.ts`).
+    // - `provider`: routes inference to the correct upstream; flipping it
+    //   under an existing id would silently misroute or break sends.
+    // OTA can still update name, description, contextWindow, tool flags, etc.
+    // To change a frozen field, ship the new value under a fresh model id.
     const modelsPass = await reconcileDefaultsForTable(tx, modelsTable, modelsForReconcile, hashModel, {
       canOverwrite: canOverwriteModels,
       canResurrect: initialSyncCompleted,
+      frozenFields: ['isConfidential', 'provider'],
     })
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
@@ -365,13 +404,20 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // a newer bundle just shipped alongside its model changes, reintroducing
     // THU-637 on the profile side. `insertMissing: true` ensures a bundle-
     // known model always has its bundled profile to pair with, even when
-    // canOverwrite is closed. Bounded to bundle-known model ids: OTA-only-new
-    // ids were dropped from the models pass above (they have no bundled
-    // profile to insert here either).
+    // canOverwrite is closed.
+    //
+    // Bounded to `modelsForReconcile`: this excludes both OTA-only-new ids
+    // (no bundled profile exists) and OTA-retired ids (dropped from the
+    // payload). Without this filter, `insertMissing: true` would insert a
+    // profile for a model the OTA channel just retired — an orphan profile
+    // with no live model — reintroducing the very 1:1 hazard `insertMissing`
+    // exists to prevent, from the OTA-retire direction.
+    const aliveModelIdsForReconcile = new Set(modelsForReconcile.map((m) => m.id))
+    const profilesForReconcile = defaultModelProfiles.filter((p) => aliveModelIdsForReconcile.has(p.modelId))
     const profilesPass = await reconcileDefaultsForTable(
       tx,
       modelProfilesTable,
-      defaultModelProfiles,
+      profilesForReconcile,
       hashModelProfile,
       {
         keyField: 'modelId',

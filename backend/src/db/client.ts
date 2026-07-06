@@ -43,10 +43,25 @@ const pgliteDataDir =
     ? process.env.DATABASE_URL
     : undefined
 
+/**
+ * Return `scheme://host[:port]` from a DB connection string, dropping any
+ * embedded userinfo. Falls back to `<unparseable>` so we never leak the raw
+ * value on a malformed URL — connection strings can carry credentials
+ * (`postgres://user:password@host/db`) and logs travel further than we expect.
+ */
+const redactDatabaseUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.protocol}//${parsed.host}`
+  } catch {
+    return '<unparseable>'
+  }
+}
+
 if (isPglite && process.env.DATABASE_URL && isPostgresConnectionUrl(process.env.DATABASE_URL)) {
   console.warn(
     `[db] DATABASE_DRIVER=pglite but DATABASE_URL is a postgres connection string ` +
-      `(${process.env.DATABASE_URL}) — falling back to in-memory PGlite. ` +
+      `(${redactDatabaseUrl(process.env.DATABASE_URL)}) — falling back to in-memory PGlite. ` +
       `Set DATABASE_URL to a directory path (e.g. .pglite/data) if you meant to persist.`,
   )
 }

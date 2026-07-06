@@ -12,6 +12,7 @@ import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
+import type { ModelsDefaults } from './pick-defaults'
 import { cleanupRemovedDefaults, reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
 import type { Model, ModelProfile, Prompt } from '@/types'
 
@@ -1025,5 +1026,59 @@ describe('reconcileDefaults version gate (THU-637)', () => {
       .where(eq(modelProfilesTable.modelId, orphanModelId))
       .get()
     expect(profile?.deletedAt).toBeNull()
+  })
+
+  test('OTA models without a bundled profile are dropped and do not advance the marker', async () => {
+    const db = getDb()
+
+    // Simulate an OTA payload that includes a model whose id this client's
+    // bundle has no profile for (a genuine "new model" scenario the OTA
+    // channel can express but this bundle can't fully render because profiles
+    // aren't part of `/config`). The dropped id must not be inserted, and
+    // the marker must not advance to the OTA version — otherwise a later
+    // client with the fuller bundle would see `stored=OTA.version` and its
+    // canOverwrite would be closed, permanently blocking the missing insert.
+    const unknownId = '019fa11c-0000-7000-b000-abcdefabcdef'
+    const otaSource: ModelsDefaults = {
+      version: defaultModelsVersion + 1,
+      data: [
+        ...defaultModels,
+        {
+          id: unknownId,
+          name: 'Server-only Future Model',
+          provider: 'thunderbolt',
+          model: 'future-model',
+          isSystem: 1,
+          enabled: 1,
+          isConfidential: 0,
+          contextWindow: 100_000,
+          toolUsage: 1,
+          startWithReasoning: 0,
+          supportsParallelToolCalls: 0,
+          deletedAt: null,
+          url: null,
+          defaultHash: null,
+          vendor: null,
+          description: null,
+          userId: null,
+        },
+      ],
+    }
+
+    await reconcileDefaults(db, { models: otaSource })
+
+    const ghost = await db.select().from(modelsTable).where(eq(modelsTable.id, unknownId)).get()
+    expect(ghost).toBeUndefined()
+
+    // Bundle-known models still applied.
+    for (const known of defaultModels) {
+      const row = await db.select().from(modelsTable).where(eq(modelsTable.id, known.id)).get()
+      expect(row).toBeDefined()
+    }
+
+    // Marker did not advance to OTA version — no client is fully at that
+    // version yet, so peers with the fuller bundle should still be able to
+    // reach open canOverwrite on their next boot.
+    expect(await readStoredModelsVersion()).not.toBe(defaultModelsVersion + 1)
   })
 })

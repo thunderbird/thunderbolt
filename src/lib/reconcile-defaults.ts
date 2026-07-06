@@ -323,13 +323,33 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       return rawCanOverwrite
     })()
 
+    // OTA can ship models whose id isn't in this bundle's `defaultModelProfiles`
+    // — profiles are not part of the OTA channel, so we have no profile to
+    // pair with them. Inserting the model row alone violates the 1:1 model↔
+    // profile invariant `insertMissing: true` is meant to preserve. Filter
+    // those ids out and log the drop; cleanup still uses the unfiltered set
+    // so a genuinely-shipped-elsewhere row (present locally via sync from a
+    // newer-bundle peer) stays alive.
+    const bundledProfileModelIds = new Set(defaultModelProfiles.map((p) => p.modelId))
+    const modelsForReconcile = modelsSource.data.filter((m) => bundledProfileModelIds.has(m.id))
+    const droppedOtaModelIds = modelsSource.data.filter((m) => !bundledProfileModelIds.has(m.id)).map((m) => m.id)
+    if (droppedOtaModelIds.length > 0) {
+      console.warn(
+        `[reconcileDefaults] Dropped ${droppedOtaModelIds.length} OTA model(s) without a bundled profile: ` +
+          `${droppedOtaModelIds.join(', ')}. OTA can only re-version or retire models this bundle knows; ` +
+          `adding a new model id requires a client build so its profile ships alongside.`,
+      )
+    }
+
     // Soft-delete removed system defaults before reconciling current ones.
+    // Cleanup uses the unfiltered OTA set so any id the server still ships
+    // (including new-to-us ones synced from a newer-bundle peer) stays alive.
     await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data, initialSyncCompleted)
 
     // AI models. `canResurrect` uses initialSyncCompleted so an older-bundle
     // but fully-synced device can still un-delete a pre-THU-637 mistake, while
     // a mid-sync device stays non-mutating.
-    const modelsPass = await reconcileDefaultsForTable(tx, modelsTable, modelsSource.data, hashModel, {
+    const modelsPass = await reconcileDefaultsForTable(tx, modelsTable, modelsForReconcile, hashModel, {
       canOverwrite: canOverwriteModels,
       canResurrect: initialSyncCompleted,
     })
@@ -338,11 +358,11 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // they ride the same authority gate as models — otherwise an older-bundle
     // device would revert profile settings (temperature, tools, addenda) that
     // a newer bundle just shipped alongside its model changes, reintroducing
-    // THU-637 on the profile side. `insertMissing: true` ensures a model
-    // present locally (via sync) always has a profile to pair with, even when
-    // canOverwrite is closed. The rare orphaned-profile edge (bundle contains
-    // a profile whose model the newer version retired) is silent — with no
-    // matching model row, DAL joins won't surface the orphan.
+    // THU-637 on the profile side. `insertMissing: true` ensures a bundle-
+    // known model always has its bundled profile to pair with, even when
+    // canOverwrite is closed. Bounded to bundle-known model ids: OTA-only-new
+    // ids were dropped from the models pass above (they have no bundled
+    // profile to insert here either).
     const profilesPass = await reconcileDefaultsForTable(
       tx,
       modelProfilesTable,
@@ -375,7 +395,12 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // that the picked version has been applied here — peers with `stored`
     // already at `pickedVersion` would then stop in-place upgrades even
     // though the writer never verified the content.
-    if (canOverwriteModels && (modelsPass.mutated || profilesPass.mutated)) {
+    //
+    // Also skip the marker when we filtered any OTA models: our apply is a
+    // strict subset of the picked version, and stamping the full version
+    // would lock later fuller-bundle clients (canOverwrite=false because
+    // stored>=picked) out of inserting the missing models.
+    if (canOverwriteModels && (modelsPass.mutated || profilesPass.mutated) && droppedOtaModelIds.length === 0) {
       // Inline upsert: `updateSettings` wraps its writes in its own transaction
       // and PowerSync's drizzle driver forbids nested transactions. Branch on
       // row existence — not on parsed version — so a pre-existing row with a

@@ -36,6 +36,7 @@ const powersyncSettings: Settings = {
   allowWorkspaceCreationByAnon: false,
   allowWorkspaceCreationByMembers: false,
   allowUserScopedResources: true,
+  allowWorkspacePermissionsUi: false,
   fireworksApiKey: '',
   mistralApiKey: '',
   anthropicApiKey: '',

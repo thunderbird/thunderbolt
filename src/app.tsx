@@ -46,8 +46,8 @@ import { compareSemver } from '@/lib/compare-semver'
 import { AuthGate } from './components/auth-gate'
 import { WorkspaceGate } from './components/workspace-gate'
 import { WorkspaceMembershipGate } from './components/workspace-membership-gate'
-// Paired with the temporarily-hidden Permissions route — uncomment together.
-// import { RequireWorkspaceAdmin } from './settings/workspace/require-permission'
+import { RequireWorkspaceAdmin } from './settings/workspace/require-permission'
+import { useWorkspacePermissionsUiEnabled } from '@/hooks/use-workspace-permissions-ui-enabled'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
@@ -91,9 +91,7 @@ const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
 const IntegrationsPage = lazy(() => import('@/settings/integrations'))
 const WorkspaceGeneralPage = lazy(() => import('@/settings/workspace/general'))
 const WorkspaceMembersPage = lazy(() => import('@/settings/workspace/members'))
-// Permissions page is paired with the temporarily-hidden sidebar entry in
-// `settings-sidebar.tsx`. Comment both back in to re-enable the feature.
-// const WorkspacePermissionsPage = lazy(() => import('@/settings/workspace/permissions'))
+const WorkspacePermissionsPage = lazy(() => import('@/settings/workspace/permissions'))
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
@@ -112,7 +110,13 @@ const queryClient = new QueryClient()
  * mount resolves them against its parent — `chats/new` becomes either
  * `/chats/new` or `/w/<id>/chats/new`.
  */
-const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatureTasks: boolean }) => (
+const renderWorkspaceRoutes = ({
+  experimentalFeatureTasks,
+  permissionsUiEnabled,
+}: {
+  experimentalFeatureTasks: boolean
+  permissionsUiEnabled: boolean
+}) => (
   <>
     {/* Home routes with HomeLayout */}
     <Route element={<ChatLayout />}>
@@ -135,13 +139,11 @@ const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatu
       <Route path="workspace">
         <Route path="general" element={<WorkspaceGeneralPage />} />
         <Route path="members" element={<WorkspaceMembersPage />} />
-        {/* Permissions page hidden until the feature ships — paired with the
-            commented import above and the sidebar entry in
-            `layout/sidebar/settings-sidebar.tsx`.
-        <Route element={<RequireWorkspaceAdmin />}>
-          <Route path="permissions" element={<WorkspacePermissionsPage />} />
-        </Route>
-        */}
+        {permissionsUiEnabled && (
+          <Route element={<RequireWorkspaceAdmin />}>
+            <Route path="permissions" element={<WorkspacePermissionsPage />} />
+          </Route>
+        )}
       </Route>
       {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
     </Route>
@@ -201,6 +203,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
     experimental_feature_tasks: initData.experimentalFeatureTasks,
   })
 
+  const permissionsUiEnabled = useWorkspacePermissionsUiEnabled()
   const ssoMode = isSsoMode()
   const shouldBypassWaitlist = isWaitlistBypassed()
 
@@ -247,7 +250,10 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
                 </>
               }
             >
-              {renderWorkspaceRoutes({ experimentalFeatureTasks: experimentalFeatureTasks.value })}
+              {renderWorkspaceRoutes({
+                experimentalFeatureTasks: experimentalFeatureTasks.value,
+                permissionsUiEnabled,
+              })}
             </Route>
 
             {/* Shared workspaces — `/w/:workspaceId/...`, membership-gated. */}
@@ -261,7 +267,10 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
                   </>
                 }
               >
-                {renderWorkspaceRoutes({ experimentalFeatureTasks: experimentalFeatureTasks.value })}
+                {renderWorkspaceRoutes({
+                  experimentalFeatureTasks: experimentalFeatureTasks.value,
+                  permissionsUiEnabled,
+                })}
               </Route>
             </Route>
           </Route>

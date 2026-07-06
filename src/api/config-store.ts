@@ -34,6 +34,10 @@ export type AppConfig = {
    *  `scope = 'user'` PUTs. Absent (offline/standalone) reads as allowed —
    *  same opt-out posture as the server-side default. */
   allowUserScopedResources?: boolean
+  /** Workspace Permissions settings page/menu/link. Explicit opt-in per
+   *  deployment: absent config reads as disabled so the feature stays hidden
+   *  until a server flips ALLOW_WORKSPACE_PERMISSIONS_UI to `true`. */
+  allowWorkspacePermissionsUi?: boolean
 }
 
 type ConfigStore = {
@@ -64,3 +68,8 @@ export const selectAllowCustomAgents = (config: AppConfig): boolean => config.al
 /** Whether the UI offers per-row scope (workspace vs private) on the 8 shared
  *  resource tables. Absent config defaults to allowed, mirroring the BE default. */
 export const selectAllowUserScopedResources = (config: AppConfig): boolean => config.allowUserScopedResources !== false
+
+/** Whether the workspace Permissions settings page/menu/link is exposed.
+ *  Opt-in: absent or non-`true` config reads as disabled. */
+export const selectAllowWorkspacePermissionsUi = (config: AppConfig): boolean =>
+  config.allowWorkspacePermissionsUi === true

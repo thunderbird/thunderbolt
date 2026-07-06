@@ -386,11 +386,37 @@ describe('SettingsSidebarContent — Workspace > Permissions entry visibility', 
     cleanup()
   })
 
-  it('hides the Permissions entry even for an admin of a shared workspace (temporarily disabled)', async () => {
-    // The Permissions menu entry is commented out in `settings-sidebar.tsx`
-    // until the feature is ready for users. When the JSX is uncommented, flip
-    // this assertion back to `getByText(...).toBeInTheDocument()` (paired with
-    // the comment in `settings-sidebar.tsx`).
+  const withPermissionsUiFlag = async (value: boolean, fn: () => Promise<void>) => {
+    const { useConfigStore } = await import('@/api/config-store')
+    const previous = useConfigStore.getState().config
+    useConfigStore.getState().updateConfig({ ...previous, allowWorkspacePermissionsUi: value })
+    try {
+      await fn()
+    } finally {
+      useConfigStore.getState().updateConfig(previous)
+    }
+  }
+
+  it('shows the Permissions entry for an admin of a shared workspace when the flag is on', async () => {
+    await withPermissionsUiFlag(true, async () => {
+      await seedSharedWorkspaceWithMembership('admin')
+
+      renderWithReactivity(
+        <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+        {
+          route: `/w/${otherWsId}/settings`,
+          routePath: '/*',
+          tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+          wrapper: ReactiveSidebarWrapper,
+        },
+      )
+
+      await waitForElement(() => screen.queryByText('Permissions'))
+      expect(screen.getByText('Permissions')).toBeInTheDocument()
+    })
+  })
+
+  it('hides the Permissions entry when the flag is off, even for a shared-workspace admin', async () => {
     await seedSharedWorkspaceWithMembership('admin')
 
     renderWithReactivity(
@@ -407,44 +433,48 @@ describe('SettingsSidebarContent — Workspace > Permissions entry visibility', 
     expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
   })
 
-  it('hides the Permissions entry for a member of a shared workspace', async () => {
-    await seedSharedWorkspaceWithMembership('member')
+  it('hides the Permissions entry for a member of a shared workspace even when the flag is on', async () => {
+    await withPermissionsUiFlag(true, async () => {
+      await seedSharedWorkspaceWithMembership('member')
 
-    renderWithReactivity(
-      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
-      {
-        route: `/w/${otherWsId}/settings`,
-        routePath: '/*',
-        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
-        wrapper: ReactiveSidebarWrapper,
-      },
-    )
+      renderWithReactivity(
+        <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+        {
+          route: `/w/${otherWsId}/settings`,
+          routePath: '/*',
+          tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+          wrapper: ReactiveSidebarWrapper,
+        },
+      )
 
-    await waitForElement(() => screen.queryByText('Models'))
-    expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+      await waitForElement(() => screen.queryByText('Models'))
+      expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+    })
   })
 
-  it('hides the Permissions entry in a Personal Workspace (Decision 25)', async () => {
-    await seedPersonalMembership()
+  it('hides the Permissions entry in a Personal Workspace (Decision 25) even when the flag is on', async () => {
+    await withPermissionsUiFlag(true, async () => {
+      await seedPersonalMembership()
 
-    renderWithReactivity(
-      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
-      {
-        route: '/settings',
-        routePath: '/*',
-        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
-        wrapper: ReactiveSidebarWrapper,
-      },
-    )
+      renderWithReactivity(
+        <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+        {
+          route: '/settings',
+          routePath: '/*',
+          tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+          wrapper: ReactiveSidebarWrapper,
+        },
+      )
 
-    await waitForElement(() => screen.queryByText('Preferences'))
-    expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+      await waitForElement(() => screen.queryByText('Preferences'))
+      expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+    })
   })
 
-  it('hides the Permissions entry when e2eeEnabled is true (entry is currently commented out regardless)', async () => {
+  it('hides the Permissions entry when e2eeEnabled is true, even with the flag on', async () => {
     const { useConfigStore } = await import('@/api/config-store')
     const previous = useConfigStore.getState().config
-    useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
+    useConfigStore.getState().updateConfig({ ...previous, allowWorkspacePermissionsUi: true, e2eeEnabled: true })
     try {
       await seedSharedWorkspaceWithMembership('admin')
 

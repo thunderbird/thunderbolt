@@ -14,14 +14,13 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useConfigStore } from '@/api/config-store'
 import { useAuth } from '@/contexts'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { useWorkspacePermissionsUiEnabled } from '@/hooks/use-workspace-permissions-ui-enabled'
 import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
-// `Lock` is paired with the temporarily-hidden Permissions entry below — keep
-// the import commented so re-enabling the menu is a one-spot uncomment.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { ArrowLeft, Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
+import { ArrowLeft, Bot, Cpu, Lock, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -48,10 +47,7 @@ export const SettingsSidebarContent = ({
   const { data: session } = useAuth().useSession()
   const isLoggedIn = !!session?.user && session.user.isAnonymous !== true
   const activeWorkspace = useActiveWorkspace()
-  // `isAdmin` is currently only used by the commented-out Permissions entry
-  // below — keep the call so re-enabling is a single comment-flip.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { isAdmin: _isAdmin } = useActiveWorkspaceMembership()
+  const { isAdmin } = useActiveWorkspaceMembership()
   // Members is visible to every member of a shared workspace — the page is
   // read-friendly without action permissions, and individual actions (invite /
   // change role / remove) gate themselves on the granular permission keys.
@@ -60,12 +56,14 @@ export const SettingsSidebarContent = ({
   // the workspace selector now, so this whole sidebar group collapses to just
   // Members; on Personal Workspaces it has no items, so we hide it entirely.
   const membersItemVisible = activeWorkspace?.isPersonal !== 1
-  const workspaceGroupVisible = membersItemVisible
+  // E2EE is single-user today — hide Permissions on encryption-enabled servers
+  // (drop this once THU-593 lands multi-recipient envelopes).
+  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
+  const permissionsUiEnabled = useWorkspacePermissionsUiEnabled()
   // Permissions is implicitly admin-only — there is no configurable
   // meta-permission for editing the permissions grid itself.
-  // Hidden for now (see commented JSX block below); kept here so re-enabling
-  // is a one-spot revert.
-  // const permissionsItemVisible = activeWorkspace?.isPersonal !== 1 && isAdmin && !e2eeEnabled
+  const permissionsItemVisible = permissionsUiEnabled && activeWorkspace?.isPersonal !== 1 && isAdmin && !e2eeEnabled
+  const workspaceGroupVisible = membersItemVisible || permissionsItemVisible
   // `isActive` highlighting reads the sub-path so the same matching rules work
   // for both personal (`/settings/...`) and shared (`/w/<id>/settings/...`) URLs.
   const subPath = stripWorkspacePrefix(location.pathname)
@@ -204,9 +202,6 @@ export const SettingsSidebarContent = ({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
-              {/* Permissions entry hidden — feature isn't ready for users yet.
-                  Underlying page + permissions DAL/handlers stay intact for the
-                  internal eng team via direct URL nav.
               {permissionsItemVisible && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
@@ -220,7 +215,6 @@ export const SettingsSidebarContent = ({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
-              */}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

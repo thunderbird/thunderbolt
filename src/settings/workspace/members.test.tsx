@@ -159,20 +159,38 @@ describe('WorkspaceMembersPage routing', () => {
     cleanup()
   })
 
-  it('renders the page header, subtitle, and Permissions link for an admin in a shared workspace', async () => {
+  it('renders the page header, subtitle, and Permissions link for an admin in a shared workspace when the flag is on', async () => {
+    const { useConfigStore } = await import('@/api/config-store')
+    const previous = useConfigStore.getState().config
+    useConfigStore.getState().updateConfig({ ...previous, allowWorkspacePermissionsUi: true })
+    try {
+      await seedShared('admin')
+
+      renderMembers()
+
+      await waitForElement(() => screen.queryByRole('heading', { name: 'Members' }))
+      expect(screen.getByRole('heading', { name: 'Members' })).toBeInTheDocument()
+      expect(screen.getByText(/Manage people in your workspace/)).toBeInTheDocument()
+      const permissionsLink = screen.getByRole('link', { name: 'Permissions' })
+      // Relative `../permissions` resolves to `/w/<id>/settings/workspace/permissions` from this route.
+      expect(permissionsLink.getAttribute('href')).toContain('/settings/workspace/permissions')
+      // Add Member shows up once `invite_users` resolves (admin satisfies default).
+      await waitForElement(() => screen.queryByRole('button', { name: /Add Member/ }))
+      expect(screen.getByRole('button', { name: /Add Member/ })).not.toBeDisabled()
+    } finally {
+      useConfigStore.getState().updateConfig(previous)
+    }
+  })
+
+  it('hides the Permissions link when the flag is off', async () => {
     await seedShared('admin')
 
     renderMembers()
 
     await waitForElement(() => screen.queryByRole('heading', { name: 'Members' }))
-    expect(screen.getByRole('heading', { name: 'Members' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Permissions' })).not.toBeInTheDocument()
+    // The "Manage people" descriptor still renders — only the trailing sentence about roles drops.
     expect(screen.getByText(/Manage people in your workspace/)).toBeInTheDocument()
-    const permissionsLink = screen.getByRole('link', { name: 'Permissions' })
-    // Relative `../permissions` resolves to `/w/<id>/settings/workspace/permissions` from this route.
-    expect(permissionsLink.getAttribute('href')).toContain('/settings/workspace/permissions')
-    // Add Member shows up once `invite_users` resolves (admin satisfies default).
-    await waitForElement(() => screen.queryByRole('button', { name: /Add Member/ }))
-    expect(screen.getByRole('button', { name: /Add Member/ })).not.toBeDisabled()
   })
 
   it('opens the invite modal when Add Member is clicked', async () => {

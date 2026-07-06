@@ -59,6 +59,11 @@ const settingsSchema = z
     // and the UI hides the scope picker. Defaults true so the feature is opt-out:
     // deployments that want strict workspace-shared semantics set this to false.
     allowUserScopedResources: z.boolean().default(true),
+    // Gate the workspace Permissions settings page + sidebar entry + members-page
+    // link. Defaults false: the feature ships hidden and must be explicitly opted
+    // into per deployment. Surfaced via GET /config; the FE hides route, menu,
+    // and members-page link when false so direct URL nav also 404s.
+    allowWorkspacePermissionsUi: z.boolean().default(false),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
@@ -196,6 +201,7 @@ const parseSettings = (): Settings => {
     allowWorkspaceCreationByAnon: process.env.ALLOW_WORKSPACE_CREATION_BY_ANON === 'true',
     allowWorkspaceCreationByMembers: process.env.ALLOW_WORKSPACE_CREATION_BY_MEMBERS === 'true',
     allowUserScopedResources: process.env.ALLOW_USER_SCOPED_RESOURCES !== 'false',
+    allowWorkspacePermissionsUi: process.env.ALLOW_WORKSPACE_PERMISSIONS_UI === 'true',
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',

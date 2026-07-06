@@ -30,6 +30,7 @@ import {
 } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
+import { useWorkspacePermissionsUiEnabled } from '@/hooks/use-workspace-permissions-ui-enabled'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { useActiveUserId } from '@/stores/trust-domain-registry'
 import { InviteMembersModal } from '@/layout/sidebar/invite-members-modal'
@@ -59,6 +60,7 @@ const WorkspaceMembersPage = () => {
   const { isAllowed: canChangeRoles } = useWorkspacePermission('change_roles')
   const { isAllowed: canInviteUsers } = useWorkspacePermission('invite_users')
   const { isAllowed: canRemoveUsers } = useWorkspacePermission('remove_users')
+  const permissionsUiEnabled = useWorkspacePermissionsUiEnabled()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [search, setSearch] = useState('')
   const normalizedSearch = search.trim().toLowerCase()
@@ -115,11 +117,17 @@ const WorkspaceMembersPage = () => {
     <div className="flex flex-col p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Members" />
       <p className="mt-3 text-[length:var(--font-size-sm)] text-muted-foreground">
-        Manage people in your workspace. To change roles, go to{' '}
-        <Link to="../permissions" relative="route" className="underline underline-offset-2 hover:text-foreground">
-          Permissions
-        </Link>
-        .
+        Manage people in your workspace.
+        {permissionsUiEnabled && (
+          <>
+            {' '}
+            To change roles, go to{' '}
+            <Link to="../permissions" relative="route" className="underline underline-offset-2 hover:text-foreground">
+              Permissions
+            </Link>
+            .
+          </>
+        )}
       </p>
       <div className="mt-6 mb-4 flex items-center gap-2">
         <SearchInput

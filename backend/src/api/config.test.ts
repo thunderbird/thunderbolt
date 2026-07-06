@@ -82,6 +82,14 @@ describe('Config Routes', () => {
       expect(off.body.allowUserScopedResources).toBe(false)
     })
 
+    it('exposes allowWorkspacePermissionsUi (defaults false unless explicitly enabled)', async () => {
+      const off = await fetchConfig(createTestSettings())
+      expect(off.body.allowWorkspacePermissionsUi).toBe(false)
+
+      const on = await fetchConfig(createTestSettings({ allowWorkspacePermissionsUi: true }))
+      expect(on.body.allowWorkspacePermissionsUi).toBe(true)
+    })
+
     it('does not require authentication', async () => {
       const { status } = await fetchConfig(createTestSettings())
       expect(status).toBe(200)

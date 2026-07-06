@@ -342,17 +342,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       return map
     }, [library, isEnabled])
 
-    // Estimate the token cost of resolved skill instructions so the
-    // overflow modal fires correctly when /name tokens push the send past
-    // the model's context window — Skills v1 Open Q #5.
+    // Estimate the token cost of resolved skill instructions and pending
+    // quote passages so the overflow modal fires correctly when /name tokens
+    // or large quoted selections push the send past the model's context window
+    // — Skills v1 Open Q #5. Quotes are injected into the send (as `> …`
+    // blockquotes) but aren't part of `currentInput`, so they'd otherwise be
+    // invisible to the estimate.
     const additionalInputTokens = useMemo(() => {
       const instructions = resolveSkillTokenInstructions(input, enabledInstructionBySlug)
       let total = 0
       for (const instruction of instructions) {
         total += estimateTokensForText(instruction)
       }
+      for (const quote of quotes) {
+        total += estimateTokensForText(quote.data.text)
+      }
       return total
-    }, [input, enabledInstructionBySlug])
+    }, [input, enabledInstructionBySlug, quotes])
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
       model: selectedModel,

@@ -34,12 +34,10 @@ describe('staticCheckHtml', () => {
   })
 
   it('flags a module script that imports from a CDN as a blocked resource', async () => {
-    const html = page(
-      '',
-      '<script type="module">import confetti from "https://cdn.skypack.dev/canvas-confetti"</script>',
-    )
-    const issues = await staticCheckHtml(html)
-    expect(issues.some((i) => i.source === 'resource' && i.message.includes('cdn.skypack.dev'))).toBe(true)
+    const specifier = 'https://cdn.skypack.dev/canvas-confetti'
+    const issues = await staticCheckHtml(page('', `<script type="module">import confetti from "${specifier}"</script>`))
+    const resource = issues.find((i) => i.source === 'resource')
+    expect(resource?.message).toContain(specifier)
   })
 
   it('flags a relative module import too (nothing resolves offline)', async () => {
@@ -49,9 +47,10 @@ describe('staticCheckHtml', () => {
   })
 
   it('flags a dynamic import() with a string literal specifier', async () => {
-    const html = page('', '<script>import("https://cdn.example.com/lib.js").then(() => {})</script>')
-    const issues = await staticCheckHtml(html)
-    expect(issues.some((i) => i.source === 'resource' && i.message.includes('cdn.example.com'))).toBe(true)
+    const specifier = 'https://cdn.example.com/lib.js'
+    const issues = await staticCheckHtml(page('', `<script>import("${specifier}").then(() => {})</script>`))
+    const resource = issues.find((i) => i.source === 'resource')
+    expect(resource?.message).toContain(specifier)
   })
 
   it('flags external scripts and stylesheets as blocked resources (offline artifacts must inline)', async () => {

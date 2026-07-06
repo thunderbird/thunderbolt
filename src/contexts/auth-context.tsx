@@ -8,7 +8,7 @@ import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-cr
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
-import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
+import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
@@ -54,16 +54,25 @@ const createAuthClientInstance = (cloudUrl: string) => {
  * (Better Auth's online listener fires this automatically when the network
  * returns).
  *
+ * An expired cache is discarded rather than seeded: if the device has been
+ * offline past `session.expiresAt`, every subsequent API call would 401
+ * anyway, so it's safer to force a fresh `/get-session` than to flash a
+ * logged-in UI that will be torn down moments later.
+ *
  * Only the seed is synchronous (no lifecycle to clean up). Persisting future
  * updates is wired in {@link subscribeSessionCachePersist} from the provider so
  * the listener is released when the auth client is replaced.
  */
-const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClient>) => {
+export const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClient>) => {
   if (!getAuthToken()) {
     return
   }
   const cached = getCachedSession()
   if (!cached) {
+    return
+  }
+  if (!isCachedSessionValid(cached)) {
+    clearCachedSession()
     return
   }
   const sessionAtom = client.$store.atoms.session
@@ -216,6 +225,10 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   useEffect(() => {
     return onAuthTokenChangedInOtherTab((next, prev) => {
       if (next && next !== prev) {
+        // Cross-tab rotation may swap in a different user identity; wipe the
+        // cache so the reloaded tab doesn't seed the previous user's session
+        // under the new token before /get-session lands.
+        clearCachedSession()
         window.location.reload()
         return
       }

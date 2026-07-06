@@ -10,7 +10,8 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { buildFetchOptions } from './auth-context'
+import { buildFetchOptions, hydrateSessionFromCache } from './auth-context'
+import type { createAuthClient } from 'better-auth/react'
 
 const authTokenKey = 'thunderbolt_auth_token'
 const sessionCacheKey = 'thunderbolt_session_cache'
@@ -98,6 +99,81 @@ describe('buildFetchOptions onError', () => {
   })
 })
 
+describe('hydrateSessionFromCache', () => {
+  type AtomState = { data: unknown; isPending: boolean }
+
+  const createFakeAtom = (initial: AtomState = { data: null, isPending: true }) => {
+    let state: AtomState = initial
+    return {
+      get: () => state,
+      set: (next: AtomState) => {
+        state = next
+      },
+    }
+  }
+
+  const createFakeClient = (atom: ReturnType<typeof createFakeAtom>) =>
+    ({
+      $store: { atoms: { session: atom } },
+    }) as unknown as ReturnType<typeof createAuthClient>
+
+  const future = () => new Date(Date.now() + 60_000).toISOString()
+  const past = () => new Date(Date.now() - 60_000).toISOString()
+
+  beforeEach(() => {
+    clearAuthToken()
+    clearCachedSession()
+  })
+
+  afterEach(() => {
+    clearAuthToken()
+    clearCachedSession()
+  })
+
+  it('seeds the atom when token and non-expired cache are present', () => {
+    setAuthToken('t')
+    const cached = { user: { id: 'u1' }, session: { id: 's1', expiresAt: future() } }
+    setCachedSession(cached)
+    const atom = createFakeAtom()
+
+    hydrateSessionFromCache(createFakeClient(atom))
+
+    expect(atom.get().data).toEqual(cached)
+    expect(atom.get().isPending).toBe(false)
+  })
+
+  it('does not seed when no token is stored', () => {
+    setCachedSession({ user: { id: 'u1' }, session: { expiresAt: future() } })
+    const atom = createFakeAtom()
+
+    hydrateSessionFromCache(createFakeClient(atom))
+
+    expect(atom.get().data).toBeNull()
+    expect(atom.get().isPending).toBe(true)
+  })
+
+  it('does not seed when the cache is empty', () => {
+    setAuthToken('t')
+    const atom = createFakeAtom()
+
+    hydrateSessionFromCache(createFakeClient(atom))
+
+    expect(atom.get().data).toBeNull()
+    expect(atom.get().isPending).toBe(true)
+  })
+
+  it('drops and clears expired caches without seeding', () => {
+    setAuthToken('t')
+    setCachedSession({ user: { id: 'u1' }, session: { expiresAt: past() } })
+    const atom = createFakeAtom()
+
+    hydrateSessionFromCache(createFakeClient(atom))
+
+    expect(atom.get().data).toBeNull()
+    expect(getCachedSession()).toBeNull()
+  })
+})
+
 describe('AuthProvider — cross-tab auth-token listener', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -149,6 +225,16 @@ describe('AuthProvider — cross-tab auth-token listener', () => {
 
     expect(reloadSpy).toHaveBeenCalledTimes(1)
     expect(capturedEvents).toHaveLength(0)
+  })
+
+  it('clears the cached session before reloading on cross-tab token rotation', () => {
+    setCachedSession({ user: { id: 'u1' }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() } })
+    renderAuthProvider()
+
+    fireStorageEvent('new-token', 'old-token')
+
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+    expect(getCachedSession()).toBeNull()
   })
 
   it('dispatches session_expired when another tab clears the token', () => {

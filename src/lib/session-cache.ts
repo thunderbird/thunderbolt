@@ -51,3 +51,20 @@ export const setCachedSession = (data: CachedSessionData): void => {
 export const clearCachedSession = (): void => {
   localStorage.removeItem(sessionCacheKey)
 }
+
+/**
+ * True when the cached payload has a `session.expiresAt` in the future.
+ *
+ * Called before seeding the atom so an offline device past the token's TTL
+ * doesn't boot as logged in (THU-580 review). A cache without a parseable
+ * `expiresAt` is treated as invalid — likely an older payload shape, and a
+ * fresh `/get-session` is safer than trusting it.
+ */
+export const isCachedSessionValid = (cached: CachedSessionData): boolean => {
+  const session = cached.session as { expiresAt?: string | number | Date } | undefined
+  if (!session?.expiresAt) {
+    return false
+  }
+  const expiresAt = new Date(session.expiresAt).getTime()
+  return Number.isFinite(expiresAt) && expiresAt > Date.now()
+}

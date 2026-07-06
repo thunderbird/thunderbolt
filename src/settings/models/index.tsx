@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createModel, getTinfoilClient } from '@/ai/fetch'
+import { getTinfoilClient } from '@/ai/fetch'
 import { ModificationIndicator } from '@/components/modification-indicator'
 import {
   AlertDialog,
@@ -39,16 +39,15 @@ import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToD
 import { defaultModels } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
-import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
+import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
-import { generateText } from 'ai'
 import { http } from '@/lib/http'
 import { AlertTriangle, Check, Cpu, Loader2, Lock, Pen, Plus, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -142,137 +141,6 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
   }
 }
 
-type ConnectionTestConfig = {
-  provider: Model['provider']
-  model: string
-  name?: string
-  url?: string | null
-  apiKey?: string | null
-}
-
-type TestedConfig = {
-  provider: Model['provider']
-  model: string
-  url: string | null
-  apiKey: string | null
-}
-
-type CurrentModelConfig = {
-  provider: Model['provider']
-  model: string
-  url?: string | null
-  apiKey?: string | null
-}
-
-const useModelConnectionTest = (current: CurrentModelConfig) => {
-  const getProxyFetch = useProxyFetchGetter()
-  const [isTesting, setIsTesting] = useState(false)
-  const [rawStatus, setRawStatus] = useState<'idle' | 'success' | 'error'>('idle')
-  const [error, setError] = useState<string | null>(null)
-  const [tested, setTested] = useState<TestedConfig | null>(null)
-  // Tracks the latest run so completions from superseded tests (started before
-  // a credential change or a newer test) can't flip status back to success/error.
-  const runIdRef = useRef(0)
-
-  const test = useCallback(
-    async (config: ConnectionTestConfig) => {
-      if (!config.provider || !config.model) {
-        return
-      }
-
-      const runId = ++runIdRef.current
-      const isCurrent = () => runIdRef.current === runId
-
-      setIsTesting(true)
-      setRawStatus('idle')
-      setError(null)
-      setTested(null)
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Connection test timed out after 10 seconds')), 10000)
-      })
-
-      const testedConfig: TestedConfig = {
-        provider: config.provider,
-        model: config.model,
-        url: config.url || null,
-        apiKey: config.apiKey || null,
-      }
-
-      try {
-        const modelConfig = {
-          id: 'test',
-          name: config.name || 'Test Model',
-          provider: config.provider,
-          model: config.model,
-          url: config.url || null,
-          apiKey: config.apiKey || null,
-          isSystem: 0,
-          enabled: 1,
-          toolUsage: 1,
-          isConfidential: 0,
-          startWithReasoning: 0,
-          supportsParallelToolCalls: 1,
-          contextWindow: null,
-          tokenizer: null,
-          deletedAt: null,
-          defaultHash: null,
-          vendor: null,
-          description: null,
-          userId: null,
-        }
-        const aiModel = await createModel(modelConfig, getProxyFetch)
-        const { text } = await Promise.race([
-          generateText({ model: aiModel, prompt: 'Say "test successful" if you can read this.', maxRetries: 0 }),
-          timeoutPromise,
-        ])
-        if (!isCurrent()) {
-          return
-        }
-        console.log('Model test response:', text)
-        setRawStatus('success')
-        setTested(testedConfig)
-      } catch (err) {
-        if (!isCurrent()) {
-          return
-        }
-        console.error('Connection test error:', err)
-        setRawStatus('error')
-        setError(err instanceof Error ? err.message : 'Failed to connect to model')
-        setTested(testedConfig)
-      } finally {
-        if (isCurrent()) {
-          setIsTesting(false)
-        }
-      }
-    },
-    [getProxyFetch],
-  )
-
-  const reset = useCallback(() => {
-    runIdRef.current += 1
-    setRawStatus('idle')
-    setError(null)
-    setIsTesting(false)
-    setTested(null)
-  }, [])
-
-  // Derive the exposed status from the tested config vs. the current one: a
-  // test result is only meaningful for the credentials it ran against. Any
-  // divergence collapses status to 'idle' during the same render — no
-  // useEffect-based invalidation, no window where a stale 'success' leaks.
-  const matchesCurrent =
-    tested !== null &&
-    tested.provider === current.provider &&
-    tested.model === current.model &&
-    tested.url === (current.url || null) &&
-    tested.apiKey === (current.apiKey || null)
-
-  const status: 'idle' | 'success' | 'error' = matchesCurrent ? rawStatus : 'idle'
-
-  return { isTesting, status, error, test, reset }
-}
-
 const canTestModelConnection = (provider: Model['provider'], model?: string, apiKey?: string | null) => {
   if (!model) {
     return false
@@ -281,6 +149,82 @@ const canTestModelConnection = (provider: Model['provider'], model?: string, api
     return !!apiKey
   }
   return true
+}
+
+type ConnectionTestSectionProps = {
+  provider: Model['provider']
+  model: string
+  apiKey: string | undefined
+  isTesting: boolean
+  onTest: () => void
+  status: 'idle' | 'success' | 'error'
+  error: string | null
+}
+
+/**
+ * Test-Model button, success/error status cards, and the "enter an API key"
+ * hint — shared by the Add and Edit dialogs so the display stays in sync.
+ */
+const ConnectionTestSection = ({
+  provider,
+  model,
+  apiKey,
+  isTesting,
+  onTest,
+  status,
+  error,
+}: ConnectionTestSectionProps) => {
+  const canTest = canTestModelConnection(provider, model, apiKey)
+  const showApiKeyHint = !canTest && !!model && ['anthropic', 'tinfoil'].includes(provider)
+
+  return (
+    <>
+      {canTest && (
+        <Button type="button" onClick={onTest} disabled={isTesting} variant="outline" className="w-full">
+          {isTesting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Testing Model...
+            </>
+          ) : (
+            'Test Model'
+          )}
+        </Button>
+      )}
+
+      {showApiKeyHint && (
+        <p className="text-sm text-muted-foreground text-center">
+          Enter an API key to test the connection before saving.
+        </p>
+      )}
+
+      {status === 'success' && (
+        <StatusCard
+          title={
+            <>
+              <Check className="h-5 w-5 text-green-600" />
+              Test successful!
+            </>
+          }
+          description="Successfully got a response from the model."
+          className="border-green-200/50 dark:border-green-500/20"
+        />
+      )}
+
+      {status === 'error' && (
+        <StatusCard
+          title={
+            <>
+              <X className="h-5 w-5 text-red-600" />
+              Test failed
+            </>
+          }
+          description={error || 'Received an error while testing the model.'}
+          className="bg-red-50/50 dark:bg-red-500/10 border-red-200/50 dark:border-red-500/20"
+        />
+      )}
+    </>
+  )
 }
 
 const formSchema = z
@@ -334,7 +278,7 @@ const buildEditFormSchema = (provider: Model['provider']) =>
     path: ['url'],
   })
 
-export const EditModelForm = ({
+const EditModelForm = ({
   model,
   onCancel,
   onSubmit,
@@ -349,7 +293,7 @@ export const EditModelForm = ({
     resolver: zodResolver(buildEditFormSchema(model.provider)),
     defaultValues: {
       name: model.name || '',
-      model: model.model || '',
+      model: model.model,
       url: model.url || '',
       apiKey: model.apiKey || '',
     },
@@ -367,8 +311,8 @@ export const EditModelForm = ({
   } = useModelConnectionTest({
     provider: model.provider,
     model: watchedModel,
-    url: watchedUrl || null,
-    apiKey: watchedApiKey || null,
+    url: watchedUrl,
+    apiKey: watchedApiKey,
   })
 
   const handleSubmit = (values: z.infer<typeof editFormSchema>) => {
@@ -380,16 +324,10 @@ export const EditModelForm = ({
     test({
       provider: model.provider,
       model: values.model,
-      name: values.name,
       url: values.url,
       apiKey: values.apiKey,
     })
   }
-
-  const canTest = canTestModelConnection(model.provider, watchedModel, watchedApiKey)
-  const credentialsDirty =
-    watchedModel !== (model.model || '') || watchedUrl !== (model.url || '') || watchedApiKey !== (model.apiKey || '')
-  const requiresPassingTest = credentialsDirty && connectionStatus !== 'success'
 
   return (
     <Form {...form}>
@@ -454,56 +392,21 @@ export const EditModelForm = ({
           />
         )}
 
-        {canTest && (
-          <Button type="button" onClick={handleTest} disabled={isTesting} variant="outline" className="w-full">
-            {isTesting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Testing Model...
-              </>
-            ) : (
-              'Test Model'
-            )}
-          </Button>
-        )}
-
-        {!canTest && credentialsDirty && (
-          <p className="text-sm text-muted-foreground text-center">
-            Enter an API key to test the connection before saving.
-          </p>
-        )}
-
-        {connectionStatus === 'success' && (
-          <StatusCard
-            title={
-              <>
-                <Check className="h-5 w-5 text-green-600" />
-                Test successful!
-              </>
-            }
-            description="Successfully got a response from the model."
-            className="border-green-200/50 dark:border-green-500/20"
-          />
-        )}
-
-        {connectionStatus === 'error' && (
-          <StatusCard
-            title={
-              <>
-                <X className="h-5 w-5 text-red-600" />
-                Test failed
-              </>
-            }
-            description={connectionError || 'Received an error while testing the model.'}
-            className="bg-red-50/50 dark:bg-red-500/10 border-red-200/50 dark:border-red-500/20"
-          />
-        )}
+        <ConnectionTestSection
+          provider={model.provider}
+          model={watchedModel}
+          apiKey={watchedApiKey}
+          isTesting={isTesting}
+          onTest={handleTest}
+          status={connectionStatus}
+          error={connectionError}
+        />
 
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending || !form.formState.isDirty || requiresPassingTest}>
+          <Button type="submit" disabled={isPending || !form.formState.isDirty || connectionStatus === 'error'}>
             Save
           </Button>
         </div>
@@ -652,7 +555,6 @@ export default function ModelsPage() {
     runConnectionTest({
       provider: values.provider,
       model: modelId,
-      name: values.name,
       url: values.url,
       apiKey: values.apiKey,
     })
@@ -672,26 +574,6 @@ export default function ModelsPage() {
       dispatch({ type: 'CLOSE_DIALOG' })
       resetConnectionTest()
     }
-  }
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    // Only handle Enter key on input elements
-    if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
-      e.preventDefault()
-
-      const values = form.getValues()
-      const modelId = selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
-
-      // Check if we can test connection
-      if (connectionStatus !== 'success' && values.provider && modelId) {
-        testConnection()
-      }
-      // If connection is successful, submit the form
-      else if (connectionStatus === 'success') {
-        form.handleSubmit(onSubmit)()
-      }
-    }
-    // Let all other keys and elements handle their default behavior
   }
 
   const fetchAvailableModels = async (provider: string, apiKey?: string, url?: string) => {
@@ -1014,11 +896,6 @@ export default function ModelsPage() {
 
   const watchedModel = form.watch('model')
 
-  const canTestConnection = useMemo(
-    () => canTestModelConnection(watchedProvider, watchedModel, watchedApiKey),
-    [watchedApiKey, watchedModel, watchedProvider],
-  )
-
   const {
     isTesting: isTestingConnection,
     status: connectionStatus,
@@ -1028,8 +905,8 @@ export default function ModelsPage() {
   } = useModelConnectionTest({
     provider: watchedProvider,
     model: watchedModel,
-    url: watchedUrl || null,
-    apiKey: watchedApiKey || null,
+    url: watchedUrl,
+    apiKey: watchedApiKey,
   })
 
   return (
@@ -1047,7 +924,7 @@ export default function ModelsPage() {
               <ResponsiveModalDescription className="sr-only">Add a new AI model</ResponsiveModalDescription>
             </ResponsiveModalHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="grid gap-4 pt-4 pb-2">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 pt-4 pb-2">
                 <FormField
                   control={form.control}
                   name="provider"
@@ -1055,13 +932,7 @@ export default function ModelsPage() {
                     <FormItem>
                       <FormLabel>Provider</FormLabel>
                       <FormControl>
-                        <Select
-                          onValueChange={(value) => {
-                            field.onChange(value)
-                            resetConnectionTest()
-                          }}
-                          value={field.value}
-                        >
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <SelectTrigger className="w-full rounded-lg">
                             <SelectValue placeholder="Select provider" />
                           </SelectTrigger>
@@ -1243,67 +1114,21 @@ export default function ModelsPage() {
                   />
                 )}
 
-                {/* Test Connection Button */}
-                {canTestConnection && (
-                  <Button
-                    type="button"
-                    onClick={testConnection}
-                    disabled={isTestingConnection}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    {isTestingConnection ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Testing Model...
-                      </>
-                    ) : (
-                      'Test Model'
-                    )}
-                  </Button>
-                )}
-
-                {!canTestConnection &&
-                  !!watchedModel &&
-                  ['anthropic', 'tinfoil'].includes(watchedProvider) &&
-                  !watchedApiKey && (
-                    <p className="text-sm text-muted-foreground text-center">
-                      Enter an API key to test the connection before saving.
-                    </p>
-                  )}
-
-                {/* Connection Status Messages */}
-                {connectionStatus === 'success' && (
-                  <StatusCard
-                    title={
-                      <>
-                        <Check className="h-5 w-5 text-green-600" />
-                        Test successful!
-                      </>
-                    }
-                    description="Successfully got a response from the model."
-                    className="border-green-200/50 dark:border-green-500/20"
-                  />
-                )}
-
-                {connectionStatus === 'error' && (
-                  <StatusCard
-                    title={
-                      <>
-                        <X className="h-5 w-5 text-red-600" />
-                        Test failed
-                      </>
-                    }
-                    description={connectionError || 'Received an error while testing the model.'}
-                    className="bg-red-50/50 dark:bg-red-500/10 border-red-200/50 dark:border-red-500/20"
-                  />
-                )}
+                <ConnectionTestSection
+                  provider={watchedProvider}
+                  model={watchedModel}
+                  apiKey={watchedApiKey}
+                  isTesting={isTestingConnection}
+                  onTest={testConnection}
+                  status={connectionStatus}
+                  error={connectionError}
+                />
 
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={addModelMutation.isPending || connectionStatus !== 'success'}>
+                  <Button type="submit" disabled={addModelMutation.isPending || connectionStatus === 'error'}>
                     {addModelMutation.isPending ? 'Adding...' : 'Add Model'}
                   </Button>
                 </div>

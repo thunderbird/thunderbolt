@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { Session } from '@/contexts/auth-context'
+
 /**
  * Cache of the last successful Better Auth session response in localStorage.
  *
@@ -19,7 +21,18 @@
 
 const sessionCacheKey = 'thunderbolt_session_cache'
 
-export type CachedSessionData = Record<string, unknown>
+/**
+ * Shape of the payload as it exists in localStorage — a JSON-serialized subset
+ * of Better Auth's `Session`. `Date` fields (e.g. `session.expiresAt`) round-
+ * trip to ISO strings through `JSON.stringify`, so `expiresAt` is widened to
+ * `string | number | Date`. Everything else is `Partial` because the localStorage
+ * value predates our writer contract (older shapes, corruption, manual edits) —
+ * reads are validated at runtime by {@link isCachedSessionValid}.
+ */
+export type CachedSessionData = {
+  user?: Partial<Session['user']>
+  session?: Partial<Omit<Session['session'], 'expiresAt'>> & { expiresAt?: string | number | Date }
+}
 
 /** Read the cached session, or null when absent / malformed. */
 export const getCachedSession = (): CachedSessionData | null => {
@@ -61,10 +74,9 @@ export const clearCachedSession = (): void => {
  * fresh `/get-session` is safer than trusting it.
  */
 export const isCachedSessionValid = (cached: CachedSessionData): boolean => {
-  const session = cached.session as { expiresAt?: string | number | Date } | undefined
-  if (!session?.expiresAt) {
+  if (!cached.session?.expiresAt) {
     return false
   }
-  const expiresAt = new Date(session.expiresAt).getTime()
+  const expiresAt = new Date(cached.session.expiresAt).getTime()
   return Number.isFinite(expiresAt) && expiresAt > Date.now()
 }

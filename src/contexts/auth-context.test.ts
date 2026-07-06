@@ -10,7 +10,7 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { buildFetchOptions, hydrateSessionFromCache } from './auth-context'
+import { buildFetchOptions, hydrateSessionFromCache, subscribeSessionCachePersist } from './auth-context'
 import type { createAuthClient } from 'better-auth/react'
 
 const authTokenKey = 'thunderbolt_auth_token'
@@ -170,6 +170,79 @@ describe('hydrateSessionFromCache', () => {
     hydrateSessionFromCache(createFakeClient(atom))
 
     expect(atom.get().data).toBeNull()
+    expect(getCachedSession()).toBeNull()
+  })
+})
+
+describe('subscribeSessionCachePersist', () => {
+  type Listener = (state: { data: unknown }) => void
+
+  const createFakeSubscribableAtom = () => {
+    const listeners = new Set<Listener>()
+    return {
+      emit: (state: { data: unknown }) => {
+        listeners.forEach((l) => l(state))
+      },
+      subscribe: (l: Listener) => {
+        listeners.add(l)
+        return () => {
+          listeners.delete(l)
+        }
+      },
+      size: () => listeners.size,
+    }
+  }
+
+  const createFakeClient = (atom: ReturnType<typeof createFakeSubscribableAtom>) =>
+    ({
+      $store: { atoms: { session: atom } },
+    }) as unknown as ReturnType<typeof createAuthClient>
+
+  beforeEach(() => {
+    clearCachedSession()
+  })
+
+  afterEach(() => {
+    clearCachedSession()
+  })
+
+  it('persists payloads that carry both user and session', () => {
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+
+    const payload = { user: { id: 'u1' }, session: { id: 's1', expiresAt: new Date().toISOString() } }
+    atom.emit({ data: payload })
+
+    expect(getCachedSession()).toEqual(payload)
+  })
+
+  it('does not persist when data is null (initial / signed-out state)', () => {
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+
+    atom.emit({ data: null })
+
+    expect(getCachedSession()).toBeNull()
+  })
+
+  it('does not persist when user or session are null (empty payload)', () => {
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+
+    atom.emit({ data: { user: null, session: null } })
+
+    expect(getCachedSession()).toBeNull()
+  })
+
+  it('unsubscribe stops further writes to the cache', () => {
+    const atom = createFakeSubscribableAtom()
+    const unsubscribe = subscribeSessionCachePersist(createFakeClient(atom))
+    expect(atom.size()).toBe(1)
+
+    unsubscribe()
+    expect(atom.size()).toBe(0)
+
+    atom.emit({ data: { user: { id: 'u1' }, session: { id: 's1' } } })
     expect(getCachedSession()).toBeNull()
   })
 })

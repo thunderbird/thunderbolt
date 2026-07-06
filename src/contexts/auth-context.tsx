@@ -98,11 +98,11 @@ export const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClie
  * to avoid caching a payload that would only resurrect as a logged-out flash on
  * the next boot.
  */
-const subscribeSessionCachePersist = (client: ReturnType<typeof createAuthClient>): (() => void) => {
-  return client.$store.atoms.session.subscribe((state: { data: unknown }) => {
-    const data = state.data as { user?: unknown; session?: unknown } | null
+export const subscribeSessionCachePersist = (client: ReturnType<typeof createAuthClient>): (() => void) => {
+  return client.$store.atoms.session.subscribe((state: { data: Session | null }) => {
+    const data = state.data
     if (data?.user && data?.session) {
-      setCachedSession(data as Record<string, unknown>)
+      setCachedSession(data)
     }
   })
 }

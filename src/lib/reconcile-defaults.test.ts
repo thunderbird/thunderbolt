@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getAllModels } from '@/dal'
+import { deleteModel, getAllModels } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
@@ -12,7 +12,6 @@ import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { hashModelProfile } from '../defaults/model-profiles'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
-import { nowIso } from './utils'
 import { cleanupRemovedDefaults, reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
 import type { Model, ModelProfile, Prompt } from '@/types'
 
@@ -159,8 +158,11 @@ describe('seedModels', () => {
     await db.update(modelsTable).set({ name: 'User Modified' }).where(eq(modelsTable.id, defaultModels[0].id))
 
     // Scenario 2: Model 1 stays unmodified
-    // Scenario 3: Model 2 is deleted (soft delete)
-    await db.update(modelsTable).set({ deletedAt: nowIso() }).where(eq(modelsTable.id, defaultModels[2]?.id))
+    // Scenario 3: Model 2 is user-deleted via the DAL — this scrubs the row's
+    // nullable columns (including defaultHash) via `clearNullableColumns`,
+    // which is what distinguishes a user delete from a cleanup soft-delete
+    // and prevents the resurrect branch from undoing it.
+    await deleteModel(db, defaultModels[2].id)
 
     // Seed again
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
@@ -188,8 +190,9 @@ describe('seedModels', () => {
     const modelsBefore = await getAllModels(getDb())
     expect(modelsBefore.length).toBe(defaultModels.length)
 
-    // Soft delete a model
-    await db.update(modelsTable).set({ deletedAt: nowIso() }).where(eq(modelsTable.id, defaultModels[0].id))
+    // User-delete a model via the DAL (scrubs nullable columns including
+    // defaultHash so the resurrect branch treats it as a real user deletion).
+    await deleteModel(db, defaultModels[0].id)
 
     // Get all models after deletion - should not include soft-deleted model
     const modelsAfter = await getAllModels(getDb())
@@ -526,6 +529,52 @@ describe('reconcileDefaultsForTable', () => {
 
     const settings = await db.select().from(settingsTable)
     expect(settings.length).toBe(0)
+  })
+
+  test('canOverwrite=false still resurrects a cleanup-shaped soft-delete', async () => {
+    const db = getDb()
+
+    // Simulate a pre-THU-637 client's `cleanupRemovedDefaults` having
+    // soft-deleted a currently-shipped default: `deletedAt` is set but
+    // `defaultHash` still matches the content-minus-deletedAt (cleanup only
+    // touches deletedAt). The resurrect branch must fire even under the
+    // strictest gate, otherwise the row stays deleted for good once
+    // `stored.version` catches up.
+    const shipped = defaultModels[0]
+    await db.insert(modelsTable).values({
+      ...shipped,
+      deletedAt: '2026-01-01T00:00:00.000Z',
+      defaultHash: hashModel(shipped),
+    })
+
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, { canOverwrite: false })
+
+    const row = await db.select().from(modelsTable).where(eq(modelsTable.id, shipped.id)).get()
+    expect(row?.deletedAt).toBeNull()
+  })
+
+  test('canOverwrite=false does not resurrect a user-driven soft-delete', async () => {
+    const db = getDb()
+
+    // User-driven `deleteModel` scrubs every nullable column via
+    // `clearNullableColumns` — most importantly, `defaultHash` becomes null.
+    // The resurrect guard's hash check can't satisfy a null defaultHash, so
+    // the user's deletion is preserved.
+    const shipped = defaultModels[0]
+    await db.insert(modelsTable).values({
+      ...shipped,
+      name: null,
+      model: null,
+      description: null,
+      vendor: null,
+      deletedAt: '2026-01-01T00:00:00.000Z',
+      defaultHash: null,
+    })
+
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, { canOverwrite: false })
+
+    const row = await db.select().from(modelsTable).where(eq(modelsTable.id, shipped.id)).get()
+    expect(row?.deletedAt).toBe('2026-01-01T00:00:00.000Z')
   })
 
   test('canOverwrite=false skips overwrites of unedited existing rows', async () => {

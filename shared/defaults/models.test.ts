@@ -21,8 +21,8 @@ const computeSnapshotHash = () =>
   defaultModels.map((model, index) => `${index}:${model.id}:${hashModel(model)}`).join('|')
 
 const expected = {
-  version: 1,
-  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-1vf2pk|1:019e70af-e5b2-76d0-9ede-f22d8265bb14:i4q5q9|2:019e7580-2b0c-77d6-8b99-16a99abe4591:b3y2hj|3:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
+  version: 2,
+  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-1vf2pk|1:019f227e-d640-727d-ba12-d51bd7d0a3d6:bvaax2|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
 }
 
 describe('defaultModels version snapshot', () => {

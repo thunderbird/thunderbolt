@@ -129,6 +129,30 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       continue
     }
 
+    // Resurrect a row soft-deleted by an older-build (pre-THU-637) client's
+    // unconditional `cleanupRemovedDefaults`. Two properties make this safe:
+    //   1. Cleanup only mutates `deletedAt` — content and `defaultHash` are
+    //      preserved. User-driven `deleteModel` scrubs every nullable column
+    //      via `clearNullableColumns`, including `defaultHash`, so a
+    //      user-initiated soft-delete cannot satisfy the hash check below.
+    //   2. `hashFn({...existing, deletedAt: null}) === existing.defaultHash`
+    //      confirms the row's content still matches the exact default that
+    //      the previous reconciler stamped — this can only be a cleanup
+    //      soft-delete of a still-shipped default that just needs undoing.
+    // Ungated by `canOverwrite`: this is a corrective action rather than an
+    // overwrite. Gating it would leave Flash-class rows permanently
+    // soft-deleted for any account touched by a lagging pre-THU-637 client
+    // (see the PR 1044 ital0 discussion / THU-637 rollout race).
+    if (
+      (existing as { deletedAt?: string | null }).deletedAt &&
+      existing.defaultHash &&
+      hashFn({ ...existing, deletedAt: null }) === existing.defaultHash
+    ) {
+      await db.update(table).set({ deletedAt: null }).where(eq(table[keyField], keyValue))
+      mutated = true
+      continue
+    }
+
     // Any write against an existing row requires authority.
     if (!canOverwrite) {
       continue

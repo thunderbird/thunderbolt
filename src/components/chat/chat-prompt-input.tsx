@@ -26,7 +26,7 @@ import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
 import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
@@ -81,6 +81,17 @@ const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachm
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
   acceptedAttachmentExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
+
+/** Clipboard files (e.g. a pasted screenshot) often arrive with an empty name.
+ *  Give them a stable, extension-bearing filename so the chip renders and the
+ *  extension-based accept check has something to work with. */
+const withClipboardFilename = (file: File, index: number): File => {
+  if (file.name) {
+    return file
+  }
+  const ext = file.type.split('/')[1] ?? 'png'
+  return new File([file], `pasted-image-${Date.now()}-${index}.${ext}`, { type: file.type })
+}
 
 /**
  * Extract a human-readable display string from a connection error.
@@ -399,6 +410,25 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [attachments.length],
     )
 
+    // Intercept clipboard paste (Cmd/Ctrl+V) so copied files and pasted images
+    // become attachments — the same path as drag-drop and the paperclip. Only
+    // preventDefault when the clipboard actually carries files, so a normal text
+    // paste falls through untouched.
+    const handlePaste = useCallback(
+      (e: ClipboardEvent<HTMLTextAreaElement>) => {
+        const files = Array.from(e.clipboardData?.items ?? [])
+          .filter((item) => item.kind === 'file')
+          .map((item) => item.getAsFile())
+          .filter((file): file is File => file != null)
+        if (files.length === 0) {
+          return
+        }
+        e.preventDefault()
+        void addFiles(files.map(withClipboardFilename))
+      },
+      [addFiles],
+    )
+
     const removeAttachment = useCallback((localFileId: string) => {
       setAttachments((prev) => prev.filter((a) => a.localFileId !== localFileId))
       deleteAttachment(localFileId).catch((error) => console.error('Failed to delete local attachment:', error))
@@ -666,6 +696,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             }
             onTextareaKeyDown={handleSlashKeyDown}
             onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+            onTextareaPaste={handlePaste}
           />
         </div>
         <ContextOverflowModal

@@ -13,12 +13,26 @@ import {
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { Model } from '@/types'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement, type ReactNode, type RefObject } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
+import { getClock } from '@/testing-library'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
+
+// The real blob store uses IndexedDB, which isn't available in the test env.
+// Back it with an in-memory Map so the attach path (put → chip render) works.
+const attachmentStore = new Map<string, unknown>()
+mock.module('@/lib/file-blob-storage', () => ({
+  putAttachment: async (file: { id: string }) => {
+    attachmentStore.set(file.id, file)
+  },
+  getAttachment: async (id: string) => attachmentStore.get(id) ?? null,
+  deleteAttachment: async (id: string) => {
+    attachmentStore.delete(id)
+  },
+}))
 
 const createMockUseContextTracking =
   (
@@ -281,6 +295,85 @@ describe('ChatPromptInput', () => {
 
       expect(screen.queryByRole('status')).toBeNull()
       expect(screen.queryByRole('alert')).toBeNull()
+    })
+  })
+
+  describe('clipboard paste', () => {
+    type ClipboardItemInit = { kind: string; type: string; getAsFile: () => File | null }
+
+    /** Dispatch a paste on the textarea with a stubbed clipboard, spying on preventDefault. */
+    const pasteItems = (textarea: HTMLTextAreaElement, items: ClipboardItemInit[]) => {
+      const pasteEvent = createEvent.paste(textarea, {
+        clipboardData: { items, files: items.map((i) => i.getAsFile()).filter(Boolean) },
+      })
+      const preventDefaultSpy = mock(() => {})
+      Object.defineProperty(pasteEvent, 'preventDefault', { value: preventDefaultSpy })
+      act(() => {
+        fireEvent(textarea, pasteEvent)
+      })
+      return preventDefaultSpy
+    }
+
+    /** Flush the async addFiles pipeline (IndexedDB write → setState) under fake timers. */
+    const flushAttachments = async () => {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+    }
+
+    it('attaches a pasted image file and prevents the default text paste', async () => {
+      const { mockUseChat } = setupStore()
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const file = new File(['data'], 'shot.png', { type: 'image/png' })
+      const preventDefaultSpy = pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
+      await flushAttachments()
+
+      expect(preventDefaultSpy).toHaveBeenCalled()
+      expect(screen.getByLabelText('Remove shot.png')).toBeInTheDocument()
+    })
+
+    it('synthesizes a filename for a nameless clipboard image', async () => {
+      const { mockUseChat } = setupStore()
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const file = new File(['data'], '', { type: 'image/png' })
+      pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
+      await flushAttachments()
+
+      expect(screen.getByLabelText(/Remove pasted-image-.*\.png/)).toBeInTheDocument()
+    })
+
+    it('leaves a plain-text paste untouched (no attachment, no preventDefault)', () => {
+      const { mockUseChat } = setupStore()
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const preventDefaultSpy = pasteItems(textarea, [{ kind: 'string', type: 'text/plain', getAsFile: () => null }])
+
+      expect(preventDefaultSpy).not.toHaveBeenCalled()
+    })
+
+    it('rejects an unsupported pasted file type with an error banner', async () => {
+      const { mockUseChat } = setupStore()
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const file = new File(['<html>'], 'page.html', { type: 'text/html' })
+      pasteItems(textarea, [{ kind: 'file', type: 'text/html', getAsFile: () => file }])
+      await flushAttachments()
+
+      expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
     })
   })
 

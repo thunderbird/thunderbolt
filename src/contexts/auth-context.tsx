@@ -96,7 +96,8 @@ export const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClie
  * but the initial `useAuthQuery` `onSuccess` writes the raw server payload, so
  * `{ user: null, session: null }` can transit the atom — we filter it out here
  * to avoid caching a payload that would only resurrect as a logged-out flash on
- * the next boot.
+ * the next boot. Real sign-out (atom → `null`) is a no-op here on purpose —
+ * cache clearing is owned by the 401 handler and `clearLocalData` callers.
  */
 export const subscribeSessionCachePersist = (client: ReturnType<typeof createAuthClient>): (() => void) => {
   return client.$store.atoms.session.subscribe((state: { data: Session | null }) => {

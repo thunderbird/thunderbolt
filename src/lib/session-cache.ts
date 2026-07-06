@@ -16,7 +16,10 @@ import type { Session } from '@/contexts/auth-context'
  *  - written from `AuthProvider` whenever the session atom receives non-null data
  *  - cleared on 401 (token rejection) and on logout/wipe (via `clearLocalData`)
  *
- * Stored in localStorage to match the existing pattern in `auth-token.ts`.
+ * Stored in localStorage to match the existing pattern in `auth-token.ts`. Note
+ * that this widens the localStorage exfil surface from the bare bearer token to
+ * the full user profile (id, email, name, `isAnonymous`) — same exposure class
+ * as the token itself, but more identifying if an attacker gets read access.
  */
 
 const sessionCacheKey = 'thunderbolt_session_cache'

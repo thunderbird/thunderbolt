@@ -44,7 +44,7 @@ describe('wrapArtifactHtml', () => {
     expect(artifactCsp).toContain("default-src 'none'")
     const wrapped = wrapArtifactHtml('<div>hi</div>', 'n')
     expect(wrapped).toContain('http-equiv="Content-Security-Policy"')
-    expect(wrapped).toContain(artifactCsp as string)
+    expect(wrapped).toContain(artifactCsp)
   })
 
   it('injects the CSP but NOT the harness for the scripts-off streaming preview', () => {

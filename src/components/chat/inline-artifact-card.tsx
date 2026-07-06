@@ -3,13 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ArtifactActions } from '@/components/artifact/artifact-actions'
+import { ArtifactErrorStrip } from '@/components/artifact/artifact-error-strip'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { Button } from '@/components/ui/button'
 import { useAppSettled } from '@/hooks/use-app-settled'
 import { useOnScreen } from '@/hooks/use-on-screen'
 import { cn } from '@/lib/utils'
-import { AlertTriangle, AppWindow, PanelRight } from 'lucide-react'
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { AppWindow, PanelRight } from 'lucide-react'
+import { useRef, useState } from 'react'
 
 /**
  * Whether the (possibly partial) HTML has anything renderable in `<body>` yet.
@@ -58,52 +59,59 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
     shownRef.current = true
   }
   const showContent = shownRef.current
+  // Clear a stale error only at a reload boundary (the document changed). The harness reports a
+  // load-time error *before* `ready`, so clearing on `ready` would wipe an error the user never
+  // saw. Adjusting state during render is the React-blessed reset-on-prop-change.
+  const lastHtmlRef = useRef(html)
+  if (lastHtmlRef.current !== html) {
+    lastHtmlRef.current = html
+    setRuntimeError(null)
+  }
 
   // While generating the header is inert: no collapse, no hover, not focusable.
   const interactive = !streaming
   const toggle = () => setOpen((prev) => !prev)
-  const onHeaderKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    // Only the header itself toggles — not Enter/Space on a focused action button inside it.
-    if (event.target !== event.currentTarget) {
-      return
-    }
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      toggle()
-    }
-  }
+
+  const titleLabel = (
+    <>
+      <AppWindow className="size-4 shrink-0 text-muted-foreground" />
+      <span className="truncate text-sm font-medium text-muted-foreground">{title}</span>
+    </>
+  )
 
   return (
     <div ref={containerRef} className="my-2 overflow-hidden rounded-xl border border-border">
       <div
-        role={interactive ? 'button' : undefined}
-        tabIndex={interactive ? 0 : undefined}
-        aria-expanded={interactive ? open : undefined}
-        onClick={interactive ? toggle : undefined}
-        onKeyDown={interactive ? onHeaderKeyDown : undefined}
         className={cn(
-          // px-4 matches the tool accordion trigger so the icon + title line up with tool calls.
-          'flex h-10 items-center justify-between gap-2 px-4 outline-none transition-colors',
+          'flex h-10 items-stretch justify-between gap-2',
           // Only divide the header from the body when there is a body — otherwise (e.g. while
           // generating, before any content) this border stacks on the card's bottom border.
           open && showContent && 'border-b border-border',
-          // No fill — the card shows the page background like the tool accordions do, set apart
-          // only by its border; the header hover matches the tool accordions' bg-secondary.
-          interactive && 'cursor-pointer hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring',
         )}
       >
-        <div className="flex min-w-0 items-center gap-2">
-          <AppWindow className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate text-sm font-medium text-muted-foreground">{title}</span>
-        </div>
-        {streaming ? (
-          <span className="shimmer-text shrink-0 text-xs font-medium">Generating…</span>
+        {/* A real <button> owns the toggle so Enter/Space work natively and screen readers don't
+            see a button nested inside a button. It fills the row (flex-1, edge-to-edge padding) so
+            the whole left region is one hit target; pl-4 lines the icon up with the tool accordions.
+            No fill — hover matches the tool accordions' bg-secondary; inert while streaming. */}
+        {interactive ? (
+          <button
+            type="button"
+            onClick={toggle}
+            aria-expanded={open}
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 pl-4 pr-2 text-left outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            {titleLabel}
+          </button>
         ) : (
-          // The header itself highlights on hover, so a plain ghost hover would blend in — these
-          // buttons use a stronger translucent-foreground circle that reads on top of it.
-          // -mr-2 pulls the rightmost icon button out so its icon lines up with the tool
-          // accordion's chevron (a 32px button at px-4 would otherwise sit ~8px further in).
-          <div className="-mr-2 flex shrink-0 items-center gap-1">
+          <div className="flex min-w-0 flex-1 items-center gap-2 pl-4">{titleLabel}</div>
+        )}
+        {streaming ? (
+          <span className="shimmer-text flex shrink-0 items-center pr-4 text-xs font-medium">Generating…</span>
+        ) : (
+          // The header highlights on hover, so a plain ghost hover would blend in — these buttons
+          // use a stronger translucent-foreground circle that reads on top of it. pr-2 lines the
+          // rightmost icon up with the tool accordion's chevron.
+          <div className="flex shrink-0 items-center gap-1 pr-2">
             <ArtifactActions
               html={html}
               title={title}
@@ -115,10 +123,7 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
                 size="icon"
                 className="size-8 shrink-0 rounded-full text-muted-foreground hover:bg-foreground/10 dark:hover:bg-foreground/20"
                 title="Open in side panel"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onOpenInPanel()
-                }}
+                onClick={onOpenInPanel}
               >
                 <PanelRight className="size-4" />
               </Button>
@@ -135,19 +140,13 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
         {/* min-h-0 lets the row collapse to exactly 0 — without it the grid leaves a ~1px
             sliver of the frame above the card's bottom border when closed. */}
         <div className="min-h-0 overflow-hidden">
-          {!streaming && runtimeError && (
-            <div className="flex items-center gap-2 border-b border-border bg-destructive/10 px-4 py-1.5 text-xs text-destructive">
-              <AlertTriangle className="size-3.5 shrink-0" />
-              <span className="truncate">{runtimeError}</span>
-            </div>
-          )}
+          {!streaming && runtimeError && <ArtifactErrorStrip message={runtimeError} />}
           {showContent && (
             <SandboxedHtmlFrame
               html={html}
               title={title}
               autoHeight
               allowScripts={!streaming && active}
-              onReady={() => setRuntimeError(null)}
               onError={streaming ? undefined : setRuntimeError}
             />
           )}

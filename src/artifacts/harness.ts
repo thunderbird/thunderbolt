@@ -29,14 +29,12 @@ export type HarnessMessage =
  * Residual limitation (no clean CSP/sandbox token closes it): a script can still
  * navigate its OWN frame (`location = ...`, `<meta http-equiv=refresh>`), which
  * issues an outbound GET the fetch directives never see — so an artifact must not
- * be trusted with sensitive user-entered input. Set to `null` to lift the network
- * restriction (e.g. to allow CDN libraries).
+ * be trusted with sensitive user-entered input.
  */
-export const artifactCsp: string | null =
+export const artifactCsp =
   "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; media-src data: blob:; worker-src blob:; base-uri 'none'; form-action 'none'"
 
-const cspMetaTag = (): string =>
-  artifactCsp ? `<meta http-equiv="Content-Security-Policy" content="${artifactCsp}">` : ''
+const cspMetaTag = (): string => `<meta http-equiv="Content-Security-Policy" content="${artifactCsp}">`
 
 /** Turn a harness error message into a single human-readable line. */
 export const formatHarnessError = (message: Extract<HarnessMessage, { type: 'artifact-error' }>): string => {

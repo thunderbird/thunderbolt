@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { renderHtmlToolName } from '@/artifacts/constants'
+import { isRenderHtmlPart } from '@/artifacts/render-html-tool'
 import {
+  artifactRendersStandalone,
   filterMessageParts,
   type GroupedUIPart,
   groupMessageParts,
@@ -14,7 +15,7 @@ import { extractTextFromParts } from '@/lib/message-utils'
 import { splitPartType } from '@/lib/utils'
 import type { HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
-import { getToolName, isToolOrDynamicToolUIPart, type TextUIPart } from 'ai'
+import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
 import { ArtifactMessagePart } from './artifact-message-part'
 import { CopyMessageButton } from './copy-message-button'
@@ -190,9 +191,11 @@ export const AssistantMessage = memo(
 
     // An artifact is a tall block of its own, so it doesn't need the last-message
     // height reserve — and applying it would leave empty space that pushes the
-    // artifact toward the middle of the viewport ("floating" too far down).
+    // artifact toward the middle of the viewport ("floating" too far down). Match the
+    // same condition that actually lifts the card out (streaming or verified-ok), so a
+    // last message whose only render_html call FAILED still gets the normal reserve.
     const hasArtifact = useMemo(
-      () => message.parts.some((part) => isToolOrDynamicToolUIPart(part) && getToolName(part) === renderHtmlToolName),
+      () => message.parts.some((part) => isRenderHtmlPart(part) && artifactRendersStandalone(part)),
       [message.parts],
     )
 

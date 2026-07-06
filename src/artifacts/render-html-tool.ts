@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ToolConfig } from '@/types'
+import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
 import { renderHtmlToolName } from './constants'
 import { verifyArtifactHtml } from './verify-html'
@@ -13,6 +14,25 @@ import { verifyArtifactHtml } from './verify-html'
  * worked (the HTML is read back from the tool call's input at render time).
  */
 export type RenderHtmlOutput = { ok: true } | { ok: false; errors: string[] }
+
+/** A `render_html` tool call, whether emitted as a typed `tool-<name>` or an MCP `dynamic-tool` part. */
+export type RenderHtmlPart = ToolUIPart | DynamicToolUIPart
+
+/**
+ * The one place that recognizes a `render_html` UI part. Callers used to re-do the
+ * `isToolOrDynamicToolUIPart` + `getToolName` dance and then cast `input`/`output` by hand in
+ * three files; this guard plus the typed accessors below keep those in sync.
+ */
+export const isRenderHtmlPart = (part: UIMessage['parts'][number]): part is RenderHtmlPart =>
+  isToolOrDynamicToolUIPart(part) && getToolName(part) === renderHtmlToolName
+
+/** The (possibly partial, while streaming) typed input of a `render_html` part. */
+export const renderHtmlInput = (part: RenderHtmlPart): Partial<RenderHtmlInput> =>
+  (part.input ?? {}) as Partial<RenderHtmlInput>
+
+/** The typed output of a `render_html` part once it has finished (`undefined` before then). */
+export const renderHtmlOutput = (part: RenderHtmlPart): RenderHtmlOutput | undefined =>
+  part.output as RenderHtmlOutput | undefined
 
 const renderHtmlParameters = z.object({
   html: z

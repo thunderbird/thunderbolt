@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { renderHtmlToolName } from '@/artifacts/constants'
+import { isRenderHtmlPart, renderHtmlOutput } from '@/artifacts/render-html-tool'
 import {
   type DynamicToolUIPart,
-  getToolName,
   isToolOrDynamicToolUIPart,
   type ReasoningUIPart,
   type TextUIPart,
@@ -46,18 +45,17 @@ export type ReasoningGroupUIPart = {
 export type GroupedUIPart = GroupableUIPart | ReasoningGroupUIPart
 
 /**
- * A render_html part that should render as its own artifact card rather than a
+ * Whether a render_html part should render as its own artifact card rather than a
  * generic tool card. It lifts out as soon as the call starts (so the card shows
  * immediately and streams into place) and while verifying; only a finished call
  * that failed — or errored — stays an ordinary tool call in the group.
  */
-const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolean => {
+export const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolean => {
   if (part.state === 'output-error') {
     return false
   }
   if (part.state === 'output-available') {
-    const output = part.output as { ok?: boolean } | undefined
-    return output?.ok === true
+    return renderHtmlOutput(part)?.ok === true
   }
   return true
 }
@@ -103,10 +101,11 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
   // Both typed `tool-<name>` parts and MCP `dynamic-tool` parts group as tool items.
   parts.forEach((part) => {
     if (isToolOrDynamicToolUIPart(part)) {
-      // An artifact renders on its own (live preview while streaming, then the
-      // verified result). Before it has HTML — or if it failed — it stays in the
-      // group and shows as an ordinary tool call.
-      if (getToolName(part) === renderHtmlToolName && artifactRendersStandalone(part)) {
+      // An artifact renders on its own from the moment the call starts — a live scripts-off
+      // preview streams into place (even before any HTML has arrived), then it becomes the
+      // verified result. Only a finished call that FAILED verification — or errored — stays in
+      // the group as an ordinary tool call.
+      if (isRenderHtmlPart(part) && artifactRendersStandalone(part)) {
         flushGroup()
         grouped.push(part)
         return

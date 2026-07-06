@@ -28,9 +28,30 @@ describe('staticCheckHtml', () => {
     expect(issues.every((i) => i.source === 'css')).toBe(true)
   })
 
-  it('does not false-flag a module script that uses import', async () => {
-    const html = page('', '<script type="module">import { x } from "./x.js"; console.log(x)</script>')
+  it('parses a module script (no import) without flagging it', async () => {
+    const html = page('', '<script type="module">export const x = 1; document.title = String(x)</script>')
     expect(await staticCheckHtml(html)).toEqual([])
+  })
+
+  it('flags a module script that imports from a CDN as a blocked resource', async () => {
+    const html = page(
+      '',
+      '<script type="module">import confetti from "https://cdn.skypack.dev/canvas-confetti"</script>',
+    )
+    const issues = await staticCheckHtml(html)
+    expect(issues.some((i) => i.source === 'resource' && i.message.includes('cdn.skypack.dev'))).toBe(true)
+  })
+
+  it('flags a relative module import too (nothing resolves offline)', async () => {
+    const html = page('', '<script type="module">import { x } from "./x.js"; console.log(x)</script>')
+    const issues = await staticCheckHtml(html)
+    expect(issues.some((i) => i.source === 'resource')).toBe(true)
+  })
+
+  it('flags a dynamic import() with a string literal specifier', async () => {
+    const html = page('', '<script>import("https://cdn.example.com/lib.js").then(() => {})</script>')
+    const issues = await staticCheckHtml(html)
+    expect(issues.some((i) => i.source === 'resource' && i.message.includes('cdn.example.com'))).toBe(true)
   })
 
   it('flags external scripts and stylesheets as blocked resources (offline artifacts must inline)', async () => {
@@ -47,7 +68,15 @@ describe('staticCheckHtml', () => {
     expect(protoRel[0]?.source).toBe('resource')
   })
 
-  it('does not flag inline scripts, data: URIs, or relative paths as external resources', async () => {
+  it('flags a relative or root-path script src (the offline CSP blocks every scheme, not just http)', async () => {
+    const relative = await staticCheckHtml(page('', '<script src="./app.js"></script>'))
+    expect(relative[0]?.source).toBe('resource')
+
+    const rooted = await staticCheckHtml(page('<link rel="stylesheet" href="/styles.css">', ''))
+    expect(rooted.some((i) => i.source === 'resource')).toBe(true)
+  })
+
+  it('does not flag inline scripts or data: image URIs as external resources', async () => {
     const html = page(
       '<style>.a{color:red}</style>',
       '<script>const x = 1; void x</script><img src="data:image/gif;base64,AAAA">',

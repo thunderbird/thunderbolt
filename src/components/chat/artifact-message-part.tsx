@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { RenderHtmlInput, RenderHtmlOutput } from '@/artifacts/render-html-tool'
+import { renderHtmlInput, renderHtmlOutput, type RenderHtmlPart } from '@/artifacts/render-html-tool'
 import { Button } from '@/components/ui/button'
 import { useContentView } from '@/content-view/context'
-import { useThrottledValue } from '@/hooks/use-throttled-value'
+import { useThrottle } from '@/hooks/use-throttle'
 import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { PanelRight } from 'lucide-react'
 import { InlineArtifactCard } from './inline-artifact-card'
@@ -27,14 +27,14 @@ type ArtifactMessagePartProps = {
  */
 export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
   const artifactId = part.toolCallId
-  const input = (part.input ?? {}) as Partial<RenderHtmlInput>
+  const input = renderHtmlInput(part as RenderHtmlPart)
   const title = input.title?.trim() || 'Artifact'
 
   const streaming = part.state === 'input-streaming' || part.state === 'input-available'
-  const verified = part.state === 'output-available' && (part.output as RenderHtmlOutput | undefined)?.ok === true
+  const verified = part.state === 'output-available' && renderHtmlOutput(part as RenderHtmlPart)?.ok === true
 
   // Throttle the streaming HTML into the preview iframe; render the exact HTML once verified.
-  const throttledHtml = useThrottledValue(input.html ?? '', artifactPreviewThrottleMs)
+  const throttledHtml = useThrottle(input.html ?? '', artifactPreviewThrottleMs)
   const html = streaming ? throttledHtml : (input.html ?? '')
 
   const { state, showArtifact, close } = useContentView()

@@ -15,9 +15,6 @@ export type StaticIssue = {
 
 type InlineScript = { code: string; module: boolean }
 
-/** Absolute `http(s)://` or protocol-relative `//` URL — the kind the offline CSP blocks. data:/blob:/relative are fine. */
-const isExternalUrl = (url: string): boolean => /^(?:https?:)?\/\//i.test(url.trim())
-
 /**
  * `<script>` types the browser runs as JS (the WHATWG JavaScript MIME-type set, plus `''`/`module`).
  * Everything else (importmap, JSON/text data islands, templates) is not JS and must not be parsed as such.
@@ -64,28 +61,67 @@ const extractInlineBlocks = (
     .map((el) => el.textContent ?? '')
     .filter((code) => code.trim().length > 0)
 
-  // External scripts/stylesheets the offline CSP blocks — without the page's logic or styles
-  // it renders broken, but nothing throws, so flag them here rather than let verification pass blank.
+  // Any `<script src>` or `<link rel=stylesheet href>` the offline CSP blocks — and it blocks ALL
+  // of them: `script-src 'unsafe-inline' 'unsafe-eval'` and `style-src 'unsafe-inline'` name no
+  // scheme or host, so remote, protocol-relative, root/relative, AND `data:` script/stylesheet
+  // loads all fail. Without the page's logic or styles it renders broken, but nothing throws, so
+  // flag them here (regardless of URL form) rather than let verification pass on a blank page.
   const externalResources = [
     ...[...doc.querySelectorAll('script[src]')]
       .map((el) => el.getAttribute('src') ?? '')
-      .filter(isExternalUrl)
+      .filter((src) => src.trim().length > 0)
       .map((src) => `<script src="${src}">`),
     ...[...doc.querySelectorAll('link[rel~="stylesheet"][href]')]
       .map((el) => el.getAttribute('href') ?? '')
-      .filter(isExternalUrl)
+      .filter((href) => href.trim().length > 0)
       .map((href) => `<link rel="stylesheet" href="${href}">`),
   ]
 
   return { scripts, styles, externalResources }
 }
 
-/** Parse each inline `<script>` with acorn; a thrown SyntaxError means invalid JS. */
+/**
+ * Walk an acorn AST collecting every module specifier: static `import`/`export … from`,
+ * `export * from`, and dynamic `import('…')` with a string-literal argument. Offline artifacts
+ * have no module resolution or network, so any of these silently fails at runtime — a `<script
+ * type="module">` that imports a CDN URL (or even a relative path) otherwise parses clean and
+ * passes verification while rendering broken.
+ */
+const collectImportSources = (node: unknown, sources: string[]): void => {
+  if (!node || typeof node !== 'object') {
+    return
+  }
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      collectImportSources(child, sources)
+    }
+    return
+  }
+  const record = node as Record<string, unknown>
+  const source = record.source as { type?: string; value?: unknown } | null | undefined
+  if (
+    (record.type === 'ImportDeclaration' ||
+      record.type === 'ExportAllDeclaration' ||
+      record.type === 'ExportNamedDeclaration' ||
+      record.type === 'ImportExpression') &&
+    source &&
+    typeof source.value === 'string'
+  ) {
+    sources.push(source.value)
+  }
+  for (const key in record) {
+    if (key !== 'type') {
+      collectImportSources(record[key], sources)
+    }
+  }
+}
+
+/** Parse each inline `<script>` with acorn; a thrown SyntaxError means invalid JS, and any module import is a blocked resource. */
 const checkScripts = (scripts: InlineScript[], acorn: typeof acornNs): StaticIssue[] =>
-  scripts.flatMap(({ code, module }) => {
+  scripts.flatMap(({ code, module }): StaticIssue[] => {
+    let ast: acornNs.Program
     try {
-      acorn.parse(code, { ecmaVersion: 'latest', sourceType: module ? 'module' : 'script' })
-      return []
+      ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: module ? 'module' : 'script' })
     } catch (error) {
       const syntaxError = error as { message: string; loc?: { line: number; column: number } }
       return [
@@ -97,6 +133,12 @@ const checkScripts = (scripts: InlineScript[], acorn: typeof acornNs): StaticIss
         },
       ]
     }
+    const importSources: string[] = []
+    collectImportSources(ast, importSources)
+    return importSources.map((specifier) => ({
+      source: 'resource' as const,
+      message: `Module imports don't resolve in an offline artifact — inline the code instead of importing from ${specifier}.`,
+    }))
   })
 
 /**

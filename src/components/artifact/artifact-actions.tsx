@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { wrapArtifactPreviewHtml } from '@/artifacts/harness'
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
@@ -24,15 +25,17 @@ type ArtifactActionsProps = {
 
 /**
  * Header controls shared by the inline artifact card and the side-panel view:
- * copy the HTML source (with the same copy→check fade as the preview's copy-URL
- * button) and download it as a standalone `.html` file. Clicks stop propagation
- * so they never toggle the surrounding (collapsible) card header.
+ * copy the HTML source (the exact author's markup, for editing/re-use) and
+ * download it as a standalone `.html` file. Clicks stop propagation so they never
+ * toggle the surrounding (collapsible) card header.
  */
 export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactActionsProps) => {
   const { copy, isCopied } = useCopyToClipboard()
 
   const handleDownload = () => {
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+    // Ship the file with the same offline CSP the app renders it under, so opening the download in
+    // a browser can't run it unsandboxed with network access — a self-contained artifact needs none.
+    const url = URL.createObjectURL(new Blob([wrapArtifactPreviewHtml(html)], { type: 'text/html' }))
     const anchor = document.createElement('a')
     anchor.href = url
     anchor.download = `${toFileSlug(title)}.html`

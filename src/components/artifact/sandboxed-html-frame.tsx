@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 const defaultAutoHeightPx = 400
 const minAutoHeightPx = 60
 // Ceiling so a page (which knows its own nonce) can't report a huge height and blow out the transcript.
-const maxAutoHeightPx = 20000
+const maxAutoHeightPx = 20_000
 
 export type SandboxedHtmlFrameProps = {
   /** Complete, self-contained HTML document to render. */
@@ -54,8 +54,10 @@ export const SandboxedHtmlFrame = ({
   onError,
 }: SandboxedHtmlFrameProps) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  // One nonce per mounted frame; correlates the harness's messages with this iframe.
-  const nonce = useMemo(() => crypto.randomUUID(), [])
+  // One nonce per mounted frame; correlates the harness's messages with this iframe. useState (not
+  // useMemo) so it's a real stability guarantee — React may drop a useMemo cache and recompute,
+  // which would regenerate the nonce, silently reload the iframe, and re-key the message listener.
+  const [nonce] = useState(() => crypto.randomUUID())
   // Scripts on: wrap with the harness. Scripts off (streaming preview): still inject the
   // offline CSP so the preview can't beacon out via a subresource before verification.
   const srcDoc = useMemo(
@@ -63,6 +65,15 @@ export const SandboxedHtmlFrame = ({
     [html, nonce, allowScripts],
   )
   const [contentHeight, setContentHeight] = useState<number | null>(null)
+  // Reset the measured height at each reload boundary (new document): without this a
+  // streaming→active swap or a document change keeps the previous artifact's height until a fresh
+  // `artifact-height` arrives, leaving dead space or clipping. Adjusting state during render (per
+  // the React docs' "storing information from previous renders") beats an effect for a pure reset.
+  const lastSrcDocRef = useRef(srcDoc)
+  if (lastSrcDocRef.current !== srcDoc) {
+    lastSrcDocRef.current = srcDoc
+    setContentHeight(null)
+  }
 
   // Keep the latest callbacks in refs so the message subscription is set up once
   // per document, not re-subscribed on every parent render.

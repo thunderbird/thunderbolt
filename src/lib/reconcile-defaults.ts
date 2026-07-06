@@ -65,11 +65,21 @@ const readAppliedVersion = async (
  *   parent model — a model without its profile is a runtime hazard, whereas a
  *   briefly-stale profile self-heals on sync). Defaults to `canOverwrite` so
  *   tables like models keep ghost-insert protection (see THU-637 / AGENTS.md).
+ * @property canResurrect - When true, undo a cleanup-shaped soft-delete of a
+ *   still-shipped default. Gated separately from `canOverwrite` because the
+ *   two conditions decide different things: `canOverwrite` is "authoritative
+ *   to write our bundle's content", `canResurrect` is "trustworthy view of
+ *   cloud state". A device with an older bundle but fully-synced state can
+ *   safely undo a pre-THU-637 client's mistaken cleanup — while a device
+ *   mid-sync must not, because its local "soft-deleted" flag may just be
+ *   partial delivery of an authoritative retirement. Defaults to
+ *   `canOverwrite` for callers that don't split the two signals.
  */
 export type ReconcileDefaultsForTableOptions = {
   keyField?: string
   canOverwrite?: boolean
   insertMissing?: boolean
+  canResurrect?: boolean
 }
 
 /**
@@ -97,7 +107,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   hashFn: (item: any) => string,
   options: ReconcileDefaultsForTableOptions = {},
 ): Promise<ReconcileDefaultsForTableResult> => {
-  const { keyField = 'id', canOverwrite = true, insertMissing = canOverwrite } = options
+  const { keyField = 'id', canOverwrite = true, insertMissing = canOverwrite, canResurrect = canOverwrite } = options
 
   if (defaults.length === 0) {
     return { mutated: false }
@@ -139,17 +149,21 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     //      confirms the row's content still matches the exact default that
     //      the previous reconciler stamped — this can only be a cleanup
     //      soft-delete of a still-shipped default that just needs undoing.
-    // Ungated by `canOverwrite`: this is a corrective action rather than an
-    // overwrite. Gating it would leave Flash-class rows permanently
-    // soft-deleted for any account touched by a lagging pre-THU-637 client
-    // (see the PR 1044 ital0 discussion / THU-637 rollout race).
+    // Gated by `canResurrect` (not `canOverwrite`): a device with an older
+    // bundle but fully-synced state can still safely un-delete a mistaken
+    // cleanup, but a device mid-sync must not act on a possibly-partial
+    // view of "soft-deleted". Regardless of the write decision, we `continue`
+    // past this row — a cleanup-shaped row shouldn't fall through to the
+    // user-edit branch (its `deletedAt` would trip that as a false positive).
     if (
       (existing as { deletedAt?: string | null }).deletedAt &&
       existing.defaultHash &&
       hashFn({ ...existing, deletedAt: null }) === existing.defaultHash
     ) {
-      await db.update(table).set({ deletedAt: null }).where(eq(table[keyField], keyValue))
-      mutated = true
+      if (canResurrect) {
+        await db.update(table).set({ deletedAt: null }).where(eq(table[keyField], keyValue))
+        mutated = true
+      }
       continue
     }
 
@@ -209,16 +223,21 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
  * current defaults arrays. The hash-match guard ensures edited rows survive.
  * Skips rows without a `defaultHash` (user-created).
  *
- * When `canOverwriteModels` is false, the models scan is skipped: our defaults
- * are older than what another device already applied, so we don't know which
- * "unrecognized" rows are legitimate additions vs. genuinely-removed defaults.
- * The profiles scan still runs but is a natural no-op in this case — no models
- * were soft-deleted, so every profile's parent stays alive.
+ * Two independent gates:
+ *   - `canOverwriteModels`: guards the model scan. When false (older bundle,
+ *     or sync-incomplete-and-populated), we can't tell "unrecognized row" from
+ *     "future default we don't yet know about", so we skip.
+ *   - `initialSyncCompleted`: guards the profile scan. The profile loop
+ *     trusts `aliveModelIds` derived from local state; that trust is only
+ *     warranted when sync has finished. Otherwise a parent model whose
+ *     alive-state hasn't synced yet could look "missing" locally and cause us
+ *     to soft-delete a profile whose parent is actually still alive on cloud.
  */
 export const cleanupRemovedDefaults = async (
   db: AnyDrizzleDatabase,
   canOverwriteModels: boolean = true,
   models: readonly SharedModel[] = defaultModels,
+  initialSyncCompleted: boolean = true,
 ) => {
   const now = nowIso()
   const currentModelIds = new Set(models.map((m) => m.id))
@@ -244,9 +263,12 @@ export const cleanupRemovedDefaults = async (
 
   // Profiles are 1:1 with models. Mirror the model loop's "edited rows survive"
   // rule by following the parent model's fate — only delete the profile when
-  // its parent is no longer alive. Otherwise a user who renamed a retired
-  // default model but left the profile at shipped defaults would be left with
-  // an orphaned model.
+  // its parent is no longer alive. Gated on `initialSyncCompleted` so that a
+  // mid-sync device (with a potentially partial view of parent aliveness)
+  // stays fully non-mutating for the profiles table this pass.
+  if (!initialSyncCompleted) {
+    return
+  }
   const profiles = (await db
     .select()
     .from(modelProfilesTable)
@@ -302,11 +324,14 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     })()
 
     // Soft-delete removed system defaults before reconciling current ones.
-    await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data)
+    await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data, initialSyncCompleted)
 
-    // AI models
+    // AI models. `canResurrect` uses initialSyncCompleted so an older-bundle
+    // but fully-synced device can still un-delete a pre-THU-637 mistake, while
+    // a mid-sync device stays non-mutating.
     const modelsPass = await reconcileDefaultsForTable(tx, modelsTable, modelsSource.data, hashModel, {
       canOverwrite: canOverwriteModels,
+      canResurrect: initialSyncCompleted,
     })
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
@@ -323,7 +348,12 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       modelProfilesTable,
       defaultModelProfiles,
       hashModelProfile,
-      { keyField: 'modelId', canOverwrite: canOverwriteModels, insertMissing: true },
+      {
+        keyField: 'modelId',
+        canOverwrite: canOverwriteModels,
+        insertMissing: true,
+        canResurrect: initialSyncCompleted,
+      },
     )
 
     // Modes

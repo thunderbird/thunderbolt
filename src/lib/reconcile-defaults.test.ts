@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { eq } from 'drizzle-orm'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
-import { hashModelProfile } from '../defaults/model-profiles'
+import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { cleanupRemovedDefaults, reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
@@ -531,15 +531,15 @@ describe('reconcileDefaultsForTable', () => {
     expect(settings.length).toBe(0)
   })
 
-  test('canOverwrite=false still resurrects a cleanup-shaped soft-delete', async () => {
+  test('canOverwrite=false but canResurrect=true still resurrects a cleanup-shaped soft-delete', async () => {
     const db = getDb()
 
     // Simulate a pre-THU-637 client's `cleanupRemovedDefaults` having
     // soft-deleted a currently-shipped default: `deletedAt` is set but
     // `defaultHash` still matches the content-minus-deletedAt (cleanup only
-    // touches deletedAt). The resurrect branch must fire even under the
-    // strictest gate, otherwise the row stays deleted for good once
-    // `stored.version` catches up.
+    // touches deletedAt). Resurrect must fire on an older-bundle-but-fully
+    // -synced device (canOverwrite=false, canResurrect=true), otherwise the
+    // row stays deleted for good once `stored.version` catches up.
     const shipped = defaultModels[0]
     await db.insert(modelsTable).values({
       ...shipped,
@@ -547,10 +547,36 @@ describe('reconcileDefaultsForTable', () => {
       defaultHash: hashModel(shipped),
     })
 
-    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, { canOverwrite: false })
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, {
+      canOverwrite: false,
+      canResurrect: true,
+    })
 
     const row = await db.select().from(modelsTable).where(eq(modelsTable.id, shipped.id)).get()
     expect(row?.deletedAt).toBeNull()
+  })
+
+  test('canResurrect=false skips resurrect even for a cleanup-shaped soft-delete', async () => {
+    const db = getDb()
+
+    // Sync incomplete + populated table → `canResurrect=false`. The row's
+    // "soft-deleted" flag may be a partial-sync artefact of an authoritative
+    // retirement; un-deleting would race with cloud state. Leave it, retry
+    // on a later boot when sync has settled.
+    const shipped = defaultModels[0]
+    await db.insert(modelsTable).values({
+      ...shipped,
+      deletedAt: '2026-01-01T00:00:00.000Z',
+      defaultHash: hashModel(shipped),
+    })
+
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, {
+      canOverwrite: false,
+      canResurrect: false,
+    })
+
+    const row = await db.select().from(modelsTable).where(eq(modelsTable.id, shipped.id)).get()
+    expect(row?.deletedAt).toBe('2026-01-01T00:00:00.000Z')
   })
 
   test('canOverwrite=false does not resurrect a user-driven soft-delete', async () => {
@@ -559,7 +585,7 @@ describe('reconcileDefaultsForTable', () => {
     // User-driven `deleteModel` scrubs every nullable column via
     // `clearNullableColumns` — most importantly, `defaultHash` becomes null.
     // The resurrect guard's hash check can't satisfy a null defaultHash, so
-    // the user's deletion is preserved.
+    // the user's deletion is preserved regardless of canResurrect.
     const shipped = defaultModels[0]
     await db.insert(modelsTable).values({
       ...shipped,
@@ -571,7 +597,10 @@ describe('reconcileDefaultsForTable', () => {
       defaultHash: null,
     })
 
-    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, { canOverwrite: false })
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, {
+      canOverwrite: false,
+      canResurrect: true,
+    })
 
     const row = await db.select().from(modelsTable).where(eq(modelsTable.id, shipped.id)).get()
     expect(row?.deletedAt).toBe('2026-01-01T00:00:00.000Z')
@@ -923,5 +952,78 @@ describe('reconcileDefaults version gate (THU-637)', () => {
       .where(eq(modelProfilesTable.modelId, profileModelId))
       .get()
     expect(preserved?.temperature).toBe(0.77)
+  })
+
+  test('older-bundle-but-fully-synced device resurrects a pre-THU-637 cleanup soft-delete', async () => {
+    const db = getDb()
+
+    // Set up the cross-branch race scenario: a pre-THU-637 client soft-
+    // deleted a shipped model (cleanup shape — only deletedAt set, content +
+    // defaultHash preserved). This device has bundle=V2 but stored=V2 already
+    // (marker synced from another combined-PR device), so canOverwrite is
+    // closed. initialSyncCompleted defaults to true — sync is settled.
+    // Resurrect must still fire so the account recovers.
+    const shipped = defaultModels[0]
+    await db.insert(modelsTable).values({
+      ...shipped,
+      deletedAt: '2026-01-01T00:00:00.000Z',
+      defaultHash: hashModel(shipped),
+    })
+    await db.insert(settingsTable).values({
+      key: modelsVersionKey,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db)
+
+    const revived = await db.select().from(modelsTable).where(eq(modelsTable.id, shipped.id)).get()
+    expect(revived?.deletedAt).toBeNull()
+  })
+
+  test('sync-incomplete does not resurrect (may race an authoritative deletion)', async () => {
+    const db = getDb()
+
+    // Same cleanup-shaped row, but sync didn't complete this boot. The soft-
+    // delete could be a partial-sync artefact of a genuine retirement; acting
+    // on our incomplete view risks undoing a legitimate cleanup. Skip and
+    // retry on a settled boot.
+    const shipped = defaultModels[0]
+    await db.insert(modelsTable).values({
+      ...shipped,
+      deletedAt: '2026-01-01T00:00:00.000Z',
+      defaultHash: hashModel(shipped),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    const stillGone = await db.select().from(modelsTable).where(eq(modelsTable.id, shipped.id)).get()
+    expect(stillGone?.deletedAt).toBe('2026-01-01T00:00:00.000Z')
+  })
+
+  test('sync-incomplete does not soft-delete orphaned profiles (partial-view protection)', async () => {
+    const db = getDb()
+
+    // Simulate a partial sync: the parent model looks locally missing (never
+    // arrived, or its delete propagated first) while an alive profile row
+    // pointing at it sits in local state. Under normal (sync-complete) flow
+    // the profile-cleanup loop would soft-delete this orphan; under sync-
+    // incomplete the parent may still be alive on cloud and we must stay
+    // non-mutating for the profiles table.
+    const stubProfile = defaultModelProfiles[0]
+    const orphanModelId = 'orphan-parent-id'
+    await db.insert(modelProfilesTable).values({
+      ...stubProfile,
+      modelId: orphanModelId,
+      defaultHash: hashModelProfile({ ...stubProfile, modelId: orphanModelId }),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    const profile = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, orphanModelId))
+      .get()
+    expect(profile?.deletedAt).toBeNull()
   })
 })

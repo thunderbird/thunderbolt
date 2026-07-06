@@ -43,6 +43,14 @@ const pgliteDataDir =
     ? process.env.DATABASE_URL
     : undefined
 
+if (isPglite && process.env.DATABASE_URL && isPostgresConnectionUrl(process.env.DATABASE_URL)) {
+  console.warn(
+    `[db] DATABASE_DRIVER=pglite but DATABASE_URL is a postgres connection string ` +
+      `(${process.env.DATABASE_URL}) — falling back to in-memory PGlite. ` +
+      `Set DATABASE_URL to a directory path (e.g. .pglite/data) if you meant to persist.`,
+  )
+}
+
 if (pgliteDataDir) {
   mkdirSync(resolve(pgliteDataDir), { recursive: true })
 }

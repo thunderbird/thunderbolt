@@ -54,4 +54,14 @@ describe('pickModelsDefaults', () => {
     expect(picked.version).toBe(defaultModelsVersion)
     expect(picked.data).toBe(defaultModels)
   })
+
+  test('bundle wins when server ships a non-finite version (NaN / Infinity)', () => {
+    // A "bumped" version that isn't a real number is malformed — treating NaN as
+    // higher than the bundle would let bad server responses win.
+    for (const version of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const picked = pickModelsDefaults(serverPayload(version))
+      expect(picked.version).toBe(defaultModelsVersion)
+      expect(picked.data).toBe(defaultModels)
+    }
+  })
 })

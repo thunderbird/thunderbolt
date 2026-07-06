@@ -28,7 +28,13 @@ type ServerModelsDefaults = { version: number; data: SharedModel[] }
  * making local recovery impossible short of another OTA.
  */
 export const pickModelsDefaults = (server: ServerModelsDefaults | undefined): ModelsDefaults => {
-  if (server && server.version > defaultModelsVersion && Array.isArray(server.data) && server.data.length > 0) {
+  if (
+    server &&
+    Number.isFinite(server.version) &&
+    server.version > defaultModelsVersion &&
+    Array.isArray(server.data) &&
+    server.data.length > 0
+  ) {
     return { version: server.version, data: server.data }
   }
   return { version: defaultModelsVersion, data: defaultModels }

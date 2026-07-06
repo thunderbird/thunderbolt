@@ -162,11 +162,16 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const initialSyncOutcome = await time('step3_wait_for_initial_sync', () => database.waitForInitialSync())
 
   // Step 3.5: Settle the /config fetch so reconcile can prefer server-shipped
-  // defaults when they declare a higher version than the bundle. fetchConfig
-  // has an internal 5s timeout and never rejects, so this is bounded; when
-  // offline, the persisted store value from the last successful fetch is used
-  // (or the bundle wins on a fresh install with no cached config).
-  await fetchConfigPromise
+  // defaults when they declare a higher version than the bundle. Skip the
+  // await when the persisted store already has a defaults payload from a prior
+  // successful fetch — the value is used immediately and the in-flight
+  // fetchConfigPromise resolves in the background for future launches. This
+  // avoids serializing reconcile behind up to 5 s of network wait on the happy
+  // (cache-hit) path. First-ever launch (no persisted payload) still awaits.
+  const persistedModelsDefaults = useConfigStore.getState().config.defaults?.models
+  if (!persistedModelsDefaults) {
+    await fetchConfigPromise
+  }
   const modelsDefaults = pickModelsDefaults(useConfigStore.getState().config.defaults?.models)
   const initialSyncCompleted = initialSyncOutcome === 'synced' || initialSyncOutcome === 'disabled'
 

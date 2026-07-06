@@ -60,3 +60,13 @@ export const hydrateQuotesAsText = (messages: ThunderboltUIMessage[]): Thunderbo
       ),
     }
   })
+
+/**
+ * Flatten a message's quote parts into a single Markdown blockquote string,
+ * quotes separated by blank lines, or `''` when the message carries none.
+ * For transports that assemble a plain-text prompt (ACP) rather than passing
+ * structured parts through {@link hydrateQuotesAsText} — same flattening, so the
+ * model sees the quoted context regardless of which agent handles the turn.
+ */
+export const renderMessageQuotesAsText = (message: ThunderboltUIMessage): string =>
+  getQuotes(message).map(quoteToBlockquote).join('\n\n')

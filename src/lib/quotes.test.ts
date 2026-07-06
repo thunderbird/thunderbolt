@@ -4,7 +4,14 @@
 
 import type { ThunderboltUIMessage } from '@/types'
 import { describe, expect, test } from 'bun:test'
-import { buildQuotePart, getQuotes, hydrateQuotesAsText, isQuotePart, quotePartType } from './quotes'
+import {
+  buildQuotePart,
+  getQuotes,
+  hydrateQuotesAsText,
+  isQuotePart,
+  quotePartType,
+  renderMessageQuotesAsText,
+} from './quotes'
 
 const quote = { text: 'the mitochondria is the powerhouse of the cell', sourceMessageId: 'm0' }
 
@@ -47,5 +54,20 @@ describe('quotes', () => {
   test('hydrateQuotesAsText leaves messages without quotes untouched (same reference)', () => {
     const messages = [messageWith({ type: 'text', text: 'plain' })]
     expect(hydrateQuotesAsText(messages)[0]).toBe(messages[0])
+  })
+
+  test('renderMessageQuotesAsText joins quotes as blockquotes separated by blank lines', () => {
+    const message = messageWith(
+      buildQuotePart(quote),
+      { type: 'text', text: 'ignored reply text' },
+      buildQuotePart({ text: 'line one\nline two' }),
+    )
+    expect(renderMessageQuotesAsText(message)).toBe(
+      '> the mitochondria is the powerhouse of the cell\n\n> line one\n> line two',
+    )
+  })
+
+  test('renderMessageQuotesAsText returns empty string when the message has no quotes', () => {
+    expect(renderMessageQuotesAsText(messageWith({ type: 'text', text: 'plain' }))).toBe('')
   })
 })

@@ -344,6 +344,11 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // Soft-delete removed system defaults before reconciling current ones.
     // Cleanup uses the unfiltered OTA set so any id the server still ships
     // (including new-to-us ones synced from a newer-bundle peer) stays alive.
+    //
+    // Safety invariant enforced upstream by `pickModelsDefaults`:
+    // `modelsSource.data` overlaps with `defaultModels` by at least one id.
+    // A fully-disjoint payload would otherwise let cleanup soft-delete every
+    // bundle-known row (none appear in the passed-in `currentModelIds`).
     await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data, initialSyncCompleted)
 
     // AI models. `canResurrect` uses initialSyncCompleted so an older-bundle

@@ -21,11 +21,16 @@ type ServerModelsDefaults = { version: number; data: SharedModel[] }
  * version below what the client already has will not overwrite. To retract a
  * bad server-published set, ship a *higher* version with the reverted content.
  *
- * A server payload with a bumped version but missing / non-array / empty `data`
- * is treated as malformed and rejected — otherwise `cleanupRemovedDefaults`
- * would soft-delete every unedited system model on the way past (empty
- * `currentModelIds` matches nothing) and the stored version would advance,
- * making local recovery impossible short of another OTA.
+ * Sanity guards on the server payload (fall back to bundle when tripped):
+ *   - version is a finite number strictly higher than the bundle's;
+ *   - `data` is a non-empty array;
+ *   - **at least one id in `data` overlaps with the bundle's `defaultModels`**.
+ *     Without this, `cleanupRemovedDefaults` would treat every bundle-known
+ *     row as retired (none appear in the server's `currentModelIds`) and
+ *     soft-delete the lot, while the filtered reconcile pass would insert
+ *     nothing (OTA-only-new ids have no bundled profile). Bundle acts as the
+ *     floor: OTA can update or retire ids the bundle knows, but not wipe
+ *     wholesale.
  */
 export const pickModelsDefaults = (server: ServerModelsDefaults | undefined): ModelsDefaults => {
   if (
@@ -35,7 +40,18 @@ export const pickModelsDefaults = (server: ServerModelsDefaults | undefined): Mo
     Array.isArray(server.data) &&
     server.data.length > 0
   ) {
-    return { version: server.version, data: server.data }
+    const bundledIds = new Set(defaultModels.map((m) => m.id))
+    if (server.data.some((m) => bundledIds.has(m.id))) {
+      return { version: server.version, data: server.data }
+    }
+    // Payload is well-formed but has zero overlap with the bundle. Either the
+    // server team shipped a wholesale replacement (needs a client build with
+    // matching profiles first) or the payload is misconfigured. Either way,
+    // adopting it would wipe local state — fall back to bundle and log.
+    console.warn(
+      `[pickModelsDefaults] Server payload rejected: ${server.data.length} model id(s) with zero overlap ` +
+        `against the ${defaultModels.length} bundled defaults. Falling back to the bundled lineup.`,
+    )
   }
   return { version: defaultModelsVersion, data: defaultModels }
 }

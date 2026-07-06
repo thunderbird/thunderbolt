@@ -25,7 +25,7 @@ export const QuoteReplyButton = () => {
   const { selection, clear } = useQuoteSelection()
   const threadId = useCurrentChatSession().id
   const addQuote = usePendingQuotesStore((s) => s.addQuote)
-  const isMobile = useIsMobile()
+  const { isMobile } = useIsMobile()
 
   if (!selection) {
     return null
@@ -51,9 +51,11 @@ export const QuoteReplyButton = () => {
     <button
       type="button"
       style={style}
-      // Keep the text selection (and focus) intact: a plain mousedown would
-      // collapse it before onClick fires, hiding the button via selectionchange.
-      onMouseDown={(e) => e.preventDefault()}
+      // Keep the text selection (and focus) intact: pressing anywhere would
+      // otherwise collapse it before onClick fires, hiding the button via
+      // selectionchange. onPointerDown covers both mouse and touch — a plain
+      // mousedown handler misses touch, which collapses the selection first.
+      onPointerDown={(e) => e.preventDefault()}
       onClick={onReply}
       className="z-50 flex items-center gap-1.5 rounded-full border bg-popover px-3.5 py-2 text-[length:var(--font-size-sm)] font-medium text-popover-foreground shadow-md transition hover:bg-muted"
     >

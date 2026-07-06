@@ -14,14 +14,22 @@ describe('pending-quotes-store', () => {
     getState().addQuote('t1', { text: 'a' })
     getState().addQuote('t1', { text: 'b' })
     getState().addQuote('t2', { text: 'c' })
-    expect(getState().quotesByThread.t1.map((q) => q.text)).toEqual(['a', 'b'])
-    expect(getState().quotesByThread.t2.map((q) => q.text)).toEqual(['c'])
+    expect(getState().quotesByThread.t1.map((q) => q.data.text)).toEqual(['a', 'b'])
+    expect(getState().quotesByThread.t2.map((q) => q.data.text)).toEqual(['c'])
   })
 
-  test('removeQuote drops the passage at the given index', () => {
+  test('addQuote assigns each pending quote a distinct stable id', () => {
+    getState().addQuote('t1', { text: 'a' })
+    getState().addQuote('t1', { text: 'a' })
+    const [first, second] = getState().quotesByThread.t1
+    expect(first.id).not.toBe(second.id)
+  })
+
+  test('removeQuote drops the passage with the matching id', () => {
     getState().setQuotes('t1', [{ text: 'a' }, { text: 'b' }, { text: 'c' }])
-    getState().removeQuote('t1', 1)
-    expect(getState().quotesByThread.t1.map((q) => q.text)).toEqual(['a', 'c'])
+    const middleId = getState().quotesByThread.t1[1].id
+    getState().removeQuote('t1', middleId)
+    expect(getState().quotesByThread.t1.map((q) => q.data.text)).toEqual(['a', 'c'])
   })
 
   test('clearQuotes removes the thread entry entirely', () => {

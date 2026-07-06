@@ -6,6 +6,17 @@ import type { QuoteData } from '@/types'
 import { create } from 'zustand'
 
 /**
+ * A pending quote plus a stable UI-only id. The id (not the array index) keys the
+ * composer chips, so removing a middle chip doesn't reconcile survivors onto the
+ * wrong DOM nodes. It's transient composer state and never serialized — only the
+ * inner {@link QuoteData} is sent, so the id stays out of the persisted type.
+ */
+export type PendingQuote = {
+  id: string
+  data: QuoteData
+}
+
+/**
  * Pending quote-reply passages for the composer, keyed by chat thread id.
  *
  * This is the channel between the "Reply" button — which lives deep in the
@@ -16,9 +27,9 @@ import { create } from 'zustand'
  * bleed across threads while the composer stays mounted.
  */
 type PendingQuotesStore = {
-  quotesByThread: Record<string, QuoteData[]>
+  quotesByThread: Record<string, PendingQuote[]>
   addQuote: (threadId: string, quote: QuoteData) => void
-  removeQuote: (threadId: string, index: number) => void
+  removeQuote: (threadId: string, id: string) => void
   setQuotes: (threadId: string, quotes: QuoteData[]) => void
   clearQuotes: (threadId: string) => void
 }
@@ -29,18 +40,23 @@ export const usePendingQuotesStore = create<PendingQuotesStore>((set) => ({
     set((state) => ({
       quotesByThread: {
         ...state.quotesByThread,
-        [threadId]: [...(state.quotesByThread[threadId] ?? []), quote],
+        [threadId]: [...(state.quotesByThread[threadId] ?? []), { id: crypto.randomUUID(), data: quote }],
       },
     })),
-  removeQuote: (threadId, index) =>
+  removeQuote: (threadId, id) =>
     set((state) => ({
       quotesByThread: {
         ...state.quotesByThread,
-        [threadId]: (state.quotesByThread[threadId] ?? []).filter((_, i) => i !== index),
+        [threadId]: (state.quotesByThread[threadId] ?? []).filter((quote) => quote.id !== id),
       },
     })),
   setQuotes: (threadId, quotes) =>
-    set((state) => ({ quotesByThread: { ...state.quotesByThread, [threadId]: quotes } })),
+    set((state) => ({
+      quotesByThread: {
+        ...state.quotesByThread,
+        [threadId]: quotes.map((data) => ({ id: crypto.randomUUID(), data })),
+      },
+    })),
   clearQuotes: (threadId) =>
     set((state) => {
       const next = { ...state.quotesByThread }
@@ -50,8 +66,8 @@ export const usePendingQuotesStore = create<PendingQuotesStore>((set) => ({
 }))
 
 /** Stable empty reference so threads with no quotes don't churn selector snapshots. */
-const emptyQuotes: QuoteData[] = []
+const emptyQuotes: PendingQuote[] = []
 
 /** The pending quotes for one thread (referentially stable while empty). */
-export const usePendingQuotes = (threadId: string): QuoteData[] =>
+export const usePendingQuotes = (threadId: string): PendingQuote[] =>
   usePendingQuotesStore((state) => state.quotesByThread[threadId] ?? emptyQuotes)

@@ -431,7 +431,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // hydrated per-agent at send time (see the file transports).
         const attachmentParts = attachments.map(buildAttachmentPart)
         // Quote parts render as blockquotes and hydrate to `> …` text for the model.
-        const quoteParts = quotes.map(buildQuotePart)
+        const quoteParts = quotes.map((quote) => buildQuotePart(quote.data))
 
         // Clear input, draft, pending attachments, and quotes immediately for responsive UX
         clearDraft()
@@ -451,7 +451,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // Send failed — the chips were cleared optimistically but the blobs are
         // still in IndexedDB, so restore them rather than orphaning the bytes.
         setAttachments(attachments)
-        setQuotes(chatThreadId, quotes)
+        setQuotes(
+          chatThreadId,
+          quotes.map((quote) => quote.data),
+        )
       }
     }
 
@@ -646,11 +649,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                 <div className="flex flex-col gap-2 pb-2">
                   {quotes.length > 0 && (
                     <div className="flex flex-col gap-1.5">
-                      {quotes.map((quote, index) => (
+                      {quotes.map((quote) => (
                         <QuoteChip
-                          key={`${index}-${quote.sourceMessageId ?? ''}`}
-                          text={quote.text}
-                          onRemove={() => removeQuote(chatThreadId, index)}
+                          key={quote.id}
+                          text={quote.data.text}
+                          onRemove={() => removeQuote(chatThreadId, quote.id)}
                         />
                       ))}
                     </div>

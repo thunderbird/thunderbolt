@@ -37,6 +37,11 @@ describe('session-cache', () => {
     localStorage.setItem(sessionCacheKey, JSON.stringify('not-an-object'))
     expect(getCachedSession()).toBeNull()
   })
+
+  it('returns null when the stored value is an array', () => {
+    localStorage.setItem(sessionCacheKey, JSON.stringify([]))
+    expect(getCachedSession()).toBeNull()
+  })
 })
 
 describe('isCachedSessionValid', () => {

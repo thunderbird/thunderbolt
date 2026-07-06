@@ -180,7 +180,7 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   // Skipped when the auth client is an injected test override (no `$store`).
   useEffect(() => {
     const client = value?.authClient
-    if (!client?.$store?.atoms?.session) {
+    if (!client?.$store) {
       return
     }
     return subscribeSessionCachePersist(client)

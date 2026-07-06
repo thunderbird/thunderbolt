@@ -51,16 +51,10 @@ const readAppliedVersion = async (
 }
 
 /**
- * Generic function to reconcile defaults into a table
- * Inserts new defaults and updates unmodified existing ones
+ * Options for `reconcileDefaultsForTable`.
  *
- * Fetches all matching rows in a single SELECT (instead of one per item) to
- * minimize serial round-trips to the SQLite worker during boot.
- * @param table - The database table to reconcile
- * @param defaults - Array of default items to reconcile
- * @param hashFn - Function to compute hash of an item
- * @param keyField - Name of the primary key field (defaults to 'id')
- * @param canOverwrite - When false, this pass is purely non-mutating for the
+ * @property keyField - Name of the primary key field. Defaults to `'id'`.
+ * @property canOverwrite - When false, this pass is purely non-mutating for the
  *   table: no inserts of missing rows, no bootstrap of legacy null defaultHash,
  *   no updates. Set to false when the caller's defaults source is not
  *   authoritative — either strictly older than what has already been applied
@@ -68,14 +62,27 @@ const readAppliedVersion = async (
  *   yet. Prevents ghost-inserting rows that a newer version deliberately
  *   removed but hasn't finished syncing to us (see THU-637 / AGENTS.md).
  */
+export type ReconcileDefaultsForTableOptions = {
+  keyField?: string
+  canOverwrite?: boolean
+}
+
+/**
+ * Generic function to reconcile defaults into a table
+ * Inserts new defaults and updates unmodified existing ones.
+ *
+ * Fetches all matching rows in a single SELECT (instead of one per item) to
+ * minimize serial round-trips to the SQLite worker during boot.
+ */
 export const reconcileDefaultsForTable = async <T extends { defaultHash: string | null }>(
   db: AnyDrizzleDatabase,
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
-  keyField: string = 'id',
-  canOverwrite: boolean = true,
+  options: ReconcileDefaultsForTableOptions = {},
 ) => {
+  const { keyField = 'id', canOverwrite = true } = options
+
   if (defaults.length === 0) {
     return
   }
@@ -252,7 +259,9 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data)
 
     // AI models
-    await reconcileDefaultsForTable(tx, modelsTable, modelsSource.data, hashModel, 'id', canOverwriteModels)
+    await reconcileDefaultsForTable(tx, modelsTable, modelsSource.data, hashModel, {
+      canOverwrite: canOverwriteModels,
+    })
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
     // they ride the same gate — otherwise an older-bundle device would revert
@@ -260,14 +269,10 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // shipped alongside its model changes, reintroducing THU-637 on the profile
     // side. Insert-of-missing still runs regardless, so orphaned profiles are
     // impossible even when overwrites are skipped.
-    await reconcileDefaultsForTable(
-      tx,
-      modelProfilesTable,
-      defaultModelProfiles,
-      hashModelProfile,
-      'modelId',
-      canOverwriteModels,
-    )
+    await reconcileDefaultsForTable(tx, modelProfilesTable, defaultModelProfiles, hashModelProfile, {
+      keyField: 'modelId',
+      canOverwrite: canOverwriteModels,
+    })
 
     // Modes
     await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode)
@@ -280,7 +285,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill)
 
     // Settings
-    await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     if (canOverwriteModels) {
       // Inline upsert: `updateSettings` wraps its writes in its own transaction

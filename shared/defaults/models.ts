@@ -2,11 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { hashValues } from '@shared/lib/hash'
+
 /**
- * Shape of a shipped model default. Structurally compatible with the
- * frontend `Model` type (`src/types.ts`) so consumers can pass these values
- * anywhere a `Model` is expected. Kept self-contained so this file has no
- * dependency on frontend code and can be imported by backend and shared code.
+ * Shape of a shipped model default. Structurally a subset of the frontend
+ * `Model` type (`src/types.ts`) — `SharedModel` intentionally omits `apiKey`,
+ * which is a runtime concern (populated by the DAL from a LEFT JOIN with the
+ * local-only `models_secrets` table) and must never traverse the wire. That
+ * omission also makes the public `/config` endpoint structurally incapable of
+ * leaking an API key even if a future server-shipped payload got sloppy.
+ *
+ * A compile-time assignability check in `src/types.ts` guards against silent
+ * drift when the frontend `Model` gains new required fields.
  */
 export type SharedModel = {
   id: string
@@ -26,18 +33,6 @@ export type SharedModel = {
   vendor: string | null
   description: string | null
   userId: string | null
-  apiKey: string | null
-}
-
-const hashValues = (values: (string | number | null | undefined)[]): string => {
-  const str = values.join('|')
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash
-  }
-  return hash.toString(36)
 }
 
 /**
@@ -84,7 +79,6 @@ export const defaultModelOpus48: SharedModel = {
   startWithReasoning: 0,
   supportsParallelToolCalls: 1,
   deletedAt: null,
-  apiKey: null,
   url: null,
   defaultHash: null,
   vendor: 'anthropic',
@@ -105,7 +99,6 @@ export const defaultModelDeepseekV4Pro: SharedModel = {
   startWithReasoning: 0,
   supportsParallelToolCalls: 0,
   deletedAt: null,
-  apiKey: null,
   url: null,
   defaultHash: null,
   vendor: 'deepseek',
@@ -126,7 +119,6 @@ export const defaultModelKimiK26: SharedModel = {
   startWithReasoning: 0,
   supportsParallelToolCalls: 0,
   deletedAt: null,
-  apiKey: null,
   url: null,
   defaultHash: null,
   vendor: 'moonshot',
@@ -147,7 +139,6 @@ export const defaultModelGlm52: SharedModel = {
   startWithReasoning: 0,
   supportsParallelToolCalls: 0,
   deletedAt: null,
-  apiKey: null,
   url: null,
   defaultHash: null,
   vendor: 'zhipu',

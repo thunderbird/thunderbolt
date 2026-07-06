@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { hashModelProfile } from '../defaults/model-profiles'
-import { defaultModels, defaultModelsVersion, hashModel } from '@shared/defaults/models'
+import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { nowIso } from './utils'
 import { cleanupRemovedDefaults, reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
@@ -527,7 +527,7 @@ describe('reconcileDefaultsForTable', () => {
     // different content, with an authoring hash that matches its content —
     // i.e., it looks "unedited from a newer version's perspective").
     const bundleRow = defaultModels[0]
-    const newer: Model = { ...bundleRow, name: 'Newer Bundle Name' }
+    const newer: SharedModel = { ...bundleRow, name: 'Newer Bundle Name' }
     await db.insert(modelsTable).values({ ...newer, defaultHash: hashModel(newer) })
 
     // With canOverwrite=false the older bundle must not touch it.
@@ -605,7 +605,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     // Prior application by a newer-version device: rows carry the newer
     // content + matching authoring hash, and stored version is bumped past ours.
     const [bundleRow, ...restBundle] = defaultModels
-    const newerRow: Model = { ...bundleRow, name: 'Newer Bundle Name', description: 'from newer' }
+    const newerRow: SharedModel = { ...bundleRow, name: 'Newer Bundle Name', description: 'from newer' }
     await db.insert(modelsTable).values({ ...newerRow, defaultHash: hashModel(newerRow) })
     for (const other of restBundle) {
       await db.insert(modelsTable).values({ ...other, defaultHash: hashModel(other) })

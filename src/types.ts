@@ -11,6 +11,7 @@ import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
 import { type PostHog } from 'posthog-js'
 import type { z } from 'zod'
+import type { SharedModel } from '@shared/defaults/models'
 import type { HttpClient } from './contexts'
 import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
@@ -101,6 +102,16 @@ export type Model = WithRequired<
   | 'startWithReasoning'
   | 'supportsParallelToolCalls'
 > & { apiKey: string | null }
+
+/**
+ * Compile-time invariant: every shipped `SharedModel` default (see
+ * `shared/defaults/models.ts`) must be structurally assignable to `Model` with
+ * the DAL-joined `apiKey` stripped. If `Model` gains a required field that
+ * `SharedModel` doesn't cover, the assignment below errors, forcing us to
+ * update the shared type in the same change. Never called at runtime; exported
+ * so `noUnusedLocals` doesn't strip the guard.
+ */
+export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey'> => model
 export type Mode = WithRequired<ModeRow, 'name' | 'label' | 'icon' | 'order'>
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>

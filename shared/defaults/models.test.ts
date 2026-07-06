@@ -11,7 +11,7 @@ import { defaultModels, defaultModelsVersion, hashModel } from './models'
  *
  * Fix it in this order:
  *   1. Bump `defaultModelsVersion` in `shared/defaults/models.ts`.
- *   2. Update `EXPECTED` below to match the actual values from the failure.
+ *   2. Update `expected` below to match the actual values from the failure.
  *
  * The version is the ordering signal reconcile uses to decide who owns the
  * newest defaults across devices (THU-637). Changing defaults without bumping

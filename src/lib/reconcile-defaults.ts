@@ -54,18 +54,34 @@ const readAppliedVersion = async (
  * Options for `reconcileDefaultsForTable`.
  *
  * @property keyField - Name of the primary key field. Defaults to `'id'`.
- * @property canOverwrite - When false, this pass is purely non-mutating for the
- *   table: no inserts of missing rows, no bootstrap of legacy null defaultHash,
- *   no updates. Set to false when the caller's defaults source is not
- *   authoritative — either strictly older than what has already been applied
- *   on this account, or when the account's true state hasn't finished syncing
- *   yet. Prevents ghost-inserting rows that a newer version deliberately
- *   removed but hasn't finished syncing to us (see THU-637 / AGENTS.md).
+ * @property canOverwrite - When false, this pass will not update existing rows
+ *   and will not bootstrap the legacy null-defaultHash column. Set to false
+ *   when the caller's defaults source is not authoritative — either strictly
+ *   older than what has already been applied on this account, or when the
+ *   account's true state hasn't finished syncing yet.
+ * @property insertMissing - When true, insert missing rows even if
+ *   `canOverwrite` is false. Set for tables where a row's presence is a hard
+ *   invariant regardless of authority (e.g. model profiles are 1:1 with their
+ *   parent model — a model without its profile is a runtime hazard, whereas a
+ *   briefly-stale profile self-heals on sync). Defaults to `canOverwrite` so
+ *   tables like models keep ghost-insert protection (see THU-637 / AGENTS.md).
  */
 export type ReconcileDefaultsForTableOptions = {
   keyField?: string
   canOverwrite?: boolean
+  insertMissing?: boolean
 }
+
+/**
+ * Result of a `reconcileDefaultsForTable` pass.
+ *
+ * @property mutated - True iff at least one row was inserted or updated (this
+ *   includes the legacy null-defaultHash bootstrap). Callers use this to
+ *   decide whether to advance an external version marker — advancing when
+ *   nothing was actually written would falsely signal to peers that the
+ *   picked version has been applied here.
+ */
+export type ReconcileDefaultsForTableResult = { mutated: boolean }
 
 /**
  * Generic function to reconcile defaults into a table
@@ -80,36 +96,40 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   defaults: readonly T[],
   hashFn: (item: any) => string,
   options: ReconcileDefaultsForTableOptions = {},
-) => {
-  const { keyField = 'id', canOverwrite = true } = options
+): Promise<ReconcileDefaultsForTableResult> => {
+  const { keyField = 'id', canOverwrite = true, insertMissing = canOverwrite } = options
 
   if (defaults.length === 0) {
-    return
+    return { mutated: false }
   }
 
   const keyValues = defaults.map((defaultItem) => (defaultItem as any)[keyField])
   const existingRows = await db.select().from(table).where(inArray(table[keyField], keyValues))
   const existingByKey = new Map(existingRows.map((row) => [row[keyField], row] as const))
 
+  let mutated = false
+
   for (const defaultItem of defaults) {
     const keyValue = (defaultItem as any)[keyField]
     const existing = existingByKey.get(keyValue)
 
     if (!existing) {
-      // Row missing locally: only seed when authoritative. Otherwise a newer
-      // version's deliberate removal (still en route to us via sync) would be
-      // undone by us re-inserting the bundle's copy.
-      if (!canOverwrite) {
+      // Row missing locally: only seed when we're allowed to. For most tables
+      // that mirrors `canOverwrite` (ghost-insert protection). Tables that opt
+      // into `insertMissing: true` seed regardless because their row must
+      // exist for correctness (e.g. profiles paired with models).
+      if (!insertMissing) {
         continue
       }
       await db.insert(table).values({
         ...defaultItem,
         defaultHash: hashFn(defaultItem),
       })
+      mutated = true
       continue
     }
 
-    // Any write against an existing row also requires authority.
+    // Any write against an existing row requires authority.
     if (!canOverwrite) {
       continue
     }
@@ -121,6 +141,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     if (!existing.defaultHash) {
       // No defaultHash - set it to the default hash to enable modification tracking
       await db.update(table).set({ defaultHash: defaultHashValue }).where(eq(table[keyField], keyValue))
+      mutated = true
       continue
     }
 
@@ -153,7 +174,10 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
         defaultHash: defaultHashValue,
       })
       .where(eq(table[keyField], keyValue))
+    mutated = true
   }
+
+  return { mutated }
 }
 
 /**
@@ -235,21 +259,19 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     const stored = await readAppliedVersion(tx, modelsVersionKey)
     const rawCanOverwrite = modelsSource.version > (stored.version ?? Number.NEGATIVE_INFINITY)
 
-    // Additional guard for the fresh-second-device / sync-timeout case: when
-    // the initial sync didn't complete AND we have no local stored version,
-    // cloud may hold both the version marker AND newer rows we haven't
-    // received. Acting on partial state would let us regress the marker or
-    // ghost-insert defaults the newer version has retired. Fresh installs
-    // (0 rows) still seed the bundle so the app isn't crippled offline.
+    // Additional guard for the sync-incomplete case. Two scenarios collapse
+    // into the same rule: (a) fresh second device where the version marker
+    // hasn't arrived yet, and (b) any device with a stale local marker whose
+    // row content may already be at a newer version in cloud. In both, cloud
+    // may hold state we haven't received, and rawCanOverwrite is computed
+    // against an untrusted view. Fresh installs (0 rows) still seed the
+    // bundle so the app isn't crippled offline.
     const hasAnyModelRow = (await tx.select({ id: modelsTable.id }).from(modelsTable).limit(1)).length > 0
     const canOverwriteModels = ((): boolean => {
       if (!hasAnyModelRow) {
         return rawCanOverwrite
       }
-      if (initialSyncCompleted) {
-        return rawCanOverwrite
-      }
-      if (!stored.exists) {
+      if (!initialSyncCompleted) {
         return false
       }
       return rawCanOverwrite
@@ -259,20 +281,26 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data)
 
     // AI models
-    await reconcileDefaultsForTable(tx, modelsTable, modelsSource.data, hashModel, {
+    const modelsPass = await reconcileDefaultsForTable(tx, modelsTable, modelsSource.data, hashModel, {
       canOverwrite: canOverwriteModels,
     })
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
-    // they ride the same gate — otherwise an older-bundle device would revert
-    // profile settings (temperature, tools, addenda) that a newer bundle just
-    // shipped alongside its model changes, reintroducing THU-637 on the profile
-    // side. Insert-of-missing still runs regardless, so orphaned profiles are
-    // impossible even when overwrites are skipped.
-    await reconcileDefaultsForTable(tx, modelProfilesTable, defaultModelProfiles, hashModelProfile, {
-      keyField: 'modelId',
-      canOverwrite: canOverwriteModels,
-    })
+    // they ride the same authority gate as models — otherwise an older-bundle
+    // device would revert profile settings (temperature, tools, addenda) that
+    // a newer bundle just shipped alongside its model changes, reintroducing
+    // THU-637 on the profile side. `insertMissing: true` ensures a model
+    // present locally (via sync) always has a profile to pair with, even when
+    // canOverwrite is closed. The rare orphaned-profile edge (bundle contains
+    // a profile whose model the newer version retired) is silent — with no
+    // matching model row, DAL joins won't surface the orphan.
+    const profilesPass = await reconcileDefaultsForTable(
+      tx,
+      modelProfilesTable,
+      defaultModelProfiles,
+      hashModelProfile,
+      { keyField: 'modelId', canOverwrite: canOverwriteModels, insertMissing: true },
+    )
 
     // Modes
     await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode)
@@ -287,7 +315,13 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // Settings
     await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
-    if (canOverwriteModels) {
+    // Only advance the version marker when we actually applied a change to
+    // models or profiles this pass. Advancing on a pure no-op (all rows
+    // user-edited, or all already at target) would falsely signal to peers
+    // that the picked version has been applied here — peers with `stored`
+    // already at `pickedVersion` would then stop in-place upgrades even
+    // though the writer never verified the content.
+    if (canOverwriteModels && (modelsPass.mutated || profilesPass.mutated)) {
       // Inline upsert: `updateSettings` wraps its writes in its own transaction
       // and PowerSync's drizzle driver forbids nested transactions. Branch on
       // row existence — not on parsed version — so a pre-existing row with a

@@ -5,7 +5,7 @@
 import { getAllModels } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
@@ -78,6 +78,14 @@ const buildRetiredProfile = (overrides: Partial<ModelProfile> = {}): ModelProfil
 
 beforeAll(async () => {
   await setupTestDatabase()
+})
+
+// Also reset before each test — `setupTestDatabase` reconciles defaults into
+// the DB, so without this guard the first test picked by --randomize inherits
+// pre-populated rows (any raw `db.insert(modelsTable).values(defaultModels[N])`
+// then hits a PK conflict). Between-test reset alone doesn't cover that gap.
+beforeEach(async () => {
+  await resetTestDatabase()
 })
 
 afterEach(async () => {
@@ -756,6 +764,78 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const models = await db.select().from(modelsTable)
     expect(models.length).toBe(defaultModels.length)
     expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+  })
+
+  test('marker does not advance when reconcile is a pure no-op (all rows user-edited)', async () => {
+    const db = getDb()
+
+    // Seed at the current bundle so all rows have their bundle's defaultHash.
+    await reconcileDefaults(db)
+
+    // User edits every model row so no update can proceed on the next pass.
+    // Also rewind the marker to look like we're catching up from an older
+    // stored version — this opens the gate (rawCanOverwrite=true) but the
+    // pass will still be a total no-op because every row is now user-edited.
+    for (const model of defaultModels) {
+      await db
+        .update(modelsTable)
+        .set({ name: `user-edited ${model.id}` })
+        .where(eq(modelsTable.id, model.id))
+    }
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultModelsVersion - 1) })
+      .where(eq(settingsTable.key, modelsVersionKey))
+
+    await reconcileDefaults(db)
+
+    // Marker must stay at the rewound value — advancing it here would signal
+    // to peers that this version was applied when in fact nothing was written.
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion - 1)
+  })
+
+  test('sync-incomplete + populated table + stale stored version → skip mutations', async () => {
+    const db = getDb()
+
+    // Populate a row with newer-authored content and a stale marker below the
+    // bundle. Before the sync-outcome guard was broadened, this scenario let
+    // rawCanOverwrite (bundle > stale-stored) reopen the gate and downgrade
+    // rows that cloud may have already advanced past.
+    const alive = defaultModels[0]
+    const newerContent = { ...alive, name: 'Newer from cloud' }
+    await db.insert(modelsTable).values({ ...newerContent, defaultHash: hashModel(newerContent) })
+    await db.insert(settingsTable).values({
+      key: modelsVersionKey,
+      value: String(defaultModelsVersion - 1),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    const preserved = await db.select().from(modelsTable).where(eq(modelsTable.id, alive.id)).get()
+    expect(preserved?.name).toBe('Newer from cloud')
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion - 1)
+  })
+
+  test('missing profile is inserted even when canOverwriteModels is false (model↔profile 1:1)', async () => {
+    const db = getDb()
+
+    // Model row exists locally (from sync, say). Profile row hasn't arrived
+    // yet. Stored marker is newer than our bundle, so canOverwriteModels=false.
+    // Under strict gating the profile insert would be skipped and the model
+    // would boot without its default profile — a runtime hazard. `insertMissing`
+    // on the profiles call restores the 1:1 invariant.
+    const model = defaultModels[0]
+    await db.insert(modelsTable).values({ ...model, defaultHash: hashModel(model) })
+    await db.insert(settingsTable).values({
+      key: modelsVersionKey,
+      value: String(defaultModelsVersion + 1),
+    })
+
+    await reconcileDefaults(db)
+
+    const profile = await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, model.id)).get()
+    expect(profile).toBeDefined()
+    expect(profile?.deletedAt).toBeNull()
   })
 
   test('older bundle does not overwrite profiles authored by a newer version', async () => {

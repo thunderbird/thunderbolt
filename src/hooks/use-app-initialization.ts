@@ -168,10 +168,13 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // (or the bundle wins on a fresh install with no cached config).
   await fetchConfigPromise
   const modelsDefaults = pickModelsDefaults(useConfigStore.getState().config.defaults?.models)
+  const initialSyncCompleted = initialSyncOutcome === 'synced' || initialSyncOutcome === 'disabled'
 
   // Step 4: Reconcile defaults
   try {
-    await time('step4_reconcile_defaults', () => reconcileDefaults(db, { models: modelsDefaults }))
+    await time('step4_reconcile_defaults', () =>
+      reconcileDefaults(db, { models: modelsDefaults, initialSyncCompleted }),
+    )
   } catch (error) {
     console.error('Failed to reconcile default settings:', error)
     const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)

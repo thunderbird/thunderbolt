@@ -60,10 +60,13 @@ const readAppliedVersion = async (
  * @param defaults - Array of default items to reconcile
  * @param hashFn - Function to compute hash of an item
  * @param keyField - Name of the primary key field (defaults to 'id')
- * @param canOverwrite - When false, skip in-place updates of existing rows
- *   (still inserts missing rows and stamps defaultHash on legacy null rows).
- *   Set to false when the caller's defaults version is older than what has
- *   already been applied on this account (see THU-637 / AGENTS.md).
+ * @param canOverwrite - When false, this pass is purely non-mutating for the
+ *   table: no inserts of missing rows, no bootstrap of legacy null defaultHash,
+ *   no updates. Set to false when the caller's defaults source is not
+ *   authoritative — either strictly older than what has already been applied
+ *   on this account, or when the account's true state hasn't finished syncing
+ *   yet. Prevents ghost-inserting rows that a newer version deliberately
+ *   removed but hasn't finished syncing to us (see THU-637 / AGENTS.md).
  */
 export const reconcileDefaultsForTable = async <T extends { defaultHash: string | null }>(
   db: AnyDrizzleDatabase,
@@ -86,11 +89,21 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const existing = existingByKey.get(keyValue)
 
     if (!existing) {
-      // New default - insert with computed hash
+      // Row missing locally: only seed when authoritative. Otherwise a newer
+      // version's deliberate removal (still en route to us via sync) would be
+      // undone by us re-inserting the bundle's copy.
+      if (!canOverwrite) {
+        continue
+      }
       await db.insert(table).values({
         ...defaultItem,
         defaultHash: hashFn(defaultItem),
       })
+      continue
+    }
+
+    // Any write against an existing row also requires authority.
+    if (!canOverwrite) {
       continue
     }
 
@@ -122,12 +135,6 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const wouldOverwriteUserValue = existing.value !== null && (defaultItem as any).value === null
 
     if (wouldOverwriteUserValue) {
-      continue
-    }
-
-    // Version gate: our defaults source is older than what another device
-    // has already applied for this table. Leave the row alone.
-    if (!canOverwrite) {
       continue
     }
 
@@ -203,17 +210,43 @@ export type ReconcileDefaultsOverrides = {
   /** Models defaults source (server OTA payload or bundled). Falls back to
    *  the shipped `defaultModels` + `defaultModelsVersion` when omitted. */
   models?: ModelsDefaults
+  /** Did PowerSync's initial-sync gate finish this boot? When false (timed out
+   *  or failed) we can't trust that a missing local stored version means "never
+   *  applied" — cloud may hold both the version marker and newer rows we
+   *  haven't received yet. Defaults to true (tests / offline first-run). */
+  initialSyncCompleted?: boolean
 }
 
 export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: ReconcileDefaultsOverrides) => {
   const modelsSource = overrides?.models ?? bundledModelsDefaults
+  const initialSyncCompleted = overrides?.initialSyncCompleted ?? true
 
   await db.transaction(async (tx) => {
     // Version gate for models: only overwrite rows when our defaults source
     // is strictly newer than the highest version ever applied on this account.
     // Prevents older-bundle devices from downgrading newer synced rows (THU-637).
     const stored = await readAppliedVersion(tx, modelsVersionKey)
-    const canOverwriteModels = modelsSource.version > (stored.version ?? Number.NEGATIVE_INFINITY)
+    const rawCanOverwrite = modelsSource.version > (stored.version ?? Number.NEGATIVE_INFINITY)
+
+    // Additional guard for the fresh-second-device / sync-timeout case: when
+    // the initial sync didn't complete AND we have no local stored version,
+    // cloud may hold both the version marker AND newer rows we haven't
+    // received. Acting on partial state would let us regress the marker or
+    // ghost-insert defaults the newer version has retired. Fresh installs
+    // (0 rows) still seed the bundle so the app isn't crippled offline.
+    const hasAnyModelRow = (await tx.select({ id: modelsTable.id }).from(modelsTable).limit(1)).length > 0
+    const canOverwriteModels = ((): boolean => {
+      if (!hasAnyModelRow) {
+        return rawCanOverwrite
+      }
+      if (initialSyncCompleted) {
+        return rawCanOverwrite
+      }
+      if (!stored.exists) {
+        return false
+      }
+      return rawCanOverwrite
+    })()
 
     // Soft-delete removed system defaults before reconciling current ones.
     await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data)

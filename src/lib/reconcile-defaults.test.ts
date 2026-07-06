@@ -701,6 +701,63 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
   })
 
+  test('older bundle does not resurrect defaults its bundle happens to know but the newer version retired', async () => {
+    const db = getDb()
+
+    // Newer version has already applied on this account (stored version bumped
+    // past our bundle) and has retired one of the defaults our bundle still
+    // ships. To exercise the insert branch we seed the *other* defaults but
+    // leave the retired one absent — cloud will deliver its soft-delete later.
+    const [retired, ...alive] = defaultModels
+    for (const other of alive) {
+      await db.insert(modelsTable).values({ ...other, defaultHash: hashModel(other) })
+    }
+    await db.insert(settingsTable).values({
+      key: 'defaults_version.models',
+      value: String(defaultModelsVersion + 1),
+    })
+
+    await reconcileDefaults(db)
+
+    // Our older bundle must not seed the retired id.
+    const ghost = await db.select().from(modelsTable).where(eq(modelsTable.id, retired.id)).get()
+    expect(ghost).toBeUndefined()
+  })
+
+  test('sync-timeout + populated table + no stored version → skip mutations to avoid regressing marker', async () => {
+    const db = getDb()
+
+    // Simulate a second device whose initial sync didn't complete: rows for
+    // some models are already present (partial sync), but the version marker
+    // hasn't been delivered yet. Acting on this partial view would let us
+    // downgrade or resurrect rows and regress the stored version once cloud
+    // finally delivers it.
+    const alive = defaultModels[0]
+    const newerContent = { ...alive, name: 'Newer from cloud' }
+    await db.insert(modelsTable).values({ ...newerContent, defaultHash: hashModel(newerContent) })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    // The newer-content row must survive intact.
+    const preserved = await db.select().from(modelsTable).where(eq(modelsTable.id, alive.id)).get()
+    expect(preserved?.name).toBe('Newer from cloud')
+
+    // And the version marker must not be written — that would poison the next
+    // boot's gate calculation.
+    expect(await readStoredModelsVersion()).toBeNull()
+  })
+
+  test('sync-timeout + empty table → still seeds bundle (first-ever install)', async () => {
+    // Otherwise a fresh install offline (network flaky, first launch) would
+    // boot with zero models.
+    const db = getDb()
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    const models = await db.select().from(modelsTable)
+    expect(models.length).toBe(defaultModels.length)
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+  })
+
   test('older bundle does not overwrite profiles authored by a newer version', async () => {
     const db = getDb()
 

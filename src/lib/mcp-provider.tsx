@@ -50,16 +50,20 @@ type MCPContextType = {
   addServer: (server: MCPServer) => Promise<void>
   removeServer: (serverId: string) => void
   /** Apply a row patch (rename / url / type / enabled) and reconcile the
-   *  connection: disabled → disconnect; disabled→enabled → connect (coalesces
-   *  with any in-flight initial connect); already-enabled → reconnect (closes
-   *  the stale client, redials with the new url/type and live credentials).
+   *  connection. The row patch is always applied; whether the live client
+   *  redials depends on what changed:
+   *    - disabled → disconnect;
+   *    - disabled→enabled → connect (coalesces with any in-flight initial connect);
+   *    - already-enabled + url or type changed → reconnect with the new endpoint;
+   *    - already-enabled + endpoint unchanged → no-op unless `forceRedial` is set,
+   *      because a pure metadata edit (rename) doesn't need to close a healthy client.
    *  Credentials (bearer or OAuth) live in `mcp_secrets`; `defaultCreateClient`
-   *  re-reads them on every connect, so the redial picks up the new value too.
-   *  Set `forceRedial` when the caller just wrote credentials: the redial then
-   *  also chains onto any in-flight initial connect so the new credentials
-   *  aren't stranded behind a connect that read the old ones at its start.
-   *  Returns a promise that resolves once the reconcile (connect / reconnect /
-   *  chained reconnect) has settled — callers that don't care can ignore it.
+   *  re-reads them on every connect. Set `forceRedial` when the caller just wrote
+   *  credentials so the redial fires even on the endpoint-unchanged path — and,
+   *  when an initial connect is still in-flight, chains onto it so the new
+   *  credentials aren't stranded behind a connect that read the old ones at its
+   *  start. Returns a promise that resolves once the reconcile (connect / reconnect /
+   *  chained reconnect / no-op) has settled — callers that don't care can ignore it.
    *  No-op when the id isn't tracked yet. */
   updateServer: (server: MCPServer, options?: { forceRedial?: boolean }) => Promise<void>
 }
@@ -295,13 +299,18 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       return
     }
 
-    const inFlightConnect = connectsInFlight.current.get(server.id)
-    if (inFlightConnect && existing.url === server.url && existing.type === server.type) {
-      if (options?.forceRedial) {
-        await inFlightConnect
-        await reconnectServer(server.id)
-      }
+    const sameEndpoint = existing.url === server.url && existing.type === server.type
+    // Pure metadata edit (rename): the row patch above already applied — no need
+    // to churn the healthy client. Credentials-only edits opt back in via
+    // `forceRedial`, so the new bearer/OAuth value doesn't sit unused in mcp_secrets.
+    if (sameEndpoint && !options?.forceRedial) {
       return
+    }
+    // Chain onto an in-flight initial connect so a credentials write doesn't get
+    // stranded behind a connect that read the old credentials at its start.
+    const inFlightConnect = connectsInFlight.current.get(server.id)
+    if (inFlightConnect && sameEndpoint) {
+      await inFlightConnect
     }
     await reconnectServer(server.id)
   }

@@ -455,11 +455,11 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     // new url/type/credentials. useMcpSync would catch row changes eventually
     // via PowerSync, but credential-only edits don't touch the row at all —
     // updateServer's reconnect re-reads `mcp_secrets` so both paths converge.
-    // forceRedial: the dialog may have just written new credentials. When the
-    // initial connect for this server is still in-flight, that connect read
-    // credentials at its start and would otherwise leave the new value
-    // stranded; the flag chains a reconnect onto it.
-    updateServer({ id, name, url: newServerUrl, type: transport, enabled }, { forceRedial: true })
+    // forceRedial only when a connection-affecting field was actually edited:
+    // for a pure metadata save (rename), skipping it lets the provider keep the
+    // healthy client and just apply the row patch, so an active tool call
+    // against this server isn't dropped by an unnecessary reconnect.
+    updateServer({ id, name, url: newServerUrl, type: transport, enabled }, { forceRedial: form.hasConnectionEdits })
     form.resetAddDialog()
     resetLocalDialogState()
   }

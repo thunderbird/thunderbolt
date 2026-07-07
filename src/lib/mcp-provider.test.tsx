@@ -359,6 +359,66 @@ describe('MCPProvider reconnect', () => {
     expect(after?.client).toBe(refreshed as unknown as ProviderMCPClient)
   })
 
+  // A rename (or any pure metadata edit) on an already-connected server must
+  // NOT close the healthy client. The provider used to reconnect unconditionally
+  // whenever `updateServer` fired on the steady state, which bumped the client
+  // generation, refetched tools, and dropped any tool call in flight — all for
+  // a change that never touches the connection.
+  it('applies the row patch without reconnecting when only name changes on a connected server', async () => {
+    const initial = fakeClient()
+    let calls = 0
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      return initial
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+    expect(calls).toBe(1)
+
+    await act(async () => {
+      await result.current.updateServer({ ...server, name: 'Renamed' })
+    })
+
+    // Row patch applied, but the live client wasn't churned.
+    expect(calls).toBe(1)
+    expect(initial.closeCount()).toBe(0)
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.name).toBe('Renamed')
+    expect(after?.client).toBe(initial as unknown as ProviderMCPClient)
+  })
+
+  // Credential-only edits (same endpoint) DO need to redial so the new bearer /
+  // OAuth value gets picked up on the next connect; callers opt in via
+  // `forceRedial`. This is the settings Save path with token changes.
+  it('reconnects on same endpoint + forceRedial so a credential-only edit takes effect', async () => {
+    const initial = fakeClient()
+    const refreshed = fakeClient()
+    let calls = 0
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      return calls === 1 ? initial : refreshed
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+
+    await act(async () => {
+      await result.current.updateServer({ ...server }, { forceRedial: true })
+    })
+
+    expect(calls).toBe(2)
+    expect(initial.closeCount()).toBe(1)
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.client).toBe(refreshed as unknown as ProviderMCPClient)
+  })
+
   it('disconnects without redialing when updateServer flips enabled to false', async () => {
     const initial = fakeClient()
     let calls = 0

@@ -120,7 +120,6 @@
     "lucide-react": "^1.8.0",
     "mammoth": "^1.12.0",
     "maplibre-gl": "^5.24.0",
-    "marked": "^18.0.0",
     "posthog-js": "^1.288.1",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",

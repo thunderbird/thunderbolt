@@ -182,11 +182,21 @@ type MathPlugins = { remark: PluggableList[number]; rehype: PluggableList[number
 // stylesheet lands in the katex chunk rather than the entry.
 let mathPluginsPromise: Promise<MathPlugins> | null = null
 const loadMathPlugins = (): Promise<MathPlugins> => {
-  mathPluginsPromise ??= Promise.all([
-    import('remark-math'),
-    import('rehype-katex'),
-    import('katex/dist/katex.min.css'),
-  ]).then(([remark, rehype]) => ({ remark: remark.default, rehype: rehype.default }))
+  mathPluginsPromise ??= (async () => {
+    try {
+      const [remark, rehype] = await Promise.all([
+        import('remark-math'),
+        import('rehype-katex'),
+        import('katex/dist/katex.min.css'),
+      ])
+      return { remark: remark.default, rehype: rehype.default }
+    } catch (error) {
+      // Don't let a flaky import (bad network, stale chunk hash after a deploy)
+      // poison the cache for the whole session — clear it so a later block retries.
+      mathPluginsPromise = null
+      throw error
+    }
+  })()
   return mathPluginsPromise
 }
 

@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.22.1",
-    "@better-auth/api-key": "1.6.9",
+    "@better-auth/api-key": "^1.6.9",
     "@better-auth/sso": "^1.6.9",
     "@electric-sql/pglite": "^0.4.4",
     "@elysiajs/cors": "^1.4.0",

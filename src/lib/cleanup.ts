@@ -6,6 +6,7 @@ import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
+import { clearCachedSession } from '@/lib/session-cache'
 import { handleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 
@@ -68,5 +69,6 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
   if (clearAuth) {
     clearAuthToken()
     clearDeviceId()
+    clearCachedSession()
   }
 }

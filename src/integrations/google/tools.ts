@@ -549,6 +549,8 @@ export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
     description:
       'Check Gmail inbox or other folders for recent email conversations (threads) with lightweight summaries',
     verb: 'Checking Gmail inbox',
+    // Gmail reads are NOT cacheable: google_draft_email mutates Gmail state
+    // within the same request, so a cached read could go stale (cf. getTasks).
     parameters: checkInboxSchema,
     execute: (params: CheckInboxParams) => checkInbox(params, httpClient),
   },
@@ -577,6 +579,7 @@ export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
     name: 'google_check_calendar',
     description: 'Check Google Calendar for upcoming events in the specified timeframe',
     verb: 'Checking Google Calendar',
+    cacheable: true,
     parameters: checkCalendarSchema,
     execute: (params: CheckCalendarParams) => checkCalendar(params, httpClient),
   },

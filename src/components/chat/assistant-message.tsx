@@ -2,11 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isRenderHtmlPart } from '@/artifacts/render-html-tool'
 import {
+  artifactRendersStandalone,
   filterMessageParts,
   type GroupedUIPart,
   groupMessageParts,
   type ReasoningGroupUIPart,
+  type ToolOrDynamicToolUIPart,
 } from '@/lib/assistant-message'
 import { extractTextFromParts } from '@/lib/message-utils'
 import { splitPartType } from '@/lib/utils'
@@ -14,6 +17,7 @@ import type { HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } f
 import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
+import { ArtifactMessagePart } from './artifact-message-part'
 import { CopyMessageButton } from './copy-message-button'
 import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
@@ -60,9 +64,13 @@ export const mountMessageParts = (
     partElements.push(<SyntheticLoadingPart isStreaming message={loadingMessage} />)
   }
 
-  const hasTextPart = groupedParts.some((part) => {
+  // Whether the message has a "body" that serves as the answer — a text part, or a
+  // lifted-out artifact (a standalone `tool` part). When it does, the reasoning group
+  // suppresses its ephemeral reasoning display (and that display's 200px reserve),
+  // which otherwise leaves a large empty gap above an artifact card.
+  const hasResponseBody = groupedParts.some((part) => {
     const [partType] = splitPartType(part.type)
-    return partType === 'text'
+    return partType === 'text' || partType === 'tool'
   })
 
   groupedParts.forEach((part, index) => {
@@ -77,7 +85,7 @@ export const mountMessageParts = (
             parts={reasoningGroupPart.items}
             isStreaming={isStreaming}
             isLastPartInMessage={isLastPart}
-            hasTextPart={hasTextPart}
+            hasTextPart={hasResponseBody}
             reasoningTime={reasoningTime}
             reasoningStartTimes={reasoningStartTimes}
             mcpTools={mcpTools}
@@ -94,6 +102,10 @@ export const mountMessageParts = (
             haystackReferences={haystackReferences}
           />,
         )
+        break
+      case 'tool':
+        // groupMessageParts only lifts render_html tool parts out of the group.
+        partElements.push(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />)
         break
     }
   })
@@ -162,6 +174,16 @@ export const AssistantMessage = memo(
       [message.parts],
     )
 
+    // An artifact is a tall block of its own, so it doesn't need the last-message
+    // height reserve — and applying it would leave empty space that pushes the
+    // artifact toward the middle of the viewport ("floating" too far down). Match the
+    // same condition that actually lifts the card out (streaming or verified-ok), so a
+    // last message whose only render_html call FAILED still gets the normal reserve.
+    const hasArtifact = useMemo(
+      () => message.parts.some((part) => isRenderHtmlPart(part) && artifactRendersStandalone(part)),
+      [message.parts],
+    )
+
     const lastPartIsReasoningGroup = useMemo(() => {
       const lastPart = groupedParts[groupedParts.length - 1]
       if (!lastPart) {
@@ -176,8 +198,9 @@ export const AssistantMessage = memo(
     return (
       <div
         data-message-id={message.id}
+        data-quotable-message-id={message.id}
         className={showCopyOnHover ? 'group' : undefined}
-        style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}
+        style={isLastMessage && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
       >
         {partElements.map((partElement, index) => (
           // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation

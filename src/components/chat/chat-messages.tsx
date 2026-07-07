@@ -16,6 +16,7 @@ import { useHaptics } from '@/hooks/use-haptics'
 import { useAttachmentRemediation } from './use-attachment-remediation'
 import { getLoadingLabel } from '@/lib/loading-labels'
 import { isBuiltInAgent } from '@/defaults/agents'
+import { QuoteReplyButton } from './quote-reply-button'
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
@@ -177,6 +178,9 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
           deliveryExhausted={deliveryExhausted}
         />
       )}
+
+      {/* Floating "Reply" button over any text selection within a response. */}
+      <QuoteReplyButton />
     </div>
   )
 })

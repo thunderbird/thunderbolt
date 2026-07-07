@@ -1,0 +1,25 @@
+name: Nightly Images
+
+# Nightly rebuild + publish of the main-branch Docker images to GHCR (package.json
+# version tag, :latest, and the Helm chart).
+#
+# images-publish.yml already runs on every push to main that touches
+# deploy/**, backend/**, src/**, or package.json. This scheduled run only adds
+# value on quiet days — it refreshes images when main hasn't changed those paths
+# (e.g. picking up upstream base-image / security updates).
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # 5am UTC / midnight EST
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write # GHCR image push
+
+jobs:
+  publish:
+    # No `secrets: inherit` — images-publish.yml only uses GITHUB_TOKEN, which is
+    # auto-provided to reusable workflows via this job's `permissions` block. Passing
+    # the whole repo secret set would violate least privilege for no benefit.
+    uses: ./.github/workflows/images-publish.yml

@@ -26,11 +26,55 @@ const postgresUrl = isPglite
   ? null
   : process.env.DATABASE_URL || (isDevelopment ? 'postgresql://postgres:postgres@localhost:5433/postgres' : '')
 
-if (isPglite && process.env.DATABASE_URL) {
-  mkdirSync(resolve(process.env.DATABASE_URL), { recursive: true })
+// When DRIVER=pglite, `DATABASE_URL` is treated as a *data-directory path*
+// (`.env.example` documents `.pglite/data`). The default dev / e2e `.env`
+// ships `postgresql://...` for the postgres driver, though, and inherits
+// into pglite-mode runs (bun test, playwright web-server, manual `bun run
+// src/index.ts` with mixed env). `new PGlite('postgresql://...')` then
+// treats the connection string as a path and bootstraps a real Postgres
+// data dir into `backend/postgresql:/postgres:postgres@localhost:.../...`.
+// Detect the schema and treat connection-string values as "no path given"
+// (i.e. in-memory PGlite).
+const isPostgresConnectionUrl = (url: string | undefined): boolean =>
+  typeof url === 'string' && /^(?:postgres|postgresql):\/\//.test(url)
+
+const pgliteDataDir =
+  isPglite && process.env.DATABASE_URL && !isPostgresConnectionUrl(process.env.DATABASE_URL)
+    ? process.env.DATABASE_URL
+    : undefined
+
+/**
+ * Return `scheme://host[:port]` from a DB connection string, dropping any
+ * embedded userinfo. Falls back to `<unparseable>` so we never leak the raw
+ * value on a malformed URL — connection strings can carry credentials
+ * (`postgres://user:password@host/db`) and logs travel further than we expect.
+ */
+const redactDatabaseUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.protocol}//${parsed.host}`
+  } catch {
+    return '<unparseable>'
+  }
 }
 
-const pgliteClient = isPglite ? new PGlite(process.env.DATABASE_URL) : null // undefined = in-memory
+if (isPglite && process.env.DATABASE_URL && isPostgresConnectionUrl(process.env.DATABASE_URL)) {
+  console.warn(
+    `[db] DATABASE_DRIVER=pglite but DATABASE_URL is a postgres connection string ` +
+      `(${redactDatabaseUrl(process.env.DATABASE_URL)}) — falling back to in-memory PGlite. ` +
+      `Set DATABASE_URL to a directory path (e.g. .pglite/data) if you meant to persist.`,
+  )
+}
+
+if (pgliteDataDir) {
+  mkdirSync(resolve(pgliteDataDir), { recursive: true })
+}
+
+const pgliteClient = isPglite
+  ? pgliteDataDir
+    ? new PGlite(pgliteDataDir)
+    : new PGlite() // no dataDir → in-memory
+  : null
 
 const pgliteDb = pgliteClient ? drizzlePglite({ client: pgliteClient, schema }) : null
 

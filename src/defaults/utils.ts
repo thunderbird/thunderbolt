@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { hashPrompt } from './automations'
-import { hashModel } from './models'
+import { hashModel } from '@shared/defaults/models'
 import { hashSetting } from './settings'
 import type { Model, Prompt, Setting } from '@/types'
 

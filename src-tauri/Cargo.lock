@@ -5417,7 +5417,7 @@ dependencies = [
 
 [[package]]
 name = "thunderbolt"
-version = "0.1.105"
+version = "0.1.106"
 dependencies = [
  "anyhow",
  "objc2-foundation",

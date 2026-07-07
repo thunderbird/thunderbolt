@@ -35,6 +35,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
       name: 'search',
       description: 'Search the web. Each result has a [Source N] label. Cite with [N] at end of sentence.',
       verb: 'searching for {query}',
+      cacheable: true,
       parameters: searchSchema,
       execute: async (params: SearchParams) => {
         const results = await search(params, httpClient)
@@ -75,6 +76,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
       description:
         'Fetch and parse content from a PUBLIC webpage URL. Result has a [Source N] label. Cite with [N] at end of sentence. Do NOT use for Google Drive, Docs, Sheets, or Slides links. Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
       verb: 'fetching {url}',
+      cacheable: true,
       parameters: fetchContentSchema,
       execute: async (params: FetchContentParams) => {
         // Fetch content and link preview in parallel — link preview gives us og:site_name

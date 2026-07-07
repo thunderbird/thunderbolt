@@ -25,11 +25,20 @@ export type SideviewData = {
   sideviewId: string
 }
 
+/** A verified HTML artifact shown in the side panel. */
+export type ArtifactViewData = {
+  html: string
+  title: string
+  /** The render_html tool-call id; also the key for the render-target toggle. */
+  artifactId: string
+}
+
 type ContentViewState =
   | { type: null; data: null }
   | { type: 'object-view'; data: ObjectViewData }
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: SideviewData }
+  | { type: 'artifact'; data: ArtifactViewData }
 
 type ContentViewContextType = {
   state: ContentViewState
@@ -37,6 +46,8 @@ type ContentViewContextType = {
   showPreview: (url: string) => void
   /** Open a typed sideview (e.g. `'document'`). Passing `null` clears the view. */
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
+  /** Open a verified HTML artifact in the side panel. */
+  showArtifact: (data: ArtifactViewData) => void
   close: () => void
   isOpen: boolean
   previewHidden: boolean
@@ -99,6 +110,11 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
     setState({ type: 'sideview', data: { sideviewType, sideviewId } })
   }, [])
 
+  const showArtifact = useCallback((data: ArtifactViewData) => {
+    trackEvent('content_view_open', { view_type: 'artifact' })
+    setState({ type: 'artifact', data })
+  }, [])
+
   const close = useCallback(() => {
     if (state.type !== null) {
       trackEvent('content_view_close', { view_type: state.type })
@@ -122,6 +138,7 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
         showObjectView,
         showPreview,
         showSideview,
+        showArtifact,
         close,
         isOpen: state.type !== null,
         previewHidden,

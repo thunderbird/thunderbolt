@@ -4,6 +4,7 @@
 
 import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { useCurrentChatSession } from '@/chats/chat-store'
+import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
@@ -27,7 +28,7 @@ import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
 import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
@@ -36,6 +37,8 @@ import { PromptInput } from '../ui/prompt-input'
 import { ChatModePicker } from './chat-mode-picker'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
+import { buildQuotePart } from '@/lib/quotes'
+import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
 import { FileCard } from './file-card'
 
@@ -82,6 +85,17 @@ const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachm
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
   acceptedAttachmentExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
+
+/** Clipboard files (e.g. a pasted screenshot) often arrive with an empty name.
+ *  Give them a stable, extension-bearing filename so the chip renders and the
+ *  extension-based accept check has something to work with. */
+const withClipboardFilename = (file: File, index: number): File => {
+  if (file.name) {
+    return file
+  }
+  const ext = file.type.split('/')[1] ?? 'png'
+  return new File([file], `pasted-image-${Date.now()}-${index}.${ext}`, { type: file.type })
+}
 
 /**
  * Extract a human-readable display string from a connection error.
@@ -210,6 +224,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const [attachments, setAttachments] = useState<AttachmentData[]>([])
     const [attachError, setAttachError] = useState<string | null>(null)
+    // Quote-reply passages pulled in from the "Reply" button on a response. Held
+    // in a per-thread store (not local state) so that button — which lives deep
+    // in the message list — can add to the composer without prop-drilling.
+    const quotes = usePendingQuotes(chatThreadId)
+    const removeQuote = usePendingQuotesStore((s) => s.removeQuote)
+    const setQuotes = usePendingQuotesStore((s) => s.setQuotes)
+    const clearQuotes = usePendingQuotesStore((s) => s.clearQuotes)
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
@@ -336,17 +357,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       return map
     }, [library, isEnabled])
 
-    // Estimate the token cost of resolved skill instructions so the
-    // overflow modal fires correctly when /name tokens push the send past
-    // the model's context window — Skills v1 Open Q #5.
+    // Estimate the token cost of resolved skill instructions and pending
+    // quote passages so the overflow modal fires correctly when /name tokens
+    // or large quoted selections push the send past the model's context window
+    // — Skills v1 Open Q #5. Quotes are injected into the send (as `> …`
+    // blockquotes) but aren't part of `currentInput`, so they'd otherwise be
+    // invisible to the estimate.
     const additionalInputTokens = useMemo(() => {
       const instructions = resolveSkillTokenInstructions(input, enabledInstructionBySlug)
       let total = 0
       for (const instruction of instructions) {
         total += estimateTokensForText(instruction)
       }
+      for (const quote of quotes) {
+        total += estimateTokensForText(quote.data.text)
+      }
       return total
-    }, [input, enabledInstructionBySlug])
+    }, [input, enabledInstructionBySlug, quotes])
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
       model: selectedModel,
@@ -403,6 +430,25 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [attachments.length],
     )
 
+    // Intercept clipboard paste (Cmd/Ctrl+V) so copied files and pasted images
+    // become attachments — the same path as drag-drop and the paperclip. Only
+    // preventDefault when the clipboard actually carries files, so a normal text
+    // paste falls through untouched.
+    const handlePaste = useCallback(
+      (e: ClipboardEvent<HTMLTextAreaElement>) => {
+        const files = Array.from(e.clipboardData?.items ?? [])
+          .filter((item) => item.kind === 'file')
+          .map((item) => item.getAsFile())
+          .filter((file): file is File => file != null)
+        if (files.length === 0) {
+          return
+        }
+        e.preventDefault()
+        void addFiles(files.map(withClipboardFilename))
+      },
+      [addFiles],
+    )
+
     const removeAttachment = useCallback((localFileId: string) => {
       setAttachments((prev) => prev.filter((a) => a.localFileId !== localFileId))
       deleteAttachment(localFileId).catch((error) => console.error('Failed to delete local attachment:', error))
@@ -410,9 +456,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const handleSubmit = async () => {
       try {
-        // Prevent submitting while streaming, or with neither text nor attachments
+        // Prevent submitting while streaming, or with no text, attachments, or quotes
         const textToSend = input.trim()
-        if (isStreaming || (!textToSend && attachments.length === 0)) {
+        if (isStreaming || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
 
@@ -424,20 +470,31 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // Reference-only attachment parts — bytes stay in IndexedDB and are
         // hydrated per-agent at send time (see the file transports).
         const attachmentParts = attachments.map(buildAttachmentPart)
+        // Quote parts render as blockquotes and hydrate to `> …` text for the model.
+        const quoteParts = quotes.map((quote) => buildQuotePart(quote.data))
 
-        // Clear input, draft, and pending attachments immediately for responsive UX
+        // Clear input, draft, pending attachments, and quotes immediately for responsive UX
         clearDraft()
         setAttachments([])
+        clearQuotes(chatThreadId)
         setAttachError(null)
 
         await sendMessage({
-          parts: [...(textToSend ? [{ type: 'text' as const, text: textToSend }] : []), ...attachmentParts],
+          parts: [
+            ...quoteParts,
+            ...(textToSend ? [{ type: 'text' as const, text: textToSend }] : []),
+            ...attachmentParts,
+          ],
         })
       } catch (error) {
         console.error('Error submitting message:', error)
         // Send failed — the chips were cleared optimistically but the blobs are
         // still in IndexedDB, so restore them rather than orphaning the bytes.
         setAttachments(attachments)
+        setQuotes(
+          chatThreadId,
+          quotes.map((quote) => quote.data),
+        )
       }
     }
 
@@ -628,17 +685,32 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           <PromptInput
             ref={formRef}
             headerSlot={
-              attachments.length > 0 ? (
-                <div className="flex flex-wrap items-start gap-2 pb-2">
-                  {attachments.map((attachment) => (
-                    <FileCard
-                      key={attachment.localFileId}
-                      localFileId={attachment.localFileId}
-                      filename={attachment.filename}
-                      mimeType={attachment.mimeType}
-                      onRemove={() => removeAttachment(attachment.localFileId)}
-                    />
-                  ))}
+              attachments.length > 0 || quotes.length > 0 ? (
+                <div className="flex flex-col gap-2 pb-2">
+                  {quotes.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      {quotes.map((quote) => (
+                        <QuoteChip
+                          key={quote.id}
+                          text={quote.data.text}
+                          onRemove={() => removeQuote(chatThreadId, quote.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {attachments.length > 0 && (
+                    <div className="flex flex-wrap items-start gap-2">
+                      {attachments.map((attachment) => (
+                        <FileCard
+                          key={attachment.localFileId}
+                          localFileId={attachment.localFileId}
+                          filename={attachment.filename}
+                          mimeType={attachment.mimeType}
+                          onRemove={() => removeAttachment(attachment.localFileId)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : undefined
             }
@@ -648,7 +720,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             showSubmitButton
             onSubmit={handleSubmit}
             // Allow sending an attachment even with no typed text (matches the Enter behavior).
-            canSubmit={input.trim().length > 0 || attachments.length > 0}
+            canSubmit={input.trim().length > 0 || attachments.length > 0 || quotes.length > 0}
             isLoading={isStreaming || isConnecting}
             isStreaming={isStreaming}
             onStop={stop}
@@ -670,6 +742,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             }
             onTextareaKeyDown={handleSlashKeyDown}
             onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+            onTextareaPaste={handlePaste}
           />
         </div>
         <ContextOverflowModal

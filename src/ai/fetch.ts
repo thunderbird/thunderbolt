@@ -19,11 +19,12 @@ import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/as
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
+import { hydrateQuotesAsText } from '@/lib/quotes'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createToolset, getAvailableTools } from '@/lib/tools'
+import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
 import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
@@ -506,13 +507,16 @@ export const aiFetchStreamingResponse = async ({
   const supportsTools = model.toolUsage !== 0
 
   const sourceCollector: SourceMetadata[] = []
+  // Dedupe identical read-only tool calls within this send (same lifetime as
+  // sourceCollector — one request, no cross-turn state).
+  const toolCallCache: ToolCallCache = new Map()
 
   let toolset: Record<string, Tool> = {}
   let mcpServersSummary: string | undefined
   let mcpToolsMetadata: UIMessageMetadata['mcpTools']
   if (supportsTools) {
     const availableTools = await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
-    toolset = { ...createToolset(availableTools) }
+    toolset = createToolset(availableTools, toolCallCache)
 
     const merged = await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))
     mcpServersSummary = merged.summary
@@ -760,7 +764,10 @@ export const aiFetchStreamingResponse = async ({
         // Hydrate reference-only PDF attachments into AI SDK file parts (bytes
         // read from IndexedDB) so the model receives them. Only the reference is
         // persisted/synced; the bytes are inlined here, in-flight to the model.
-        const baseMessages = await convertToModelMessages(await hydrateAttachmentsAsFileParts(messages))
+        // Quote parts are likewise flattened to Markdown blockquote text parts.
+        const baseMessages = await convertToModelMessages(
+          hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(messages)),
+        )
         let currentMessages: typeof baseMessages = [
           ...systemNotes.map((content) => ({ role: 'system' as const, content })),
           ...baseMessages,

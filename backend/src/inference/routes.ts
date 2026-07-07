@@ -47,6 +47,10 @@ export const supportedModels: Record<string, ModelConfig> = {
     internalName: 'claude-opus-4-8',
     omitTemperature: true,
   },
+  'deepseek-v4-flash': {
+    provider: 'fireworks',
+    internalName: 'accounts/fireworks/models/deepseek-v4-flash',
+  },
 }
 
 /**

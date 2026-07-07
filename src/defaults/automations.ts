@@ -4,7 +4,7 @@
 
 import { hashValues } from '@/lib/utils'
 import type { Prompt } from '@/types'
-import { defaultModelOpus48 } from './models'
+import { defaultModelOpus48 } from '@shared/defaults/models'
 
 /**
  * Compute hash of user-editable fields for a prompt

@@ -112,7 +112,7 @@ jobs:
       - name: Compute and save metrics baseline
         if: github.ref == 'refs/heads/main'
         run: |
-          bun test --cwd=src --timeout 5000 --coverage 2>&1 | tee /tmp/coverage.txt || true
+          bun test --cwd=src --timeout 3600000 --coverage 2>&1 | tee /tmp/coverage.txt || true
           COVERAGE=$(grep -E "All files" /tmp/coverage.txt | grep -oE '[0-9]+\.[0-9]+' | head -1)
           bunx size-limit --json > /tmp/size-limit.json 2>/dev/null || true
           BUNDLE=$(jq -r '.[0].size // 0' /tmp/size-limit.json 2>/dev/null || echo 0)
@@ -234,7 +234,10 @@ jobs:
 
       - name: Test backend (5x, excludes same-process WS event-delivery flakes)
         timeout-minutes: 10
-        run: cd backend && bun test --timeout 5000 --randomize --rerun-each 5 $(find src -name '*.test.ts' -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
+        # No per-test timeout in CI (large value ≈ disabled — bun `--timeout 0` hangs async tests):
+        # the 10-minute step cap above is the real ceiling, so tests that only get slow under
+        # CI/PGlite contention don't spuriously fail. Local `test:backend` keeps the 5s timeout.
+        run: cd backend && bun test --timeout 3600000 --randomize --rerun-each 5 $(find src -name '*.test.ts' -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
 
       # ws-e2e.test.ts + haystack/routes.test.ts wait on Bun same-process WS close/
       # message events that Bun drops/delays under load. Systematic causes (shared

@@ -141,7 +141,17 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
   }
 }
 
+/**
+ * Thunderbolt uses the app's authenticated cloud endpoint — no user-supplied
+ * credentials to verify — so Save is not gated on a live test. Every other
+ * provider requires a passing connection test before Save is enabled.
+ */
+const providerRequiresConnectionTest = (provider: Model['provider']) => provider !== 'thunderbolt'
+
 const canTestModelConnection = (provider: Model['provider'], model?: string, apiKey?: string | null) => {
+  if (!providerRequiresConnectionTest(provider)) {
+    return false
+  }
   if (!model) {
     return false
   }
@@ -406,7 +416,14 @@ const EditModelForm = ({
           <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending || !form.formState.isDirty || connectionStatus === 'error'}>
+          <Button
+            type="submit"
+            disabled={
+              isPending ||
+              !form.formState.isDirty ||
+              (providerRequiresConnectionTest(model.provider) && connectionStatus !== 'success')
+            }
+          >
             Save
           </Button>
         </div>
@@ -1128,7 +1145,13 @@ export default function ModelsPage() {
                   <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={addModelMutation.isPending || connectionStatus === 'error'}>
+                  <Button
+                    type="submit"
+                    disabled={
+                      addModelMutation.isPending ||
+                      (providerRequiresConnectionTest(watchedProvider) && connectionStatus !== 'success')
+                    }
+                  >
                     {addModelMutation.isPending ? 'Adding...' : 'Add Model'}
                   </Button>
                 </div>

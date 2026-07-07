@@ -26,10 +26,12 @@
     "@earendil-works/pi-ai": "0.80.2",
     "@earendil-works/pi-coding-agent": "0.80.2",
     "@earendil-works/pi-tui": "0.80.2",
-    "@number0/iroh": "1.0.0"
+    "@number0/iroh": "1.0.0",
+    "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.20",
+    "@types/qrcode-terminal": "^0.12.2",
     "typescript": "^6.0.3"
   }
 }

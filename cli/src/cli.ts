@@ -18,6 +18,7 @@ import type {
   ServeConfig,
   ThinkingLevel,
 } from './agent/types.ts'
+import { DEFAULT_CLOUD_URL } from './auth/config.ts'
 
 /** Released version of the CLI, surfaced by `--version` and the banner. */
 export const VERSION = '0.1.0'
@@ -50,6 +51,7 @@ export const HELP_TEXT = `⚡ thunderbolt v${VERSION} — a single-binary termin
 USAGE
   thunderbolt [options] [prompt]
   thunderbolt agent [options] [prompt]
+  thunderbolt login
   thunderbolt acp serve [options]
   thunderbolt acp --transport <wss|iroh> [--port N] -- <agent-cmd...>
   thunderbolt mcp --transport <wss|iroh> [--port N] -- <server-cmd...>
@@ -61,6 +63,7 @@ USAGE
 
 SUBCOMMANDS
   agent       run the coding agent (default when omitted)
+  login       authenticate this CLI with your Thunderbolt account (device grant)
   acp serve   expose THIS coding agent as a stdio ACP server (for bridging)
   acp         bridge a local stdio ACP agent over the network the app can reach
   mcp         bridge a local stdio MCP server over the network the app can reach
@@ -99,6 +102,12 @@ IROH TRANSPORT (P2P, end-to-end encrypted)
   so the QUIC handshake authenticates and end-to-end encrypts every session.
   iroh id|pair are ACP-only — the MCP bridge has its own NodeId, printed by
   thunderbolt mcp --transport iroh on startup.
+
+LOGIN (device authorization grant)
+  thunderbolt login    open the printed link (or scan the QR) and approve in the
+                       app to bind this CLI to your account. Set THUNDERBOLT_CLOUD_URL
+                       to point at a self-hosted backend (default ${DEFAULT_CLOUD_URL}),
+                       or THUNDERBOLT_TOKEN to a PAT to skip the interactive flow (CI).
 
 EXAMPLES
   thunderbolt "fix the failing test in utils.ts"
@@ -351,6 +360,17 @@ const parseServeArgs = (rest: string[]): ParsedArgs => {
 }
 
 /**
+ * Parses a `thunderbolt login` invocation. Takes no positional arguments — the
+ * device-authorization flow is fully interactive (or driven headlessly by the
+ * `THUNDERBOLT_TOKEN` PAT), so anything extra is a usage error.
+ */
+const parseLoginArgs = (rest: string[]): ParsedArgs => {
+  if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' }
+  if (rest.length > 0) return { kind: 'error', message: `thunderbolt login: unexpected argument '${rest[0]}'` }
+  return { kind: 'login' }
+}
+
+/**
  * Parses a `thunderbolt iroh` admin invocation into its sub-action
  * (`id` | `pair` | `allow <nodeid>`).
  */
@@ -380,6 +400,7 @@ const parseIrohAdminArgs = (rest: string[]): ParsedArgs => {
  */
 export const parseArgs = (argv: string[]): ParsedArgs => {
   const subcommand = argv[0]
+  if (subcommand === 'login') return parseLoginArgs(argv.slice(1))
   if (subcommand === 'iroh') return parseIrohAdminArgs(argv.slice(1))
   if (subcommand === 'acp' || subcommand === 'mcp') {
     if (subcommand === 'acp' && argv[1] === 'serve') return parseServeArgs(argv.slice(2))

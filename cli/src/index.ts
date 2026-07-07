@@ -16,6 +16,7 @@ import { runBridge } from './commands/bridge.ts'
 import { runIrohBridge } from './iroh/bridge.ts'
 import { runIrohConnect } from './iroh/connect.ts'
 import { runIrohAdmin } from './iroh/admin.ts'
+import { runLogin } from './auth/login.ts'
 
 const parsed = parseArgs(Bun.argv.slice(2))
 
@@ -66,6 +67,14 @@ switch (parsed.kind) {
   case 'iroh-admin':
     try {
       await runIrohAdmin(parsed.action)
+    } catch (err) {
+      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exitCode = 1
+    }
+    break
+  case 'login':
+    try {
+      await runLogin()
     } catch (err) {
       process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
       process.exitCode = 1

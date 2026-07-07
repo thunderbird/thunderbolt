@@ -277,3 +277,21 @@ describe('parseArgs — connect + iroh admin', () => {
     expect(parseArgs(['iroh', 'bogus']).kind).toBe('error')
   })
 })
+
+describe('parseArgs — login', () => {
+  test('bare `login` routes to the login action', () => {
+    expect(parseArgs(['login'])).toEqual({ kind: 'login' })
+  })
+
+  test('login --help / -h short-circuits to help', () => {
+    expect(parseArgs(['login', '--help']).kind).toBe('help')
+    expect(parseArgs(['login', '-h']).kind).toBe('help')
+  })
+
+  test('login rejects a stray positional (it takes no arguments)', () => {
+    expect(parseArgs(['login', 'extra'])).toEqual({
+      kind: 'error',
+      message: expect.stringContaining("unexpected argument 'extra'"),
+    })
+  })
+})

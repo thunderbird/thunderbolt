@@ -24,6 +24,10 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
     'mlkem_public_key',
     'approval_pending',
     'app_version',
+    // device_type discriminates a bridge from a normal device and drives the account allowlist
+    // (bridges auto-trust same-account peers). Only the bridge-registration route may set it, so a
+    // client can't relabel its own device a 'bridge' via a raw PowerSync upload.
+    'device_type',
     // node_id binds a device to a P2P identity — trust-sensitive. Only settable via the
     // canary-gated PATCH /devices/:id/node-id route, never via a raw PowerSync upload.
     'node_id',

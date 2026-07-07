@@ -127,6 +127,7 @@ describe('powersync upload gate (applyOperation)', () => {
             mlkem_public_key: 'attacker-mlkem',
             revoked_at: '2020-01-01T00:00:00.000Z',
             app_version: '99.99.99',
+            device_type: 'bridge',
             node_id: 'attacker-node',
             node_id_attested_at: '2020-01-01T00:00:00.000Z',
           },
@@ -143,6 +144,7 @@ describe('powersync upload gate (applyOperation)', () => {
       expect(rows[0].mlkemPublicKey).toBeNull()
       expect(rows[0].revokedAt).toBeNull()
       expect(rows[0].appVersion).toBeNull()
+      expect(rows[0].deviceType).toBe('normal') // client can't relabel itself a bridge
       expect(rows[0].nodeId).toBeNull()
       expect(rows[0].nodeIdAttestedAt).toBeNull()
     })

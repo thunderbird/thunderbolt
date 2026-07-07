@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useRef } from 'react'
-import posthog from 'posthog-js'
-import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
+import { getPosthogClient, trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { AuthClient } from '@/contexts'
 
 export type AnonymousPromotionAnalytics = {
@@ -23,7 +22,7 @@ export const pendingAnonIdKey = 'thunderbolt_pending_anon_id'
 // If the client was never initialized (self-hosted, no key), alias() is a silent
 // no-op because posthog-js handles uninitialized state.
 const defaultAlias = (newUserId: string, anonId: string) => {
-  posthog.alias(newUserId, anonId)
+  getPosthogClient()?.alias(newUserId, anonId)
 }
 
 /**

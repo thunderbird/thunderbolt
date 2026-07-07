@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import posthog from 'posthog-js'
-import { trackEvent } from '@/lib/posthog'
+import { getPosthogClient, trackEvent } from '@/lib/posthog'
 import { pendingAnonIdKey } from './use-anonymous-promotion-analytics'
 import type { AuthClient } from '@/contexts'
 
@@ -35,7 +34,7 @@ export const consumePendingSsoAnonAlias = async (authClient: AuthClient): Promis
     return
   }
 
-  posthog.alias(newUserId, pendingAnonId)
+  getPosthogClient()?.alias(newUserId, pendingAnonId)
 
   trackEvent('anonymous_user_promoted')
   sessionStorage.removeItem(pendingAnonIdKey)

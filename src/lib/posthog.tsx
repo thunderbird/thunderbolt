@@ -9,8 +9,7 @@ import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createClient } from '@/lib/http'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
-import posthog, { type PostHog } from 'posthog-js'
-import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
+import type { PostHog } from 'posthog-js'
 import { createContext, useContext, type ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
@@ -21,6 +20,13 @@ let posthogClient: PostHog | null = null
 export const resetPosthogClient = () => {
   posthogClient = null
 }
+
+/**
+ * Returns the initialized PostHog client, or null if analytics has not been
+ * initialized (self-hosted without a key, or before {@link initPosthog} resolves).
+ * The single site allowed to hold a client reference outside of React.
+ */
+export const getPosthogClient = (): PostHog | null => posthogClient
 
 const routePatterns = ['/chats/:chatThreadId'] as const
 
@@ -75,6 +81,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const apiHost = `${cloudUrl}/posthog`
 
     if (!posthogClient) {
+      const { default: posthog } = await import('posthog-js')
       posthogClient = posthog.init(apiKey, {
         opt_out_capturing_by_default: !dataCollection,
         api_host: apiHost,
@@ -130,13 +137,24 @@ const TelemetryAvailableContext = createContext(false)
  */
 export const useTelemetryAvailable = () => useContext(TelemetryAvailableContext)
 
+const PostHogClientContext = createContext<PostHog | null>(null)
+
 /**
- * PostHog Provider component for React
+ * Access the nullable PostHog client from React. Returns null until {@link initPosthog}
+ * resolves (analytics attaches a beat after first paint) or when analytics is disabled.
  */
-export const PostHogProvider = ({ children, client }: { children: ReactNode; client: PostHog | null }) => {
-  const inner = client ? <PostHogReactProvider client={client}>{children}</PostHogReactProvider> : children
-  return <TelemetryAvailableContext.Provider value={!!client}>{inner}</TelemetryAvailableContext.Provider>
-}
+export const usePostHogClient = () => useContext(PostHogClientContext)
+
+/**
+ * PostHog Provider component for React. Carries the nullable client through an in-house
+ * context so posthog-js/react is never statically imported (keeping the SDK out of the
+ * entry chunk).
+ */
+export const PostHogProvider = ({ children, client }: { children: ReactNode; client: PostHog | null }) => (
+  <TelemetryAvailableContext.Provider value={!!client}>
+    <PostHogClientContext.Provider value={client}>{children}</PostHogClientContext.Provider>
+  </TelemetryAvailableContext.Provider>
+)
 
 export type EventType =
   // Chat & Messaging

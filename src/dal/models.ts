@@ -5,7 +5,7 @@
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsSecretsTable, modelsTable, settingsTable } from '../db/tables'
-import { hashModel } from '../defaults/models'
+import { hashModel, type SharedModel } from '@shared/defaults/models'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
@@ -164,8 +164,12 @@ export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: P
  * default template so we never overwrite the row's real owner with `null`
  * (which would surface as an empty PATCH and a 400 from the upload handler).
  */
-export const resetModelToDefault = async (db: AnyDrizzleDatabase, id: string, defaultModel: Model): Promise<void> => {
-  const { defaultHash, apiKey, userId, ...defaultFields } = defaultModel
+export const resetModelToDefault = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  defaultModel: SharedModel,
+): Promise<void> => {
+  const { defaultHash, userId, ...defaultFields } = defaultModel
   await db.transaction(async (tx) => {
     await tx
       .update(modelsTable)

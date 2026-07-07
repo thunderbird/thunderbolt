@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetchConfig } from '@/api/config'
+import { useConfigStore } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
@@ -14,6 +15,7 @@ import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { beginInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
+import { pickModelsDefaults } from '@/lib/pick-defaults'
 import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { runDataMigrations } from '@/lib/data-migrations'
@@ -159,9 +161,24 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // the outcome is reported in the app_init_timing event below.
   const initialSyncOutcome = await time('step3_wait_for_initial_sync', () => database.waitForInitialSync())
 
+  // Step 3.5: Settle the /config fetch so reconcile can prefer server-shipped
+  // defaults when they declare a higher version than the bundle. Awaited
+  // unconditionally: (a) `step0_fetch_config` must land in the timing payload
+  // for every boot, not just first launch; (b) leaving the promise floating
+  // past this point risks an unhandled rejection on any environment where
+  // fetchConfig's error handling weakens. `fetchConfig` is bounded by its
+  // internal timeout and swallows errors — the persisted cache remains in
+  // the store until a successful fetch replaces it, so `pickModelsDefaults`
+  // still reads the same value it would on the cache-hit fast path.
+  await fetchConfigPromise
+  const modelsDefaults = pickModelsDefaults(useConfigStore.getState().config.defaults?.models)
+  const initialSyncCompleted = initialSyncOutcome === 'synced' || initialSyncOutcome === 'disabled'
+
   // Step 4: Reconcile defaults
   try {
-    await time('step4_reconcile_defaults', () => reconcileDefaults(db))
+    await time('step4_reconcile_defaults', () =>
+      reconcileDefaults(db, { models: modelsDefaults, initialSyncCompleted }),
+    )
   } catch (error) {
     console.error('Failed to reconcile default settings:', error)
     const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)
@@ -213,10 +230,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
   // of each other) — run in parallel; each wrapper swallows its own failure.
   const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
-
-  // Settle step 0 so its duration lands in the timing payload. fetchConfig
-  // never rejects (catch block + 5s timeout) and has typically resolved by now.
-  await fetchConfigPromise
 
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
   console.info(`[init] complete (total ${initTotalMs}ms)`)

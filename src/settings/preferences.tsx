@@ -538,7 +538,11 @@ export default function PreferencesSettingsPage() {
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Vibrate on tap</p>
             </div>
-            <Switch checked={hapticsEnabled} onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)} />
+            <Switch
+              checked={hapticsEnabled}
+              onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)}
+              aria-label="Haptic Feedback"
+            />
           </div>
         </div>
       </SectionCard>
@@ -587,13 +591,19 @@ export default function PreferencesSettingsPage() {
           <div className="flex flex-col gap-2">
             <ModificationIndicator
               as="label"
+              id="localization-location-label"
               className="text-sm font-medium"
               hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
               onReset={handleResetLocation}
             >
               Location
             </ModificationIndicator>
-            <LocationSearchCombobox value={locationName.value} onSelect={handleSelectLocation} />
+            <LocationSearchCombobox
+              value={locationName.value}
+              onSelect={handleSelectLocation}
+              id="localization-location-trigger"
+              aria-labelledby="localization-location-label localization-location-trigger"
+            />
             <p className="text-sm text-muted-foreground">Enables location-based responses</p>
           </div>
 
@@ -619,7 +629,7 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg">
+              <SelectTrigger className="w-auto rounded-lg" aria-label="Distance unit">
                 <SelectValue placeholder="Loading..." />
               </SelectTrigger>
               <SelectContent>
@@ -652,7 +662,7 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg">
+              <SelectTrigger className="w-auto rounded-lg" aria-label="Temperature unit">
                 <SelectValue placeholder="Loading..." />
               </SelectTrigger>
               <SelectContent>
@@ -685,7 +695,7 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg">
+              <SelectTrigger className="w-auto rounded-lg" aria-label="Date format">
                 <SelectValue placeholder="Loading..." />
               </SelectTrigger>
               <SelectContent>
@@ -718,7 +728,7 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg">
+              <SelectTrigger className="w-auto rounded-lg" aria-label="Time format">
                 <SelectValue placeholder="Loading..." />
               </SelectTrigger>
               <SelectContent>
@@ -736,6 +746,7 @@ export default function PreferencesSettingsPage() {
             <div className="flex-1">
               <ModificationIndicator
                 as="label"
+                id="localization-currency-label"
                 className="text-sm font-medium"
                 hasModifications={currency.isModified}
                 onReset={() => handleResetLocalizationSetting('currency')}
@@ -751,6 +762,8 @@ export default function PreferencesSettingsPage() {
                 trackEvent('settings_localization_update')
               }}
               displayValue={currencyDisplayValue || undefined}
+              id="localization-currency-trigger"
+              aria-labelledby="localization-currency-label localization-currency-trigger"
               placeholder="Loading..."
               searchPlaceholder="Search currencies..."
               loading={unitsOptionsLoading}
@@ -817,7 +830,11 @@ export default function PreferencesSettingsPage() {
                   Tasks
                 </ModificationIndicator>
               </div>
-              <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+              <Switch
+                checked={experimentalFeatureTasks.value}
+                onCheckedChange={handleExperimentalFeaturesToggle}
+                aria-label="Tasks"
+              />
             </div>
           </div>
 
@@ -858,6 +875,7 @@ export default function PreferencesSettingsPage() {
               checked={telemetryAvailable && dataCollection.value}
               onCheckedChange={handleDataCollectionToggle}
               disabled={!telemetryAvailable}
+              aria-label="Anonymous Usage Data"
             />
           </div>
         </div>
@@ -872,7 +890,12 @@ export default function PreferencesSettingsPage() {
               <div>
                 <label className="text-sm font-medium">Sync This Device With Cloud</label>
               </div>
-              <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} disabled={isConnecting} />
+              <Switch
+                checked={syncEnabled}
+                onCheckedChange={handleSyncToggle}
+                disabled={isConnecting}
+                aria-label="Sync This Device With Cloud"
+              />
             </div>
           ) : (
             <div className="flex flex-col gap-2">

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelOpus48 } from '@/defaults/models'
+import { defaultModelOpus48 } from '@shared/defaults/models'
 import type { EvalCriteria, EvalScenario } from './types'
 
 const models = [{ name: 'opus', id: defaultModelOpus48.id }] as const

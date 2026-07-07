@@ -2,25 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { marked } from 'marked'
-import { type CSSProperties, memo, useMemo } from 'react'
+import { type CSSProperties, memo, useEffect, useMemo, useState } from 'react'
 import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
-import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
+import remarkParse from 'remark-parse'
+import type { PluggableList } from 'unified'
+import { unified } from 'unified'
 
 import { markdownComponents } from './markdown-utils'
 
-// KaTeX styles for LaTeX math rendered by remark-math + rehype-katex. Imported
-// here so the stylesheet ships with the markdown renderer (chat critical path).
-import 'katex/dist/katex.min.css'
+// Parser mirroring react-markdown's own pipeline (remark-parse + remark-gfm) so
+// the top-level block boundaries we split on match how each block will render.
+// Reusing this single parser also keeps only ONE markdown tokenizer in the entry
+// bundle (react-markdown already ships remark) instead of a second one.
+const markdownParser = unified().use(remarkParse).use(remarkGfm)
 
-// remark-math parses `$…$` / `$$…$$` into math nodes; rehype-katex renders them
-// to KaTeX HTML. Shared across every markdown block so inline and display math
-// render consistently. GFM stays first so its tokenizer runs before math.
-const remarkPlugins = [remarkGfm, remarkMath]
-const rehypePlugins = [rehypeKatex]
+// remark-gfm is small and used by every block, so it stays statically imported.
+// remark-math + rehype-katex + the KaTeX stylesheet (~70KB gzip) are lazy-loaded
+// only when a block actually contains math — see `loadMathPlugins`.
 
 // Models often emit LaTeX's native delimiters — `\[…\]` for display, `\(…\)`
 // for inline — instead of the `$$…$$` / `$…$` that remark-math understands.
@@ -136,30 +136,104 @@ const normalizeDisplayMath = (markdown: string): string => {
   return result + rewriteMath(markdown.slice(lastIndex))
 }
 
+// Slice each top-level mdast node back out of `source` by its position offsets,
+// reproducing the exact block strings without a second markdown parser.
+const sliceTopLevelBlocks = (source: string): string[] =>
+  markdownParser
+    .parse(source)
+    .children.map((node) => source.slice(node.position?.start.offset ?? 0, node.position?.end.offset ?? 0))
+
 const parseMarkdownIntoBlocks = (markdown: string): string[] => {
-  // Rewrite math per top-level token, skipping `code` tokens (fenced *and*
+  // Rewrite math per top-level node, skipping `code` nodes (fenced *and*
   // indented code) so a message that shows `$$…$$` as source keeps its literal
-  // text. Re-lex the rewritten string so a promoted single-line `$$…$$` still
-  // splits into its own display-math block.
+  // text. Re-parse the rewritten string so a promoted single-line `$$…$$` still
+  // splits into its own display-math block. Whitespace *between* top-level nodes
+  // (blank lines) is copied verbatim so the reconstructed string is byte-exact
+  // apart from the math rewrites.
   //
   // Known limitation: only *top-level* code blocks are skipped here. A fenced or
-  // indented code block nested inside a blockquote/list lives in the parent
-  // token's `raw` (marked strips its container prefixes, so it can't be matched
-  // back to the source), and `rewriteMath` still runs on it — a message that
-  // shows `$$…$$`/`\(…\)` as code *inside a blockquote or list* may have that
-  // text rewritten. Inline code spans (`` `…` ``) are protected at any depth via
+  // indented code block nested inside a blockquote/list lives inside the parent
+  // node's range, and `rewriteMath` still runs on it — a message that shows
+  // `$$…$$`/`\(…\)` as code *inside a blockquote or list* may have that text
+  // rewritten. Inline code spans (`` `…` ``) are protected at any depth via
   // `normalizeDisplayMath`. This nested-block case is rare in chat; a fully
-  // code-aware pass would need AST-level handling and is deliberately out of
+  // code-aware pass would need deeper AST handling and is deliberately out of
   // scope here.
-  const normalized = marked
-    .lexer(markdown)
-    .map((token) => (token.type === 'code' ? token.raw : normalizeDisplayMath(token.raw)))
-    .join('')
-  return marked.lexer(normalized).map((token) => token.raw)
+  const tree = markdownParser.parse(markdown)
+  let normalized = ''
+  let lastOffset = 0
+  for (const node of tree.children) {
+    const start = node.position?.start.offset ?? 0
+    const end = node.position?.end.offset ?? 0
+    normalized += markdown.slice(lastOffset, start)
+    normalized += node.type === 'code' ? markdown.slice(start, end) : normalizeDisplayMath(markdown.slice(start, end))
+    lastOffset = end
+  }
+  normalized += markdown.slice(lastOffset)
+  return sliceTopLevelBlocks(normalized)
+}
+
+type MathPlugins = { remark: PluggableList[number]; rehype: PluggableList[number] }
+
+// remark-math + rehype-katex + the KaTeX stylesheet make up their own chunk,
+// loaded once (module-level cached promise) and reused across every block, and
+// only when a block needs math — so the ~70KB never ships in the entry for the
+// many messages that render no equations. The CSS is imported here so the
+// stylesheet lands in the katex chunk rather than the entry.
+let mathPluginsPromise: Promise<MathPlugins> | null = null
+const loadMathPlugins = (): Promise<MathPlugins> => {
+  mathPluginsPromise ??= Promise.all([
+    import('remark-math'),
+    import('rehype-katex'),
+    import('katex/dist/katex.min.css'),
+  ]).then(([remark, rehype]) => ({ remark: remark.default, rehype: rehype.default }))
+  return mathPluginsPromise
+}
+
+// A block "has math" if either recognized math-span pattern matches its
+// (already-normalized) content — the same spans `escapeCurrencyDollars` uses, so
+// detection agrees with what remark-math would render. `.test()` on a global
+// regex advances (and leaks) `lastIndex`, and `matchAll` reads that `lastIndex`
+// at creation — so a leftover value would corrupt the currency-escaping spans on
+// the next block. Reset both before and after probing to keep the shared regexes
+// clean and detection stable.
+const blockHasMath = (content: string): boolean => {
+  displayMathSpan.lastIndex = 0
+  inlineMathSpan.lastIndex = 0
+  const hasMath = displayMathSpan.test(content) || inlineMathSpan.test(content)
+  displayMathSpan.lastIndex = 0
+  inlineMathSpan.lastIndex = 0
+  return hasMath
+}
+
+// Lazy-load the math plugins when a block needs them. Until they resolve the
+// block renders without math (a brief FOUC of raw `$…$`, then a re-render into
+// KaTeX). The cancelled flag guards against a setState after unmount.
+const useMathPlugins = (enabled: boolean): MathPlugins | null => {
+  const [plugins, setPlugins] = useState<MathPlugins | null>(null)
+  useEffect(() => {
+    if (!enabled || plugins) {
+      return
+    }
+    let cancelled = false
+    loadMathPlugins().then((loaded) => {
+      if (!cancelled) {
+        setPlugins(loaded)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [enabled, plugins])
+  return enabled ? plugins : null
 }
 
 const MemoizedMarkdownBlock = memo(
   ({ content, components }: { content: string; components: Components }) => {
+    const hasMath = useMemo(() => blockHasMath(content), [content])
+    const mathPlugins = useMathPlugins(hasMath)
+    const remarkPlugins: PluggableList = mathPlugins ? [remarkGfm, mathPlugins.remark] : [remarkGfm]
+    const rehypePlugins: PluggableList = mathPlugins ? [mathPlugins.rehype] : []
     return (
       <div className="overflow-x-scroll">
         <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>

@@ -15,6 +15,8 @@
  * the bridge falls back to the manual file — it must never surface an error there.
  */
 
+import type { BridgeCredential } from '../auth/token-store.ts'
+
 /** The subset of `fetch` this client uses; injected so the wire contract is
  *  unit-testable without a real network (mirrors {@link auth/http-transport}). */
 export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>
@@ -30,26 +32,33 @@ type AllowlistBody = { readonly nodeIds: ReadonlyArray<{ readonly nodeId: string
  *  backend can neither block startup nor wedge the revocation loop. */
 export const ALLOWLIST_FETCH_TIMEOUT_MS = 10_000
 
+/** Build the auth header for the allowlist fetch from the credential's wire scheme:
+ *  a device-grant session authenticates via `Authorization: Bearer`, while a Better
+ *  Auth api key / PAT authenticates via `x-api-key` (the apiKey plugin reads ONLY
+ *  that header — sending it as a bearer would silently 401). */
+const authHeader = (credential: BridgeCredential): Record<string, string> =>
+  credential.kind === 'apiKey'
+    ? { 'x-api-key': credential.token }
+    : { authorization: `Bearer ${credential.token}` }
+
 /**
- * Fetch the caller account's trusted NodeIds from the backend. Bearer-scoped to the
- * account, so it only ever returns same-account rows. Aborts after `timeoutMs` and
- * throws on abort or a non-2xx response, so the caller's refresh boundary can decide
- * whether to soft-fail.
+ * Fetch the caller account's trusted NodeIds from the backend. Credential-scoped to
+ * the account, so it only ever returns same-account rows. Aborts after `timeoutMs`
+ * and throws on abort or a non-2xx response, so the caller's refresh boundary can
+ * decide whether to soft-fail.
  *
- * @param cloudUrl - the `…/v1` backend base the credential belongs to
- * @param token - the signed account bearer minted by `thunderbolt login`
+ * @param credential - the bridge credential (token + backend + wire scheme)
  * @param fetchFn - HTTP fetch (defaults to the global `fetch`)
  * @param timeoutMs - abort deadline (default {@link ALLOWLIST_FETCH_TIMEOUT_MS})
  * @returns the account's trusted NodeId strings
  */
 export const fetchAccountAllowlist = async (
-  cloudUrl: string,
-  token: string,
+  credential: BridgeCredential,
   fetchFn: FetchFn = fetch,
   timeoutMs: number = ALLOWLIST_FETCH_TIMEOUT_MS,
 ): Promise<string[]> => {
-  const res = await fetchFn(`${cloudUrl.replace(/\/+$/, '')}/devices/allowlist`, {
-    headers: { authorization: `Bearer ${token}` },
+  const res = await fetchFn(`${credential.cloudUrl.replace(/\/+$/, '')}/devices/allowlist`, {
+    headers: authHeader(credential),
     signal: AbortSignal.timeout(timeoutMs),
   })
   if (!res.ok) {
@@ -61,12 +70,21 @@ export const fetchAccountAllowlist = async (
 
 /** An in-memory account allowlist: membership check + a re-fetch that swaps the cache. */
 export type AccountAllowlist = {
-  /** Whether `nodeId` is in the last successfully-fetched account allowlist. */
+  /** Whether `nodeId` is trusted: present in the last successfully-fetched account
+   *  allowlist AND this bridge is not itself self-revoked ({@link isSelfRevoked}).
+   *  A self-revoked bridge trusts no account peer (auto-trust off); the manual file
+   *  still governs at the gate. */
   readonly has: (nodeId: string) => boolean
   /** Re-fetch and replace the cache. Soft-fails: a transient fetch error keeps the
    *  last-known-good set (a network blip must not tear down every same-account peer)
    *  and is logged, never thrown — the manual file still governs regardless. */
   readonly refresh: () => Promise<void>
+  /** Whether this bridge's own NodeId has dropped out of a *populated* account
+   *  allowlist — i.e. the account revoked this device (D8: revoking nulls its
+   *  node_id, so it disappears from the list). An empty set is "unknown" (unprimed /
+   *  fetch failed), never a revocation, so a transient outage can't disable
+   *  auto-trust. While true, {@link has} trusts nobody. */
+  readonly isSelfRevoked: () => boolean
 }
 
 /**
@@ -74,12 +92,25 @@ export type AccountAllowlist = {
  * (no peer auto-trusted until the first successful {@link AccountAllowlist.refresh}),
  * so a failed prime falls back safely to the manual file rather than trusting anyone.
  *
+ * Self-revocation (D8): the bridge's own NodeId is one of the account's trusted
+ * devices, so it normally appears in the fetched list. If a *populated* refresh omits
+ * it, the account has revoked this bridge — {@link AccountAllowlist.has} then trusts
+ * nobody, so both the connection gate and the heartbeat re-check drop every
+ * same-account peer within one interval. The manual `iroh allow` file is unaffected.
+ *
  * @param fetchNodeIds - fetches the account's trusted NodeIds (the network seam)
+ * @param selfNodeId - this bridge's own NodeId, checked for self-revocation
  */
-export const createAccountAllowlist = (fetchNodeIds: () => Promise<string[]>): AccountAllowlist => {
+export const createAccountAllowlist = (
+  fetchNodeIds: () => Promise<string[]>,
+  selfNodeId: string,
+): AccountAllowlist => {
+  const self = selfNodeId.trim()
   let trusted = new Set<string>()
+  const isSelfRevoked = (): boolean => trusted.size > 0 && !trusted.has(self)
   return {
-    has: (nodeId) => trusted.has(nodeId.trim()),
+    has: (nodeId) => !isSelfRevoked() && trusted.has(nodeId.trim()),
+    isSelfRevoked,
     refresh: async () => {
       try {
         const ids = await fetchNodeIds()

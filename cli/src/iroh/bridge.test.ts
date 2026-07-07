@@ -340,10 +340,17 @@ describe('admitConnection — pre-handshake DoS gates', () => {
   })
 })
 
-/** A stub {@link AccountAllowlist} over a fixed trusted set, with an injectable refresh. */
-const fakeAllowlist = (trusted: Set<string>, refresh: () => Promise<void> = async () => {}): AccountAllowlist => ({
-  has: (id) => trusted.has(id),
+/** A stub {@link AccountAllowlist} over a fixed trusted set, with an injectable
+ *  refresh and self-revocation flag. Mirrors production: when self-revoked, `has`
+ *  trusts nobody so the gate and heartbeat drop every account peer. */
+const fakeAllowlist = (
+  trusted: Set<string>,
+  refresh: () => Promise<void> = async () => {},
+  isSelfRevoked: () => boolean = () => false,
+): AccountAllowlist => ({
+  has: (id) => !isSelfRevoked() && trusted.has(id),
   refresh,
+  isSelfRevoked,
 })
 
 /** A stub open connection whose `close` is a spy, for heartbeat teardown assertions. */
@@ -389,6 +396,19 @@ describe('account trust gate + heartbeat (D6/D7)', () => {
       expect(await isConnectionAllowed('manual-peer', undefined)).toBe(true)
       expect(await isConnectionAllowed('stranger', undefined)).toBe(false)
     })
+
+    it('self-revoked bridge (D8): rejects an account peer at the gate, auto-trust off', async () => {
+      // The allowlist still lists the peer, but this bridge is self-revoked → has() is
+      // false → the gate falls through to the (empty) manual file and denies.
+      const revoked = fakeAllowlist(new Set(['acct-peer']), async () => {}, () => true)
+      expect(await isConnectionAllowed('acct-peer', revoked)).toBe(false)
+    })
+
+    it('self-revoked bridge (D8): a manual-file peer is still admitted (manual trust persists)', async () => {
+      await add('manual-peer')
+      const revoked = fakeAllowlist(new Set(['manual-peer']), async () => {}, () => true)
+      expect(await isConnectionAllowed('manual-peer', revoked)).toBe(true)
+    })
   })
 
   describe('heartbeatTick — D7 live-connection revocation', () => {
@@ -412,6 +432,33 @@ describe('account trust gate + heartbeat (D6/D7)', () => {
       const manual = fakeOpen('manual-peer')
 
       await heartbeatTick(fakeAllowlist(new Set()), new Set([manual.open]))
+
+      expect(manual.close).not.toHaveBeenCalled()
+    })
+
+    it('self-revoked bridge (D8): tears down ALL account-auto-trusted sessions and logs once', async () => {
+      const refresh = mock(async () => {})
+      // Non-empty account set, but this bridge is self-revoked → has() trusts nobody,
+      // so every same-account session is torn down within the interval.
+      const allowlist = fakeAllowlist(new Set(['acct-a', 'acct-b']), refresh, () => true)
+      const a = fakeOpen('acct-a')
+      const b = fakeOpen('acct-b')
+
+      await heartbeatTick(allowlist, new Set([a.open, b.open]))
+
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(a.close).toHaveBeenCalledTimes(1)
+      expect(b.close).toHaveBeenCalledTimes(1)
+      const logged = stderr.mock.calls.flat().some((s: unknown) => String(s).includes('no longer in the account allowlist'))
+      expect(logged).toBe(true)
+    })
+
+    it('self-revoked bridge (D8): a manual-file peer survives the teardown (D9)', async () => {
+      await add('manual-peer')
+      const allowlist = fakeAllowlist(new Set(['manual-peer']), async () => {}, () => true)
+      const manual = fakeOpen('manual-peer')
+
+      await heartbeatTick(allowlist, new Set([manual.open]))
 
       expect(manual.close).not.toHaveBeenCalled()
     })

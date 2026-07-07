@@ -12,7 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadAuthConfig, storeAuthConfig } from './token-store.ts'
+import { DEFAULT_CLOUD_URL } from './config.ts'
+import { loadAuthConfig, resolveBridgeCredential, storeAuthConfig } from './token-store.ts'
 
 let home: string
 const prevHome = process.env.THUNDERBOLT_HOME
@@ -47,5 +48,57 @@ describe('token store', () => {
   it('persists the credential owner-only (0600)', async () => {
     await storeAuthConfig({ token: 'signed.jwt', cloudUrl: 'https://api.test/v1' })
     expect((await stat(join(home, 'auth.json'))).mode & 0o777).toBe(0o600)
+  })
+})
+
+describe('resolveBridgeCredential — env PAT vs stored login', () => {
+  const prevToken = process.env.THUNDERBOLT_TOKEN
+  const prevCloud = process.env.THUNDERBOLT_CLOUD_URL
+
+  beforeEach(() => {
+    delete process.env.THUNDERBOLT_TOKEN
+    delete process.env.THUNDERBOLT_CLOUD_URL
+  })
+  afterEach(() => {
+    if (prevToken === undefined) delete process.env.THUNDERBOLT_TOKEN
+    else process.env.THUNDERBOLT_TOKEN = prevToken
+    if (prevCloud === undefined) delete process.env.THUNDERBOLT_CLOUD_URL
+    else process.env.THUNDERBOLT_CLOUD_URL = prevCloud
+  })
+
+  it('prefers the env PAT as an api-key credential, even over a stored login', async () => {
+    process.env.THUNDERBOLT_TOKEN = 'pat-xyz'
+    process.env.THUNDERBOLT_CLOUD_URL = 'https://ci.example/v1'
+    await storeAuthConfig({ token: 'session.jwt', cloudUrl: 'https://stored/v1' })
+
+    expect(await resolveBridgeCredential()).toEqual({
+      token: 'pat-xyz',
+      cloudUrl: 'https://ci.example/v1',
+      kind: 'apiKey',
+    })
+  })
+
+  it('resolves the PAT against the default cloud URL when THUNDERBOLT_CLOUD_URL is unset', async () => {
+    process.env.THUNDERBOLT_TOKEN = 'pat-xyz'
+
+    expect(await resolveBridgeCredential()).toEqual({
+      token: 'pat-xyz',
+      cloudUrl: DEFAULT_CLOUD_URL,
+      kind: 'apiKey',
+    })
+  })
+
+  it('falls back to the stored device-grant session when there is no env PAT', async () => {
+    await storeAuthConfig({ token: 'session.jwt', cloudUrl: 'https://stored/v1' })
+
+    expect(await resolveBridgeCredential()).toEqual({
+      token: 'session.jwt',
+      cloudUrl: 'https://stored/v1',
+      kind: 'session',
+    })
+  })
+
+  it('returns null (Standalone) when neither an env PAT nor a stored login exists', async () => {
+    expect(await resolveBridgeCredential()).toBeNull()
   })
 })

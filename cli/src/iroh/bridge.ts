@@ -19,7 +19,7 @@ import type { Connection, Incoming } from '@number0/iroh'
 import type { BridgeConfig } from '../agent/types.ts'
 import { isSecureCloudUrl } from '../auth/config.ts'
 import type { Clock } from '../auth/device-grant.ts'
-import { loadAuthConfig } from '../auth/token-store.ts'
+import { resolveBridgeCredential } from '../auth/token-store.ts'
 import { redactArgv, spawnAgent, type BridgeProc } from '../commands/bridge.ts'
 import { createAccountAllowlist, fetchAccountAllowlist, type AccountAllowlist } from './account-allowlist.ts'
 import { isAllowed } from './allowlist.ts'
@@ -274,6 +274,12 @@ export const isConnectionAllowed = async (
  * peer's own disconnect would (agent killed, registry pruned) via the hooks wired in
  * {@link handleConnection}. Exported so a single tick is unit-testable directly.
  *
+ * Self-revocation (D8): if the refreshed allowlist no longer lists this bridge's own
+ * NodeId, the account has revoked *this device*. The allowlist then reports every
+ * account peer as untrusted, so the per-connection sweep below tears down all
+ * same-account sessions (manual-file peers survive, per D9); we log it once per tick
+ * so the compromise-response ("revoke the device") is observable in the bridge logs.
+ *
  * Each peer's re-check is isolated: a thrown manual-file read or a `close()` that
  * throws (the NAPI binding can) is logged and skipped, never aborting the sweep or
  * killing the loop — the revocation check must survive one bad connection.
@@ -286,6 +292,11 @@ export const heartbeatTick = async (
   openConnections: Set<OpenConnection>,
 ): Promise<void> => {
   await accountAllowlist.refresh()
+  if (accountAllowlist.isSelfRevoked()) {
+    process.stderr.write(
+      '⚡ iroh bridge: this device is no longer in the account allowlist — account auto-trust disabled, tearing down same-account sessions (manual allowlist still active)\n',
+    )
+  }
   for (const open of openConnections) {
     try {
       if (await isConnectionAllowed(open.remoteId, accountAllowlist)) continue
@@ -403,30 +414,38 @@ export const handleConnection = async (
 type AccountTrust = { readonly accountAllowlist: AccountAllowlist; readonly stop: () => void }
 
 /**
- * Wire same-account auto-trust (D2/D7) when this bridge is logged in to a backend:
- * build the account allowlist over a bearer-authenticated fetch, prime it with an
- * initial refresh before any connection is accepted, and start the 45s membership
- * heartbeat. Returns the live allowlist + a heartbeat stop, or `undefined` in
- * Standalone / no-account mode where the bridge stays pure manual-file. Never
- * throws: a failed prime leaves an empty-but-live allowlist the heartbeat keeps
- * retrying, and the manual file governs meanwhile.
+ * Wire same-account auto-trust (D2/D7/D8) when this bridge has a backend credential:
+ * resolve it (env PAT via `x-api-key`, else the stored device-grant session bearer),
+ * build the account allowlist over that credential, prime it with an initial refresh
+ * before any connection is accepted, and start the 45s membership heartbeat. Returns
+ * the live allowlist + a heartbeat stop, or `undefined` in Standalone / no-credential
+ * mode where the bridge stays pure manual-file. Never throws: a failed prime leaves an
+ * empty-but-live allowlist the heartbeat keeps retrying, and the manual file governs
+ * meanwhile.
  *
- * Re-checks the stored `cloudUrl` against the same secure-transport policy `login`
- * enforced (`isSecureCloudUrl`) before sending the bearer: a tampered / cleartext
- * non-loopback URL disables account trust rather than leaking the credential.
+ * Re-checks the credential's `cloudUrl` against the same secure-transport policy
+ * `login` enforced (`isSecureCloudUrl`) before sending the credential: a tampered /
+ * cleartext non-loopback URL disables account trust rather than leaking it.
+ *
+ * The bridge's own `selfNodeId` is threaded into the allowlist so a refresh that no
+ * longer lists it (the account revoked this device, D8) disables account auto-trust.
  *
  * @param openConnections - the live-session registry the heartbeat re-checks
+ * @param selfNodeId - this bridge's own NodeId, for D8 self-revocation
  */
-const startAccountTrust = async (openConnections: Set<OpenConnection>): Promise<AccountTrust | undefined> => {
-  const auth = await loadAuthConfig()
-  if (!auth) return undefined
-  if (!isSecureCloudUrl(auth.cloudUrl)) {
+const startAccountTrust = async (
+  openConnections: Set<OpenConnection>,
+  selfNodeId: string,
+): Promise<AccountTrust | undefined> => {
+  const credential = await resolveBridgeCredential()
+  if (!credential) return undefined
+  if (!isSecureCloudUrl(credential.cloudUrl)) {
     process.stderr.write(
-      `⚡ iroh bridge: stored cloud URL is not a secure transport (${auth.cloudUrl}); account auto-trust disabled, using manual allowlist only\n`,
+      `⚡ iroh bridge: cloud URL is not a secure transport (${credential.cloudUrl}); account auto-trust disabled, using manual allowlist only\n`,
     )
     return undefined
   }
-  const accountAllowlist = createAccountAllowlist(() => fetchAccountAllowlist(auth.cloudUrl, auth.token))
+  const accountAllowlist = createAccountAllowlist(() => fetchAccountAllowlist(credential), selfNodeId)
   await accountAllowlist.refresh()
   const stop = startMembershipHeartbeat(accountAllowlist, openConnections)
   return { accountAllowlist, stop }
@@ -451,7 +470,7 @@ export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
   // backstop that holds even against an attacker rotating EndpointIds).
   const handshakeBudget = createRateLimiter(RATE_MAX, RATE_WINDOW_MS)
   const handshakeGuard = createHandshakeGuard(MAX_CONCURRENT_HANDSHAKES)
-  const accountTrust = await startAccountTrust(openConnections)
+  const accountTrust = await startAccountTrust(openConnections, nodeId)
 
   process.stdout.write(
     `⚡ thunderbolt ${config.protocol} bridge (iroh) ready\n` +

@@ -5,8 +5,9 @@
 /**
  * The real `fetch`-backed {@link DeviceGrantTransport} that talks to Better Auth's
  * `deviceAuthorization` endpoints. This is the integration seam the pure state
- * machine ({@link pollForToken}) drives; the machine's tests inject a fake
- * transport instead, so this module has no unit tests of its own.
+ * machine ({@link pollForToken}) drives: `pollForToken`'s own tests inject a fake
+ * transport, while this module's wire contract is covered directly in
+ * `http-transport.test.ts` with an injected `fetchFn`.
  *
  * On approval the token endpoint mints a session and (because this stack runs the
  * bearer plugin with `requireSignature`) exposes the *signed* bearer via the

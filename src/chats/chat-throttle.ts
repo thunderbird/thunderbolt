@@ -24,9 +24,13 @@
  *   a throttled React snapshot, so message persistence is unaffected.
  */
 
-/** Visible message renderers that must feel live as tokens stream. ~10x fewer
- *  renders than per-token while staying imperceptibly behind the wire. */
-export const messageRenderThrottleMs = 100
+/** Visible message renderers that must feel live as tokens stream. Paced faster
+ *  than word arrival (smoothStream releases words every ~10ms in `runStreamText`)
+ *  so text grows in small, frequent steps — a fluid word-by-word cadence
+ *  (~25 paints/s) rather than chunky ~100ms batches. Still coalesces the many
+ *  per-word notifications into one render per interval, keeping per-token work
+ *  bounded across all `useChat` subscribers. */
+export const messageRenderThrottleMs = 40
 
 /** Consumers that read messages for bookkeeping (scroll, partial-save, input
  *  context, automation) — a coarser cadence is invisible and cheaper. */
@@ -36,3 +40,14 @@ export const messageBookkeepingThrottleMs = 150
  *  only bounds otherwise-wasted message-driven re-renders; their `status`
  *  reads stay instant via the unthrottled status subscription. */
 export const statusOnlyThrottleMs = 500
+
+/**
+ * Delay (ms) between words released by `smoothStream` on the built-in provider
+ * stream (see `runStreamText` in `src/ai/fetch.ts`). smoothStream re-paces the
+ * model's text/reasoning deltas to a steady word-by-word cadence so a fast model
+ * (or a bursty network chunk) surfaces as fluid typing rather than one large
+ * jump. Kept at or below {@link messageRenderThrottleMs} so a fresh word is
+ * always ready each paint — words arriving no slower than the render cadence is
+ * what makes text advance every frame instead of stuttering.
+ */
+export const smoothStreamWordDelayMs = 10

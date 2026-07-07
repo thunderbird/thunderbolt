@@ -7,7 +7,12 @@ import type { ThunderboltUIMessage } from '@/types'
 import { Chat, useChat } from '@ai-sdk/react'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { messageBookkeepingThrottleMs, messageRenderThrottleMs, statusOnlyThrottleMs } from './chat-throttle'
+import {
+  messageBookkeepingThrottleMs,
+  messageRenderThrottleMs,
+  smoothStreamWordDelayMs,
+  statusOnlyThrottleMs,
+} from './chat-throttle'
 
 const assistantMessage = (text: string): ThunderboltUIMessage => ({
   id: 'assistant-1',
@@ -58,6 +63,14 @@ describe('chat-throttle', () => {
     expect(messageRenderThrottleMs).toBeGreaterThan(0)
     expect(messageBookkeepingThrottleMs).toBeGreaterThanOrEqual(messageRenderThrottleMs)
     expect(statusOnlyThrottleMs).toBeGreaterThan(messageBookkeepingThrottleMs)
+  })
+
+  it('releases smoothStream words at least as fast as the render cadence so text advances every paint', () => {
+    // A fresh word must be ready each render frame; if words arrived slower than
+    // the render throttle, some paints would show no growth and streaming would
+    // stutter instead of reading as fluid word-by-word typing.
+    expect(smoothStreamWordDelayMs).toBeGreaterThan(0)
+    expect(smoothStreamWordDelayMs).toBeLessThanOrEqual(messageRenderThrottleMs)
   })
 
   it('delivers the final complete message after the stream ends (trailing edge, no data loss)', async () => {

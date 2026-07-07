@@ -142,13 +142,27 @@ const normalizeDisplayMath = (markdown: string): string => {
 // nothing there anyway).
 type Block = { content: string; isCode: boolean }
 
+type MarkdownNode = ReturnType<typeof markdownParser.parse>['children'][number]
+
+// remark sets byte offsets on every node at parse time. Fail loudly if one is
+// ever missing rather than fall back to 0 — a `?? 0` here would silently slice
+// an empty (or wrong) block and drop message content, which is painful to debug.
+const nodeOffsets = (node: MarkdownNode): { start: number; end: number } => {
+  const start = node.position?.start.offset
+  const end = node.position?.end.offset
+  if (start === undefined || end === undefined) {
+    throw new Error(`memoized-markdown: markdown "${node.type}" node is missing position offsets`)
+  }
+  return { start, end }
+}
+
 // Slice each top-level mdast node back out of `source` by its position offsets,
 // reproducing the exact block strings without a second markdown parser.
 const sliceTopLevelBlocks = (source: string): Block[] =>
-  markdownParser.parse(source).children.map((node) => ({
-    content: source.slice(node.position?.start.offset ?? 0, node.position?.end.offset ?? 0),
-    isCode: node.type === 'code',
-  }))
+  markdownParser.parse(source).children.map((node) => {
+    const { start, end } = nodeOffsets(node)
+    return { content: source.slice(start, end), isCode: node.type === 'code' }
+  })
 
 const parseMarkdownIntoBlocks = (markdown: string): Block[] => {
   // Rewrite math per top-level node, skipping `code` nodes (fenced *and*
@@ -170,8 +184,7 @@ const parseMarkdownIntoBlocks = (markdown: string): Block[] => {
   let normalized = ''
   let lastOffset = 0
   for (const node of tree.children) {
-    const start = node.position?.start.offset ?? 0
-    const end = node.position?.end.offset ?? 0
+    const { start, end } = nodeOffsets(node)
     normalized += markdown.slice(lastOffset, start)
     normalized += node.type === 'code' ? markdown.slice(start, end) : normalizeDisplayMath(markdown.slice(start, end))
     lastOffset = end
@@ -233,19 +246,21 @@ const useMathPlugins = (enabled: boolean): MathPlugins | null => {
       return
     }
     let cancelled = false
-    loadMathPlugins()
-      .then((loaded) => {
+    const load = async () => {
+      try {
+        const loaded = await loadMathPlugins()
         if (!cancelled) {
           setPlugins(loaded)
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         // `loadMathPlugins` already cleared its cached promise, so a freshly
         // mounted block retries the import. Log rather than retry in place: this
         // block has no back-off, and re-running on every render would busy-loop
         // against a persistently failing chunk. The block renders raw `$…$`.
         console.error('memoized-markdown: failed to load KaTeX math plugins', error)
-      })
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }

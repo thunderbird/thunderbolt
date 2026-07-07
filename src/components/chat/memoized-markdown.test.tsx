@@ -24,6 +24,10 @@ const renderMarkdown = (content: string) =>
 // KaTeX is lazy-loaded (its ~70KB chunk ships only when a block has math), so
 // math renders after an async re-render rather than synchronously. Flush the
 // pending dynamic imports + setState by draining the fake clock inside `act`.
+// The load is a chain of async boundaries — effect → loadMathPlugins() →
+// Promise.all of three dynamic import()s → setState → re-render — and draining
+// one tick can schedule the next, so a single pass isn't enough. Looping settles
+// the whole chain; 5 is a comfortable upper bound (the chain is ~3–4 deep).
 const flushLazyLoad = async () => {
   for (let i = 0; i < 5; i++) {
     await act(async () => await getClock().runAllAsync())
@@ -65,8 +69,12 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.textContent).toContain('where')
   })
 
-  it('leaves a lone dollar sign (no closing delimiter) as plain text', () => {
+  it('leaves a lone dollar sign (no closing delimiter) as plain text', async () => {
     const { container } = renderMarkdown('It costs $5 to enter.')
+    // Flush first: if detection wrongly matched math here, KaTeX would load and
+    // render only after the async import — so the null assertion is only
+    // meaningful once a would-be load has had the chance to complete.
+    await flushLazyLoad()
     expect(container.querySelector('.katex')).toBeNull()
     expect(container.textContent).toContain('$5 to enter.')
   })
@@ -105,14 +113,16 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.querySelector('code')?.textContent).toContain('$$E = mc^2$$')
   })
 
-  it('leaves LaTeX delimiters inside an inline code span as literal source', () => {
+  it('leaves LaTeX delimiters inside an inline code span as literal source', async () => {
     const { container } = renderMarkdown('Write inline math as `\\(x\\)` in LaTeX.')
+    await flushLazyLoad()
     expect(container.querySelector('.katex')).toBeNull()
     expect(container.querySelector('code')?.textContent).toBe('\\(x\\)')
   })
 
-  it('treats two currency amounts in one sentence as literal text, not math', () => {
+  it('treats two currency amounts in one sentence as literal text, not math', async () => {
     const { container } = renderMarkdown('It costs $5 and $10 total.')
+    await flushLazyLoad()
     expect(container.querySelector('.katex')).toBeNull()
     expect(container.textContent).toContain('$5 and $10')
   })
@@ -162,8 +172,9 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.querySelector('.katex-display')).not.toBeNull()
     expect(container.querySelectorAll('li').length).toBe(2)
   })
-  it('leaves an empty `\\( \\)` as text instead of emitting a bare $$', () => {
+  it('leaves an empty `\\( \\)` as text instead of emitting a bare $$', async () => {
     const { container } = renderMarkdown('It is \\( \\) and more text follows.')
+    await flushLazyLoad()
     expect(container.querySelector('.katex-display')).toBeNull()
     expect(container.querySelector('.katex')).toBeNull()
     expect(container.textContent).toContain('and more text follows.')

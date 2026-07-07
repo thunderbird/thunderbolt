@@ -104,12 +104,11 @@ export default function AgentsSettingsPage({ isStandalone, loadAppNodeId, enroll
         url: payload.url,
         description: payload.description,
       })
+    } else if (!currentUserId) {
+      // Anonymous sessions can't sync custom agents — the page hides the
+      // dialog trigger in that case, but the guard keeps the write safe.
+      return
     } else {
-      if (!currentUserId) {
-        // Anonymous sessions can't sync custom agents — the page hides the
-        // dialog trigger in that case, but the guard keeps the write safe.
-        return
-      }
       await createAgent(db, {
         id: uuidv7(),
         name: payload.name,

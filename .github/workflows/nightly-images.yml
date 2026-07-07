@@ -19,5 +19,7 @@ permissions:
 
 jobs:
   publish:
+    # No `secrets: inherit` — images-publish.yml only uses GITHUB_TOKEN, which is
+    # auto-provided to reusable workflows via this job's `permissions` block. Passing
+    # the whole repo secret set would violate least privilege for no benefit.
     uses: ./.github/workflows/images-publish.yml
-    secrets: inherit

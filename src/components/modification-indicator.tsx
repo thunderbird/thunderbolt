@@ -30,9 +30,11 @@ type ModificationIndicatorProps = {
    */
   className?: string
   /**
-   * Optional DOM id, forwarded to the rendered element. Lets a control reference
-   * this label via `aria-labelledby` so screen readers announce both the label
-   * and the control's current value.
+   * Optional DOM id, forwarded to the label's inner text node (not the outer
+   * element, which carries a state `aria-label` like "Modified item" that would
+   * otherwise mask the text). Lets a control reference this label via
+   * `aria-labelledby` so screen readers announce the label text — and, if the
+   * control also self-references, its current value.
    */
   id?: string
   /**
@@ -111,8 +113,10 @@ export const ModificationIndicator = ({
     // Show transparent underline for unmodified state (non-interactive)
     // Maintains consistent vertical text position
     return (
-      <Component id={id} className={className} aria-label="Default setting">
-        <span className={cn(underlineClasses, 'border-transparent')}>{children}</span>
+      <Component className={className} aria-label="Default setting">
+        <span id={id} className={cn(underlineClasses, 'border-transparent')}>
+          {children}
+        </span>
       </Component>
     )
   }
@@ -120,8 +124,9 @@ export const ModificationIndicator = ({
   return (
     <Popover open={isPopoverOpen} onOpenChange={handlePopoverChange}>
       <PopoverTrigger asChild>
-        <Component id={id} className={className} aria-label={ariaLabel} htmlFor={undefined}>
+        <Component className={className} aria-label={ariaLabel} htmlFor={undefined}>
           <span
+            id={id}
             className={cn(underlineClasses, 'border-blue-500 hover:border-blue-600 transition-colors cursor-pointer')}
           >
             {children}

@@ -5,7 +5,6 @@
 import type { Page } from 'playwright'
 import type { A11yViolation } from '../lib/types'
 
-const AXE_FALLBACK_PATH = '/home/chris/thunderbolt/node_modules/axe-core/axe.min.js'
 const MAX_VIOLATIONS = 25
 
 /** Shape of the subset of axe.run() output we read. Keeps `any` out of the probe. */
@@ -21,15 +20,10 @@ type AxeResult = {
 /**
  * Resolve the on-disk path to axe's minified bundle. The app ships
  * `Cross-Origin-Embedder-Policy: credentialless`, so axe cannot be loaded from a
- * CDN <script src> — we inject the local devDependency inline instead.
+ * CDN <script src> — we inject the local devDependency inline instead. Resolved
+ * from this module, so it works on any machine where axe-core is installed.
  */
-const resolveAxePath = (): string => {
-  try {
-    return require.resolve('axe-core/axe.min.js')
-  } catch {
-    return AXE_FALLBACK_PATH
-  }
-}
+const resolveAxePath = (): string => require.resolve('axe-core/axe.min.js')
 
 /**
  * Inject axe-core into the page and run it, returning a compact list of

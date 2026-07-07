@@ -114,18 +114,25 @@ const gotoRoot = async (page: Page, baseUrl: string): Promise<void> => {
 
 type ErrorLog = { pageErrors: string[]; consoleErrors: string[] }
 
-/** Crawl one browser, mutating the shared graph + findings accumulators. */
+/**
+ * Crawl one browser and return its own state graph. The graph (`nodes`/`edges`
+ * and the `MAX_STATES` budget) is per-browser so a later browser gets a full
+ * crawl instead of short-circuiting on states an earlier browser already filled
+ * — `signature()` is browser-independent, so a shared graph would starve it.
+ * `findings`/`seenFindingKeys` stay shared so a bug seen in both browsers is
+ * reported once.
+ */
 const crawlBrowser = async (
   browser: Browser,
   browserName: BrowserName,
   baseUrl: string,
   maxSteps: number,
   runDir: string,
-  nodes: Map<string, GraphNode>,
-  edges: GraphEdge[],
   findings: Finding[],
   seenFindingKeys: Set<string>,
-): Promise<void> => {
+): Promise<{ nodes: Map<string, GraphNode>; edges: GraphEdge[] }> => {
+  const nodes = new Map<string, GraphNode>()
+  const edges: GraphEdge[] = []
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = await context.newPage()
   await page.addInitScript({ content: INIT_SCRIPT })
@@ -143,7 +150,7 @@ const crawlBrowser = async (
   })
 
   const triedByState = new Map<string, Set<string>>()
-  let screenshotIndex = nodes.size
+  let screenshotIndex = 0
   let currentPath: string[] = []
 
   const addFinding = (
@@ -234,6 +241,7 @@ const crawlBrowser = async (
   }
 
   await context.close().catch(() => {})
+  return { nodes, edges }
 }
 
 const main = async () => {
@@ -247,8 +255,8 @@ const main = async () => {
   console.error(`perf-hunt/explore: booting stack for run ${runId} (${browsers.join('+')}, ${maxSteps} steps)`)
   const stack = await bootStack(REPO_ROOT)
 
-  const nodes = new Map<string, GraphNode>()
-  const edges: GraphEdge[] = []
+  const allNodes: GraphNode[] = []
+  const allEdges: GraphEdge[] = []
   const findings: Finding[] = []
   const seenFindingKeys = new Set<string>()
 
@@ -257,7 +265,9 @@ const main = async () => {
       console.error(`perf-hunt/explore: [${browserName}] crawling`)
       const browser = await launchBrowser(browserName)
       try {
-        await crawlBrowser(browser, browserName, stack.baseUrl, maxSteps, runDir, nodes, edges, findings, seenFindingKeys)
+        const graph = await crawlBrowser(browser, browserName, stack.baseUrl, maxSteps, runDir, findings, seenFindingKeys)
+        allNodes.push(...graph.nodes.values())
+        allEdges.push(...graph.edges)
       } finally {
         await browser.close().catch(() => {})
       }
@@ -276,9 +286,9 @@ const main = async () => {
 
   const findingsPath = `${runDir}/explore-findings.json`
   writeFileSync(findingsPath, JSON.stringify(kept, null, 2))
-  writeFileSync(`${runDir}/state-graph.json`, JSON.stringify({ nodes: [...nodes.values()], edges }, null, 2))
+  writeFileSync(`${runDir}/state-graph.json`, JSON.stringify({ nodes: allNodes, edges: allEdges }, null, 2))
 
-  console.error(`perf-hunt/explore: ${nodes.size} states, ${edges.length} transitions, ${kept.length} findings`)
+  console.error(`perf-hunt/explore: ${allNodes.length} states, ${allEdges.length} transitions, ${kept.length} findings`)
   // The ONLY thing the agent parses from stdout: the path to the findings JSON.
   console.log(findingsPath)
 }

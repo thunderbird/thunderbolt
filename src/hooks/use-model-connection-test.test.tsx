@@ -122,6 +122,35 @@ describe('useModelConnectionTest', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('collapses isTesting to false when credentials diverge mid-flight', async () => {
+    let resolveInFlight: (() => void) | null = null
+    const probe: ConnectionTestProbe = mock(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInFlight = resolve
+        }),
+    )
+    const { result, rerender } = renderHook(
+      ({ config }: { config: ModelConnectionConfig }) => useModelConnectionTest(config, probe),
+      { wrapper, initialProps: { config: anthropicConfig } },
+    )
+
+    let testPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      testPromise = result.current.test(anthropicConfig)
+    })
+    expect(result.current.isTesting).toBe(true)
+
+    // Edit credentials mid-flight — spinner must snap off without waiting for the probe.
+    rerender({ config: { ...anthropicConfig, apiKey: 'sk-different' } })
+    expect(result.current.isTesting).toBe(false)
+
+    await act(async () => {
+      resolveInFlight!()
+      await testPromise
+    })
+  })
+
   it('ignores probe completions from superseded runs', async () => {
     let resolveInFlight: (() => void) | null = null
     const probe: ConnectionTestProbe = mock(

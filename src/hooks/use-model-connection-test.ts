@@ -33,7 +33,7 @@ type ConnectionTestState = {
 }
 
 type ConnectionTestAction =
-  | { type: 'START' }
+  | { type: 'START'; tested: NormalizedConfig }
   | { type: 'SUCCESS'; tested: NormalizedConfig }
   | { type: 'FAILURE'; tested: NormalizedConfig; error: string }
   | { type: 'RESET' }
@@ -48,7 +48,7 @@ const initialState: ConnectionTestState = {
 const reducer = (_state: ConnectionTestState, action: ConnectionTestAction): ConnectionTestState => {
   switch (action.type) {
     case 'START':
-      return { isTesting: true, rawStatus: 'idle', error: null, tested: null }
+      return { isTesting: true, rawStatus: 'idle', error: null, tested: action.tested }
     case 'SUCCESS':
       return { isTesting: false, rawStatus: 'success', error: null, tested: action.tested }
     case 'FAILURE':
@@ -110,10 +110,11 @@ const defaultProbe: ConnectionTestProbe = async (config, getProxyFetch, signal) 
 
 /**
  * Manages the state machine for a "Test Model" round-trip: idle → testing →
- * success/error. Returns a `status` derived at render time from the tested
- * config vs. the current one: any credential divergence collapses status to
- * `'idle'` in the same render, so a stale `'success'` can't survive a
- * credential edit (no useEffect-based invalidation).
+ * success/error. Returns `isTesting`, `status`, and `error` derived at render
+ * time from the tested config vs. the current one: any credential divergence
+ * collapses all three to their idle values in the same render, so a stale
+ * `'success'` can't survive a credential edit and a mid-flight edit stops the
+ * spinner immediately (no useEffect-based invalidation).
  *
  * The probe is bounded by a single 10s `AbortSignal.timeout` piped through
  * both the provider construction (via `Promise.race`) and the `generateText`
@@ -130,20 +131,16 @@ export const useModelConnectionTest = (current: ModelConnectionConfig, probe: Co
       const runId = ++runIdRef.current
       const isCurrent = () => runIdRef.current === runId
 
-      dispatch({ type: 'START' })
-
       const tested = normalize(config)
+      dispatch({ type: 'START', tested })
+
       const timeoutSignal = AbortSignal.timeout(connectionTestTimeoutMs)
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutSignal.addEventListener('abort', () =>
           reject(new Error(`Connection test timed out after ${connectionTestTimeoutMs / 1000} seconds`)),
         )
       })
-      // Swallow the losing side's rejection so `Promise.race` doesn't leave an
-      // unhandled rejection when the timeout wins (e.g. a Tinfoil attestation
-      // that resolves after we've already bailed).
       const runPromise = probe(tested, getProxyFetch, timeoutSignal)
-      runPromise.catch(() => {})
 
       try {
         await Promise.race([runPromise, timeoutPromise])
@@ -181,6 +178,7 @@ export const useModelConnectionTest = (current: ModelConnectionConfig, probe: Co
 
   const status: 'idle' | 'success' | 'error' = matchesCurrent ? state.rawStatus : 'idle'
   const error = matchesCurrent ? state.error : null
+  const isTesting = matchesCurrent && state.isTesting
 
-  return { isTesting: state.isTesting, status, error, test, reset }
+  return { isTesting, status, error, test, reset }
 }

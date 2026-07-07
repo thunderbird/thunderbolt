@@ -148,6 +148,13 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
  */
 const providerRequiresConnectionTest = (provider: Model['provider']) => provider !== 'thunderbolt'
 
+/**
+ * Providers that need an API key to authenticate the test round-trip. Custom
+ * (OpenAI-compatible) endpoints may or may not need one, so the key is treated
+ * as optional there.
+ */
+const providerRequiresApiKey = (provider: Model['provider']) => provider !== 'thunderbolt' && provider !== 'custom'
+
 const canTestModelConnection = (provider: Model['provider'], model?: string, apiKey?: string | null) => {
   if (!providerRequiresConnectionTest(provider)) {
     return false
@@ -155,7 +162,7 @@ const canTestModelConnection = (provider: Model['provider'], model?: string, api
   if (!model) {
     return false
   }
-  if (['anthropic', 'tinfoil'].includes(provider)) {
+  if (providerRequiresApiKey(provider)) {
     return !!apiKey
   }
   return true
@@ -185,7 +192,7 @@ const ConnectionTestSection = ({
   error,
 }: ConnectionTestSectionProps) => {
   const canTest = canTestModelConnection(provider, model, apiKey)
-  const showApiKeyHint = !canTest && !!model && ['anthropic', 'tinfoil'].includes(provider)
+  const showApiKeyHint = !canTest && !!model && providerRequiresApiKey(provider)
 
   return (
     <>

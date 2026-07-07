@@ -226,23 +226,27 @@ describe('cleanupRemovedDefaults', () => {
     expect(profile?.deletedAt).not.toBeNull()
   })
 
-  test('leaves edited rows alone (hash mismatch)', async () => {
+  test('sweeps retired system rows even when the stored hash no longer matches', async () => {
     const db = getDb()
-    // Stored hash deliberately does not match the row contents → row counts as edited.
+    // Stored hash deliberately does not match the row contents. Under the old
+    // "hash-match required" rule, this row would survive as "user edited" and
+    // get stuck permanently once the id was retired from defaults. The updated
+    // rule sweeps it anyway — covers the historical `hashModel` field-list
+    // changes that produced false-positive "modified" state on unedited rows.
     await db.insert(modelsTable).values({ ...buildRetiredModel(), name: 'User Renamed' })
 
     await cleanupRemovedDefaults(db)
 
     const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
-    expect(model?.deletedAt).toBeNull()
+    expect(model?.deletedAt).not.toBeNull()
   })
 
-  test('keeps profile when its parent model survived via user edit', async () => {
+  test('sweeps profile alongside its parent when the parent is a retired system row', async () => {
     const db = getDb()
-    // Parent model is edited (hash mismatch) → survives cleanup.
+    // Parent model has a hash mismatch (previously would survive cleanup).
+    // Profile hash matches. Under the new rule the parent is swept, and the
+    // profile follows because its parent is no longer alive.
     await db.insert(modelsTable).values({ ...buildRetiredModel(), name: 'User Renamed' })
-    // Profile is unedited (hash matches) — would have been soft-deleted under
-    // the old rule, leaving the model orphaned.
     await db.insert(modelProfilesTable).values(buildRetiredProfile())
 
     await cleanupRemovedDefaults(db)
@@ -252,7 +256,7 @@ describe('cleanupRemovedDefaults', () => {
       .from(modelProfilesTable)
       .where(eq(modelProfilesTable.modelId, retiredModelId))
       .get()
-    expect(profile?.deletedAt).toBeNull()
+    expect(profile?.deletedAt).not.toBeNull()
   })
 
   test('leaves current defaults alone', async () => {

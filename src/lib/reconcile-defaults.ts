@@ -246,9 +246,20 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 }
 
 /**
- * Soft-delete any unedited system default row whose id is no longer in the
- * current defaults arrays. The hash-match guard ensures edited rows survive.
- * Skips rows without a `defaultHash` (user-created).
+ * Soft-delete any system default row whose id is no longer in the current
+ * defaults arrays. User-created rows are left alone (guarded by
+ * `!row.defaultHash` — user-created rows are inserted with a null hash).
+ *
+ * Sweep is unconditional for system rows — retired ids get removed even when
+ * `hashFn(row) !== row.defaultHash`. Historical `hashModel` field-list
+ * changes (e.g. `apiKey` removed via THU-505, `supportsParallelToolCalls`
+ * added later) leave pre-existing rows with a stored `defaultHash` that no
+ * longer matches a fresh recomputation, which under the previous "keep
+ * edited rows" rule caused retired system models (Mistral Medium 3.1) to
+ * stay stuck on user devices forever. The trade-off: a user who genuinely
+ * customized a retired system model loses those tweaks — acceptable because
+ * the backend routing for retired defaults is not guaranteed to remain, so
+ * the row was already on borrowed time.
  *
  * Two independent gates:
  *   - `canOverwriteModels`: guards the model scan. When false (older bundle,
@@ -281,18 +292,20 @@ export const cleanupRemovedDefaults = async (
       if (row.isSystem !== 1 || currentModelIds.has(row.id) || !row.defaultHash) {
         continue
       }
-      if (hashModel(row) === row.defaultHash) {
-        await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
-        aliveModelIds.delete(row.id)
-      }
+      // Sweep unconditionally — see docstring for the rationale (hash-field-
+      // list drift produces false-positive "modified" state that would leave
+      // retired system rows stuck on old devices).
+      await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
+      aliveModelIds.delete(row.id)
     }
   }
 
-  // Profiles are 1:1 with models. Mirror the model loop's "edited rows survive"
-  // rule by following the parent model's fate — only delete the profile when
-  // its parent is no longer alive. Gated on `initialSyncCompleted` so that a
-  // mid-sync device (with a potentially partial view of parent aliveness)
-  // stays fully non-mutating for the profiles table this pass.
+  // Profiles are 1:1 with models. Follow the parent model's fate — if the
+  // parent isn't alive, sweep the profile too, unconditionally on hash-match
+  // for the same reason the model loop does (schema-drift false positives).
+  // User-created profiles (`!row.defaultHash`) are still exempt. Gated on
+  // `initialSyncCompleted` so a mid-sync device (with a potentially partial
+  // view of parent aliveness) stays fully non-mutating for the profiles table.
   if (!initialSyncCompleted) {
     return
   }
@@ -304,9 +317,7 @@ export const cleanupRemovedDefaults = async (
     if (aliveModelIds.has(row.modelId) || !row.defaultHash) {
       continue
     }
-    if (hashModelProfile(row) === row.defaultHash) {
-      await db.update(modelProfilesTable).set({ deletedAt: now }).where(eq(modelProfilesTable.modelId, row.modelId))
-    }
+    await db.update(modelProfilesTable).set({ deletedAt: now }).where(eq(modelProfilesTable.modelId, row.modelId))
   }
 }
 

@@ -151,7 +151,7 @@ describe('createTinfoilRoutes', () => {
 
     it('forwards JSON bodies untouched (parse: none keeps the stream intact)', async () => {
       const app = buildApp()
-      const jsonBody = JSON.stringify({ model: 'deepseek-v4-pro', messages: [] })
+      const jsonBody = JSON.stringify({ model: 'glm-5-2', messages: [] })
 
       await drain(
         await app.handle(

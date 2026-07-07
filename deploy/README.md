@@ -99,7 +99,7 @@ deploy/
 .github/workflows/
   images-publish.yml        # Build + push Docker images to GHCR
   stack-deploy.yml          # Deploy to AWS via Pulumi
-  demo-nightly.yml          # Nightly publish + deploy to demo
+  nightly-images.yml        # Nightly rebuild + publish of main images to GHCR
 ```
 
 ---
@@ -560,21 +560,16 @@ After this one-time setup, trigger the workflow with `stack_name: prod-acme` and
 | `PULUMI_CONFIG_PASSPHRASE` | Encryption passphrase for stack config |
 | `GHCR_PAT`                 | GitHub PAT for pulling private images  |
 
-### Demo Nightly
+### Nightly Images
 
-**File**: `.github/workflows/demo-nightly.yml`
+**File**: `.github/workflows/nightly-images.yml`
 
-Runs every night at 5:00 UTC (midnight EST). Publishes fresh images and redeploys the `demo` stack on Fargate.
+Nightly at 5:00 UTC (midnight EST), rebuilds and publishes the `main`-branch images to GHCR (version tag, `:latest`, and Helm chart) by calling `images-publish.yml`. Since `images-publish.yml` also runs on every push to `main` that touches `deploy/**`, `backend/**`, `src/**`, or `package.json`, this scheduled run only adds value on quiet days — refreshing images when the source hasn't changed (e.g. upstream base-image / security updates).
 
 **Triggers**:
 
 - Cron schedule: `0 5 * * *`
 - Manual dispatch
-
-**Pipeline**:
-
-1. Calls `images-publish.yml` (build + push images)
-2. Calls `stack-deploy.yml` (deploy to `demo` stack on Fargate)
 
 ---
 

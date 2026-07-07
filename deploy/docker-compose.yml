@@ -42,7 +42,11 @@ services:
       # discovery host — Better Auth's SSO plugin validates both against trustedOrigins.
       TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000},http://localhost:${KEYCLOAK_PORT:-8180},http://keycloak:8080
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
-      POWERSYNC_URL: http://powersync:8080
+      # Unlike OIDC_DISCOVERY_URL above, this URL is echoed to the BROWSER in the
+      # /v1/powersync/token response, so it must be host-reachable — the internal
+      # `powersync:8080` Docker hostname doesn't resolve in the browser, leaving the
+      # SharedWorker stuck offline. Use the host port mapping (localhost:POWERSYNC_PORT).
+      POWERSYNC_URL: http://localhost:${POWERSYNC_PORT:-8080}
       # Must match the base64-decoded `k` in deploy/config/powersync-config.yaml
       # AND be >=32 chars (backend/src/config/settings.ts:76).
       POWERSYNC_JWT_SECRET: enterprise-thunderbolt-powersync-jwt-default-secret

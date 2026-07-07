@@ -263,7 +263,7 @@ describe('Inference Routes', () => {
     })
 
     it('should validate all supported models', () => {
-      const expectedModels = ['mistral-medium-3.1', 'mistral-large-3', 'sonnet-4.5', 'opus-4.8']
+      const expectedModels = ['mistral-medium-3.1', 'mistral-large-3', 'sonnet-4.5', 'opus-4.8', 'deepseek-v4-flash']
       expect(Object.keys(supportedModels)).toEqual(expectedModels)
     })
 

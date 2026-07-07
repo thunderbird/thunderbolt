@@ -10,6 +10,7 @@ import type { Model } from '@/types'
 import { ArrowUp, Square } from 'lucide-react'
 import {
   type ChangeEvent,
+  type ClipboardEvent,
   type FormEvent,
   forwardRef,
   type KeyboardEvent,
@@ -64,6 +65,8 @@ type PromptInputProps = {
   onTextareaSelect?: (e: SyntheticEvent<HTMLTextAreaElement>) => void
   /** Fires on scroll so callers can sync overlays / popups. */
   onTextareaScroll?: (e: UIEvent<HTMLTextAreaElement>) => void
+  /** Fires on paste so callers can intercept clipboard files (e.g. attachments). */
+  onTextareaPaste?: (e: ClipboardEvent<HTMLTextAreaElement>) => void
 }
 
 /**
@@ -97,6 +100,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       onTextareaKeyDown,
       onTextareaSelect,
       onTextareaScroll,
+      onTextareaPaste,
     },
     ref,
   ) => {
@@ -180,6 +184,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
             onKeyDown={submitOnEnter || hasTextareaHooks ? handleKeyDown : undefined}
             onSelect={onTextareaSelect}
             onScroll={hasTextareaHooks ? handleScroll : undefined}
+            onPaste={onTextareaPaste}
             placeholder={placeholder}
             minHeight={42}
             maxHeight={240}

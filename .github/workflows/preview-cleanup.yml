@@ -68,10 +68,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # `pulumi stack ls --all` lists stacks in the current project; must run
-          # from deploy/pulumi where Pulumi.yaml lives. PULUMI_ACCESS_TOKEN env
-          # handles auth — no interactive login needed.
-          STACKS=$(pulumi stack ls --json --all 2>/dev/null | jq -r '.[].name' | grep -E '^preview-pr-[0-9]+$' || true)
+          # `pulumi stack ls` (WITHOUT --all) lists stacks only for the current
+          # project (thunderbolt-enterprise); must run from deploy/pulumi where
+          # Pulumi.yaml lives. Scoping to this project is a hard guardrail: it means
+          # cleanup can never even enumerate — let alone destroy — stacks in other
+          # projects (e.g. thunderbird's accounts/prod, shared-services/prod). The
+          # `^preview-pr-[0-9]+$` grep is then a second, belt-and-suspenders filter.
+          # PULUMI_ACCESS_TOKEN env handles auth — no interactive login needed.
+          STACKS=$(pulumi stack ls --json 2>/dev/null | jq -r '.[].name' | grep -E '^preview-pr-[0-9]+$' || true)
 
           if [ -z "$STACKS" ]; then
             echo "No preview stacks found."

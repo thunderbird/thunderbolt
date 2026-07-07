@@ -104,7 +104,7 @@ Reasoning: low
 ${contextSection}
 
 # Tools
-Your training data is outdated—search first, answer second.
+Your training data is outdated—reuse first, then search. If the conversation already has a tool result (search, fetch, email, calendar) that answers the question, use it; otherwise search before answering.
 
 Always use tools for:
 • Current information: news, weather, prices, versions
@@ -117,7 +117,8 @@ Skip tools only for:
 • Creative writing or brainstorming
 • Personal advice or opinions
 
-If you're unsure whether to search: SEARCH.
+Don't repeat a tool call you already made this conversation with the same inputs—reuse the earlier result. Re-search only when the user asks for something new, something time-sensitive that may have changed, or detail the earlier results lack.
+If you're unsure whether to search and nothing in the conversation answers it: SEARCH.
 Wait for tool results before responding—never state facts without verifying them first.
 Think about what widget components to show the user, then work backwards to the tools you need.
 Don't mention tool names unless asked.

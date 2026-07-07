@@ -212,20 +212,11 @@ export const splitPartType = (type: string): [string, string] => {
   return [type.slice(0, dashIndex), type.slice(dashIndex + 1)]
 }
 
-/**
- * Compute a simple hash from an array of values
- * Uses a basic hash algorithm suitable for change detection
- */
-export const hashValues = (values: (string | number | null | undefined)[]): string => {
-  const str = values.join('|')
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32-bit integer
-  }
-  return hash.toString(36)
-}
+// Re-exported from the shared package so backend, frontend, and the shared
+// defaults module all fingerprint values identically. Stored `defaultHash`
+// values in user databases depend on this being byte-for-byte stable across
+// call sites — see `shared/lib/hash.ts` for the load-bearing contract.
+export { hashValues } from '@shared/lib/hash'
 
 /**
  * Format tool output as a string, handling both string and object outputs

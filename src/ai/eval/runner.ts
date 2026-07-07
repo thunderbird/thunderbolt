@@ -14,10 +14,11 @@ import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
 import { createProxyFetch } from '@/lib/proxy-fetch'
 import { v7 as uuidv7 } from 'uuid'
+import type { ThunderboltUIMessage } from '@/types'
 import { getModelId } from './scenarios'
 import { scoreResult } from './scoring'
 import { parseStream } from './stream-parser'
-import type { EvalResult, EvalScenario } from './types'
+import type { EvalResult, EvalScenario, ParsedStream } from './types'
 
 const timeout = parseInt(process.env.EVAL_timeout ?? '120000')
 
@@ -114,18 +115,6 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
       throw new Error(`Unknown mode: ${scenario.modeName}`)
     }
 
-    // Build request body (matches chat-instance.ts format)
-    const body = JSON.stringify({
-      messages: [
-        {
-          id: uuidv7(),
-          role: 'user',
-          parts: [{ type: 'text', text: scenario.prompt }],
-        },
-      ],
-      id: uuidv7(),
-    })
-
     await logVerbosePrompt(scenario, mode.systemPrompt ?? undefined)
 
     const httpClient = await getEvalHttpClient()
@@ -135,21 +124,51 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
     const cloudUrl = getLocalSetting('cloudUrl')
     const proxyFetch = createProxyFetch({ cloudUrl })
 
-    // Call the actual AI pipeline with a timeout
-    const response = await Promise.race([
-      aiFetchStreamingResponse({
-        init: { method: 'POST', body },
-        modelId,
-        modeSystemPrompt: mode.systemPrompt ?? undefined,
-        modeName: mode.name,
-        httpClient,
-        getProxyFetch: () => proxyFetch,
-      }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Scenario timed out')), timeout)),
-    ])
+    const userMessage = (text: string): ThunderboltUIMessage => ({
+      id: uuidv7(),
+      role: 'user',
+      parts: [{ type: 'text', text }],
+    })
 
-    // Parse streaming response
-    const parsed = await parseStream(response)
+    const runTurn = async (messages: ThunderboltUIMessage[]): Promise<ParsedStream> => {
+      const body = JSON.stringify({ messages, id: uuidv7() })
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const response = await Promise.race([
+        aiFetchStreamingResponse({
+          init: { method: 'POST', body },
+          modelId,
+          modeSystemPrompt: mode.systemPrompt ?? undefined,
+          modeName: mode.name,
+          httpClient,
+          getProxyFetch: () => proxyFetch,
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Scenario timed out')), timeout)
+        }),
+      ]).finally(() => clearTimeout(timer))
+      return parseStream(response)
+    }
+
+    // Run every turn but the last to build history, feeding each prior assistant
+    // message (with its tool results) back in — exactly as production does.
+    // Scoring applies to the final turn, so multi-turn scenarios measure whether
+    // the model reuses earlier results instead of re-searching.
+    const allTurns = [scenario.prompt, ...(scenario.followUps ?? [])]
+    const history: ThunderboltUIMessage[] = []
+    for (const text of allTurns.slice(0, -1)) {
+      const user = userMessage(text)
+      const turn = await runTurn([...history, user])
+      if (turn.error || turn.assistantParts.length === 0) {
+        throw new Error(
+          `Multi-turn setup turn produced no reusable result (${turn.error ?? 'empty assistant message'}) — cannot measure cross-turn reuse`,
+        )
+      }
+      history.push(user, { id: uuidv7(), role: 'assistant', parts: turn.assistantParts })
+    }
+
+    const finalUser = userMessage(allTurns.at(-1)!)
+    const parsed = await runTurn([...history, finalUser])
+
     const durationMs = performance.now() - start
 
     await logVerboseResponse(scenario, parsed.text)
@@ -169,6 +188,7 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
       homepageUrls: [],
       reviewSiteUrls: [],
       toolCallCount: 0,
+      duplicateToolCallCount: 0,
       retryCount: 0,
       durationMs: Math.round(durationMs),
       error: err instanceof Error ? err.message : String(err),

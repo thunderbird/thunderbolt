@@ -36,7 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
-import { defaultModels } from '@/defaults/models'
+import { defaultModels } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
@@ -418,7 +418,11 @@ export default function ModelsPage() {
     mutationFn: async (id: string) => {
       const defaultModel = defaultModels.find((m) => m.id === id)
       if (!defaultModel) {
-        throw new Error('Model is not a default model')
+        // Retired system model: no default left to restore to. Soft-delete
+        // the row so users can clear stuck retired-and-modified entries that
+        // `cleanupRemovedDefaults` skipped (hash mismatch = "modified").
+        await deleteModel(db, id)
+        return
       }
       await resetModelToDefault(db, id, defaultModel)
     },

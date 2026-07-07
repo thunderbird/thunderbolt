@@ -49,6 +49,7 @@ import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientpr
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
 import { blobToBase64, getAttachments, type HydratedAttachment } from '@/lib/attachments'
+import { renderMessageQuotesAsText } from '@/lib/quotes'
 import { getTransformer } from '@/files/transformers'
 import { getAttachment } from '@/lib/file-blob-storage'
 import { openTransport } from './transports'
@@ -167,7 +168,13 @@ export const buildPromptBlocks = async (
   if (!lastUser) {
     throw new Error('ACP adapter: no user message in request body')
   }
-  const userText = messageText(lastUser)
+  const replyText = messageText(lastUser)
+  // Quotes flatten to a leading Markdown blockquote — ACP builds a plain-text
+  // prompt, so unlike the AI SDK path we fold them in here rather than passing a
+  // structured data-quote part through hydrateQuotesAsText. Ordered ahead of the
+  // reply, mirroring the composer (quote chip above the typed text).
+  const quotesText = renderMessageQuotesAsText(lastUser)
+  const userText = [quotesText, replyText].filter(Boolean).join('\n\n')
   // Skill instructions + (fallback) prior transcript ride the text block (ACP
   // has no system channel) — see composeAcpPrompt.
   const text = composeAcpPrompt(skillInstructions, userText, priorTranscript)

@@ -2,7 +2,41 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { ThunderboltUIMessage } from '@/types'
 import type { ParsedStream, ToolCallInfo } from './types'
+
+/**
+ * Reconstruct an assistant message's parts from a parsed stream: each completed
+ * tool call (those whose output arrived) as a `dynamic-tool` part, then the
+ * final text. Used to feed prior-turn tool results back into history for
+ * multi-turn scenarios.
+ *
+ * When tools ran before the final text, a `step-start` boundary is inserted
+ * between them so `convertToModelMessages` replays production order —
+ * assistant(tool-call) → tool(result) → assistant(text) — instead of folding
+ * the answer into the tool-call assistant message ahead of its results.
+ */
+export const buildAssistantParts = (
+  text: string,
+  toolCalls: ToolCallInfo[],
+  toolOutputs: Map<string, unknown>,
+): ThunderboltUIMessage['parts'] => {
+  const toolParts: ThunderboltUIMessage['parts'] = toolCalls
+    .filter((call) => toolOutputs.has(call.toolCallId))
+    .map((call) => ({
+      type: 'dynamic-tool',
+      toolName: call.toolName,
+      toolCallId: call.toolCallId,
+      state: 'output-available',
+      input: call.input,
+      output: toolOutputs.get(call.toolCallId),
+    }))
+  if (text.trim().length === 0) {
+    return toolParts
+  }
+  const textPart = { type: 'text', text } as const
+  return toolParts.length > 0 ? [...toolParts, { type: 'step-start' }, textPart] : [textPart]
+}
 
 /**
  * Parse the AI SDK UIMessageStream response into structured data.
@@ -27,6 +61,7 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
   let buffer = ''
   const textParts: string[] = []
   const toolCalls: ToolCallInfo[] = []
+  const toolOutputs = new Map<string, unknown>()
   let stepCount = 0
   let retryCount = 0
   let finishReason = 'unknown'
@@ -58,7 +93,12 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
         toolCalls.push({
           toolCallId: event.toolCallId as string,
           toolName: event.toolName as string,
+          input: event.input,
         })
+        break
+
+      case 'tool-output-available':
+        toolOutputs.set(event.toolCallId as string, event.output)
         break
 
       case 'finish-step':
@@ -97,7 +137,15 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
       processLine(buffer)
     }
   } catch (err) {
-    return { ...emptyResult(String(err)), text: textParts.join(''), toolCalls, stepCount, retryCount }
+    const text = textParts.join('')
+    return {
+      ...emptyResult(String(err)),
+      text,
+      toolCalls,
+      assistantParts: buildAssistantParts(text, toolCalls, toolOutputs),
+      stepCount,
+      retryCount,
+    }
   }
 
   const fullText = textParts.join('')
@@ -107,12 +155,20 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
     retryCount++
   }
 
-  return { text: fullText, toolCalls, stepCount, retryCount, finishReason }
+  return {
+    text: fullText,
+    toolCalls,
+    assistantParts: buildAssistantParts(fullText, toolCalls, toolOutputs),
+    stepCount,
+    retryCount,
+    finishReason,
+  }
 }
 
 const emptyResult = (error: string): ParsedStream => ({
   text: '',
   toolCalls: [],
+  assistantParts: [],
   stepCount: 0,
   retryCount: 0,
   finishReason: 'error',

@@ -26,6 +26,31 @@ const createDynamicToolPart = (toolName: string): DynamicToolUIPart =>
     output: { value: toolName },
   }) as unknown as DynamicToolUIPart
 
+const createArtifactPart = (id: string, output: { ok: boolean; errors?: string[]; target?: string }): ToolUIPart =>
+  ({
+    type: 'tool-render_html',
+    toolCallId: id,
+    state: 'output-available',
+    input: { html: '<h1>x</h1>', title: 'A' },
+    output,
+  }) as unknown as ToolUIPart
+
+const createExecutingArtifactPart = (id: string): ToolUIPart =>
+  ({
+    type: 'tool-render_html',
+    toolCallId: id,
+    state: 'input-available',
+    input: { html: '<h1>x</h1>', title: 'A' },
+  }) as unknown as ToolUIPart
+
+const createPendingArtifactPart = (id: string): ToolUIPart =>
+  ({
+    type: 'tool-render_html',
+    toolCallId: id,
+    state: 'input-streaming',
+    input: { title: 'A' },
+  }) as unknown as ToolUIPart
+
 describe('assistant-message utilities', () => {
   describe('groupMessageParts', () => {
     it('groups consecutive tool parts into a single reasoning_group entry', () => {
@@ -105,6 +130,63 @@ describe('assistant-message utilities', () => {
         type: 'reasoning_group',
         items: [{ type: 'tool', content: toolGamma, id: toolGamma.toolCallId }],
       })
+    })
+  })
+
+  describe('groupMessageParts — render_html artifacts', () => {
+    it('lifts a verified artifact out of the tool group as a standalone part', () => {
+      const grep = createToolPart('grep')
+      const artifact = createArtifactPart('a1', { ok: true, target: 'inline' })
+
+      const grouped = groupMessageParts([grep, artifact])
+
+      expect(grouped).toHaveLength(2)
+      expect(grouped[0]).toEqual({
+        type: 'reasoning_group',
+        items: [{ type: 'tool', content: grep, id: grep.toolCallId }],
+      })
+      expect(grouped[1]).toBe(artifact)
+    })
+
+    it('lifts out a still-streaming artifact once it has HTML, for a live preview', () => {
+      const executing = createExecutingArtifactPart('a1')
+
+      expect(groupMessageParts([executing])).toEqual([executing])
+    })
+
+    it('lifts out a not-yet-started artifact so the card can show immediately', () => {
+      const pending = createPendingArtifactPart('a1')
+
+      expect(groupMessageParts([pending])).toEqual([pending])
+    })
+
+    it('keeps a failed attempt in the group and lifts out only the successful retry', () => {
+      const failed = createArtifactPart('a1', { ok: false, errors: ['boom'] })
+      const succeeded = createArtifactPart('a2', { ok: true, target: 'inline' })
+
+      const grouped = groupMessageParts([failed, succeeded])
+
+      expect(grouped).toHaveLength(2)
+      expect(grouped[0]).toEqual({
+        type: 'reasoning_group',
+        items: [{ type: 'tool', content: failed, id: failed.toolCallId }],
+      })
+      expect(grouped[1]).toBe(succeeded)
+    })
+
+    it('keeps a lone failed attempt as an ordinary tool call', () => {
+      const failed = createArtifactPart('a1', { ok: false, errors: ['boom'] })
+
+      expect(groupMessageParts([failed])).toEqual([
+        { type: 'reasoning_group', items: [{ type: 'tool', content: failed, id: failed.toolCallId }] },
+      ])
+    })
+
+    it('keeps two distinct verified artifacts', () => {
+      const first = createArtifactPart('a1', { ok: true, target: 'inline' })
+      const second = createArtifactPart('a2', { ok: true, target: 'panel' })
+
+      expect(groupMessageParts([first, second])).toEqual([first, second])
     })
   })
 

@@ -65,6 +65,15 @@ export default defineConfig({
         baseURL: `http://localhost:${samlVitePort}`,
       },
     },
+    {
+      // Self-contained real-browser tests for the artifact harness (drive the wrapped
+      // HTML in a sandboxed iframe on about:blank) — no auth server, backend, or baseURL.
+      // Anchor to a leading `/` and forbid `/` in the name so the match is the FILENAME,
+      // not the worktree dir "feat-html-artifact-tool" (which also contains "artifact-").
+      name: 'artifact',
+      testMatch: /\/artifact-[^/]*\.spec\.ts$/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
   webServer: [
     // --- OIDC frontend ---

@@ -11,6 +11,7 @@ import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
 import { type PostHog } from 'posthog-js'
 import type { z } from 'zod'
+import type { SharedModel } from '@shared/defaults/models'
 import type { HttpClient } from './contexts'
 import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
@@ -57,9 +58,26 @@ export type AttachmentData = {
   deliverAs?: 'text' | 'images'
 }
 
-/** Custom `data-*` parts on Thunderbolt messages (`data-attachment` → {@link AttachmentData}). */
+/**
+ * A passage the user quoted from an earlier message to reply to (see the quote-
+ * reply flow). Like {@link AttachmentData} it's a reference-only, UI-first part:
+ * it renders as a chip in the composer and a blockquote in the sent bubble, and
+ * is hydrated into a `> …` text part at send time so the model sees the context.
+ */
+export type QuoteData = {
+  /** The verbatim selected text. */
+  text: string
+  /** The message the passage was quoted from — provenance for a future "jump to source". */
+  sourceMessageId?: string
+}
+
+/**
+ * Custom `data-*` parts on Thunderbolt messages (`data-attachment` →
+ * {@link AttachmentData}, `data-quote` → {@link QuoteData}).
+ */
 export type ThunderboltUIDataTypes = {
   attachment: AttachmentData
+  quote: QuoteData
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>
@@ -101,6 +119,16 @@ export type Model = WithRequired<
   | 'startWithReasoning'
   | 'supportsParallelToolCalls'
 > & { apiKey: string | null }
+
+/**
+ * Compile-time invariant: every shipped `SharedModel` default (see
+ * `shared/defaults/models.ts`) must be structurally assignable to `Model` with
+ * the DAL-joined `apiKey` stripped. If `Model` gains a required field that
+ * `SharedModel` doesn't cover, the assignment below errors, forcing us to
+ * update the shared type in the same change. Never called at runtime; exported
+ * so `noUnusedLocals` doesn't strip the guard.
+ */
+export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey'> => model
 export type Mode = WithRequired<ModeRow, 'name' | 'label' | 'icon' | 'order'>
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
@@ -185,6 +213,12 @@ export type ToolConfig = {
   verb: string
   parameters: z.ZodObject<any, any>
   execute: (params: any) => Promise<any>
+  /**
+   * When true, identical calls within a single streaming response reuse the
+   * first result instead of re-executing (see `createTool`). Set ONLY on
+   * deterministic, read-only tools — never on side-effecting/write tools.
+   */
+  cacheable?: boolean
 }
 
 export type AuthProviderBackendConfig = {

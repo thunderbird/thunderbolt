@@ -128,15 +128,6 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
   }
 }
 
-const TelemetryAvailableContext = createContext(false)
-
-/**
- * Whether telemetry is actually wired up (i.e. a PostHog client was successfully initialized
- * because the backend supplied a public API key). Self-hosted deployments without a configured
- * key return false here regardless of the user's `data_collection` consent setting.
- */
-export const useTelemetryAvailable = () => useContext(TelemetryAvailableContext)
-
 const PostHogClientContext = createContext<PostHog | null>(null)
 
 /**
@@ -146,14 +137,20 @@ const PostHogClientContext = createContext<PostHog | null>(null)
 export const usePostHogClient = () => useContext(PostHogClientContext)
 
 /**
+ * Whether telemetry is actually wired up (i.e. a PostHog client was successfully initialized
+ * because the backend supplied a public API key). Derived from the client context — telemetry
+ * is available exactly when a client exists — so self-hosted deployments without a configured
+ * key return false regardless of the user's `data_collection` consent setting.
+ */
+export const useTelemetryAvailable = () => usePostHogClient() !== null
+
+/**
  * PostHog Provider component for React. Carries the nullable client through an in-house
  * context so posthog-js/react is never statically imported (keeping the SDK out of the
- * entry chunk).
+ * entry chunk). {@link useTelemetryAvailable} derives from this same client.
  */
 export const PostHogProvider = ({ children, client }: { children: ReactNode; client: PostHog | null }) => (
-  <TelemetryAvailableContext.Provider value={!!client}>
-    <PostHogClientContext.Provider value={client}>{children}</PostHogClientContext.Provider>
-  </TelemetryAvailableContext.Provider>
+  <PostHogClientContext.Provider value={client}>{children}</PostHogClientContext.Provider>
 )
 
 export type EventType =

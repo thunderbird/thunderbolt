@@ -4,7 +4,7 @@
 
 import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
-import { and, count, eq, isNull, or } from 'drizzle-orm'
+import { and, count, eq, isNotNull, isNull, or } from 'drizzle-orm'
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
@@ -125,6 +125,26 @@ export const setDeviceNodeId = async (database: typeof DbType, deviceId: string,
       ),
     )
     .returning()
+
+/**
+ * List the account's iroh allowlist: the endpoint identities (node_id) of every trusted,
+ * non-revoked device that has bound one. Scoped to `userId`, so it never returns another
+ * account's rows. A headless bridge fetches this (bearer-auth) to auto-allow same-account
+ * peers without embedding PowerSync or holding the E2EE Content Key. Denied/pending devices
+ * are excluded (only `trusted` rows), as are revoked ones and rows with a null node_id.
+ */
+export const getTrustedNodeIds = async (database: typeof DbType, userId: string) =>
+  database
+    .select({ nodeId: devicesTable.nodeId, deviceType: devicesTable.deviceType })
+    .from(devicesTable)
+    .where(
+      and(
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, true),
+        isNull(devicesTable.revokedAt),
+        isNotNull(devicesTable.nodeId),
+      ),
+    )
 
 /**
  * Register a device with a public key for encryption.

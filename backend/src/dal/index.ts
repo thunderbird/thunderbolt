@@ -11,6 +11,7 @@ export {
   markDeviceTrusted,
   registerDevice,
   setDeviceNodeId,
+  getTrustedNodeIds,
   countActiveDevices,
 } from './devices'
 

@@ -51,7 +51,12 @@ describe('Encryption API', () => {
   const now = new Date()
   const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-  const createUserAndSession = async (userId: string, token: string, email = `${userId}@test.com`) => {
+  const createUserAndSession = async (
+    userId: string,
+    token: string,
+    email = `${userId}@test.com`,
+    deviceId?: string,
+  ) => {
     await db.insert(userTable).values({
       id: userId,
       name: 'Test User',
@@ -67,6 +72,7 @@ describe('Encryption API', () => {
       createdAt: now,
       updatedAt: now,
       userId,
+      ...(deviceId ? { deviceId } : {}),
     })
   }
 
@@ -1483,6 +1489,214 @@ describe('Encryption API', () => {
         .where(eq(devicesTable.id, p('d-nid-ok-target')))
       expect(row.nodeId).toBe(nodeId)
       expect(row.nodeIdAttestedAt).not.toBeNull()
+    })
+  })
+
+  // ─── POST /devices/me/node-id (self-enroll) ─────────────────────────
+
+  describe('POST /devices/me/node-id (self-enroll)', () => {
+    const nodeId = 'k51qzi5uqu5dh-self-enroll'
+
+    const selfEnroll = (token: string, callerDeviceId: string | undefined, body: object) =>
+      app.handle(
+        new Request(`${baseUrl}/devices/me/node-id`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+            ...(callerDeviceId ? { 'X-Device-ID': callerDeviceId } : {}),
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+
+    it('returns 401 without auth', async () => {
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/me/node-id`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Device-ID': p('d-se') },
+          body: JSON.stringify({ nodeId }),
+        }),
+      )
+      expect(response.status).toBe(401)
+    })
+
+    it('returns 400 when X-Device-ID header missing', async () => {
+      await createUserAndSession(p('u-se-nohdr'), p('tok-se-nohdr'), undefined, p('d-se-nohdr'))
+      await insertDevice(p('d-se-nohdr'), p('u-se-nohdr'), { trusted: true })
+
+      const response = await selfEnroll(p('tok-se-nohdr'), undefined, { nodeId })
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe('X-Device-ID header is required')
+    })
+
+    it('rejects with 422 when nodeId missing (body validation)', async () => {
+      await createUserAndSession(p('u-se-noid'), p('tok-se-noid'), undefined, p('d-se-noid'))
+      await insertDevice(p('d-se-noid'), p('u-se-noid'), { trusted: true })
+
+      const response = await selfEnroll(p('tok-se-noid'), p('d-se-noid'), {})
+      expect(response.status).toBe(422)
+    })
+
+    it("writes the caller's own node_id when X-Device-ID matches the session device", async () => {
+      await createUserAndSession(p('u-se-ok'), p('tok-se-ok'), undefined, p('d-se-ok'))
+      await insertDevice(p('d-se-ok'), p('u-se-ok'), { trusted: true })
+
+      const response = await selfEnroll(p('tok-se-ok'), p('d-se-ok'), { nodeId })
+      expect(response.status).toBe(200)
+      expect((await response.json()).nodeId).toBe(nodeId)
+
+      const [row] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-se-ok')))
+      expect(row.nodeId).toBe(nodeId)
+      expect(row.nodeIdAttestedAt).not.toBeNull()
+    })
+
+    it('self-enrolls a pending device (not yet trusted) — harmless, allowlist only surfaces trusted', async () => {
+      await createUserAndSession(p('u-se-pending'), p('tok-se-pending'), undefined, p('d-se-pending'))
+      await insertDevice(p('d-se-pending'), p('u-se-pending')) // pending, not trusted
+
+      const response = await selfEnroll(p('tok-se-pending'), p('d-se-pending'), { nodeId })
+      expect(response.status).toBe(200)
+
+      const [row] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-se-pending')))
+      expect(row.nodeId).toBe(nodeId)
+    })
+
+    it("rejects writing another same-account device's node_id (X-Device-ID != session device)", async () => {
+      // Session is bound to the caller's own device, but X-Device-ID targets a sibling device.
+      await createUserAndSession(p('u-se-other'), p('tok-se-other'), undefined, p('d-se-self'))
+      await insertDevice(p('d-se-self'), p('u-se-other'), { trusted: true })
+      await insertDevice(p('d-se-victim'), p('u-se-other'), { trusted: true })
+
+      const response = await selfEnroll(p('tok-se-other'), p('d-se-victim'), { nodeId })
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('X-Device-ID does not match the authenticated device')
+
+      // The victim device's node_id must be untouched.
+      const [victim] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-se-victim')))
+      expect(victim.nodeId).toBeNull()
+    })
+
+    it('rejects when the session is not linked to any device', async () => {
+      await createUserAndSession(p('u-se-unlinked'), p('tok-se-unlinked')) // no session.deviceId
+      await insertDevice(p('d-se-unlinked'), p('u-se-unlinked'), { trusted: true })
+
+      const response = await selfEnroll(p('tok-se-unlinked'), p('d-se-unlinked'), { nodeId })
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('X-Device-ID does not match the authenticated device')
+    })
+
+    it('returns 404 when the caller device is revoked (setDeviceNodeId matches 0 rows)', async () => {
+      await createUserAndSession(p('u-se-revoked'), p('tok-se-revoked'), undefined, p('d-se-revoked'))
+      await insertDevice(p('d-se-revoked'), p('u-se-revoked'), { trusted: true, revokedAt: now })
+
+      const response = await selfEnroll(p('tok-se-revoked'), p('d-se-revoked'), { nodeId })
+      expect(response.status).toBe(404)
+      expect((await response.json()).error).toBe('Device not found')
+    })
+  })
+
+  // ─── GET /devices/allowlist ─────────────────────────────────────────
+
+  describe('GET /devices/allowlist', () => {
+    const getAllowlist = (token: string) =>
+      app.handle(
+        new Request(`${baseUrl}/devices/allowlist`, {
+          headers: { Authorization: `Bearer ${signToken(token)}` },
+        }),
+      )
+
+    const insertDeviceWithNode = async (
+      id: string,
+      userId: string,
+      nodeId: string | null,
+      options: {
+        trusted?: boolean
+        approvalPending?: boolean
+        revokedAt?: Date
+        deviceType?: 'normal' | 'bridge'
+      } = {},
+    ) => {
+      const { trusted = true, approvalPending = !trusted, revokedAt, deviceType = 'normal' } = options
+      await db.insert(devicesTable).values({
+        id,
+        userId,
+        name: 'Node Device',
+        trusted,
+        approvalPending,
+        deviceType,
+        lastSeen: now,
+        createdAt: now,
+        ...(nodeId ? { nodeId, nodeIdAttestedAt: now } : {}),
+        ...(revokedAt ? { revokedAt } : {}),
+      })
+    }
+
+    it('returns 401 without auth', async () => {
+      const response = await app.handle(new Request(`${baseUrl}/devices/allowlist`))
+      expect(response.status).toBe(401)
+    })
+
+    it('returns only trusted, non-revoked, non-null node_ids for the caller account', async () => {
+      await createUserAndSession(p('u-al'), p('tok-al'))
+      await insertDeviceWithNode(p('al-trusted'), p('u-al'), 'node-trusted', { deviceType: 'normal' })
+      await insertDeviceWithNode(p('al-bridge'), p('u-al'), 'node-bridge', { deviceType: 'bridge' })
+      // Excluded: pending (untrusted), revoked, trusted-but-no-node_id.
+      await insertDeviceWithNode(p('al-pending'), p('u-al'), 'node-pending', { trusted: false })
+      await insertDeviceWithNode(p('al-revoked'), p('u-al'), 'node-revoked', { trusted: true, revokedAt: now })
+      await insertDeviceWithNode(p('al-nonode'), p('u-al'), null, { trusted: true })
+
+      const response = await getAllowlist(p('tok-al'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      const nodeIds = (body.nodeIds as Array<{ nodeId: string; deviceType: string }>).map((n) => n.nodeId).sort()
+      expect(nodeIds).toEqual(['node-bridge', 'node-trusted'])
+
+      const bridge = (body.nodeIds as Array<{ nodeId: string; deviceType: string }>).find(
+        (n) => n.nodeId === 'node-bridge',
+      )
+      expect(bridge?.deviceType).toBe('bridge')
+    })
+
+    it("excludes a denied device's node_id (trusted=false, approvalPending=false)", async () => {
+      await createUserAndSession(p('u-al-denied'), p('tok-al-denied'))
+      await insertDeviceWithNode(p('al-denied'), p('u-al-denied'), 'node-denied', {
+        trusted: false,
+        approvalPending: false,
+      })
+
+      const response = await getAllowlist(p('tok-al-denied'))
+      expect(response.status).toBe(200)
+      expect((await response.json()).nodeIds).toEqual([])
+    })
+
+    it('never leaks another account rows', async () => {
+      await createUserAndSession(p('u-al-a'), p('tok-al-a'), `${p('al-a')}@test.com`)
+      await createUserAndSession(p('u-al-b'), p('tok-al-b'), `${p('al-b')}@test.com`)
+      await insertDeviceWithNode(p('al-mine'), p('u-al-a'), 'node-mine')
+      await insertDeviceWithNode(p('al-theirs'), p('u-al-b'), 'node-theirs')
+
+      const response = await getAllowlist(p('tok-al-a'))
+      expect(response.status).toBe(200)
+      const nodeIds = (await response.json()).nodeIds as Array<{ nodeId: string }>
+      expect(nodeIds.map((n) => n.nodeId)).toEqual(['node-mine'])
+    })
+
+    it('returns an empty list when the account has no bound trusted devices', async () => {
+      await createUserAndSession(p('u-al-empty'), p('tok-al-empty'))
+
+      const response = await getAllowlist(p('tok-al-empty'))
+      expect(response.status).toBe(200)
+      expect((await response.json()).nodeIds).toEqual([])
     })
   })
 })

@@ -12,6 +12,7 @@ import {
   denyDevice,
   markDeviceTrusted,
   setDeviceNodeId,
+  getTrustedNodeIds,
   getEnvelopeByDeviceId,
   hasEnvelopesForUser,
   upsertEnvelope,
@@ -460,6 +461,59 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           canarySecret: t.String({ maxLength: 500 }),
         }),
       },
+    )
+    // Self-enroll: a device binds its OWN iroh endpoint identity (node_id) — no canary /
+    // Content Key. Proof-of-possession happens at the iroh handshake on connect, so declaring a
+    // node_id you can't dial as grants nothing. The caller is pinned to the session's server-set
+    // deviceId (from linkSessionToDevice), so it can only write the device its session is bound
+    // to — not an arbitrary target the way the canary-gated POST /devices/:deviceId/node-id can.
+    // The trust boundary is the account (same-account is auto-trusted by design, D1); a live
+    // same-account session is trusted to declare its own node_id, and a rogue one is mitigated by
+    // revoke + the bridge's heartbeat re-check (D7/D8), not by intra-account isolation here.
+    .post(
+      '/devices/me/node-id',
+      async ({ body, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const callerDeviceId = request.headers.get('x-device-id')?.trim()
+
+        if (!callerDeviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
+
+        // Pin to the session's bound device. A null (never-linked) session.deviceId also fails
+        // this, fail-closed. This is the server-side identity — X-Device-ID alone is client-set.
+        if (session.deviceId !== callerDeviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
+        }
+
+        const updated = await setDeviceNodeId(database, callerDeviceId, userId, body.nodeId)
+        if (updated.length === 0) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+
+        return { nodeId: body.nodeId }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          nodeId: t.String({ minLength: 1, maxLength: 2048 }),
+        }),
+      },
+    )
+    // Account allowlist: the trusted, non-revoked node_ids of the caller's account (D2). The
+    // bridge fetches this with a bearer, caches it, and auto-allows same-account iroh peers.
+    // Scoped to the caller's user_id — never leaks another account's rows.
+    .get(
+      '/devices/allowlist',
+      async ({ user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const nodeIds = await getTrustedNodeIds(database, userId)
+        return { nodeIds }
+      },
+      { auth: true },
     )
     .post(
       '/devices/me/cancel-pending',

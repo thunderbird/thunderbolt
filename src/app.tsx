@@ -8,6 +8,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
 import ChatDetailPage from '@/chats/detail'
+import DeviceApproval from '@/components/device-approval'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
@@ -155,6 +156,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Auth flow routes - NO guards (must work during auth) */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
+        <Route path="/device" element={<DeviceApproval />} />
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}

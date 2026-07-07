@@ -96,9 +96,10 @@ describe('MemoizedMarkdown — LaTeX', () => {
 
   it('leaves a `$$…$$` line inside a fenced code block as literal source', async () => {
     const { container } = renderMarkdown('```\n$$E = mc^2$$\n```')
-    // The block still contains `$$…$$`, so the math plugins load — but remark-math
-    // never treats code-fence contents as math, so no `.katex` is emitted and the
-    // source text is preserved verbatim (not rewritten with extra newlines).
+    // The whole message parses to a single `code` node, so math detection is
+    // skipped (`isCode` short-circuits `hasMath`) and the plugins never load.
+    // Even if they did, remark-math never treats code-fence contents as math —
+    // so no `.katex` is emitted and the source text is preserved verbatim.
     await flushLazyLoad()
     expect(container.querySelector('.katex')).toBeNull()
     expect(container.querySelector('code')?.textContent).toContain('$$E = mc^2$$')

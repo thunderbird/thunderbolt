@@ -9,6 +9,7 @@ import {
   getDeviceById,
   linkSessionToDevice,
   registerDevice,
+  registerBridgeDevice,
   denyDevice,
   markDeviceTrusted,
   setDeviceNodeId,
@@ -514,6 +515,38 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         return { nodeIds }
       },
       { auth: true },
+    )
+    // Register a BRIDGE device on the caller's account (D4 step 2). Adding an ACP/MCP bridge in the
+    // app registers it here as a device with server-set `device_type='bridge'` (clients can't set
+    // device_type — it's deny-listed from PowerSync upload, so a bridge MUST be created via this
+    // route, not raw sync). Inserted trusted + non-revoked because the user deliberately added
+    // their own bridge. Scoped to the caller's account (registerBridgeDevice derives the row id
+    // from userId, and the `bridge-` id namespace is reserved from client uploads), so it can
+    // never write another user's row. node_id here is the bridge's SERVER NodeId; it surfaces in
+    // getTrustedNodeIds (the account allowlist), which is intentional and harmless — no peer can
+    // dial as the bridge's key without its ed25519 private key, so listing it grants nothing.
+    // A revoked bridge is not re-addable with the same NodeId (registerBridgeDevice returns no
+    // row) — mirroring how a revoked normal device is refused re-registration; bring the bridge
+    // back by re-keying it (a fresh NodeId).
+    .post(
+      '/devices/bridge',
+      async ({ body, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const name = body.name?.trim() || 'Bridge'
+        const [device] = await registerBridgeDevice(database, { userId, nodeId: body.nodeId, name })
+        if (!device) {
+          set.status = 403
+          return { error: 'Device has been revoked' }
+        }
+        return { id: device.id, nodeId: device.nodeId, deviceType: device.deviceType }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          nodeId: t.String({ minLength: 1, maxLength: 2048 }),
+          name: t.Optional(t.String({ maxLength: 100 })),
+        }),
+      },
     )
     .post(
       '/devices/me/cancel-pending',

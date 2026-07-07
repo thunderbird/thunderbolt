@@ -5,6 +5,13 @@
 import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
 import { and, count, eq, isNotNull, isNull, or } from 'drizzle-orm'
+import { createHash } from 'crypto'
+
+/** Deterministic device id for a bridge, derived from (userId, nodeId). Keying the row on this
+ * makes re-registration of the same bridge an idempotent upsert on (userId, nodeId) without a
+ * dedicated unique constraint, and guarantees one account can never collide with another's id. */
+const bridgeDeviceId = (userId: string, nodeId: string) =>
+  `bridge-${createHash('sha256').update(`${userId}:${nodeId}`).digest('hex')}`
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
@@ -145,6 +152,44 @@ export const getTrustedNodeIds = async (database: typeof DbType, userId: string)
         isNotNull(devicesTable.nodeId),
       ),
     )
+
+/**
+ * Register (or idempotently re-register) a BRIDGE device on the caller's account (D4 step 2).
+ * A bridge is a device with `device_type='bridge'`, keyed by its server NodeId. The user
+ * deliberately added their own ACP/MCP bridge, so it is inserted trusted and non-revoked.
+ * `device_type` is set here on the server — clients can never set it (it's deny-listed from
+ * PowerSync upload). The row id is derived from (userId, nodeId), so re-adding the same bridge
+ * upserts the same row instead of duplicating. The `bridge-` id namespace is reserved from client
+ * uploads (see powersync.ts), so the conflict is always the caller's own row.
+ *
+ * A REVOKED bridge is never silently resurrected: `setWhere` requires `revoked_at IS NULL`, so an
+ * upsert onto a revoked row updates nothing and `.returning()` is empty — mirroring how a revoked
+ * normal device is refused re-registration. Callers treat the empty result as "revoked".
+ */
+export const registerBridgeDevice = async (
+  database: typeof DbType,
+  bridge: { userId: string; nodeId: string; name: string },
+) => {
+  const now = new Date()
+  const fields = {
+    name: bridge.name,
+    deviceType: 'bridge' as const,
+    trusted: true,
+    approvalPending: false,
+    nodeId: bridge.nodeId,
+    nodeIdAttestedAt: now,
+    lastSeen: now,
+  }
+  return database
+    .insert(devicesTable)
+    .values({ id: bridgeDeviceId(bridge.userId, bridge.nodeId), userId: bridge.userId, createdAt: now, ...fields })
+    .onConflictDoUpdate({
+      target: devicesTable.id,
+      set: fields,
+      setWhere: and(eq(devicesTable.userId, bridge.userId), isNull(devicesTable.revokedAt)),
+    })
+    .returning()
+}
 
 /**
  * Register a device with a public key for encryption.

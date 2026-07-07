@@ -1699,4 +1699,135 @@ describe('Encryption API', () => {
       expect((await response.json()).nodeIds).toEqual([])
     })
   })
+
+  // ─── POST /devices/bridge (register bridge) ─────────────────────────
+
+  describe('POST /devices/bridge', () => {
+    const bridgeNodeId = 'k51qzi5uqu5dh-bridge-server'
+
+    const registerBridge = (token: string, body: object) =>
+      app.handle(
+        new Request(`${baseUrl}/devices/bridge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signToken(token)}` },
+          body: JSON.stringify(body),
+        }),
+      )
+
+    it('returns 401 without auth', async () => {
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/bridge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodeId: bridgeNodeId }),
+        }),
+      )
+      expect(response.status).toBe(401)
+    })
+
+    it('rejects with 422 when nodeId missing (body validation)', async () => {
+      await createUserAndSession(p('u-br-noid'), p('tok-br-noid'))
+      const response = await registerBridge(p('tok-br-noid'), { name: 'My Bridge' })
+      expect(response.status).toBe(422)
+    })
+
+    it("registers a bridge as a trusted device_type='bridge' on the caller's account", async () => {
+      await createUserAndSession(p('u-br-ok'), p('tok-br-ok'))
+
+      const response = await registerBridge(p('tok-br-ok'), { nodeId: bridgeNodeId, name: 'My Bridge' })
+      expect(response.status).toBe(200)
+      const json = await response.json()
+      expect(json.nodeId).toBe(bridgeNodeId)
+      expect(json.deviceType).toBe('bridge')
+
+      const [row] = await db.select().from(devicesTable).where(eq(devicesTable.id, json.id))
+      expect(row.userId).toBe(p('u-br-ok'))
+      expect(row.deviceType).toBe('bridge')
+      expect(row.trusted).toBe(true)
+      expect(row.approvalPending).toBe(false)
+      expect(row.revokedAt).toBeNull()
+      expect(row.nodeId).toBe(bridgeNodeId)
+      expect(row.nodeIdAttestedAt).not.toBeNull()
+      expect(row.name).toBe('My Bridge')
+    })
+
+    it('defaults the name to "Bridge" when omitted', async () => {
+      await createUserAndSession(p('u-br-noname'), p('tok-br-noname'))
+      const response = await registerBridge(p('tok-br-noname'), { nodeId: bridgeNodeId })
+      expect(response.status).toBe(200)
+      const [row] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, (await response.json()).id))
+      expect(row.name).toBe('Bridge')
+    })
+
+    it('is idempotent on repeat add of the same bridge (no duplicate rows)', async () => {
+      await createUserAndSession(p('u-br-idem'), p('tok-br-idem'))
+
+      const first = await registerBridge(p('tok-br-idem'), { nodeId: bridgeNodeId, name: 'Bridge A' })
+      const firstId = (await first.json()).id
+      const second = await registerBridge(p('tok-br-idem'), { nodeId: bridgeNodeId, name: 'Bridge B' })
+      const secondId = (await second.json()).id
+      expect(secondId).toBe(firstId)
+
+      const rows = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.userId, p('u-br-idem')))
+      expect(rows.length).toBe(1)
+      expect(rows[0].name).toBe('Bridge B')
+    })
+
+    it('refuses to resurrect a revoked bridge (same NodeId) — stays revoked', async () => {
+      await createUserAndSession(p('u-br-rev'), p('tok-br-rev'))
+
+      const first = await registerBridge(p('tok-br-rev'), { nodeId: bridgeNodeId })
+      const bridgeId = (await first.json()).id
+      await db.update(devicesTable).set({ revokedAt: now, trusted: false }).where(eq(devicesTable.id, bridgeId))
+
+      const response = await registerBridge(p('tok-br-rev'), { nodeId: bridgeNodeId })
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('Device has been revoked')
+
+      // The row must remain revoked and untrusted — revocation is not undone by a re-add.
+      const [row] = await db.select().from(devicesTable).where(eq(devicesTable.id, bridgeId))
+      expect(row.revokedAt).not.toBeNull()
+      expect(row.trusted).toBe(false)
+    })
+
+    it('scopes the bridge row to the caller and never collides across accounts (same nodeId)', async () => {
+      await createUserAndSession(p('u-br-a'), p('tok-br-a'), `${p('br-a')}@test.com`)
+      await createUserAndSession(p('u-br-b'), p('tok-br-b'), `${p('br-b')}@test.com`)
+
+      const a = await registerBridge(p('tok-br-a'), { nodeId: bridgeNodeId, name: 'A bridge' })
+      const b = await registerBridge(p('tok-br-b'), { nodeId: bridgeNodeId, name: 'B bridge' })
+      const aId = (await a.json()).id
+      const bId = (await b.json()).id
+      expect(aId).not.toBe(bId)
+
+      const [aRow] = await db.select().from(devicesTable).where(eq(devicesTable.id, aId))
+      const [bRow] = await db.select().from(devicesTable).where(eq(devicesTable.id, bId))
+      expect(aRow.userId).toBe(p('u-br-a'))
+      expect(aRow.name).toBe('A bridge')
+      expect(bRow.userId).toBe(p('u-br-b'))
+      expect(bRow.name).toBe('B bridge')
+    })
+
+    it("ignores any client-supplied deviceType and always sets 'bridge'", async () => {
+      await createUserAndSession(p('u-br-spoof'), p('tok-br-spoof'))
+
+      // deviceType is not part of the route body schema, so a client attempt is dropped by
+      // validation-stripping and the server still fixes device_type='bridge'.
+      const response = await registerBridge(p('tok-br-spoof'), { nodeId: bridgeNodeId, deviceType: 'normal' })
+      expect(response.status).toBe(200)
+      expect((await response.json()).deviceType).toBe('bridge')
+
+      const [row] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.userId, p('u-br-spoof')))
+      expect(row.deviceType).toBe('bridge')
+    })
+  })
 })

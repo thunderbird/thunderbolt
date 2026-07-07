@@ -149,6 +149,20 @@ describe('powersync upload gate (applyOperation)', () => {
       expect(rows[0].nodeIdAttestedAt).toBeNull()
     })
 
+    it('REFUSES to create a devices row in the reserved bridge- id namespace (squat vector)', async () => {
+      // The bridge- id namespace is server-owned (POST /devices/bridge). A client upload must not
+      // be able to pre-create a row there, or it could squat another account's deterministic
+      // bridge id and block that account's later registration.
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'devices', id: 'bridge-deadbeef', data: { name: 'Squat' } },
+        userId,
+      )
+      expect(ok).toBe(false)
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'bridge-deadbeef'))
+      expect(rows).toHaveLength(0)
+    })
+
     it('updates an existing row on conflict (upsert)', async () => {
       await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-up', data: { title: 'First' } }, userId)
       await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-up', data: { title: 'Second' } }, userId)

@@ -38,6 +38,16 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
 /** Tables that cannot be deleted via PowerSync upload — must use dedicated API endpoints. */
 const uploadDenyDelete = new Set<PowerSyncTableName>(['devices'])
 
+/**
+ * The `bridge-${sha256(userId:nodeId)}` device id namespace is derived and written exclusively by
+ * the server (registerBridgeDevice / POST /devices/bridge). A raw client upload sets `user_id` to
+ * itself but `id` freely, so without this guard a client could pre-create a row at a victim's
+ * deterministic bridge id and squat it (the victim's later upsert would conflict on a foreign row
+ * and fail). Reserving the prefix from all client ops keeps bridge rows server-owned.
+ */
+const isReservedDeviceId = (tableName: PowerSyncTableName, id: string) =>
+  tableName === 'devices' && id.startsWith('bridge-')
+
 type PowerSyncOperation = {
   op: 'PUT' | 'PATCH' | 'DELETE'
   type: string
@@ -94,6 +104,10 @@ export const applyOperation = async (
   const pkColumn = powersyncPkColumn[tableName]
   const conflictTarget = powersyncConflictTarget[tableName]
   if (!table || !dbNameToKey || !pkColumn || !conflictTarget) {
+    return false
+  }
+
+  if (isReservedDeviceId(tableName, op.id)) {
     return false
   }
 

@@ -51,6 +51,13 @@ const settingsSchema = z
     betterAuthUrl: z.string().default('http://localhost:8000'),
     betterAuthSecret: z.string().min(1),
 
+    // Device Authorization Grant (RFC 8628) — used by the `thunderbolt` CLI to log in
+    // headless. `deviceAuthExpiresIn` is how long the device/user code stays valid before
+    // the CLI must restart the flow; `deviceAuthInterval` is the minimum client polling
+    // gap. Better Auth time strings ('30m', '5s', '1h'). Defaults follow RFC 8628 §3.2.
+    deviceAuthExpiresIn: z.string().default('30m'),
+    deviceAuthInterval: z.string().default('5s'),
+
     // General settings
     logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
     port: z.coerce.number().default(8000),
@@ -177,6 +184,8 @@ const parseSettings = (): Settings => {
     samlCert: process.env.SAML_CERT || '',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
+    deviceAuthExpiresIn: process.env.DEVICE_AUTH_EXPIRES_IN || '30m',
+    deviceAuthInterval: process.env.DEVICE_AUTH_INTERVAL || '5s',
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',

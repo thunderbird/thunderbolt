@@ -59,6 +59,8 @@ const powersyncSettings: Settings = {
   oidcDiscoveryUrl: '',
   betterAuthUrl: 'http://localhost:8000',
   betterAuthSecret,
+  deviceAuthExpiresIn: '30m',
+  deviceAuthInterval: '5s',
   e2eeEnabled: true,
   rateLimitEnabled: false,
   swaggerEnabled: false,

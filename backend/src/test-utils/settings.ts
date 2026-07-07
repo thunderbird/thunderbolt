@@ -33,6 +33,8 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   samlCert: '',
   betterAuthUrl: 'http://localhost:8000',
   betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
+  deviceAuthExpiresIn: '30m',
+  deviceAuthInterval: '5s',
   logLevel: 'INFO' as const,
   port: 8000,
   appUrl: 'http://localhost:1420',

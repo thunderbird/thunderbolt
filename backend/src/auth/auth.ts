@@ -21,7 +21,8 @@ import { getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { anonymous, bearer, emailOTP } from 'better-auth/plugins'
+import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
+import { apiKey } from '@better-auth/api-key'
 import { sso } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
@@ -349,6 +350,27 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
       }),
+      // Device Authorization Grant (RFC 8628) — lets the headless `thunderbolt` CLI log in:
+      // it requests a device+user code, the user approves at `${appUrl}/device`, then polls
+      // /device/token, which returns the account's session token as `access_token`. Turning
+      // that into a credential the CLI can replay (this stack runs bearer with requireSignature,
+      // so the raw token is not directly usable as `Authorization: Bearer`) is the CLI-login
+      // phase's job. verificationUri is derived from appUrl so self-hosters point their own
+      // frontend without any hardcoded host.
+      deviceAuthorization({
+        // Validated at runtime by the plugin's own time-string schema; the cast just
+        // narrows the env-derived string to Better Auth's TimeString literal type.
+        expiresIn: settings.deviceAuthExpiresIn as TimeString,
+        interval: settings.deviceAuthInterval as TimeString,
+        verificationUri: `${settings.appUrl}/device`,
+      }),
+      // API keys (PATs) for zero-human CI / self-host. enableSessionForAPIKeys mocks a session
+      // for the key's owner when an `x-api-key` header is present, so a key authenticates as the
+      // account that created it — the escape hatch when the interactive device grant can't run.
+      // The plugin's per-key rate limit defaults to 10 requests/day, which is unusable for
+      // automation; disable it and rely on the account/IP-level limits already in this stack.
+      // A leaked PAT is mitigated by revoking the key (same posture as a compromised device).
+      apiKey({ enableSessionForAPIKeys: true, rateLimit: { enabled: false } }),
       // Anonymous plugin is operator-gated: register only when AUTH_ALLOW_ANONYMOUS=true.
       // Otherwise /v1/api/auth/sign-in/anonymous returns 404 — defense-in-depth against
       // a malicious client bypassing the frontend `VITE_AUTH_ENABLE_ANONYMOUS` overlay.

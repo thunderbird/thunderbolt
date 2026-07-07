@@ -162,6 +162,13 @@
       "when": 1783438243625,
       "tag": "0022_bizarre_zzzax",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783439554245,
+      "tag": "0023_dry_quasimodo",
+      "breakpoints": true
     }
   ]
 }

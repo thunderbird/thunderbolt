@@ -47,6 +47,7 @@ import {
   NoSuchToolError,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
+  smoothStream,
   stepCountIs,
   streamText,
   UnsupportedFunctionalityError,
@@ -57,6 +58,8 @@ import {
 import { type MCPClient } from '@ai-sdk/mcp'
 import type { NamedMCPClient } from '@/lib/mcp-provider'
 import { isClosedConnectionError } from '@/lib/mcp-errors'
+import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
+import { detectStreamChunk } from './smooth-chunking'
 import { createMessageMetadata } from './message-metadata'
 
 /**
@@ -612,6 +615,15 @@ export const aiFetchStreamingResponse = async ({
         tools: supportsTools ? (toolset as ToolSet) : undefined,
         stopWhen: stepCountIs(maxSteps),
         providerOptions,
+
+        // Re-pace the model's text/reasoning deltas to a steady word-by-word
+        // cadence (claude.ai-style fluid streaming) instead of surfacing whole
+        // provider/network chunks as large jumps. smoothStream only affects
+        // delivery timing — tool calls, step boundaries, and onFinish are
+        // untouched — and drains any buffered text fully before the stream ends.
+        // `detectStreamChunk` keeps latin word-by-word but bounds space-free runs
+        // (CJK, URLs, minified JSON) so they stream instead of buffering to the end.
+        experimental_transform: smoothStream({ chunking: detectStreamChunk, delayInMs: smoothStreamWordDelayMs }),
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
           if (isFinalStep(steps.length, maxSteps)) {

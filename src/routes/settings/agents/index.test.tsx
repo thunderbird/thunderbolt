@@ -128,8 +128,9 @@ describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () =
 
   // Renders the authed page, opens the Add dialog, and types a name + iroh ticket so the
   // submit lands on the iroh transport. `loadAppNodeId` keeps the pairing panel off the
-  // wasm client; `selfEnrollIroh` is the injected enrollment seam.
-  const openAddIrohAgent = async (selfEnrollIroh: () => Promise<void>) => {
+  // wasm client; `enrollIroh` is the injected transparent-enrollment seam (self-enroll +
+  // bridge registration).
+  const openAddIrohAgent = async (enrollIroh: (bridge: { target: string; name: string }) => Promise<void>) => {
     const authClient = createMockAuthClient({ session: authedSession })
     const TestProvider = createTestProvider({ authClient })
     const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -143,11 +144,7 @@ describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () =
       </TestProvider>
     )
     render(
-      <AgentsSettingsPage
-        isStandalone={offTauri}
-        loadAppNodeId={async () => appNodeId}
-        selfEnrollIroh={selfEnrollIroh}
-      />,
+      <AgentsSettingsPage isStandalone={offTauri} loadAppNodeId={async () => appNodeId} enrollIroh={enrollIroh} />,
       { wrapper: Wrapper },
     )
     fireEvent.click(screen.getByRole('button', { name: /add custom agent/i }))
@@ -155,25 +152,29 @@ describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () =
     fireEvent.change(screen.getByPlaceholderText(/paste an iroh ticket/i), { target: { value: irohTarget } })
   }
 
-  it('self-enrolls this app for same-account auto-trust when adding an iroh agent', async () => {
-    const selfEnrollIroh = mock(async () => {})
-    await openAddIrohAgent(selfEnrollIroh)
+  it('enrolls this app and registers the bridge (with its target + name) when adding an iroh agent', async () => {
+    const enrollIroh = mock(async () => {})
+    await openAddIrohAgent(enrollIroh)
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
       await getClock().runAllAsync()
     })
 
-    expect(selfEnrollIroh).toHaveBeenCalledTimes(1)
+    // The wiring hands the bridge's dialed target + name to the enrollment seam; the seam's
+    // two POSTs (self-enroll + device_type='bridge' registration) are covered in
+    // iroh-enrollment.test.ts.
+    expect(enrollIroh).toHaveBeenCalledTimes(1)
+    expect(enrollIroh).toHaveBeenCalledWith({ target: irohTarget, name: 'Laptop Bridge' })
     const created = await getAllAgents(getDb())
     expect(created.some((agent) => agent.url === irohTarget)).toBe(true)
   })
 
   it('still creates the agent and keeps the manual pairing panel when enrollment fails', async () => {
-    const selfEnrollIroh = mock(async () => {
+    const enrollIroh = mock(async () => {
       throw new Error('no account (standalone)')
     })
-    await openAddIrohAgent(selfEnrollIroh)
+    await openAddIrohAgent(enrollIroh)
     // The manual `thunderbolt iroh allow` one-liner is present as the fallback path.
     expect(screen.getByTestId('iroh-pairing-panel')).toBeInTheDocument()
 
@@ -189,8 +190,8 @@ describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () =
 
   it('does not block the add on a slow (never-resolving) enrollment', async () => {
     // Enrollment that never settles — a fire-and-forget add must still complete and close.
-    const selfEnrollIroh = mock(() => new Promise<void>(() => {}))
-    await openAddIrohAgent(selfEnrollIroh)
+    const enrollIroh = mock(() => new Promise<void>(() => {}))
+    await openAddIrohAgent(enrollIroh)
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))

@@ -5,10 +5,22 @@
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import type { HttpClient } from '@/contexts'
 
-/** The slice of the authenticated app client the self-enroll call needs. Narrowed to
+/** The slice of the authenticated app client the enrollment calls need. Narrowed to
  *  `post` so tests can pass a tiny fake instead of a whole HttpClient (DI over module
  *  mocking). The real client attaches the bearer token + X-Device-ID automatically. */
-type SelfEnrollClient = Pick<HttpClient, 'post'>
+type EnrollClient = Pick<HttpClient, 'post'>
+
+/** The bridge being added, as the user typed it: the ticket / bare NodeId the transport
+ *  dials, plus the human name shown in the devices list. Also the shape the add-page
+ *  enrollment DI seams pass, so they stay in lockstep with {@link enrollIrohBridge}. */
+export type IrohBridge = {
+  /** The `EndpointTicket` or bare NodeId held in the agent/server `url` — the exact
+   *  string the iroh transport dials. Passed to the backend unparsed (see
+   *  {@link enrollIrohBridge}). */
+  target: string
+  /** Human name for the bridge device (the agent/server name). */
+  name: string
+}
 
 /**
  * Self-enroll THIS app's iroh dialer NodeId into the account's device allowlist, so a
@@ -29,9 +41,44 @@ type SelfEnrollClient = Pick<HttpClient, 'post'>
  * @param loadNodeId Test/DI seam for reading this app's NodeId; production lazy-loads the wasm.
  */
 export const selfEnrollIrohNodeId = async (
-  httpClient: SelfEnrollClient,
+  httpClient: EnrollClient,
   loadNodeId: () => Promise<string> = irohClientNodeId,
 ): Promise<void> => {
   const nodeId = await loadNodeId()
   await httpClient.post('devices/me/node-id', { json: { nodeId } })
+}
+
+/**
+ * Transparent same-account enrollment (design decision D4) fired when the user adds an
+ * iroh ACP agent or MCP-via-bridge in the app. Two writes, in order:
+ *
+ * 1. **Self-enroll this app's dialer NodeId** ({@link selfEnrollIrohNodeId}) so a
+ *    same-account bridge auto-allows it — the write that actually grants access.
+ * 2. **Register the bridge itself** as a `device_type='bridge'` device via
+ *    `POST /devices/bridge`, so it appears in the devices list (badge) and is revocable.
+ *    `device_type` is server-managed (deny-listed from PowerSync upload), so a bridge can
+ *    only be created through this backend route, never raw sync.
+ *
+ * The bridge's `target` (the ticket / bare NodeId the transport dials) is sent to the
+ * backend **unparsed** — the browser has no iroh ticket parser and the wasm client dials
+ * either form as-is, so the transport does no parsing either. The stored `node_id` is only
+ * ever read back as the account allowlist (harmless: no peer can dial as the bridge's key
+ * without its ed25519 private key), so passing the ticket through grants nothing extra.
+ *
+ * Optimistic and throwing on purpose: callers run it best-effort and, on any failure
+ * (Standalone / no account / offline), fall back to the manual `thunderbolt iroh allow`
+ * one-liner shown in the add dialog. Enrollment must never block the add. Step 2 runs only
+ * after step 1 succeeds — a failed self-enroll skips the (now pointless) bridge write.
+ *
+ * @param httpClient Authenticated app client (bearer + X-Device-ID attached by the client).
+ * @param bridge The iroh target + name of the bridge being added.
+ * @param loadNodeId Test/DI seam for reading this app's NodeId; production lazy-loads the wasm.
+ */
+export const enrollIrohBridge = async (
+  httpClient: EnrollClient,
+  bridge: IrohBridge,
+  loadNodeId: () => Promise<string> = irohClientNodeId,
+): Promise<void> => {
+  await selfEnrollIrohNodeId(httpClient, loadNodeId)
+  await httpClient.post('devices/bridge', { json: { nodeId: bridge.target.trim(), name: bridge.name } })
 }

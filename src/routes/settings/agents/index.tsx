@@ -18,7 +18,7 @@ import { useDatabase } from '@/contexts'
 import { useAuth, useHttpClient } from '@/contexts'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
-import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
+import { enrollIrohBridge, type IrohBridge } from '@/lib/iroh-enrollment'
 import type { Agent } from '@/types/acp'
 
 type AgentsSettingsPageProps = {
@@ -31,9 +31,10 @@ type AgentsSettingsPageProps = {
    *  dialog's pairing panel and used by the transparent same-account enrollment.
    *  Production omits and lazy-loads the wasm client. */
   loadAppNodeId?: () => Promise<string>
-  /** Test/DI override for the transparent same-account enrollment (D4) fired when an
-   *  iroh agent is added. Production omits and binds the authenticated client. */
-  selfEnrollIroh?: () => Promise<void>
+  /** Test/DI override for the transparent same-account enrollment (D4) fired when an iroh
+   *  agent is added: self-enrolls this app's dialer NodeId AND registers the bridge itself
+   *  as a `device_type='bridge'` device. Production omits and binds the authenticated client. */
+  enrollIroh?: (bridge: IrohBridge) => Promise<void>
 }
 
 /**
@@ -43,11 +44,7 @@ type AgentsSettingsPageProps = {
  * ACP endpoints. The composition lives in `useAllAgents` — this page is just
  * a thin orchestrator wiring DAL writes to UI events.
  */
-export default function AgentsSettingsPage({
-  isStandalone,
-  loadAppNodeId,
-  selfEnrollIroh,
-}: AgentsSettingsPageProps = {}) {
+export default function AgentsSettingsPage({ isStandalone, loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) {
   const db = useDatabase()
   const agents = useAllAgents()
   const authClient = useAuth()
@@ -57,9 +54,10 @@ export default function AgentsSettingsPage({
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
   // Transparent same-account enrollment (D4): self-enroll this app's dialer NodeId so a
-  // same-account bridge auto-allows it. Bound to the authenticated client here; tests
-  // inject the seam. `loadAppNodeId` (undefined in prod) falls through to the wasm reader.
-  const enrollIroh = selfEnrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId))
+  // same-account bridge auto-allows it, and register the bridge itself as a device. Bound
+  // to the authenticated client here; tests inject the seam. `loadAppNodeId` (undefined in
+  // prod) falls through to the wasm reader.
+  const runEnroll = enrollIroh ?? ((bridge) => enrollIrohBridge(httpClient, bridge, loadAppNodeId))
 
   const [dialogOpen, setDialogOpen] = useState(false)
   // `null` ⇒ Add mode; an Agent ⇒ Edit mode. The dialog receives a `key`
@@ -124,12 +122,13 @@ export default function AgentsSettingsPage({
       })
     }
     if (payload.transport === 'iroh' && currentUserId) {
-      // Transparent self-enroll (D4) so a same-account bridge auto-allows this app. Fire and
-      // forget: it must never block or gate the add (a first-time wasm load + POST can be
-      // slow), and on failure (Standalone / no account / offline) the user falls back to the
-      // manual `thunderbolt iroh allow` one-liner shown in the dialog.
-      void enrollIroh().catch((error) => {
-        console.error('iroh self-enroll failed; using manual pairing fallback', error)
+      // Transparent enrollment (D4) so a same-account bridge auto-allows this app and the
+      // bridge shows up as a manageable device. Fire and forget: it must never block or gate
+      // the add (a first-time wasm load + POST can be slow), and on failure (Standalone / no
+      // account / offline) the user falls back to the manual `thunderbolt iroh allow`
+      // one-liner shown in the dialog.
+      void runEnroll({ target: payload.url, name: payload.name }).catch((error) => {
+        console.error('iroh transparent enrollment failed; using manual pairing fallback', error)
       })
     }
   }

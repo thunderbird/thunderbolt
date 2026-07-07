@@ -36,7 +36,7 @@ const neverResolves = (() => new Promise<MCPClient>(() => {})) as (
 
 // A real HttpClientProvider (DI, no module mock) so the page's useHttpClient() resolves.
 // The default mock client 200s every request — the enrollment-specific tests inject their
-// own `selfEnrollIroh` seam instead of asserting on this client.
+// own `enrollIroh` seam instead of asserting on this client.
 const mockHttpClient = createMockHttpClient()
 
 const McpProviderWrapper = ({ children }: { children: ReactNode }) =>
@@ -357,24 +357,28 @@ describe('McpServersPage iroh add flow', () => {
     expect(created[0]?.name).toBe('Laptop Bridge')
   })
 
-  it('self-enrolls this app for same-account auto-trust when adding an iroh bridge', async () => {
-    const selfEnrollIroh = mock(async () => {})
-    await openIrohDialog({ selfEnrollIroh })
+  it('enrolls this app and registers the bridge (with its target + name) when adding an iroh bridge', async () => {
+    const enrollIroh = mock(async () => {})
+    await openIrohDialog({ enrollIroh })
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Add Server' }))
       await getClock().runAllAsync()
     })
 
-    expect(selfEnrollIroh).toHaveBeenCalledTimes(1)
+    // The wiring hands the bridge's dialed target + name to the enrollment seam; the seam's
+    // two POSTs (self-enroll + device_type='bridge' registration) are covered in
+    // iroh-enrollment.test.ts.
+    expect(enrollIroh).toHaveBeenCalledTimes(1)
+    expect(enrollIroh).toHaveBeenCalledWith({ target: irohTarget, name: 'Laptop Bridge' })
   })
 
   it('still creates the server and keeps the manual pairing panel when enrollment fails', async () => {
     const db = getDb()
-    const selfEnrollIroh = mock(async () => {
+    const enrollIroh = mock(async () => {
       throw new Error('no account (standalone)')
     })
-    await openIrohDialog({ selfEnrollIroh })
+    await openIrohDialog({ enrollIroh })
     // The manual `thunderbolt iroh allow` one-liner is present as the fallback path.
     expect(screen.getByTestId('iroh-pairing-panel')).toBeInTheDocument()
 
@@ -392,8 +396,8 @@ describe('McpServersPage iroh add flow', () => {
   it('does not block the add on a slow (never-resolving) enrollment', async () => {
     const db = getDb()
     // Enrollment that never settles — a fire-and-forget add must still complete and close.
-    const selfEnrollIroh = mock(() => new Promise<void>(() => {}))
-    await openIrohDialog({ selfEnrollIroh })
+    const enrollIroh = mock(() => new Promise<void>(() => {}))
+    await openIrohDialog({ enrollIroh })
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Add Server' }))

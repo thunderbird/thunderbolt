@@ -15,9 +15,10 @@ import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/s
 import { testAcpConnection } from '@/acp'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useDatabase } from '@/contexts'
-import { useAuth } from '@/contexts'
+import { useAuth, useHttpClient } from '@/contexts'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 import type { Agent } from '@/types/acp'
 
 type AgentsSettingsPageProps = {
@@ -26,6 +27,13 @@ type AgentsSettingsPageProps = {
    *  without mocking the shared `@/lib/platform` module (which would leak
    *  across files — see `docs/development/testing.md`). */
   isStandalone?: () => boolean
+  /** Test/DI override for reading this app's iroh NodeId. Forwarded to the add
+   *  dialog's pairing panel and used by the transparent same-account enrollment.
+   *  Production omits and lazy-loads the wasm client. */
+  loadAppNodeId?: () => Promise<string>
+  /** Test/DI override for the transparent same-account enrollment (D4) fired when an
+   *  iroh agent is added. Production omits and binds the authenticated client. */
+  selfEnrollIroh?: () => Promise<void>
 }
 
 /**
@@ -35,14 +43,23 @@ type AgentsSettingsPageProps = {
  * ACP endpoints. The composition lives in `useAllAgents` — this page is just
  * a thin orchestrator wiring DAL writes to UI events.
  */
-export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageProps = {}) {
+export default function AgentsSettingsPage({
+  isStandalone,
+  loadAppNodeId,
+  selfEnrollIroh,
+}: AgentsSettingsPageProps = {}) {
   const db = useDatabase()
   const agents = useAllAgents()
   const authClient = useAuth()
+  const httpClient = useHttpClient()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  // Transparent same-account enrollment (D4): self-enroll this app's dialer NodeId so a
+  // same-account bridge auto-allows it. Bound to the authenticated client here; tests
+  // inject the seam. `loadAppNodeId` (undefined in prod) falls through to the wasm reader.
+  const enrollIroh = selfEnrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId))
 
   const [dialogOpen, setDialogOpen] = useState(false)
   // `null` ⇒ Add mode; an Agent ⇒ Edit mode. The dialog receives a `key`
@@ -89,23 +106,32 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
         url: payload.url,
         description: payload.description,
       })
-      return
+    } else {
+      if (!currentUserId) {
+        // Anonymous sessions can't sync custom agents — the page hides the
+        // dialog trigger in that case, but the guard keeps the write safe.
+        return
+      }
+      await createAgent(db, {
+        id: uuidv7(),
+        name: payload.name,
+        type: 'remote-acp',
+        transport: payload.transport,
+        url: payload.url,
+        description: payload.description,
+        enabled: 1,
+        userId: currentUserId,
+      })
     }
-    if (!currentUserId) {
-      // Anonymous sessions can't sync custom agents — the page hides the
-      // dialog trigger in that case, but the guard keeps the write safe.
-      return
+    if (payload.transport === 'iroh' && currentUserId) {
+      // Transparent self-enroll (D4) so a same-account bridge auto-allows this app. Fire and
+      // forget: it must never block or gate the add (a first-time wasm load + POST can be
+      // slow), and on failure (Standalone / no account / offline) the user falls back to the
+      // manual `thunderbolt iroh allow` one-liner shown in the dialog.
+      void enrollIroh().catch((error) => {
+        console.error('iroh self-enroll failed; using manual pairing fallback', error)
+      })
     }
-    await createAgent(db, {
-      id: uuidv7(),
-      name: payload.name,
-      type: 'remote-acp',
-      transport: payload.transport,
-      url: payload.url,
-      description: payload.description,
-      enabled: 1,
-      userId: currentUserId,
-    })
   }
 
   const handleDialogOpenChange = (next: boolean) => {
@@ -155,6 +181,7 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
         onSubmit={handleSubmit}
         editingAgent={editingAgent}
         testAcpConnection={testAcpConnection}
+        loadAppNodeId={loadAppNodeId}
       />
     </div>
   )

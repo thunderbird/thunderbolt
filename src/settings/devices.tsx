@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import dayjs from 'dayjs'
 import { SectionCard } from '@/components/ui/section-card'
-import { CheckCircle2, Link2, Loader2, QrCode, Smartphone, Trash2 } from 'lucide-react'
+import { CheckCircle2, Link2, Loader2, QrCode, Smartphone, Trash2, Waypoints } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -165,15 +165,25 @@ export default function DevicesSettingsPage() {
           {visibleDevices.map((device) => {
             const isCurrent = device.id === currentDeviceId
             const isRevoked = device.revokedAt != null
+            const isBridge = device.deviceType === 'bridge'
             return (
               <Card key={device.id}>
                 <CardContent>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <Smartphone className="size-5 shrink-0 text-muted-foreground" />
+                      {isBridge ? (
+                        <Waypoints className="size-5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Smartphone className="size-5 shrink-0 text-muted-foreground" />
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium truncate">{device.name}</span>
+                          {isBridge && (
+                            <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
+                              Bridge
+                            </span>
+                          )}
                           {isCurrent && (
                             <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
                               This Device
@@ -185,7 +195,11 @@ export default function DevicesSettingsPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground">Last seen: {formatLastSeen(device.lastSeen)}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {isBridge
+                            ? 'Accepts connections from your devices'
+                            : `Last seen: ${formatLastSeen(device.lastSeen)}`}
+                        </p>
                       </div>
                     </div>
                     {!isRevoked && !isCurrent && (

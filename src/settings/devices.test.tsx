@@ -11,7 +11,7 @@ import { createMockHttpClient } from '@/test-utils/http-client'
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
-import { act, cleanup, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
@@ -75,5 +75,39 @@ describe('DevicesSettingsPage reactivity', () => {
     })
 
     expect(screen.getByText('Revoked')).toBeInTheDocument()
+  })
+
+  it('distinguishes a bridge device and keeps its revoke path available', async () => {
+    const db = getDb()
+
+    await db.insert(devicesTable).values([
+      { id: deviceId1, userId: 'user-1', name: 'This Device', lastSeen: new Date().toISOString(), trusted: 1 },
+      {
+        id: deviceId2,
+        userId: 'user-1',
+        name: 'Home Bridge',
+        lastSeen: new Date().toISOString(),
+        trusted: 1,
+        deviceType: 'bridge',
+      },
+    ])
+
+    renderWithReactivity(<DevicesSettingsPage />, {
+      tables: ['devices'],
+      wrapper: HttpClientWrapper,
+    })
+
+    await waitForElement(() => screen.queryByText('Home Bridge'))
+    expect(screen.getByText('Bridge')).toBeInTheDocument()
+    expect(screen.getByText('Accepts connections from your devices')).toBeInTheDocument()
+
+    // A bridge is just a device: the non-current bridge owns the only revoke button, it is enabled,
+    // and clicking it opens the revoke confirmation dialog for that bridge.
+    const revokeButton = screen.getByRole('button', { name: /Revoke/ })
+    expect(revokeButton).toBeEnabled()
+
+    fireEvent.click(revokeButton)
+    await waitForElement(() => screen.queryByText('Revoke this device?'))
+    expect(screen.getByText('Revoke this device?')).toBeInTheDocument()
   })
 })

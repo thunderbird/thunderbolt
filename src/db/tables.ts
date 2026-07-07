@@ -275,6 +275,12 @@ export const devicesTable = sqliteTable('devices', {
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),
+  // Discriminates a normal device from an iroh bridge device (ACP/MCP). Mirrors the backend
+  // `device_type` enum ('normal' | 'bridge', default 'normal'). Nullable here: this is the
+  // frontend half of the two-PR synced-column deploy — the `SELECT *` devices sync rule only
+  // replicates it once backend migration 0022 deploys and PowerSync Cloud rules refresh. Until
+  // then it stays null cross-device and reads as a normal device, never errors.
+  deviceType: text('device_type', { enum: ['normal', 'bridge'] }),
   // iroh P2P endpoint identity. Set only via the canary-gated backend route, then synced down.
   // Deploy ordering: these ship in the same PR as backend migration 0021, but the `SELECT *`
   // devices sync rule only replicates them once that migration deploys and PowerSync Cloud rules

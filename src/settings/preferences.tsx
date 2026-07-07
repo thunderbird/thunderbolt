@@ -591,13 +591,19 @@ export default function PreferencesSettingsPage() {
           <div className="flex flex-col gap-2">
             <ModificationIndicator
               as="label"
+              id="localization-location-label"
               className="text-sm font-medium"
               hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
               onReset={handleResetLocation}
             >
               Location
             </ModificationIndicator>
-            <LocationSearchCombobox value={locationName.value} onSelect={handleSelectLocation} aria-label="Location" />
+            <LocationSearchCombobox
+              value={locationName.value}
+              onSelect={handleSelectLocation}
+              id="localization-location-trigger"
+              aria-labelledby="localization-location-label localization-location-trigger"
+            />
             <p className="text-sm text-muted-foreground">Enables location-based responses</p>
           </div>
 
@@ -740,6 +746,7 @@ export default function PreferencesSettingsPage() {
             <div className="flex-1">
               <ModificationIndicator
                 as="label"
+                id="localization-currency-label"
                 className="text-sm font-medium"
                 hasModifications={currency.isModified}
                 onReset={() => handleResetLocalizationSetting('currency')}
@@ -755,7 +762,8 @@ export default function PreferencesSettingsPage() {
                 trackEvent('settings_localization_update')
               }}
               displayValue={currencyDisplayValue || undefined}
-              aria-label="Currency"
+              id="localization-currency-trigger"
+              aria-labelledby="localization-currency-label localization-currency-trigger"
               placeholder="Loading..."
               searchPlaceholder="Search currencies..."
               loading={unitsOptionsLoading}

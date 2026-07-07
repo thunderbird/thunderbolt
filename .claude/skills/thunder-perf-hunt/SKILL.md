@@ -69,7 +69,7 @@ Scripts live in `scripts/` under this skill dir; run them from the repo root wit
 ## Workflow (follow in order — copy this checklist)
 
 ### 1. SETUP
-- Ensure browsers installed (`bunx playwright install chromium firefox` if `~/.cache/ms-playwright` lacks them).
+- Ensure browsers installed (if `~/.cache/ms-playwright` lacks them, run `bun node_modules/playwright-core/cli.js install chromium firefox` — **not** `bunx playwright`; see Prerequisites for why).
 - Choose mode. On a branch/PR: `diff` using the changed files (`git diff --name-only main...HEAD`). On explicit "audit everything": `sweep`. For a single surface or a re-measure: `focus`.
 - Choose browsers: default both (`chromium,firefox`); Chromium-only for a quick pass.
 

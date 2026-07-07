@@ -46,8 +46,10 @@ export const bootStack = async (repoRoot: string): Promise<BootedStack> => {
   const backend = Bun.spawn(['bun', 'src/index.ts'], {
     cwd: `${repoRoot}/backend`,
     env: { ...process.env, ...backendEnv(secret) },
-    stdout: 'pipe',
-    stderr: 'pipe',
+    // Readiness is polled via waitForUrl, and nothing consumes these streams —
+    // 'pipe' would let the ~64KB OS buffer fill and hang the chatty dev server.
+    stdout: 'ignore',
+    stderr: 'ignore',
   })
   const backendOk = await waitForUrl(backendHealth, 120_000)
   if (!backendOk) {
@@ -58,8 +60,10 @@ export const bootStack = async (repoRoot: string): Promise<BootedStack> => {
   const frontend = Bun.spawn(['bun', 'run', 'dev', '--', '--port', String(PERF_FRONTEND_PORT), '--strictPort'], {
     cwd: repoRoot,
     env: { ...process.env, ...frontendEnv() },
-    stdout: 'pipe',
-    stderr: 'pipe',
+    // Readiness is polled via waitForUrl, and nothing consumes these streams —
+    // 'pipe' would let the ~64KB OS buffer fill and hang the chatty dev server.
+    stdout: 'ignore',
+    stderr: 'ignore',
   })
   const frontendOk = await waitForUrl(PERF_BASE_URL, 120_000)
   if (!frontendOk) {

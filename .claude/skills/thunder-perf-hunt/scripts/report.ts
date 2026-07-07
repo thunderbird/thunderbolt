@@ -101,7 +101,9 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
     }
 
     for (const h of r.heap) {
-      if (h.deltaBytes < HEAP_LEAK_BYTES && !(h.detachedNodesDelta && h.detachedNodesDelta > 0)) continue
+      // The byte delta is the real leak signal; the DOM-node delta is only
+      // context (live node counts fluctuate, so >0 alone over-reports).
+      if (h.deltaBytes < HEAP_LEAK_BYTES) continue
       push({
         id: slug(`leak-${h.label}-${where}`),
         category: 'memory-leak',
@@ -110,7 +112,7 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
         confidence: 'low',
         browsers: [r.browser],
         scenarios: [r.scenario],
-        evidence: `heap ${(h.beforeBytes / 1e6).toFixed(1)}→${(h.afterBytes / 1e6).toFixed(1)}MB, detached nodes Δ=${h.detachedNodesDelta ?? 'n/a'}`,
+        evidence: `heap ${(h.beforeBytes / 1e6).toFixed(1)}→${(h.afterBytes / 1e6).toFixed(1)}MB, DOM nodes Δ=${h.domNodesDelta ?? 'n/a'}`,
         repro: `bun scripts/run.ts --mode focus --focus ${r.scenario} --browsers chromium (heap delta)`,
       })
     }

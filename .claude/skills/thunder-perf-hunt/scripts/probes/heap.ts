@@ -57,7 +57,7 @@ export const collectHeapDelta = async (
       beforeBytes: before.bytes,
       afterBytes: after.bytes,
       deltaBytes: after.bytes - before.bytes,
-      detachedNodesDelta: after.nodes - before.nodes,
+      domNodesDelta: after.nodes - before.nodes,
     }
   } catch {
     return null

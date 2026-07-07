@@ -101,8 +101,12 @@ export type HeapDelta = {
   beforeBytes: number
   afterBytes: number
   deltaBytes: number
-  /** Detached DOM node count delta, when measurable via CDP. */
-  detachedNodesDelta?: number
+  /**
+   * Total live DOM node count delta (after − before), when measurable via CDP.
+   * Informational only — a positive value doesn't imply leaked/detached nodes,
+   * since live node counts fluctuate naturally across a navigate cycle.
+   */
+  domNodesDelta?: number
 }
 
 export type A11yViolation = {

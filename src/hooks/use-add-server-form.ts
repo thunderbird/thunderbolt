@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { decideTestConnectionResult, type TestConnectionResult } from '@/lib/mcp-auth/auth-decision'
+import {
+  decideTestConnectionResult,
+  type StoredCredentialType,
+  type TestConnectionResult,
+} from '@/lib/mcp-auth/auth-decision'
 import type { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import { isUnauthorizedError } from '@/lib/mcp-errors'
 import type { probeMcpServerTools } from '@/lib/mcp-connection-test'
@@ -55,16 +59,24 @@ type AddServerFormState = {
   token: string
   isTestingConnection: boolean
   testResult: TestConnectionResult | { kind: 'idle' }
-  /** Snapshot of url/transport/token at edit-open. Used to detect whether the
-   *  user changed a connection-affecting field, so the Save gate can skip the
-   *  fresh-probe requirement on a metadata-only edit (e.g. rename) where the
-   *  existing credential — including OAuth — is presumed valid. Null in Add mode. */
-  originalConnection: { url: string; transport: MCPTransportType; token: string } | null
+  /** Snapshot of url/transport/token/credentialType at edit-open. Used to detect
+   *  whether the user changed a connection-affecting field, so the Save gate can
+   *  skip the fresh-probe requirement on a metadata-only edit (e.g. rename) where
+   *  the existing credential — including OAuth — is presumed valid. `credentialType`
+   *  additionally lets the gate recognize a "clear bearer" edit, which can save
+   *  without a passing probe (removing auth from a still-protected server would
+   *  otherwise fail the probe and lock Save out). Null in Add mode. */
+  originalConnection: {
+    url: string
+    transport: MCPTransportType
+    token: string
+    credentialType: StoredCredentialType
+  } | null
 }
 
 type AddServerFormAction =
   | { type: 'open-dialog' }
-  | { type: 'open-edit-dialog'; server: McpServer; bearerToken: string | null }
+  | { type: 'open-edit-dialog'; server: McpServer; bearerToken: string | null; credentialType: StoredCredentialType }
   | { type: 'reset' }
   | { type: 'set-name'; value: string }
   | { type: 'set-url'; value: string; derivedName: string | null }
@@ -107,7 +119,7 @@ const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAc
         url,
         transport,
         token,
-        originalConnection: { url, transport, token },
+        originalConnection: { url, transport, token, credentialType: action.credentialType },
       }
     }
     case 'reset':
@@ -152,7 +164,7 @@ export type UseAddServerFormResult = {
   editingServerId: string | null
   openDialog: () => void
   /** Opens the dialog in Edit mode with all fields prefilled from the existing server. */
-  openEditDialog: (server: McpServer, bearerToken: string | null) => void
+  openEditDialog: (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => void
   /** Closes the dialog and clears all add-form state (Cancel / Escape / overlay). */
   resetAddDialog: () => void
   name: string
@@ -173,6 +185,13 @@ export type UseAddServerFormResult = {
    *  so a metadata-only edit can save without re-probing — important for OAuth
    *  servers, whose empty-token probe would classify as `needs-oauth`. */
   hasConnectionEdits: boolean
+  /** True when the user's only connection change is clearing a previously-stored
+   *  bearer token (URL/transport unchanged). Removing auth from a still-protected
+   *  server would fail an unauthenticated probe, which would otherwise leave Save
+   *  Changes disabled — so this signals the Save gate can waive the probe
+   *  requirement. The mutation already interprets a blank token + `originalCredentialType === 'bearer'`
+   *  as "delete the credential." False in Add mode. */
+  isClearingBearerOnly: boolean
   testConnection: () => Promise<void>
   /** Leaving the URL field probes immediately (unless the debounce already did). */
   handleUrlBlur: () => void
@@ -214,11 +233,11 @@ export const useAddServerForm = ({
   // its on-device bearer token (null for OAuth or no-cred). The auto-detect
   // effect will probe the prefilled URL after the standard 700ms debounce, so
   // the user must still pass Test Connection before saving — same gate as Add.
-  const openEditDialog = (server: McpServer, bearerToken: string | null) => {
+  const openEditDialog = (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => {
     probeIdRef.current += 1
     lastAutoTestedUrlRef.current = null
     onClearDialogError()
-    dispatch({ type: 'open-edit-dialog', server, bearerToken })
+    dispatch({ type: 'open-edit-dialog', server, bearerToken, credentialType })
   }
 
   // Closes the Add dialog and clears all add-form state. Bumps the probe id so an
@@ -375,6 +394,12 @@ export const useAddServerForm = ({
       state.url !== state.originalConnection.url ||
       state.transport !== state.originalConnection.transport ||
       state.token !== state.originalConnection.token,
+    isClearingBearerOnly:
+      !!state.originalConnection &&
+      state.originalConnection.credentialType === 'bearer' &&
+      state.token === '' &&
+      state.url === state.originalConnection.url &&
+      state.transport === state.originalConnection.transport,
     testConnection,
     handleUrlBlur,
     resolveServerName,

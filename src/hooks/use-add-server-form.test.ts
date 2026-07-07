@@ -5,6 +5,7 @@
 import '@/testing-library'
 import { getClock } from '@/testing-library'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import type { McpServer } from '@/types'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { generateServerName, useAddServerForm, type AddServerFormDeps } from './use-add-server-form'
@@ -13,6 +14,22 @@ const fakeFetch = (async () => new Response()) as unknown as FetchFn
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
 const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 })
+
+/** Build a fully-typed McpServer for edit-dialog tests without an `as never` escape hatch. */
+const makeMcpServer = (overrides: Partial<McpServer> = {}): McpServer => ({
+  id: 's1',
+  name: 'default',
+  type: 'http',
+  enabled: 1,
+  url: null,
+  command: null,
+  args: null,
+  createdAt: null,
+  updatedAt: null,
+  deletedAt: null,
+  userId: null,
+  ...overrides,
+})
 
 const makeDeps = (overrides: Partial<AddServerFormDeps> = {}): AddServerFormDeps => ({
   probeMcpServerTools: mock(async () => ['search']) as unknown as AddServerFormDeps['probeMcpServerTools'],
@@ -228,8 +245,9 @@ describe('useAddServerForm', () => {
 
     act(() =>
       result.current.openEditDialog(
-        { id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 } as never,
+        makeMcpServer({ id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
         'tok-1',
+        'bearer',
       ),
     )
     expect(result.current.hasConnectionEdits).toBe(false)
@@ -240,6 +258,45 @@ describe('useAddServerForm', () => {
 
     act(() => result.current.changeUrl('https://api.github.com/mcp/v2'))
     expect(result.current.hasConnectionEdits).toBe(true)
+  })
+
+  it('reports isClearingBearerOnly only when a stored bearer is cleared with URL/transport untouched', () => {
+    const { result } = renderForm(makeDeps())
+
+    // Bearer-authorized server: token is prefilled from mcp_secrets.
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        'tok-1',
+        'bearer',
+      ),
+    )
+    expect(result.current.isClearingBearerOnly).toBe(false)
+
+    // Clearing the bearer flips it — the Save gate must recognize this so
+    // removing auth from a still-protected server doesn't get stuck disabled.
+    act(() => result.current.changeToken(''))
+    expect(result.current.hasConnectionEdits).toBe(true)
+    expect(result.current.isClearingBearerOnly).toBe(true)
+
+    // Also changing the URL is no longer a bearer-only clear — it's a real edit.
+    act(() => result.current.changeUrl('https://api.github.com/mcp/v2'))
+    expect(result.current.isClearingBearerOnly).toBe(false)
+  })
+
+  it('does not report isClearingBearerOnly when the original credential was OAuth or none', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 's2', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        null,
+        'oauth',
+      ),
+    )
+    // OAuth is managed via the Authorize buttons, not the token field, so a
+    // blank token here has always been the state — nothing to "clear".
+    expect(result.current.isClearingBearerOnly).toBe(false)
   })
 
   it('hasConnectionEdits is true in Add mode (no original snapshot)', () => {

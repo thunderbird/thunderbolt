@@ -267,17 +267,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     commitServers((prev) => prev.filter((s) => s.id !== serverId))
   }
 
-  /** Apply a row patch from settings or PowerSync sync and reconcile the live
-   *  connection. Disabled → disconnect; disabled→enabled → connectServer (so
-   *  it coalesces with an in-flight initial connect via `connectsInFlight`);
-   *  already-enabled → reconnectServer, which closes the stale client and
-   *  redials with the new url/type plus freshly-read credentials (mcp_secrets
-   *  changes don't touch the row, so we always redial here even when fields
-   *  are unchanged). The in-flight-with-matching-url guard suppresses a second
-   *  createClient when an initial connect for the same target is already
-   *  underway — unless `forceRedial` is set, in which case we chain a
-   *  reconnect onto the in-flight connect so a credential update written by
-   *  the caller before this call lands on the live client. */
+  /** See the `MCPContextType.updateServer` JSDoc for the full contract. */
   const updateServer = async (server: MCPServer, options?: { forceRedial?: boolean }): Promise<void> => {
     const existing = serversRef.current.find((s) => s.id === server.id)
     if (!existing) {

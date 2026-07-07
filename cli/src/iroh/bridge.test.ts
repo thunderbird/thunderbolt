@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BridgeConfig } from '../agent/types.ts'
 import { redactArgv, type BridgeProc } from '../commands/bridge.ts'
+import type { AccountAllowlist } from './account-allowlist.ts'
 import { add } from './allowlist.ts'
 import {
   admitConnection,
@@ -27,7 +28,12 @@ import {
   createRateLimiter,
   handleConnection,
   handshake,
+  HEARTBEAT_INTERVAL_MS,
+  heartbeatTick,
+  isConnectionAllowed,
+  type OpenConnection,
   remoteKey,
+  startMembershipHeartbeat,
 } from './bridge.ts'
 
 /** UTF-8 bytes of a close reason, computed independently of `reasonBytes`. */
@@ -213,7 +219,7 @@ describe('handleConnection — the allowlist gate', () => {
     const incoming = { accept: async () => ({ connect: async () => connection }) } as unknown as Incoming
     const activeProcs = new Set<BridgeProc>()
 
-    await handleConnection(incoming, config, activeProcs, { release: () => {} }, 10)
+    await handleConnection(incoming, config, activeProcs, { release: () => {} }, { acceptTimeoutMs: 10 })
 
     expect(acceptBi).toHaveBeenCalledTimes(1)
     expect(activeProcs.size).toBe(0) // nothing spawned for an idle peer
@@ -331,5 +337,132 @@ describe('admitConnection — pre-handshake DoS gates', () => {
     await admitConnection(incoming, config, new Set(), { allow: () => true }, { tryAcquire: () => false, release: () => {} })
     expect(ignore).toHaveBeenCalledTimes(1)
     expect(accept).not.toHaveBeenCalled() // dropped before the handshake
+  })
+})
+
+/** A stub {@link AccountAllowlist} over a fixed trusted set, with an injectable refresh. */
+const fakeAllowlist = (trusted: Set<string>, refresh: () => Promise<void> = async () => {}): AccountAllowlist => ({
+  has: (id) => trusted.has(id),
+  refresh,
+})
+
+/** A stub open connection whose `close` is a spy, for heartbeat teardown assertions. */
+const fakeOpen = (remoteId: string): { open: OpenConnection; close: ReturnType<typeof mock> } => {
+  const close = mock(() => {})
+  return { open: { remoteId, connection: { close } as unknown as OpenConnection['connection'] }, close }
+}
+
+describe('account trust gate + heartbeat (D6/D7)', () => {
+  let home: string
+  const prevHome = process.env.THUNDERBOLT_HOME
+  let stderr: ReturnType<typeof spyOn>
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'tb-trust-'))
+    process.env.THUNDERBOLT_HOME = home
+    stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+  afterEach(async () => {
+    stderr.mockRestore()
+    if (prevHome === undefined) delete process.env.THUNDERBOLT_HOME
+    else process.env.THUNDERBOLT_HOME = prevHome
+    await rm(home, { recursive: true, force: true })
+  })
+
+  describe('isConnectionAllowed — the D6 gate (account allowlist OR manual file)', () => {
+    it('admits a peer in the account allowlist even when the manual file is empty (auto-trust)', async () => {
+      expect(await isConnectionAllowed('acct-peer', fakeAllowlist(new Set(['acct-peer'])))).toBe(true)
+    })
+
+    it('admits a peer in the manual file even when it is absent from the account allowlist', async () => {
+      await add('manual-peer')
+      expect(await isConnectionAllowed('manual-peer', fakeAllowlist(new Set(['someone-else'])))).toBe(true)
+    })
+
+    it('denies a peer in neither the account allowlist nor the manual file', async () => {
+      await add('other-peer')
+      expect(await isConnectionAllowed('stranger', fakeAllowlist(new Set(['acct-peer'])))).toBe(false)
+    })
+
+    it('Standalone (no account allowlist): manual file only, admits/denies, never throws', async () => {
+      await add('manual-peer')
+      expect(await isConnectionAllowed('manual-peer', undefined)).toBe(true)
+      expect(await isConnectionAllowed('stranger', undefined)).toBe(false)
+    })
+  })
+
+  describe('heartbeatTick — D7 live-connection revocation', () => {
+    it('refreshes the allowlist, tears down a now-revoked peer, and leaves a still-valid one', async () => {
+      const refresh = mock(async () => {})
+      const allowlist = fakeAllowlist(new Set(['still-valid']), refresh)
+      const valid = fakeOpen('still-valid')
+      const revoked = fakeOpen('revoked-peer')
+
+      await heartbeatTick(allowlist, new Set([valid.open, revoked.open]))
+
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(valid.close).not.toHaveBeenCalled()
+      expect(revoked.close).toHaveBeenCalledTimes(1)
+      expect(revoked.close.mock.calls[0][0]).toBe(CLOSE_REFUSED)
+      expect(revoked.close.mock.calls[0][1]).toEqual(bytesOf('membership revoked'))
+    })
+
+    it('keeps a peer that survives only in the manual file (account-revoked but manually allowed)', async () => {
+      await add('manual-peer')
+      const manual = fakeOpen('manual-peer')
+
+      await heartbeatTick(fakeAllowlist(new Set()), new Set([manual.open]))
+
+      expect(manual.close).not.toHaveBeenCalled()
+    })
+
+    it('isolates a connection whose close() throws — the sweep continues to other peers', async () => {
+      const throwingClose = mock(() => {
+        throw new Error('NAPI close failed')
+      })
+      const bad: OpenConnection = {
+        remoteId: 'bad-peer',
+        connection: { close: throwingClose } as unknown as OpenConnection['connection'],
+      }
+      const good = fakeOpen('good-peer')
+
+      // Empty account set + empty manual file → both peers are revoked and get closed.
+      await heartbeatTick(fakeAllowlist(new Set()), new Set([bad, good.open]))
+
+      expect(throwingClose).toHaveBeenCalledTimes(1) // attempted despite throwing
+      expect(good.close).toHaveBeenCalledTimes(1) // sweep survived the throw and continued
+    })
+  })
+})
+
+describe('startMembershipHeartbeat — 45s cadence', () => {
+  it('runs on a 45s interval', () => {
+    expect(HEARTBEAT_INTERVAL_MS).toBe(45_000)
+  })
+
+  it('refreshes each interval until stopped, driven by the injected clock (no real timers)', async () => {
+    const refresh = mock(async () => {})
+    const allowlist = fakeAllowlist(new Set(), refresh)
+    const pending: Array<() => void> = []
+    const sleep = mock((_ms: number) => new Promise<void>((resolve) => pending.push(resolve)))
+    const releaseOne = (): void => pending.shift()?.()
+
+    const stop = startMembershipHeartbeat(allowlist, new Set(), { now: () => 0, sleep })
+
+    await flush() // loop reaches the first sleep
+    expect(sleep).toHaveBeenCalledWith(HEARTBEAT_INTERVAL_MS)
+
+    releaseOne() // first 45s elapses
+    await flush()
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    releaseOne() // second 45s elapses
+    await flush()
+    expect(refresh).toHaveBeenCalledTimes(2)
+
+    stop()
+    releaseOne() // wake the loop so it observes running=false and exits
+    await flush()
+    expect(refresh).toHaveBeenCalledTimes(2) // no tick after stop
   })
 })

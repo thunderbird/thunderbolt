@@ -4,13 +4,14 @@
 
 import { AlertCircle, CheckCircle2, Loader2, ShieldQuestion, Terminal } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useReducer, useRef } from 'react'
-import { Navigate, useNavigate, useSearchParams } from 'react-router'
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth, type AuthClient } from '@/contexts'
+import { saveDeviceApprovalReturn } from '@/lib/device-approval-return'
 import {
   approveDeviceCode,
   denyDeviceCode,
@@ -145,7 +146,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
       {state.status === 'verifying' && (
         <DialogHeader>
           <div className={`${iconWrapper} bg-gradient-to-br from-amber-400 to-orange-500`}>
-            <Loader2 className="h-6 w-6 animate-spin text-white" />
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-white" />
           </div>
           <DialogTitle className="text-center text-xl">Checking sign-in request…</DialogTitle>
           <DialogDescription className="text-center">One moment while we look up the code.</DialogDescription>
@@ -156,7 +157,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
         <form onSubmit={submitCode}>
           <DialogHeader>
             <div className={`${iconWrapper} bg-muted`}>
-              <Terminal className="h-6 w-6 text-muted-foreground" />
+              <Terminal className="size-[var(--icon-size-default)] text-muted-foreground" />
             </div>
             <DialogTitle className="text-center text-xl">Sign in to the CLI</DialogTitle>
             <DialogDescription className="text-center">
@@ -185,7 +186,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
         <>
           <DialogHeader>
             <div className={`${iconWrapper} bg-gradient-to-br from-amber-400 to-orange-500`}>
-              <ShieldQuestion className="h-6 w-6 text-white" />
+              <ShieldQuestion className="size-[var(--icon-size-default)] text-white" />
             </div>
             <DialogTitle className="text-center text-xl">Approve CLI sign-in?</DialogTitle>
             <DialogDescription className="text-center">
@@ -202,10 +203,18 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
             </p>
             <div className="flex w-full gap-2">
               <Button variant="outline" className="flex-1" onClick={deny} disabled={isSubmitting}>
-                {state.pendingAction === 'deny' ? <Loader2 className="size-4 animate-spin" /> : 'Deny'}
+                {state.pendingAction === 'deny' ? (
+                  <Loader2 className="size-[var(--icon-size-sm)] animate-spin" />
+                ) : (
+                  'Deny'
+                )}
               </Button>
               <Button className="flex-1" onClick={approve} disabled={isSubmitting}>
-                {state.pendingAction === 'approve' ? <Loader2 className="size-4 animate-spin" /> : 'Approve'}
+                {state.pendingAction === 'approve' ? (
+                  <Loader2 className="size-[var(--icon-size-sm)] animate-spin" />
+                ) : (
+                  'Approve'
+                )}
               </Button>
             </div>
           </div>
@@ -216,7 +225,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
         <>
           <DialogHeader>
             <div className={`${iconWrapper} bg-green-100 dark:bg-green-900/30`}>
-              <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <CheckCircle2 className="size-[var(--icon-size-default)] text-green-600 dark:text-green-400" />
             </div>
             <DialogTitle className="text-center text-xl">Sign-in approved</DialogTitle>
             <DialogDescription className="text-center">You can return to your terminal.</DialogDescription>
@@ -233,7 +242,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
         <>
           <DialogHeader>
             <div className={`${iconWrapper} bg-muted`}>
-              <AlertCircle className="h-6 w-6 text-muted-foreground" />
+              <AlertCircle className="size-[var(--icon-size-default)] text-muted-foreground" />
             </div>
             <DialogTitle className="text-center text-xl">Sign-in denied</DialogTitle>
             <DialogDescription className="text-center">
@@ -252,7 +261,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
         <>
           <DialogHeader>
             <div className={`${iconWrapper} bg-red-100 dark:bg-red-900/30`}>
-              <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+              <AlertCircle className="size-[var(--icon-size-default)] text-red-600 dark:text-red-400" />
             </div>
             <DialogTitle className="text-center text-xl">
               {state.error.reason === 'expired' ? 'Request expired' : "Code didn't work"}
@@ -276,20 +285,22 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
 /**
  * `/device` — device-authorization approval page (RFC 8628). The user lands here from the
  * CLI's verification link/QR (which embeds the `user_code`). Approval requires a signed-in
- * session; unauthenticated visitors are sent into the normal auth flow and can reopen the
- * link afterwards. Stays static in the entry bundle (small auth surface, like MagicLinkVerify).
+ * session; unauthenticated visitors are sent into the normal auth flow with their return URL
+ * stashed, so the page replays pre-filled once they land back authenticated (see
+ * `device-approval-return.ts`) — no link re-open needed. Lazy-loaded (off the landing path).
  */
 export const DeviceApproval = () => {
   const authClient = useAuth()
   const { data: session, isPending } = authClient.useSession()
   const [searchParams] = useSearchParams()
+  const location = useLocation()
 
   if (isPending) {
     return (
       <ApprovalShell>
         <DialogHeader>
           <div className={`${iconWrapper} bg-gradient-to-br from-amber-400 to-orange-500`}>
-            <Loader2 className="h-6 w-6 animate-spin text-white" />
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-white" />
           </div>
           <DialogTitle className="text-center text-xl">Loading…</DialogTitle>
           <DialogDescription className="text-center">Checking your session.</DialogDescription>
@@ -299,6 +310,10 @@ export const DeviceApproval = () => {
   }
 
   if (!session?.user) {
+    // Preserve the code across the login redirect so the approval page comes back pre-filled.
+    if (searchParams.get('user_code')) {
+      saveDeviceApprovalReturn(`${location.pathname}${location.search}`)
+    }
     return <Navigate to="/" replace />
   }
 

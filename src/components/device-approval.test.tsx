@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import type { ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
+import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { DeviceApproval } from './device-approval'
 
 type FetchResult = { data: unknown; error: unknown }
@@ -43,6 +44,7 @@ describe('DeviceApproval', () => {
   afterEach(async () => {
     await resetTestDatabase()
     cleanup()
+    localStorage.clear()
   })
 
   const renderPage = ({
@@ -95,6 +97,18 @@ describe('DeviceApproval', () => {
       const { fetch } = renderPage({ code: 'ABCD1234', session: null })
 
       expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('stashes the return URL so the code survives the login redirect', () => {
+      renderPage({ code: 'ABCD1234', session: null })
+
+      expect(takeDeviceApprovalReturn()).toBe('/device?user_code=ABCD1234')
+    })
+
+    it('stashes nothing when there is no code to preserve', () => {
+      renderPage({ session: null })
+
+      expect(takeDeviceApprovalReturn()).toBeNull()
     })
   })
 

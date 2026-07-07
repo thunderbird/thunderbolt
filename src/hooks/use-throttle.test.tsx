@@ -106,31 +106,6 @@ describe('useThrottledCallback', () => {
     expect(callback).toHaveBeenCalledTimes(1)
   })
 
-  it('should flush the pending trailing call immediately with the latest args', async () => {
-    const callback = mock((..._args: string[]) => {})
-    const { result } = renderHook(() => useThrottledCallback(callback, 100))
-
-    act(() => {
-      result.current('first') // immediate
-      result.current('second') // schedules trailing
-      result.current('third') // reschedules trailing with latest args
-    })
-    expect(callback).toHaveBeenCalledTimes(1)
-
-    // Flush runs the pending call NOW, before the throttle window elapses.
-    act(() => {
-      result.current.flush()
-    })
-    expect(callback).toHaveBeenCalledTimes(2)
-    expect(callback.mock.calls[1]?.[0]).toBe('third')
-
-    // The drained timer must not fire a second trailing call.
-    await act(async () => {
-      await getClock().tickAsync(150)
-    })
-    expect(callback).toHaveBeenCalledTimes(2)
-  })
-
   it('supersedes a pending trailing call when a delayed leading call runs first', async () => {
     const callback = mock((..._args: string[]) => {})
     const { result } = renderHook(() => useThrottledCallback(callback, 100))
@@ -161,58 +136,5 @@ describe('useThrottledCallback', () => {
     })
     expect(callback).toHaveBeenCalledTimes(2)
     expect(callback.mock.calls[1]?.[0]).toBe('third')
-  })
-
-  it('flush() is a no-op after a leading call superseded a pending trailing', async () => {
-    const callback = mock((..._args: string[]) => {})
-    const { result } = renderHook(() => useThrottledCallback(callback, 100))
-    const clock = getClock()
-    const base = Date.now()
-
-    act(() => {
-      result.current('first') // immediate (leading)
-      result.current('second') // schedules trailing
-    })
-    clock.setSystemTime(base + 150)
-    act(() => {
-      result.current('third') // leading — supersedes the trailing and its args
-    })
-    expect(callback).toHaveBeenCalledTimes(2)
-
-    // flush() must not resurrect the superseded trailing (stale 'second').
-    act(() => {
-      result.current.flush()
-    })
-    expect(callback).toHaveBeenCalledTimes(2)
-
-    await act(async () => {
-      await clock.runAllAsync()
-    })
-    expect(callback).toHaveBeenCalledTimes(2)
-    expect(callback.mock.calls[1]?.[0]).toBe('third')
-  })
-
-  it('should be a no-op to flush when nothing is pending', async () => {
-    const callback = mock((..._args: string[]) => {})
-    const { result } = renderHook(() => useThrottledCallback(callback, 100))
-
-    // Nothing scheduled yet.
-    act(() => {
-      result.current.flush()
-    })
-    expect(callback).not.toHaveBeenCalled()
-
-    // A single leading-edge call leaves no trailing timer, so flush stays a no-op.
-    act(() => {
-      result.current('only') // immediate, no trailing pending
-      result.current.flush()
-    })
-    expect(callback).toHaveBeenCalledTimes(1)
-    expect(callback).toHaveBeenCalledWith('only')
-
-    await act(async () => {
-      await getClock().tickAsync(150)
-    })
-    expect(callback).toHaveBeenCalledTimes(1)
   })
 })

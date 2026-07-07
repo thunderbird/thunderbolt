@@ -65,8 +65,8 @@ export const SavePartialAssistantMessagesHandler = ({
       // pending trailing partial to stop it firing *after* onFinish and clobbering
       // it with a stale, mid-stream snapshot. On an *error* terminal onFinish does
       // NOT persist, so this partial is the only record of what streamed before
-      // the error — persist the *freshest* live message directly (a blind
-      // `flush()` would replay the previous delta's args and drop the final chunk
+      // the error — persist the *freshest* live message directly (the pending
+      // trailing call holds an older delta's args and would drop the final chunk
       // when the last delta and the `error` flip coalesce into one commit), then
       // drop the now-redundant pending trailing.
       if (status === 'error' && isAssistantLatest) {

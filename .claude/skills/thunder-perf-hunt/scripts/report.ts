@@ -208,11 +208,17 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
   return kept
 }
 
-/** Collapse the same issue seen in both browsers into one finding. */
+/** Collapse the same issue+scenario seen in both browsers into one finding. */
 const mergeAcrossBrowsers = (findings: Finding[]): Finding[] => {
+  const order: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 }
   const byKey = new Map<string, Finding>()
   for (const f of findings) {
-    const key = `${f.category}::${f.sourceAttribution ?? f.title.replace(/\(.*?\)/g, '')}`
+    // Fold the scenario into the key so the same attribution on different pages
+    // (a component that re-renders on two routes, an axe selector flagged on
+    // both) stays distinct — only genuine cross-browser duplicates of one issue
+    // on one scenario merge.
+    const attribution = f.sourceAttribution ?? f.title.replace(/\(.*?\)/g, '')
+    const key = `${f.category}::${f.scenarios.join(',')}::${attribution}`
     const existing = byKey.get(key)
     if (!existing) {
       byKey.set(key, f)
@@ -220,8 +226,9 @@ const mergeAcrossBrowsers = (findings: Finding[]): Finding[] => {
     }
     existing.browsers = [...new Set([...existing.browsers, ...f.browsers])]
     existing.scenarios = [...new Set([...existing.scenarios, ...f.scenarios])]
+    // Keep the more severe reading rather than letting the first-seen browser win.
+    if (order[f.severity] < order[existing.severity]) existing.severity = f.severity
   }
-  const order: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 }
   return [...byKey.values()].sort((a, b) => order[a.severity] - order[b.severity])
 }
 

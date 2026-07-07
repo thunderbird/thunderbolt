@@ -4,8 +4,7 @@
 
 import { useEffect, useCallback } from 'react'
 import { create } from 'zustand'
-import { check, type Update } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
+import type { Update } from '@tauri-apps/plugin-updater'
 import { isDesktop } from '@/lib/platform'
 import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { setPostUpdateFlag, clearPostUpdateFlag } from '@/lib/post-update-redirect'
@@ -122,6 +121,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
     dispatch({ type: 'CHECK_START' })
 
     try {
+      // Import the desktop-only updater plugin lazily so it stays out of the web
+      // entry bundle (this path is guarded by isDesktop above).
+      const { check } = await import('@tauri-apps/plugin-updater')
       const availableUpdate = await check()
       dispatch({ type: 'CHECK_SUCCESS', update: availableUpdate })
     } catch (err) {
@@ -183,6 +185,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
       }
       // Signal the new process to reset navigation (WebView may restore stale route)
       setPostUpdateFlag()
+      // Lazily import the desktop-only process plugin so it stays out of the web
+      // entry bundle — this only runs from the desktop update flow.
+      const { relaunch } = await import('@tauri-apps/plugin-process')
       await relaunch()
     } catch (err) {
       // Clear the flag so a stale flag doesn't force-redirect on next manual launch

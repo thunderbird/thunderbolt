@@ -136,14 +136,21 @@ const normalizeDisplayMath = (markdown: string): string => {
   return result + rewriteMath(markdown.slice(lastIndex))
 }
 
+// One top-level block plus whether it's a `code` node. `isCode` lets the
+// renderer skip math detection on fenced/indented code, so a block that merely
+// *shows* `$$…$$` as source never pulls the KaTeX chunk (remark-math renders
+// nothing there anyway).
+type Block = { content: string; isCode: boolean }
+
 // Slice each top-level mdast node back out of `source` by its position offsets,
 // reproducing the exact block strings without a second markdown parser.
-const sliceTopLevelBlocks = (source: string): string[] =>
-  markdownParser
-    .parse(source)
-    .children.map((node) => source.slice(node.position?.start.offset ?? 0, node.position?.end.offset ?? 0))
+const sliceTopLevelBlocks = (source: string): Block[] =>
+  markdownParser.parse(source).children.map((node) => ({
+    content: source.slice(node.position?.start.offset ?? 0, node.position?.end.offset ?? 0),
+    isCode: node.type === 'code',
+  }))
 
-const parseMarkdownIntoBlocks = (markdown: string): string[] => {
+const parseMarkdownIntoBlocks = (markdown: string): Block[] => {
   // Rewrite math per top-level node, skipping `code` nodes (fenced *and*
   // indented code) so a message that shows `$$…$$` as source keeps its literal
   // text. Re-parse the rewritten string so a promoted single-line `$$…$$` still
@@ -226,11 +233,19 @@ const useMathPlugins = (enabled: boolean): MathPlugins | null => {
       return
     }
     let cancelled = false
-    loadMathPlugins().then((loaded) => {
-      if (!cancelled) {
-        setPlugins(loaded)
-      }
-    })
+    loadMathPlugins()
+      .then((loaded) => {
+        if (!cancelled) {
+          setPlugins(loaded)
+        }
+      })
+      .catch((error) => {
+        // `loadMathPlugins` already cleared its cached promise, so a freshly
+        // mounted block retries the import. Log rather than retry in place: this
+        // block has no back-off, and re-running on every render would busy-loop
+        // against a persistently failing chunk. The block renders raw `$…$`.
+        console.error('memoized-markdown: failed to load KaTeX math plugins', error)
+      })
     return () => {
       cancelled = true
     }
@@ -239,8 +254,8 @@ const useMathPlugins = (enabled: boolean): MathPlugins | null => {
 }
 
 const MemoizedMarkdownBlock = memo(
-  ({ content, components }: { content: string; components: Components }) => {
-    const hasMath = useMemo(() => blockHasMath(content), [content])
+  ({ content, isCode, components }: { content: string; isCode: boolean; components: Components }) => {
+    const hasMath = useMemo(() => !isCode && blockHasMath(content), [content, isCode])
     const mathPlugins = useMathPlugins(hasMath)
     const remarkPlugins: PluggableList = mathPlugins ? [remarkGfm, mathPlugins.remark] : [remarkGfm]
     const rehypePlugins: PluggableList = mathPlugins ? [mathPlugins.rehype] : []
@@ -313,7 +328,12 @@ export const MemoizedMarkdown = memo(({ content, id, components }: MemoizedMarkd
       }
     >
       {blocks.map((block, index) => (
-        <MemoizedMarkdownBlock content={block} components={resolvedComponents} key={`${id}-block_${index}`} />
+        <MemoizedMarkdownBlock
+          content={block.content}
+          isCode={block.isCode}
+          components={resolvedComponents}
+          key={`${id}-block_${index}`}
+        />
       ))}
     </div>
   )

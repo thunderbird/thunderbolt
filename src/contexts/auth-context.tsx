@@ -8,6 +8,7 @@ import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-cr
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
+import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
@@ -23,7 +24,7 @@ const createAuthClientInstance = (cloudUrl: string) => {
   const baseURL = cloudUrl.replace(/\/v1$/, '') // Better Auth adds /api/auth
   const platform = getPlatform()
 
-  return createAuthClient({
+  const client = createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient(), anonymousClient()],
@@ -36,6 +37,74 @@ const createAuthClientInstance = (cloudUrl: string) => {
       refetchOnWindowFocus: false,
       refetchWhenOffline: false,
     },
+  })
+
+  hydrateSessionFromCache(client)
+  return client
+}
+
+/**
+ * Seed Better Auth's session atom from the localStorage cache so the app can
+ * boot offline for previously-authenticated users.
+ *
+ * Without this, the gate-protected routes redirect to /waitlist whenever the
+ * initial `/get-session` request fails (THU-580). Better Auth's `useAuthQuery`
+ * preserves non-null `data` on non-401 errors, so the cached value survives the
+ * failing offline fetch and is replaced as soon as a real refetch succeeds
+ * (Better Auth's online listener fires this automatically when the network
+ * returns).
+ *
+ * An expired cache is discarded rather than seeded: if the device has been
+ * offline past `session.expiresAt`, every subsequent API call would 401
+ * anyway, so it's safer to force a fresh `/get-session` than to flash a
+ * logged-in UI that will be torn down moments later.
+ *
+ * Only the seed is synchronous (no lifecycle to clean up). Persisting future
+ * updates is wired in {@link subscribeSessionCachePersist} from the provider so
+ * the listener is released when the auth client is replaced.
+ */
+export const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClient>) => {
+  if (!getAuthToken()) {
+    return
+  }
+  const cached = getCachedSession()
+  if (!cached) {
+    return
+  }
+  if (!isCachedSessionValid(cached)) {
+    clearCachedSession()
+    return
+  }
+  const sessionAtom = client.$store.atoms.session
+  sessionAtom.set({
+    ...sessionAtom.get(),
+    data: cached,
+    isPending: false,
+  })
+}
+
+/**
+ * Subscribe to the session atom and mirror every authenticated payload back to
+ * the localStorage cache so the next offline boot has fresh user data.
+ *
+ * Returns the nanostores unsubscribe so the caller can release the listener
+ * when the auth client is replaced — without this, swapping `cloudUrl` would
+ * leak the old client + its refresh manager forever.
+ *
+ * Only payloads with both `user` and `session` are persisted. Better Auth's
+ * refresh manager normalizes empty responses to `null` on its own refetch path
+ * but the initial `useAuthQuery` `onSuccess` writes the raw server payload, so
+ * `{ user: null, session: null }` can transit the atom — we filter it out here
+ * to avoid caching a payload that would only resurrect as a logged-out flash on
+ * the next boot. Real sign-out (atom → `null`) is a no-op here on purpose —
+ * cache clearing is owned by the 401 handler and `clearLocalData` callers.
+ */
+export const subscribeSessionCachePersist = (client: ReturnType<typeof createAuthClient>): (() => void) => {
+  return client.$store.atoms.session.subscribe((state: { data: Session | null }) => {
+    const data = state.data
+    if (data?.user && data?.session) {
+      setCachedSession(data)
+    }
   })
 }
 
@@ -60,6 +129,7 @@ export const buildFetchOptions = (platform: string) => ({
     // session expiry. A 401 from sign-in/OTP-verify (no stored token) must NOT trigger the modal.
     const hadToken = Boolean(getAuthToken())
     clearAuthToken()
+    clearCachedSession()
     if (hadToken) {
       // Event name + reason kept in sync with src/db/powersync/connector.ts. Fires on Better Auth's
       // session validation (mount + tab focus), which detects expiry well before PowerSync's
@@ -105,6 +175,18 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     return { authClient: client }
   }, [cloudUrl, overrideClient])
 
+  // Persist session updates back to the localStorage cache (THU-580). Scoped to
+  // an effect so the listener is released when `value` is replaced — otherwise
+  // a cloudUrl change would keep the old client's refresh manager alive forever.
+  // Skipped when the auth client is an injected test override (no `$store`).
+  useEffect(() => {
+    const client = value?.authClient
+    if (!client?.$store) {
+      return
+    }
+    return subscribeSessionCachePersist(client)
+  }, [value])
+
   // Consume any pending SSO anon-id alias from sessionStorage (written before the SSO redirect
   // by persistForSso()). A ref guard prevents StrictMode's double-invocation from firing alias
   // twice.
@@ -144,6 +226,10 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   useEffect(() => {
     return onAuthTokenChangedInOtherTab((next, prev) => {
       if (next && next !== prev) {
+        // Cross-tab rotation may swap in a different user identity; wipe the
+        // cache so the reloaded tab doesn't seed the previous user's session
+        // under the new token before /get-session lands.
+        clearCachedSession()
         window.location.reload()
         return
       }

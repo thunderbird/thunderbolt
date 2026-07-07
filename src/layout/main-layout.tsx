@@ -7,6 +7,7 @@ import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile
 import { Header } from '@/components/ui/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { SidebarInset } from '@/components/ui/sidebar'
+import { ArtifactSidebarContent } from '@/content-view/artifact-sidebar-content'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { useContentView } from '@/content-view/context'
 import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
@@ -164,6 +165,7 @@ export default function Page() {
                 )}
                 {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
                 {state.type === 'sideview' && <Sideview />}
+                {state.type === 'artifact' && <ArtifactSidebarContent data={state.data} onClose={close} />}
               </m.div>
             )}
           </AnimatePresence>

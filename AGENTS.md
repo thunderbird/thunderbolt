@@ -107,6 +107,12 @@ See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync
 
 **Custom SharedWorker and `@powersync/web` internal path:** `vite.config.ts` defines a `powersync-web-internal` alias pointing to `@powersync/web/lib/src` (an internal, non-public-API path). This is required for the custom `ThunderboltSharedSyncImplementation` to extend `SharedSyncImplementation`. When upgrading `@powersync/web`, verify this internal path still exists — it may break without a TypeScript error.
 
+## Reconciled defaults and version bumps
+
+Reconciled default tables (`shared/defaults/models.ts` today, more to follow) ship a monotonic `defaults<X>Version` constant next to the defaults array. Reconciliation uses it as the ordering signal so multi-device sync groups converge without ping-ponging (see THU-637): a device only overwrites an existing row when its defaults version is strictly newer than the highest ever applied on this account.
+
+**When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
+
 ## CORS and API headers
 
 Both the main API (`backend/src/index.ts`) and the PostHog proxy route (`backend/src/posthog/routes.ts`) use `cors({ allowedHeaders: true })`, which echoes back whatever the browser requests in `Access-Control-Request-Headers`. This is required by the universal proxy at `/v1/proxy`, which forwards arbitrary upstream headers as `X-Proxy-Passthrough-*` (LLM SDKs add `x-api-key`, `x-stainless-*`, `openai-organization`, etc. — a static allowlist would break preflight whenever a new provider header appears). Adding a new custom header to any request requires no CORS-config change.

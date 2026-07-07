@@ -102,7 +102,7 @@ describe('needsApiKey', () => {
   test('system tinfoil rows do not need a key (injected by backend proxy)', () => {
     const model = makeModel({
       id: 'tinfoil-system',
-      name: 'DeepSeek V4 Pro',
+      name: 'GLM 5.2',
       provider: 'tinfoil',
       isSystem: 1,
       apiKey: null,

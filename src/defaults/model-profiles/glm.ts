@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelGlm52 } from '@/defaults/models'
+import { defaultModelGlm52 } from '@shared/defaults/models'
 
 export const defaultModelProfileGlm52: ModelProfile = {
   modelId: defaultModelGlm52.id,

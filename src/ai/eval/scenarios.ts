@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelOpus48 } from '@/defaults/models'
+import { defaultModelOpus48 } from '@shared/defaults/models'
 import type { EvalCriteria, EvalScenario } from './types'
 
 const models = [{ name: 'opus', id: defaultModelOpus48.id }] as const
@@ -278,10 +278,31 @@ const validationResearchPrompts = [
 ]
 
 // ──────────────────────────────────────────────
+// Multi-turn Chat Prompts — measure cross-turn reuse (the P1 gate)
+// Turn 1 retrieves; the follow-up should be answerable from those results
+// without re-searching. `maxToolCalls` asserts the model reuses context.
+// ──────────────────────────────────────────────
+
+const multiTurnChatPrompts: PromptDef[] = [
+  {
+    id: 'MT1',
+    prompt: 'What are the key specs of the iPhone 16 Pro?',
+    followUps: ['What is its screen size?'],
+    criteria: { mustProduceOutput: true, maxToolCalls: 1 },
+  },
+  {
+    id: 'MT2',
+    prompt: 'Who is the current CEO of OpenAI?',
+    followUps: ['Remind me — what was that name again?'],
+    criteria: { mustProduceOutput: true, maxToolCalls: 0 },
+  },
+]
+
+// ──────────────────────────────────────────────
 // Scenario Generation
 // ──────────────────────────────────────────────
 
-type PromptDef = { id: string; prompt: string; criteria?: EvalCriteria }
+type PromptDef = { id: string; prompt: string; followUps?: string[]; criteria?: EvalCriteria }
 
 const buildScenarios = (
   prompts: PromptDef[],
@@ -294,6 +315,7 @@ const buildScenarios = (
       modelName: model.name,
       modeName,
       prompt: p.prompt,
+      followUps: p.followUps,
       criteria: p.criteria ?? defaultCriteria,
     })),
   )
@@ -305,6 +327,7 @@ const allScenarios: EvalScenario[] = [
   ...buildScenarios(validationChatPrompts, 'chat', chatCriteria),
   ...buildScenarios(validationSearchPrompts, 'search', searchCriteria),
   ...buildScenarios(validationResearchPrompts, 'research', researchCriteria),
+  ...buildScenarios(multiTurnChatPrompts, 'chat', chatCriteria),
 ]
 
 /** Get scenarios filtered by model names and mode names */

@@ -128,6 +128,22 @@ describe('createPrompt', () => {
     expect(result).not.toContain('# Active Mode')
   })
 
+  test('includes the reuse-before-search gate', () => {
+    const result = createPrompt(baseParams)
+    expect(result).toContain('reuse first, then search')
+    expect(result).toContain("Don't repeat a tool call you already made")
+  })
+
+  test('keeps the time-sensitive re-search carve-out', () => {
+    const result = createPrompt(baseParams)
+    expect(result).toContain('time-sensitive that may have changed')
+  })
+
+  test('keeps the verify-before-answering directive', () => {
+    const result = createPrompt(baseParams)
+    expect(result).toContain('never state facts without verifying them first')
+  })
+
   test('keeps the per-turn timestamp in the suffix (prefix-cache friendly)', () => {
     const result = createPrompt(baseParams)
     // The timestamp is the only per-turn-volatile field, so it comes after the

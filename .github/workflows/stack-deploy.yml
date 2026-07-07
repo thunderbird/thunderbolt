@@ -243,7 +243,26 @@ jobs:
         working-directory: deploy/pulumi
         run: bun install --frozen-lockfile
 
+      # Destroy must be idempotent: the stack may already be gone (manual destroy,
+      # a prior run that tore it down but still failed, or a PR that never deployed).
+      # Without this guard `pulumi destroy` errors with "no stack named ... found",
+      # surfacing a red ✗ on every PR close even though the env is already clean (THU-539).
+      - name: Check whether the stack still exists
+        id: stack_check
+        working-directory: deploy/pulumi
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          export PATH="$HOME/.pulumi/bin:$PATH"
+          if pulumi stack select "${{ inputs.stack_name }}" --non-interactive 2>/dev/null; then
+            echo "Stack ${{ inputs.stack_name }} exists — proceeding to destroy."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Stack ${{ inputs.stack_name }} not found — nothing to destroy."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Destroy
+        if: steps.stack_check.outputs.exists == 'true'
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
         with:
           command: destroy

@@ -207,9 +207,15 @@ pub async fn install_cli(version: &str) -> Result<CliInstallResult, CliInstallEr
     // no-op if a provider is already set.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
+    // `connect_timeout` bounds only the TCP/TLS handshake; `timeout` is the overall
+    // per-request deadline covering the body transfer, so a host that accepts the
+    // connection then stalls mid-download surfaces as `Download` instead of hanging
+    // the one-click-install spinner forever. Sized generously (10 min) since the
+    // binary is ~90MB and must still complete over a slow-but-progressing link.
     let client = reqwest::Client::builder()
         .user_agent(concat!("thunderbolt/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|e| CliInstallError::Download(e.to_string()))?;
 

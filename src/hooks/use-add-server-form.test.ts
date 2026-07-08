@@ -299,6 +299,97 @@ describe('useAddServerForm', () => {
     expect(result.current.isClearingBearerOnly).toBe(false)
   })
 
+  it('reports isOAuthEdit for an OAuth-authorized server until the user types a bearer token', () => {
+    const { result } = renderForm(makeDeps())
+
+    // Open Edit on an OAuth server — the token field is deliberately empty
+    // (OAuth credentials aren't surfaced in the token input).
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        null,
+        'oauth',
+      ),
+    )
+    expect(result.current.isOAuthEdit).toBe(true)
+
+    // A URL edit doesn't affect the flag — the server is still OAuth-with-empty-token.
+    act(() => result.current.changeUrl('https://api.github.com/mcp/v2'))
+    expect(result.current.isOAuthEdit).toBe(true)
+
+    // Typing a bearer converts the intent away from OAuth (mutation will replace
+    // OAuth credential with bearer), so the probe becomes actionable again.
+    act(() => result.current.changeToken('pat-123'))
+    expect(result.current.isOAuthEdit).toBe(false)
+  })
+
+  it('does not report isOAuthEdit for bearer or none-credential servers in Edit mode', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 'bearer-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        'tok-1',
+        'bearer',
+      ),
+    )
+    // Bearer server, even after clearing the token — bearer is not OAuth.
+    expect(result.current.isOAuthEdit).toBe(false)
+    act(() => result.current.changeToken(''))
+    expect(result.current.isOAuthEdit).toBe(false)
+  })
+
+  it('does not report isOAuthEdit in Add mode (no original snapshot)', () => {
+    const { result } = renderForm(makeDeps())
+    act(() => result.current.openDialog())
+    expect(result.current.isOAuthEdit).toBe(false)
+  })
+
+  it('skips the auto-probe when opening Edit on an OAuth server (empty token stays empty)', async () => {
+    const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        null,
+        'oauth',
+      ),
+    )
+    // Advance past the debounce — the probe would fire here for a bearer/none
+    // server, but must not for an OAuth server with an empty token (the 401 would
+    // render a misleading "needs authorization" panel over an already-connected
+    // server, and burn a network round-trip on every Edit-open).
+    await act(async () => {
+      getClock().tick(1000)
+      await getClock().runAllAsync()
+    })
+    expect(probeMcpServerTools).not.toHaveBeenCalled()
+    expect(result.current.testResult.kind).toBe('idle')
+  })
+
+  it('probes once the user types a bearer on an OAuth-server edit (converts away from OAuth)', async () => {
+    const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        null,
+        'oauth',
+      ),
+    )
+    // Typing a bearer lifts the OAuth-skip guard: the probe can now succeed and
+    // is the confirmation the user needs before Save Changes unlocks.
+    act(() => result.current.changeToken('pat-123'))
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+    expect(probeMcpServerTools).toHaveBeenCalledTimes(1)
+    expect(result.current.testResult.kind).toBe('success')
+  })
+
   it('hasConnectionEdits is true in Add mode (no original snapshot)', () => {
     const { result } = renderForm(makeDeps())
 

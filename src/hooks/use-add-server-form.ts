@@ -192,6 +192,15 @@ export type UseAddServerFormResult = {
    *  requirement. The mutation already interprets a blank token + `originalCredentialType === 'bearer'`
    *  as "delete the credential." False in Add mode. */
   isClearingBearerOnly: boolean
+  /** True when editing an OAuth-authorized server with the token field still empty
+   *  (its normal state — OAuth tokens aren't surfaced in the token input). Any
+   *  probe from this state would fail 401 (no bearer), classify as `needs-oauth`,
+   *  and lock Save Changes out for a URL/transport edit that would otherwise be
+   *  reasonable to persist (the stored OAuth token stays intact via the mutation's
+   *  `credentials: undefined` branch, and the card's existing needs-auth flow
+   *  handles a re-authorize at the new endpoint). False in Add mode and once the
+   *  user types a bearer token (converting the server away from OAuth). */
+  isOAuthEdit: boolean
   testConnection: () => Promise<void>
   /** Leaving the URL field probes immediately (unless the debounce already did). */
   handleUrlBlur: () => void
@@ -325,7 +334,18 @@ export const useAddServerForm = ({
   // from re-probing, so a credential change after a result lands needs the manual
   // "Test Connection".
   useEffect(() => {
-    if (!state.isAddDialogOpen || !validateMcpServerUrl(state.url).ok || state.url === lastAutoTestedUrlRef.current) {
+    // Skip the probe for an OAuth-authorized server as long as the token field is
+    // empty (its normal Edit-open state — OAuth tokens aren't surfaced). An
+    // unauthenticated probe against the OAuth endpoint would 401 and render a
+    // misleading "needs authorization" panel over an already-connected server;
+    // wait until the user actually types a bearer to convert away from OAuth.
+    const skipForOAuthEdit = state.originalConnection?.credentialType === 'oauth' && !state.token
+    if (
+      !state.isAddDialogOpen ||
+      !validateMcpServerUrl(state.url).ok ||
+      state.url === lastAutoTestedUrlRef.current ||
+      skipForOAuthEdit
+    ) {
       return
     }
     const timer = setTimeout(() => {
@@ -400,6 +420,7 @@ export const useAddServerForm = ({
       state.token === '' &&
       state.url === state.originalConnection.url &&
       state.transport === state.originalConnection.transport,
+    isOAuthEdit: state.originalConnection?.credentialType === 'oauth' && state.token === '',
     testConnection,
     handleUrlBlur,
     resolveServerName,

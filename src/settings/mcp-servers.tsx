@@ -526,10 +526,14 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     }
     e.preventDefault()
     // Edit-mode: Enter mirrors the Save Changes button's enabled state — save
-    // whenever the button would (metadata-only OR bearer-clear, both of which
-    // waive the probe requirement) so a rename or an auth removal doesn't fall
-    // through to the probe branches below.
-    if (form.editingServerId && isUrlReady && (!form.hasConnectionEdits || form.isClearingBearerOnly)) {
+    // whenever the button would (metadata-only OR bearer-clear OR OAuth edit with
+    // empty token, all of which waive the probe requirement) so those cases don't
+    // fall through to the probe branches below.
+    if (
+      form.editingServerId &&
+      isUrlReady &&
+      (!form.hasConnectionEdits || form.isClearingBearerOnly || form.isOAuthEdit)
+    ) {
       handleUpdateServer()
       return
     }
@@ -874,11 +878,17 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                     !isUrlReady ||
                     // Connection-affecting fields untouched ⇒ existing credential
                     // (including OAuth) is presumed valid — save without a fresh
-                    // probe. Same waiver for a bearer-removal edit: an unauth
-                    // probe would fail against a still-protected server, but the
-                    // mutation deletes the credential row on blank token, so the
-                    // save is exactly the intended action.
-                    (form.hasConnectionEdits && !form.isClearingBearerOnly && testResult.kind !== 'success') ||
+                    // probe. Same waiver for a bearer-removal edit (unauth probe
+                    // fails against a still-protected server; the mutation deletes
+                    // the credential row on blank token) and an OAuth-edit with
+                    // empty token (probe can never succeed without a bearer, and
+                    // the OAuth credential is preserved by the mutation — the
+                    // card's needs-auth flow handles a re-authorize at the new
+                    // endpoint post-save).
+                    (form.hasConnectionEdits &&
+                      !form.isClearingBearerOnly &&
+                      !form.isOAuthEdit &&
+                      testResult.kind !== 'success') ||
                     updateServerMutation.isPending
                   }
                 >

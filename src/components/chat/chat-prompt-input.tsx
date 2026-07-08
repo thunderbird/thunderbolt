@@ -650,11 +650,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onStop={stop}
             autoFocus={!isMobile}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-<<<<<<< HEAD
-            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border bg-card p-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
-=======
             className="flex flex-col w-full gap-0 rounded-2xl border bg-sidebar p-2"
->>>>>>> 2a33ea40 (style: restyle theme with new fonts and color palette)
             footerStartElements={footerStartElements}
             renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}
             popoverSlot={

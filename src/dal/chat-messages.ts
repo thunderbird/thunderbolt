@@ -48,6 +48,28 @@ export const getLastMessage = async (db: AnyDrizzleDatabase, threadId: string): 
 }
 
 /**
+ * Applies a chat message's mutable columns to an existing row on the insert-first
+ * conflict path (shared by the batch save and the streaming fast path).
+ *
+ * Deliberately omits `parentId`: a message's position in the tree is fixed at
+ * insert time. Re-saving the same id (streaming partials, then the `onFinish`
+ * complete save) must never restructure the tree. Recomputing the parent from
+ * `getLastMessage` would return the row being written and make the message its
+ * own parent — corrupting the tree and hanging the descendant BFS on delete.
+ */
+const updateMutableMessageColumns = async (db: AnyDrizzleDatabase, msg: ChatMessage): Promise<void> => {
+  await db
+    .update(chatMessagesTable)
+    .set({
+      content: msg.content,
+      parts: msg.parts,
+      role: msg.role,
+      metadata: msg.metadata,
+    })
+    .where(eq(chatMessagesTable.id, msg.id))
+}
+
+/**
  * Saves messages to a chat thread and updates context size if available
  * @param threadId - The ID of the chat thread
  * @param messages - Array of UI messages to save
@@ -89,21 +111,9 @@ export const saveMessagesWithContextUpdate = async (
         if (!isInsertConflictError(err)) {
           throw err
         }
-        // Deliberately omit `parentId`: a message's position in the tree is fixed
-        // at insert time. Re-saving the same id (streaming partials, then the
-        // `onFinish` complete save) must never restructure the tree. Recomputing
-        // it here from `getLastMessage` would return the row being written and
-        // make the message its own parent — corrupting the tree and hanging the
-        // descendant BFS on delete.
-        await tx
-          .update(chatMessagesTable)
-          .set({
-            content: msg.content,
-            parts: msg.parts,
-            role: msg.role,
-            metadata: msg.metadata,
-          })
-          .where(eq(chatMessagesTable.id, msg.id))
+        // Conflict-update omits `parentId` to preserve tree position — see
+        // updateMutableMessageColumns for the self-parent guard rationale.
+        await updateMutableMessageColumns(tx, msg)
       }
     }
 
@@ -133,6 +143,9 @@ export const saveMessagesWithContextUpdate = async (
  *
  * Context-size bookkeeping is intentionally left to the authoritative `onFinish`
  * save; partial saves exist solely for crash recovery.
+ *
+ * The conflict-update rewrites only the mutable columns — never `parentId` — so
+ * repeat saves of the same row cannot make the message its own parent.
  */
 export const saveStreamingAssistantMessage = async (
   db: AnyDrizzleDatabase,
@@ -150,10 +163,7 @@ export const saveStreamingAssistantMessage = async (
     if (!isInsertConflictError(err)) {
       throw err
     }
-    await db
-      .update(chatMessagesTable)
-      .set({ content: dbMessage.content, parts: dbMessage.parts, metadata: dbMessage.metadata })
-      .where(eq(chatMessagesTable.id, dbMessage.id))
+    await updateMutableMessageColumns(db, dbMessage)
   }
 }
 

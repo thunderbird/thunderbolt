@@ -80,8 +80,3 @@ Pulumi.*.yaml
 
 # Astro
 .astro/
-
-# Local-only adversarial risk-repro harnesses & captured browser state (never commit;
-# contains throwaway-account session tokens and large Chromium profile artifacts)
-.risk-repro/
-src/.risk-repro/

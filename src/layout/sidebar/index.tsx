@@ -11,6 +11,7 @@ import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatTh
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
+import { isDesktop, isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -182,8 +183,14 @@ export default function Sidebar() {
     }
   }
 
+  // Tauri desktop fully hides the sidebar on collapse instead of the shadcn
+  // 48px icon rail — the main Header shows a re-open toggle in that state.
+  // Web desktop keeps the icon rail (established shadcn behavior).
+  const isTauriDesktop = isTauri() && isDesktop()
+  const collapsible = isMobile || isTauriDesktop ? 'offcanvas' : 'icon'
+
   return (
-    <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
+    <SidebarRoot collapsible={collapsible}>
       <TooltipProvider>
         {isSettingsRoute ? (
           <SettingsSidebarContent onBackClick={goToMainMenu} onSettingsNavigate={handleSettingsNavigation} />

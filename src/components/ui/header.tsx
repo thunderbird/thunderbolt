@@ -5,10 +5,13 @@
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { Button } from '@/components/ui/button'
 import { useSidebar } from '@/components/ui/sidebar'
+import { WindowControls } from '@/components/window-controls'
 import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { Menu, MessageCirclePlus } from 'lucide-react'
+import { isDesktop, isMacDesktop, isTauri } from '@/lib/platform'
+import { cn } from '@/lib/utils'
+import { Menu, MessageCirclePlus, PanelLeft } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
@@ -57,8 +60,17 @@ const HeaderAgentSelector = ({
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, state: sidebarState } = useSidebar()
   const { isMobile } = useIsMobile()
+  // Tauri desktop hides the OS title bar; the header row itself doubles as
+  // the drag surface — including when the viewport is narrow enough to fall
+  // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
+  // buttons inline on the right (self-nulls on macOS/web).
+  const enableDragRegion = isTauri() && isDesktop()
+  // Tauri desktop fully hides the sidebar on collapse (see layout/sidebar/
+  // index.tsx) — surface a re-open toggle in the header in that state so it
+  // stays discoverable.
+  const showReopenSidebarButton = isTauri() && isDesktop() && !isMobile && sidebarState === 'collapsed'
   const navigate = useNavigate()
   const location = useLocation()
   const allAgents = useAllAgents()
@@ -114,24 +126,44 @@ export const Header = () => {
   // Mobile: 3-column layout. Center holds the agent selector.
   if (isMobile) {
     const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
+    // A Tauri desktop window resized narrow enough to trigger this branch has
+    // the sidebar collapsed into offcanvas and needs a way back — use the same
+    // PanelLeft icon the sidebar uses to toggle itself. On macOS the toggle
+    // has to clear the OS traffic lights sitting at the top-left of the window.
+    const isTauriDesktopNarrow = isTauri() && isDesktop()
+    const ToggleIcon = isTauriDesktopNarrow ? PanelLeft : Menu
 
     return (
-      <header className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0">
-        <div className="flex flex-1 items-center">
+      <header
+        {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+        className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
+      >
+        <div
+          {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+          className={cn('flex flex-1 items-center', isMacDesktop() && 'ml-20')}
+        >
           <Button
             variant="ghost"
             size="icon"
             className="size-[var(--touch-height-sm)] cursor-pointer"
             onClick={toggleSidebar}
           >
-            <Menu className="size-[var(--icon-size-default)]" />
+            <ToggleIcon className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Toggle Sidebar</span>
           </Button>
         </div>
 
-        <div className="flex shrink-0 items-center justify-center gap-2 min-w-0">{agentSelector}</div>
+        <div
+          {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+          className="flex shrink-0 items-center justify-center gap-2 min-w-0"
+        >
+          {agentSelector}
+        </div>
 
-        <div className="flex flex-1 items-center gap-1 justify-end">
+        <div
+          {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+          className="flex flex-1 items-center gap-1 justify-end"
+        >
           {showNewChatButton && (
             <Button
               variant="ghost"
@@ -143,6 +175,7 @@ export const Header = () => {
               <span className="sr-only">New Chat</span>
             </Button>
           )}
+          <WindowControls />
         </div>
       </header>
     )
@@ -150,9 +183,31 @@ export const Header = () => {
 
   // Desktop: Agent selector left-aligned, PowerSync status right.
   return (
-    <header className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0">
-      <div className="flex items-center gap-2">{agentSelector}</div>
-      <PowerSyncStatus />
+    <header
+      {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+      className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
+    >
+      <div
+        {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+        className={cn('flex items-center gap-2', showReopenSidebarButton && isMacDesktop() && 'ml-20')}
+      >
+        {showReopenSidebarButton && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-[var(--touch-height-sm)] cursor-pointer"
+            onClick={toggleSidebar}
+          >
+            <PanelLeft className="size-[var(--icon-size-default)]" />
+            <span className="sr-only">Open Sidebar</span>
+          </Button>
+        )}
+        {agentSelector}
+      </div>
+      <div {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})} className="flex items-center gap-2">
+        <PowerSyncStatus />
+        <WindowControls />
+      </div>
     </header>
   )
 }

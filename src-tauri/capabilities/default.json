@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:app:allow-default-window-icon",
     "opener:default",
     "os:default",
     "deep-link:default",

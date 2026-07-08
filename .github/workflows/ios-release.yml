@@ -155,7 +155,7 @@ jobs:
           fi
 
       - name: Install Rust stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           toolchain: stable
           cache: false
@@ -196,7 +196,7 @@ jobs:
           echo "✅ Metal Toolchain removed"
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@97ecb7b512899eb71ab1bf2310a624c6f1589ac6 # v1
+        uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
         with:
           ruby-version: '3.0'
           bundler-cache: true

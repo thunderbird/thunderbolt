@@ -59,6 +59,20 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         builder = builder.plugin(tauri_plugin_devtools::init());
     }
 
+    // Frameless main window on Windows/Linux. macOS keeps `titleBarStyle: Overlay`
+    // from tauri.conf.json to preserve native traffic lights; setting
+    // `decorations: false` in the JSON would override Overlay and remove them,
+    // so we scope the borderless flag to platforms that ship custom controls.
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        builder = builder.setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_decorations(false);
+            }
+            Ok(())
+        });
+    }
+
     builder
 }
 

@@ -4,7 +4,7 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { useEffect } from 'react'
-import { isTauri } from '@/lib/platform'
+import { isDesktop, isTauri } from '@/lib/platform'
 
 type AndroidInsets = {
   adjustedInsetTop: number
@@ -21,10 +21,18 @@ const defaultDeps: SafeAreaInsetDeps = {
   getInsets: () => invoke<AndroidInsets | null>('plugin:platform-utils|get_android_insets'),
 }
 
+/**
+ * Desktop Tauri renders its own top chrome strip (traffic lights / custom
+ * window controls) in front of layout content, so the 24px env() fallback
+ * would just add empty space above that strip. Zero it out — the chrome
+ * component itself reserves the room.
+ */
+const topFallback = (): string => (isTauri() && isDesktop() ? '0px' : 'env(safe-area-inset-top, 24px)')
+
 export const createCSSVars = (insets: { bottom: number; top: number }) => {
   document.documentElement.style.setProperty(
     '--safe-area-top-padding',
-    insets?.top > 0 ? `${insets.top}px` : 'env(safe-area-inset-top, 24px)',
+    insets?.top > 0 ? `${insets.top}px` : topFallback(),
   )
 
   document.documentElement.style.setProperty(

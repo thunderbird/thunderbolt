@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useAutoScroll as useAutoScroll_default } from '@/hooks/use-auto-scroll'
+import type { ThunderboltUIMessage } from '@/types'
 import { useCallback, useEffect, useEffectEvent, useRef } from 'react'
 import { useCurrentChatSession as useCurrentChatSession_default } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { messageBookkeepingThrottleMs } from './chat-throttle'
 
 // Viewport positioning constants
 export const viewportPositioningMinMessages = 3 // Start viewport positioning after first exchange
@@ -13,6 +15,39 @@ export const viewportPositioningMinMessages = 3 // Start viewport positioning af
 // Helper to determine if viewport positioning should be used
 export const shouldUseViewportPositioning = (messagesLength: number): boolean =>
   messagesLength >= viewportPositioningMinMessages
+
+type MessagePart = ThunderboltUIMessage['parts'][number]
+
+/**
+ * Returns a value that changes whenever a single message part's rendered size grows:
+ * text/reasoning length for text-bearing parts, the lifecycle state for tool parts.
+ */
+const partSizeToken = (part: MessagePart): string | number => {
+  if ('text' in part) {
+    return part.text.length
+  }
+  if ('state' in part) {
+    return part.state
+  }
+  return ''
+}
+
+/**
+ * Builds a cheap "content grew" fingerprint for the last (streaming) message: message
+ * count, the last message id, its part count, and a per-part size token. It changes on
+ * every visible growth (token text, a new part, or a tool part advancing state) without
+ * depending on the messages array identity, which the AI SDK re-creates on every token
+ * (via structuredClone) even when nothing visible changed. Scanning only the last
+ * message's parts keeps this O(parts-of-last-message) per render.
+ */
+export const lastMessageContentSignal = (messages: ThunderboltUIMessage[]): string => {
+  const lastMessage = messages[messages.length - 1]
+  if (!lastMessage?.parts) {
+    return `${messages.length}`
+  }
+  const partsFingerprint = lastMessage.parts.map(partSizeToken).join(':')
+  return `${messages.length}:${lastMessage.id}:${lastMessage.parts.length}:${partsFingerprint}`
+}
 
 const userMessageViewportOffsetPx = 20 // Breathing room from top
 
@@ -28,11 +63,15 @@ export const useChatScrollHandler = ({
   useCurrentChatSession = useCurrentChatSession_default,
 }: UseChatScrollHandlerProps = {}) => {
   const { chatInstance } = useCurrentChatSession()
-  const { status, messages } = useChat({ chat: chatInstance })
+  const { status, messages } = useChat({ chat: chatInstance, experimental_throttle: messageBookkeepingThrottleMs })
   const isStreaming = status === 'streaming'
 
   const prevStatusRef = useRef(status)
   const hasScrolledForFirstTokenRef = useRef(false)
+
+  // Smallest correct "content grew" signal instead of the messages array identity, so the
+  // auto-scroll effect re-runs on visible growth rather than on every SDK message clone.
+  const contentSignal = lastMessageContentSignal(messages)
 
   const {
     scrollContainerRef,
@@ -40,10 +79,11 @@ export const useChatScrollHandler = ({
     scrollToBottom: rawScrollToBottom,
     scrollToElement: rawScrollToElement,
     resetUserScroll,
+    disableAutoScroll,
     scrollHandlers,
     isAtBottom,
   } = useAutoScroll({
-    dependencies: [messages],
+    dependencies: [contentSignal],
     smooth: true,
     isStreaming,
     rootMargin: '0px 0px 20px 0px',
@@ -53,8 +93,21 @@ export const useChatScrollHandler = ({
     hasScrolledForFirstTokenRef.current = false
 
     if (!shouldUseViewportPositioning(messages.length)) {
+      // First exchange: the user just sent from the bottom of an (empty) thread,
+      // so engage bottom-follow for the streaming answer. resetUserScroll clears
+      // the follow-disabled-by-default flag; the wheel/touch opt-out and the
+      // observer's re-engage-at-bottom still apply on top of this. Subsequent
+      // exchanges keep their pin-question-at-top positioning (the else branch)
+      // and deliberately do NOT engage follow.
+      resetUserScroll()
       rawScrollToBottom(true, true)
     } else {
+      // Subsequent exchanges pin the just-sent question near the top. Disable
+      // follow so streamed tokens don't drag the viewport back to the bottom and
+      // undo the pin — otherwise follow left enabled by a prior exchange (e.g.
+      // the first one) would leak in. The observer re-engages follow if the user
+      // scrolls to the bottom.
+      disableAutoScroll()
       const userMessage = messages[messages.length - 1]
 
       if (userMessage?.role === 'user') {
@@ -81,19 +134,24 @@ export const useChatScrollHandler = ({
     }
   }, [status, onSubmitScroll])
 
+  // Derived once-per-stream flag: true only until the first assistant text token lands.
+  // Reading the ref during render short-circuits the parts scan after it has fired, so the
+  // scan runs only for the handful of renders before the first token (not every token).
+  const lastMessage = messages[messages.length - 1]
+  const assistantHasStreamedFirstToken =
+    isStreaming &&
+    !hasScrolledForFirstTokenRef.current &&
+    lastMessage?.role === 'assistant' &&
+    (lastMessage.parts?.some((part) => part.type === 'text' && part.text.length > 0) ?? false)
+
   // Scroll when first token arrives (only for first message exchange)
   useEffect(() => {
-    if (isStreaming && !hasScrolledForFirstTokenRef.current) {
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage?.role === 'assistant' && lastMessage.parts?.length > 0) {
-        const hasContent = lastMessage.parts.some((part) => part.type === 'text' && part.text.length > 0)
-        if (hasContent) {
-          hasScrolledForFirstTokenRef.current = true
-          onFirstTokenScroll()
-        }
-      }
+    if (!assistantHasStreamedFirstToken) {
+      return
     }
-  }, [isStreaming, messages, onFirstTokenScroll])
+    hasScrolledForFirstTokenRef.current = true
+    onFirstTokenScroll()
+  }, [assistantHasStreamedFirstToken])
 
   const scrollToBottomAndActivate = useCallback(
     (smooth?: boolean) => {

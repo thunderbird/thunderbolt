@@ -148,6 +148,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <Button
           type="button"
           variant="default"
+          aria-label="Stop generating"
           className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
           onClick={onStop}
         >
@@ -157,6 +158,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <Button
           type="submit"
           variant="default"
+          aria-label="Send message"
           className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
           disabled={isLoading || !submittable}
         >

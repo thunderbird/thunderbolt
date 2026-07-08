@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { decideTestConnectionResult, type TestConnectionResult } from '@/lib/mcp-auth/auth-decision'
+import {
+  decideTestConnectionResult,
+  type StoredCredentialType,
+  type TestConnectionResult,
+} from '@/lib/mcp-auth/auth-decision'
 import type { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import { isUnauthorizedError } from '@/lib/mcp-errors'
 import type { probeMcpServerTools } from '@/lib/mcp-connection-test'
@@ -10,6 +14,7 @@ import { isIrohTarget } from '@/lib/iroh-target'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import type { McpServer } from '@/types'
 import { useEffect, useReducer, useRef } from 'react'
 
 /**
@@ -45,6 +50,8 @@ export const generateServerName = (url: string): string => {
 
 type AddServerFormState = {
   isAddDialogOpen: boolean
+  /** Non-null when the dialog is editing an existing server (id) instead of adding one. */
+  editingServerId: string | null
   name: string
   /** True once the user edits the name field, so the URL stops re-deriving it. */
   nameManuallyEdited: boolean
@@ -53,10 +60,24 @@ type AddServerFormState = {
   token: string
   isTestingConnection: boolean
   testResult: TestConnectionResult | { kind: 'idle' }
+  /** Snapshot of url/transport/token/credentialType at edit-open. Used to detect
+   *  whether the user changed a connection-affecting field, so the Save gate can
+   *  skip the fresh-probe requirement on a metadata-only edit (e.g. rename) where
+   *  the existing credential — including OAuth — is presumed valid. `credentialType`
+   *  additionally lets the gate recognize a "clear bearer" edit, which can save
+   *  without a passing probe (removing auth from a still-protected server would
+   *  otherwise fail the probe and lock Save out). Null in Add mode. */
+  originalConnection: {
+    url: string
+    transport: MCPTransportType
+    token: string
+    credentialType: StoredCredentialType
+  } | null
 }
 
 type AddServerFormAction =
   | { type: 'open-dialog' }
+  | { type: 'open-edit-dialog'; server: McpServer; bearerToken: string | null; credentialType: StoredCredentialType }
   | { type: 'reset' }
   | { type: 'set-name'; value: string }
   | { type: 'set-url'; value: string; derivedName: string | null }
@@ -69,6 +90,7 @@ type AddServerFormAction =
 
 const initialState: AddServerFormState = {
   isAddDialogOpen: false,
+  editingServerId: null,
   name: '',
   nameManuallyEdited: false,
   url: '',
@@ -76,12 +98,31 @@ const initialState: AddServerFormState = {
   token: '',
   isTestingConnection: false,
   testResult: { kind: 'idle' },
+  originalConnection: null,
 }
 
 const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAction): AddServerFormState => {
   switch (action.type) {
     case 'open-dialog':
       return { ...state, isAddDialogOpen: true }
+    case 'open-edit-dialog': {
+      // Edit prefills every field from the existing row. `nameManuallyEdited`
+      // is set so a URL change during edit doesn't clobber the existing name.
+      const url = action.server.url ?? ''
+      const transport: MCPTransportType = action.server.type === 'sse' ? 'sse' : 'http'
+      const token = action.bearerToken ?? ''
+      return {
+        ...initialState,
+        isAddDialogOpen: true,
+        editingServerId: action.server.id,
+        name: action.server.name ?? '',
+        nameManuallyEdited: true,
+        url,
+        transport,
+        token,
+        originalConnection: { url, transport, token, credentialType: action.credentialType },
+      }
+    }
     case 'reset':
       return initialState
     case 'set-name':
@@ -120,7 +161,11 @@ export type AddServerFormDeps = {
 
 export type UseAddServerFormResult = {
   isAddDialogOpen: boolean
+  /** Id of the server being edited, or null when the dialog is in Add mode. */
+  editingServerId: string | null
   openDialog: () => void
+  /** Opens the dialog in Edit mode with all fields prefilled from the existing server. */
+  openEditDialog: (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => void
   /** Closes the dialog and clears all add-form state (Cancel / Escape / overlay). */
   resetAddDialog: () => void
   name: string
@@ -140,6 +185,28 @@ export type UseAddServerFormResult = {
   testResult: TestConnectionResult | { kind: 'idle' }
   isTestingConnection: boolean
   serverCapabilities: string[]
+  /** True when a connection-affecting field (url/transport/token) differs from
+   *  the value loaded at edit-open. Always true in Add mode (no original
+   *  snapshot). Callers gate the Save-Changes test-success requirement on this
+   *  so a metadata-only edit can save without re-probing — important for OAuth
+   *  servers, whose empty-token probe would classify as `needs-oauth`. */
+  hasConnectionEdits: boolean
+  /** True when the user's only connection change is clearing a previously-stored
+   *  bearer token (URL/transport unchanged). Removing auth from a still-protected
+   *  server would fail an unauthenticated probe, which would otherwise leave Save
+   *  Changes disabled — so this signals the Save gate can waive the probe
+   *  requirement. The mutation already interprets a blank token + `originalCredentialType === 'bearer'`
+   *  as "delete the credential." False in Add mode. */
+  isClearingBearerOnly: boolean
+  /** True when editing an OAuth-authorized server with the token field still empty
+   *  (its normal state — OAuth tokens aren't surfaced in the token input). Any
+   *  probe from this state would fail 401 (no bearer), classify as `needs-oauth`,
+   *  and lock Save Changes out for a URL/transport edit that would otherwise be
+   *  reasonable to persist (the stored OAuth token stays intact via the mutation's
+   *  `credentials: undefined` branch, and the card's existing needs-auth flow
+   *  handles a re-authorize at the new endpoint). False in Add mode and once the
+   *  user types a bearer token (converting the server away from OAuth). */
+  isOAuthEdit: boolean
   testConnection: () => Promise<void>
   /** Leaving the URL field probes immediately (unless the debounce already did). */
   handleUrlBlur: () => void
@@ -176,6 +243,17 @@ export const useAddServerForm = ({
   const lastAutoTestedUrlRef = useRef<string | null>(null)
 
   const openDialog = () => dispatch({ type: 'open-dialog' })
+
+  // Open the dialog with every field prefilled from an existing server row +
+  // its on-device bearer token (null for OAuth or no-cred). The auto-detect
+  // effect will probe the prefilled URL after the standard 700ms debounce, so
+  // the user must still pass Test Connection before saving — same gate as Add.
+  const openEditDialog = (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => {
+    probeIdRef.current += 1
+    lastAutoTestedUrlRef.current = null
+    onClearDialogError()
+    dispatch({ type: 'open-edit-dialog', server, bearerToken, credentialType })
+  }
 
   // Closes the Add dialog and clears all add-form state. Bumps the probe id so an
   // in-flight connection probe can't land its result after the dialog is gone.
@@ -262,7 +340,18 @@ export const useAddServerForm = ({
   // from re-probing, so a credential change after a result lands needs the manual
   // "Test Connection".
   useEffect(() => {
-    if (!state.isAddDialogOpen || !validateMcpServerUrl(state.url).ok || state.url === lastAutoTestedUrlRef.current) {
+    // Skip the probe for an OAuth-authorized server as long as the token field is
+    // empty (its normal Edit-open state — OAuth tokens aren't surfaced). An
+    // unauthenticated probe against the OAuth endpoint would 401 and render a
+    // misleading "needs authorization" panel over an already-connected server;
+    // wait until the user actually types a bearer to convert away from OAuth.
+    const skipForOAuthEdit = state.originalConnection?.credentialType === 'oauth' && !state.token
+    if (
+      !state.isAddDialogOpen ||
+      !validateMcpServerUrl(state.url).ok ||
+      state.url === lastAutoTestedUrlRef.current ||
+      skipForOAuthEdit
+    ) {
       return
     }
     const timer = setTimeout(() => {
@@ -293,7 +382,9 @@ export const useAddServerForm = ({
   }
 
   const changeName = (value: string) => {
-    resetConnectionTest()
+    // Name doesn't participate in the probe (only url/transport/token do), so a
+    // rename must not invalidate a passing test — otherwise Save Changes gets
+    // stuck disabled until the user re-edits a connection field or retests.
     dispatch({ type: 'set-name', value })
   }
 
@@ -314,7 +405,9 @@ export const useAddServerForm = ({
 
   return {
     isAddDialogOpen: state.isAddDialogOpen,
+    editingServerId: state.editingServerId,
     openDialog,
+    openEditDialog,
     resetAddDialog,
     name: state.name,
     url: state.url,
@@ -329,6 +422,18 @@ export const useAddServerForm = ({
     isTestingConnection: state.isTestingConnection,
     // Derived: the discovered tools live on a successful result — no separate state to keep in sync.
     serverCapabilities: state.testResult.kind === 'success' ? state.testResult.tools : [],
+    hasConnectionEdits:
+      !state.originalConnection ||
+      state.url !== state.originalConnection.url ||
+      state.transport !== state.originalConnection.transport ||
+      state.token !== state.originalConnection.token,
+    isClearingBearerOnly:
+      !!state.originalConnection &&
+      state.originalConnection.credentialType === 'bearer' &&
+      state.token === '' &&
+      state.url === state.originalConnection.url &&
+      state.transport === state.originalConnection.transport,
+    isOAuthEdit: state.originalConnection?.credentialType === 'oauth' && state.token === '',
     testConnection,
     handleUrlBlur,
     resolveServerName,

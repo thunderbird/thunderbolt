@@ -34,6 +34,10 @@ type AssistantMessageProps = {
 // Viewport positioning constant - ensures enough space for scrolling user message to top
 const lastMessageMinHeight = '72dvh'
 
+// Stable empty default so a message without reasoning timings keeps a constant
+// reference across renders (a fresh `{}` each render would defeat memoization).
+const emptyReasoningTime: Record<string, number> = {}
+
 // Animation classes for subtle slide-in effect
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
 
@@ -120,37 +124,18 @@ export const AssistantMessage = memo(
     // Memoize filtering and grouping to avoid recomputing on every render
     const groupedParts = useMemo(() => groupMessageParts(filterMessageParts(message.parts)), [message.parts])
 
-    // Stabilize metadata references to prevent unnecessary re-renders
-    // Uses JSON.stringify for deep comparison since metadata objects may have new references
-    const reasoningTime = useMemo(
-      () => message.metadata?.reasoningTime ?? {},
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [JSON.stringify(message.metadata?.reasoningTime)],
-    )
-
-    const reasoningStartTimes = useMemo(
-      () => message.metadata?.reasoningStartTimes,
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [JSON.stringify(message.metadata?.reasoningStartTimes)],
-    )
-
-    const sources = useMemo(
-      () => message.metadata?.sources,
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [JSON.stringify(message.metadata?.sources)],
-    )
-
-    const haystackReferences = useMemo(
-      () => message.metadata?.haystackReferences,
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [JSON.stringify(message.metadata?.haystackReferences)],
-    )
-
-    const mcpTools = useMemo(
-      () => message.metadata?.mcpTools,
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [JSON.stringify(message.metadata?.mcpTools)],
-    )
+    // Read metadata fields directly. During streaming `message.parts` grows every
+    // token, so `groupedParts` — and therefore `partElements` below — already
+    // recompute each token; stabilizing these references with a per-field
+    // `JSON.stringify` bought nothing then and cost a stringify of `sources` /
+    // `mcpTools` on every render. Once streaming stops the metadata reference is
+    // stable, so `partElements` memoizes on the stable field references.
+    const metadata = message.metadata
+    const reasoningTime = metadata?.reasoningTime ?? emptyReasoningTime
+    const reasoningStartTimes = metadata?.reasoningStartTimes
+    const sources = metadata?.sources
+    const haystackReferences = metadata?.haystackReferences
+    const mcpTools = metadata?.mcpTools
 
     // Memoize part element creation to prevent recreating React nodes unnecessarily
     const partElements: ReactNode[] = useMemo(

@@ -18,6 +18,7 @@ import {
   getTriggerPromptForThread,
   isChatThreadDeleted,
   saveMessagesWithContextUpdate,
+  saveStreamingAssistantMessage,
 } from '@/dal'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
@@ -27,9 +28,9 @@ import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
@@ -121,6 +122,25 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       navigate(`/chats/${id}`, { relative: 'path' })
     }
   }
+
+  /**
+   * Crash-recovery save for the in-flight assistant message during streaming.
+   * Deliberately bypasses {@link saveMessages}: the thread already exists and is
+   * navigated to by the time the assistant streams, so the thread create / title
+   * / navigation work — and the DAL's redundant thread + last-message SELECTs —
+   * are all avoidable per token. The authoritative complete save runs in the
+   * chat instance's `onFinish` via {@link saveMessages}.
+   */
+  // Stable identity (deps: the stable `db` context value) so it can sit in the
+  // partial-save effect's dependency array without re-firing on every parent
+  // render — otherwise an on-screen error terminal would re-run the direct
+  // error-save (a redundant idempotent upsert + E2EE encrypt/upload) per render.
+  const saveStreamingMessage: SaveStreamingMessageFunction = useCallback(
+    async ({ threadId, message, parentId }) => {
+      await saveStreamingAssistantMessage(db, threadId, message, parentId)
+    },
+    [db],
+  )
 
   const hydrateChatStore = async () => {
     const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModes, setModels } =
@@ -270,5 +290,5 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     maybePrewarmBuiltInAgent(selectedAgent, defaultModel)
   }
 
-  return { hydrateChatStore, isReady, saveMessages }
+  return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }
 }

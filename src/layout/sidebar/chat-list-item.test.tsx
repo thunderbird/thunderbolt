@@ -5,6 +5,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
 import { type ReactNode } from 'react'
+import type { useChat as useChat_default } from '@ai-sdk/react'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -13,10 +14,10 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 // every symbol concurrent test files (e.g. skills-view) might also reference.
 import '@/test-utils/framer-motion-mock'
 
-// Mock useChat
-mock.module('@ai-sdk/react', () => ({
-  useChat: () => ({ status: 'ready' }),
-}))
+// Inject `useChat` via the component's DI seam instead of a global
+// `mock.module('@ai-sdk/react')` — module mocks are process-global and leak into
+// unrelated files under `--randomize` (see docs/development/testing.md).
+const useChatStub = (() => ({ status: 'ready' })) as unknown as typeof useChat_default
 
 // Mock Radix dropdown to render inline (avoids portal issues in tests)
 mock.module('@/components/ui/dropdown-menu', () => ({
@@ -43,7 +44,7 @@ const renderWithProviders = (props: ChatListItemProps) =>
   render(
     <SidebarProvider>
       <TooltipProvider>
-        <ChatListItem {...props} />
+        <ChatListItem {...props} useChat={useChatStub} />
       </TooltipProvider>
     </SidebarProvider>,
   )

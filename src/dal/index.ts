@@ -50,6 +50,7 @@ export {
   getChatMessages,
   getLastMessage,
   saveMessagesWithContextUpdate,
+  saveStreamingAssistantMessage,
   updateMessage,
 } from './chat-messages'
 
@@ -72,6 +73,8 @@ export {
   deleteMcpServer,
   getAllMcpServers,
   getRemoteMcpServers,
+  updateMcpServer,
+  updateMcpServerWithCredentials,
   type McpServerWithCredential,
 } from './mcp-servers'
 

@@ -16,7 +16,7 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
 }>
 
 const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) => {
-  const { hydrateChatStore, isReady, saveMessages } = useHydrateChatStore({ id, isNew })
+  const { hydrateChatStore, isReady, saveMessages, saveStreamingMessage } = useHydrateChatStore({ id, isNew })
 
   useHandleIntegrationCompletion({ saveMessages })
 
@@ -30,7 +30,9 @@ const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) =>
   }
 
   return (
-    <SavePartialAssistantMessagesHandler saveMessages={saveMessages}>{children}</SavePartialAssistantMessagesHandler>
+    <SavePartialAssistantMessagesHandler saveStreamingMessage={saveStreamingMessage}>
+      {children}
+    </SavePartialAssistantMessagesHandler>
   )
 }
 

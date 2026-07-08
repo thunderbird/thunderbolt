@@ -12,6 +12,7 @@ import { ChatPromptInput } from './chat-prompt-input'
 import { PermissionDialogHost } from './permission-dialog-host'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
+import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
@@ -19,11 +20,24 @@ import { AppLogo } from '../app-logo'
 export default function ChatUI() {
   const { chatInstance } = useCurrentChatSession()
 
-  const { messages } = useChat({ chat: chatInstance })
+  // ChatUI only needs the structural "are there any messages" signal (to switch
+  // between the empty-state logo and the message list), not per-token content —
+  // the message list is rendered by the memoized `ChatMessages`, which owns its
+  // own render-throttled messages subscription. Subscribing here at the coarse
+  // status-only cadence keeps ChatUI (and its framer-motion `layout` divs) from
+  // re-rendering on every streamed token. `status` is a separate, unthrottled
+  // useChat subscription (only the messages callback is throttled), so reading
+  // it here stays instant regardless of the coarse messages cadence.
+  const { messages, status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
 
   useChatAutomation()
 
-  const hasMessages = messages.length
+  // Fold the unthrottled `status` into the structural signal: a send within
+  // `statusOnlyThrottleMs` of a prior messages notification (hydration on fresh
+  // mount, regenerate, quick follow-up) lands on throttleit's trailing edge, so
+  // the throttled `messages.length` can read stale 0 for up to that window. The
+  // instant `submitted`/`streaming` transition mounts the list immediately.
+  const hasMessages = messages.length > 0 || status === 'submitted' || status === 'streaming'
 
   const { isAtBottom, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom, scrollToBottomAndActivate } =
     useChatScrollHandler()

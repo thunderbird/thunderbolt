@@ -261,6 +261,16 @@ export const createChatInstance = (
         retryCount = 0
         lastError = null
         useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+
+        // Persist whatever streamed before the user hit Stop. Streaming partial
+        // saves are throttled and their pending trailing write is cancelled the
+        // moment streaming stops (see SavePartialAssistantMessagesHandler), so
+        // onFinish is the authoritative final save on abort just as it is on
+        // success — without this, the last streamed chunk of an aborted turn
+        // would be lost on reload.
+        if (message?.parts?.length) {
+          await saveMessages({ id, messages: [message] })
+        }
         return
       }
 

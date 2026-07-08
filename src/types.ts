@@ -9,7 +9,7 @@ import type { Window } from '@tauri-apps/api/window'
 import type { UIMessage, UITools } from 'ai'
 import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
-import { type PostHog } from 'posthog-js'
+import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
 import type { HttpClient } from './contexts'
@@ -83,6 +83,18 @@ export type ThunderboltUIDataTypes = {
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>
 
 export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
+
+/**
+ * Persists a single in-flight assistant message during streaming (crash-recovery
+ * fast path). `parentId` is supplied by the caller so the DAL can skip the
+ * per-save thread and last-message lookups. See
+ * {@link import('@/dal').saveStreamingAssistantMessage}.
+ */
+export type SaveStreamingMessageFunction = (params: {
+  threadId: string
+  message: ThunderboltUIMessage
+  parentId: string | null
+}) => Promise<void>
 
 /**
  * Helper type to make specific keys required (non-null).

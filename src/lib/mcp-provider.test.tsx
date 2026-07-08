@@ -511,12 +511,17 @@ describe('MCPProvider reconnect', () => {
     expect(created).toHaveLength(1)
   })
 
-  it('is a no-op when updateServer targets an unknown id', () => {
+  it('is a no-op when updateServer targets an unknown id', async () => {
     const createClient = async (): Promise<MCPClient> => fakeClient()
     const { result } = renderProvider(createClient)
 
-    // No throw, no spurious entry inserted.
-    act(() => result.current.updateServer({ ...server, id: 'unknown' }))
+    // No throw, no spurious entry inserted. Await the returned promise so its
+    // microtask settles inside act — leaving it dangling leaks into the next
+    // test file's setup (breaks framer-motion animation timing on unrelated
+    // component renders).
+    await act(async () => {
+      await result.current.updateServer({ ...server, id: 'unknown' })
+    })
     expect(result.current.servers.some((s) => s.id === 'unknown')).toBe(false)
   })
 })

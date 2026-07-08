@@ -115,7 +115,8 @@ describe('parseMarkdownIntoBlocksIncremental', () => {
   // from a full parse: normalization turning a paragraph into a blockquote that a
   // trailing `>` merges into, an ordered `2.` lazily continuing a paragraph, a
   // whitespace-only "blank" line (`\n\t\n`) that later dissolves, a trailing blank
-  // line that grows, and CRLF line endings (which marked strips from token raw).
+  // line that grows, and CRLF line endings (whose `\r\n\r\n` blank line the
+  // commit-boundary detection must still recognize).
   it.each([
     [
       'normalized math promotes into a blockquote a trailing `>` merges into',

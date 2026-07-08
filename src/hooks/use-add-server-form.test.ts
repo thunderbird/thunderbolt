@@ -5,6 +5,7 @@
 import '@/testing-library'
 import { getClock } from '@/testing-library'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import type { McpServer } from '@/types'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { generateServerName, useAddServerForm, type AddServerFormDeps } from './use-add-server-form'
@@ -13,6 +14,22 @@ const fakeFetch = (async () => new Response()) as unknown as FetchFn
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
 const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 })
+
+/** Build a fully-typed McpServer for edit-dialog tests without an `as never` escape hatch. */
+const makeMcpServer = (overrides: Partial<McpServer> = {}): McpServer => ({
+  id: 's1',
+  name: 'default',
+  type: 'http',
+  enabled: 1,
+  url: null,
+  command: null,
+  args: null,
+  createdAt: null,
+  updatedAt: null,
+  deletedAt: null,
+  userId: null,
+  ...overrides,
+})
 
 const makeDeps = (overrides: Partial<AddServerFormDeps> = {}): AddServerFormDeps => ({
   probeMcpServerTools: mock(async () => ['search']) as unknown as AddServerFormDeps['probeMcpServerTools'],
@@ -204,6 +221,181 @@ describe('useAddServerForm', () => {
 
     expect(classifyMcpServerAuth).toHaveBeenCalledTimes(1)
     expect(result.current.testResult.kind).toBe('needs-oauth')
+  })
+
+  it('keeps a passing test result when only the name is edited', async () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() => result.current.openDialog())
+    act(() => result.current.changeUrl('https://tools.example.com/mcp'))
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+    expect(result.current.testResult.kind).toBe('success')
+
+    // Renaming doesn't change what the probe verifies, so the success must survive —
+    // otherwise Save Changes gets stuck disabled with no obvious recovery.
+    act(() => result.current.changeName('My Server'))
+    expect(result.current.testResult.kind).toBe('success')
+  })
+
+  it('reports hasConnectionEdits only for connection-affecting fields in edit mode', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        'tok-1',
+        'bearer',
+      ),
+    )
+    expect(result.current.hasConnectionEdits).toBe(false)
+
+    // Name is metadata, not part of the probe — must not flip the flag.
+    act(() => result.current.changeName('Renamed'))
+    expect(result.current.hasConnectionEdits).toBe(false)
+
+    act(() => result.current.changeUrl('https://api.github.com/mcp/v2'))
+    expect(result.current.hasConnectionEdits).toBe(true)
+  })
+
+  it('reports isClearingBearerOnly only when a stored bearer is cleared with URL/transport untouched', () => {
+    const { result } = renderForm(makeDeps())
+
+    // Bearer-authorized server: token is prefilled from mcp_secrets.
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        'tok-1',
+        'bearer',
+      ),
+    )
+    expect(result.current.isClearingBearerOnly).toBe(false)
+
+    // Clearing the bearer flips it — the Save gate must recognize this so
+    // removing auth from a still-protected server doesn't get stuck disabled.
+    act(() => result.current.changeToken(''))
+    expect(result.current.hasConnectionEdits).toBe(true)
+    expect(result.current.isClearingBearerOnly).toBe(true)
+
+    // Also changing the URL is no longer a bearer-only clear — it's a real edit.
+    act(() => result.current.changeUrl('https://api.github.com/mcp/v2'))
+    expect(result.current.isClearingBearerOnly).toBe(false)
+  })
+
+  it('does not report isClearingBearerOnly when the original credential was OAuth or none', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 's2', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        null,
+        'oauth',
+      ),
+    )
+    // OAuth is managed via the Authorize buttons, not the token field, so a
+    // blank token here has always been the state — nothing to "clear".
+    expect(result.current.isClearingBearerOnly).toBe(false)
+  })
+
+  it('reports isOAuthEdit for an OAuth-authorized server until the user types a bearer token', () => {
+    const { result } = renderForm(makeDeps())
+
+    // Open Edit on an OAuth server — the token field is deliberately empty
+    // (OAuth credentials aren't surfaced in the token input).
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        null,
+        'oauth',
+      ),
+    )
+    expect(result.current.isOAuthEdit).toBe(true)
+
+    // A URL edit doesn't affect the flag — the server is still OAuth-with-empty-token.
+    act(() => result.current.changeUrl('https://api.github.com/mcp/v2'))
+    expect(result.current.isOAuthEdit).toBe(true)
+
+    // Typing a bearer converts the intent away from OAuth (mutation will replace
+    // OAuth credential with bearer), so the probe becomes actionable again.
+    act(() => result.current.changeToken('pat-123'))
+    expect(result.current.isOAuthEdit).toBe(false)
+  })
+
+  it('does not report isOAuthEdit for bearer or none-credential servers in Edit mode', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 'bearer-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        'tok-1',
+        'bearer',
+      ),
+    )
+    // Bearer server, even after clearing the token — bearer is not OAuth.
+    expect(result.current.isOAuthEdit).toBe(false)
+    act(() => result.current.changeToken(''))
+    expect(result.current.isOAuthEdit).toBe(false)
+  })
+
+  it('does not report isOAuthEdit in Add mode (no original snapshot)', () => {
+    const { result } = renderForm(makeDeps())
+    act(() => result.current.openDialog())
+    expect(result.current.isOAuthEdit).toBe(false)
+  })
+
+  it('skips the auto-probe when opening Edit on an OAuth server (empty token stays empty)', async () => {
+    const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        null,
+        'oauth',
+      ),
+    )
+    // Advance past the debounce — the probe would fire here for a bearer/none
+    // server, but must not for an OAuth server with an empty token (the 401 would
+    // render a misleading "needs authorization" panel over an already-connected
+    // server, and burn a network round-trip on every Edit-open).
+    await act(async () => {
+      getClock().tick(1000)
+      await getClock().runAllAsync()
+    })
+    expect(probeMcpServerTools).not.toHaveBeenCalled()
+    expect(result.current.testResult.kind).toBe('idle')
+  })
+
+  it('probes once the user types a bearer on an OAuth-server edit (converts away from OAuth)', async () => {
+    const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    act(() =>
+      result.current.openEditDialog(
+        makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
+        null,
+        'oauth',
+      ),
+    )
+    // Typing a bearer lifts the OAuth-skip guard: the probe can now succeed and
+    // is the confirmation the user needs before Save Changes unlocks.
+    act(() => result.current.changeToken('pat-123'))
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+    expect(probeMcpServerTools).toHaveBeenCalledTimes(1)
+    expect(result.current.testResult.kind).toBe('success')
+  })
+
+  it('hasConnectionEdits is true in Add mode (no original snapshot)', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() => result.current.openDialog())
+    // No original to diff against — Add must keep the existing test-success Save gate.
+    expect(result.current.hasConnectionEdits).toBe(true)
   })
 
   it('resets all form state on resetAddDialog', async () => {

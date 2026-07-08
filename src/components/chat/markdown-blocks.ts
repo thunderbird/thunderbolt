@@ -2,7 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { marked } from 'marked'
+import remarkGfm from 'remark-gfm'
+import remarkParse from 'remark-parse'
+import { unified } from 'unified'
+
+// Parser mirroring react-markdown's own pipeline (remark-parse + remark-gfm) so
+// the top-level block boundaries we split on match how each block will render.
+// Reusing this single parser also keeps only ONE markdown tokenizer in the entry
+// bundle (react-markdown already ships remark) instead of a second one.
+const markdownParser = unified().use(remarkParse).use(remarkGfm)
 
 // Models often emit LaTeX's native delimiters — `\[…\]` for display, `\(…\)`
 // for inline — instead of the `$$…$$` / `$…$` that remark-math understands.
@@ -118,57 +126,158 @@ const normalizeDisplayMath = (markdown: string): string => {
   return result + rewriteMath(markdown.slice(lastIndex))
 }
 
-// Normalize a single top-level token's raw text. `code` tokens (fenced *and*
-// indented) are left verbatim so a message that shows `$$…$$` / `\(…\)` as source
-// keeps its literal text; every other token has its math delimiters rewritten.
-const normalizeToken = (token: { type: string; raw: string }): string =>
-  token.type === 'code' ? token.raw : normalizeDisplayMath(token.raw)
+/**
+ * One top-level block plus whether it's a `code` node. `isCode` lets the renderer
+ * skip math detection on fenced/indented code, so a block that merely *shows*
+ * `$$…$$` as source never pulls the KaTeX chunk (remark-math renders nothing
+ * there anyway).
+ */
+export type Block = { content: string; isCode: boolean }
 
-const lexToBlocks = (input: string): string[] => (input ? marked.lexer(input).map((token) => token.raw) : [])
+type MarkdownNode = ReturnType<typeof markdownParser.parse>['children'][number]
+
+// remark sets byte offsets on every node at parse time. Fail loudly if one is
+// ever missing rather than fall back to 0 — a `?? 0` here would silently slice
+// an empty (or wrong) block and drop message content, which is painful to debug.
+const nodeOffsets = (node: MarkdownNode): { start: number; end: number } => {
+  const start = node.position?.start.offset
+  const end = node.position?.end.offset
+  if (start === undefined || end === undefined) {
+    throw new Error(`memoized-markdown: markdown "${node.type}" node is missing position offsets`)
+  }
+  return { start, end }
+}
+
+// Slice each top-level mdast node back out of `source` by its position offsets,
+// reproducing the exact block strings without a second markdown parser.
+const sliceTopLevelBlocks = (source: string): Block[] =>
+  markdownParser.parse(source).children.map((node) => {
+    const { start, end } = nodeOffsets(node)
+    return { content: source.slice(start, end), isCode: node.type === 'code' }
+  })
+
+// One unit of source: either a top-level mdast node (`isGap: false`) or the raw
+// whitespace/blank-line gap *between* two nodes (`isGap: true`). Concatenating
+// every `raw` in order reproduces the source byte-for-byte, so the segment list
+// is a lossless, node-aware view we can normalize per-unit and re-split.
+type Segment = { type: string; raw: string; isGap: boolean }
+
+// Break `source` into node + gap segments. Top-level blocks are always separated
+// by at least one line break, so every pair of content segments has a gap segment
+// between them — the invariant `committableSegmentCount` relies on.
+const parseSegments = (source: string): Segment[] => {
+  const segments: Segment[] = []
+  let lastOffset = 0
+  for (const node of markdownParser.parse(source).children) {
+    const { start, end } = nodeOffsets(node)
+    if (start > lastOffset) {
+      segments.push({ type: 'gap', raw: source.slice(lastOffset, start), isGap: true })
+    }
+    segments.push({ type: node.type, raw: source.slice(start, end), isGap: false })
+    lastOffset = end
+  }
+  if (lastOffset < source.length) {
+    segments.push({ type: 'gap', raw: source.slice(lastOffset), isGap: true })
+  }
+  return segments
+}
+
+// Normalize a single segment's raw text. Gap and `code` segments are left
+// verbatim so a message that shows `$$…$$` / `\(…\)` as source (fenced *and*
+// indented code) keeps its literal text; every other node has its math rewritten.
+const normalizeSegment = (segment: Segment): string =>
+  segment.isGap || segment.type === 'code' ? segment.raw : normalizeDisplayMath(segment.raw)
+
+const normalizeMarkdown = (markdown: string): string => parseSegments(markdown).map(normalizeSegment).join('')
 
 /**
- * Splits markdown into an array of top-level block strings, promoting model
- * math-delimiter drift (`\[…\]`, `\(…\)`, single-line `$$…$$`) into the fenced
- * forms remark-math understands.
+ * Splits markdown into top-level blocks, promoting model math-delimiter drift
+ * (`\[…\]`, `\(…\)`, single-line `$$…$$`) into the fenced forms remark-math
+ * understands.
  *
- * Two-pass: lex into top-level tokens, rewrite math per non-code token, then
- * re-lex the rewritten string so a promoted single-line `$$…$$` still splits
- * into its own display-math block.
+ * Two-pass: parse into top-level nodes, rewrite math per non-code node (gaps
+ * copied verbatim), then re-parse the rewritten string so a promoted single-line
+ * `$$…$$` still splits into its own display-math block.
  *
  * Known limitation: only *top-level* code blocks are skipped for math rewriting.
- * A fenced/indented code block nested inside a blockquote/list lives in the
- * parent token's `raw` (marked strips its container prefixes, so it can't be
- * matched back to the source), and `rewriteMath` still runs on it. Inline code
- * spans (`` `…` ``) are protected at any depth via `normalizeDisplayMath`.
+ * A fenced/indented code block nested inside a blockquote/list lives inside the
+ * parent node's range, and `rewriteMath` still runs on it. Inline code spans
+ * (`` `…` ``) are protected at any depth via `normalizeDisplayMath`.
  */
-export const parseMarkdownIntoBlocks = (markdown: string): string[] => {
-  const normalized = marked
-    .lexer(markdown)
-    .map((token) => normalizeToken(token))
-    .join('')
-  return lexToBlocks(normalized)
+export const parseMarkdownIntoBlocks = (markdown: string): Block[] => sliceTopLevelBlocks(normalizeMarkdown(markdown))
+
+// A gap counts as a hard block terminator only when it contains a genuinely blank
+// line — two consecutive line ends with nothing between them. A single line break
+// (`heading` interrupting a paragraph, etc.) or a whitespace-only "blank" line
+// (`\n\t\n`, which a later lazy line can dissolve) is NOT enough to freeze the
+// block before it, so those keep the preceding block volatile. CRLF is matched so
+// `\r\n\r\n` streams incrementally too.
+const blankLineGap = /\r?\n\r?\n/
+const gapHasBlankLine = (gap: string): boolean => blankLineGap.test(gap)
+
+/**
+ * Number of leading segments safe to freeze against any future append.
+ *
+ * A content block is only stable once a genuinely blank line seals it (before
+ * that, appended text on the next line can fold into it via lazy continuation),
+ * and only if that blank line is already followed by more content. So the frozen
+ * prefix runs through the last blank-line gap that has content after it; it stops
+ * at the first single-line/whitespace-only gap (the block before it can still
+ * grow) and at a trailing block (which is always volatile).
+ *
+ * Final guard: a `list`/`blockquote` immediately before the boundary can absorb
+ * the volatile block as a loose item / lazy quote line (`1. a\n\n2` where the `2`
+ * later becomes `2.`), so it — and everything after — is kept volatile too.
+ */
+const committableSegmentCount = (segments: Segment[]): number => {
+  let boundary = 0
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i]
+    if (segment.isGap) {
+      // Freeze through a blank line already followed by content; a single-line,
+      // whitespace-only, or trailing gap keeps the preceding block volatile.
+      if (i + 1 < segments.length && gapHasBlankLine(segment.raw)) {
+        boundary = i + 1
+        continue
+      }
+      break
+    }
+    // A content block is only committed once we cross the blank-line gap after it,
+    // so a trailing content block (no following segment) can never be frozen.
+    if (i + 1 >= segments.length) {
+      break
+    }
+  }
+  let prev = boundary - 1
+  while (prev >= 0 && segments[prev].isGap) {
+    prev--
+  }
+  if (prev >= 0 && (segments[prev].type === 'list' || segments[prev].type === 'blockquote')) {
+    boundary = prev
+  }
+  return boundary
 }
 
 /**
  * Incremental streaming state for {@link parseMarkdownIntoBlocksIncremental}.
  *
- * Two independent caches, because {@link parseMarkdownIntoBlocks} lexes twice —
- * once to normalize math per source token, then again to split the *normalized*
+ * Two independent caches, because {@link parseMarkdownIntoBlocks} parses twice —
+ * once to normalize math per source node, then again to split the *normalized*
  * string into blocks — and normalization can change block structure (a promoted
- * `$$` fence turns one source paragraph into several normalized blocks). So the
- * block split must run on the normalized text, not the source tokens.
+ * `$$` fence turns one source paragraph into a display-math block). So the block
+ * split must run on the normalized text, not the source segments.
  *
  * Level 1 (`committedSourceLen` / `committedNorm`): the normalization of the
  * committed source prefix. Level 2 (`committedNormLen` / `committedBlocks`): the
  * block split of the committed *normalized* prefix. Both freeze everything except
- * the last content token and any `list`/`blockquote` that a later append could
- * merge back into.
+ * the last content block and any `list`/`blockquote` a later append could merge
+ * back into.
  */
 export type IncrementalMarkdownState = {
   /** The full markdown parsed to produce {@link blocks}. */
   source: string
-  /** Final block strings, i.e. the return value of a full parse of {@link source}. */
-  blocks: string[]
+  /** Final blocks, i.e. the return value of a full parse of {@link source}. */
+  blocks: Block[]
   /** Length (in `source` chars) of the source prefix whose normalization is frozen. */
   committedSourceLen: number
   /** Normalized text of that frozen source prefix (a stable prefix of the full normalized string). */
@@ -176,80 +285,7 @@ export type IncrementalMarkdownState = {
   /** Length (in normalized chars) of the {@link committedNorm} prefix whose block split is frozen. */
   committedNormLen: number
   /** Blocks for `committedNorm.slice(0, committedNormLen)`. */
-  committedBlocks: string[]
-}
-
-// Block types whose line(s) are complete on their own — appended text on a later
-// line cannot fold into them. Every other block (paragraph, list, blockquote,
-// table, html, code, …) can still grow via lazy continuation (`2. x` after a
-// paragraph line is not a new list — an ordered marker only interrupts a
-// paragraph when it starts at `1`), so is only safe to freeze once a blank line
-// seals it.
-const nonGrowableBlockTypes = new Set(['heading', 'hr'])
-
-type LexToken = { type: string; raw: string }
-
-/**
- * Whether the concatenated raw of `tokens[0, boundary)` ends with a genuinely
- * empty line (`\n\n`). Only a truly empty line hard-terminates a block against
- * lazy continuation — a marked top-level `space` token is not enough on its own
- * (a whitespace-only line like `\n\t\n`, or a single-newline gap, can dissolve
- * when a later line lazily continues the block).
- */
-const endsWithBlankLine = (tokens: LexToken[], boundary: number): boolean => {
-  if (boundary <= 0) {
-    return false
-  }
-  const last = tokens[boundary - 1].raw
-  if (last.length >= 2) {
-    return last.endsWith('\n\n')
-  }
-  if (last !== '\n') {
-    return false
-  }
-  return boundary - 2 >= 0 && tokens[boundary - 2].raw.endsWith('\n')
-}
-
-/**
- * Number of leading tokens safe to freeze against any future append.
- *
- * A block is only stable once a genuinely empty line seals it — before that,
- * appended text on the next line can fold into it via lazy continuation. So the
- * frozen prefix runs through the last blank-line boundary whose every preceding
- * content block is sealed (blank-line-terminated, or an inherently non-growable
- * heading/hr); it stops at the first growable block a following line could still
- * extend, and at any `space` token that is not a real blank-line boundary.
- *
- * Final guard: a `list`/`blockquote` right before the boundary blank line can
- * absorb the volatile block as a loose item / lazy quote line, so it is kept
- * volatile too.
- */
-const committableTokenCount = (tokens: LexToken[]): number => {
-  let boundary = 0
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].type === 'space') {
-      // Freeze through a real blank line already followed by content; a trailing
-      // or whitespace-only "space" stays volatile (and anything after it is
-      // unstable), so stop there.
-      if (i + 1 < tokens.length && endsWithBlankLine(tokens, i + 1)) {
-        boundary = i + 1
-        continue
-      }
-      break
-    }
-    const sealed = tokens[i + 1]?.type === 'space' || nonGrowableBlockTypes.has(tokens[i].type)
-    if (!sealed) {
-      break
-    }
-  }
-  let prev = boundary - 1
-  while (prev >= 0 && tokens[prev].type === 'space') {
-    prev--
-  }
-  if (prev >= 0 && (tokens[prev].type === 'list' || tokens[prev].type === 'blockquote')) {
-    boundary = prev
-  }
-  return boundary
+  committedBlocks: Block[]
 }
 
 const buildState = (source: string, prev: IncrementalMarkdownState | null): IncrementalMarkdownState => {
@@ -258,40 +294,42 @@ const buildState = (source: string, prev: IncrementalMarkdownState | null): Incr
   const committedNormLen = prev?.committedNormLen ?? 0
   const committedBlocks = prev?.committedBlocks ?? []
 
-  // Level 1 — normalization. Re-lex only the source tail (from the last frozen
-  // source boundary) and normalize its now-settled tokens, extending the stable
-  // normalized prefix. The still-open tail tokens are normalized but not frozen.
+  // Level 1 — normalization. Re-parse only the source tail (from the last frozen
+  // source boundary) and normalize its now-settled segments, extending the stable
+  // normalized prefix. The still-open tail segments are normalized but not frozen.
   const sourceTail = source.slice(committedSourceLen)
-  const sourceTailTokens = marked.lexer(sourceTail)
-  const sourceCommitCount = committableTokenCount(sourceTailTokens)
-  const newlyCommittedSource = sourceTailTokens.slice(0, sourceCommitCount)
-  const volatileSource = sourceTailTokens.slice(sourceCommitCount)
+  const sourceTailSegments = parseSegments(sourceTail)
+  const sourceCommitCount = committableSegmentCount(sourceTailSegments)
+  const newlyCommittedSource = sourceTailSegments.slice(0, sourceCommitCount)
+  const volatileSource = sourceTailSegments.slice(sourceCommitCount)
 
-  const nextCommittedNorm = committedNorm + newlyCommittedSource.map(normalizeToken).join('')
+  const nextCommittedNorm = committedNorm + newlyCommittedSource.map(normalizeSegment).join('')
   const nextCommittedSourceLen =
-    committedSourceLen + newlyCommittedSource.reduce((sum, token) => sum + token.raw.length, 0)
-  const normalizedFull = nextCommittedNorm + volatileSource.map(normalizeToken).join('')
+    committedSourceLen + newlyCommittedSource.reduce((sum, segment) => sum + segment.raw.length, 0)
+  const normalizedFull = nextCommittedNorm + volatileSource.map(normalizeSegment).join('')
   const stableNormLen = nextCommittedNorm.length
 
-  // Level 2 — block split on the normalized text. Re-lex from the last frozen
-  // block boundary and freeze further blocks, but only those lying entirely
-  // within the stable normalized prefix (bytes past it can still change) and
-  // before any block a later append could merge into.
-  const normTailTokens = marked.lexer(normalizedFull.slice(committedNormLen))
-  const blockCommitCount = committableTokenCount(normTailTokens)
-  const newlyCommittedBlocks: string[] = []
+  // Level 2 — block split on the normalized text. Re-parse from the last frozen
+  // block boundary and freeze further top-level nodes, but only those lying
+  // entirely within the stable normalized prefix (bytes past it can still change)
+  // and before any node a later append could merge into.
+  const normTailSegments = parseSegments(normalizedFull.slice(committedNormLen))
+  const blockCommitCount = committableSegmentCount(normTailSegments)
+  const newlyCommittedBlocks: Block[] = []
   let advanced = 0
   for (let i = 0; i < blockCommitCount; i++) {
-    const raw = normTailTokens[i].raw
-    if (committedNormLen + advanced + raw.length > stableNormLen) {
+    const segment = normTailSegments[i]
+    if (committedNormLen + advanced + segment.raw.length > stableNormLen) {
       break
     }
-    newlyCommittedBlocks.push(raw)
-    advanced += raw.length
+    if (!segment.isGap) {
+      newlyCommittedBlocks.push({ content: segment.raw, isCode: segment.type === 'code' })
+    }
+    advanced += segment.raw.length
   }
   const nextCommittedNormLen = committedNormLen + advanced
   const nextCommittedBlocks = committedBlocks.concat(newlyCommittedBlocks)
-  const blocks = nextCommittedBlocks.concat(lexToBlocks(normalizedFull.slice(nextCommittedNormLen)))
+  const blocks = nextCommittedBlocks.concat(sliceTopLevelBlocks(normalizedFull.slice(nextCommittedNormLen)))
 
   return {
     source,
@@ -307,28 +345,23 @@ const buildState = (source: string, prev: IncrementalMarkdownState | null): Incr
  * Incremental {@link parseMarkdownIntoBlocks} for the streaming-append case.
  *
  * When `markdown` extends the previously-parsed `source` (a growing streamed
- * message), the committed prefix is reused and only the volatile tail is re-lexed
- * and re-normalized, turning the per-token cost from O(message length) into
- * O(last block + appended tail). For any other input (first call, edit, non-prefix
- * change) it does a full parse.
+ * message), the committed prefix is reused and only the volatile tail is
+ * re-parsed and re-normalized, turning the per-token cost from O(message length)
+ * into O(last block + appended tail). For any other input (first call, edit,
+ * non-prefix change) it does a full parse.
  *
- * The result is block-for-block identical to {@link parseMarkdownIntoBlocks};
- * see markdown-blocks.test.ts for the property test proving equivalence across
- * every streaming prefix of realistic documents.
+ * The result is block-for-block identical to {@link parseMarkdownIntoBlocks}; see
+ * markdown-blocks.test.ts for the property test proving equivalence across every
+ * streaming prefix of realistic documents.
  *
  * @param markdown - Current full markdown content.
  * @param prev - State returned by the previous call for the same stream, or null.
  * @returns The blocks plus the state to thread into the next call.
  */
 export const parseMarkdownIntoBlocksIncremental = (
-  rawMarkdown: string,
+  markdown: string,
   prev: IncrementalMarkdownState | null,
-): { blocks: string[]; state: IncrementalMarkdownState } => {
-  // Normalize line endings up front: marked strips `\r` from token `raw`, which
-  // would break the byte offsets this incremental parse threads through the
-  // source. CommonMark treats CRLF/CR/LF identically, so this is output-neutral.
-  const markdown = rawMarkdown.includes('\r') ? rawMarkdown.replace(/\r\n?/g, '\n') : rawMarkdown
-
+): { blocks: Block[]; state: IncrementalMarkdownState } => {
   if (prev && prev.source === markdown) {
     return { blocks: prev.blocks, state: prev }
   }
@@ -337,4 +370,22 @@ export const parseMarkdownIntoBlocksIncremental = (
   const state = buildState(markdown, canReuse ? prev : null)
 
   return { blocks: state.blocks, state }
+}
+
+/**
+ * Whether a block contains math remark-math would render. Uses the same spans
+ * `escapeCurrencyDollars` uses, so detection agrees with what gets rendered.
+ *
+ * `.test()` on a global regex advances (and leaks) `lastIndex`, and `matchAll`
+ * reads that `lastIndex` at creation — so a leftover value would corrupt the
+ * currency-escaping spans on the next block. Reset both before and after probing
+ * to keep the shared regexes clean and detection stable.
+ */
+export const blockHasMath = (content: string): boolean => {
+  displayMathSpan.lastIndex = 0
+  inlineMathSpan.lastIndex = 0
+  const hasMath = displayMathSpan.test(content) || inlineMathSpan.test(content)
+  displayMathSpan.lastIndex = 0
+  inlineMathSpan.lastIndex = 0
+  return hasMath
 }

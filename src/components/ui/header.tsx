@@ -5,7 +5,6 @@
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { Button } from '@/components/ui/button'
 import { useSidebar } from '@/components/ui/sidebar'
-import { WindowControls } from '@/components/window-controls'
 import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -167,7 +166,6 @@ export const Header = () => {
               <span className="sr-only">New Chat</span>
             </Button>
           )}
-          <WindowControls />
         </div>
       </header>
     )
@@ -198,7 +196,6 @@ export const Header = () => {
       </div>
       <div {...dragProps} className="flex items-center gap-2">
         <PowerSyncStatus />
-        <WindowControls />
       </div>
     </header>
   )

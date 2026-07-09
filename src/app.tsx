@@ -46,6 +46,7 @@ import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
 import { UpdateNotification } from './components/update-notification'
+import { WindowChrome } from '@/components/window-chrome'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
@@ -293,7 +294,7 @@ export const App = () => {
   return (
     <ThemeProvider>
       <LazyMotion features={loadMotionFeatures} strict>
-        {renderAppContent()}
+        <WindowChrome>{renderAppContent()}</WindowChrome>
         <RevokedDeviceModal open={revokedDeviceOpen} />
       </LazyMotion>
     </ThemeProvider>

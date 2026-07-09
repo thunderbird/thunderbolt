@@ -51,9 +51,9 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
         </div>
       )}
       {!showChromeStrip && (
-        <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-between px-2 flex-shrink-0">
-          <div className="flex items-center gap-3 h-8 px-2 relative flex-1">
-            {!isExpanded && (
+        <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-end px-2 flex-shrink-0">
+          {!isExpanded && (
+            <div className="flex items-center gap-3 h-8 px-2 relative flex-1">
               <SidebarGroup className="p-0 absolute left-0 right-0">
                 <SidebarGroupContent>
                   <SidebarMenu>
@@ -66,8 +66,8 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
-            )}
-          </div>
+            </div>
+          )}
           {isExpanded && (
             <div className="flex items-center">
               {isMobile ? (

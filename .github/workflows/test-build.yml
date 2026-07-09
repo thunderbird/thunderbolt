@@ -92,6 +92,14 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.platform }}-build
+          # actions/upload-artifact does not expand brace patterns, so list
+          # each extension on its own line.
           path: |
-            src-tauri/target/*/release/bundle/**/*.{deb,AppImage,rpm,msi,exe,dmg,app.tar.gz}
+            src-tauri/target/*/release/bundle/**/*.deb
+            src-tauri/target/*/release/bundle/**/*.AppImage
+            src-tauri/target/*/release/bundle/**/*.rpm
+            src-tauri/target/*/release/bundle/**/*.msi
+            src-tauri/target/*/release/bundle/**/*.exe
+            src-tauri/target/*/release/bundle/**/*.dmg
+            src-tauri/target/*/release/bundle/**/*.app.tar.gz
           retention-days: 7

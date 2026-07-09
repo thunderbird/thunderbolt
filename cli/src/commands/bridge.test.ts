@@ -12,7 +12,14 @@
 
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import type { BridgeProc } from './bridge.ts'
-import { authorizeUpgrade, bridgeAllowedOrigins, forwardFrameToStdin, generateBridgeToken } from './bridge.ts'
+import {
+  atProcCapacity,
+  authorizeUpgrade,
+  bridgeAllowedOrigins,
+  forwardFrameToStdin,
+  generateBridgeToken,
+  MAX_ACTIVE_PROCS,
+} from './bridge.ts'
 
 const TOKEN = generateBridgeToken()
 const ORIGINS = bridgeAllowedOrigins()
@@ -94,6 +101,17 @@ describe('bridgeAllowedOrigins', () => {
     expect(origins.has('https://app.thunderbolt.example')).toBe(true)
     expect(origins.has('https://beta.example')).toBe(true)
     expect(origins.has('')).toBe(false)
+  })
+})
+
+describe('atProcCapacity — shared live-subprocess cap', () => {
+  const procs = (n: number): Set<BridgeProc> => new Set(Array.from({ length: n }, () => ({}) as BridgeProc))
+
+  test('allows work below the ceiling and refuses at or above it', () => {
+    expect(atProcCapacity(procs(0))).toBe(false)
+    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS - 1))).toBe(false)
+    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS))).toBe(true)
+    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS + 1))).toBe(true)
   })
 })
 

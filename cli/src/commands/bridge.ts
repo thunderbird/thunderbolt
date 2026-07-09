@@ -111,6 +111,19 @@ export const spawnAgent = (command: readonly string[]): BridgeProc | null => {
   }
 }
 
+/** Hard ceiling on concurrently-live bridged subprocesses per bridge server,
+ *  shared by both transports. The handshake gates (rate limit + concurrent-
+ *  handshake cap) bound *connection setup*, not established sessions — so an
+ *  allowlisted/authorized peer holding many connections open would otherwise
+ *  spawn unbounded long-lived agents and exhaust the host. At the cap a new
+ *  connection is refused instead of spawning. Generous enough that real
+ *  concurrent use never hits it. */
+export const MAX_ACTIVE_PROCS = 16
+
+/** Whether a bridge is at its live-subprocess ceiling and must refuse new work.
+ *  The single source of the cap policy for both the WebSocket and iroh bridges. */
+export const atProcCapacity = (activeProcs: ReadonlySet<BridgeProc>): boolean => activeProcs.size >= MAX_ACTIVE_PROCS
+
 /** Bearer-style flags whose *following* argv element is a secret to hide. */
 const SECRET_FLAGS = new Set(['--api-key', '--token'])
 /** An env-style `NAME=value` token whose NAME looks like a credential (ends in
@@ -232,6 +245,10 @@ export const authorizeUpgrade = (
 export const runBridge = async (config: BridgeConfig): Promise<void> => {
   const token = generateBridgeToken()
   const allowedOrigins = bridgeAllowedOrigins()
+  // Cap concurrently-live agents: the upgrade gate authorizes *connections*, not
+  // sessions, so an authorized client holding many sockets open would otherwise
+  // spawn unbounded bash processes. At the ceiling a new socket is refused.
+  const activeProcs = new Set<BridgeProc>()
   const server = Bun.serve<BridgeSocketData>({
     // Loopback-only: this transport is unauthenticated, so it must not be
     // reachable from the LAN (Bun's default binds every interface). The G3
@@ -250,11 +267,17 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
     },
     websocket: {
       open(ws) {
+        if (atProcCapacity(activeProcs)) {
+          ws.close(1013, 'bridge at capacity')
+          return
+        }
         const proc = spawnAgent(config.command)
         if (!proc) {
           ws.close(1011, `failed to spawn '${config.command[0]}'`)
           return
         }
+        activeProcs.add(proc)
+        void proc.exited.then(() => activeProcs.delete(proc))
         ws.data.proc = proc
         void (async () => {
           try {

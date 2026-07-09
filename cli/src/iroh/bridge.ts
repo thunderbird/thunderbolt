@@ -17,7 +17,7 @@
 
 import type { Connection, Incoming } from '@number0/iroh'
 import type { BridgeConfig } from '../agent/types.ts'
-import { redactArgv, spawnAgent, type BridgeProc } from '../commands/bridge.ts'
+import { atProcCapacity, redactArgv, spawnAgent, type BridgeProc } from '../commands/bridge.ts'
 import { isAllowed } from './allowlist.ts'
 import { bindServer } from './endpoint.ts'
 import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
@@ -243,6 +243,15 @@ export const handleConnection = async (
   const bi = await acceptBidiStream(connection, acceptTimeoutMs)
   if (!bi) {
     process.stderr.write(`⚡ iroh bridge: closed ${remoteId} (idle: no data stream)\n`)
+    return
+  }
+
+  // Cap concurrently-live agents: the allowlist authorizes a *peer*, not a fixed
+  // number of sessions, so one allowlisted peer holding many connections open
+  // would otherwise spawn unbounded agents. At the ceiling we refuse rather than spawn.
+  if (atProcCapacity(activeProcs)) {
+    process.stderr.write(`⚡ iroh bridge: refused ${remoteId} (at capacity, ${activeProcs.size} live agents)\n`)
+    connection.close(CLOSE_REFUSED, reasonBytes('bridge at capacity'))
     return
   }
 

@@ -18,7 +18,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BridgeConfig } from '../agent/types.ts'
-import { redactArgv, type BridgeProc } from '../commands/bridge.ts'
+import { MAX_ACTIVE_PROCS, redactArgv, type BridgeProc } from '../commands/bridge.ts'
 import { add } from './allowlist.ts'
 import {
   admitConnection,
@@ -244,6 +244,30 @@ describe('handleConnection — the allowlist gate', () => {
     expect(close).toHaveBeenCalledTimes(1)
     expect(close.mock.calls[0][0]).toBe(CLOSE_REFUSED)
     expect(close.mock.calls[0][1]).toEqual(bytesOf("failed to spawn '__nonexistent_binary_xyzzy__'"))
+  })
+
+  it('refuses an allowlisted peer at the active-proc cap: closes with "bridge at capacity", no spawn', async () => {
+    await add('busy-peer')
+    // Fill the registry to the ceiling so the next connection is over-capacity.
+    const activeProcs = new Set<BridgeProc>(Array.from({ length: MAX_ACTIVE_PROCS }, () => ({}) as BridgeProc))
+    const closed = mock(() => new Promise<void>(() => {}))
+    const connection = {
+      remoteId: () => ({ toString: () => 'busy-peer' }),
+      acceptBi: mock(async () => ({ recv: {}, send: {} })),
+      closed,
+      close: mock(() => {}),
+    } as unknown as Connection
+    const incoming = { accept: async () => ({ connect: async () => connection }) } as unknown as Incoming
+
+    await handleConnection(incoming, config, activeProcs, { release: () => {} })
+
+    expect((connection.acceptBi as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1) // peer opened its stream
+    expect(closed).not.toHaveBeenCalled() // nothing spawned, so no kill bound
+    expect(activeProcs.size).toBe(MAX_ACTIVE_PROCS) // unchanged: refused, not spawned
+    const close = connection.close as ReturnType<typeof mock>
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(close.mock.calls[0][0]).toBe(CLOSE_REFUSED)
+    expect(close.mock.calls[0][1]).toEqual(bytesOf('bridge at capacity'))
   })
 })
 

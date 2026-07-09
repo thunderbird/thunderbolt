@@ -185,6 +185,9 @@ export class TrayManager {
 
         this.tray = await tauriTray.TrayIcon.new({
           icon: await tauriApp?.defaultWindowIcon(),
+          // macOS template mode: alpha-only render that inverts with the menu
+          // bar. No-op on Windows/Linux (they show the icon as-is).
+          iconAsTemplate: true,
           tooltip: 'Thunderbolt',
           menu,
         })

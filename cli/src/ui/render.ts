@@ -19,6 +19,37 @@ const PREVIEW_MAX = 160
 const PREVIEW_LINES = 2
 
 /**
+ * Matches whole ANSI escape sequences: CSI (`ESC[…`), OSC (`ESC]…` up to a BEL
+ * or ST terminator), and any other `ESC`-introduced form (two-byte escapes down
+ * to a lone `ESC`). The lone-`ESC` alternative is last so a split or unterminated
+ * sequence still loses its introducer and degrades to inert printable text. The
+ * OSC body is a negated class (not `.*?`) so an unterminated introducer stops at
+ * the next `ESC`/BEL instead of rescanning to the end — keeping the pass linear
+ * on hostile input like a long run of bare `ESC]`.
+ */
+const ESCAPE_SEQUENCE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]?/g
+/**
+ * Matches lone C0/C1 control bytes (and DEL) that survive escape-sequence
+ * removal, deliberately sparing tab (`\x09`) and newline (`\x0a`) — the only
+ * whitespace the renderer lays out on.
+ */
+const CONTROL_CHAR = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g
+
+/**
+ * Neutralizes terminal control sequences in untrusted text (tool output,
+ * model-influenced arguments, assistant prose) before it reaches the operator's
+ * terminal. Strips ANSI escape sequences — OSC 52 clipboard writes, window-title
+ * and hyperlink spoofs, CSI cursor moves — and lone control bytes, while
+ * preserving the tab and newline the renderer relies on. Apply this at the trust
+ * boundary, before wrapping the text in the app's own color SGR.
+ *
+ * @param text - the untrusted text to sanitize
+ * @returns the text with escape sequences and stray control bytes removed
+ */
+export const sanitizeTerminalText = (text: string): string =>
+  text.replace(ESCAPE_SEQUENCE, '').replace(CONTROL_CHAR, '')
+
+/**
  * Truncates `text` to `max` characters, appending an ellipsis when clipped.
  *
  * @param text - the text to bound
@@ -37,9 +68,9 @@ const truncate = (text: string, max: number): string => (text.length > max ? `${
 const summarizeArgs = (args: unknown): string => {
   if (typeof args !== 'object' || args === null) return ''
   const record = args as Record<string, unknown>
-  if (typeof record.command === 'string') return record.command
-  if (typeof record.path === 'string') return record.path
-  return JSON.stringify(record)
+  if (typeof record.command === 'string') return sanitizeTerminalText(record.command)
+  if (typeof record.path === 'string') return sanitizeTerminalText(record.path)
+  return sanitizeTerminalText(JSON.stringify(record))
 }
 
 /** Narrows an unknown tool-result content block to one carrying text. */
@@ -57,11 +88,12 @@ const previewResult = (result: unknown): string => {
   if (typeof result !== 'object' || result === null) return ''
   const content = (result as { content?: unknown }).content
   if (!Array.isArray(content)) return ''
-  const text = content
-    .filter(isTextBlock)
-    .map((block) => block.text)
-    .join('')
-    .trim()
+  const text = sanitizeTerminalText(
+    content
+      .filter(isTextBlock)
+      .map((block) => block.text)
+      .join(''),
+  ).trim()
   return truncate(text.split('\n').slice(0, PREVIEW_LINES).join('\n'), PREVIEW_MAX)
 }
 
@@ -123,10 +155,10 @@ export const attachRenderer = (harness: AgentHarness): void => {
         const inner = event.assistantMessageEvent
         switch (inner.type) {
           case 'text_delta':
-            process.stdout.write(inner.delta)
+            process.stdout.write(sanitizeTerminalText(inner.delta))
             break
           case 'thinking_delta':
-            process.stdout.write(dim(inner.delta))
+            process.stdout.write(dim(sanitizeTerminalText(inner.delta)))
             break
         }
         break

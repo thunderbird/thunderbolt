@@ -12,10 +12,74 @@
 
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import { describe, expect, test } from 'bun:test'
-import { formatToolEnd, formatToolStart, formatTurnError } from './render.ts'
+import { formatToolEnd, formatToolStart, formatTurnError, sanitizeTerminalText } from './render.ts'
 
 /** A Pi tool result carrying a single text content block. */
 const textResult = (text: string): unknown => ({ content: [{ type: 'text', text }] })
+
+describe('sanitizeTerminalText — control-sequence stripping', () => {
+  test('strips an OSC 52 clipboard-write sequence', () => {
+    const result = sanitizeTerminalText('safe\x1b]52;c;aGVsbG8=\x07 after')
+    expect(result).toBe('safe after')
+    expect(result).not.toContain('\x1b')
+  })
+
+  test('strips a CSI cursor-move sequence', () => {
+    expect(sanitizeTerminalText('a\x1b[2J\x1b[1;1Hb')).toBe('ab')
+  })
+
+  test('strips an OSC window-title-set sequence (BEL-terminated)', () => {
+    expect(sanitizeTerminalText('\x1b]0;pwned\x07home')).toBe('home')
+  })
+
+  test('strips an OSC sequence terminated by ST (ESC backslash)', () => {
+    expect(sanitizeTerminalText('\x1b]8;;http://evil\x1b\\link')).toBe('link')
+  })
+
+  test('strips an SGR color sequence embedded mid-string', () => {
+    expect(sanitizeTerminalText('red\x1b[31mtext\x1b[0m!')).toBe('redtext!')
+  })
+
+  test('defangs a lone/unterminated ESC by dropping its introducer', () => {
+    // A split or truncated sequence loses its ESC, leaving inert printable text.
+    expect(sanitizeTerminalText('oops\x1b')).toBe('oops')
+    expect(sanitizeTerminalText('oops\x1b[2')).toBe('oops2')
+  })
+
+  test('strips a raw C1 control byte (single-byte CSI introducer)', () => {
+    expect(sanitizeTerminalText('a\x9bb')).toBe('ab')
+  })
+
+  test('strips lone C0 control bytes but preserves tab and newline', () => {
+    expect(sanitizeTerminalText('a\x00\x07b\tc\nd')).toBe('ab\tc\nd')
+  })
+
+  test('leaves ordinary text untouched', () => {
+    expect(sanitizeTerminalText('plain text, no escapes 123')).toBe('plain text, no escapes 123')
+  })
+
+  test('strips a run of unterminated OSC introducers without leaving an ESC', () => {
+    // The OSC body is a negated class, so each bare introducer degrades via the
+    // lone-ESC fallback instead of rescanning to the end (keeps the pass linear).
+    const result = sanitizeTerminalText('\x1b]'.repeat(500) + 'tail')
+    expect(result).toBe('tail')
+  })
+
+  // These assert the untrusted payload is gone, not the absence of all ESC: the
+  // app's own color SGR (added by gray() under a TTY) is intentionally kept.
+  test('flows through formatToolEnd so hostile tool output cannot spoof the terminal', () => {
+    const line = formatToolEnd(false, textResult('ok\x1b]52;c;cHduZWQ=\x07'))
+    expect(line).not.toContain('52;')
+    expect(line).not.toContain('cHduZWQ')
+    expect(line).toContain('ok')
+  })
+
+  test('flows through formatToolStart so a hostile bash command cannot spoof the terminal', () => {
+    const line = formatToolStart('bash', { command: 'echo\x1b[2Jhi' })
+    expect(line).not.toContain('2J')
+    expect(line).toContain('echohi')
+  })
+})
 
 describe('formatToolStart — argument summary', () => {
   test('bash summarizes to its command', () => {

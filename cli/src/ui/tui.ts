@@ -40,7 +40,7 @@ import {
 import { attachPermissionGate } from '../agent/permissions.ts'
 import type { PermissionDecision, PermissionPrompt, PermissionRequest } from '../agent/types.ts'
 import { bannerText } from '../banner.ts'
-import { formatToolEnd, formatToolStart, formatTurnError } from './render.ts'
+import { formatToolEnd, formatToolStart, formatTurnError, sanitizeTerminalText } from './render.ts'
 import { bold, cyan, dim, gray, italic, strikethrough, underline, yellow } from './theme.ts'
 
 /** Composes two styling helpers, applying `inner` before `outer`. */
@@ -88,9 +88,10 @@ const toDecision = (value: string): PermissionDecision =>
 /** Renders a single assistant content block as markdown, or `undefined` for
  *  blocks with no prose (tool calls, blank text/thinking). */
 const blockToMarkdown = (block: AssistantMessage['content'][number]): Markdown | undefined => {
-  if (block.type === 'text' && block.text.trim()) return new Markdown(block.text.trim(), 1, 0, markdownTheme)
+  if (block.type === 'text' && block.text.trim())
+    return new Markdown(sanitizeTerminalText(block.text.trim()), 1, 0, markdownTheme)
   if (block.type === 'thinking' && block.thinking.trim())
-    return new Markdown(block.thinking.trim(), 1, 0, markdownTheme, { color: dim, italic: true })
+    return new Markdown(sanitizeTerminalText(block.thinking.trim()), 1, 0, markdownTheme, { color: dim, italic: true })
   return undefined
 }
 

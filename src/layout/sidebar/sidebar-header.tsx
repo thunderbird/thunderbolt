@@ -15,6 +15,7 @@ import { PowerSyncStatus } from '@/components/powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isDesktop, isTauri } from '@/lib/platform'
 import { PanelLeft } from 'lucide-react'
+import { AppLogo } from '@/components/app-logo'
 
 type SidebarHeaderProps = {
   onToggle: () => void
@@ -31,6 +32,11 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   // sidebar-header row would be empty (logo/text removed to match how most
   // apps present their sidebar), so skip it entirely on this path.
   const showChromeStrip = isTauri() && isDesktop() && !isMobile
+  // Branding stays on web (any size) and Tauri iOS/Android. Tauri desktop —
+  // wide or narrow — never shows logo+wordmark: wide gets the chrome strip
+  // above, narrow gets a drawer whose branding would clash with the app-level
+  // window chrome we already surface.
+  const showBranding = !(isTauri() && isDesktop())
 
   return (
     <>
@@ -51,9 +57,9 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
         </div>
       )}
       {!showChromeStrip && (
-        <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-end px-2 flex-shrink-0">
-          {!isExpanded && (
-            <div className="flex items-center gap-3 h-8 px-2 relative flex-1">
+        <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-between px-2 flex-shrink-0">
+          <div className="flex items-center gap-3 h-8 px-2 relative flex-1">
+            {!isExpanded && (
               <SidebarGroup className="p-0 absolute left-0 right-0">
                 <SidebarGroupContent>
                   <SidebarMenu>
@@ -66,8 +72,14 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
-            </div>
-          )}
+            )}
+            {isExpanded && showBranding && (
+              <>
+                <AppLogo />
+                <span className="text-[length:var(--font-size-body)] truncate">Thunderbolt</span>
+              </>
+            )}
+          </div>
           {isExpanded && (
             <div className="flex items-center">
               {isMobile ? (

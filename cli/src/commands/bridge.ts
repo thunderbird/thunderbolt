@@ -69,6 +69,32 @@ const pumpStdoutToSocket = async (proc: BridgeProc, ws: BridgeSocket): Promise<v
   if (trailing) ws.send(trailing)
 }
 
+/**
+ * Forward one inbound WebSocket frame to the agent's stdin, appending the newline
+ * the ndjson stdio framing requires. The flush is awaited only so a flush-time
+ * failure surfaces in the catch (not for WS-read backpressure — the caller fires
+ * this off with `void`). A write/flush failure — most commonly `EPIPE` when a
+ * frame arrives after the agent has exited and closed its stdin — is logged loudly
+ * and closes the socket abnormally (1011) instead of throwing uncaught and downing
+ * the bridge. Mirrors the iroh pump's `writeToStdin`: a dead pipe is a real IO
+ * boundary, not a defensive guard on trusted data.
+ */
+export const forwardFrameToStdin = async (
+  proc: BridgeProc,
+  text: string,
+  close: (code: number, reason: string) => void,
+): Promise<void> => {
+  try {
+    proc.stdin.write(text + '\n')
+    await proc.stdin.flush()
+  } catch (err) {
+    process.stderr.write(
+      `thunderbolt bridge: stdin write failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    )
+    close(1011, 'agent stdin closed')
+  }
+}
+
 /** Spawn the bridged agent, returning `null` if the executable can't be found
  *  (the parser guarantees a non-empty command). Bun.spawn throws synchronously
  *  on ENOENT — catching it at this connection boundary keeps one bad command
@@ -251,8 +277,7 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
         const proc = ws.data.proc
         if (!proc) return
         const text = typeof message === 'string' ? message : frameDecoder.decode(message)
-        proc.stdin.write(text + '\n')
-        proc.stdin.flush()
+        void forwardFrameToStdin(proc, text, (code, reason) => ws.close(code, reason))
       },
       close(ws) {
         ws.data.proc?.kill()

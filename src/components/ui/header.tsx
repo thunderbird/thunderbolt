@@ -67,6 +67,7 @@ export const Header = () => {
   // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
   // buttons inline on the right (self-nulls on macOS/web).
   const enableDragRegion = isTauri() && isDesktop()
+  const dragProps = enableDragRegion ? { 'data-tauri-drag-region': true } : {}
   // Tauri desktop fully hides the sidebar on collapse (see layout/sidebar/
   // index.tsx) — surface a re-open toggle in the header in that state so it
   // stays discoverable.
@@ -135,13 +136,10 @@ export const Header = () => {
 
     return (
       <header
-        {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+        {...dragProps}
         className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
       >
-        <div
-          {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
-          className={cn('flex flex-1 items-center', isMacDesktop() && 'ml-20')}
-        >
+        <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'ml-20')}>
           <Button
             variant="ghost"
             size="icon"
@@ -153,17 +151,11 @@ export const Header = () => {
           </Button>
         </div>
 
-        <div
-          {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
-          className="flex shrink-0 items-center justify-center gap-2 min-w-0"
-        >
+        <div {...dragProps} className="flex shrink-0 items-center justify-center gap-2 min-w-0">
           {agentSelector}
         </div>
 
-        <div
-          {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
-          className="flex flex-1 items-center gap-1 justify-end"
-        >
+        <div {...dragProps} className="flex flex-1 items-center gap-1 justify-end">
           {showNewChatButton && (
             <Button
               variant="ghost"
@@ -184,11 +176,11 @@ export const Header = () => {
   // Desktop: Agent selector left-aligned, PowerSync status right.
   return (
     <header
-      {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+      {...dragProps}
       className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
       <div
-        {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})}
+        {...dragProps}
         className={cn('flex items-center gap-2', showReopenSidebarButton && isMacDesktop() && 'ml-20')}
       >
         {showReopenSidebarButton && (
@@ -204,7 +196,7 @@ export const Header = () => {
         )}
         {agentSelector}
       </div>
-      <div {...(enableDragRegion ? { 'data-tauri-drag-region': true } : {})} className="flex items-center gap-2">
+      <div {...dragProps} className="flex items-center gap-2">
         <PowerSyncStatus />
         <WindowControls />
       </div>

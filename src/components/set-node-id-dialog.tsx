@@ -31,13 +31,7 @@ type Status = { kind: 'idle' } | { kind: 'scanning' } | { kind: 'error'; message
  * Lets a trusted device bind a P2P pairing identity onto a device row by pasting a
  * pairing code or scanning one from an uploaded QR image. Default export for lazy loading.
  */
-export default function SetNodeIdDialog({
-  open,
-  onOpenChange,
-  deviceName,
-  onConfirm,
-  isPending,
-}: SetNodeIdDialogProps) {
+const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending }: SetNodeIdDialogProps) => {
   const [text, setText] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -131,3 +125,5 @@ export default function SetNodeIdDialog({
     </Dialog>
   )
 }
+
+export default SetNodeIdDialog

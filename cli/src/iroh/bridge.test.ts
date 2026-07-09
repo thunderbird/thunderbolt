@@ -262,10 +262,26 @@ describe('redactArgv — secret redaction in command logs', () => {
     expect(redactArgv(['OPENAI_API_KEY=sk-abc', 'agent', '--flag'])).toBe('OPENAI_API_KEY=*** agent --flag')
   })
 
+  it('redacts *_TOKEN / *_SECRET / *_PASSWORD env-style assignments, keeping the name', () => {
+    expect(redactArgv(['GITHUB_TOKEN=ghp_abc', 'agent'])).toBe('GITHUB_TOKEN=*** agent')
+    expect(redactArgv(['DB_SECRET=shh', 'agent'])).toBe('DB_SECRET=*** agent')
+    expect(redactArgv(['DB_PASSWORD=hunter2', 'agent'])).toBe('DB_PASSWORD=*** agent')
+  })
+
+  it('redacts bare uppercase credential names (PASSWORD=, SECRET=, TOKEN=)', () => {
+    expect(redactArgv(['PASSWORD=hunter2'])).toBe('PASSWORD=***')
+    expect(redactArgv(['SECRET=shh'])).toBe('SECRET=***')
+    expect(redactArgv(['TOKEN=ghp_x'])).toBe('TOKEN=***')
+  })
+
   it('leaves benign argv untouched (no false positives like monkey= or --model=)', () => {
     expect(redactArgv(['claude', 'mcp', 'serve', '--model=gpt-4', 'monkey=foo'])).toBe(
       'claude mcp serve --model=gpt-4 monkey=foo',
     )
+  })
+
+  it('does NOT redact a lowercase credential-looking name (case-sensitive)', () => {
+    expect(redactArgv(['password=foo', 'token=bar'])).toBe('password=foo token=bar')
   })
 
   it('handles a secret flag at the very end with no following value', () => {

@@ -88,9 +88,11 @@ export const spawnAgent = (command: readonly string[]): BridgeProc | null => {
 /** Bearer-style flags whose *following* argv element is a secret to hide. */
 const SECRET_FLAGS = new Set(['--api-key', '--token'])
 /** An env-style `NAME=value` token whose NAME looks like a credential (ends in
- *  `KEY`, e.g. `OPENAI_API_KEY=sk-…`). Uppercase-only so benign words like
- *  `monkey=foo` are left alone. */
-const KEY_ASSIGNMENT = /^[A-Z][A-Z0-9_]*KEY=/
+ *  one of `KEY`/`TOKEN`/`SECRET`/`PASSWORD`/`PASSWD`/`CREDENTIAL`/`CRED(S)`, e.g.
+ *  `OPENAI_API_KEY=sk-…`, `GITHUB_TOKEN=ghp_…`, `DB_SECRET=…`). Case-sensitive
+ *  uppercase names only, so benign lowercase words like `monkey=foo` are left
+ *  alone; the optional `[A-Z0-9_]*` prefix lets a bare `PASSWORD=…` match too. */
+const KEY_ASSIGNMENT = /^[A-Z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDS?)=/
 
 /** Redact the value of an env-style credential assignment, leaving its name. */
 const redactKeyAssignment = (arg: string): string => (KEY_ASSIGNMENT.test(arg) ? arg.replace(/=.*/s, '=***') : arg)
@@ -111,8 +113,9 @@ const redactArg = (arg: string): string => redactJoinedFlag(arg) ?? redactKeyAss
  * logging the bridged command without leaking secrets to stdout/scrollback/CI.
  * Everything after `--` can carry a bearer token (e.g. an openai-compat agent's
  * `--api-key sk-…`); this hides the value following a bare `--api-key`/`--token`,
- * the tail of a joined `--api-key=sk-…`/`--token=…`, and any `*_KEY`-looking env
- * assignment, replacing it with `***`. Pure and total — a trailing bare secret
+ * the tail of a joined `--api-key=sk-…`/`--token=…`, and any credential-looking
+ * uppercase env assignment (`*KEY`/`*TOKEN`/`*SECRET`/`*PASSWORD`/…), replacing it
+ * with `***`. Pure and total — a trailing bare secret
  * flag with no following value is simply left as-is.
  */
 export const redactArgv = (argv: readonly string[]): string =>

@@ -108,8 +108,14 @@ export class IrohConnection {
      */
     readable(): ReadableStream;
     /**
-     * Queue `data` to be written to the bidi stream. Resolves once enqueued
-     * (the write task drains it); rejects if the connection is already closed.
+     * Write `data` to the bidi stream, resolving only once the bytes are ACTUALLY
+     * written and rejecting if the write fails — the promise reflects the real
+     * write outcome, never merely that the frame was buffered. The frame is
+     * handed to the write task over the bounded queue (so `self` is never held
+     * across an await and backpressure is preserved), carrying a `oneshot` the
+     * task fulfils once the write settles. Rejects if the connection is already
+     * closed, or if the write task tears down before this frame is written — so
+     * an accepted frame is never silently dropped.
      */
     send(data: Uint8Array): Promise<any>;
 }
@@ -147,15 +153,15 @@ export interface InitOutput {
     readonly intounderlyingbytesource_start: (a: number, b: number) => void;
     readonly intounderlyingbytesource_type: (a: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_16140: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_16124: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_5304: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2981: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_7164: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_5135: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_6288: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_6422: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_14808: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_16171: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_16155: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_5329: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_3006: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_7193: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_5160: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_6313: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_6447: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_14839: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

@@ -14,7 +14,8 @@
 
 /** One open bridge connection: a single QUIC bidi stream over the relay. */
 export type IrohConnectionLike = {
-  /** Queue bytes for the send half; resolves once enqueued. */
+  /** Write bytes to the send half; resolves once they are actually written and
+   *  rejects if the write fails (or the connection is closed). */
   send: (data: Uint8Array) => Promise<unknown>
   /** The receive half as a byte stream — consumed once. */
   readable: () => ReadableStream<Uint8Array>

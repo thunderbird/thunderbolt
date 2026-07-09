@@ -27,6 +27,10 @@ wasm-streams = "0.5"
 async-stream = "0.3"
 # The `Stream` trait named in `recv_byte_stream`'s return type.
 futures-core = { version = "0.3", default-features = false }
+# Per-frame completion signal: each queued frame carries a `oneshot` the write
+# task fulfils once the bytes are actually written (or fails on a write error),
+# so `send()` reflects the real write outcome instead of resolving on enqueue.
+futures-channel = { version = "0.3", default-features = false, features = ["alloc"] }
 # Outbound byte queue decoupling `send()` from the QUIC write task, so the
 # wasm-bindgen object is never borrowed across an await.
 async-channel = "2"

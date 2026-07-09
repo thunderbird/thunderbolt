@@ -32,6 +32,7 @@
 use std::cell::RefCell;
 
 use async_channel::{Receiver, Sender};
+use futures_channel::oneshot;
 use iroh::endpoint::{Connection, RecvStream, SendStream, presets};
 use iroh::{Endpoint, EndpointAddr, EndpointId, RelayMode, RelayUrl, SecretKey};
 use iroh_tickets::endpoint::EndpointTicket;
@@ -41,10 +42,18 @@ use wasm_bindgen_futures::{future_to_promise, spawn_local};
 use wasm_streams::ReadableStream;
 use wasm_streams::readable::sys::ReadableStream as JsReadableStream;
 
-/// Depth of the outbound byte queue. Decouples `send()` (which only enqueues)
-/// from the QUIC write task, so the wasm-bindgen object is never borrowed across
-/// an await. Small because ACP JSON-RPC messages are tiny and frequent.
+/// Depth of the outbound byte queue. Keeps `send()` decoupled from the QUIC write
+/// task — the frame is handed off over the channel rather than written under a
+/// borrow of the wasm-bindgen object, so `self` is never held across an await —
+/// while bounding how many frames may be in flight. Small because ACP JSON-RPC
+/// messages are tiny and frequent.
 const OUTBOUND_CAPACITY: usize = 64;
+
+/// A queued outbound frame: the bytes to write, paired with a `oneshot` the write
+/// task fulfils once those bytes are written (`Ok`) or a write fails (`Err(msg)`).
+/// This is how `send()`'s promise reflects the ACTUAL write outcome instead of
+/// merely that the frame was buffered — no accepted frame is ever silently dropped.
+type OutboundFrame = (Vec<u8>, oneshot::Sender<Result<(), String>>);
 
 /// Max bytes pulled per recv read — a comfortably large ceiling for JSON-RPC.
 const READ_CHUNK_LIMIT: usize = 1 << 16;
@@ -149,13 +158,13 @@ impl IrohClient {
 pub struct IrohConnection {
     // Held to keep the QUIC connection alive — dropping it tears the stream down.
     connection: Connection,
-    outbound: Sender<Vec<u8>>,
+    outbound: Sender<OutboundFrame>,
     readable: RefCell<Option<JsReadableStream>>,
 }
 
 impl IrohConnection {
     fn new(connection: Connection, send: SendStream, recv: RecvStream) -> Self {
-        let (outbound, rx) = async_channel::bounded::<Vec<u8>>(OUTBOUND_CAPACITY);
+        let (outbound, rx) = async_channel::bounded::<OutboundFrame>(OUTBOUND_CAPACITY);
         spawn_local(drive_send(send, rx));
         let readable = ReadableStream::from_stream(recv_byte_stream(recv)).into_raw();
         IrohConnection {
@@ -168,17 +177,30 @@ impl IrohConnection {
 
 #[wasm_bindgen]
 impl IrohConnection {
-    /// Queue `data` to be written to the bidi stream. Resolves once enqueued
-    /// (the write task drains it); rejects if the connection is already closed.
+    /// Write `data` to the bidi stream, resolving only once the bytes are ACTUALLY
+    /// written and rejecting if the write fails — the promise reflects the real
+    /// write outcome, never merely that the frame was buffered. The frame is
+    /// handed to the write task over the bounded queue (so `self` is never held
+    /// across an await and backpressure is preserved), carrying a `oneshot` the
+    /// task fulfils once the write settles. Rejects if the connection is already
+    /// closed, or if the write task tears down before this frame is written — so
+    /// an accepted frame is never silently dropped.
     #[wasm_bindgen(js_name = send)]
     pub fn send(&self, data: Vec<u8>) -> Promise {
         let outbound = self.outbound.clone();
         future_to_promise(async move {
+            let (done_tx, done_rx) = oneshot::channel();
             outbound
-                .send(data)
+                .send((data, done_tx))
                 .await
                 .map_err(|_| JsValue::from(JsError::new("iroh connection closed")))?;
-            Ok(JsValue::UNDEFINED)
+            match done_rx.await {
+                Ok(Ok(())) => Ok(JsValue::UNDEFINED),
+                Ok(Err(msg)) => Err(JsValue::from(JsError::new(&msg))),
+                // The write task dropped this frame's sender without writing it
+                // (it broke out on an earlier write error) — surface it, don't drop.
+                Err(_canceled) => Err(JsValue::from(JsError::new("iroh connection closed"))),
+            }
         })
     }
 
@@ -202,11 +224,28 @@ impl IrohConnection {
 }
 
 /// Drain the outbound queue into the send half, finishing the stream when the
-/// queue closes (on [`IrohConnection::close`] or drop) or a write fails.
-async fn drive_send(mut send: SendStream, rx: Receiver<Vec<u8>>) {
-    while let Ok(chunk) = rx.recv().await {
-        if send.write_all(&chunk).await.is_err() {
-            break;
+/// queue closes (on [`IrohConnection::close`] or drop) or a write fails. Each
+/// frame's `oneshot` is fulfilled with the write outcome so its `send()` promise
+/// settles truthfully; on a write error every still-queued frame is failed too,
+/// so no accepted frame's promise is left resolving `Ok` on bytes that never
+/// reached the wire.
+async fn drive_send(mut send: SendStream, rx: Receiver<OutboundFrame>) {
+    while let Ok((chunk, done)) = rx.recv().await {
+        match send.write_all(&chunk).await {
+            Ok(()) => {
+                let _ = done.send(Ok(()));
+            }
+            Err(err) => {
+                let msg = err.to_string();
+                let _ = done.send(Err(msg.clone()));
+                // Fail every frame already accepted into the queue rather than
+                // dropping it silently; frames that race in after this drop their
+                // sender and reject via the `Canceled` arm in `send()`.
+                while let Ok((_, queued)) = rx.try_recv() {
+                    let _ = queued.send(Err(msg.clone()));
+                }
+                break;
+            }
         }
     }
     let _ = send.finish();

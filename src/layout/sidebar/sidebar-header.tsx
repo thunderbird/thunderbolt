@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { PowerSyncStatus } from '@/components/powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isTauri } from '@/lib/platform'
+import { isDesktop, isTauri } from '@/lib/platform'
 import { PanelLeft } from 'lucide-react'
 
 type SidebarHeaderProps = {
@@ -30,7 +30,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   // the traffic lights (macOS) and the collapse toggle. Below that strip the
   // sidebar-header row would be empty (logo/text removed to match how most
   // apps present their sidebar), so skip it entirely on this path.
-  const showChromeStrip = isTauri() && !isMobile
+  const showChromeStrip = isTauri() && isDesktop() && !isMobile
 
   return (
     <>

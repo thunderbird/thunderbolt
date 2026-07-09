@@ -2,9 +2,58 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { ThunderboltUIMessage } from '@/types'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { useChatScrollHandler } from './use-chat-scroll-handler'
+import { lastMessageContentSignal, useChatScrollHandler } from './use-chat-scroll-handler'
+
+type MessagePart = ThunderboltUIMessage['parts'][number]
+
+const makeMessage = (id: string, role: 'user' | 'assistant', parts: MessagePart[]): ThunderboltUIMessage =>
+  ({ id, role, parts }) as unknown as ThunderboltUIMessage
+
+const textPart = (text: string): MessagePart => ({ type: 'text', text }) as MessagePart
+const toolPart = (state: string): MessagePart => ({ type: 'tool-search', state, toolCallId: 't1' }) as MessagePart
+
+describe('lastMessageContentSignal', () => {
+  it('returns the message count when there is no last message', () => {
+    expect(lastMessageContentSignal([])).toBe('0')
+  })
+
+  it('is stable when message content does not change', () => {
+    const messages = [makeMessage('m1', 'assistant', [textPart('hello')])]
+    expect(lastMessageContentSignal(messages)).toBe(lastMessageContentSignal(messages))
+  })
+
+  it('changes when the last text part grows (streamed token)', () => {
+    const before = lastMessageContentSignal([makeMessage('m1', 'assistant', [textPart('hi')])])
+    const after = lastMessageContentSignal([makeMessage('m1', 'assistant', [textPart('hi there')])])
+    expect(after).not.toBe(before)
+  })
+
+  it('changes when a new part is added', () => {
+    const before = lastMessageContentSignal([makeMessage('m1', 'assistant', [textPart('hi')])])
+    const after = lastMessageContentSignal([
+      makeMessage('m1', 'assistant', [textPart('hi'), toolPart('input-streaming')]),
+    ])
+    expect(after).not.toBe(before)
+  })
+
+  it('changes when a tool part advances state without changing text', () => {
+    const before = lastMessageContentSignal([makeMessage('m1', 'assistant', [toolPart('input-streaming')])])
+    const after = lastMessageContentSignal([makeMessage('m1', 'assistant', [toolPart('output-available')])])
+    expect(after).not.toBe(before)
+  })
+
+  it('changes when a new message is appended', () => {
+    const before = lastMessageContentSignal([makeMessage('m1', 'user', [textPart('q')])])
+    const after = lastMessageContentSignal([
+      makeMessage('m1', 'user', [textPart('q')]),
+      makeMessage('m2', 'assistant', [textPart('a')]),
+    ])
+    expect(after).not.toBe(before)
+  })
+})
 
 // Create mock useCurrentChatSession via dependency injection (not mock.module to prevent test pollution)
 const createMockUseCurrentChatSession = (): any =>
@@ -25,7 +74,9 @@ describe('useChatScrollHandler', () => {
   // Helper to create mock useAutoScroll with spy-able scrollToBottom
   const createMockUseAutoScroll = (): any => {
     const mockScrollToBottom = mock(() => true)
+    const mockScrollToElement = mock(() => true)
     const mockResetUserScroll = mock()
+    const mockDisableAutoScroll = mock()
     const mockOnWheel = mock()
     const mockOnTouchStart = mock()
     const mockScrollContainerRef = mock()
@@ -35,7 +86,9 @@ describe('useChatScrollHandler', () => {
       scrollContainerRef: mockScrollContainerRef,
       scrollTargetRef: mockScrollTargetRef,
       scrollToBottom: mockScrollToBottom,
+      scrollToElement: mockScrollToElement,
       resetUserScroll: mockResetUserScroll,
+      disableAutoScroll: mockDisableAutoScroll,
       scrollHandlers: {
         onWheel: mockOnWheel,
         onTouchStart: mockOnTouchStart,
@@ -46,7 +99,9 @@ describe('useChatScrollHandler', () => {
     return {
       mockUseAutoScroll,
       mockScrollToBottom,
+      mockScrollToElement,
       mockResetUserScroll,
+      mockDisableAutoScroll,
       mockScrollContainerRef,
       mockScrollTargetRef,
     }
@@ -131,6 +186,73 @@ describe('useChatScrollHandler', () => {
 
         // Should NOT scroll
         expect(mockScrollToBottom).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('follow engagement on submit', () => {
+      it('engages follow on the first exchange (< 3 messages) and does not disable it', () => {
+        const { mockUseAutoScroll, mockScrollToBottom, mockResetUserScroll, mockDisableAutoScroll } =
+          createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
+        const firstMessages = [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }]
+
+        const { rerender } = renderHook(
+          ({ status }) =>
+            useChatScrollHandler({
+              useAutoScroll: mockUseAutoScroll,
+              useChat: createMockUseChat(status, firstMessages),
+              useCurrentChatSession: mockUseCurrentChatSession,
+            }),
+          { initialProps: { status: 'idle' } },
+        )
+
+        mockResetUserScroll.mockClear()
+        mockDisableAutoScroll.mockClear()
+
+        act(() => {
+          rerender({ status: 'submitted' })
+        })
+
+        // First exchange: follow engaged, viewport tracks the streaming answer.
+        expect(mockResetUserScroll).toHaveBeenCalledTimes(1)
+        expect(mockDisableAutoScroll).not.toHaveBeenCalled()
+        expect(mockScrollToBottom).toHaveBeenCalledWith(true, true)
+      })
+
+      it('disables follow and pins the question on subsequent exchanges (>= 3 messages)', () => {
+        const { mockUseAutoScroll, mockScrollToElement, mockResetUserScroll, mockDisableAutoScroll } =
+          createMockUseAutoScroll()
+        const mockUseCurrentChatSession = createMockUseCurrentChatSession()
+        // First answer already complete; the user has just sent a second question.
+        const laterMessages = [
+          { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Q1' }] },
+          { id: 'asst-1', role: 'assistant', parts: [{ type: 'text', text: 'A1' }] },
+          { id: 'user-2', role: 'user', parts: [{ type: 'text', text: 'Q2' }] },
+        ]
+
+        const { rerender } = renderHook(
+          ({ status }) =>
+            useChatScrollHandler({
+              useAutoScroll: mockUseAutoScroll,
+              useChat: createMockUseChat(status, laterMessages),
+              useCurrentChatSession: mockUseCurrentChatSession,
+            }),
+          { initialProps: { status: 'idle' } },
+        )
+
+        mockResetUserScroll.mockClear()
+        mockDisableAutoScroll.mockClear()
+        mockScrollToElement.mockClear()
+
+        act(() => {
+          rerender({ status: 'submitted' })
+        })
+
+        // Subsequent exchange: pin the new question near the top, follow OFF so
+        // streamed tokens don't drag the view back down (no leaked follow state).
+        expect(mockDisableAutoScroll).toHaveBeenCalledTimes(1)
+        expect(mockResetUserScroll).not.toHaveBeenCalled()
+        expect(mockScrollToElement).toHaveBeenCalledWith('[data-message-id="user-2"]', 20, true, true)
       })
     })
 

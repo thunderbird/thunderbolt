@@ -573,7 +573,11 @@ export const connectAcpAdapter = async (
     // agent. Send `session/cancel` — fire-and-forget, since teardown must not
     // block on the wire — then run the same teardown.
     const onAbort = (): void => {
-      void connection.cancel({ sessionId })
+      // Fire-and-forget: teardown must not block on the wire. A rejection means
+      // the transport is already tearing down (the turn is ending anyway), so
+      // swallow it to avoid an unhandled rejection — matching the sibling
+      // `sessionUpdate` write above.
+      void connection.cancel({ sessionId }).catch(() => {})
       teardown()
     }
 

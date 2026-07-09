@@ -109,6 +109,8 @@ const buildFakeConnection = (
     /** Reject the resume/load call so a test exercises the tier fallthrough. */
     rejectResume?: boolean
     rejectLoad?: boolean
+    /** Reject the fire-and-forget cancel so a test exercises the abort `.catch`. */
+    rejectCancel?: boolean
   } = {},
 ) => {
   const calls = {
@@ -164,7 +166,7 @@ const buildFakeConnection = (
     }
     cancel = (req: CancelNotification) => {
       calls.cancel.push(req)
-      return Promise.resolve()
+      return opts.rejectCancel ? Promise.reject(new Error('transport closing')) : Promise.resolve()
     }
   }
 
@@ -800,6 +802,34 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
 
     // ...and the thread's permission handler was unregistered, so a late
     // permission prompt for that session now hits the `cancelled` fallback.
+    const outcome = await pushPermission(permissionReq('sess-1'))
+    expect(outcome?.outcome.outcome).toBe('cancelled')
+  })
+
+  it('a rejecting cancel is swallowed — abort still tears the thread down cleanly', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, pushPermission, releasePrompts } = buildFakeConnection({ rejectCancel: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const controller = new AbortController()
+    const response = await adapter.fetch(promptInit('do something long', controller.signal), threadCtx('thread-A'))
+
+    let sse: string[] = []
+    await act(async () => {
+      controller.abort()
+      releasePrompts()
+      await getClock().runAllAsync()
+      sse = await readSse(response)
+    })
+
+    // Cancel fired and its rejection was swallowed (no unhandled rejection), so
+    // teardown still completed: the stream closed and the handler unregistered.
+    expect(calls.cancel).toHaveLength(1)
+    expect(sse.join('')).toContain('[DONE]')
     const outcome = await pushPermission(permissionReq('sess-1'))
     expect(outcome?.outcome.outcome).toBe('cancelled')
   })

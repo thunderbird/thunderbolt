@@ -10,8 +10,16 @@
  * the exact per-run token may pass.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test'
-import { authorizeUpgrade, bridgeAllowedOrigins, generateBridgeToken } from './bridge.ts'
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
+import type { BridgeProc } from './bridge.ts'
+import {
+  atProcCapacity,
+  authorizeUpgrade,
+  bridgeAllowedOrigins,
+  forwardFrameToStdin,
+  generateBridgeToken,
+  MAX_ACTIVE_PROCS,
+} from './bridge.ts'
 
 const TOKEN = generateBridgeToken()
 const ORIGINS = bridgeAllowedOrigins()
@@ -93,5 +101,69 @@ describe('bridgeAllowedOrigins', () => {
     expect(origins.has('https://app.thunderbolt.example')).toBe(true)
     expect(origins.has('https://beta.example')).toBe(true)
     expect(origins.has('')).toBe(false)
+  })
+})
+
+describe('atProcCapacity — shared live-subprocess cap', () => {
+  const procs = (n: number): Set<BridgeProc> => new Set(Array.from({ length: n }, () => ({}) as BridgeProc))
+
+  test('allows work below the ceiling and refuses at or above it', () => {
+    expect(atProcCapacity(procs(0))).toBe(false)
+    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS - 1))).toBe(false)
+    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS))).toBe(true)
+    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS + 1))).toBe(true)
+  })
+})
+
+describe('forwardFrameToStdin', () => {
+  let stderr: ReturnType<typeof spyOn>
+  beforeEach(() => {
+    stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+  afterEach(() => {
+    stderr.mockRestore()
+  })
+
+  /** A fake subprocess whose stdin write/flush are controllable. */
+  const fakeProc = (flush: () => Promise<number>): { proc: BridgeProc; write: ReturnType<typeof mock> } => {
+    const write = mock(() => 1)
+    return { proc: { stdin: { write, flush } } as unknown as BridgeProc, write }
+  }
+
+  test('appends the ndjson newline, writes, and awaits the flush; never closes on success', async () => {
+    const { proc, write } = fakeProc(async () => 0)
+    const close = mock((_code: number, _reason: string) => {})
+    await forwardFrameToStdin(proc, '{"jsonrpc":"2.0"}', close)
+    expect(write.mock.calls[0][0]).toBe('{"jsonrpc":"2.0"}\n')
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  test('logs loudly and closes 1011 when the flush fails (EPIPE on a dead pipe)', async () => {
+    const { proc } = fakeProc(async () => {
+      throw new Error('EPIPE')
+    })
+    const close = mock((_code: number, _reason: string) => {})
+    await forwardFrameToStdin(proc, 'frame', close)
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(close.mock.calls[0][0]).toBe(1011)
+    expect(stderr).toHaveBeenCalledTimes(1)
+    expect(String(stderr.mock.calls[0][0])).toContain('stdin write failed')
+  })
+
+  test('closes 1011 when the synchronous write itself throws', async () => {
+    const flush = mock(async () => 0)
+    const proc = {
+      stdin: {
+        write: mock(() => {
+          throw new Error('write blew up')
+        }),
+        flush,
+      },
+    } as unknown as BridgeProc
+    const close = mock((_code: number, _reason: string) => {})
+    await forwardFrameToStdin(proc, 'frame', close)
+    expect(flush).not.toHaveBeenCalled()
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(close.mock.calls[0][0]).toBe(1011)
   })
 })

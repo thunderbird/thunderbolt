@@ -69,6 +69,32 @@ const pumpStdoutToSocket = async (proc: BridgeProc, ws: BridgeSocket): Promise<v
   if (trailing) ws.send(trailing)
 }
 
+/**
+ * Forward one inbound WebSocket frame to the agent's stdin, appending the newline
+ * the ndjson stdio framing requires. The flush is awaited only so a flush-time
+ * failure surfaces in the catch (not for WS-read backpressure — the caller fires
+ * this off with `void`). A write/flush failure — most commonly `EPIPE` when a
+ * frame arrives after the agent has exited and closed its stdin — is logged loudly
+ * and closes the socket abnormally (1011) instead of throwing uncaught and downing
+ * the bridge. Mirrors the iroh pump's `writeToStdin`: a dead pipe is a real IO
+ * boundary, not a defensive guard on trusted data.
+ */
+export const forwardFrameToStdin = async (
+  proc: BridgeProc,
+  text: string,
+  close: (code: number, reason: string) => void,
+): Promise<void> => {
+  try {
+    proc.stdin.write(text + '\n')
+    await proc.stdin.flush()
+  } catch (err) {
+    process.stderr.write(
+      `thunderbolt bridge: stdin write failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    )
+    close(1011, 'agent stdin closed')
+  }
+}
+
 /** Spawn the bridged agent, returning `null` if the executable can't be found
  *  (the parser guarantees a non-empty command). Bun.spawn throws synchronously
  *  on ENOENT — catching it at this connection boundary keeps one bad command
@@ -85,12 +111,27 @@ export const spawnAgent = (command: readonly string[]): BridgeProc | null => {
   }
 }
 
+/** Hard ceiling on concurrently-live bridged subprocesses per bridge server,
+ *  shared by both transports. The handshake gates (rate limit + concurrent-
+ *  handshake cap) bound *connection setup*, not established sessions — so an
+ *  allowlisted/authorized peer holding many connections open would otherwise
+ *  spawn unbounded long-lived agents and exhaust the host. At the cap a new
+ *  connection is refused instead of spawning. Generous enough that real
+ *  concurrent use never hits it. */
+export const MAX_ACTIVE_PROCS = 16
+
+/** Whether a bridge is at its live-subprocess ceiling and must refuse new work.
+ *  The single source of the cap policy for both the WebSocket and iroh bridges. */
+export const atProcCapacity = (activeProcs: ReadonlySet<BridgeProc>): boolean => activeProcs.size >= MAX_ACTIVE_PROCS
+
 /** Bearer-style flags whose *following* argv element is a secret to hide. */
 const SECRET_FLAGS = new Set(['--api-key', '--token'])
 /** An env-style `NAME=value` token whose NAME looks like a credential (ends in
- *  `KEY`, e.g. `OPENAI_API_KEY=sk-…`). Uppercase-only so benign words like
- *  `monkey=foo` are left alone. */
-const KEY_ASSIGNMENT = /^[A-Z][A-Z0-9_]*KEY=/
+ *  one of `KEY`/`TOKEN`/`SECRET`/`PASSWORD`/`PASSWD`/`CREDENTIAL`/`CRED(S)`, e.g.
+ *  `OPENAI_API_KEY=sk-…`, `GITHUB_TOKEN=ghp_…`, `DB_SECRET=…`). Case-sensitive
+ *  uppercase names only, so benign lowercase words like `monkey=foo` are left
+ *  alone; the optional `[A-Z0-9_]*` prefix lets a bare `PASSWORD=…` match too. */
+const KEY_ASSIGNMENT = /^[A-Z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDS?)=/
 
 /** Redact the value of an env-style credential assignment, leaving its name. */
 const redactKeyAssignment = (arg: string): string => (KEY_ASSIGNMENT.test(arg) ? arg.replace(/=.*/s, '=***') : arg)
@@ -111,8 +152,9 @@ const redactArg = (arg: string): string => redactJoinedFlag(arg) ?? redactKeyAss
  * logging the bridged command without leaking secrets to stdout/scrollback/CI.
  * Everything after `--` can carry a bearer token (e.g. an openai-compat agent's
  * `--api-key sk-…`); this hides the value following a bare `--api-key`/`--token`,
- * the tail of a joined `--api-key=sk-…`/`--token=…`, and any `*_KEY`-looking env
- * assignment, replacing it with `***`. Pure and total — a trailing bare secret
+ * the tail of a joined `--api-key=sk-…`/`--token=…`, and any credential-looking
+ * uppercase env assignment (`*KEY`/`*TOKEN`/`*SECRET`/`*PASSWORD`/…), replacing it
+ * with `***`. Pure and total — a trailing bare secret
  * flag with no following value is simply left as-is.
  */
 export const redactArgv = (argv: readonly string[]): string =>
@@ -203,6 +245,10 @@ export const authorizeUpgrade = (
 export const runBridge = async (config: BridgeConfig): Promise<void> => {
   const token = generateBridgeToken()
   const allowedOrigins = bridgeAllowedOrigins()
+  // Cap concurrently-live agents: the upgrade gate authorizes *connections*, not
+  // sessions, so an authorized client holding many sockets open would otherwise
+  // spawn unbounded bash processes. At the ceiling a new socket is refused.
+  const activeProcs = new Set<BridgeProc>()
   const server = Bun.serve<BridgeSocketData>({
     // Loopback-only: this transport is unauthenticated, so it must not be
     // reachable from the LAN (Bun's default binds every interface). The G3
@@ -221,11 +267,17 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
     },
     websocket: {
       open(ws) {
+        if (atProcCapacity(activeProcs)) {
+          ws.close(1013, 'bridge at capacity')
+          return
+        }
         const proc = spawnAgent(config.command)
         if (!proc) {
           ws.close(1011, `failed to spawn '${config.command[0]}'`)
           return
         }
+        activeProcs.add(proc)
+        void proc.exited.then(() => activeProcs.delete(proc))
         ws.data.proc = proc
         void (async () => {
           try {
@@ -248,8 +300,7 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
         const proc = ws.data.proc
         if (!proc) return
         const text = typeof message === 'string' ? message : frameDecoder.decode(message)
-        proc.stdin.write(text + '\n')
-        proc.stdin.flush()
+        void forwardFrameToStdin(proc, text, (code, reason) => ws.close(code, reason))
       },
       close(ws) {
         ws.data.proc?.kill()

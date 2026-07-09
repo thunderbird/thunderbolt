@@ -101,6 +101,27 @@ describe('openIrohTransport', () => {
     ])
   })
 
+  it('propagates a send failure to the writable write (no silently swallowed error)', async () => {
+    const fake = makeFakeConnection()
+    // The wasm `send()` now rejects when the underlying QUIC write fails, instead
+    // of resolving on enqueue — the writable must surface that rejection.
+    const failing: IrohConnectionLike = {
+      ...fake.connection,
+      send: async () => {
+        throw new Error('iroh connection closed')
+      },
+    }
+    const transport = await openIrohTransport({
+      target: 't',
+      signal: new AbortController().signal,
+      loadClient: async () => makeFakeClient(failing, []),
+    })
+    const writer = transport.stream.writable.getWriter()
+    await expect(
+      writer.write({ jsonrpc: '2.0', id: 1, method: 'initialize' } as unknown as AnyMessage),
+    ).rejects.toThrow('iroh connection closed')
+  })
+
   it('decodes inbound ndjson bytes into ACP messages on the readable', async () => {
     const fake = makeFakeConnection()
     const transport = await openIrohTransport({

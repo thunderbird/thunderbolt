@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import type { ContentPart } from './widget-parser'
-import { parseContentParts } from './widget-parser'
+import type { ContentPart, ContentPartsState } from './widget-parser'
+import { parseContentParts, parseContentPartsIncremental } from './widget-parser'
 
 describe('parseContentParts', () => {
   describe('plain text', () => {
@@ -868,5 +868,89 @@ describe('parseContentParts', () => {
       expect(result[2].type).toBe('text')
       expect(result[3].type).toBe('widget')
     })
+  })
+})
+
+describe('parseContentPartsIncremental', () => {
+  const documents: Record<string, string> = {
+    plainProse: 'The quick brown fox jumps over the lazy dog. It was cold in April.',
+    proseWithNumericCitations: 'Studies show [1] and [2] confirm the result across multiple trials [3].',
+    proseWithMarkdown: '# Title\n\nSome **bold** text and a list:\n\n- one\n- two\n\nDone here.',
+    leadingAndTrailingSpace: '   surrounded by whitespace on both ends   ',
+    singleWidget: 'Here is the weather: <widget:weather-forecast location="Seattle" region="WA" country="USA" />',
+    textThenWidgetThenText:
+      'Check this out <widget:link-preview url="https://example.com/path" /> and then more prose after it.',
+    multipleWidgets:
+      'First <widget:link-preview url="https://a.com" /> middle text ' +
+      '<widget:weather-forecast location="A" region="B" country="C" /> end.',
+    bracketCitations: 'The AI Act passed【2†title】 today and more happened【3】 later.',
+    lessThanOperator: 'For all n, 5 < 10 and 3 < 4 hold in arithmetic.',
+    mixedWidgetAndCitation:
+      'According to [1], progress continues.\n\n<widget:link-preview url="https://example.com" source="1" /> Fine.',
+  }
+
+  it('returns the same parts as a full parse for a single call', () => {
+    for (const doc of Object.values(documents)) {
+      const { parts } = parseContentPartsIncremental(doc, null)
+      expect(parts).toEqual(parseContentParts(doc))
+    }
+  })
+
+  it('matches a full parse across every streaming prefix', () => {
+    for (const [name, doc] of Object.entries(documents)) {
+      let state: ContentPartsState | null = null
+      for (let end = 1; end <= doc.length; end++) {
+        const prefix = doc.slice(0, end)
+        const result = parseContentPartsIncremental(prefix, state)
+        state = result.state
+        expect({ name, prefix, parts: result.parts }).toEqual({
+          name,
+          prefix,
+          parts: parseContentParts(prefix),
+        })
+      }
+    }
+  })
+
+  it('matches a full parse when streamed in word-sized chunks', () => {
+    for (const doc of Object.values(documents)) {
+      let state: ContentPartsState | null = null
+      let acc = ''
+      for (const chunk of doc.split(/(\s+)/)) {
+        acc += chunk
+        const result = parseContentPartsIncremental(acc, state)
+        state = result.state
+        expect(result.parts).toEqual(parseContentParts(acc))
+      }
+    }
+  })
+
+  it('reuses the cached parts reference when text is unchanged', () => {
+    const doc = documents.plainProse
+    const first = parseContentPartsIncremental(doc, null)
+    const second = parseContentPartsIncremental(doc, first.state)
+    expect(second.parts).toBe(first.parts)
+    expect(second.state).toBe(first.state)
+  })
+
+  it('falls back to a full parse when a marker appears in the appended tail', () => {
+    const prose = parseContentPartsIncremental('Some prose leading up to a widget ', null)
+    const withWidget = parseContentPartsIncremental(
+      'Some prose leading up to a widget <widget:link-preview url="https://x.com" />',
+      prose.state,
+    )
+    expect(withWidget.parts).toEqual(
+      parseContentParts('Some prose leading up to a widget <widget:link-preview url="https://x.com" />'),
+    )
+  })
+
+  it('falls back to a full parse when the new content is not an extension', () => {
+    const first = parseContentPartsIncremental(documents.singleWidget, null)
+    const other = parseContentPartsIncremental(documents.plainProse, first.state)
+    expect(other.parts).toEqual(parseContentParts(documents.plainProse))
+  })
+
+  it('returns an empty parts array for empty text', () => {
+    expect(parseContentPartsIncremental('', null).parts).toEqual([])
   })
 })

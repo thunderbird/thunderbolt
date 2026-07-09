@@ -16,7 +16,7 @@ type DeviceQrCodeProps = {
  * Renders a QR code for a device pairing string. Default export so it can be
  * lazily loaded — the `qrcode` dependency is only pulled in when pairing UI is shown.
  */
-export default function DeviceQrCode({ value, size = 160 }: DeviceQrCodeProps) {
+const DeviceQrCode = ({ value, size = 160 }: DeviceQrCodeProps) => {
   const [dataUrl, setDataUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -54,3 +54,5 @@ export default function DeviceQrCode({ value, size = 160 }: DeviceQrCodeProps) {
     />
   )
 }
+
+export default DeviceQrCode

@@ -185,22 +185,37 @@ describe('createHarnessAgent (ACP server)', () => {
       }
     }
 
+    const threadId = '11111111-1111-4111-8111-111111111111'
     const { client, updates } = connectPair(capturingBuilder, store)
     await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
-    const response = await client.resumeSession({ sessionId: 'thread-1', cwd: process.cwd(), mcpServers: [] })
+    const response = await client.resumeSession({ sessionId: threadId, cwd: process.cwd(), mcpServers: [] })
 
     // Resume returns an empty response and replays nothing to the client.
     expect(response).toEqual({})
     expect(updates).toHaveLength(0)
     // It routed through the store by the client-supplied id + cwd...
-    expect(store.resumed).toEqual([{ id: 'thread-1', cwd: process.cwd() }])
+    expect(store.resumed).toEqual([{ id: threadId, cwd: process.cwd() }])
     // ...and handed that exact session to the harness builder.
     expect(injected).toHaveLength(1)
-    expect((await injected[0].getMetadata()).id).toBe('thread-1')
+    expect((await injected[0].getMetadata()).id).toBe(threadId)
 
     // A resumed session is live: a prompt against it succeeds.
-    const prompt = await client.prompt({ sessionId: 'thread-1', prompt: [{ type: 'text', text: 'hi' }] })
+    const prompt = await client.prompt({ sessionId: threadId, prompt: [{ type: 'text', text: 'hi' }] })
     expect(prompt.stopReason).toBe('end_turn')
+  })
+
+  test('session/resume rejects a path-traversal id before it reaches the store', async () => {
+    const store = fakeStore()
+    const { client } = connectPair(streamingBuilder, store)
+    await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+
+    await expect(
+      client.resumeSession({ sessionId: '../../../../../tmp/x', cwd: process.cwd(), mcpServers: [] }),
+    ).rejects.toThrow(/invalid session id/)
+
+    // The guard short-circuits before the store's path builder ever runs, so no
+    // `.jsonl` can be written outside the sessions root.
+    expect(store.resumed).toHaveLength(0)
   })
 
   test('re-resuming a live session id disposes the prior harness (no leak)', async () => {
@@ -222,10 +237,11 @@ describe('createHarnessAgent (ACP server)', () => {
       }
     }
 
+    const threadId = '22222222-2222-4222-8222-222222222222'
     const { client } = connectPair(trackingBuilder)
     await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
-    await client.resumeSession({ sessionId: 'thread-x', cwd: process.cwd(), mcpServers: [] })
-    await client.resumeSession({ sessionId: 'thread-x', cwd: process.cwd(), mcpServers: [] })
+    await client.resumeSession({ sessionId: threadId, cwd: process.cwd(), mcpServers: [] })
+    await client.resumeSession({ sessionId: threadId, cwd: process.cwd(), mcpServers: [] })
 
     // The first harness (id 0) was torn down when the second replaced it.
     expect(disposed).toEqual([0])

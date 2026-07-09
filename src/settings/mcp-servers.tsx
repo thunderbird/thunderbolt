@@ -27,6 +27,7 @@ import {
   createMcpServerWithCredentials,
   deleteMcpServer,
   getRemoteMcpServers,
+  updateMcpServerWithCredentials,
 } from '@/dal'
 import type { McpServerCredentials } from '@/dal/mcp-secrets'
 import { useDatabase, useHttpClient } from '@/contexts'
@@ -36,8 +37,8 @@ import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { eq } from 'drizzle-orm'
-import { Check, Copy, Globe, LockKeyhole, Plus, RefreshCw, Server, Trash2, X } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Check, Copy, Globe, LockKeyhole, Pencil, Plus, RefreshCw, Server, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { probeMcpServerTools } from '@/lib/mcp-connection-test'
@@ -208,12 +209,13 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   // Read provider connection state read-only for status display. Sync ownership
   // lives in the single global useMcpSync() in AppContent — running it here too
   // would re-run the reconciliation effect and double-register servers.
-  const { servers: mcpServers, reconnectServer } = useMCP()
+  const { servers: mcpServers, reconnectServer, updateServer } = useMCP()
   const location = useLocation()
   const navigate = useNavigate()
   const [mode, setMode] = useState<AddServerMode>('simple')
   const [jsonText, setJsonText] = useState('')
   const [importError, setImportError] = useState<string | null>(null)
+  const [updateError, setUpdateError] = useState<string | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const [retryingServerId, setRetryingServerId] = useState<string | null>(null)
@@ -271,21 +273,32 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   // fallback exists for a NodeId, unlike a hostname).
   const urlValidation = !isIroh && newServerUrl ? validateMcpServerUrl(newServerUrl) : null
   const isUrlValid = urlValidation?.ok === true
+  const isUrlReady = !!newServerUrl && isUrlValid
   const irohReady = isIroh && resolveServerName().length > 0
+  // Unified Add/Save readiness both submit paths gate on: iroh needs a valid
+  // target + name (no probe exists for it), http/sse a valid URL.
+  const isSaveReady = isIroh ? irohReady : isUrlReady
+  // Edit save waives the fresh-probe requirement when there's no probe to run
+  // (iroh) or the edit doesn't touch the connection (metadata-only, bearer-clear,
+  // or an OAuth edit with an empty token).
+  const editProbeWaived = isIroh || !form.hasConnectionEdits || form.isClearingBearerOnly || form.isOAuthEdit
   // Load this app's iroh NodeId only while an iroh target is entered — keeps the
   // wasm chunk lazy and off the entry bundle (and the http/sse flow).
   const appNodeId = useAppNodeId(isIroh, deps.loadAppNodeId)
   const { copy: copyAllowCommand, isCopied: allowCommandCopied } = useCopyToClipboard()
 
-  // The add-dialog surfaces at most one error: a JSON import failure (advanced) or
-  // an OAuth authorization failure (simple). The title is derived from the error
-  // itself — not the current mode — so a message is always labeled by its own
-  // context (switching modes clears the other source, see the mode toggle).
+  // The add-dialog surfaces at most one error: a JSON import failure (advanced),
+  // an Edit save failure (Save Changes), or an OAuth authorization failure. The
+  // title is derived from the error itself — not the current mode — so a message
+  // is always labeled by its own context (switching modes clears the other
+  // sources, see the mode toggle).
   const addDialogError = importError
     ? { title: 'Import failed', body: importError }
-    : dialogError
-      ? { title: 'Authorization error', body: dialogError }
-      : null
+    : updateError
+      ? { title: 'Save failed', body: updateError }
+      : dialogError
+        ? { title: 'Authorization error', body: dialogError }
+        : null
 
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
@@ -293,19 +306,28 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     query: toCompilableQuery(getRemoteMcpServers(db)),
   })
 
-  // Reactively track the STORED credential type per server so the card can apply
-  // the auth precedence (oauth → authorized/needs-auth; bearer-401 → generic
-  // error; none-401 → needs-auth). Reads the local-only mcp_secrets table.
+  // Reactively track each server's stored credential in one pass. `type` drives
+  // the card's auth precedence (oauth → authorized/needs-auth; bearer-401 →
+  // generic error; none-401 → needs-auth). `bearerToken` prefills the Edit
+  // dialog's token field — OAuth credentials are intentionally not surfaced
+  // there, since the token UI only accepts bearer values and OAuth is managed
+  // via the Authorize buttons. Reads the local-only mcp_secrets table.
   const { data: mcpSecrets = [] } = useQuery({
     queryKey: ['mcp-secrets'],
     query: toCompilableQuery(db.select().from(mcpSecretsTable)),
   })
-  const credentialTypeById = mcpSecrets.reduce<Record<string, StoredCredentialType>>((acc, row) => {
-    if (row.credentials) {
-      acc[row.id] = (JSON.parse(row.credentials) as McpServerCredentials).type
-    }
-    return acc
-  }, {})
+  const credentialsById = useMemo(
+    () =>
+      mcpSecrets.reduce<Record<string, { type: StoredCredentialType; bearerToken?: string }>>((acc, row) => {
+        if (!row.credentials) {
+          return acc
+        }
+        const cred = JSON.parse(row.credentials) as McpServerCredentials
+        acc[row.id] = cred.type === 'bearer' ? { type: 'bearer', bearerToken: cred.token } : { type: cred.type }
+        return acc
+      }, {}),
+    [mcpSecrets],
+  )
 
   // Tools for connected servers. The query keys on each CONNECTION's identity
   // (`id:generation`, where the generation changes whenever the provider swaps in
@@ -358,6 +380,36 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     },
   })
 
+  const updateServerMutation = useMutation({
+    mutationFn: async ({
+      id,
+      name,
+      url,
+      transport,
+      token,
+      originalCredentialType,
+    }: {
+      id: string
+      name: string
+      url: string
+      transport: MCPTransportType
+      token: string
+      originalCredentialType: StoredCredentialType
+    }) => {
+      // Credential semantics on edit:
+      //   - token filled → store as bearer (replaces any prior credential, OAuth included)
+      //   - token blank + originally bearer → delete the credential (user cleared the field)
+      //   - token blank + originally oauth/none → leave the credential alone, so a rename
+      //     of an OAuth-authorized server doesn't wipe its tokens
+      const credentials = token
+        ? ({ type: 'bearer', token } as const)
+        : originalCredentialType === 'bearer'
+          ? null
+          : undefined
+      await updateMcpServerWithCredentials(db, id, { name, url, type: transport }, credentials)
+    },
+  })
+
   const importServersMutation = useMutation({
     mutationFn: async (parsed: ParsedMcpServer[]): Promise<void> => {
       await createMcpServersWithCredentials(
@@ -383,18 +435,19 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     },
   })
 
-  // Clears add-dialog local state (mode, JSON text, import error) in sync with
+  // Clears add-dialog local state (mode, JSON text, dialog errors) in sync with
   // the external form hook's resetAddDialog so a re-open always starts clean.
   const resetLocalDialogState = () => {
     setMode('simple')
     setJsonText('')
     setImportError(null)
+    setUpdateError(null)
   }
 
   const handleAddServer = async () => {
     // iroh stores the trimmed NodeId/ticket as `url` (type='iroh' rides through
     // `form.transport`); http/sse require a valid URL + a successful probe.
-    if (isIroh ? !irohReady : !newServerUrl || !isUrlValid) {
+    if (!isSaveReady) {
       return
     }
     const url = isIroh ? newServerUrl.trim() : newServerUrl
@@ -412,6 +465,58 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     }
     form.resetAddDialog()
     resetLocalDialogState()
+  }
+
+  const handleUpdateServer = async () => {
+    if (!form.editingServerId || !isSaveReady) {
+      return
+    }
+    const id = form.editingServerId
+    // Read enabled from the DB row (source of truth), not the provider's
+    // in-memory state — the provider can be briefly stale right after a toggle,
+    // and the dialog doesn't own the enabled bit. If the row disappeared
+    // between dialog open and save (e.g. deleted from another device), bail.
+    const dbRow = servers.find((s) => s.id === id)
+    if (!dbRow) {
+      return
+    }
+    const name = resolveServerName()
+    const transport = newServerTransport
+    const enabled = dbRow.enabled === 1
+    // Persist the trimmed NodeId/ticket for iroh (same as the add path) so pasted
+    // whitespace can't survive into the stored target and break the peer dial.
+    const url = isIroh ? newServerUrl.trim() : newServerUrl
+    setUpdateError(null)
+    try {
+      await updateServerMutation.mutateAsync({
+        id,
+        name,
+        url,
+        transport,
+        token: newServerToken,
+        originalCredentialType: credentialsById[id]?.type ?? 'none',
+      })
+    } catch (error) {
+      console.error('Failed to update MCP server:', error)
+      setUpdateError('Could not save changes. Please try again.')
+      return
+    }
+    // Push the patch into the MCP provider so the live client redials with the
+    // new url/type/credentials. useMcpSync would catch row changes eventually
+    // via PowerSync, but credential-only edits don't touch the row at all —
+    // updateServer's reconnect re-reads `mcp_secrets` so both paths converge.
+    // forceRedial only when a connection-affecting field was actually edited:
+    // for a pure metadata save (rename), skipping it lets the provider keep the
+    // healthy client and just apply the row patch, so an active tool call
+    // against this server isn't dropped by an unnecessary reconnect.
+    updateServer({ id, name, url, type: transport, enabled }, { forceRedial: form.hasConnectionEdits })
+    form.resetAddDialog()
+    resetLocalDialogState()
+  }
+
+  const handleEditClick = (server: McpServer) => {
+    const cred = credentialsById[server.id]
+    form.openEditDialog(server, cred?.bearerToken ?? null, cred?.type ?? 'none')
   }
 
   /**
@@ -446,7 +551,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
    * server row also surfaces an Authorize action on its card.
    */
   const handleAddAndAuthorize = async () => {
-    if (!newServerUrl || !isUrlValid) {
+    if (!isUrlReady) {
       return
     }
     const url = newServerUrl
@@ -466,17 +571,38 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      if (isIroh) {
+    if (e.key !== 'Enter') {
+      return
+    }
+    e.preventDefault()
+    // iroh has no probe step, so in the add flow Enter commits directly. (Editing
+    // an iroh server falls through to the shared edit handling below.)
+    if (isIroh && !form.editingServerId) {
+      handleAddServer()
+      return
+    }
+    // Edit-mode: Enter mirrors the Save Changes button's enabled state — save
+    // whenever the button would (iroh, metadata-only, bearer-clear, or OAuth edit
+    // with empty token, all of which waive the probe requirement) so those cases
+    // don't fall through to the probe branches below.
+    if (form.editingServerId && isSaveReady && editProbeWaived) {
+      handleUpdateServer()
+      return
+    }
+    if (testResult.kind === 'idle' && isUrlReady) {
+      testConnection()
+      return
+    }
+    if (testResult.kind === 'success') {
+      if (form.editingServerId) {
+        handleUpdateServer()
+      } else {
         handleAddServer()
-      } else if (testResult.kind === 'idle' && newServerUrl && isUrlValid) {
-        testConnection()
-      } else if (testResult.kind === 'success') {
-        handleAddServer()
-      } else if (testResult.kind === 'needs-oauth') {
-        handleAddAndAuthorize()
       }
+      return
+    }
+    if (testResult.kind === 'needs-oauth' && !form.editingServerId) {
+      handleAddAndAuthorize()
     }
   }
 
@@ -592,7 +718,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     const conn = mcpServers.find((s) => s.id === server.id)
     const decision = deriveOAuthCardDecision({
       isConnected: conn?.isConnected ?? false,
-      credentialType: credentialTypeById[server.id] ?? 'none',
+      credentialType: credentialsById[server.id]?.type ?? 'none',
       error: conn?.error,
       needsReauth: isNeedsReauthError(conn?.error),
     })
@@ -604,6 +730,9 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     }
     return null
   }
+
+  const dialogTitle = form.editingServerId ? 'Edit MCP Server' : 'Add MCP Server'
+  const dialogDescription = form.editingServerId ? 'Edit MCP server configuration' : 'Add a new MCP server'
 
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
@@ -628,30 +757,35 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
           </DialogTrigger>
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[85vh]">
             <ResponsiveModalHeader>
-              <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
-              <ResponsiveModalDescription className="sr-only">Add a new MCP server</ResponsiveModalDescription>
+              <ResponsiveModalTitle>{dialogTitle}</ResponsiveModalTitle>
+              <ResponsiveModalDescription className="sr-only">{dialogDescription}</ResponsiveModalDescription>
             </ResponsiveModalHeader>
 
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              value={mode}
-              onValueChange={(value) => {
-                if (value !== 'simple' && value !== 'advanced') {
-                  return
-                }
-                // Each mode owns a different error source (JSON import vs OAuth
-                // authorization). Clear both on switch so a stale message from the
-                // mode you're leaving can't surface under the new mode's UI.
-                setImportError(null)
-                clearDialogError()
-                setMode(value)
-              }}
-              className="w-full flex-shrink-0"
-            >
-              <ToggleGroupItem value="simple">Simple</ToggleGroupItem>
-              <ToggleGroupItem value="advanced">Advanced (JSON)</ToggleGroupItem>
-            </ToggleGroup>
+            {/* Advanced (JSON) is bulk-import only — irrelevant when editing a single server. */}
+            {!form.editingServerId && (
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                value={mode}
+                onValueChange={(value) => {
+                  if (value !== 'simple' && value !== 'advanced') {
+                    return
+                  }
+                  // Each mode owns a different error source (JSON import vs OAuth
+                  // authorization vs Save-Changes). Clear all on switch so a stale
+                  // message from the mode you're leaving can't surface under the new
+                  // mode's UI.
+                  setImportError(null)
+                  setUpdateError(null)
+                  clearDialogError()
+                  setMode(value)
+                }}
+                className="w-full flex-shrink-0"
+              >
+                <ToggleGroupItem value="simple">Simple</ToggleGroupItem>
+                <ToggleGroupItem value="advanced">Advanced (JSON)</ToggleGroupItem>
+              </ToggleGroup>
+            )}
 
             <div className="flex-1 overflow-y-auto px-1 -mx-1">
               {mode === 'simple' ? (
@@ -723,7 +857,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                         />
                       </div>
 
-                      {newServerUrl && isUrlValid && (
+                      {isUrlReady && (
                         <Button
                           onClick={testConnection}
                           disabled={isTestingConnection}
@@ -805,23 +939,32 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               >
                 Cancel
               </Button>
-              {mode === 'advanced' ? (
+              {form.editingServerId ? (
+                <Button
+                  onClick={handleUpdateServer}
+                  // A fresh successful probe is required only when the edit touches
+                  // the connection and no waiver applies (see `editProbeWaived`):
+                  // iroh has no probe, and metadata-only / bearer-clear / empty-token
+                  // OAuth edits keep the existing credential valid.
+                  disabled={
+                    !isSaveReady ||
+                    (!editProbeWaived && testResult.kind !== 'success') ||
+                    updateServerMutation.isPending
+                  }
+                >
+                  Save Changes
+                </Button>
+              ) : mode === 'advanced' ? (
                 <Button onClick={handleImportConfig} disabled={!jsonText.trim() || importServersMutation.isPending}>
                   Import Servers
                 </Button>
               ) : !isIroh && testResult.kind === 'needs-oauth' ? (
-                <Button
-                  onClick={handleAddAndAuthorize}
-                  disabled={!newServerUrl || !isUrlValid || isAddAuthorizePending}
-                >
+                <Button onClick={handleAddAndAuthorize} disabled={!isUrlReady || isAddAuthorizePending}>
                   <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
                   Add &amp; Authorize
                 </Button>
               ) : (
-                <Button
-                  onClick={handleAddServer}
-                  disabled={isIroh ? !irohReady : !newServerUrl || !isUrlValid || testResult.kind !== 'success'}
-                >
+                <Button onClick={handleAddServer} disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success')}>
                   Add Server
                 </Button>
               )}
@@ -964,6 +1107,22 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
                         <p>{isEnabled ? 'Disable server' : 'Enable server'}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          aria-label="Edit server"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => handleEditClick(server)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>Edit server</p>
                       </TooltipContent>
                     </Tooltip>
                     <Popover

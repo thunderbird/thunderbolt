@@ -104,6 +104,13 @@ type Session = {
   readonly dispose: () => Promise<void>
 }
 
+/** Canonical UUID shape that `crypto.randomUUID()` mints for every `session/new`.
+ *  A `session/resume` id is always a past mint, so a legitimate one matches; the
+ *  guard exists because the resumed id is client-supplied (ACP `z.string()`) and
+ *  flows into the on-disk path builder, which `path.join`s it — a crafted `..`
+ *  id would escape the sessions root and overwrite an arbitrary `.jsonl`. */
+const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /** Tools that run unguarded — pure reads with no side effects. Mirrors the
  *  interactive CLI's gate (`agent/permissions.ts`). */
 const READ_ONLY_TOOLS = new Set(['read'])
@@ -303,9 +310,15 @@ export const createHarnessAgent = (
   // Resume a prior thread on a fresh process: rehydrate the agent's execution
   // context from the on-disk log keyed by the client-supplied sessionId. No
   // history is replayed to the client (the app already rendered it from
-  // PowerSync); we only re-seed the harness. An unknown id self-heals to a fresh
-  // session inside the store (migration / cache-clear), so this never rejects.
+  // PowerSync); we only re-seed the harness. An unknown-but-well-formed id
+  // self-heals to a fresh session inside the store (migration / cache-clear); a
+  // malformed id is rejected up front (see the guard below).
   const resumeSession = async (params: ResumeSessionRequest): Promise<ResumeSessionResponse> => {
+    // Reject a crafted id at the wire boundary before it reaches the on-disk path
+    // builder — a `..` segment would let the write escape the sessions root.
+    if (!SESSION_ID_PATTERN.test(params.sessionId)) {
+      throw RequestError.invalidParams(undefined, `invalid session id '${params.sessionId}'`)
+    }
     const session = await store.openOrCreate(params.sessionId, params.cwd)
     await activate(params.sessionId, params.cwd, session, 'session/resume')
     return {}

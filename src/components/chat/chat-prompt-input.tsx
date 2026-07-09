@@ -24,6 +24,7 @@ import {
 } from '@/skills/use-skills'
 import { type AttachmentData, type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
 import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
@@ -167,7 +168,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       selectedModel,
     } = useCurrentChatSession()
 
-    const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
+    const { messages, status, stop, sendMessage } = useChat({
+      chat: chatInstance,
+      experimental_throttle: messageBookkeepingThrottleMs,
+    })
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()

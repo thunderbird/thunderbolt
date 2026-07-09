@@ -18,8 +18,8 @@
  * tool activity, the banner, and permission prompts all flow through components.
  * A single `Editor` drives an async prompt worker: submit runs one turn to idle
  * with the editor's submit disabled, so turns never overlap. Raw mode disables
- * SIGINT, so Ctrl+C / Ctrl+D are intercepted manually to tear the TUI down and
- * restore the terminal.
+ * SIGINT, so Ctrl+C / Ctrl+D are intercepted manually to abort any in-flight
+ * turn, tear the TUI down, and restore the terminal.
  */
 
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
@@ -40,7 +40,7 @@ import {
 import { attachPermissionGate } from '../agent/permissions.ts'
 import type { PermissionDecision, PermissionPrompt, PermissionRequest } from '../agent/types.ts'
 import { bannerText } from '../banner.ts'
-import { formatToolEnd, formatToolStart, formatTurnError } from './render.ts'
+import { formatToolEnd, formatToolStart, formatTurnError, sanitizeTerminalText } from './render.ts'
 import { bold, cyan, dim, gray, italic, strikethrough, underline, yellow } from './theme.ts'
 
 /** Composes two styling helpers, applying `inner` before `outer`. */
@@ -88,9 +88,10 @@ const toDecision = (value: string): PermissionDecision =>
 /** Renders a single assistant content block as markdown, or `undefined` for
  *  blocks with no prose (tool calls, blank text/thinking). */
 const blockToMarkdown = (block: AssistantMessage['content'][number]): Markdown | undefined => {
-  if (block.type === 'text' && block.text.trim()) return new Markdown(block.text.trim(), 1, 0, markdownTheme)
+  if (block.type === 'text' && block.text.trim())
+    return new Markdown(sanitizeTerminalText(block.text.trim()), 1, 0, markdownTheme)
   if (block.type === 'thinking' && block.thinking.trim())
-    return new Markdown(block.thinking.trim(), 1, 0, markdownTheme, { color: dim, italic: true })
+    return new Markdown(sanitizeTerminalText(block.thinking.trim()), 1, 0, markdownTheme, { color: dim, italic: true })
   return undefined
 }
 
@@ -266,6 +267,13 @@ export const runTuiRepl = async (harness: AgentHarness, options: { yolo: boolean
     await done
   } finally {
     removeListener()
+    // Cancel any in-flight turn so a running tool (e.g. a bash command) stops
+    // instead of outliving the torn-down UI — Ctrl+C must interrupt, not detach.
+    // `abort()` fires the turn's AbortController synchronously (the interrupt
+    // lands here), but its settling awaits the run going idle; we must not let
+    // that gate raw-mode restoration, so `tui.stop()` runs immediately and the
+    // settle (and any teardown-time abort error) is left to resolve on its own.
+    harness.abort().catch(() => {})
     tui.stop()
   }
 }

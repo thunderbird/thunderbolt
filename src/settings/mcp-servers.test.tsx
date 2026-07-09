@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createMcpServer, getAllMcpServers } from '@/dal'
+import { createMcpServer, createMcpServerWithCredentials, getAllMcpServers, getMcpServerCredentials } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
@@ -409,6 +409,109 @@ describe('McpServersPage iroh add flow', () => {
     const created = await getAllMcpServers(db)
     expect(created).toHaveLength(1)
     expect(screen.queryByText('Add MCP Server')).not.toBeInTheDocument()
+  })
+})
+
+describe('McpServersPage Edit server', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('prefills the dialog from the existing server and persists the patch on Save', async () => {
+    const db = getDb()
+    const id = uuidv7()
+    await createMcpServerWithCredentials(
+      db,
+      { id, name: 'Original', type: 'http', url: 'https://old.example.com/mcp', enabled: 1 },
+      { type: 'bearer', token: 'original-token' },
+    )
+
+    renderWithReactivity(<McpServersPage deps={{ probeMcpServerTools: async () => ['search'] }} />, {
+      tables: ['mcp_servers', 'mcp_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+
+    const editButton = await waitForElement(() => screen.queryByRole('button', { name: 'Edit server' }))
+    fireEvent.click(editButton)
+
+    // Dialog title flips to Edit and the existing values are surfaced — name in the
+    // visible input and token in the password field (URL stays read off the input).
+    expect(await waitForElement(() => screen.queryByText('Edit MCP Server'))).toBeInTheDocument()
+    const nameInput = screen.getByPlaceholderText('Server name (used to prefix tools)') as HTMLInputElement
+    const urlInput = screen.getByPlaceholderText('http://localhost:8000/mcp/') as HTMLInputElement
+    const tokenInput = screen.getByPlaceholderText('Bearer token or API key') as HTMLInputElement
+    expect(nameInput.value).toBe('Original')
+    expect(urlInput.value).toBe('https://old.example.com/mcp')
+    expect(tokenInput.value).toBe('original-token')
+    // Bulk-import toggle is hidden in Edit mode.
+    expect(screen.queryByRole('radio', { name: 'Advanced (JSON)' })).not.toBeInTheDocument()
+
+    // Rename and let the auto-probe fire so the success gate unlocks Save.
+    fireEvent.change(nameInput, { target: { value: 'Renamed' } })
+    await flushAutoProbe()
+    expect(screen.getByText('Connection successful!')).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+      await getClock().runAllAsync()
+    })
+
+    const rows = await getAllMcpServers(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.id).toBe(id)
+    expect(rows[0]?.name).toBe('Renamed')
+    expect(rows[0]?.url).toBe('https://old.example.com/mcp')
+    // The prefilled bearer token survives an edit that doesn't touch it.
+    expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'original-token' })
+  })
+
+  it('saves a rename of an iroh server without a probe (no http/sse gate applies)', async () => {
+    const db = getDb()
+    const id = uuidv7()
+    const irohTarget = 'a'.repeat(52)
+    await createMcpServer(db, { id, name: 'Old Bridge', type: 'iroh', url: irohTarget, enabled: 1 })
+
+    renderWithReactivity(<McpServersPage deps={{ loadAppNodeId: async () => 'b'.repeat(52) }} />, {
+      tables: ['mcp_servers', 'mcp_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+
+    const editButton = await waitForElement(() => screen.queryByRole('button', { name: 'Edit server' }))
+    fireEvent.click(editButton)
+
+    // The iroh pairing panel (not the http/sse probe UI) is what edit surfaces.
+    await waitForElement(() => screen.queryByTestId('iroh-pairing-panel'))
+    expect(screen.queryByRole('button', { name: /Test Connection/ })).not.toBeInTheDocument()
+
+    const nameInput = screen.getByPlaceholderText('Server name (used to prefix tools)') as HTMLInputElement
+    expect(nameInput.value).toBe('Old Bridge')
+    fireEvent.change(nameInput, { target: { value: 'New Bridge' } })
+
+    // Save is ready with no probe — an iroh server has none to run.
+    const saveButton = screen.getByRole('button', { name: 'Save Changes' }) as HTMLButtonElement
+    expect(saveButton.disabled).toBe(false)
+    await act(async () => {
+      fireEvent.click(saveButton)
+      await getClock().runAllAsync()
+    })
+
+    const rows = await getAllMcpServers(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.name).toBe('New Bridge')
+    expect(rows[0]?.type).toBe('iroh')
+    expect(rows[0]?.url).toBe(irohTarget)
   })
 })
 

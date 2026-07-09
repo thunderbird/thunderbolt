@@ -147,6 +147,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               // Not logged in - collapsed desktop
               <button
                 type="button"
+                aria-label="Sign in"
                 className={cn(
                   'flex w-full items-center justify-center h-[var(--touch-height-xl)] cursor-pointer transition-colors',
                   'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
@@ -172,6 +173,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               <PopoverTrigger asChild>
                 <button
                   type="button"
+                  aria-label="Account menu"
                   className={cn(
                     'flex w-full items-center justify-center h-[var(--touch-height-xl)] cursor-pointer transition-colors',
                     'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',

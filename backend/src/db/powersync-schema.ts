@@ -265,7 +265,7 @@ export const agentsTable = powersyncSchema.table(
       .references(() => user.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
-    transport: text('transport', { enum: ['websocket'] }).notNull(),
+    transport: text('transport', { enum: ['websocket', 'iroh'] }).notNull(),
     url: text('url').notNull(),
     description: text('description'),
     icon: text('icon'),

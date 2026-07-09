@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { type ContentPart, parseContentParts } from '@/ai/widget-parser'
+import { type ContentPart, type ContentPartsState, parseContentPartsIncremental } from '@/ai/widget-parser'
 import { sourceToCitation } from '@/lib/source-utils'
 import {
   buildDocumentSideviewId,
@@ -14,7 +14,7 @@ import type { HaystackReferenceMeta } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { widgetSkeletons, type WidgetName } from '@/widgets'
 import { type TextUIPart } from 'ai'
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useRef } from 'react'
 import { CitationPopoverProvider } from './citation-popover'
 import { CitationContext, citationMarkdownComponents } from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
@@ -160,9 +160,14 @@ export const TextPart = memo(({ part, messageId, sources, haystackReferences }: 
   const hasNewSources = !!sources && sources.length > 0
   const hasDocumentRefs = !!haystackReferences && haystackReferences.length > 0
 
+  // Thread incremental parse state across renders so a streamed part re-scans only
+  // its appended tail (marker-free prose) instead of the whole growing string.
+  const parseStateRef = useRef<ContentPartsState | null>(null)
+
   // Build citation data upfront so the hook is always called in the same order
   const { processedParts, citations, hasCitations, hasText } = useMemo(() => {
     if (!part.text) {
+      parseStateRef.current = null
       return {
         processedParts: [] as ContentPart[],
         citations: new Map() as CitationMap,
@@ -171,7 +176,8 @@ export const TextPart = memo(({ part, messageId, sources, haystackReferences }: 
       }
     }
 
-    const parts = parseContentParts(part.text)
+    const { parts, state } = parseContentPartsIncremental(part.text, parseStateRef.current)
+    parseStateRef.current = state
 
     // Pick the citation builder based on which source type is active.
     // Document references take priority when both are present.

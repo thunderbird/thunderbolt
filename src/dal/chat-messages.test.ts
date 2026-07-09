@@ -13,6 +13,7 @@ import {
   getChatMessages,
   getLastMessage,
   saveMessagesWithContextUpdate,
+  saveStreamingAssistantMessage,
 } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -339,6 +340,44 @@ describe('Chat Messages DAL', () => {
       expect(saved?.role).toBe('assistant')
     })
 
+    it('should not overwrite parent_id when re-saving an existing message (self-parent guard)', async () => {
+      // Reproduces the streaming re-save: the assistant row already exists and is
+      // now the newest message in the thread, so `getLastMessage` would return
+      // the row itself. The conflict-update must NOT re-point parent_id to that
+      // (making the message its own parent).
+      const threadId = uuidv7()
+      const userMessageId = uuidv7()
+      const assistantMessageId = uuidv7()
+      const db = getDb()
+
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Test Thread', isEncrypted: 0 })
+      await db.insert(chatMessagesTable).values([
+        { id: userMessageId, chatThreadId: threadId, role: 'user', content: 'Question', parentId: null },
+        {
+          id: assistantMessageId,
+          chatThreadId: threadId,
+          role: 'assistant',
+          content: 'Partial',
+          parentId: userMessageId,
+        },
+      ])
+
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Complete answer' }],
+        },
+      ]
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.content).toBe('Complete answer')
+      // parent_id stays pointed at the user message, never at itself.
+      expect(saved?.parentId).toBe(userMessageId)
+    })
+
     it('should update context size from message metadata', async () => {
       const threadId = uuidv7()
       const messageId = uuidv7()
@@ -369,6 +408,95 @@ describe('Chat Messages DAL', () => {
 
       const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
       expect(thread?.contextSize).toBe(300)
+    })
+  })
+
+  describe('saveStreamingAssistantMessage', () => {
+    it('should insert a new assistant message with the supplied parent_id', async () => {
+      const threadId = uuidv7()
+      const userMessageId = uuidv7()
+      const assistantMessageId = uuidv7()
+      const db = getDb()
+
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Test Thread', isEncrypted: 0 })
+      await db.insert(chatMessagesTable).values({
+        id: userMessageId,
+        chatThreadId: threadId,
+        role: 'user',
+        content: 'Question',
+        parentId: null,
+      })
+
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
+        userMessageId,
+      )
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.role).toBe('assistant')
+      expect(saved?.content).toBe('Partial')
+      expect(saved?.parentId).toBe(userMessageId)
+    })
+
+    it('should update content/parts on repeat saves without changing parent_id', async () => {
+      const threadId = uuidv7()
+      const userMessageId = uuidv7()
+      const assistantMessageId = uuidv7()
+      const db = getDb()
+
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Test Thread', isEncrypted: 0 })
+      await db.insert(chatMessagesTable).values({
+        id: userMessageId,
+        chatThreadId: threadId,
+        role: 'user',
+        content: 'Question',
+        parentId: null,
+      })
+
+      // First partial → insert with the correct parent.
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Hel' }] },
+        userMessageId,
+      )
+
+      // Subsequent partials pass parentId=null (caller only recomputes the parent
+      // once); the upsert must keep the original parent, never null it out.
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Hello world' }] },
+        null,
+      )
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.content).toBe('Hello world')
+      expect(saved?.parentId).toBe(userMessageId)
+
+      // Exactly one row for the message id (no duplicate inserted).
+      const all = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId))
+      expect(all).toHaveLength(1)
+    })
+
+    it('should not require a thread row to exist (skips the existence check)', async () => {
+      // The generic path throws "Thread not found"; the fast path trusts the
+      // streaming invariant and goes straight to the upsert.
+      const threadId = uuidv7()
+      const assistantMessageId = uuidv7()
+      const db = getDb()
+
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Orphan-safe' }] },
+        null,
+      )
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.content).toBe('Orphan-safe')
     })
   })
 

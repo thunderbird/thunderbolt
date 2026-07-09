@@ -18,8 +18,8 @@
  * tool activity, the banner, and permission prompts all flow through components.
  * A single `Editor` drives an async prompt worker: submit runs one turn to idle
  * with the editor's submit disabled, so turns never overlap. Raw mode disables
- * SIGINT, so Ctrl+C / Ctrl+D are intercepted manually to tear the TUI down and
- * restore the terminal.
+ * SIGINT, so Ctrl+C / Ctrl+D are intercepted manually to abort any in-flight
+ * turn, tear the TUI down, and restore the terminal.
  */
 
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
@@ -267,6 +267,13 @@ export const runTuiRepl = async (harness: AgentHarness, options: { yolo: boolean
     await done
   } finally {
     removeListener()
+    // Cancel any in-flight turn so a running tool (e.g. a bash command) stops
+    // instead of outliving the torn-down UI — Ctrl+C must interrupt, not detach.
+    // `abort()` fires the turn's AbortController synchronously (the interrupt
+    // lands here), but its settling awaits the run going idle; we must not let
+    // that gate raw-mode restoration, so `tui.stop()` runs immediately and the
+    // settle (and any teardown-time abort error) is left to resolve on its own.
+    harness.abort().catch(() => {})
     tui.stop()
   }
 }

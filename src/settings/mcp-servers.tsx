@@ -264,6 +264,13 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   const isUrlValid = urlValidation?.ok === true
   const isUrlReady = !!newServerUrl && isUrlValid
   const irohReady = isIroh && resolveServerName().length > 0
+  // Unified Add/Save readiness both submit paths gate on: iroh needs a valid
+  // target + name (no probe exists for it), http/sse a valid URL.
+  const isSaveReady = isIroh ? irohReady : isUrlReady
+  // Edit save waives the fresh-probe requirement when there's no probe to run
+  // (iroh) or the edit doesn't touch the connection (metadata-only, bearer-clear,
+  // or an OAuth edit with an empty token).
+  const editProbeWaived = isIroh || !form.hasConnectionEdits || form.isClearingBearerOnly || form.isOAuthEdit
   // Load this app's iroh NodeId only while an iroh target is entered — keeps the
   // wasm chunk lazy and off the entry bundle (and the http/sse flow).
   const appNodeId = useAppNodeId(isIroh, deps.loadAppNodeId)
@@ -429,7 +436,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   const handleAddServer = async () => {
     // iroh stores the trimmed NodeId/ticket as `url` (type='iroh' rides through
     // `form.transport`); http/sse require a valid URL + a successful probe.
-    if (isIroh ? !irohReady : !isUrlReady) {
+    if (!isSaveReady) {
       return
     }
     const url = isIroh ? newServerUrl.trim() : newServerUrl
@@ -439,7 +446,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   }
 
   const handleUpdateServer = async () => {
-    if (!form.editingServerId || !isUrlReady) {
+    if (!form.editingServerId || !isSaveReady) {
       return
     }
     const id = form.editingServerId
@@ -454,12 +461,15 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     const name = resolveServerName()
     const transport = newServerTransport
     const enabled = dbRow.enabled === 1
+    // Persist the trimmed NodeId/ticket for iroh (same as the add path) so pasted
+    // whitespace can't survive into the stored target and break the peer dial.
+    const url = isIroh ? newServerUrl.trim() : newServerUrl
     setUpdateError(null)
     try {
       await updateServerMutation.mutateAsync({
         id,
         name,
-        url: newServerUrl,
+        url,
         transport,
         token: newServerToken,
         originalCredentialType: credentialsById[id]?.type ?? 'none',
@@ -477,7 +487,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     // for a pure metadata save (rename), skipping it lets the provider keep the
     // healthy client and just apply the row patch, so an active tool call
     // against this server isn't dropped by an unnecessary reconnect.
-    updateServer({ id, name, url: newServerUrl, type: transport, enabled }, { forceRedial: form.hasConnectionEdits })
+    updateServer({ id, name, url, type: transport, enabled }, { forceRedial: form.hasConnectionEdits })
     form.resetAddDialog()
     resetLocalDialogState()
   }
@@ -550,14 +560,10 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
       return
     }
     // Edit-mode: Enter mirrors the Save Changes button's enabled state — save
-    // whenever the button would (metadata-only OR bearer-clear OR OAuth edit with
-    // empty token, all of which waive the probe requirement) so those cases don't
-    // fall through to the probe branches below.
-    if (
-      form.editingServerId &&
-      isUrlReady &&
-      (!form.hasConnectionEdits || form.isClearingBearerOnly || form.isOAuthEdit)
-    ) {
+    // whenever the button would (iroh, metadata-only, bearer-clear, or OAuth edit
+    // with empty token, all of which waive the probe requirement) so those cases
+    // don't fall through to the probe branches below.
+    if (form.editingServerId && isSaveReady && editProbeWaived) {
       handleUpdateServer()
       return
     }
@@ -914,21 +920,13 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               {form.editingServerId ? (
                 <Button
                   onClick={handleUpdateServer}
+                  // A fresh successful probe is required only when the edit touches
+                  // the connection and no waiver applies (see `editProbeWaived`):
+                  // iroh has no probe, and metadata-only / bearer-clear / empty-token
+                  // OAuth edits keep the existing credential valid.
                   disabled={
-                    !isUrlReady ||
-                    // Connection-affecting fields untouched ⇒ existing credential
-                    // (including OAuth) is presumed valid — save without a fresh
-                    // probe. Same waiver for a bearer-removal edit (unauth probe
-                    // fails against a still-protected server; the mutation deletes
-                    // the credential row on blank token) and an OAuth-edit with
-                    // empty token (probe can never succeed without a bearer, and
-                    // the OAuth credential is preserved by the mutation — the
-                    // card's needs-auth flow handles a re-authorize at the new
-                    // endpoint post-save).
-                    (form.hasConnectionEdits &&
-                      !form.isClearingBearerOnly &&
-                      !form.isOAuthEdit &&
-                      testResult.kind !== 'success') ||
+                    !isSaveReady ||
+                    (!editProbeWaived && testResult.kind !== 'success') ||
                     updateServerMutation.isPending
                   }
                 >
@@ -944,10 +942,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                   Add &amp; Authorize
                 </Button>
               ) : (
-                <Button
-                  onClick={handleAddServer}
-                  disabled={isIroh ? !irohReady : !isUrlReady || testResult.kind !== 'success'}
-                >
+                <Button onClick={handleAddServer} disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success')}>
                   Add Server
                 </Button>
               )}

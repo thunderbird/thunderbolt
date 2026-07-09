@@ -410,6 +410,43 @@ describe('McpServersPage Edit server', () => {
     // The prefilled bearer token survives an edit that doesn't touch it.
     expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'original-token' })
   })
+
+  it('saves a rename of an iroh server without a probe (no http/sse gate applies)', async () => {
+    const db = getDb()
+    const id = uuidv7()
+    const irohTarget = 'a'.repeat(52)
+    await createMcpServer(db, { id, name: 'Old Bridge', type: 'iroh', url: irohTarget, enabled: 1 })
+
+    renderWithReactivity(<McpServersPage deps={{ loadAppNodeId: async () => 'b'.repeat(52) }} />, {
+      tables: ['mcp_servers', 'mcp_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+
+    const editButton = await waitForElement(() => screen.queryByRole('button', { name: 'Edit server' }))
+    fireEvent.click(editButton)
+
+    // The iroh pairing panel (not the http/sse probe UI) is what edit surfaces.
+    await waitForElement(() => screen.queryByTestId('iroh-pairing-panel'))
+    expect(screen.queryByRole('button', { name: /Test Connection/ })).not.toBeInTheDocument()
+
+    const nameInput = screen.getByPlaceholderText('Server name (used to prefix tools)') as HTMLInputElement
+    expect(nameInput.value).toBe('Old Bridge')
+    fireEvent.change(nameInput, { target: { value: 'New Bridge' } })
+
+    // Save is ready with no probe — an iroh server has none to run.
+    const saveButton = screen.getByRole('button', { name: 'Save Changes' }) as HTMLButtonElement
+    expect(saveButton.disabled).toBe(false)
+    await act(async () => {
+      fireEvent.click(saveButton)
+      await getClock().runAllAsync()
+    })
+
+    const rows = await getAllMcpServers(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.name).toBe('New Bridge')
+    expect(rows[0]?.type).toBe('iroh')
+    expect(rows[0]?.url).toBe(irohTarget)
+  })
 })
 
 describe('McpServersPage probe lifecycle', () => {

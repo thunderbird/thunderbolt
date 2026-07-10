@@ -54,13 +54,20 @@ export class BrowserExecutionEnv implements ExecutionEnv {
   cwd: string
   private readonly env: Record<string, string>
   private readonly bashFs: ZenBashFileSystem
+  private readonly createBash: (options: ConstructorParameters<typeof Bash>[0]) => Pick<Bash, 'exec'>
   /** Absolute temp root for this env, inside its (jailed) workspace root. */
   private readonly tempRoot: string
 
-  constructor(options: { cwd: string; env?: Record<string, string> }) {
+  constructor(options: {
+    cwd: string
+    env?: Record<string, string>
+    /** Test seam for controlling shell completion around timeout boundaries. */
+    createBash?: (options: ConstructorParameters<typeof Bash>[0]) => Pick<Bash, 'exec'>
+  }) {
     this.cwd = options.cwd
     this.env = options.env ?? {}
     this.tempRoot = join(options.cwd, TEMP_SUBDIR)
+    this.createBash = options.createBash ?? ((bashOptions) => new Bash(bashOptions))
     // The shell is jailed to the env's root (the thread's workspace) so bash
     // commands can't read or write a sibling thread's files on the shared mount.
     this.bashFs = new ZenBashFileSystem(options.cwd)
@@ -131,12 +138,12 @@ export class BrowserExecutionEnv implements ExecutionEnv {
       // guards nothing here while actively breaking the bash interpreter (it
       // trips on just-bash's own internal `Proxy` use). The real sandbox is the
       // virtual ZenFS mount with no host-process access, so we disable it.
-      const bash = new Bash({ fs: this.bashFs, cwd, env, defenseInDepth: false })
+      const bash = this.createBash({ fs: this.bashFs, cwd, env, defenseInDepth: false })
       const result = await bash.exec(command, { signal: controller.signal })
-      if (state.timedOut) return err(new ExecutionError('timeout', `timeout:${options?.timeout}`))
-      if (options?.abortSignal?.aborted) return err(new ExecutionError('aborted', 'aborted'))
       if (result.stdout) options?.onStdout?.(result.stdout)
       if (result.stderr) options?.onStderr?.(result.stderr)
+      if (state.timedOut) return err(new ExecutionError('timeout', `timeout:${options?.timeout}`))
+      if (options?.abortSignal?.aborted) return err(new ExecutionError('aborted', 'aborted'))
       return ok({ stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode })
     } catch (error) {
       if (state.timedOut) return err(new ExecutionError('timeout', `timeout:${options?.timeout}`))

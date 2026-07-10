@@ -53,7 +53,7 @@ See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and
 1. Create the table in both `src/db/tables.ts` and `backend/src/db/powersync-schema.ts` (include `user_id`).
 2. **Backend schema**: Add only a `user_id` index: `index('idx_[table]_user_id').on(table.userId)`. Do not add composite foreign keys or other indexes (see above).
 3. Register in [src/db/powersync/schema.ts](../src/db/powersync/schema.ts) (`drizzleSchema`).
-4. Add the table name and query keys in [shared/powersync-tables.ts](../shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` and `powersyncTableToQueryKeys`).
+4. Add the table name and query keys in [shared/powersync-tables.ts](../../shared/powersync-tables.ts) (`powersyncTableNames` and `powersyncTableToQueryKeys`).
 5. Update **all three** sync-rule configs so local, preview, prod, and enterprise-k8s stay in parity:
    - [powersync-service/config/config.yaml](../../powersync-service/config/config.yaml) — local docker-compose.
    - [deploy/config/powersync-config.yaml](../../deploy/config/powersync-config.yaml) — baked into the `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image; used by preview stacks (Pulumi) and prod on Render.
@@ -84,7 +84,7 @@ See [powersync-service/README.md](../powersync-service/README.md) for full steps
 - PowerSync API: http://localhost:8080
 - Postgres: localhost:5433 (use this for the backend so PowerSync and app share one database)
 - Backend `.env`: set `DATABASE_DRIVER=postgres`, `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres`, and PowerSync vars (see below)
-- Sync rules in `powersync-service/config/config.yaml` must match backend tables; when you add/change tables, update that file and `VALID_TABLES` in `backend/src/api/powersync.ts` (which uses `POWERSYNC_TABLE_NAMES` from shared).
+- Sync rules in `powersync-service/config/config.yaml` must match backend tables; when you add/change tables, update that file. The backend's upload validator (`validTables` in `backend/src/dal/powersync.ts`) is derived from `powersyncTableNames` in `shared/powersync-tables.ts` automatically — no manual sync needed there.
 
 ### Backend PowerSync Env Vars (Local)
 

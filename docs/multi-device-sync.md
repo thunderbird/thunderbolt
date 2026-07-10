@@ -68,7 +68,7 @@ Adding a table touches both clients and the backend plus the PowerSync sync rule
 
 1. **Backend + sync rules PR**
    - Add the table to `backend/src/db/powersync-schema.ts` with a Drizzle migration.
-   - Register in [`shared/powersync-tables.ts`](../shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` + `powersyncTableToQueryKeys`).
+   - Register in [`shared/powersync-tables.ts`](../shared/powersync-tables.ts) (`powersyncTableNames` + `powersyncTableToQueryKeys`).
    - Add the sync rule to all three configs: `powersync-service/config/config.yaml`, `deploy/config/powersync-config.yaml`, and `deploy/k8s/templates/configmaps.yaml`.
    - Merge and deploy this first. On merge, CI publishes a new `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image; roll the Render `powersync` service to that new tag before PR 2 merges.
 

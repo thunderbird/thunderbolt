@@ -10,9 +10,16 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { parseArgs } from './cli.ts'
+import packageJson from '../package.json' with { type: 'json' }
+import rootPackageJson from '../../package.json' with { type: 'json' }
+import { parseArgs, VERSION } from './cli.ts'
 
 const ENV_KEY = 'THUNDERBOLT_OPENAI_COMPAT_KEY'
+
+test('VERSION and the CLI package match the released app version', () => {
+  expect(VERSION).toBe(packageJson.version)
+  expect(packageJson.version).toBe(rootPackageJson.version)
+})
 
 /** Narrow a ParsedArgs to a `run` config or fail loudly. */
 const runConfig = (argv: string[]) => {

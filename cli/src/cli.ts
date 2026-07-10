@@ -8,6 +8,7 @@
  * No I/O happens here — the caller decides what to do with the result.
  */
 
+import packageJson from '../package.json' with { type: 'json' }
 import type {
   BridgeConfig,
   BridgeProtocol,
@@ -20,7 +21,7 @@ import type {
 } from './agent/types.ts'
 
 /** Released version of the CLI, surfaced by `--version` and the banner. */
-export const VERSION = '0.1.0'
+export const VERSION = packageJson.version
 
 /** Default Anthropic model when `--model` is omitted. */
 const DEFAULT_MODEL = 'claude-opus-4-8'

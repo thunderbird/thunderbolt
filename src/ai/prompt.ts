@@ -28,20 +28,27 @@ export type PromptParams = {
   mcpServersSummary?: string
 }
 
-/**
- * Creates a system prompt for the AI assistant with user context and guidelines.
- */
-export const createPrompt = ({
-  modelName,
-  profile,
-  modeName,
-  preferredName,
-  location,
-  localization,
-  integrationStatus,
-  modeSystemPrompt,
-  mcpServersSummary,
-}: PromptParams) => {
+export type PromptParts = {
+  readonly stablePrompt: string
+  readonly volatilePrompt: string
+  readonly fullPrompt: string
+}
+
+/** Build stable assistant instructions separately from per-send date/time. */
+export const createPromptParts = (
+  {
+    modelName,
+    profile,
+    modeName,
+    preferredName,
+    location,
+    localization,
+    integrationStatus,
+    modeSystemPrompt,
+    mcpServersSummary,
+  }: PromptParams,
+  currentDate: Date = new Date(),
+): PromptParts => {
   const toolsOverride = profile?.toolsOverride ?? undefined
   const linkPreviewsOverride = profile?.linkPreviewsOverride ?? undefined
   const modeAddendum = !profile
@@ -55,7 +62,7 @@ export const createPrompt = ({
           : undefined
   // The date/time changes every send; it goes in the suffix (see the ordering
   // note on the returned template), while the stable context stays in the prefix.
-  const currentDateTime = `Current date/time: ${new Date().toLocaleString('en-US', {
+  const currentDateTime = `Current date/time: ${currentDate.toLocaleString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -89,7 +96,7 @@ export const createPrompt = ({
   // Keeping the timestamp at the front would invalidate the cache on every
   // send. User-controlled fields stay in `# Context` (not the trailing suffix)
   // so settings text can't read as the most-recent instruction.
-  return `You are an executive assistant using the **${modelName}** model. You ALWAYS cite sources with [N] — place each [N] once after the final sentence using that source, with a space before the bracket.
+  const stablePrompt = `You are an executive assistant using the **${modelName}** model. You ALWAYS cite sources with [N] — place each [N] once after the final sentence using that source, with a space before the bracket.
 Reasoning: low
 
 # Principles
@@ -142,7 +149,13 @@ Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" 
 Wrong: "Tokyo has 14 million residents." (missing [N])
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
 Format math as LaTeX with dollar delimiters: $…$ inline, $$…$$ for standalone equations. Never use \\(…\\) or \\[…\\].
-${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${modeAddendum ? `\n\n${modeAddendum}` : ''}` : ''}
-
-${currentDateTime}`
+${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${modeAddendum ? `\n\n${modeAddendum}` : ''}` : ''}`
+  return {
+    stablePrompt,
+    volatilePrompt: currentDateTime,
+    fullPrompt: `${stablePrompt}\n\n${currentDateTime}`,
+  }
 }
+
+/** Creates a complete system prompt for stateless assistant requests. */
+export const createPrompt = (params: PromptParams): string => createPromptParts(params).fullPrompt

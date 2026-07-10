@@ -47,7 +47,7 @@ export const connectToAgent = async (
   deps: ConnectToAgentDeps = {},
 ): Promise<AgentAdapter> => {
   if (agent.type === 'built-in') {
-    return createBuiltInAdapter(agent, { aiFetch: deps.aiFetch })
+    return createBuiltInAdapter(agent, deps)
   }
   return connectAcpAdapter(
     agent,

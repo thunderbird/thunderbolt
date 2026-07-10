@@ -20,7 +20,7 @@ import { resetStore } from '@/test-utils/chat-store-mocks'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import type { Agent, AgentAdapter } from '@/types/acp'
+import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import type { Chat } from '@ai-sdk/react'
 import { createAgentRoutingFetch } from './chat-instance'
@@ -113,6 +113,33 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
 }
 
 describe('createAgentRoutingFetch', () => {
+  it('passes the current regenerate revision without changing it on normal sends', async () => {
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
+    const connectToAgent = mock(async () => adapter)
+    hydrateSessionWith('t-revision', builtInAgent)
+    const regeneration = { regenerationRevision: 0 }
+    const customFetch = createAgentRoutingFetch(
+      't-revision',
+      saveMessages,
+      httpClient,
+      getProxyFetch,
+      { connectToAgent: connectToAgent as never },
+      regeneration,
+    )
+    const init: RequestInit = { method: 'POST', body: JSON.stringify({ messages: [] }) }
+
+    await customFetch('/chat', init)
+    await customFetch('/chat', init)
+    regeneration.regenerationRevision++
+    await customFetch('/chat', init)
+
+    const revisions = adapterFetch.mock.calls.map(
+      (call) => (call as unknown as [RequestInit, AgentAdapterContext])[1].regenerationRevision,
+    )
+    expect(revisions).toEqual([0, 0, 1])
+  })
+
   it('routes built-in agent through connectToAgent with type "built-in"', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)

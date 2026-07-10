@@ -71,6 +71,10 @@ export type AgentAdapterContext = {
   reconnectClient: (client: MCPClient) => Promise<MCPClient | null>
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
+  /** Increments only when the current assistant response is regenerated. Built-in
+   *  persistent harnesses use it to rebuild from the edited transcript without
+   *  rebuilding during ordinary transcript growth. */
+  regenerationRevision?: number
   /** Resolved instruction bodies for any user skills (`/slug`) referenced in
    *  the prompt. The built-in pipeline injects these as system messages
    *  (`ai/fetch.ts`); ACP agents only receive prompt text, so the adapter folds

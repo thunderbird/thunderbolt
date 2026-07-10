@@ -16,6 +16,7 @@
 
 import { Endpoint, EndpointAddr, EndpointId, EndpointTicket, RelayMode, presetN0 } from '@number0/iroh'
 import type { Connection, EndpointBuilder } from '@number0/iroh'
+import { irohAlpnFor } from '../../../shared/iroh.ts'
 import type { BridgeProtocol } from '../agent/types.ts'
 import { loadOrCreateIdentity } from './identity.ts'
 
@@ -71,10 +72,8 @@ export const configureTransport = (
  *  vice-versa). Each bridge protocol also binds a distinct identity (distinct
  *  NodeId), so the separation holds even when a stale address resolves the
  *  wrong-protocol process, not just at the ALPN check. */
-const alpnStringFor = (protocol: BridgeProtocol): string => `thunderbolt/${protocol}/0`
-
 /** The protocol's ALPN as the byte array the iroh API expects. */
-export const alpnFor = (protocol: BridgeProtocol): number[] => Array.from(Buffer.from(alpnStringFor(protocol), 'utf8'))
+export const alpnFor = (protocol: BridgeProtocol): number[] => Array.from(Buffer.from(irohAlpnFor(protocol), 'utf8'))
 
 /** A bound server endpoint plus the two identifiers operators share to be
  *  reached: the bare NodeId and a full connection ticket (NodeId + relay). */

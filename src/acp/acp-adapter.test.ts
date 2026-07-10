@@ -746,6 +746,37 @@ describe('connectAcpAdapter — capability-aware continuity (resume / load / new
     expect(calls.newSession).toHaveLength(1) // reused the warmed session
     expect(persisted).toEqual(['sess-1']) // persisted only on the real send
   })
+
+  it('retries fresh-session persistence and transcript seeding after persistence fails', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const init = conversationInit([
+      { role: 'user', text: 'earlier' },
+      { role: 'assistant', text: 'reply' },
+      { role: 'user', text: 'now' },
+    ])
+    const persistenceAttempts: string[] = []
+    const onAcpSessionId = async (sessionId: string): Promise<void> => {
+      persistenceAttempts.push(sessionId)
+      if (persistenceAttempts.length === 1) {
+        throw new Error('persistence failed')
+      }
+    }
+    const context = threadCtx('t-persist-retry', { onAcpSessionId })
+
+    expect(adapter.fetch(init, context)).rejects.toThrow('persistence failed')
+    await drive(adapter, init, context, releasePrompts)
+
+    expect(calls.newSession).toHaveLength(1)
+    expect(persistenceAttempts).toEqual(['sess-1', 'sess-1'])
+    expect(calls.prompt).toHaveLength(1)
+    expect(sentPromptText(calls)).toContain('Conversation so far:')
+  })
 })
 
 describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {

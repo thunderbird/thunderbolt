@@ -50,6 +50,16 @@ export const sanitizeTerminalText = (text: string): string =>
   text.replace(ESCAPE_SEQUENCE, '').replace(CONTROL_CHAR, '')
 
 /**
+ * Sanitizes untrusted text for an approval summary and keeps it on one visible
+ * line so model-controlled whitespace cannot imitate prompt structure.
+ *
+ * @param text - the model-controlled approval text
+ * @returns terminal-safe text with tabs and newlines rendered literally
+ */
+export const sanitizePermissionText = (text: string): string =>
+  sanitizeTerminalText(text).replaceAll('\n', '\\n').replaceAll('\t', '\\t')
+
+/**
  * Truncates `text` to `max` characters, appending an ellipsis when clipped.
  *
  * @param text - the text to bound
@@ -137,7 +147,7 @@ export const formatToolEnd = (isError: boolean, result: unknown): string => {
  */
 export const formatTurnError = (message: AgentMessage): string | undefined => {
   if (!('stopReason' in message) || message.stopReason !== 'error') return undefined
-  const detail = message.errorMessage ?? 'the request failed'
+  const detail = sanitizeTerminalText(message.errorMessage ?? 'the request failed')
   return red(`${symbols.fail} ${detail}`)
 }
 

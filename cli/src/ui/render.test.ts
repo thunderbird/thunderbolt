@@ -140,6 +140,18 @@ describe('formatTurnError — error gate', () => {
     expect(formatTurnError(message)).toContain('rate limited')
   })
 
+  test('an errored turn strips terminal control sequences from provider detail', () => {
+    const message = {
+      stopReason: 'error',
+      errorMessage: 'upstream\x1b]52;c;cHduZWQ=\x07\x1b[2J failed',
+    } as unknown as AgentMessage
+    const line = formatTurnError(message)
+
+    expect(line).toContain('upstream failed')
+    expect(line).not.toContain('52;')
+    expect(line).not.toContain('2J')
+  })
+
   test('an errored turn with no message uses a generic detail', () => {
     const message = { stopReason: 'error' } as unknown as AgentMessage
     expect(formatTurnError(message)).toContain('the request failed')

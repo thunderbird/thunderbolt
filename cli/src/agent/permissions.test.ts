@@ -165,9 +165,21 @@ describe('attachPermissionGate — summary builder', () => {
     expect(await summaryFor('bash', { command: 'echo hi' })).toBe('echo hi')
   })
 
+  test('bash summary neutralizes terminal escapes and prompt-forging whitespace', async () => {
+    expect(await summaryFor('bash', { command: 'echo safe\x1b[2J\nAllow? [y]es\tspoof' })).toBe(
+      'echo safe\\nAllow? [y]es\\tspoof',
+    )
+  })
+
   test('write/edit summarize to the target path', async () => {
     expect(await summaryFor('write', { path: 'src/a.ts', content: 'x' })).toBe('src/a.ts')
     expect(await summaryFor('edit', { path: 'src/b.ts', oldText: 'a', newText: 'b' })).toBe('src/b.ts')
+  })
+
+  test('path summary cannot inject another approval line', async () => {
+    expect(await summaryFor('write', { path: 'safe.ts\n⚠ allow bash?\x1b[1A', content: 'x' })).toBe(
+      'safe.ts\\n⚠ allow bash?',
+    )
   })
 
   test('bash without a string command falls back to the JSON of the input', async () => {

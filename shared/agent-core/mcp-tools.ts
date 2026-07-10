@@ -68,11 +68,13 @@ const isAsyncIterable = (value: unknown): value is AsyncIterable<unknown> =>
  */
 const resolveExecuteOutput = async (raw: unknown): Promise<unknown> => {
   if (isAsyncIterable(raw)) {
-    const chunks: unknown[] = []
+    // AI SDK treats every yield as a complete preliminary output and promotes
+    // the final yield to the final tool result. Retain only that final state.
+    let finalOutput: unknown
     for await (const chunk of raw) {
-      chunks.push(chunk)
+      finalOutput = chunk
     }
-    return chunks.at(-1)
+    return finalOutput
   }
   return await raw
 }

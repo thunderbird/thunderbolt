@@ -169,17 +169,15 @@ describe('read tool', () => {
 })
 
 describe('write tool', () => {
-  it('writes content and reports the byte count (character length) and path', async () => {
+  it('writes content and reports the UTF-8 byte count and path', async () => {
     const out = textOf(await run(write, { path: 'out.txt', content: 'hello' }))
     expect(out).toBe('Successfully wrote 5 bytes to out.txt')
     expect(await fsp.readFile(`${WS}/out.txt`, { encoding: 'utf8' })).toBe('hello')
   })
 
-  it('reports the CHARACTER count (not UTF-8 byte length) for multibyte content', async () => {
-    // '€€' is 2 chars but 6 UTF-8 bytes; the tool's message uses content.length, so it
-    // says "2 bytes". This pins the (mislabelled) contract — the bytes on disk are 6.
+  it('reports the UTF-8 byte length for multibyte content', async () => {
     const out = textOf(await run(write, { path: 'mb.txt', content: '€€' }))
-    expect(out).toBe('Successfully wrote 2 bytes to mb.txt')
+    expect(out).toBe('Successfully wrote 6 bytes to mb.txt')
     expect(Buffer.byteLength(await fsp.readFile(`${WS}/mb.txt`, { encoding: 'utf8' }), 'utf-8')).toBe(6)
   })
 

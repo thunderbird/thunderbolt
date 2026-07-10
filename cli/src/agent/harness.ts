@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Assembles the Pi `AgentHarness` — the spine that lets the CLI actually talk
- * to Claude. It binds a Node execution environment (real bash + filesystem) to
- * the working directory, opens an in-memory session, resolves the model, and
- * registers coding tools. Workspace-root harnesses omit bash because arbitrary
- * shell commands cannot be confined to that workspace.
+ * Assembles the Pi `AgentHarness` — the spine that lets the CLI talk to the
+ * selected model provider. It binds a Node execution environment (real bash +
+ * filesystem) to the working directory, opens an in-memory session, resolves
+ * the model, and registers coding tools. Workspace-root harnesses omit bash
+ * because arbitrary shell commands cannot be confined to that workspace.
  */
 
 import { AgentHarness, InMemorySessionRepo } from '@earendil-works/pi-agent-core'

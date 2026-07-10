@@ -10,13 +10,9 @@
  * the allowlist gate rejects an unknown peer).
  */
 
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { BridgeProtocol } from '../agent/types.ts'
-
-/** Root for all thunderbolt CLI state. `THUNDERBOLT_HOME` overrides the default
- *  `~/.thunderbolt`, enabling isolated identities for testing/multi-account. */
-export const thunderboltHomeDir = (): string => process.env.THUNDERBOLT_HOME ?? join(homedir(), '.thunderbolt')
+import { thunderboltHomeDir } from '../paths.ts'
 
 /** Directory holding the iroh identity and allowlist. */
 export const irohDir = (): string => join(thunderboltHomeDir(), 'iroh')

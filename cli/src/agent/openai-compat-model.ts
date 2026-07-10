@@ -5,7 +5,7 @@
 /**
  * Builds a Pi `openai-completions` model bound to a custom base URL + bearer
  * key, so the CLI can run any OpenAI-compatible endpoint (e.g. Xiaomi MiMo at
- * `https://token-plan-sgp.xiaomimimo.com/v1`) instead of only Anthropic.
+ * `https://token-plan-sgp.xiaomimimo.com/v1`) outside Pi's built-in providers.
  *
  * This is the CLI sibling of `shared/agent-core/openai-compat-model.ts`, but
  * deliberately simpler. The app's version SYNCHRONOUSLY swaps `globalThis.fetch`
@@ -108,7 +108,7 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof API>
 /**
  * Resolves an OpenAI-compatible model and wires it through a Pi provider bound
  * to `opts.baseUrl` + `opts.apiKey`. Drop-in sibling of `resolveModel`'s
- * Anthropic branch: returns the same `{ models, model }` shape the harness
+ * built-in branch: returns the same `{ models, model }` shape the harness
  * consumes.
  *
  * @param opts - model id, base URL, and bearer api key

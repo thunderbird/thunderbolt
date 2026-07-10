@@ -48,18 +48,12 @@ const runRepl = async (harness: AgentHarness, io: TerminalIO): Promise<void> => 
 }
 
 /**
- * Runs the agent for a single CLI invocation. Requires `ANTHROPIC_API_KEY`;
- * exits with a friendly message when it's absent.
+ * Runs agent for one CLI invocation. Harness model resolution validates
+ * provider-specific credentials before execution resources are allocated.
  *
  * @param config - the resolved configuration from `parseArgs`
  */
 export const runAgent = async (config: RunConfig): Promise<void> => {
-  // Anthropic resolves its key from the environment; openai-compat carries its
-  // own (validated in `resolveModel`), so it must not demand ANTHROPIC_API_KEY.
-  if ((config.provider ?? 'anthropic') === 'anthropic' && !process.env.ANTHROPIC_API_KEY) {
-    throw new Error('set ANTHROPIC_API_KEY to run the agent (https://console.anthropic.com).')
-  }
-
   const { harness, dispose } = await buildHarness(config)
 
   try {

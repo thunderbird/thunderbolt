@@ -19,6 +19,7 @@ import type { Connection } from '@number0/iroh'
 import type { ConnectConfig } from '../agent/types.ts'
 import { spawnAgent } from '../commands/bridge.ts'
 import { dial } from './endpoint.ts'
+import { killProcessWhenConnectionCloses } from './lifecycle.ts'
 import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
 
 /** Write received bytes to this process's stdout, awaiting a `drain` when the
@@ -49,7 +50,7 @@ const settleOrClose = (connection: Connection, pumps: Promise<unknown>[]): Promi
 const bridgeLocalCommand = async (connection: Connection, command: readonly string[]): Promise<number> => {
   const proc = spawnAgent(command)
   if (!proc) throw new Error(`failed to spawn local client '${command[0]}'`)
-  void connection.closed().then(() => proc.kill())
+  killProcessWhenConnectionCloses(connection, proc)
 
   let received = 0
   const bi = await connection.openBi()

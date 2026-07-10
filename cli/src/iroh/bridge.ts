@@ -20,6 +20,7 @@ import type { BridgeConfig } from '../agent/types.ts'
 import { atProcCapacity, redactArgv, spawnAgent, type BridgeProc } from '../commands/bridge.ts'
 import { isAllowed } from './allowlist.ts'
 import { bindServer } from './endpoint.ts'
+import { killProcessWhenConnectionCloses } from './lifecycle.ts'
 import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
 
 /** QUIC application close code for a connection we actively reject (allowlist
@@ -266,7 +267,7 @@ export const handleConnection = async (
   // by finishing the send stream below — never by an active connection close —
   // so the final JSON-RPC response can't be truncated mid-flight; the client
   // tears the connection down once it has drained that stream.
-  void connection.closed().then(() => proc.kill())
+  killProcessWhenConnectionCloses(connection, proc)
   process.stdout.write(`⚡ iroh bridge: accepted ${remoteId} → spawned ${redactArgv(config.command)}\n`)
 
   // `.finally` (not `.then`) so the agent always gets stdin EOF, even if the

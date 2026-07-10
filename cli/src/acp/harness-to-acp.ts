@@ -24,20 +24,11 @@
 
 import type { StopReason as PiStopReason } from '@earendil-works/pi-ai'
 import type { AgentHarnessEvent } from '@earendil-works/pi-agent-core'
-import type { SessionUpdate, StopReason, ToolCallContent, ToolKind } from '@agentclientprotocol/sdk'
-
-/** The coding tools the built-in harness exposes, mapped to the ACP {@link ToolKind}
- *  the client uses to pick an icon / UI treatment. Unknown tools fall back to
- *  `other` so an added tool degrades gracefully rather than mis-labelling. */
-const TOOL_KINDS: Record<string, ToolKind> = {
-  bash: 'execute',
-  read: 'read',
-  write: 'edit',
-  edit: 'edit',
-}
+import type { SessionUpdate, StopReason, ToolCallContent } from '@agentclientprotocol/sdk'
+import { toAcpToolKind } from '../../../shared/agent-tool-permissions.ts'
 
 /** Map a built-in tool name to its ACP {@link ToolKind}. */
-export const toToolKind = (toolName: string): ToolKind => TOOL_KINDS[toolName] ?? 'other'
+export const toToolKind = toAcpToolKind
 
 /**
  * Map a Pi {@link PiStopReason} to the ACP {@link StopReason} returned from

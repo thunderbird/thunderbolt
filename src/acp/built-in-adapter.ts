@@ -53,7 +53,8 @@ import {
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
-import type { PermissionOption, RequestPermissionResponse, ToolKind } from '@agentclientprotocol/sdk'
+import { isReadOnlyAgentTool, resolveToolPermission, toAcpToolKind } from '@shared/agent-tool-permissions'
+import type { PermissionOption, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type {
   AgentHarness,
   AgentTool,
@@ -213,29 +214,6 @@ const permissionOptions: readonly PermissionOption[] = [
   { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
 ]
 
-/** Pi tools that run unguarded — pure reads with no side effects. Mirrors the
- *  CLI's gate (`cli/src/agent/permissions.ts`): only `read` auto-allows;
- *  `bash`/`write`/`edit` and every MCP tool still prompt. Prompting on reads is
- *  noise, and the legacy built-in path never prompted at all. */
-const readOnlyTools = new Set<string>(['read'])
-
-/** Map a Pi coding-tool name to the closest ACP {@link ToolKind} so the
- *  permission dialog renders a sensible label. Unknown (e.g. MCP) tools fall
- *  back to `other`. */
-const toToolKind = (toolName: string): ToolKind => {
-  switch (toolName) {
-    case 'bash':
-      return 'execute'
-    case 'read':
-      return 'read'
-    case 'write':
-    case 'edit':
-      return 'edit'
-    default:
-      return 'other'
-  }
-}
-
 /** Translate the user's permission response into a Pi `tool_call` hook result.
  *  A cancelled prompt or a reject-kind selection blocks the tool (Pi encodes a
  *  blocked call as an error tool result); anything else allows it. */
@@ -244,8 +222,7 @@ const toToolCallResult = (response: RequestPermissionResponse): ToolCallResult |
   if (outcome.outcome === 'cancelled') {
     return { block: true, reason: 'Tool call was not approved.' }
   }
-  const selected = permissionOptions.find((option) => option.optionId === outcome.optionId)
-  if (selected?.kind.startsWith('reject')) {
+  if (resolveToolPermission(outcome, permissionOptions) === 'reject') {
     return { block: true, reason: 'Tool call was rejected.' }
   }
   return undefined
@@ -292,7 +269,7 @@ const registerToolCallPermission = (
     return noop
   }
   return harness.on('tool_call', async (event: ToolCallEvent) => {
-    if (readOnlyTools.has(event.toolName)) {
+    if (isReadOnlyAgentTool(event.toolName)) {
       return undefined
     }
     const ask = requestPermission({
@@ -300,7 +277,7 @@ const registerToolCallPermission = (
       toolCall: {
         toolCallId: event.toolCallId,
         title: event.toolName,
-        kind: toToolKind(event.toolName),
+        kind: toAcpToolKind(event.toolName),
         rawInput: event.input,
         status: 'pending',
       },

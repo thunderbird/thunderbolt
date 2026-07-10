@@ -44,6 +44,7 @@ import type {
 } from '@agentclientprotocol/sdk'
 import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
+import { isReadOnlyAgentTool, resolveToolPermission } from '../../../shared/agent-tool-permissions.ts'
 import { VERSION } from '../cli.ts'
 import { buildHarness } from '../agent/harness.ts'
 import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
@@ -145,12 +146,13 @@ const toToolCallResult = (
   toolName: string,
   sessionAllowed: Set<string>,
 ): ToolCallResult | undefined => {
-  if (outcome.outcome === 'cancelled') return { block: true, reason: 'permission request cancelled' }
-  if (outcome.optionId === 'allow-always') {
+  const decision = resolveToolPermission(outcome, PERMISSION_OPTIONS)
+  if (decision === 'allow-always') {
     if (toolName !== 'read') sessionAllowed.add(toolName)
     return undefined
   }
-  if (outcome.optionId === 'allow-once') return undefined
+  if (decision === 'allow-once') return undefined
+  if (outcome.outcome === 'cancelled') return { block: true, reason: 'permission request cancelled' }
   return { block: true, reason: `user rejected ${toolName}` }
 }
 
@@ -169,7 +171,7 @@ const attachAcpPermissionGate = (
   const sessionAllowed = new Set<string>()
 
   harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
-    if (toolName === 'read') {
+    if (isReadOnlyAgentTool(toolName)) {
       const path =
         typeof input === 'object' && input !== null && 'path' in input && typeof input.path === 'string'
           ? input.path

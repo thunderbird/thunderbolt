@@ -3,11 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
+import { isReadOnlyAgentTool } from '../../../shared/agent-tool-permissions.ts'
 import { sanitizePermissionText } from '../ui/render.ts'
 import type { PermissionPrompt, PermissionRequest } from './types.ts'
-
-/** Tools that run unguarded — pure reads with no side effects. */
-const READ_ONLY_TOOLS = new Set(['read'])
 
 /**
  * Builds the one-line summary shown to the user for a gated tool call. `bash`
@@ -43,7 +41,7 @@ export const attachPermissionGate = (harness: AgentHarness, opts: { yolo: boolea
   const sessionAllowed = new Set<string>()
 
   harness.on('tool_call', async ({ toolName, input }) => {
-    if (READ_ONLY_TOOLS.has(toolName) || sessionAllowed.has(toolName)) return undefined
+    if (isReadOnlyAgentTool(toolName) || sessionAllowed.has(toolName)) return undefined
 
     const request: PermissionRequest = { toolName, summary: summarize(toolName, input) }
     const decision = await opts.ask(request)

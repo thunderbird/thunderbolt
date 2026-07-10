@@ -40,6 +40,10 @@ const optionVariant = (kind: PermissionOption['kind']): 'default' | 'destructive
   }
 }
 
+/** Formats ACP raw tool input as complete plain text for informed approval. */
+const formatToolInput = (input: unknown): string | undefined =>
+  typeof input === 'string' ? input : JSON.stringify(input, null, 2)
+
 /**
  * Inline permission prompt rendered above the prompt input when an ACP agent
  * issues a `requestPermission` for a tool call. The dialog disables itself
@@ -51,6 +55,7 @@ export const PermissionDialog = ({ request, onRespond }: PermissionDialogProps) 
   const toolCall = request.toolCall
   const title = toolCall?.title ?? 'Permission Required'
   const kind = toolCall?.kind
+  const toolInput = toolCall?.rawInput === undefined ? undefined : formatToolInput(toolCall.rawInput)
 
   const handleSelect = (option: PermissionOption) => {
     if (responded) {
@@ -70,6 +75,18 @@ export const PermissionDialog = ({ request, onRespond }: PermissionDialogProps) 
       </div>
 
       <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{title}</p>
+
+      {toolInput !== undefined && (
+        <div className="flex flex-col gap-1">
+          <p className="text-[length:var(--font-size-xs)] text-muted-foreground">Command / arguments</p>
+          <pre
+            aria-label="Tool input"
+            className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-[length:var(--font-size-xs)]"
+          >
+            {toolInput}
+          </pre>
+        </div>
+      )}
 
       {toolCall?.locations && toolCall.locations.length > 0 && (
         <div className="text-[length:var(--font-size-xs)] text-muted-foreground font-mono">

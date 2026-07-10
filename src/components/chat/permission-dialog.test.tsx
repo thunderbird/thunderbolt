@@ -35,6 +35,31 @@ describe('PermissionDialog', () => {
     expect(screen.getByText(/\/etc\/passwd:1/)).toBeInTheDocument()
   })
 
+  it('renders complete raw tool input as inert, scrollable text', () => {
+    const hiddenTail = `; ${'x'.repeat(500)}; rm -rf /`
+    const rawInput = { command: `echo '<img src=x onerror="pwned">'${hiddenTail}`, timeout: 1_000 }
+    const request: RequestPermissionRequest = {
+      ...baseRequest,
+      toolCall: { ...baseRequest.toolCall, rawInput } as RequestPermissionRequest['toolCall'],
+    }
+    const { container } = render(<PermissionDialog request={request} onRespond={mock()} />)
+    const input = screen.getByLabelText('Tool input')
+
+    expect(input.textContent).toBe(JSON.stringify(rawInput, null, 2))
+    expect(input).toHaveClass('max-h-64', 'overflow-auto', 'whitespace-pre-wrap', 'break-words')
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('renders a string raw input without JSON quote decoration', () => {
+    const request: RequestPermissionRequest = {
+      ...baseRequest,
+      toolCall: { ...baseRequest.toolCall, rawInput: 'echo hello' } as RequestPermissionRequest['toolCall'],
+    }
+    render(<PermissionDialog request={request} onRespond={mock()} />)
+
+    expect(screen.getByLabelText('Tool input')).toHaveTextContent('echo hello')
+  })
+
   it('calls onRespond with the selected option once and then disables buttons', () => {
     const onRespond = mock(() => {})
     render(<PermissionDialog request={baseRequest} onRespond={onRespond} />)

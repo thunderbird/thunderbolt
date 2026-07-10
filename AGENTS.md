@@ -97,8 +97,8 @@ See [docs/architecture/e2e-encryption.md](docs/architecture/e2e-encryption.md) f
 
 **Deploying new synced tables (two-PR process):**
 
-1. **PR 1 (backend-only):** Backend schema, Drizzle migration, `shared/powersync-tables.ts`, and `config.yaml` sync rule. Merge → run migration → update PowerSync Cloud dashboard rules.
-2. **PR 2 (frontend + everything else):** Frontend schema, DAL, defaults, reconciliation, and any UI/logic. Merge only after PR 1's dashboard rules are live.
+1. **PR 1 (backend + sync rules):** Backend schema, Drizzle migration, `shared/powersync-tables.ts`, and all three sync-rule configs (`powersync-service/config/config.yaml`, `deploy/config/powersync-config.yaml`, and `deploy/k8s/templates/configmaps.yaml`). Merge → run migration → wait for `images-publish.yml` to publish the new `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image → **roll the Render `powersync` service to the new tag** (dashboard → Manual Deploy → Deploy latest reference).
+2. **PR 2 (frontend + everything else):** Frontend schema, DAL, defaults, reconciliation, and any UI/logic. Merge only after PR 1's image is live on Render.
 
 Deploying frontend before the sync rules are updated causes silent sync failure — the table works locally but won't replicate across devices.
 See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync-account-devices.md#pr-flow-for-adding-tables).

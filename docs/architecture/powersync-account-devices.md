@@ -10,7 +10,7 @@ This document consolidates documentation for:
 
 ## 1. PowerSync Overview
 
-PowerSync provides offline-first sync between the backend (PostgreSQL) and clients (SQLite). Data is scoped by `user_id` from the JWT. The backend issues PowerSync JWTs and can apply client uploads (PUT/PATCH/DELETE) to Postgres. Production uses PowerSync Cloud; local development uses the Docker stack in `powersync-service/`.
+PowerSync provides offline-first sync between the backend (PostgreSQL) and clients (SQLite). Data is scoped by `user_id` from the JWT. The backend issues PowerSync JWTs and can apply client uploads (PUT/PATCH/DELETE) to Postgres. Production runs the self-hosted PowerSync service on Render (image: `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync`); local development uses the Docker stack in `powersync-service/`. The frontend never hard-codes the PowerSync URL — the backend returns it in `/powersync/token`, so URL changes are transparent to clients.
 
 For the sync data transformation middleware and custom SharedWorker (E2E encryption pipeline), see [docs/powersync-sync-middleware.md](powersync-sync-middleware.md).
 
@@ -30,7 +30,7 @@ For the sync data transformation middleware and custom SharedWorker (E2E encrypt
 
 Defined in [shared/powersync-tables.ts](../shared/powersync-tables.ts):
 
-`settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `mcp_servers`, `prompts`, `triggers`, `modes`, `model_profiles`, `devices`.
+`settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `prompts`, `skills`, `triggers`, `modes`, `model_profiles`, `devices`, `agents`.
 
 ### Indexes and Foreign Keys
 
@@ -54,21 +54,25 @@ See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and
 2. **Backend schema**: Add only a `user_id` index: `index('idx_[table]_user_id').on(table.userId)`. Do not add composite foreign keys or other indexes (see above).
 3. Register in [src/db/powersync/schema.ts](../src/db/powersync/schema.ts) (`drizzleSchema`).
 4. Add the table name and query keys in [shared/powersync-tables.ts](../shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` and `powersyncTableToQueryKeys`).
-5. Update [powersync-service/config/config.yaml](../powersync-service/config/config.yaml): add a line under `sync_rules.content` → `bucket_definitions.user_data.data` (e.g. `- SELECT * FROM my_table WHERE my_table.user_id = bucket.user_id`).
+5. Update **all three** sync-rule configs so local, preview, prod, and enterprise-k8s stay in parity:
+   - [powersync-service/config/config.yaml](../../powersync-service/config/config.yaml) — local docker-compose.
+   - [deploy/config/powersync-config.yaml](../../deploy/config/powersync-config.yaml) — baked into the `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image; used by preview stacks (Pulumi) and prod on Render.
+   - [deploy/k8s/templates/configmaps.yaml](../../deploy/k8s/templates/configmaps.yaml) — Helm-rendered config for the enterprise k8s deploy path.
+   Add a line under `sync_rules.content` → the appropriate bucket in each: `bucket_definitions.user_essentials.data` for latency-sensitive tables (loaded first, priority 1), or `bucket_definitions.user_data.data` for the rest (priority 2). Example: `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
 6. Run migrations for frontend and backend as needed.
 
 ### PR Flow for Adding Tables
 
 Split the work into two PRs to avoid sync rule mismatches:
 
-1. **PR 1 – Backend schemas and migrations**
-   - Backend: table in `backend/src/db/powersync-schema.ts`, migration, `shared/powersync-tables.ts`, `config.yaml` sync rules.
-   - Merge this PR first.
-   - After deploy finishes, update sync rules in the PowerSync Cloud dashboard (production uses PowerSync Cloud; local uses `powersync-service` config).
+1. **PR 1 – Backend schemas, migrations, and sync rules**
+   - Backend: table in `backend/src/db/powersync-schema.ts`, migration, `shared/powersync-tables.ts`, and all three sync-rule configs (see step 5 above).
+   - Merge this PR first. On merge, `.github/workflows/images-publish.yml` rebuilds `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` with the updated sync rules baked in.
+   - **Roll the Render `powersync` service to the new image tag** before merging PR 2. Preview stacks pick up the new image on their next Pulumi apply.
 
 2. **PR 2 – Frontend and remaining changes**
    - Frontend: table in `src/db/tables.ts`, `src/db/powersync/schema.ts`, and any UI/feature code.
-   - Merge after PR 1 is deployed and PowerSync rules are updated.
+   - Merge after PR 1's image is live on Render.
 
 ---
 

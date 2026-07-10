@@ -6,7 +6,10 @@
  * Single source of truth for PowerSync-synced table names and React Query invalidation.
  * Used by backend (validTables), frontend (use-powersync-invalidation), and sync rules (config.yaml).
  * When adding a table: add here, then to src/db/tables.ts, backend/src/db/powersync-schema.ts,
- * src/db/powersync/schema.ts, and powersync-service/config/config.yaml.
+ * src/db/powersync/schema.ts, and ALL THREE sync-rule configs:
+ *   - powersync-service/config/config.yaml   (local docker-compose)
+ *   - deploy/config/powersync-config.yaml    (baked into the ghcr image; preview + Render prod)
+ *   - deploy/k8s/templates/configmaps.yaml   (Helm-rendered config for enterprise k8s)
  */
 
 export const powersyncTableNames = [

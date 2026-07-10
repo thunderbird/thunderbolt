@@ -35,7 +35,7 @@ Two distinct paths exist depending on the platform. Both end at the same point �
 
 ```mermaid
 flowchart TD
-    Server["PowerSync Cloud<br/>(encrypted data)"]
+    Server["PowerSync service<br/>(encrypted data)"]
 
     subgraph MainThread["Main Thread"]
         TPS["ThunderboltPowerSyncDatabase<br/>extends PowerSyncDatabase<br/><br/>generateBucketStorageAdapter()<br/>→ creates TransformableBucketStorage<br/>  (unused in SharedWorker path)"]
@@ -63,7 +63,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Server["PowerSync Cloud<br/>(encrypted data)"]
+    Server["PowerSync service<br/>(encrypted data)"]
 
     subgraph MainThread["Main Thread"]
         TPS["ThunderboltPowerSyncDatabase<br/>extends PowerSyncDatabase<br/><br/>generateBucketStorageAdapter()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]

@@ -60,7 +60,6 @@ import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import { useMcpServerOAuth, type McpOAuthCallback, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import { generateServerName, useAddServerForm } from '@/hooks/use-add-server-form'
 import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 
 export { generateServerName }
 
@@ -274,7 +273,6 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   // Load this app's iroh NodeId only while an iroh target is entered — keeps the
   // wasm chunk lazy and off the entry bundle (and the http/sse flow).
   const appNodeId = useAppNodeId(isIroh, deps.loadAppNodeId)
-  const { copy: copyAllowCommand, isCopied: allowCommandCopied } = useCopyToClipboard()
 
   // The add-dialog surfaces at most one error: a JSON import failure (advanced),
   // an Edit save failure (Save Changes), or an OAuth authorization failure. The
@@ -805,7 +803,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                       Select, credential, or probe (the link is encrypted and
                       allowlist-gated, verified on first use). */}
                   {isIroh ? (
-                    <IrohPairingPanel appNodeId={appNodeId} copy={copyAllowCommand} isCopied={allowCommandCopied} />
+                    <IrohPairingPanel appNodeId={appNodeId} />
                   ) : (
                     <>
                       <div className="grid grid-cols-1 gap-2">

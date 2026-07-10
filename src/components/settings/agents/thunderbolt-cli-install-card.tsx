@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { arch } from '@tauri-apps/plugin-os'
-import { AlertTriangle, Check, Copy, Download, Loader2, Terminal } from 'lucide-react'
+import { AlertTriangle, Check, Download, Loader2, Terminal } from 'lucide-react'
 import { useState, useTransition } from 'react'
+import { CopyCommandRow } from '@/components/settings/copy-command-row'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import {
   type CliInstallArchitecture,
   type CliInstallPlatform,
@@ -35,28 +35,6 @@ type ThunderboltCliInstallCardProps = {
   architecture?: CliInstallArchitecture
   /** Test seam for the Tauri check; production reads `isTauri()`. */
   tauri?: boolean
-}
-
-/** A copyable command row: monospace command + a copy button. */
-const CommandRow = ({ command, label }: { command: string; label: string }) => {
-  const { copy, isCopied } = useCopyToClipboard()
-  return (
-    <div className="flex items-center gap-2">
-      <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1 font-mono text-[length:var(--font-size-xs)]">
-        {command}
-      </code>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="size-8 shrink-0 p-0"
-        aria-label={label}
-        onClick={() => void copy(command)}
-      >
-        {isCopied ? <Check className="size-4 text-green-600" /> : <Copy className="size-4" />}
-      </Button>
-    </div>
-  )
 }
 
 /**
@@ -126,7 +104,7 @@ export const ThunderboltCliInstallCard = ({
                 <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
                   Add <code className="font-mono">~/.local/bin</code> to your PATH, then restart your shell:
                 </p>
-                <CommandRow command={state.result.pathHint} label="Copy PATH command" />
+                <CopyCommandRow command={state.result.pathHint} label="Copy PATH command" />
               </div>
             )}
           </div>
@@ -143,7 +121,7 @@ export const ThunderboltCliInstallCard = ({
                 <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
                   Build it from source instead (requires Bun):
                 </p>
-                <CommandRow command={manualBuildCommand} label="Copy build command" />
+                <CopyCommandRow command={manualBuildCommand} label="Copy build command" />
               </div>
             )}
           </div>

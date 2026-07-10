@@ -264,6 +264,13 @@ describe('parseArgs — connect + iroh admin', () => {
     })
   })
 
+  test('connect passes --help through to the client command after the separator', () => {
+    expect(parseArgs(['acp', 'connect', 'ticket123', '--', 'client', '--help'])).toEqual({
+      kind: 'connect',
+      config: { protocol: 'acp', target: 'ticket123', command: ['client', '--help'] },
+    })
+  })
+
   test('connect without a target is an error', () => {
     expect(parseArgs(['mcp', 'connect']).kind).toBe('error')
   })

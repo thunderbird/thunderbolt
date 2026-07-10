@@ -285,11 +285,11 @@ const parseBridgeArgs = (protocol: BridgeProtocol, rest: string[]): ParsedArgs =
  * the dial target; everything after `--` is the local stdio command.
  */
 const parseConnectArgs = (protocol: BridgeProtocol, rest: string[]): ParsedArgs => {
-  if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' }
-
   const separator = rest.indexOf('--')
   const before = separator === -1 ? rest : rest.slice(0, separator)
   const command = separator === -1 ? [] : rest.slice(separator + 1)
+
+  if (before.includes('--help') || before.includes('-h')) return { kind: 'help' }
 
   const target = before[0]
   if (target === undefined) {

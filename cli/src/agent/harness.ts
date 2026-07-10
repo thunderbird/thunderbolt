@@ -16,6 +16,7 @@ import { createBashTool, createEditTool, createReadTool, createWriteTool } from 
 import { resolveModel } from './model.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 import type { HarnessBundle, HarnessConfig } from './types.ts'
+import { createWorkspaceTools } from './workspace-jail.ts'
 
 /**
  * Builds a ready-to-run harness for a single CLI invocation, paired with a
@@ -43,12 +44,9 @@ export const buildHarness = async (config: HarnessConfig, session?: Session): Pr
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
   })
-  const tools = [
-    createBashTool(config.cwd),
-    createReadTool(config.cwd),
-    createWriteTool(config.cwd),
-    createEditTool(config.cwd),
-  ]
+  const tools = config.workspaceRoot
+    ? createWorkspaceTools(config.workspaceRoot)
+    : [createBashTool(config.cwd), createReadTool(config.cwd), createWriteTool(config.cwd), createEditTool(config.cwd)]
 
   const harness = new AgentHarness({
     env,

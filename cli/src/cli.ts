@@ -326,8 +326,8 @@ const resolveApiKey = (flagApiKey?: string): string | undefined =>
 /**
  * Parses an `acp serve` invocation: run the built-in agent as a stdio ACP
  * server. Reuses the run-flag scanner (`--model`/`--provider`/`--base-url`/
- * `--api-key`/`--thinking`/`--yolo`); the per-session working directory comes
- * from each ACP `session/new`, so `cwd` here is just the process default. No
+ * `--api-key`/`--thinking`/`--yolo`); `cwd` captures trusted launch directory
+ * that scopes every ACP session. Client-supplied cwd values are ignored. No
  * positional prompt is accepted.
  */
 const parseServeArgs = (rest: string[]): ParsedArgs => {

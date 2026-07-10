@@ -86,6 +86,8 @@ export type HarnessConfig = {
   readonly model: string
   /** Working directory the agent's bash/fs tools are bound to. */
   readonly cwd: string
+  /** Trusted filesystem root for ACP path-tool confinement. Omitted by local CLI modes. */
+  readonly workspaceRoot?: string
   /** When true, auto-approve every tool call (no interactive gate). */
   readonly yolo: boolean
   /** Reasoning depth for the harness. */
@@ -105,8 +107,8 @@ export type HarnessConfig = {
 
 /**
  * Configuration for an `acp serve` invocation: run THIS coding agent as a stdio
- * ACP JSON-RPC server. `cwd` is the process default; each ACP `session/new`
- * supplies its own working directory, which overrides it per session.
+ * ACP JSON-RPC server. `cwd` is trusted launch directory and cannot be overridden
+ * by client session requests.
  */
 export type ServeConfig = HarnessConfig
 

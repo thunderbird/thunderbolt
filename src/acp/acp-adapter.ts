@@ -63,10 +63,9 @@ const protocolVersion = 1
  *  the handshake — never the prompt/streaming phase, which is legitimately long
  *  and is torn down via the transport instead. */
 const defaultHandshakeTimeoutMs = 30_000
-/** ACP requires `cwd` on session/new + session/load. Browser/web agents have
- *  no real filesystem; we send a placeholder. The Haystack managed adapter
- *  and most remote agents ignore the field. */
-const sessionCwd = '/'
+/** ACP requires `cwd` on session/new + session/load. Browser clients cannot
+ *  know a remote agent's absolute path, so use its launch-relative directory. */
+const sessionCwd = '.'
 const clientName = 'thunderbolt'
 const clientVersion = '0.2.0'
 

@@ -292,6 +292,7 @@ describe('connectAcpAdapter — handshake failure modes', () => {
     const response = await adapter.fetch(promptInit('hi'), threadCtx('t1'))
     expect(response.headers.get('content-type')).toBe('text/event-stream')
     expect(calls.newSession).toHaveLength(1)
+    expect(calls.newSession[0]?.cwd).toBe('.')
 
     let sse: string[] = []
     await act(async () => {
@@ -402,6 +403,7 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
 
     expect(calls.loadSession).toHaveLength(1)
     expect(calls.loadSession[0]?.sessionId).toBe('prior-sess')
+    expect(calls.loadSession[0]?.cwd).toBe('.')
     expect(calls.newSession).toHaveLength(0)
     // loadSession reuses the existing id — nothing fresh to persist.
     expect(persisted).toEqual([])
@@ -547,6 +549,7 @@ describe('connectAcpAdapter — capability-aware continuity (resume / load / new
 
     expect(calls.resumeSession).toHaveLength(1)
     expect(calls.resumeSession[0]?.sessionId).toBe('stored-1')
+    expect(calls.resumeSession[0]?.cwd).toBe('.')
     expect(calls.newSession).toHaveLength(0)
     expect(persisted).toEqual([]) // reused id, nothing fresh to persist
     // No app-side replay: the live prompt carries only the current user text.

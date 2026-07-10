@@ -66,7 +66,7 @@ describe('createSessionStore', () => {
     await session.appendMessage(assistantText('done'))
 
     // A brand-new store instance over the same dir = a fresh process resuming.
-    const resumed = await createSessionStore(dir).openOrCreate('s1', CWD)
+    const resumed = await createSessionStore(dir).openSession('s1', CWD)
     const context = await resumed.buildContext()
 
     expect(context.messages).toHaveLength(4)
@@ -79,10 +79,20 @@ describe('createSessionStore', () => {
     expect(context.thinkingLevel).toBe('high')
   })
 
-  test('an unknown id self-heals to a fresh empty session (no throw)', async () => {
-    const resumed = await createSessionStore(dir).openOrCreate('never-persisted', CWD)
-    expect((await resumed.buildContext()).messages).toHaveLength(0)
-    expect((await resumed.getMetadata()).id).toBe('never-persisted')
+  test('an unknown id rejects so the client creates and transcript-seeds a new session', async () => {
+    await expect(createSessionStore(dir).openSession('never-persisted', CWD)).rejects.toThrow(
+      "no on-disk session 'never-persisted'",
+    )
+  })
+
+  test('a session stored under the legacy root cwd rejects under the trusted workspace cwd', async () => {
+    const writer = createSessionStore(dir)
+    const legacy = await writer.createSession('legacy-root', '/')
+    await legacy.appendMessage(userMessage('preserve this through app reseed'))
+
+    await expect(createSessionStore(dir).openSession('legacy-root', CWD)).rejects.toThrow(
+      "no on-disk session 'legacy-root' for workspace '/workspace/project'",
+    )
   })
 
   test('resume drops a trailing dangling tool_use (killed mid-turn)', async () => {
@@ -92,7 +102,7 @@ describe('createSessionStore', () => {
     await session.appendMessage(userMessage('do more'))
     await session.appendMessage(assistantToolCall('t9', 'bash')) // no tool_result → dangling
 
-    const resumed = await createSessionStore(dir).openOrCreate('s2', CWD)
+    const resumed = await createSessionStore(dir).openSession('s2', CWD)
     const context = await resumed.buildContext()
 
     expect(context.messages).toHaveLength(1)
@@ -105,7 +115,7 @@ describe('createSessionStore', () => {
     await session.appendMessage(assistantText('earlier answer'))
     await session.appendMessage(userMessage('unanswered'))
 
-    const resumed = await createSessionStore(dir).openOrCreate('s3', CWD)
+    const resumed = await createSessionStore(dir).openSession('s3', CWD)
     const context = await resumed.buildContext()
 
     expect(context.messages).toHaveLength(1)
@@ -118,7 +128,7 @@ describe('createSessionStore', () => {
     await session.appendMessage(userMessage('hi'))
     await session.appendMessage(assistantText('hello'))
 
-    const resumed = await createSessionStore(dir).openOrCreate('s4', CWD)
+    const resumed = await createSessionStore(dir).openSession('s4', CWD)
     expect((await resumed.buildContext()).messages).toHaveLength(2)
   })
 })

@@ -38,7 +38,6 @@ data:
             data:
               - SELECT * FROM powersync.chat_messages WHERE user_id = bucket.user_id
               - SELECT * FROM powersync.tasks WHERE user_id = bucket.user_id
-              - SELECT * FROM powersync.mcp_servers WHERE user_id = bucket.user_id
               - SELECT * FROM powersync.prompts WHERE user_id = bucket.user_id
               - SELECT * FROM powersync.skills WHERE user_id = bucket.user_id
               - SELECT * FROM powersync.triggers WHERE user_id = bucket.user_id

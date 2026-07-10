@@ -15,7 +15,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AssistantMessage, ToolResultMessage, UserMessage } from '@earendil-works/pi-ai'
-import { createSessionStore } from './session-store.ts'
+import { createSessionStore, defaultSessionsDir } from './session-store.ts'
 
 const CWD = '/workspace/project'
 
@@ -131,4 +131,15 @@ describe('createSessionStore', () => {
     const resumed = await createSessionStore(dir).openSession('s4', CWD)
     expect((await resumed.buildContext()).messages).toHaveLength(2)
   })
+})
+
+test('defaultSessionsDir honors THUNDERBOLT_HOME', () => {
+  const previous = process.env.THUNDERBOLT_HOME
+  process.env.THUNDERBOLT_HOME = '/tmp/thunderbolt-custom-home'
+  try {
+    expect(defaultSessionsDir()).toBe('/tmp/thunderbolt-custom-home/acp/sessions')
+  } finally {
+    if (previous === undefined) delete process.env.THUNDERBOLT_HOME
+    else process.env.THUNDERBOLT_HOME = previous
+  }
 })

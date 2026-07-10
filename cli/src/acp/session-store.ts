@@ -21,11 +21,11 @@
  * every append during a turn, so it must not be torn down with them).
  */
 
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { JsonlSessionRepo } from '@earendil-works/pi-agent-core'
 import type { Session } from '@earendil-works/pi-agent-core'
 import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
+import { thunderboltHomeDir } from '../iroh/paths.ts'
 
 /** Creates and resumes disk-backed Pi sessions for ACP session ids. */
 export type SessionStore = {
@@ -38,7 +38,7 @@ export type SessionStore = {
 }
 
 /** Default on-disk root for persisted ACP sessions on the bridge machine. */
-export const defaultSessionsDir = (): string => join(homedir(), '.thunderbolt', 'acp', 'sessions')
+export const defaultSessionsDir = (): string => join(thunderboltHomeDir(), 'acp', 'sessions')
 
 /**
  * Trim a trailing incomplete turn from a just-opened session so the next prompt

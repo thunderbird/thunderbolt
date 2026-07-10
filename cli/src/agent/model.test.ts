@@ -45,12 +45,12 @@ describe('resolveModel — openai-compat branch', () => {
     const { models, model } = resolveModel({
       model: 'mimo-v2.5-pro',
       provider: 'openai-compat',
-      baseUrl: 'https://token-plan-sgp.xiaomimimo.com/v1',
+      baseUrl: 'https://h/v1',
       apiKey: 'secret',
     })
     expect(model.id).toBe('mimo-v2.5-pro')
     expect(model.provider).toBe('openai-compat')
-    expect(model.baseUrl).toBe('https://token-plan-sgp.xiaomimimo.com/v1')
+    expect(model.baseUrl).toBe('https://h/v1')
     // The model is registered in the returned collection under its provider.
     expect(models.getModel('openai-compat', 'mimo-v2.5-pro')?.id).toBe('mimo-v2.5-pro')
   })

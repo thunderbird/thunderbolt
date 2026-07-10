@@ -20,6 +20,18 @@ declare module '@tauri-apps/api/core' {
 // @tauri-apps/plugin-os
 // ---------------------------------------------------------------------------
 declare module '@tauri-apps/plugin-os' {
+  export type Arch =
+    | 'x86'
+    | 'x86_64'
+    | 'arm'
+    | 'aarch64'
+    | 'mips'
+    | 'mips64'
+    | 'powerpc'
+    | 'powerpc64'
+    | 'riscv64'
+    | 's390x'
+    | 'sparc64'
   export type Platform =
     | 'linux'
     | 'macos'
@@ -32,5 +44,6 @@ declare module '@tauri-apps/plugin-os' {
     | 'openbsd'
     | 'solaris'
 
+  export const arch: () => Arch
   export function platform(): Platform
 }

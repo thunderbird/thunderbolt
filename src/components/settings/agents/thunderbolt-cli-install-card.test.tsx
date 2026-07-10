@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 const renderCard = (props: Partial<Parameters<typeof ThunderboltCliInstallCard>[0]> = {}) =>
-  render(<ThunderboltCliInstallCard platform="macos" tauri={true} {...props} />)
+  render(<ThunderboltCliInstallCard platform="macos" architecture="aarch64" tauri={true} {...props} />)
 
 const clickInstall = async () => {
   await act(async () => {
@@ -45,6 +45,11 @@ describe('ThunderboltCliInstallCard', () => {
     cleanup()
     const { container: mobile } = renderCard({ platform: 'ios' })
     expect(mobile).toBeEmptyDOMElement()
+  })
+
+  it('renders nothing on Intel macOS because no binary is published', () => {
+    const { container } = renderCard({ architecture: 'x86_64' })
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('shows the installed path on success', async () => {

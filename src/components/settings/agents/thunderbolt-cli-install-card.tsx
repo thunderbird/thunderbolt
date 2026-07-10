@@ -2,12 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { arch } from '@tauri-apps/plugin-os'
 import { AlertTriangle, Check, Copy, Download, Loader2, Terminal } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import {
+  type CliInstallArchitecture,
+  type CliInstallPlatform,
   type CliInstallResult,
   canInstallThunderboltCli,
   describeCliInstallError,
@@ -27,7 +30,9 @@ type ThunderboltCliInstallCardProps = {
   /** Injectable installer (production omits; tests supply a fake). */
   install?: () => Promise<CliInstallResult>
   /** Test seam for the runtime platform; production reads `getPlatform()`. */
-  platform?: string
+  platform?: CliInstallPlatform
+  /** Test seam for the runtime CPU architecture; production reads Tauri's OS plugin. */
+  architecture?: CliInstallArchitecture
   /** Test seam for the Tauri check; production reads `isTauri()`. */
   tauri?: boolean
 }
@@ -55,23 +60,26 @@ const CommandRow = ({ command, label }: { command: string; label: string }) => {
 }
 
 /**
- * Desktop-only (macOS/Linux) one-click install of the standalone `thunderbolt`
- * CLI. Invokes the Rust command that downloads, checksum-verifies and installs
+ * One-click install of the standalone `thunderbolt` CLI on supported macOS/Linux
+ * builds. Invokes the Rust command that downloads, checksum-verifies and installs
  * the prebuilt binary into `~/.local/bin`, then renders the installed path (with
- * a PATH hint if the dir isn't on `PATH`) or a clear error. When there's no
- * prebuilt binary for this release/platform, it surfaces the manual build
- * fallback instead of failing silently. Renders nothing where the install isn't
- * offered (web, mobile, Windows).
+ * a PATH hint if the dir isn't on `PATH`) or a clear error. When a release has no
+ * CLI assets, it surfaces the manual build fallback instead of failing silently.
+ * Renders nothing on unpublished OS/architecture pairs or outside Tauri.
  */
 export const ThunderboltCliInstallCard = ({
   install = installThunderboltCli,
   platform,
+  architecture,
   tauri,
 }: ThunderboltCliInstallCardProps) => {
   const [state, setState] = useState<InstallState>({ status: 'idle' })
   const [isPending, startTransition] = useTransition()
 
-  if (!canInstallThunderboltCli(platform ?? getPlatform(), tauri ?? isTauri())) {
+  const isTauriEnv = tauri ?? isTauri()
+  const runtimeArchitecture = architecture ?? (isTauriEnv ? arch() : 'unknown')
+
+  if (!canInstallThunderboltCli(platform ?? getPlatform(), runtimeArchitecture, isTauriEnv)) {
     return null
   }
 

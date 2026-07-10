@@ -207,6 +207,60 @@ describe('startMcpOAuthFlow', () => {
     expect(redirectedTo).toBe(`${authServerUrl}/authorize?x=1`)
   })
 
+  it('requests the resource-advertised scopes_supported on registration and authorization', async () => {
+    const db = getDb()
+    let registeredScope: string | undefined
+    let authorizedScope: string | undefined
+
+    await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        // A scope-gated resource (like Metabase) advertises the scopes its tools require.
+        discoverOAuthProtectedResourceMetadata: async () =>
+          ({
+            resource: serverUrl,
+            authorization_servers: [authServerUrl],
+            scopes_supported: ['agent:query', 'agent:search'],
+          }) as never,
+        discoverAuthorizationServerMetadata: async () => metadata(),
+        registerClient: async (_url, opts) => {
+          registeredScope = opts.scope
+          return { client_id: 'dcr-client', redirect_uris: [`${origin}/oauth/callback`] } as OAuthClientInformationFull
+        },
+        startAuthorization: async (_url, opts) => {
+          authorizedScope = opts.scope
+          return { authorizationUrl: new URL(`${authServerUrl}/authorize?x=1`), codeVerifier: 'verifier-1' }
+        },
+      },
+    )
+
+    // The advertised scopes are requested space-delimited on both the DCR registration
+    // and the authorization request — without this a scope-gated server issues a token
+    // authorized for nothing and tools/list comes back empty.
+    expect(registeredScope).toBe('agent:query agent:search')
+    expect(authorizedScope).toBe('agent:query agent:search')
+  })
+
+  it('omits scope when the resource advertises no scopes_supported (non-gated server)', async () => {
+    const db = getDb()
+    let authorizedScope: string | undefined = 'unset'
+
+    await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        ...happyDiscovery(metadata()),
+        registerClient: async () =>
+          ({ client_id: 'dcr-client', redirect_uris: [`${origin}/oauth/callback`] }) as OAuthClientInformationFull,
+        startAuthorization: async (_url, opts) => {
+          authorizedScope = opts.scope
+          return { authorizationUrl: new URL(`${authServerUrl}/authorize?x=1`), codeVerifier: 'verifier-1' }
+        },
+      },
+    )
+
+    expect(authorizedScope).toBeUndefined()
+  })
+
   it('rejects an AS that does not advertise PKCE S256', async () => {
     const db = getDb()
     await expect(

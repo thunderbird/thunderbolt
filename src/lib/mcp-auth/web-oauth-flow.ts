@@ -114,7 +114,7 @@ const discoverServer = async (
   serverUrl: string,
   fetchFn: FetchLike,
   deps: WebOAuthDeps,
-): Promise<{ authorizationServerUrl: string; metadata: AuthorizationServerMetadata }> => {
+): Promise<{ authorizationServerUrl: string; metadata: AuthorizationServerMetadata; scope?: string }> => {
   const discover = deps.discoverOAuthProtectedResourceMetadata ?? discoverOAuthProtectedResourceMetadata
   const discoverAs = deps.discoverAuthorizationServerMetadata ?? discoverAuthorizationServerMetadata
 
@@ -135,7 +135,14 @@ const discoverServer = async (
     throw new Error('Authorization server does not support PKCE S256.')
   }
 
-  return { authorizationServerUrl, metadata }
+  // RFC 9728: request the scopes the resource advertises (space-delimited). A
+  // scope-gated server issues a token authorized for nothing without this — e.g.
+  // Metabase gates every MCP tool behind an `agent:*` scope, so an unscoped token
+  // makes `tools/list` return empty. `undefined` when none are advertised, which
+  // omits the `scope` parameter and preserves behavior for non-gated servers.
+  const scope = prm.scopes_supported?.join(' ') || undefined
+
+  return { authorizationServerUrl, metadata, scope }
 }
 
 /**
@@ -223,7 +230,7 @@ const prepareAuthorization = async (
   const register = deps.registerClient ?? registerClient
   const start = deps.startAuthorization ?? startAuthorization
 
-  const { authorizationServerUrl, metadata } = await discoverServer(serverUrl, fetchFn, deps)
+  const { authorizationServerUrl, metadata, scope } = await discoverServer(serverUrl, fetchFn, deps)
 
   const provider = createMcpOAuthClientProvider({ serverId, db, origin, redirectUri, isBackendConnected })
 
@@ -243,6 +250,7 @@ const prepareAuthorization = async (
         const full = await register(authorizationServerUrl, {
           metadata,
           clientMetadata: provider.clientMetadata,
+          scope,
           fetchFn,
         })
         await provider.saveClientInformation(full)
@@ -273,6 +281,7 @@ const prepareAuthorization = async (
     metadata,
     clientInformation,
     redirectUrl: provider.redirectUrl,
+    scope,
     state: stateNonce,
     resource,
   })

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Transport factory. WebSocket is the only supported remote ACP transport.
+ * Transport factory for WebSocket and relay-routed iroh ACP connections.
  *
  * Routing by agent type:
  *   - `managed-acp` (Haystack and other server-managed agents): native

@@ -61,31 +61,49 @@ Start an interactive session (type a task, or `exit` to quit):
 thunderbolt
 ```
 
-### Flags
+### Subcommands
 
-| Flag                  | Description                                                        |
-| --------------------- | ----------------------------------------------------------------- |
-| `-m`, `--model <id>`  | Anthropic model id (default: `claude-opus-4-8`)                   |
-| `--thinking <level>`  | Reasoning depth: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` (default: `medium`) |
-| `-y`, `--yolo`        | Auto-approve every tool call (alias: `--dangerously-skip-permissions`) |
-| `-h`, `--help`        | Show help and exit                                                |
-| `-v`, `--version`     | Print the version and exit                                        |
+| Command | Purpose |
+| ------- | ------- |
+| `thunderbolt agent [options] [prompt]` | Run coding agent; `agent` is optional/default. |
+| `thunderbolt acp serve [options]` | Expose built-in coding agent as stdio ACP server. |
+| `thunderbolt acp --transport <wss\|iroh> [--port N] -- <agent-cmd...>` | Bridge stdio ACP agent. |
+| `thunderbolt mcp --transport <wss\|iroh> [--port N] -- <server-cmd...>` | Bridge stdio MCP server. |
+| `thunderbolt <acp\|mcp> connect <ticket\|nodeid> [-- <local-client-cmd...>]` | Dial iroh bridge. |
+| `thunderbolt iroh id` / `pair` / `allow <nodeid>` | Inspect ACP identity, print pairing ticket, or authorize peer. |
 
-Requires **`ANTHROPIC_API_KEY`** in your environment
-(https://console.anthropic.com).
+### Agent and `acp serve` flags
+
+| Flag | Description |
+| ---- | ----------- |
+| `-m`, `--model <id>` | Provider model id (default: `claude-opus-4-8`). |
+| `--provider <provider>` | `anthropic` or `openai-compat` (default: `anthropic`). |
+| `--base-url <url>` | Required OpenAI-compatible endpoint URL. |
+| `--api-key <key>` | OpenAI-compatible bearer key; overrides `THUNDERBOLT_OPENAI_COMPAT_KEY`. |
+| `--thinking <level>` | `off`, `minimal`, `low`, `medium`, `high`, or `xhigh` (default: `medium`). |
+| `-y`, `--yolo` | Auto-approve tool calls (alias: `--dangerously-skip-permissions`). |
+| `--no-tui` | Force plain readline REPL. |
+| `-h`, `--help` | Show help and exit. |
+| `-v`, `--version` | Print version and exit. |
+
+ACP/MCP bridge commands accept `--transport wss|iroh` (default `wss`) and
+`--port <0-65535>` for WSS (defaults: ACP `8839`, MCP `8840`). Arguments after
+`--` form spawned stdio command.
+
+Anthropic provider requires **`ANTHROPIC_API_KEY`**. OpenAI-compatible provider
+requires `--base-url` plus `--api-key` or `THUNDERBOLT_OPENAI_COMPAT_KEY`.
 
 ### Environment
 
-| Variable                      | Description                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`           | Anthropic API key (required).                                               |
-| `THUNDERBOLT_IROH_RELAY_URL`  | iroh relay for the `bridge` transport. Unset = the n0 public relays (default); set to a self-hosted iroh-relay wss URL to override. n0 DNS discovery + crypto are kept — only the relay hop changes. Read at runtime (no rebuild). |
-
-## How it maps to the proposal
-
-Part 1 — the Pi harness is the engine that runs the agent loop and the four
-tools. Part 3 — `thunderbolt agent` is the default (and only) subcommand, so
-plain `thunderbolt` *is* the agent.
+| Variable | Description |
+| -------- | ----------- |
+| `ANTHROPIC_API_KEY` | Anthropic API key for default provider. |
+| `THUNDERBOLT_OPENAI_COMPAT_KEY` | Bearer key for OpenAI-compatible provider. |
+| `THUNDERBOLT_HOME` | CLI state root (default `~/.thunderbolt`): iroh identity/allowlist and ACP sessions. |
+| `THUNDERBOLT_IROH_RELAY_URL` | Self-hosted iroh-relay WSS URL; unset uses n0 public relays. |
+| `THUNDERBOLT_APP_ORIGIN` | Extra comma-separated allowed browser origins for WSS bridges. |
+| `THUNDERBOLT_NO_TUI` | Force plain readline REPL when set. |
+| `NO_COLOR` | Disable terminal color when set. |
 
 ## Demo
 

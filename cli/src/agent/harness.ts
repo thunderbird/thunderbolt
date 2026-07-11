@@ -6,7 +6,8 @@
  * Assembles the Pi `AgentHarness` — the spine that lets the CLI actually talk
  * to Claude. It binds a Node execution environment (real bash + filesystem) to
  * the working directory, opens an in-memory session, resolves the model, and
- * registers the four coding tools (bash/read/write/edit).
+ * registers coding tools. Workspace-root harnesses omit bash because arbitrary
+ * shell commands cannot be confined to that workspace.
  */
 
 import { AgentHarness, InMemorySessionRepo } from '@earendil-works/pi-agent-core'
@@ -56,7 +57,11 @@ export const buildHarness = async (config: HarnessConfig, session?: Session): Pr
     tools,
     activeToolNames: tools.map((tool) => tool.name),
     thinkingLevel: config.thinking,
-    systemPrompt: buildSystemPrompt({ cwd: config.cwd, modelId: config.announceModel ? config.model : undefined }),
+    systemPrompt: buildSystemPrompt({
+      cwd: config.cwd,
+      modelId: config.announceModel ? config.model : undefined,
+      bashEnabled: tools.some((tool) => tool.name === 'bash'),
+    }),
   })
 
   return {

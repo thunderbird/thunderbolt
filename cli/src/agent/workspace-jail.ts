@@ -6,7 +6,6 @@ import { realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import {
-  createBashTool,
   createEditTool,
   createReadTool,
   createWriteTool,
@@ -92,7 +91,7 @@ export const isExistingPathInWorkspace = async (workspaceDir: string, inputPath:
   }
 }
 
-/** Build coding tools with read, write, and edit paths confined to workspace. */
+/** Build filesystem tools with read, write, and edit paths confined to workspace. */
 export const createWorkspaceTools = (workspaceDir: string): AgentTool[] => {
   const read = createReadTool(workspaceDir)
   const write = createWriteTool(workspaceDir)
@@ -123,5 +122,5 @@ export const createWorkspaceTools = (workspaceDir: string): AgentTool[] => {
     },
   }
 
-  return [createBashTool(workspaceDir), jailedRead, jailedWrite, jailedEdit]
+  return [jailedRead, jailedWrite, jailedEdit]
 }

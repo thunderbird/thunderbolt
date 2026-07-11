@@ -87,4 +87,8 @@ describe('workspace jail', () => {
       }),
     ).rejects.toThrow('path escapes workspace')
   })
+
+  test('exposes only path-confined filesystem tools', () => {
+    expect(createWorkspaceTools(workspaceDir).map((tool) => tool.name)).toEqual(['read', 'write', 'edit'])
+  })
 })

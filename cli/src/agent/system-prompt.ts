@@ -2,6 +2,33 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+type BuildSystemPromptParams = {
+  cwd: string
+  modelId?: string
+  bashEnabled?: boolean
+}
+
+/** Describe only tools registered on the harness. */
+const toolInstructions = (bashEnabled: boolean): string => {
+  if (!bashEnabled) {
+    return `You have three filesystem tools:
+- read  — read a file
+- write — create or overwrite a file
+- edit  — replace a span within a file
+
+Use read before edit. Make the smallest change that fully solves the task.`
+  }
+
+  return `You have four coding tools:
+- bash  — run shell commands (grep, sed, find, git, language toolchains, tests, …)
+- read  — read a file
+- write — create or overwrite a file
+- edit  — replace a span within a file
+
+Prefer bash for exploration (grep/find/ls) and for running builds and tests. Use \
+read before edit. Make the smallest change that fully solves the task.`
+}
+
 /**
  * Builds the coding-agent system prompt. Tuned for Claude Opus 4.8 per
  * Anthropic's migration guidance: default to silence between tool calls,
@@ -10,23 +37,17 @@
  * @param params.cwd - the working directory the agent operates in
  * @param params.modelId - when set, names the underlying model so an exposed ACP
  *   agent can self-identify; omitted for the standalone CLI
+ * @param params.bashEnabled - whether the harness exposes shell execution
  * @returns the system prompt string
  */
-export const buildSystemPrompt = ({ cwd, modelId }: { cwd: string; modelId?: string }): string => `\
+export const buildSystemPrompt = ({ cwd, modelId, bashEnabled = true }: BuildSystemPromptParams): string => `\
 You are thunderbolt, a terminal coding agent${modelId ? `, powered by ${modelId}` : ''}. You operate directly in the user's \
 working directory and complete software tasks end-to-end.
 
 Working directory: ${cwd}
 
 # Tools
-You have four tools, byte-identical to a real Unix shell and filesystem:
-- bash  — run shell commands (grep, sed, find, git, language toolchains, tests, …)
-- read  — read a file
-- write — create or overwrite a file
-- edit  — replace a span within a file
-
-Prefer bash for exploration (grep/find/ls) and for running builds and tests. Use \
-read before edit. Make the smallest change that fully solves the task.
+${toolInstructions(bashEnabled)}
 
 # How to work
 - When you have enough information to act, act. Don't re-derive facts already \

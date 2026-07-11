@@ -772,7 +772,7 @@ describe('connectAcpAdapter — capability-aware continuity (resume / load / new
     }
     const context = threadCtx('t-persist-retry', { onAcpSessionId })
 
-    expect(adapter.fetch(init, context)).rejects.toThrow('persistence failed')
+    await expect(adapter.fetch(init, context)).rejects.toThrow('persistence failed')
     await drive(adapter, init, context, releasePrompts)
 
     expect(calls.newSession).toHaveLength(1)

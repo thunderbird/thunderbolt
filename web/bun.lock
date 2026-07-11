@@ -7,10 +7,11 @@
       "dependencies": {
         "@astrojs/react": "^5.0.4",
         "@astrojs/starlight": "^0.38.3",
+        "@fontsource-variable/dm-sans": "5.2.8",
         "@fontsource-variable/inter": "5.2.8",
         "@fontsource-variable/mona-sans": "5.2.8",
+        "@fontsource-variable/space-grotesk": "^5.2.10",
         "@fontsource/mozilla-text": "^5.2.2",
-        "@fontsource/space-mono": "5.2.9",
         "@tailwindcss/vite": "^4.2.2",
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.3",
@@ -166,13 +167,15 @@
 
     "@expressive-code/plugin-text-markers": ["@expressive-code/plugin-text-markers@0.41.7", "", { "dependencies": { "@expressive-code/core": "^0.41.7" } }, "sha512-Ewpwuc5t6eFdZmWlFyeuy3e1PTQC0jFvw2Q+2bpcWXbOZhPLsT7+h8lsSIJxb5mS7wZko7cKyQ2RLYDyK6Fpmw=="],
 
+    "@fontsource-variable/dm-sans": ["@fontsource-variable/dm-sans@5.2.8", "", {}, "sha512-AxkvMTvNWgfrmlyjiV05vlHYJa+nRQCf1EfvIrQAPBpFJW0O9VTz7oAFr9S3lvbWdmnFoBk7yFqQL86u64nl2g=="],
+
     "@fontsource-variable/inter": ["@fontsource-variable/inter@5.2.8", "", {}, "sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ=="],
 
     "@fontsource-variable/mona-sans": ["@fontsource-variable/mona-sans@5.2.8", "", {}, "sha512-8OWdTcP8KvRxkU1Skkk+tX3D5XHN9buejxSDwrT7teRfGnpKBYxQUApV/+zS8TzeHiSU8H5Tc0HfBr57ahgcvA=="],
 
-    "@fontsource/mozilla-text": ["@fontsource/mozilla-text@5.2.2", "", {}, "sha512-mWVUbEzbNMlwajXQ96vEXPKgLOSEAOTcDjvzZQLBQv6P91dzOKosAwMTCtYxWep0wp2ZLqnL7nhBWkSZepxFtA=="],
+    "@fontsource-variable/space-grotesk": ["@fontsource-variable/space-grotesk@5.2.10", "", {}, "sha512-yJQO/o35/hAP3CFnpdFTwQku2yzJOae2HIpBmqkOVoxhhXJaQP3g+b6Jrz7u+eI7A5ZdCIf88uMWpBJdFiGr5w=="],
 
-    "@fontsource/space-mono": ["@fontsource/space-mono@5.2.9", "", {}, "sha512-b61faFOHEISQ/pD25G+cfGY9o/WW6lRv6hBQQfpWvEJ4y1V+S4gmth95EVyBE2VL3qDYHeVQ8nBzrplzdXTDDg=="],
+    "@fontsource/mozilla-text": ["@fontsource/mozilla-text@5.2.2", "", {}, "sha512-mWVUbEzbNMlwajXQ96vEXPKgLOSEAOTcDjvzZQLBQv6P91dzOKosAwMTCtYxWep0wp2ZLqnL7nhBWkSZepxFtA=="],
 
     "@iconify/types": ["@iconify/types@2.0.0", "", {}, "sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg=="],
 

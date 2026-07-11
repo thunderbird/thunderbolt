@@ -7,10 +7,10 @@
  * like one surface. Do not redefine these in individual layouts.
  */
 
+@import '@fontsource-variable/dm-sans';
+@import '@fontsource-variable/space-grotesk';
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/mona-sans';
-@import '@fontsource/space-mono/400.css';
-@import '@fontsource/space-mono/700.css';
 @import '@fontsource/mozilla-text';
 
 :root {
@@ -27,11 +27,11 @@
 	--tb-text-dim: #98a2b3;
 
 	/* Typography */
-	--tb-font-sans:
-		'Mona Sans Variable', 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-	--tb-font-mono:
-		'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-	--tb-font-text: 'Mozilla Text', 'Mona Sans Variable', 'Inter Variable', Georgia, serif;
+	--tb-font-sans: 'DM Sans Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--tb-font-mono: 'Space Grotesk', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--tb-font-text: 'DM Sans Variable', Georgia, serif;
+	--tb-font-button: 'DM Sans Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--tb-letter-spacing: -0.02em;
 
 	/* Measure */
 	--tb-measure-narrow: 44rem;

@@ -30,67 +30,100 @@ const SocialLinkedInIcon = () => (
 
 export const FooterSection = ({ className = '' }: FooterSectionProps) => (
   <footer className={className}>
-    <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
-      <div className="flex items-center justify-center gap-2">
-        <img src="/enterprise/thunderbolt-logo.png" alt="Thunderbolt" className="size-[34px]" />
-        <span className="text-xl font-medium tracking-tight text-[#101828]">Thunderbolt</span>
-      </div>
-      <div className="mx-auto mt-6 h-px max-w-[1118px] bg-[#eaecf0]" />
-      <div className="mt-6 flex flex-col items-center justify-center gap-4 text-center lg:flex-row lg:gap-6">
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-3">
-          <img src="/enterprise/mozilla-logo.svg" alt="Mozilla" className="h-6 w-auto" />
-          <img src="/enterprise/thunderbird.svg" alt="Thunderbird" className="h-6 w-auto" />
+    <div className="mx-auto max-w-[1120px] px-6 py-16 lg:px-0">
+      <div className="grid grid-cols-1 gap-12 md:grid-cols-4">
+        {/* Left Column - Logo & Legal */}
+        <div className="md:col-span-1">
+          <div className="flex items-center gap-2">
+            <img src="/enterprise/thunderbolt-icon.svg" alt="Thunderbolt" className="size-6" />
+            <span className="font-['IBM_Plex_Mono'] font-bold text-sm text-[#344054]">THUNDERBOLT</span>
+          </div>
+          <p className="mt-4 text-xs leading-5 text-[#667085]">
+            Thunderbolt is a product of MZLA Technologies Corporation, a wholly owned subsidiary of Mozilla.org.
+          </p>
+          <div className="mt-6 flex gap-3">
+            <img src="/enterprise/mozilla-logo.svg" alt="Mozilla" className="h-5 w-auto" />
+            <img src="/enterprise/thunderbird.svg" alt="Thunderbird" className="h-5 w-auto" />
+          </div>
         </div>
-        <p className="max-w-[638px] text-center text-xs leading-4 text-[#667085] lg:text-left">
-          Thunderbolt is a product of{' '}
-          <a href="https://blog.thunderbird.net/2020/01/thunderbirds-new-home/" className="border-b border-[#667085]/40" target="_blank" rel="noopener noreferrer">
-            MZLA Technologies Corporation
-          </a>
-          , a wholly owned subsidiary of the not-for-profit Mozilla.org. Portions of this content are &copy;1998&ndash;2026 by individual contributors. Content available under a{' '}
-          <a href="https://www.mozilla.org/foundation/licensing/website-content/" className="border-b border-[#667085]/40" target="_blank" rel="noopener noreferrer">
-            Creative Commons license
-          </a>
-          .
+
+        {/* Product Links */}
+        <div className="md:col-span-1">
+          <h4 className="font-['IBM_Plex_Mono'] font-bold text-xs text-[#344054] uppercase tracking-wide">Product</h4>
+          <ul className="mt-4 space-y-3">
+            <li>
+              <a href="/" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                Overview
+              </a>
+            </li>
+            <li>
+              <a href="#" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                Enterprise
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.thunderbolt.io" target="_blank" rel="noopener noreferrer" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                Docs
+              </a>
+            </li>
+            <li>
+              <a href="/blog" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                Blog
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        {/* Community Links */}
+        <div className="md:col-span-1">
+          <h4 className="font-['IBM_Plex_Mono'] font-bold text-xs text-[#344054] uppercase tracking-wide">Community</h4>
+          <ul className="mt-4 space-y-3">
+            <li>
+              <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                GitHub ↗
+              </a>
+            </li>
+            <li>
+              <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                Discord ↗
+              </a>
+            </li>
+            <li>
+              <a href={LINKEDIN_URL} target="_blank" rel="noopener noreferrer" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                LinkedIn ↗
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        {/* Company Links */}
+        <div className="md:col-span-1">
+          <h4 className="font-['IBM_Plex_Mono'] font-bold text-xs text-[#344054] uppercase tracking-wide">Company</h4>
+          <ul className="mt-4 space-y-3">
+            <li>
+              <a href="https://www.mozilla.org" target="_blank" rel="noopener noreferrer" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                Mozilla ↗
+              </a>
+            </li>
+            <li>
+              <a href="https://www.thunderbird.net" target="_blank" rel="noopener noreferrer" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                Thunderbird ↗
+              </a>
+            </li>
+            <li>
+              <a href="https://www.thunderbird.net/en-US/privacy/" target="_blank" rel="noopener noreferrer" className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide hover:text-[#344054]">
+                Privacy
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Copyright */}
+      <div className="mt-12 border-t border-[#eaecf0] pt-8 text-center">
+        <p className="font-['IBM_Plex_Mono'] text-xs text-[#667085] uppercase tracking-wide">
+          © 2026 MZLA TECHNOLOGIES CORPORATION
         </p>
-        <div className="flex items-center gap-5 lg:ml-auto">
-          <a
-            href={REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="GitHub"
-            className="text-[#667085] transition-colors hover:text-[#344054]"
-          >
-            <SocialGitHubIcon />
-          </a>
-          <a
-            href={DISCORD_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Discord"
-            className="text-[#667085] transition-colors hover:text-[#344054]"
-          >
-            <SocialDiscordIcon />
-          </a>
-          <a
-            href={LINKEDIN_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="LinkedIn"
-            className="text-[#667085] transition-colors hover:text-[#344054]"
-          >
-            <SocialLinkedInIcon />
-          </a>
-        </div>
-      </div>
-      <div className="mt-6 flex justify-center">
-        <a
-          href="https://www.thunderbird.net/en-US/privacy/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="border-b border-[#667085]/40 text-xs leading-4 text-[#667085] transition-colors hover:text-[#344054]"
-        >
-          Privacy Policy
-        </a>
       </div>
     </div>
   </footer>

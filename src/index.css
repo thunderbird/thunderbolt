@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+@import '@fontsource-variable/dm-sans';
 @import 'tailwindcss';
 
 @plugin 'tailwindcss-animate';
@@ -10,45 +11,50 @@
 @variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-popover: oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-primary: #191919;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f7f7f8;
-  --color-secondary-foreground: #000000;
-  --color-tertiary: #808080;
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  --font-sans: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+  --font-mono: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+  /* Warm Light Theme */
+  --color-white: #fdfbf8;
+  --color-black: #1a2329;
+  --color-background: #faf7f2;
+  --color-foreground: #2a2520;
+  --color-card: #fdfbf8;
+  --color-card-foreground: #2a2520;
+  --color-popover: #fdfbf8;
+  --color-popover-foreground: #2a2520;
+  --color-primary: #3d3530;
+  --color-primary-foreground: #fdfbf8;
+  --color-secondary: #f5ede3;
+  --color-secondary-foreground: #2a2520;
+  --color-tertiary: #8b7d73;
+  --color-muted: #f5ede3;
+  --color-muted-foreground: #8b7d73;
+  --color-accent: #f8f1eb;
+  --color-accent-foreground: #2a2520;
+  --color-destructive: #ff5f5f;
+  --color-destructive-foreground: #2a2520;
   --color-success: oklch(0.627 0.17 149.214);
   --color-success-foreground: oklch(0.985 0 0);
   --color-warning: oklch(0.769 0.171 70.67);
   --color-warning-foreground: oklch(0.205 0 0);
-  --color-border: oklch(0.922 0 0);
-  --color-input: oklch(0.922 0 0);
-  --color-ring: oklch(0.708 0 0);
+  --color-border: #f8f1eb;
+  --color-input: #f8f1eb;
+  --color-ring: #3d3530;
   --color-chart-1: oklch(0.646 0.222 41.116);
   --color-chart-2: oklch(0.6 0.118 184.704);
   --color-chart-3: oklch(0.398 0.07 227.392);
   --color-chart-4: oklch(0.828 0.189 84.429);
   --color-chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
-  --color-sidebar: oklch(0.985 0 0);
-  --color-sidebar-foreground: oklch(0.145 0 0);
-  --color-sidebar-primary: oklch(0.205 0 0);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.97 0 0);
-  --color-sidebar-accent-foreground: oklch(0.205 0 0);
-  --color-sidebar-border: oklch(0.922 0 0);
-  --color-sidebar-ring: oklch(0.708 0 0);
-  --color-card-border: #dee8df;
+  --color-sidebar: #fdfbf8;
+  --color-sidebar-foreground: #2a2520;
+  --color-sidebar-primary: #3d3530;
+  --color-sidebar-primary-foreground: #fdfbf8;
+  --color-sidebar-accent: #f8f1eb;
+  --color-sidebar-accent-foreground: #2a2520;
+  --color-sidebar-border: #f8f1eb;
+  --color-sidebar-ring: #3d3530;
+  --color-card-border: #f8f1eb;
 }
 
 /* ===========================
@@ -125,42 +131,44 @@
 }
 
 .dark {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.145 0 0);
-  --color-card-foreground: oklch(0.985 0 0);
-  --color-popover: oklch(0.145 0 0);
-  --color-popover-foreground: oklch(0.985 0 0);
-  --color-primary: oklch(0.985 0 0);
-  --color-primary-foreground: oklch(0.205 0 0);
-  --color-secondary: oklch(0.269 0 0);
-  --color-secondary-foreground: oklch(0.985 0 0);
-  --color-muted: oklch(0.269 0 0);
-  --color-muted-foreground: oklch(0.708 0 0);
-  --color-accent: oklch(0.269 0 0);
-  --color-accent-foreground: oklch(0.985 0 0);
-  --color-destructive: oklch(0.396 0.141 25.723);
-  --color-destructive-foreground: oklch(0.637 0.237 25.331);
+  --color-background: #1a1a1a;
+  --color-foreground: #f5f5f5;
+  --color-card: #242424;
+  --color-card-foreground: #f5f5f5;
+  --color-popover: #242424;
+  --color-popover-foreground: #f5f5f5;
+  --color-primary: #fafafa;
+  --color-primary-foreground: #211d1d;
+  --color-secondary: #2d2d2d;
+  --color-secondary-foreground: #f5f5f5;
+  --color-tertiary: #9a9a9a;
+  --color-muted: #2d2d2d;
+  --color-muted-foreground: #9a9a9a;
+  --color-accent: #333333;
+  --color-accent-foreground: #f5f5f5;
+  --color-destructive: #ff5f5f;
+  --color-destructive-foreground: #211d1d;
   --color-success: oklch(0.696 0.17 162.48);
   --color-success-foreground: oklch(0.985 0 0);
   --color-warning: oklch(0.828 0.189 84.429);
   --color-warning-foreground: oklch(0.205 0 0);
-  --color-border: oklch(0.269 0 0);
-  --color-input: oklch(0.269 0 0);
-  --color-ring: oklch(0.439 0 0);
+  --color-border: #333333;
+  --color-input: #242424;
+  --color-ring: #4a4a4a;
   --color-chart-1: oklch(0.488 0.243 264.376);
   --color-chart-2: oklch(0.696 0.17 162.48);
   --color-chart-3: oklch(0.769 0.188 70.08);
   --color-chart-4: oklch(0.627 0.265 303.9);
   --color-chart-5: oklch(0.645 0.246 16.439);
-  --color-sidebar: oklch(0.205 0 0);
-  --color-sidebar-foreground: oklch(0.985 0 0);
-  --color-sidebar-primary: oklch(0.488 0.243 264.376);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.269 0 0);
-  --color-sidebar-accent-foreground: oklch(0.985 0 0);
-  --color-sidebar-border: oklch(0.269 0 0);
-  --color-sidebar-ring: oklch(0.439 0 0);
+  --color-sidebar: #242424;
+  --color-sidebar-foreground: #f5f5f5;
+  --color-sidebar-primary: #fafafa;
+  --color-sidebar-primary-foreground: #211d1d;
+  --color-sidebar-accent: #333333;
+  --color-sidebar-accent-foreground: #f5f5f5;
+  --color-sidebar-border: #333333;
+  --color-sidebar-ring: #4a4a4a;
+  --color-card-border: #333333;
 }
 
 @keyframes accordion-down {
@@ -214,9 +222,35 @@
     border-color: var(--color-border);
     outline-color: oklch(from var(--color-ring) l c h / 0.5);
   }
+  html {
+    font-family:
+      'DM Sans Variable',
+      system-ui,
+      -apple-system,
+      sans-serif;
+  }
   body {
     background-color: var(--color-background);
+    background-image:
+      radial-gradient(1100px 680px at 12% -8%, rgba(120, 140, 200, 0.13), transparent 55%),
+      radial-gradient(900px 760px at 102% 6%, rgba(150, 160, 195, 0.1), transparent 52%),
+      linear-gradient(180deg, #edeff4, #e3e6ed);
+    background-attachment: fixed;
     color: var(--color-foreground);
+    font-family:
+      'DM Sans Variable',
+      system-ui,
+      -apple-system,
+      sans-serif;
+    letter-spacing: -0.03em;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    letter-spacing: -0.05em;
   }
 }
 

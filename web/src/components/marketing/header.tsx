@@ -25,7 +25,7 @@ export const Header = ({ action, banner }: HeaderProps) => (
     {banner}
     <div className={`mx-auto flex h-[104px] max-w-[1440px] items-center justify-between px-6 lg:px-[160px] ${banner ? 'bg-white/20 backdrop-blur-[32px]' : ''}`}>
       <a href="/" className="flex items-center gap-[7px]">
-        <img src="/enterprise/thunderbolt-logo.png" alt="Thunderbolt" className="size-[23px]" />
+        <img src="/enterprise/thunderbolt-icon.svg" alt="Thunderbolt" className="size-[23px]" />
         <span className="text-xl font-medium leading-7 tracking-[-0.4px] text-[#101828]">Thunderbolt</span>
       </a>
       <div className="flex items-center gap-4 md:gap-8">

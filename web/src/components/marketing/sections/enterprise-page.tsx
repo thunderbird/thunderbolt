@@ -39,7 +39,7 @@ const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
     href={REPO_URL}
     target="_blank"
     rel="noopener noreferrer"
-    className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-center justify-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90`}
+    className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-center justify-center gap-2 rounded-[4px] bg-[#142952] px-5 font-mono text-sm font-bold tracking-wider text-white transition-colors hover:bg-[#142952]/90`}
   >
     <GitHubIcon />
     Star on GitHub
@@ -101,7 +101,7 @@ const StarCountBadge = () => {
 const EnterpriseInquiriesButton = () => (
   <a
     href="/contact"
-    className="group inline-flex h-[46px] items-center justify-center gap-2 border border-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-[#344054] transition-colors hover:bg-[#344054] hover:text-white"
+    className="group inline-flex h-[46px] items-center justify-center gap-2 rounded-[4px] border border-[#142952] px-5 font-mono text-sm font-bold tracking-wider text-[#142952] transition-colors hover:bg-[#142952] hover:text-white"
   >
     <svg
       width="18"
@@ -293,12 +293,30 @@ const DesktopMockup = () => (
 /* ─── Hero ────────────────────────────────────────────── */
 
 const Hero = () => (
-  <section className="relative pb-16 pt-[80px]">
-    <div className="mx-auto flex max-w-[730px] flex-col items-center gap-6 px-6 text-center">
-      <h1 className="text-[40px] font-medium leading-[1.1] tracking-[-0.96px] text-[#101828] md:text-[48px]">
-        AI You Control
+  <section className="relative pb-16 pt-[80px] overflow-hidden">
+    {/* Grid background */}
+    <div
+      className="absolute inset-0 z-0 pointer-events-none"
+      style={{
+        backgroundImage: `
+          linear-gradient(rgba(70,105,211,.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(70,105,211,.08) 1px, transparent 1px)
+        `,
+        backgroundSize: '40px 40px',
+        backgroundPosition: '0 0',
+      }}
+    />
+    <div className="mx-auto flex max-w-[730px] flex-col items-center gap-6 px-6 text-center relative z-10">
+      <h1
+        className="font-['DM_Sans_Variable'] text-[40px] font-black leading-[1.1] tracking-[-1.2px] text-[#101828] md:text-[64px]"
+        style={{ textRendering: 'geometricPrecision', WebkitFontSmoothing: 'antialiased' }}
+      >
+        AI You <span className="relative inline-block">
+          <span className="text-[#142952]">control</span>
+          <span className="absolute left-0 right-0 h-2 bg-gradient-to-r from-[#8BA4D8] to-[#A8BDDB] rounded-full" style={{ bottom: '-12px' }}></span>
+        </span>
       </h1>
-      <p className="max-w-[718px] text-lg leading-[1.2] text-[#667085] md:text-2xl">
+      <p className="max-w-[718px] text-2xl leading-[1.2] text-[#667085] md:text-3xl">
         The Open-Source, Cross-Platform, Extensible AI Client
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
@@ -307,7 +325,7 @@ const Hero = () => (
       </div>
     </div>
     {/* Device mockups — composed from separate SVG frames + PNG screenshots */}
-    <div className="mx-auto mt-10 max-w-[1120px] px-6 lg:px-0">
+    <div className="mx-auto mt-10 max-w-[1120px] px-6 lg:px-0 relative z-10">
       {/* Prompt input card — static on mobile, absolutely positioned on lg */}
       <div className="relative mb-6 lg:hidden">
         <PromptCard />
@@ -374,7 +392,7 @@ const FeatureCards = () => (
           <div className="absolute left-[40px] top-[20px] h-[185px] w-[134px] rounded-[67px] bg-[#98a2b3] opacity-70 blur-[25px]" />
           <img src="/enterprise/control-data.png" alt="" className="relative size-full object-contain object-bottom" />
         </div>
-        <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">Control Your Data</h3>
+        <h3 className="text-2xl font-bold leading-8 tracking-[-0.48px] text-[#101828]">Control Your Data</h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
           Self-host on your infrastructure or let us help you deploy. Your data never leaves your control.
         </p>
@@ -386,7 +404,7 @@ const FeatureCards = () => (
         <div className="pointer-events-none absolute -right-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <div className="pointer-events-none absolute -bottom-[6px] -left-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <div className="pointer-events-none absolute -bottom-[6px] -right-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
-        <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">
+        <h3 className="text-2xl font-bold leading-8 tracking-[-0.48px] text-[#101828]">
           Choose Any Agent<br />(or Model)
         </h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
@@ -418,7 +436,7 @@ const FeatureCards = () => (
         <div className="pointer-events-none absolute -right-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <div className="pointer-events-none absolute -bottom-[6px] -left-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <div className="pointer-events-none absolute -bottom-[6px] -right-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
-        <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">Built for Enterprise</h3>
+        <h3 className="text-2xl font-bold leading-8 tracking-[-0.48px] text-[#101828]">Built for Enterprise</h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
           Native apps across web, desktop, and mobile. MCP integration with your systems. Forward-Deployed Engineering from trusted partners. Open source you can audit and customize as your business needs evolve.
         </p>
@@ -443,7 +461,7 @@ const CompromiseSection = () => (
     <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
       <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
         <div>
-          <p className="text-sm uppercase tracking-[-0.28px] text-[#667085]">
+          <p className="font-['IBM_Plex_Mono'] font-normal text-[13px] uppercase tracking-[-0.28px] text-[#667085]">
             Open Source &bull; Self-Hosted &bull; Enterprise-Ready
           </p>
           <h2 className="mt-2 text-[32px] font-medium leading-[1.2] tracking-[-0.8px] text-[#101828] md:text-[40px]">
@@ -478,7 +496,7 @@ const PartnershipSection = () => (
         <div className="flex flex-col items-center gap-3 md:flex-row md:gap-8">
           <div className="flex items-center gap-3">
             <img
-              src="/enterprise/thunderbolt-logo.png"
+              src="/enterprise/thunderbolt-logo.svg"
               alt="Thunderbolt"
               className="size-[44px] md:size-[56px]"
             />
@@ -516,7 +534,7 @@ const PartnershipSection = () => (
         <div className="md:border-l md:border-[#d0d5dd]/70 md:pl-10 lg:pl-14">
           <div className="flex items-center gap-3">
             <img src="/enterprise/icon-factory-24.svg" alt="" className="size-6" />
-            <h3 className="text-xl font-semibold leading-7 tracking-[-0.2px] text-[#101828] md:text-2xl">
+            <h3 className="text-xl font-bold leading-7 tracking-[-0.2px] text-[#101828] md:text-2xl">
               Built for Enterprise
             </h3>
           </div>
@@ -530,7 +548,7 @@ const PartnershipSection = () => (
         <div className="md:border-l md:border-[#d0d5dd]/70 md:pl-10 lg:pl-14">
           <div className="flex items-center gap-3">
             <img src="/enterprise/icon-map-pin.svg" alt="" className="size-6" />
-            <h3 className="text-xl font-semibold leading-7 tracking-[-0.2px] text-[#101828] md:text-2xl">
+            <h3 className="text-xl font-bold leading-7 tracking-[-0.2px] text-[#101828] md:text-2xl">
               European Delivery
             </h3>
           </div>
@@ -560,7 +578,7 @@ const QuoteSection = () => (
       {/* Label — icon stacked above text, aligned to the 1120px content grid */}
       <div className="flex shrink-0 flex-col items-start gap-3 pr-6 md:pr-0 md:w-[248px] lg:ml-[calc((100vw-1120px)/2)]">
         <img src="/enterprise/icon-factory-24.svg" alt="" className="size-6" />
-        <p className="text-lg uppercase tracking-[-0.36px] text-[#667085]">
+        <p className="font-['IBM_Plex_Mono'] font-normal text-[13px] uppercase tracking-[-0.36px] text-[#667085]">
           Trusted by Organizations That Won&rsquo;t Compromise
         </p>
       </div>
@@ -569,10 +587,10 @@ const QuoteSection = () => (
         <div className="absolute left-0 top-0 hidden size-3 bg-[#d0d5dd] lg:block" />
         <div className="absolute -bottom-[6px] left-0 hidden size-3 bg-[#d0d5dd] lg:block" />
         <div className="border border-[#d0d5dd] border-r-0 bg-white p-10 shadow-[0px_48px_100px_0px_rgba(17,12,46,0.15)] md:ml-[6px] md:mt-[6px]">
-          <p className="max-w-[768px] text-[32px] font-medium leading-[1.2] tracking-[-1.12px] text-[#101828] md:text-[56px]">
+          <p className="font-['DM_Sans_Variable'] max-w-[768px] text-[32px] font-black leading-[1.2] tracking-[-0.06em] text-[#101828] md:text-[56px]">
             &ldquo;Organizations are recognizing that AI is too important to outsource.&rdquo;
           </p>
-          <p className="mt-6 font-['Mozilla_Text',sans-serif] text-[19px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
+          <p className="mt-6 font-['IBM_Plex_Mono'] font-normal text-[13px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
             <span className="hidden md:inline">Ryan Sipes, CEO, MZLA Technologies</span>
             <span className="md:hidden">Ryan Sipes,<br />CEO, MZLA Technologies</span>
           </p>
@@ -612,7 +630,7 @@ const withUtm = (url: string) => {
 const FeaturedInSection = () => (
   <section className="relative pt-8 pb-0 md:pt-12 md:pb-0">
     <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
-      <p className="text-center font-['Mozilla_Text',sans-serif] text-[19px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
+      <p className="text-center font-['IBM_Plex_Mono'] font-normal text-[13px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
         As Featured In
       </p>
       <div className="mt-10 flex flex-col items-center justify-center gap-10 md:flex-row md:gap-20">
@@ -671,7 +689,7 @@ export const EnterprisePage = () => {
       banner={
         <a
           href="/blog/mozilla-introduces-thunderbolt"
-          className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#8b5cf6] from-20% via-[#ea580c] via-60% to-[#fbbf24] px-4 py-2.5 text-sm font-semibold text-white"
+          className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#5B7FDB] to-[#D4C5F9] px-4 py-2.5 text-sm font-semibold text-white"
         >
           <span>
             Thunderbolt is here! <span className="text-white/80">&mdash; Read the announcement</span>

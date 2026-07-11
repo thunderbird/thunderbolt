@@ -3,16 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 @import 'tailwindcss';
+@import "@fontsource-variable/dm-sans";
+@import "@fontsource-variable/space-grotesk";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/mona-sans";
-@import "@fontsource/space-mono/700.css";
 @import "@fontsource/mozilla-text";
+@import "@fontsource/ibm-plex-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: 'Mona Sans Variable', 'Inter Variable', system-ui, -apple-system, sans-serif;
-  --font-mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+  --font-mono: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+  --font-button: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
 }
 
 @layer base {
@@ -32,9 +35,33 @@
 
   body {
     margin: 0;
-    font-family: var(--font-sans);
-    @apply bg-background text-foreground;
+    font-family: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+    letter-spacing: -0.03em;
+    background: radial-gradient(1100px 680px at 12% -8%, rgba(120,140,200,.13), transparent 55%) fixed,
+                radial-gradient(900px 760px at 102% 6%, rgba(150,160,195,.1), transparent 52%) fixed,
+                linear-gradient(180deg, #edeff4, #e3e6ed) fixed;
+    @apply text-foreground;
   }
+
+  h1 {
+    font-family: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+    font-size: 4rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.05em !important;
+  }
+
+  h2 {
+    font-family: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+    font-weight: 700 !important;
+    letter-spacing: -0.025em !important;
+  }
+
+  button {
+    font-family: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -42,7 +69,8 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Mona Sans Variable', 'Inter Variable', system-ui, -apple-system, sans-serif;
+  --font-sans: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+  --font-button: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

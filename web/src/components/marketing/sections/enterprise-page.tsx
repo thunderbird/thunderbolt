@@ -39,7 +39,7 @@ const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
     href={REPO_URL}
     target="_blank"
     rel="noopener noreferrer"
-    className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-center justify-center gap-2 rounded-[4px] bg-[#142952] px-5 font-mono text-sm font-bold tracking-wider text-white transition-colors hover:bg-[#142952]/90`}
+    className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-center justify-center gap-2 rounded-[8px] bg-[#142952] px-5 font-mono text-sm font-bold tracking-wider text-white transition-colors hover:bg-[#142952]/90`}
   >
     <GitHubIcon />
     Star on GitHub
@@ -101,7 +101,7 @@ const StarCountBadge = () => {
 const EnterpriseInquiriesButton = () => (
   <a
     href="/contact"
-    className="group inline-flex h-[46px] items-center justify-center gap-2 rounded-[4px] border border-[#142952] px-5 font-mono text-sm font-bold tracking-wider text-[#142952] transition-colors hover:bg-[#142952] hover:text-white"
+    className="group inline-flex h-[46px] items-center justify-center gap-2 rounded-[8px] border border-[#142952] px-5 font-mono text-sm font-bold tracking-wider text-[#142952] transition-colors hover:bg-[#142952] hover:text-white"
   >
     <svg
       width="18"
@@ -311,9 +311,9 @@ const Hero = () => (
         className="font-['DM_Sans_Variable'] text-[40px] font-black leading-[1.1] tracking-[-1.2px] text-[#101828] md:text-[64px]"
         style={{ textRendering: 'geometricPrecision', WebkitFontSmoothing: 'antialiased' }}
       >
-        AI You <span className="relative inline-block">
-          <span className="text-[#142952]">control</span>
-          <span className="absolute left-0 right-0 h-2 bg-gradient-to-r from-[#8BA4D8] to-[#A8BDDB] rounded-full" style={{ bottom: '-12px' }}></span>
+        AI you <span className="relative inline-block">
+          <span className="text-[#4669D3]">control</span>
+          <span className="absolute left-0 right-0 h-2 bg-[#89A6E8] rounded-full" style={{ bottom: '0px' }}></span>
         </span>
       </h1>
       <p className="max-w-[718px] text-2xl leading-[1.2] text-[#667085] md:text-3xl">
@@ -494,16 +494,11 @@ const PartnershipSection = () => (
       {/* Logo lockup — section anchor */}
       <div className="flex flex-col items-center justify-between gap-6 md:flex-row md:items-end md:gap-8">
         <div className="flex flex-col items-center gap-3 md:flex-row md:gap-8">
-          <div className="flex items-center gap-3">
-            <img
-              src="/enterprise/thunderbolt-logo.svg"
-              alt="Thunderbolt"
-              className="size-[44px] md:size-[56px]"
-            />
-            <span className="text-[28px] font-medium tracking-tight text-[#101828] md:text-[40px]">
-              Thunderbolt
-            </span>
-          </div>
+          <img
+            src="/enterprise/thunderbolt-logo.svg"
+            alt="Thunderbolt"
+            className="h-[64px] w-auto md:h-[80px]"
+          />
           <span
             className="text-[32px] font-light leading-none text-[#98a2b3] md:text-[44px]"
             aria-hidden="true"
@@ -588,7 +583,10 @@ const QuoteSection = () => (
         <div className="absolute -bottom-[6px] left-0 hidden size-3 bg-[#d0d5dd] lg:block" />
         <div className="border border-[#d0d5dd] border-r-0 bg-white p-10 shadow-[0px_48px_100px_0px_rgba(17,12,46,0.15)] md:ml-[6px] md:mt-[6px]">
           <p className="font-['DM_Sans_Variable'] max-w-[768px] text-[32px] font-black leading-[1.2] tracking-[-0.06em] text-[#101828] md:text-[56px]">
-            &ldquo;Organizations are recognizing that AI is too important to outsource.&rdquo;
+            &ldquo;Organizations are recognizing that AI is <span className="relative inline-block">
+              <span className="text-[#4669D3]">too important to outsource</span>
+              <span className="absolute left-0 right-0 h-1 bg-[#89A6E8] rounded-full" style={{ bottom: '0px' }}></span>
+            </span>.&rdquo;
           </p>
           <p className="mt-6 font-['IBM_Plex_Mono'] font-normal text-[13px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
             <span className="hidden md:inline">Ryan Sipes, CEO, MZLA Technologies</span>
@@ -689,9 +687,9 @@ export const EnterprisePage = () => {
       banner={
         <a
           href="/blog/mozilla-introduces-thunderbolt"
-          className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#5B7FDB] to-[#D4C5F9] px-4 py-2.5 text-sm font-semibold text-white"
+          className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#4A6FD3] to-[#8B9FE8] px-4 py-2.5 text-sm font-semibold text-white"
         >
-          <span>
+          <span className="font-mono">
             Thunderbolt is here! <span className="text-white/80">&mdash; Read the announcement</span>
           </span>
           <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>

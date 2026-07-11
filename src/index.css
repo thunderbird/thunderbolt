@@ -231,11 +231,6 @@
   }
   body {
     background-color: var(--color-background);
-    background-image:
-      radial-gradient(1100px 680px at 12% -8%, rgba(120, 140, 200, 0.13), transparent 55%),
-      radial-gradient(900px 760px at 102% 6%, rgba(150, 160, 195, 0.1), transparent 52%),
-      linear-gradient(180deg, #edeff4, #e3e6ed);
-    background-attachment: fixed;
     color: var(--color-foreground);
     font-family:
       'DM Sans Variable',

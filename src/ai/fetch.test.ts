@@ -3,9 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, mock } from 'bun:test'
+import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
+import type { FetchFn } from '@/lib/proxy-fetch'
+import type { Model } from '@/types'
 import type { Tool } from 'ai'
-import { mergeMcpTools, sanitizeToolPrefix } from './fetch'
+import { mergeMcpTools, resolveOpenAiCompatConnection, sanitizeToolPrefix } from './fetch'
 
 /** Mirror the `MCPClientError` the SDK throws after a transport drop. The
  *  runtime instance `name` is `'MCPClientError'` (the `AI_MCPClientError`
@@ -240,5 +243,62 @@ describe('mergeMcpTools', () => {
 
       expect(mcpTools).toBeUndefined()
     })
+  })
+})
+
+/** Minimal Custom-provider Model fixture. Only `provider`, `url`, and `apiKey`
+ *  are read by `resolveOpenAiCompatConnection` for the custom case, so the
+ *  other fields don't need to be realistic. */
+const customModel = (url: string | null, apiKey: string | null = 'k'): Model =>
+  ({ provider: 'custom', url, apiKey }) as unknown as Model
+
+/** Distinguishable proxy-fetch stub so tests can assert transport dispatch by
+ *  identity comparison: loopback URLs must NOT return this — they get baseFetch. */
+const stubProxyFetch: FetchFn = Object.assign(
+  (async () => new Response()) as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  { preconnect: () => Promise.resolve(false) },
+)
+
+describe('resolveOpenAiCompatConnection (custom)', () => {
+  it('returns null when no URL is configured', () => {
+    expect(resolveOpenAiCompatConnection(customModel(null), () => stubProxyFetch)).toBeNull()
+  })
+
+  it('normalises the baseURL — appends /v1 when missing', () => {
+    const conn = resolveOpenAiCompatConnection(customModel('http://localhost:1234'), () => stubProxyFetch)
+    expect(conn?.baseURL).toBe('http://localhost:1234/v1')
+  })
+
+  it('keeps an already-normalised baseURL (with /v1)', () => {
+    const conn = resolveOpenAiCompatConnection(customModel('http://localhost:1234/v1'), () => stubProxyFetch)
+    expect(conn?.baseURL).toBe('http://localhost:1234/v1')
+  })
+
+  it.each(['http://localhost:1234', 'http://127.0.0.1:1234/v1', 'http://[::1]:1234', 'http://api.localhost'])(
+    'dispatches loopback URL %s directly through baseFetch (bypasses the proxy)',
+    (url) => {
+      const conn = resolveOpenAiCompatConnection(customModel(url), () => stubProxyFetch)
+      expect(conn?.fetch).toBe(baseFetch)
+    },
+  )
+
+  it.each([
+    'https://api.some-vendor.com/v1',
+    'http://192.168.1.42:1234', // RFC1918 — intentionally not loopback
+    'http://host.docker.internal:1234',
+    'http://mymac.local:1234',
+    'http://10.evil.com/v1', // attacker-crafted hostname that starts with a private range
+  ])('dispatches non-loopback URL %s through the proxy fetch', (url) => {
+    const conn = resolveOpenAiCompatConnection(customModel(url), () => stubProxyFetch)
+    expect(conn?.fetch).toBe(stubProxyFetch)
+  })
+
+  it('forwards the apiKey as-is (empty string when missing)', () => {
+    expect(
+      resolveOpenAiCompatConnection(customModel('http://localhost:1234', null), () => stubProxyFetch)?.apiKey,
+    ).toBe('')
+    expect(
+      resolveOpenAiCompatConnection(customModel('http://localhost:1234', 'sk-abc'), () => stubProxyFetch)?.apiKey,
+    ).toBe('sk-abc')
   })
 })

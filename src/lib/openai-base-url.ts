@@ -8,11 +8,12 @@
  * URLs as `${baseURL}${path}` where `path` is e.g. `/chat/completions`; a
  * baseURL without `/v1` sends the request to the wrong path (404), and a
  * baseURL with a trailing slash produces `//chat/completions` which some
- * servers reject. Applied to the `Load Models` fetch and the runtime provider
- * so both compose the upstream URL from the same normalized base — the two
- * paths still dispatch their transport independently (Load Models is always a
- * direct browser fetch; the runtime provider only bypasses the proxy for
- * loopback hosts).
+ * servers reject. Applied at two entry points that need to agree on the same
+ * base: the `Load Models` fetch in the settings UI, and
+ * `resolveOpenAiCompatConnection` (feeds both the legacy `createModel` path
+ * and the built-in Pi agent path). Load Models is always a direct browser
+ * fetch; the connection returned by `resolveOpenAiCompatConnection` picks its
+ * own transport (loopback → direct, everything else → proxy).
  */
 export const normalizeOpenAiBaseUrl = (raw: string): string => {
   const trimmed = raw.trim().replace(/\/+$/, '')

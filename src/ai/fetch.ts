@@ -351,10 +351,25 @@ export const resolveOpenAiCompatConnection = (
       return modelConfig.apiKey
         ? { baseURL: 'https://api.openai.com/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
         : null
-    case 'custom':
-      return modelConfig.url
-        ? { baseURL: modelConfig.url, apiKey: modelConfig.apiKey ?? '', fetch: getProxyFetch() }
-        : null
+    case 'custom': {
+      if (!modelConfig.url) {
+        return null
+      }
+      // Canonicalise `/v1` and dispatch loopback vs proxy right here, so BOTH
+      // consumers of this connection (`createModel` legacy path and
+      // `resolvePiModel` built-in agent path) see the same `baseURL` + `fetch`
+      // and can't drift. Loopback Custom URLs (LM Studio at localhost:1234,
+      // Ollama, `127.x.x.x`, `[::1]`, `*.localhost`) skip the universal proxy
+      // so `localhost` means what the browser sees, not what the backend
+      // container sees. Everything else — RFC1918 LAN IPs, `host.docker.internal`,
+      // mDNS `.local`, public endpoints — stays on the proxy path (browser
+      // blocks non-loopback http from https origins as mixed content, and
+      // public Custom endpoints rely on the proxy for CORS bypass; THU-424).
+      const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
+      const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
+      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
+      return { baseURL, apiKey: modelConfig.apiKey ?? '', fetch: providerFetch }
+    }
     case 'openrouter':
       return modelConfig.apiKey
         ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
@@ -431,26 +446,16 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!conn) {
         throw new Error('No URL provided for custom provider')
       }
-      // Loopback Custom URLs (LM Studio at localhost:1234, Ollama, `127.x.x.x`,
-      // `[::1]`, `*.localhost`) skip the universal proxy so `localhost` means
-      // what the browser sees, not what the backend container sees — this fixes
-      // docker-compose where the backend can't reach the host's LM Studio.
-      // Everything else — including RFC1918 LAN IPs, `host.docker.internal`,
-      // mDNS `.local` names, and true public endpoints — keeps going through
-      // the proxy. Loopback is the only cross-origin `http://` target an
-      // https-served frontend can reach anyway (mixed-content blocking), and
-      // public Custom endpoints rely on the proxy for CORS bypass (THU-424).
-      // `baseFetch` is the plain browser fetch (or Tauri fetch when opted in);
-      // it doesn't attach session credentials, so the local server never sees
-      // our auth.
-      const hostname = URL.canParse(conn.baseURL) ? new URL(conn.baseURL).hostname : ''
-      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : conn.fetch
-
+      // `conn.baseURL` and `conn.fetch` already carry the `/v1` normalization
+      // and the loopback-vs-proxy dispatch (see resolveOpenAiCompatConnection).
+      // Both the legacy path here and the Pi path in `resolvePiModel` read
+      // through the same connection object, so their upstream URL + transport
+      // stay in lockstep by construction.
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
-        baseURL: normalizeOpenAiBaseUrl(conn.baseURL),
+        baseURL: conn.baseURL,
         apiKey: conn.apiKey || undefined,
-        fetch: providerFetch,
+        fetch: conn.fetch,
       })
       return openaiCompatible(modelConfig.model)
     }

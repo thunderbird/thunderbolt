@@ -7,6 +7,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
+import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import {
   modelProfilesTable,
   modelsTable,
@@ -1212,45 +1213,22 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
     return row?.value == null ? null : Number(row.value)
   }
 
-  // Widen each hashFn to accept the union of default row shapes so the
-  // parametric loop below can pass any table's row to any case's hash.
-  type AnyDefaultRow = (typeof defaultModes)[number] | (typeof defaultTasks)[number] | (typeof defaultSkills)[number]
-  const asAnyHash = (fn: (row: never) => string) => fn as (row: AnyDefaultRow) => string
-
-  const gateCases = [
-    {
-      table: 'modes',
-      versionKey: 'defaults_version.modes',
-      currentVersion: defaultModesVersion,
-      defaults: defaultModes,
-      hashFn: asAnyHash(hashMode as (row: never) => string),
-      dbTable: modesTable,
-      pk: modesTable.id,
-      editableField: 'label',
-    },
-    {
-      table: 'tasks',
-      versionKey: 'defaults_version.tasks',
-      currentVersion: defaultTasksVersion,
-      defaults: defaultTasks,
-      hashFn: asAnyHash(hashTask as (row: never) => string),
-      dbTable: tasksTable,
-      pk: tasksTable.id,
-      editableField: 'item',
-    },
-    {
-      table: 'skills',
-      versionKey: 'defaults_version.skills',
-      currentVersion: defaultSkillsVersion,
-      defaults: defaultSkills,
-      hashFn: asAnyHash(hashSkill as (row: never) => string),
-      dbTable: skillsTable,
-      pk: skillsTable.id,
-      editableField: 'description',
-    },
-  ] as const
-
-  for (const c of gateCases) {
+  /**
+   * Runs the four-scenario gate suite against one id-keyed reconciled table.
+   * `Row` is captured per call so `hashFn`, `defaults`, and `editableField`
+   * stay correlated — no cross-table casts needed. Settings has a distinct
+   * shape (key-keyed) and gets its own `describe` below.
+   */
+  const describeGateCase = <Row extends { id: string; defaultHash: string | null }>(c: {
+    table: string
+    versionKey: string
+    currentVersion: number
+    defaults: readonly Row[]
+    hashFn: (row: Row) => string
+    dbTable: SQLiteTableWithColumns<any>
+    pk: SQLiteTableWithColumns<any>['id']
+    editableField: keyof Row & string
+  }) => {
     describe(c.table, () => {
       test('fresh install seeds defaults and stamps the applied version', async () => {
         const db = getDb()
@@ -1270,16 +1248,16 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
         // delivering. Marker is absent (never arrived). Under the sync-
         // incomplete guard, this device must not seed, overwrite, or stamp.
         const [first, ...rest] = c.defaults
-        const newer = { ...first, [c.editableField]: 'from-newer-peer' }
-        await db.insert(c.dbTable).values({ ...newer, defaultHash: c.hashFn(newer) } as never)
+        const newer: Row = { ...first, [c.editableField]: 'from-newer-peer' }
+        await db.insert(c.dbTable).values({ ...newer, defaultHash: c.hashFn(newer) })
         for (const row of rest) {
-          await db.insert(c.dbTable).values({ ...row, defaultHash: c.hashFn(row) } as never)
+          await db.insert(c.dbTable).values({ ...row, defaultHash: c.hashFn(row) })
         }
 
         await reconcileDefaults(db, { initialSyncCompleted: false })
 
-        const preserved = await db.select().from(c.dbTable).where(eq(c.pk, first.id)).get()
-        expect((preserved as Record<string, unknown>)?.[c.editableField]).toBe('from-newer-peer')
+        const preserved = (await db.select().from(c.dbTable).where(eq(c.pk, first.id)).get()) as Row | undefined
+        expect(preserved?.[c.editableField] as string | undefined).toBe('from-newer-peer')
         expect(await readStoredVersion(c.versionKey)).toBeNull()
       })
 
@@ -1291,10 +1269,10 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
         // row so the pass has something to upgrade (otherwise mutated=false
         // and the marker deliberately does not advance).
         const target = c.defaults[0]
-        const staleRow = { ...target, [c.editableField]: 'stale' }
+        const staleRow: Row = { ...target, [c.editableField]: 'stale' }
         await db
           .update(c.dbTable)
-          .set({ [c.editableField]: 'stale', defaultHash: c.hashFn(staleRow) } as never)
+          .set({ [c.editableField]: 'stale', defaultHash: c.hashFn(staleRow) })
           .where(eq(c.pk, target.id))
         await db
           .update(settingsTable)
@@ -1303,10 +1281,8 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
 
         await reconcileDefaults(db)
 
-        const upgraded = await db.select().from(c.dbTable).where(eq(c.pk, target.id)).get()
-        expect((upgraded as Record<string, unknown>)?.[c.editableField]).toBe(
-          (target as Record<string, unknown>)[c.editableField],
-        )
+        const upgraded = (await db.select().from(c.dbTable).where(eq(c.pk, target.id)).get()) as Row | undefined
+        expect(upgraded?.[c.editableField]).toBe(target[c.editableField])
         expect(await readStoredVersion(c.versionKey)).toBe(c.currentVersion)
       })
 
@@ -1314,10 +1290,10 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
         const db = getDb()
 
         const target = c.defaults[0]
-        const newer = { ...target, [c.editableField]: 'from-newer-bundle' }
-        await db.insert(c.dbTable).values({ ...newer, defaultHash: c.hashFn(newer) } as never)
+        const newer: Row = { ...target, [c.editableField]: 'from-newer-bundle' }
+        await db.insert(c.dbTable).values({ ...newer, defaultHash: c.hashFn(newer) })
         for (const other of c.defaults.slice(1)) {
-          await db.insert(c.dbTable).values({ ...other, defaultHash: c.hashFn(other) } as never)
+          await db.insert(c.dbTable).values({ ...other, defaultHash: c.hashFn(other) })
         }
         await db.insert(settingsTable).values({
           key: c.versionKey,
@@ -1326,12 +1302,43 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
 
         await reconcileDefaults(db)
 
-        const preserved = await db.select().from(c.dbTable).where(eq(c.pk, target.id)).get()
-        expect((preserved as Record<string, unknown>)?.[c.editableField]).toBe('from-newer-bundle')
+        const preserved = (await db.select().from(c.dbTable).where(eq(c.pk, target.id)).get()) as Row | undefined
+        expect(preserved?.[c.editableField] as string | undefined).toBe('from-newer-bundle')
         expect(await readStoredVersion(c.versionKey)).toBe(c.currentVersion + 1)
       })
     })
   }
+
+  describeGateCase({
+    table: 'modes',
+    versionKey: 'defaults_version.modes',
+    currentVersion: defaultModesVersion,
+    defaults: defaultModes,
+    hashFn: hashMode,
+    dbTable: modesTable,
+    pk: modesTable.id,
+    editableField: 'label',
+  })
+  describeGateCase({
+    table: 'tasks',
+    versionKey: 'defaults_version.tasks',
+    currentVersion: defaultTasksVersion,
+    defaults: defaultTasks,
+    hashFn: hashTask,
+    dbTable: tasksTable,
+    pk: tasksTable.id,
+    editableField: 'item',
+  })
+  describeGateCase({
+    table: 'skills',
+    versionKey: 'defaults_version.skills',
+    currentVersion: defaultSkillsVersion,
+    defaults: defaultSkills,
+    hashFn: hashSkill,
+    dbTable: skillsTable,
+    pk: skillsTable.id,
+    editableField: 'description',
+  })
 
   // Settings gets its own describe because its key-field and default shape
   // differ from the id-keyed tables above.
@@ -1352,10 +1359,10 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
     test('sync-incomplete + populated table → no-op and no marker written', async () => {
       const db = getDb()
 
-      // Seed one non-default row so `hasAnySettingsRow` returns true without
-      // depending on any per-table marker writes. That row simulates state
-      // the cloud may have already synced (e.g., a user preference); the gate
-      // must refuse to seed the bundle defaults on top of it.
+      // Seed one settings row directly (bypassing reconcile) so
+      // `hasAnySettingsRow` returns true. That row simulates state the cloud
+      // may have already synced (e.g., a user preference); the gate must
+      // refuse to seed the bundle defaults on top of it.
       await db.insert(settingsTable).values({ key: 'preferred_name', value: 'cloud-user' })
 
       await reconcileDefaults(db, { initialSyncCompleted: false })
@@ -1363,6 +1370,34 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
       const seeded = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()
       expect(seeded).toBeUndefined()
       expect(await readStoredVersion('defaults_version.settings')).toBeNull()
+    })
+
+    test('newer bundle upgrades in place and advances the stored version', async () => {
+      const db = getDb()
+      await reconcileDefaults(db)
+
+      // Rewind stored version and stale one row so the pass has something to
+      // upgrade (otherwise mutated=false and the marker deliberately does
+      // not advance). Target a default whose value is non-null and boolean-ish
+      // — `data_collection` — so overwriting doesn't collide with the null-
+      // preservation guard on user-set values.
+      const target = defaultSettings.find((s) => s.key === 'data_collection')
+      expect(target).toBeDefined()
+      const staleRow = { ...target!, value: 'stale' }
+      await db
+        .update(settingsTable)
+        .set({ value: 'stale', defaultHash: hashSetting(staleRow) })
+        .where(eq(settingsTable.key, target!.key))
+      await db
+        .update(settingsTable)
+        .set({ value: String(defaultSettingsVersion - 1) })
+        .where(eq(settingsTable.key, 'defaults_version.settings'))
+
+      await reconcileDefaults(db)
+
+      const upgraded = await db.select().from(settingsTable).where(eq(settingsTable.key, target!.key)).get()
+      expect(upgraded?.value).toBe(target!.value)
+      expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
     })
 
     test('older bundle does not downgrade rows authored by a newer version', async () => {

@@ -23,7 +23,7 @@ type PageHeaderProps = {
  */
 export const PageHeader = ({ title, children }: PageHeaderProps) => (
   <div className="flex items-center justify-between mt-4">
-    <h1 className="text-4xl font-bold tracking-tight text-primary">{title}</h1>
+    <h1 className="text-4xl font-bold tracking-tight text-primary dark:text-[#f5f5f5]">{title}</h1>
     <div className="flex items-center gap-2 pr-2">{children}</div>
   </div>
 )

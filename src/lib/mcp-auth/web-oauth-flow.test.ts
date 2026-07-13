@@ -17,7 +17,7 @@ import {
   type WebOAuthDeps,
 } from './web-oauth-flow'
 import type { LoopbackCallbackParams } from './mcp-oauth-loopback'
-import { getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
+import { clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 
 const serverId = 'srv-1'
 const serverUrl = 'https://mcp.example.com'
@@ -55,6 +55,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await teardownTestDatabase()
+})
+
+// Bun runs test files in one worker, so a fresh pending handshake left in
+// localStorage would leak into the next file and make isMcpOAuthCallback claim
+// callbacks that aren't ours (e.g. the deep-link routing test). Clear it after
+// every test so nothing escapes this file.
+afterEach(() => {
+  clearMcpOAuthState()
 })
 
 describe('isOAuthServer', () => {

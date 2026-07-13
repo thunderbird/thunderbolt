@@ -35,7 +35,37 @@ import { useCallback, useEffect, useState } from 'react'
  * orchestration additionally reports `'skipped_returning'` when the
  * returning-boot fast path bypassed the wait (THU-677).
  */
-type InitTimingSyncOutcome = InitialSyncOutcome | 'skipped_returning'
+export type InitTimingSyncOutcome = InitialSyncOutcome | 'skipped_returning'
+
+type SyncGate = { waitForInitialSync(): Promise<InitialSyncOutcome> }
+
+/**
+ * Resolves the step-3 sync-gate outcome. On the fast path (returning boot +
+ * sync enabled) it fires `waitForInitialSync` in the background and returns
+ * `'skipped_returning'` + `initialSyncCompleted: false` synchronously so
+ * reconcile's version-gate stays closed against unsynced cloud state; on
+ * every other path it awaits the outcome and derives `initialSyncCompleted`.
+ *
+ * Exported so the branch can be unit-tested directly — the containing hook
+ * body isn't easily observable, and the two branches diverge on both return
+ * value and side effect (does the caller await or not).
+ */
+export const resolveInitialSyncStep = async (
+  database: SyncGate,
+  canSkipSyncWait: boolean,
+): Promise<{ initialSyncOutcome: InitTimingSyncOutcome; initialSyncCompleted: boolean }> => {
+  if (canSkipSyncWait) {
+    database.waitForInitialSync().catch((error) => {
+      console.warn('[init] Background waitForInitialSync failed:', error)
+    })
+    return { initialSyncOutcome: 'skipped_returning', initialSyncCompleted: false }
+  }
+  const outcome = await database.waitForInitialSync()
+  return {
+    initialSyncOutcome: outcome,
+    initialSyncCompleted: outcome === 'synced' || outcome === 'disabled',
+  }
+}
 
 const createAppDirectory = async (): Promise<string> => {
   return await createAppDir()
@@ -204,23 +234,9 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // The outcome ('synced' / 'timed_out' / 'failed' / 'disabled' /
   // 'skipped_returning') is reported in the app_init_timing event below.
   const canSkipSyncWait = hasReconciledBefore && getLocalSetting('syncEnabled')
-  const step3Result: { initialSyncOutcome: InitTimingSyncOutcome; initialSyncCompleted: boolean } = await time(
-    'step3_wait_for_initial_sync',
-    async () => {
-      if (canSkipSyncWait) {
-        database.waitForInitialSync().catch((error) => {
-          console.warn('[init] Background waitForInitialSync failed:', error)
-        })
-        return { initialSyncOutcome: 'skipped_returning', initialSyncCompleted: false }
-      }
-      const outcome = await database.waitForInitialSync()
-      return {
-        initialSyncOutcome: outcome,
-        initialSyncCompleted: outcome === 'synced' || outcome === 'disabled',
-      }
-    },
+  const { initialSyncOutcome, initialSyncCompleted } = await time('step3_wait_for_initial_sync', () =>
+    resolveInitialSyncStep(database, canSkipSyncWait),
   )
-  const { initialSyncOutcome, initialSyncCompleted } = step3Result
 
   // Read the persisted /config cache directly. The step-0 fetch runs in the
   // background and hydrates the store on completion; whatever it eventually

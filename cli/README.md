@@ -8,7 +8,23 @@ REPL; there's no daemon, no config file, and nothing to install but the binary.
 
 ## Install
 
-**From source** (requires [Bun](https://bun.sh)):
+**Recommended — remote installer** (macOS arm64 and Linux):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/install.sh | sh
+```
+
+The installer selects the correct binary, resolves the newest stable release,
+verifies its SHA-256 checksum, and installs it to `~/.local/bin/thunderbolt`.
+Set `THUNDERBOLT_VERSION` to install a specific release, for example:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/install.sh | THUNDERBOLT_VERSION=v0.1.107 sh
+```
+
+### From source
+
+Requires [Bun](https://bun.sh):
 
 ```sh
 cd cli
@@ -17,8 +33,10 @@ bun run build      # compiles dist/thunderbolt
 ./install.sh       # copies it to ~/.local/bin
 ```
 
-**Prebuilt binary** (self-contained, no Bun required). Each release attaches one
-binary per target plus a `SHA256SUMS` manifest. Pick your target
+### Manual prebuilt binary
+
+Prebuilt binaries are self-contained and require no Bun. Each release attaches
+one binary per target plus a `SHA256SUMS` manifest. Pick your target
 (`darwin-arm64`, `linux-x64`, or `linux-arm64` — Intel macs aren't built yet,
 see below) and verify the checksum before running:
 
@@ -45,7 +63,8 @@ mv "thunderbolt-$TARGET" ~/.local/bin/thunderbolt
 
 > Intel macOS (`darwin-x64`) has no binary: the CLI's `@number0/iroh` P2P addon
 > ships no `x86_64-apple-darwin` build, so an Intel-mac binary can't load it.
-> Build from source above until iroh adds that target.
+> Windows also has no prebuilt CLI binary. Build from source above on either
+> unsupported platform.
 
 ## Usage
 

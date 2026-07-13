@@ -7,11 +7,22 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
-import { modelProfilesTable, modelsTable, promptsTable, settingsTable } from '../db/tables'
+import {
+  modelProfilesTable,
+  modelsTable,
+  modesTable,
+  promptsTable,
+  settingsTable,
+  skillsTable,
+  tasksTable,
+} from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
-import { defaultSettings, hashSetting } from '../defaults/settings'
+import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
+import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
+import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
+import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
 import { cleanupRemovedDefaults, reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
 import type { Model, ModelProfile, Prompt } from '@/types'
@@ -1184,5 +1195,211 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     // version yet, so peers with the fuller bundle should still be able to
     // reach open canOverwrite on their next boot.
     expect(await readStoredModelsVersion()).not.toBe(defaultModelsVersion + 1)
+  })
+})
+
+/**
+ * THU-677 extends the THU-637 version-gate pattern from models to every
+ * other reconciled table (modes, tasks, skills, settings). The scenarios
+ * per table mirror the models coverage above but at reduced depth — the
+ * shared `reconcileDefaultsForTable` and `computeCanOverwrite` behaviour
+ * is already exercised by the models suite. Here we prove each table
+ * routes through the gate correctly.
+ */
+describe('reconcileDefaults per-table version gates (THU-677)', () => {
+  const readStoredVersion = async (key: string) => {
+    const row = await getDb().select().from(settingsTable).where(eq(settingsTable.key, key)).get()
+    return row?.value == null ? null : Number(row.value)
+  }
+
+  // Widen each hashFn to accept the union of default row shapes so the
+  // parametric loop below can pass any table's row to any case's hash.
+  type AnyDefaultRow = (typeof defaultModes)[number] | (typeof defaultTasks)[number] | (typeof defaultSkills)[number]
+  const asAnyHash = (fn: (row: never) => string) => fn as (row: AnyDefaultRow) => string
+
+  const gateCases = [
+    {
+      table: 'modes',
+      versionKey: 'defaults_version.modes',
+      currentVersion: defaultModesVersion,
+      defaults: defaultModes,
+      hashFn: asAnyHash(hashMode as (row: never) => string),
+      dbTable: modesTable,
+      pk: modesTable.id,
+      editableField: 'label',
+    },
+    {
+      table: 'tasks',
+      versionKey: 'defaults_version.tasks',
+      currentVersion: defaultTasksVersion,
+      defaults: defaultTasks,
+      hashFn: asAnyHash(hashTask as (row: never) => string),
+      dbTable: tasksTable,
+      pk: tasksTable.id,
+      editableField: 'item',
+    },
+    {
+      table: 'skills',
+      versionKey: 'defaults_version.skills',
+      currentVersion: defaultSkillsVersion,
+      defaults: defaultSkills,
+      hashFn: asAnyHash(hashSkill as (row: never) => string),
+      dbTable: skillsTable,
+      pk: skillsTable.id,
+      editableField: 'description',
+    },
+  ] as const
+
+  for (const c of gateCases) {
+    describe(c.table, () => {
+      test('fresh install seeds defaults and stamps the applied version', async () => {
+        const db = getDb()
+        await reconcileDefaults(db)
+
+        const rows = await db.select().from(c.dbTable)
+        for (const bundle of c.defaults) {
+          expect(rows.find((r) => r.id === bundle.id)).toBeDefined()
+        }
+        expect(await readStoredVersion(c.versionKey)).toBe(c.currentVersion)
+      })
+
+      test('sync-incomplete + populated table → no-op and no marker written', async () => {
+        const db = getDb()
+
+        // Populate the table with newer content the cloud may still be
+        // delivering. Marker is absent (never arrived). Under the sync-
+        // incomplete guard, this device must not seed, overwrite, or stamp.
+        const [first, ...rest] = c.defaults
+        const newer = { ...first, [c.editableField]: 'from-newer-peer' }
+        await db.insert(c.dbTable).values({ ...newer, defaultHash: c.hashFn(newer) } as never)
+        for (const row of rest) {
+          await db.insert(c.dbTable).values({ ...row, defaultHash: c.hashFn(row) } as never)
+        }
+
+        await reconcileDefaults(db, { initialSyncCompleted: false })
+
+        const preserved = await db.select().from(c.dbTable).where(eq(c.pk, first.id)).get()
+        expect((preserved as Record<string, unknown>)?.[c.editableField]).toBe('from-newer-peer')
+        expect(await readStoredVersion(c.versionKey)).toBeNull()
+      })
+
+      test('newer bundle upgrades in place and advances the stored version', async () => {
+        const db = getDb()
+        await reconcileDefaults(db)
+
+        // Rewind stored version to look like a prior release; also stale one
+        // row so the pass has something to upgrade (otherwise mutated=false
+        // and the marker deliberately does not advance).
+        const target = c.defaults[0]
+        const staleRow = { ...target, [c.editableField]: 'stale' }
+        await db
+          .update(c.dbTable)
+          .set({ [c.editableField]: 'stale', defaultHash: c.hashFn(staleRow) } as never)
+          .where(eq(c.pk, target.id))
+        await db
+          .update(settingsTable)
+          .set({ value: String(c.currentVersion - 1) })
+          .where(eq(settingsTable.key, c.versionKey))
+
+        await reconcileDefaults(db)
+
+        const upgraded = await db.select().from(c.dbTable).where(eq(c.pk, target.id)).get()
+        expect((upgraded as Record<string, unknown>)?.[c.editableField]).toBe(
+          (target as Record<string, unknown>)[c.editableField],
+        )
+        expect(await readStoredVersion(c.versionKey)).toBe(c.currentVersion)
+      })
+
+      test('older bundle does not downgrade rows authored by a newer version', async () => {
+        const db = getDb()
+
+        const target = c.defaults[0]
+        const newer = { ...target, [c.editableField]: 'from-newer-bundle' }
+        await db.insert(c.dbTable).values({ ...newer, defaultHash: c.hashFn(newer) } as never)
+        for (const other of c.defaults.slice(1)) {
+          await db.insert(c.dbTable).values({ ...other, defaultHash: c.hashFn(other) } as never)
+        }
+        await db.insert(settingsTable).values({
+          key: c.versionKey,
+          value: String(c.currentVersion + 1),
+        })
+
+        await reconcileDefaults(db)
+
+        const preserved = await db.select().from(c.dbTable).where(eq(c.pk, target.id)).get()
+        expect((preserved as Record<string, unknown>)?.[c.editableField]).toBe('from-newer-bundle')
+        expect(await readStoredVersion(c.versionKey)).toBe(c.currentVersion + 1)
+      })
+    })
+  }
+
+  // Settings gets its own describe because its key-field and default shape
+  // differ from the id-keyed tables above.
+  describe('settings', () => {
+    const key = defaultSettings[0].key
+
+    test('fresh install seeds defaults and stamps the applied version', async () => {
+      const db = getDb()
+      await reconcileDefaults(db)
+
+      for (const bundle of defaultSettings) {
+        const row = await db.select().from(settingsTable).where(eq(settingsTable.key, bundle.key)).get()
+        expect(row).toBeDefined()
+      }
+      expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
+    })
+
+    test('sync-incomplete + populated table → no-op and no marker written', async () => {
+      const db = getDb()
+
+      // Seed one non-default row so `hasAnySettingsRow` returns true without
+      // depending on any per-table marker writes. That row simulates state
+      // the cloud may have already synced (e.g., a user preference); the gate
+      // must refuse to seed the bundle defaults on top of it.
+      await db.insert(settingsTable).values({ key: 'preferred_name', value: 'cloud-user' })
+
+      await reconcileDefaults(db, { initialSyncCompleted: false })
+
+      const seeded = await db.select().from(settingsTable).where(eq(settingsTable.key, key)).get()
+      expect(seeded).toBeUndefined()
+      expect(await readStoredVersion('defaults_version.settings')).toBeNull()
+    })
+
+    test('older bundle does not downgrade rows authored by a newer version', async () => {
+      const db = getDb()
+
+      const target = defaultSettings.find((s) => s.value !== null)
+      expect(target).toBeDefined()
+      const newer = { ...target!, value: 'from-newer-bundle' }
+      await db.insert(settingsTable).values({ ...newer, defaultHash: hashSetting(newer) })
+      await db.insert(settingsTable).values({
+        key: 'defaults_version.settings',
+        value: String(defaultSettingsVersion + 1),
+      })
+
+      await reconcileDefaults(db)
+
+      const preserved = await db.select().from(settingsTable).where(eq(settingsTable.key, target!.key)).get()
+      expect(preserved?.value).toBe('from-newer-bundle')
+      expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion + 1)
+    })
+  })
+
+  test('per-table marker writes do not poison the settings hasAnyRow probe on fresh install', async () => {
+    // Regression guard for the intra-transaction ordering hazard: the models/
+    // modes/tasks/skills passes each land a marker row in `settingsTable` via
+    // `advanceVersionMarker`. If `hasAnySettingsRow` were read inline before
+    // the settings block instead of at the top of the transaction, those
+    // earlier marker writes would flip the probe to `true` on a fresh install
+    // and the settings gate would refuse to seed. Every default settings row
+    // and the settings marker must land on this pass.
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    for (const bundle of defaultSettings) {
+      const row = await db.select().from(settingsTable).where(eq(settingsTable.key, bundle.key)).get()
+      expect(row).toBeDefined()
+    }
+    expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
   })
 })

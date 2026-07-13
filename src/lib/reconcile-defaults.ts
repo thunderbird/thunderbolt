@@ -10,22 +10,29 @@ import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModes, hashMode } from '../defaults/modes'
+import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
-import { defaultSettings, hashSetting } from '../defaults/settings'
-import { defaultSkills, hashSkill } from '../defaults/skills'
-import { defaultTasks, hashTask } from '../defaults/tasks'
+import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
+import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
+import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
 import { nowIso } from './utils'
 
 const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
 
 /**
- * Settings key holding the highest defaults version ever applied to this
- * account's models table. See "Reconciled defaults and version bumps" in
- * AGENTS.md and the THU-637 rationale for the version-gate design.
+ * Settings keys holding the highest defaults version ever applied to this
+ * account per reconciled table. See "Reconciled defaults and version bumps"
+ * in AGENTS.md and the THU-637 rationale for the version-gate design; THU-677
+ * extended the pattern from models-only to every reconciled table.
  */
 const modelsVersionKey = 'defaults_version.models'
+const modesVersionKey = 'defaults_version.modes'
+const tasksVersionKey = 'defaults_version.tasks'
+const skillsVersionKey = 'defaults_version.skills'
+const settingsVersionKey = 'defaults_version.settings'
+
+type StoredVersion = { exists: boolean; version: number | null }
 
 /**
  * Read a previously-recorded defaults version from `settingsTable`. Returns
@@ -34,10 +41,7 @@ const modelsVersionKey = 'defaults_version.models'
  * update on write-back. `version` is null when the row is absent OR its value
  * is not a finite number (treat as "safe to apply" for the gate comparison).
  */
-const readAppliedVersion = async (
-  db: AnyDrizzleDatabase,
-  key: string,
-): Promise<{ exists: boolean; version: number | null }> => {
+const readAppliedVersion = async (db: AnyDrizzleDatabase, key: string): Promise<StoredVersion> => {
   const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, key))
   const row = rows[0]
   if (!row) {
@@ -48,6 +52,63 @@ const readAppliedVersion = async (
   }
   const parsed = Number(row.value)
   return { exists: true, version: Number.isFinite(parsed) ? parsed : null }
+}
+
+/**
+ * Compute the version-gate + sync-incomplete guard for one reconciled table
+ * and return the stored-marker snapshot alongside, so the caller can branch
+ * on `stored.exists` for INSERT vs UPDATE on write-back without a second read.
+ *
+ * The gate collapses two safety concerns into one boolean:
+ *   1. Version ordering — reject writes when our defaults source is not
+ *      strictly newer than what has already been applied on this account
+ *      (prevents older-bundle devices from downgrading newer synced rows).
+ *   2. Sync-incomplete pessimism — when the local table already has rows and
+ *      first-sync has not finished, we cannot trust that a missing marker
+ *      means "never applied": cloud may hold both the marker and newer rows
+ *      we haven't received yet. Fresh installs (0 rows) bypass this so the
+ *      app still seeds bundle defaults offline.
+ */
+const computeCanOverwrite = async (
+  tx: AnyDrizzleDatabase,
+  versionKey: string,
+  pickedVersion: number,
+  hasAnyRow: boolean,
+  initialSyncCompleted: boolean,
+): Promise<{ canOverwrite: boolean; stored: StoredVersion }> => {
+  const stored = await readAppliedVersion(tx, versionKey)
+  const rawCanOverwrite = pickedVersion > (stored.version ?? Number.NEGATIVE_INFINITY)
+  const canOverwrite = ((): boolean => {
+    if (!hasAnyRow) {
+      return rawCanOverwrite
+    }
+    if (!initialSyncCompleted) {
+      return false
+    }
+    return rawCanOverwrite
+  })()
+  return { canOverwrite, stored }
+}
+
+/**
+ * Upsert a defaults version marker. Branches on `stored.exists` (not on the
+ * parsed version) so a pre-existing row with a non-numeric value — data
+ * corruption or an older schema — still routes to UPDATE instead of hitting a
+ * primary-key conflict on INSERT. Inline SQL rather than `updateSettings`
+ * because PowerSync's drizzle driver forbids nested transactions.
+ */
+const advanceVersionMarker = async (
+  tx: AnyDrizzleDatabase,
+  versionKey: string,
+  version: number,
+  stored: StoredVersion,
+) => {
+  const versionValue = String(version)
+  if (!stored.exists) {
+    await tx.insert(settingsTable).values({ key: versionKey, value: versionValue })
+  } else {
+    await tx.update(settingsTable).set({ value: versionValue }).where(eq(settingsTable.key, versionKey))
+  }
 }
 
 /**
@@ -337,29 +398,59 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
   const initialSyncCompleted = overrides?.initialSyncCompleted ?? true
 
   await db.transaction(async (tx) => {
-    // Version gate for models: only overwrite rows when our defaults source
-    // is strictly newer than the highest version ever applied on this account.
-    // Prevents older-bundle devices from downgrading newer synced rows (THU-637).
-    const stored = await readAppliedVersion(tx, modelsVersionKey)
-    const rawCanOverwrite = modelsSource.version > (stored.version ?? Number.NEGATIVE_INFINITY)
-
-    // Additional guard for the sync-incomplete case. Two scenarios collapse
-    // into the same rule: (a) fresh second device where the version marker
-    // hasn't arrived yet, and (b) any device with a stale local marker whose
-    // row content may already be at a newer version in cloud. In both, cloud
-    // may hold state we haven't received, and rawCanOverwrite is computed
-    // against an untrusted view. Fresh installs (0 rows) still seed the
-    // bundle so the app isn't crippled offline.
+    // Snapshot every reconciled table's row existence up front. Doing this
+    // per-table just before each reconcile block would poison the settings
+    // hasAnyRow probe on fresh installs: earlier tables advance their version
+    // markers into settingsTable via `advanceVersionMarker`, so by the time
+    // the settings block ran, the "empty settings table" signal would be
+    // gone. Reading all five probes here — before any writes land in this
+    // transaction — keeps every table's gate on the same pre-reconcile view.
     const hasAnyModelRow = (await tx.select({ id: modelsTable.id }).from(modelsTable).limit(1)).length > 0
-    const canOverwriteModels = ((): boolean => {
-      if (!hasAnyModelRow) {
-        return rawCanOverwrite
-      }
-      if (!initialSyncCompleted) {
-        return false
-      }
-      return rawCanOverwrite
-    })()
+    const hasAnyModeRow = (await tx.select({ id: modesTable.id }).from(modesTable).limit(1)).length > 0
+    const hasAnyTaskRow = (await tx.select({ id: tasksTable.id }).from(tasksTable).limit(1)).length > 0
+    const hasAnySkillRow = (await tx.select({ id: skillsTable.id }).from(skillsTable).limit(1)).length > 0
+    const hasAnySettingsRow = (await tx.select({ key: settingsTable.key }).from(settingsTable).limit(1)).length > 0
+
+    // Version gates per table. Each returns the stored marker snapshot so the
+    // per-table write-back can INSERT vs UPDATE without a second read. See
+    // `computeCanOverwrite` for the full rationale — in short, prevents an
+    // older-bundle device from downgrading newer synced rows (THU-637), and
+    // extends the same protection to modes/tasks/skills/settings (THU-677).
+    const modelsGate = await computeCanOverwrite(
+      tx,
+      modelsVersionKey,
+      modelsSource.version,
+      hasAnyModelRow,
+      initialSyncCompleted,
+    )
+    const modesGate = await computeCanOverwrite(
+      tx,
+      modesVersionKey,
+      defaultModesVersion,
+      hasAnyModeRow,
+      initialSyncCompleted,
+    )
+    const tasksGate = await computeCanOverwrite(
+      tx,
+      tasksVersionKey,
+      defaultTasksVersion,
+      hasAnyTaskRow,
+      initialSyncCompleted,
+    )
+    const skillsGate = await computeCanOverwrite(
+      tx,
+      skillsVersionKey,
+      defaultSkillsVersion,
+      hasAnySkillRow,
+      initialSyncCompleted,
+    )
+    const settingsGate = await computeCanOverwrite(
+      tx,
+      settingsVersionKey,
+      defaultSettingsVersion,
+      hasAnySettingsRow,
+      initialSyncCompleted,
+    )
 
     // OTA can ship models whose id isn't in this bundle's `defaultModelProfiles`
     // — profiles are not part of the OTA channel, so we have no profile to
@@ -387,7 +478,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // `modelsSource.data` overlaps with `defaultModels` by at least one id.
     // A fully-disjoint payload would otherwise let cleanup soft-delete every
     // bundle-known row (none appear in the passed-in `currentModelIds`).
-    await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data, initialSyncCompleted)
+    await cleanupRemovedDefaults(tx, modelsGate.canOverwrite, modelsSource.data, initialSyncCompleted)
 
     // AI models. `canResurrect` uses initialSyncCompleted so an older-bundle
     // but fully-synced device can still un-delete a pre-THU-637 mistake, while
@@ -404,7 +495,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // OTA can still update name, description, contextWindow, tool flags, etc.
     // To change a frozen field, ship the new value under a fresh model id.
     const modelsPass = await reconcileDefaultsForTable(tx, modelsTable, modelsForReconcile, hashModel, {
-      canOverwrite: canOverwriteModels,
+      canOverwrite: modelsGate.canOverwrite,
       canResurrect: initialSyncCompleted,
       frozenFields: ['isConfidential', 'provider'],
     })
@@ -432,48 +523,67 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       hashModelProfile,
       {
         keyField: 'modelId',
-        canOverwrite: canOverwriteModels,
+        canOverwrite: modelsGate.canOverwrite,
         insertMissing: true,
         canResurrect: initialSyncCompleted,
       },
     )
 
-    // Modes
-    await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode)
+    // Advance the models version marker. Two conditions must hold together:
+    //   1. `canOverwrite` — writing the marker under a closed gate would let
+    //      peers falsely believe the picked version was applied here and stop
+    //      their own in-place upgrades even though we never wrote the content.
+    //   2. Something actually mutated. Advancing on a pure no-op (all rows
+    //      user-edited, or all already at target) has the same false-signal
+    //      hazard as (1) — we effectively promised to peers we're at version
+    //      N without having verified our content matches N.
+    // Extra `droppedOtaModelIds.length === 0` check for models: our apply is
+    // a strict subset of the picked version when we filter OTA models, and
+    // stamping the full version would lock later fuller-bundle clients
+    // (canOverwrite=false because stored>=picked) out of inserting the
+    // missing models.
+    if (modelsGate.canOverwrite && (modelsPass.mutated || profilesPass.mutated) && droppedOtaModelIds.length === 0) {
+      await advanceVersionMarker(tx, modelsVersionKey, modelsSource.version, modelsGate.stored)
+    }
 
-    // Tasks
-    await reconcileDefaultsForTable(tx, tasksTable, defaultTasks, hashTask)
+    // Modes / tasks / skills / settings share the same shape: gate on the
+    // per-table version + sync-incomplete guard, reconcile, advance marker
+    // only on a real mutation. `canResurrect` follows the models pattern —
+    // sync must have completed before we un-delete a soft-deleted row (no
+    // cleanup step targets these tables today, but the option is future-safe).
+    const modesPass = await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode, {
+      canOverwrite: modesGate.canOverwrite,
+      canResurrect: initialSyncCompleted,
+    })
+    if (modesGate.canOverwrite && modesPass.mutated) {
+      await advanceVersionMarker(tx, modesVersionKey, defaultModesVersion, modesGate.stored)
+    }
+
+    const tasksPass = await reconcileDefaultsForTable(tx, tasksTable, defaultTasks, hashTask, {
+      canOverwrite: tasksGate.canOverwrite,
+      canResurrect: initialSyncCompleted,
+    })
+    if (tasksGate.canOverwrite && tasksPass.mutated) {
+      await advanceVersionMarker(tx, tasksVersionKey, defaultTasksVersion, tasksGate.stored)
+    }
 
     // Skills (the default skills supersede the legacy default automations,
     // which used to seed promptsTable here. See THU-547.)
-    await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill)
+    const skillsPass = await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill, {
+      canOverwrite: skillsGate.canOverwrite,
+      canResurrect: initialSyncCompleted,
+    })
+    if (skillsGate.canOverwrite && skillsPass.mutated) {
+      await advanceVersionMarker(tx, skillsVersionKey, defaultSkillsVersion, skillsGate.stored)
+    }
 
-    // Settings
-    await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
-
-    // Only advance the version marker when we actually applied a change to
-    // models or profiles this pass. Advancing on a pure no-op (all rows
-    // user-edited, or all already at target) would falsely signal to peers
-    // that the picked version has been applied here — peers with `stored`
-    // already at `pickedVersion` would then stop in-place upgrades even
-    // though the writer never verified the content.
-    //
-    // Also skip the marker when we filtered any OTA models: our apply is a
-    // strict subset of the picked version, and stamping the full version
-    // would lock later fuller-bundle clients (canOverwrite=false because
-    // stored>=picked) out of inserting the missing models.
-    if (canOverwriteModels && (modelsPass.mutated || profilesPass.mutated) && droppedOtaModelIds.length === 0) {
-      // Inline upsert: `updateSettings` wraps its writes in its own transaction
-      // and PowerSync's drizzle driver forbids nested transactions. Branch on
-      // row existence — not on parsed version — so a pre-existing row with a
-      // non-numeric value (data corruption, older schema) still routes to
-      // UPDATE instead of hitting a primary-key conflict on INSERT.
-      const versionValue = String(modelsSource.version)
-      if (!stored.exists) {
-        await tx.insert(settingsTable).values({ key: modelsVersionKey, value: versionValue })
-      } else {
-        await tx.update(settingsTable).set({ value: versionValue }).where(eq(settingsTable.key, modelsVersionKey))
-      }
+    const settingsPass = await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, {
+      keyField: 'key',
+      canOverwrite: settingsGate.canOverwrite,
+      canResurrect: initialSyncCompleted,
+    })
+    if (settingsGate.canOverwrite && settingsPass.mutated) {
+      await advanceVersionMarker(tx, settingsVersionKey, defaultSettingsVersion, settingsGate.stored)
     }
 
     // Initialize anonymous ID for analytics (unique per user)

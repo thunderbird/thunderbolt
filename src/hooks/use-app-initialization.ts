@@ -8,7 +8,7 @@ import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
-import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
 import { settingsTable } from '@/db/tables'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
@@ -29,6 +29,14 @@ import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
 import { sql } from 'drizzle-orm'
 import { useCallback, useEffect, useState } from 'react'
+
+/**
+ * Wider outcome type reported in the `app_init_timing` PostHog event. Callers
+ * of `waitForInitialSync` see the primitive `InitialSyncOutcome`; the init
+ * orchestration additionally reports `'skipped_returning'` when the
+ * returning-boot fast path bypassed the wait (THU-677).
+ */
+type InitTimingSyncOutcome = InitialSyncOutcome | 'skipped_returning'
 
 const createAppDirectory = async (): Promise<string> => {
   return await createAppDir()
@@ -184,28 +192,43 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     return rows.length > 0
   })
 
-  // Step 3: Wait for PowerSync initial sync — only on fresh boots. Returning
-  // boots kick off the sync fire-and-forget so the engine still warms up and
-  // background updates land as they arrive, then feed `initialSyncCompleted:
-  // false` to reconcile so the version-gate stays closed against unsynced
-  // cloud state. The implementation never rejects (best-effort with internal
-  // timeout); the `.catch` guards against that policy weakening.
+  // Step 3: Wait for PowerSync initial sync — only on fresh boots when sync is
+  // enabled. Returning boots on sync-enabled devices kick off the sync
+  // fire-and-forget so the engine still warms up and background updates land
+  // as they arrive, then feed `initialSyncCompleted: false` to reconcile so
+  // the version-gate stays closed against unsynced cloud state.
+  //
+  // Sync-disabled devices ALWAYS take the fresh path: `waitForInitialSync`
+  // returns `'disabled'` immediately (zero wait), which sets
+  // `initialSyncCompleted=true` and lets reconcile freely apply bundle updates
+  // — the only way a standalone device ever picks up new defaults from a
+  // client upgrade. Taking the returning-boot skip here would force
+  // `initialSyncCompleted=false` and freeze standalone users on their current
+  // defaults forever (nothing else ever advances the marker).
+  //
+  // `waitForInitialSync` never rejects (best-effort with internal timeout);
+  // the `.catch` guards against that policy weakening.
   //
   // The outcome ('synced' / 'timed_out' / 'failed' / 'disabled' /
   // 'skipped_returning') is reported in the app_init_timing event below.
-  const { initialSyncOutcome, initialSyncCompleted } = await time('step3_wait_for_initial_sync', async () => {
-    if (hasReconciledBefore) {
-      database.waitForInitialSync().catch((error) => {
-        console.warn('[init] Background waitForInitialSync failed:', error)
-      })
-      return { initialSyncOutcome: 'skipped_returning' as const, initialSyncCompleted: false }
-    }
-    const outcome = await database.waitForInitialSync()
-    return {
-      initialSyncOutcome: outcome,
-      initialSyncCompleted: outcome === 'synced' || outcome === 'disabled',
-    }
-  })
+  const canSkipSyncWait = hasReconciledBefore && getLocalSetting('syncEnabled')
+  const step3Result: { initialSyncOutcome: InitTimingSyncOutcome; initialSyncCompleted: boolean } = await time(
+    'step3_wait_for_initial_sync',
+    async () => {
+      if (canSkipSyncWait) {
+        database.waitForInitialSync().catch((error) => {
+          console.warn('[init] Background waitForInitialSync failed:', error)
+        })
+        return { initialSyncOutcome: 'skipped_returning', initialSyncCompleted: false }
+      }
+      const outcome = await database.waitForInitialSync()
+      return {
+        initialSyncOutcome: outcome,
+        initialSyncCompleted: outcome === 'synced' || outcome === 'disabled',
+      }
+    },
+  )
+  const { initialSyncOutcome, initialSyncCompleted } = step3Result
 
   // Read the persisted /config cache directly. The step-0 fetch runs in the
   // background and hydrates the store on completion; whatever it eventually
@@ -279,7 +302,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     ...getInitTimingPayload(),
     init_total_ms: initTotalMs,
     initial_sync_outcome: initialSyncOutcome,
-    init_path: hasReconciledBefore ? ('returning' as const) : ('fresh' as const),
+    init_path: canSkipSyncWait ? ('returning' as const) : ('fresh' as const),
     sync_enabled: getLocalSetting('syncEnabled'),
     platform: getPlatform(),
   }

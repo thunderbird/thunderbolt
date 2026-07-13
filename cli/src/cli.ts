@@ -62,7 +62,7 @@ USAGE
 
 SUBCOMMANDS
   agent       run the coding agent (default when omitted)
-  acp serve   expose THIS coding agent as a stdio ACP server (for bridging)
+  acp serve   expose THIS coding agent, rooted at current directory, as a stdio ACP server
   acp         bridge a local stdio ACP agent over the network the app can reach
   mcp         bridge a local stdio MCP server over the network the app can reach
   iroh        manage the P2P identity / pairing ticket / peer allowlist

@@ -72,6 +72,29 @@ thunderbolt
 | `thunderbolt <acp\|mcp> connect <ticket\|nodeid> [-- <local-client-cmd...>]` | Dial iroh bridge. |
 | `thunderbolt iroh id` / `pair` / `allow <nodeid>` | Inspect ACP identity, print pairing ticket, or authorize peer. |
 
+### Served agent workspace
+
+When you run `thunderbolt acp serve` directly or through a bridge, the served
+agent's workspace is the directory where the bridge/serve process was launched
+(`process.cwd()`). Its read, write, and edit tools can access that directory and
+everything under it, but nothing outside it. Any `cwd` sent by the connecting
+app is ignored.
+
+Launch the bridge from the project you want the agent to work on:
+
+```sh
+cd ~/dev/my-project && thunderbolt acp --transport iroh -- thunderbolt acp serve
+```
+
+To span several projects, launch it from a common parent:
+
+```sh
+cd ~/dev && thunderbolt acp --transport iroh -- thunderbolt acp serve
+```
+
+The agent can then reach everything under `~/dev`, but nothing above it. Files
+elsewhere on the machine are outside its workspace and unavailable.
+
 ### Agent and `acp serve` flags
 
 | Flag | Description |

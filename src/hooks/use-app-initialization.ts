@@ -98,13 +98,23 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const totalStartedAt = performance.now()
   console.info('[init] start')
 
-  // Step 0: Fetch backend config and hydrate store (only on success).
-  // When fetch fails (offline/error), the store retains its persisted localStorage value.
-  // Not awaited here: nothing in this pipeline consumes the config (it is read
-  // reactively from the store later), so it overlaps with the steps below
-  // (including the storage probe) and is only awaited at the end to land its
-  // duration in app_init_timing.
-  const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
+  // Step 0: Fire-and-forget `/config` fetch. On success `fetchConfig` hydrates
+  // `useConfigStore` (persisted to localStorage), so subsequent boots read the
+  // last-known value synchronously — `pickModelsDefaults` below reads the
+  // cache directly and no downstream step awaits this fetch. Reconcile's
+  // version gate no-ops any OTA payload that isn't strictly newer than the
+  // stored marker, so a fresh OTA arriving mid-boot lands cleanly on the
+  // next boot without needing to gate this one.
+  //
+  // `.catch` consumes the promise so it can't float unhandled — `fetchConfig`
+  // swallows errors internally today, but this guards the invariant against
+  // future changes. `step0_fetch_config_ms` still appears in the timing
+  // payload whenever the fetch completes before `trackEvent` fires; on
+  // returning boots where init finishes quickly it may be absent, which is
+  // the acceptable trade for not blocking every refresh on the network.
+  time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient)).catch((error) => {
+    console.warn('[init] /config fetch failed:', error)
+  })
 
   // Step 0.5: Storage pre-flight. IndexedDB is required by both the local
   // PowerSync VFS (web) and the E2EE key store (all platforms). iOS Lockdown
@@ -197,16 +207,9 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   })
 
-  // Step 3.5: Settle the /config fetch so reconcile can prefer server-shipped
-  // defaults when they declare a higher version than the bundle. Awaited
-  // unconditionally: (a) `step0_fetch_config` must land in the timing payload
-  // for every boot, not just first launch; (b) leaving the promise floating
-  // past this point risks an unhandled rejection on any environment where
-  // fetchConfig's error handling weakens. `fetchConfig` is bounded by its
-  // internal timeout and swallows errors — the persisted cache remains in
-  // the store until a successful fetch replaces it, so `pickModelsDefaults`
-  // still reads the same value it would on the cache-hit fast path.
-  await fetchConfigPromise
+  // Read the persisted /config cache directly. The step-0 fetch runs in the
+  // background and hydrates the store on completion; whatever it eventually
+  // writes lands cleanly on the next boot via reconcile's version gate.
   const modelsDefaults = pickModelsDefaults(useConfigStore.getState().config.defaults?.models)
 
   // Step 4: Reconcile defaults

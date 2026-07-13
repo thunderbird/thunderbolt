@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { arch } from '@tauri-apps/plugin-os'
-import { AlertTriangle, Check, Download, Loader2, Terminal } from 'lucide-react'
+import { AlertTriangle, Check, Download, ExternalLink, Loader2, Terminal } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { CopyCommandRow } from '@/components/settings/copy-command-row'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,7 @@ import { getPlatform, isTauri } from '@/lib/platform'
 
 /** Shell one-liner to build the CLI from source when no prebuilt binary applies. */
 const manualBuildCommand = 'cd cli && bun install && bun run build && ./install.sh'
+const cliInstallGuideUrl = 'https://github.com/thunderbird/thunderbolt/blob/main/cli/README.md#install'
 
 type InstallState =
   | { status: 'idle' }
@@ -43,7 +44,8 @@ type ThunderboltCliInstallCardProps = {
  * the prebuilt binary into `~/.local/bin`, then renders the installed path (with
  * a PATH hint if the dir isn't on `PATH`) or a clear error. When a release has no
  * CLI assets, it surfaces the manual build fallback instead of failing silently.
- * Renders nothing on unpublished OS/architecture pairs or outside Tauri.
+ * Web builds link to the install guide; Tauri builds render nothing on unpublished
+ * OS/architecture pairs.
  */
 export const ThunderboltCliInstallCard = ({
   install = installThunderboltCli,
@@ -57,7 +59,7 @@ export const ThunderboltCliInstallCard = ({
   const isTauriEnv = tauri ?? isTauri()
   const runtimeArchitecture = architecture ?? (isTauriEnv ? arch() : 'unknown')
 
-  if (!canInstallThunderboltCli(platform ?? getPlatform(), runtimeArchitecture, isTauriEnv)) {
+  if (isTauriEnv && !canInstallThunderboltCli(platform ?? getPlatform(), runtimeArchitecture, isTauriEnv)) {
     return null
   }
 
@@ -81,50 +83,69 @@ export const ThunderboltCliInstallCard = ({
           <div className="flex flex-col gap-1 min-w-0">
             <CardTitle>Thunderbolt CLI</CardTitle>
             <CardDescription>
-              Install the standalone <code className="font-mono">thunderbolt</code> terminal agent to{' '}
-              <code className="font-mono">~/.local/bin</code>.
+              {isTauriEnv ? (
+                <>
+                  Install the standalone <code className="font-mono">thunderbolt</code> terminal agent to{' '}
+                  <code className="font-mono">~/.local/bin</code>.
+                </>
+              ) : (
+                <>
+                  Install the standalone <code className="font-mono">thunderbolt</code> terminal agent from your shell.
+                </>
+              )}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <Button variant="secondary" className="self-start" disabled={isPending} onClick={handleInstall}>
-          {isPending ? <Loader2 className="animate-spin" /> : <Download />}
-          {isPending ? 'Installing…' : 'Install CLI'}
-        </Button>
+        {isTauriEnv ? (
+          <>
+            <Button variant="secondary" className="self-start" disabled={isPending} onClick={handleInstall}>
+              {isPending ? <Loader2 className="animate-spin" /> : <Download />}
+              {isPending ? 'Installing…' : 'Install CLI'}
+            </Button>
 
-        {state.status === 'success' && (
-          <div className="flex flex-col gap-3">
-            <p className="flex items-center gap-2 text-[length:var(--font-size-sm)]">
-              <Check className="size-4 shrink-0 text-green-600" aria-hidden="true" />
-              Installed to <code className="font-mono">{state.result.path}</code>
-            </p>
-            {!state.result.onPath && state.result.pathHint && (
-              <div className="flex flex-col gap-2">
-                <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                  Add <code className="font-mono">~/.local/bin</code> to your PATH, then restart your shell:
+            {state.status === 'success' && (
+              <div className="flex flex-col gap-3">
+                <p className="flex items-center gap-2 text-[length:var(--font-size-sm)]">
+                  <Check className="size-4 shrink-0 text-green-600" aria-hidden="true" />
+                  Installed to <code className="font-mono">{state.result.path}</code>
                 </p>
-                <CopyCommandRow command={state.result.pathHint} label="Copy PATH command" />
+                {!state.result.onPath && state.result.pathHint && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                      Add <code className="font-mono">~/.local/bin</code> to your PATH, then restart your shell:
+                    </p>
+                    <CopyCommandRow command={state.result.pathHint} label="Copy PATH command" />
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {state.status === 'error' && (
-          <div className="flex flex-col gap-3">
-            <p className="flex items-start gap-2 text-[length:var(--font-size-sm)] text-destructive">
-              <AlertTriangle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
-              {state.message}
-            </p>
-            {state.showManualBuild && (
-              <div className="flex flex-col gap-2">
-                <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                  Build it from source instead (requires Bun):
+            {state.status === 'error' && (
+              <div className="flex flex-col gap-3">
+                <p className="flex items-start gap-2 text-[length:var(--font-size-sm)] text-destructive">
+                  <AlertTriangle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+                  {state.message}
                 </p>
-                <CopyCommandRow command={manualBuildCommand} label="Copy build command" />
+                {state.showManualBuild && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                      Build it from source instead (requires Bun):
+                    </p>
+                    <CopyCommandRow command={manualBuildCommand} label="Copy build command" />
+                  </div>
+                )}
               </div>
             )}
-          </div>
+          </>
+        ) : (
+          <Button asChild variant="secondary" className="self-start">
+            <a href={cliInstallGuideUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink />
+              View install guide
+            </a>
+          </Button>
         )}
       </CardContent>
     </Card>

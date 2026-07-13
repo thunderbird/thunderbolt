@@ -36,10 +36,21 @@ describe('ThunderboltCliInstallCard', () => {
     expect(screen.getByRole('button', { name: /install cli/i })).toBeInTheDocument()
   })
 
-  it('renders nothing on web, mobile or Windows', () => {
-    const { container: web } = renderCard({ tauri: false })
-    expect(web).toBeEmptyDOMElement()
-    cleanup()
+  it('renders the install guide on web instead of the one-click install action', () => {
+    renderCard({ tauri: false })
+
+    const guideLink = screen.getByRole('link', { name: /view install guide/i })
+    expect(guideLink).toHaveAttribute(
+      'href',
+      'https://github.com/thunderbird/thunderbolt/blob/main/cli/README.md#install',
+    )
+    expect(guideLink).toHaveAttribute('target', '_blank')
+    expect(guideLink).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.getByText(/install the standalone/i)).toHaveTextContent('from your shell')
+    expect(screen.queryByRole('button', { name: /install cli/i })).not.toBeInTheDocument()
+  })
+
+  it('renders nothing on unsupported Tauri platforms', () => {
     const { container: windows } = renderCard({ platform: 'windows' })
     expect(windows).toBeEmptyDOMElement()
     cleanup()

@@ -61,3 +61,15 @@ export const defaultModeResearch: Mode = {
  * Array of all default modes for iteration
  */
 export const defaultModes: ReadonlyArray<Mode> = [defaultModeChat, defaultModeSearch, defaultModeResearch] as const
+
+/**
+ * Monotonic version of the shipped mode defaults. Bump every time `defaultModes`
+ * changes in any way. Reconcile uses this as the ordering signal so multi-device
+ * sync groups converge without ping-ponging (THU-637 pattern extended to modes
+ * in THU-677): a device only overwrites existing rows when its picked defaults
+ * version is strictly newer than the highest ever applied on this account.
+ *
+ * The paired snapshot test in `modes.test.ts` fails on any change to this
+ * file's defaults without a matching version bump.
+ */
+export const defaultModesVersion = 1

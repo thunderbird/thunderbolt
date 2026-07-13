@@ -109,9 +109,16 @@ See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync
 
 ## Reconciled defaults and version bumps
 
-Reconciled default tables (`shared/defaults/models.ts` today, more to follow) ship a monotonic `defaults<X>Version` constant next to the defaults array. Reconciliation uses it as the ordering signal so multi-device sync groups converge without ping-ponging (see THU-637): a device only overwrites an existing row when its defaults version is strictly newer than the highest ever applied on this account.
+Reconciled default tables ship a monotonic `defaults<X>Version` constant next to the defaults array. Reconciliation uses it as the ordering signal so multi-device sync groups converge without ping-ponging (see THU-637, extended to the other reconciled tables in THU-677): a device only overwrites an existing row when its defaults version is strictly newer than the highest ever applied on this account.
 
-**When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
+Files that ship a version constant today:
+- `shared/defaults/models.ts` — `defaultModelsVersion`
+- `src/defaults/modes.ts` — `defaultModesVersion`
+- `src/defaults/tasks.ts` — `defaultTasksVersion`
+- `src/defaults/skills.ts` — `defaultSkillsVersion`
+- `src/defaults/settings.ts` — `defaultSettingsVersion`
+
+**When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`, `src/defaults/modes.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
 
 ## CORS and API headers
 

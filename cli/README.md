@@ -11,7 +11,10 @@ REPL; there's no daemon, no config file, and nothing to install but the binary.
 **Recommended — remote installer** (macOS arm64 and Linux):
 
 ```sh
+# curl
 curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/install.sh | sh
+# wget
+wget -qO- https://raw.githubusercontent.com/thunderbird/thunderbolt/main/install.sh | sh
 ```
 
 The installer selects the correct binary, resolves the newest stable release,

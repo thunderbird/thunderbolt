@@ -17,9 +17,37 @@ fail() {
   exit 1
 }
 
-command -v curl >/dev/null 2>&1 \
-  || fail "curl is required. Install curl, then run this installer again."
+if command -v curl >/dev/null 2>&1; then
+  downloader="curl"
+elif command -v wget >/dev/null 2>&1; then
+  downloader="wget"
+else
+  fail "curl or wget is required."
+fi
 [ -n "${HOME:-}" ] || fail "HOME is not set; cannot determine the install directory."
+
+fetch() {
+  case "${downloader}-${3:-}" in
+    curl-api)
+      curl -fsSL \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "${1}" -o "${2}"
+      ;;
+    curl-*)
+      curl -fsSL "${1}" -o "${2}"
+      ;;
+    wget-api)
+      wget -q \
+        --header="Accept: application/vnd.github+json" \
+        --header="X-GitHub-Api-Version: 2022-11-28" \
+        "${1}" -O "${2}"
+      ;;
+    wget-*)
+      wget -q "${1}" -O "${2}"
+      ;;
+  esac
+}
 
 os=$(uname -s)
 arch=$(uname -m)
@@ -62,11 +90,7 @@ resolve_latest_version() {
   page=1
   while :; do
     page_file="${temp_dir}/releases-${page}.json"
-    if ! curl -fsSL \
-      -H "Accept: application/vnd.github+json" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      "${api_url}?per_page=100&page=${page}" \
-      -o "${page_file}"; then
+    if ! fetch "${api_url}?per_page=100&page=${page}" "${page_file}" api; then
       fail "could not query GitHub releases at ${api_url}"
     fi
 
@@ -120,6 +144,10 @@ if [ -n "${THUNDERBOLT_VERSION:-}" ]; then
   version="${THUNDERBOLT_VERSION}"
   printf '%s\n' "${version}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
     || fail "THUNDERBOLT_VERSION must be a semantic-version release tag such as v0.1.107."
+  case "${version}" in
+    v*) ;;
+    *) version="v${version}" ;;
+  esac
 else
   version=$(resolve_latest_version)
 fi
@@ -129,10 +157,10 @@ binary_file="${temp_dir}/${binary_name}"
 checksums_file="${temp_dir}/SHA256SUMS"
 download_url="${releases_url}/${version}"
 
-if ! curl -fsSL "${download_url}/${binary_name}" -o "${binary_file}"; then
+if ! fetch "${download_url}/${binary_name}" "${binary_file}"; then
   fail "could not download ${download_url}/${binary_name}. Confirm release and platform assets exist."
 fi
-if ! curl -fsSL "${download_url}/SHA256SUMS" -o "${checksums_file}"; then
+if ! fetch "${download_url}/SHA256SUMS" "${checksums_file}"; then
   fail "could not download ${download_url}/SHA256SUMS."
 fi
 

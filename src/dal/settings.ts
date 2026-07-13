@@ -216,6 +216,23 @@ export const hasSetting = async (db: AnyDrizzleDatabase, key: string): Promise<b
 }
 
 /**
+ * Whether any `defaults_version.*` marker exists in `settingsTable`. Presence
+ * proves `reconcileDefaults` (see `src/lib/reconcile-defaults.ts`) has run to
+ * completion on some prior boot on this device — or synced in from a peer
+ * that did — because `advanceVersionMarker` is the only writer of that key
+ * namespace and it fires only on a real mutation. Used by the init pipeline
+ * (THU-677) to route boots to the returning-boot fast path.
+ */
+export const hasReconciledDefaults = async (db: AnyDrizzleDatabase): Promise<boolean> => {
+  const rows = await db
+    .select({ key: settingsTable.key })
+    .from(settingsTable)
+    .where(sql`${settingsTable.key} LIKE 'defaults_version.%'`)
+    .limit(1)
+  return rows.length > 0
+}
+
+/**
  * Create a setting only if it doesn't already exist
  * Does nothing if the setting already exists (preserves existing value)
  * Uses insert-then-catch-conflict to avoid TOCTOU race (PowerSync views don't support ON CONFLICT)

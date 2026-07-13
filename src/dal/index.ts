@@ -26,6 +26,7 @@ export {
   getSettings,
   getSettingsRecords,
   getThemeSetting,
+  hasReconciledDefaults,
   hasSetting,
   resetSettingToDefault,
   updateSettings,

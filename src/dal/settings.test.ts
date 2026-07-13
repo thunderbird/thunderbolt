@@ -15,6 +15,7 @@ import {
   getSettings,
   getSettingsRecords,
   getThemeSetting,
+  hasReconciledDefaults,
   hasSetting,
   resetSettingToDefault,
   updateSettings,
@@ -52,6 +53,30 @@ describe('Settings DAL', () => {
       await createSetting(getDb(), 'null_key', null)
       const exists = await hasSetting(getDb(), 'null_key')
       expect(exists).toBe(true)
+    })
+  })
+
+  describe('hasReconciledDefaults', () => {
+    it('returns false on a truly fresh DB with no markers', async () => {
+      // `resetTestDatabase` (beforeEach) reapplies schema without reconciling,
+      // so no `defaults_version.*` rows exist here.
+      const seen = await hasReconciledDefaults(getDb())
+      expect(seen).toBe(false)
+    })
+
+    it('returns true after a `defaults_version.*` marker is written', async () => {
+      await createSetting(getDb(), 'defaults_version.models', '1')
+      const seen = await hasReconciledDefaults(getDb())
+      expect(seen).toBe(true)
+    })
+
+    it('ignores non-marker settings rows (LIKE pattern is prefix-scoped)', async () => {
+      // A settings row that isn't a marker (e.g. a user preference) must not
+      // flip the probe — otherwise the returning-boot fast path would fire
+      // before any reconcile ever ran.
+      await createSetting(getDb(), 'preferred_name', 'test-user')
+      const seen = await hasReconciledDefaults(getDb())
+      expect(seen).toBe(false)
     })
   })
 

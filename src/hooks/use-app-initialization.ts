@@ -5,11 +5,10 @@
 import { fetchConfig } from '@/api/config'
 import { useConfigStore } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
-import { getSettings } from '@/dal'
+import { getSettings, hasReconciledDefaults } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
-import { settingsTable } from '@/db/tables'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
@@ -174,23 +173,16 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     await db.get(sql`select 1`)
   })
 
-  // Step 2c: Returning-boot detection. Presence of any `defaults_version.*`
-  // row in settingsTable proves `reconcileDefaults` ran to completion on some
-  // prior boot on this device (or synced in from a peer that did). Under the
-  // per-table version-gate (THU-637 + THU-677) that same reconcile is safe
-  // to re-run without first waiting for cloud sync — with
+  // Step 2c: Returning-boot detection via the `hasReconciledDefaults` DAL
+  // helper. Presence of any `defaults_version.*` marker proves a prior
+  // reconcile completed on this device (or synced in from a peer that did).
+  // Under the per-table version-gate (THU-637 + THU-677) that same reconcile
+  // is safe to re-run without first waiting for cloud sync — with
   // `initialSyncCompleted=false` the gate collapses to a no-op for any table
   // that already has rows. This shaves the 10s waitForInitialSync ceiling
   // off every refresh, at the cost of bundled default updates taking one
   // extra boot to apply (they land on the next boot where sync completes).
-  const hasReconciledBefore = await time('step2c_returning_boot_probe', async () => {
-    const rows = await db
-      .select({ key: settingsTable.key })
-      .from(settingsTable)
-      .where(sql`${settingsTable.key} LIKE 'defaults_version.%'`)
-      .limit(1)
-    return rows.length > 0
-  })
+  const hasReconciledBefore = await time('step2c_returning_boot_probe', () => hasReconciledDefaults(db))
 
   // Step 3: Wait for PowerSync initial sync — only on fresh boots when sync is
   // enabled. Returning boots on sync-enabled devices kick off the sync

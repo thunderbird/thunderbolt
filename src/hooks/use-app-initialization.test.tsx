@@ -156,6 +156,7 @@ describe('useAppInitialization', () => {
       'step1_create_app_dir_ms',
       'step2_initialize_database_ms',
       'step2b_db_ready_ms',
+      'step2c_returning_boot_probe_ms',
       'step3_wait_for_initial_sync_ms',
       'step4_reconcile_defaults_ms',
       'step4b_run_data_migrations_ms',

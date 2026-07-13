@@ -118,6 +118,8 @@ Files that ship a version constant today:
 - `src/defaults/skills.ts` — `defaultSkillsVersion`
 - `src/defaults/settings.ts` — `defaultSettingsVersion`
 
+`src/defaults/model-profiles.ts` is also reconciled but does not carry its own version — profiles ride the models gate (`insertMissing: true`, `canOverwrite: modelsGate.canOverwrite`), so bumping `defaultModelsVersion` covers profile changes too.
+
 **When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`, `src/defaults/modes.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
 
 ## CORS and API headers

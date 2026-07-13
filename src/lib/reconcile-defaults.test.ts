@@ -7,7 +7,8 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
-import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
+import type { AnyColumn } from 'drizzle-orm'
+import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core'
 import {
   modelProfilesTable,
   modelsTable,
@@ -1225,8 +1226,8 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
     currentVersion: number
     defaults: readonly Row[]
     hashFn: (row: Row) => string
-    dbTable: SQLiteTableWithColumns<any>
-    pk: SQLiteTableWithColumns<any>['id']
+    dbTable: AnySQLiteTable
+    pk: AnyColumn
     editableField: keyof Row & string
   }) => {
     describe(c.table, () => {
@@ -1382,12 +1383,14 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
       // — `data_collection` — so overwriting doesn't collide with the null-
       // preservation guard on user-set values.
       const target = defaultSettings.find((s) => s.key === 'data_collection')
-      expect(target).toBeDefined()
-      const staleRow = { ...target!, value: 'stale' }
+      if (!target) {
+        throw new Error('fixture drift: `data_collection` no longer in defaultSettings')
+      }
+      const staleRow = { ...target, value: 'stale' }
       await db
         .update(settingsTable)
         .set({ value: 'stale', defaultHash: hashSetting(staleRow) })
-        .where(eq(settingsTable.key, target!.key))
+        .where(eq(settingsTable.key, target.key))
       await db
         .update(settingsTable)
         .set({ value: String(defaultSettingsVersion - 1) })
@@ -1395,8 +1398,8 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
 
       await reconcileDefaults(db)
 
-      const upgraded = await db.select().from(settingsTable).where(eq(settingsTable.key, target!.key)).get()
-      expect(upgraded?.value).toBe(target!.value)
+      const upgraded = await db.select().from(settingsTable).where(eq(settingsTable.key, target.key)).get()
+      expect(upgraded?.value).toBe(target.value)
       expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
     })
 
@@ -1404,8 +1407,10 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
       const db = getDb()
 
       const target = defaultSettings.find((s) => s.value !== null)
-      expect(target).toBeDefined()
-      const newer = { ...target!, value: 'from-newer-bundle' }
+      if (!target) {
+        throw new Error('fixture drift: defaultSettings has no non-null-value entry')
+      }
+      const newer = { ...target, value: 'from-newer-bundle' }
       await db.insert(settingsTable).values({ ...newer, defaultHash: hashSetting(newer) })
       await db.insert(settingsTable).values({
         key: 'defaults_version.settings',
@@ -1414,7 +1419,7 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
 
       await reconcileDefaults(db)
 
-      const preserved = await db.select().from(settingsTable).where(eq(settingsTable.key, target!.key)).get()
+      const preserved = await db.select().from(settingsTable).where(eq(settingsTable.key, target.key)).get()
       expect(preserved?.value).toBe('from-newer-bundle')
       expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion + 1)
     })

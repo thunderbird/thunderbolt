@@ -78,15 +78,9 @@ const computeCanOverwrite = async (
 ): Promise<{ canOverwrite: boolean; stored: StoredVersion }> => {
   const stored = await readAppliedVersion(tx, versionKey)
   const rawCanOverwrite = pickedVersion > (stored.version ?? Number.NEGATIVE_INFINITY)
-  const canOverwrite = ((): boolean => {
-    if (!hasAnyRow) {
-      return rawCanOverwrite
-    }
-    if (!initialSyncCompleted) {
-      return false
-    }
-    return rawCanOverwrite
-  })()
+  // Fresh install (0 rows) always seeds; a populated table needs sync to have
+  // settled before we trust the stored marker enough to write.
+  const canOverwrite = rawCanOverwrite && (!hasAnyRow || initialSyncCompleted)
   return { canOverwrite, stored }
 }
 
@@ -411,44 +405,17 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     const hasAnySkillRow = (await tx.select({ id: skillsTable.id }).from(skillsTable).limit(1)).length > 0
     const hasAnySettingsRow = (await tx.select({ key: settingsTable.key }).from(settingsTable).limit(1)).length > 0
 
-    // Version gates per table. Each returns the stored marker snapshot so the
+    // Version gate for models. Returns the stored marker snapshot so the
     // per-table write-back can INSERT vs UPDATE without a second read. See
     // `computeCanOverwrite` for the full rationale — in short, prevents an
-    // older-bundle device from downgrading newer synced rows (THU-637), and
-    // extends the same protection to modes/tasks/skills/settings (THU-677).
+    // older-bundle device from downgrading newer synced rows (THU-637).
+    // Modes/tasks/skills/settings gate the same way, folded into the loop
+    // near the bottom of this transaction (THU-677).
     const modelsGate = await computeCanOverwrite(
       tx,
       modelsVersionKey,
       modelsSource.version,
       hasAnyModelRow,
-      initialSyncCompleted,
-    )
-    const modesGate = await computeCanOverwrite(
-      tx,
-      modesVersionKey,
-      defaultModesVersion,
-      hasAnyModeRow,
-      initialSyncCompleted,
-    )
-    const tasksGate = await computeCanOverwrite(
-      tx,
-      tasksVersionKey,
-      defaultTasksVersion,
-      hasAnyTaskRow,
-      initialSyncCompleted,
-    )
-    const skillsGate = await computeCanOverwrite(
-      tx,
-      skillsVersionKey,
-      defaultSkillsVersion,
-      hasAnySkillRow,
-      initialSyncCompleted,
-    )
-    const settingsGate = await computeCanOverwrite(
-      tx,
-      settingsVersionKey,
-      defaultSettingsVersion,
-      hasAnySettingsRow,
       initialSyncCompleted,
     )
 
@@ -549,42 +516,49 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // Modes / tasks / skills / settings share the same shape: gate on the
     // per-table version + sync-incomplete guard, reconcile, advance marker
     // only on a real mutation. `canResurrect` follows the models pattern —
-    // sync must have completed before we un-delete a soft-deleted row (no
-    // cleanup step targets these tables today, but the option is future-safe).
-    const modesPass = await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode, {
-      canOverwrite: modesGate.canOverwrite,
-      canResurrect: initialSyncCompleted,
-    })
-    if (modesGate.canOverwrite && modesPass.mutated) {
-      await advanceVersionMarker(tx, modesVersionKey, defaultModesVersion, modesGate.stored)
+    // it requires a trustworthy view of cloud state, otherwise a peer's
+    // genuine retirement could be masquerading as a cleanup shape from our
+    // partial view. No `cleanupRemovedDefaults` call targets these tables
+    // today, but resurrect still runs if a peer soft-deleted a bundle-known
+    // row this device still ships as default. Skills note: they superseded
+    // the legacy default automations that used to seed promptsTable here.
+    // See THU-547.
+    //
+    // Each pass is wrapped in a generic helper so its `defaults`/`hashFn` T
+    // binding is captured per-call — a `for-of` over a heterogeneous config
+    // array would force TS to unify T across the union and fail to typecheck.
+    const runGatedPass = async <T extends { defaultHash: string | null }>(
+      table: SQLiteTableWithColumns<any>,
+      defaults: readonly T[],
+      hashFn: (item: T) => string,
+      versionKey: string,
+      currentVersion: number,
+      hasAnyRow: boolean,
+      keyField?: string,
+    ): Promise<void> => {
+      const gate = await computeCanOverwrite(tx, versionKey, currentVersion, hasAnyRow, initialSyncCompleted)
+      const pass = await reconcileDefaultsForTable(tx, table, defaults, hashFn, {
+        canOverwrite: gate.canOverwrite,
+        canResurrect: initialSyncCompleted,
+        ...(keyField ? { keyField } : {}),
+      })
+      if (gate.canOverwrite && pass.mutated) {
+        await advanceVersionMarker(tx, versionKey, currentVersion, gate.stored)
+      }
     }
 
-    const tasksPass = await reconcileDefaultsForTable(tx, tasksTable, defaultTasks, hashTask, {
-      canOverwrite: tasksGate.canOverwrite,
-      canResurrect: initialSyncCompleted,
-    })
-    if (tasksGate.canOverwrite && tasksPass.mutated) {
-      await advanceVersionMarker(tx, tasksVersionKey, defaultTasksVersion, tasksGate.stored)
-    }
-
-    // Skills (the default skills supersede the legacy default automations,
-    // which used to seed promptsTable here. See THU-547.)
-    const skillsPass = await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill, {
-      canOverwrite: skillsGate.canOverwrite,
-      canResurrect: initialSyncCompleted,
-    })
-    if (skillsGate.canOverwrite && skillsPass.mutated) {
-      await advanceVersionMarker(tx, skillsVersionKey, defaultSkillsVersion, skillsGate.stored)
-    }
-
-    const settingsPass = await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, {
-      keyField: 'key',
-      canOverwrite: settingsGate.canOverwrite,
-      canResurrect: initialSyncCompleted,
-    })
-    if (settingsGate.canOverwrite && settingsPass.mutated) {
-      await advanceVersionMarker(tx, settingsVersionKey, defaultSettingsVersion, settingsGate.stored)
-    }
+    await runGatedPass(modesTable, defaultModes, hashMode, modesVersionKey, defaultModesVersion, hasAnyModeRow)
+    await runGatedPass(tasksTable, defaultTasks, hashTask, tasksVersionKey, defaultTasksVersion, hasAnyTaskRow)
+    await runGatedPass(skillsTable, defaultSkills, hashSkill, skillsVersionKey, defaultSkillsVersion, hasAnySkillRow)
+    await runGatedPass(
+      settingsTable,
+      defaultSettings,
+      hashSetting,
+      settingsVersionKey,
+      defaultSettingsVersion,
+      hasAnySettingsRow,
+      'key',
+    )
 
     // Initialize anonymous ID for analytics (unique per user)
     await createSetting(tx, 'anonymous_id', uuidv7())

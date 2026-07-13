@@ -42,7 +42,31 @@ jobs:
         if: inputs.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y webkit2gtk-4.1 libappindicator3-dev
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            squashfs-tools
+          # Install libfuse2 for running linuxdeploy (which is itself an AppImage).
+          # Ubuntu 24.04 uses libfuse2t64 as a transition package. Kept in sync
+          # with desktop-release.yml so test builds match release builds and can
+          # actually produce the AppImage bundle.
+          sudo add-apt-repository universe -y
+          sudo apt-get update
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
+
+      - name: Use env-var-aware linuxdeploy (fixes libwayland-client exclusion)
+        if: inputs.platform == 'linux'
+        run: |
+          # Mirror the pre-populate step from desktop-release.yml. Tauri's pinned
+          # linuxdeploy binary predates `LINUXDEPLOY_EXCLUDED_LIBRARIES` env-var
+          # support; pre-placing the current `continuous` build in Tauri's cache
+          # dir makes Tauri's `if !exists() { download }` guard skip the outdated
+          # download and use this one. See thunderbird/thunderbolt#955.
+          mkdir -p ~/.cache/tauri
+          curl -fsSL 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage' \
+            -o ~/.cache/tauri/linuxdeploy-x86_64.AppImage
+          chmod +x ~/.cache/tauri/linuxdeploy-x86_64.AppImage
 
       - name: Build
         run: |
@@ -81,6 +105,9 @@ jobs:
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
           LIBSQL_BUNDLED: ${{ inputs.platform == 'windows-arm' && '1' || '' }}
+          # Mirror the AppImage exclusion from desktop-release.yml so test builds
+          # reflect what real users get. See thunderbird/thunderbolt#955.
+          LINUXDEPLOY_EXCLUDED_LIBRARIES: ${{ inputs.platform == 'linux' && 'libwayland-client.so*' || '' }}
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           # Intel macOS cross-compilation settings
           CC_x86_64_apple_darwin: ${{ inputs.platform == 'macos-intel' && 'clang -target x86_64-apple-darwin' || '' }}
@@ -93,13 +120,17 @@ jobs:
         with:
           name: ${{ inputs.platform }}-build
           # actions/upload-artifact does not expand brace patterns, so list
-          # each extension on its own line.
+          # each extension on its own line. `target/**/bundle/**` matches both
+          # native builds (`target/release/bundle/…`, used by the Linux job)
+          # and cross-compiled builds (`target/<triple>/release/bundle/…`, used
+          # by Windows/macOS jobs) — the previous `target/*/release/bundle/**`
+          # glob missed the native Linux path entirely.
           path: |
-            src-tauri/target/*/release/bundle/**/*.deb
-            src-tauri/target/*/release/bundle/**/*.AppImage
-            src-tauri/target/*/release/bundle/**/*.rpm
-            src-tauri/target/*/release/bundle/**/*.msi
-            src-tauri/target/*/release/bundle/**/*.exe
-            src-tauri/target/*/release/bundle/**/*.dmg
-            src-tauri/target/*/release/bundle/**/*.app.tar.gz
+            src-tauri/target/**/bundle/**/*.deb
+            src-tauri/target/**/bundle/**/*.AppImage
+            src-tauri/target/**/bundle/**/*.rpm
+            src-tauri/target/**/bundle/**/*.msi
+            src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/**/bundle/**/*.app.tar.gz
           retention-days: 7

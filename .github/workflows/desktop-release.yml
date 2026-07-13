@@ -225,6 +225,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
 
+      - name: Use env-var-aware linuxdeploy (fixes libwayland-client exclusion)
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          # Tauri's pinned linuxdeploy binary at binary-releases/releases/linuxdeploy/
+          # predates `LINUXDEPLOY_EXCLUDED_LIBRARIES` env-var support (added
+          # upstream in linuxdeploy@98f393c4, 2024-06-13). Pre-place the current
+          # `continuous` build in Tauri's cache dir so Tauri's `if !exists()
+          # { download }` guard skips the outdated download and uses this one —
+          # the env var then actually takes effect. See thunderbird/thunderbolt#955.
+          mkdir -p ~/.cache/tauri
+          curl -fsSL 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage' \
+            -o ~/.cache/tauri/linuxdeploy-x86_64.AppImage
+          chmod +x ~/.cache/tauri/linuxdeploy-x86_64.AppImage
+
       - name: build Tauri app for Linux
         if: matrix.os == 'ubuntu-24.04'
         run: |
@@ -235,6 +249,14 @@ jobs:
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
           NO_STRIP: true
+          # Prevent linuxdeploy from bundling libwayland-client into the AppImage.
+          # The bundled copy is often incompatible with the user's compositor and
+          # produces `EGL_BAD_PARAMETER` on Wayland (Arch, some Fedora setups).
+          # Excluding it forces the AppImage to load the user's system copy at
+          # runtime, which matches their compositor by construction. Read by
+          # linuxdeploy on AppDir init (semicolon-separated fnmatch globs); Tauri
+          # inherits env to the subprocess. See thunderbird/thunderbolt#955.
+          LINUXDEPLOY_EXCLUDED_LIBRARIES: 'libwayland-client.so*'
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

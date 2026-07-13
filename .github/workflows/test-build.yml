@@ -55,18 +55,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
 
-      - name: Use env-var-aware linuxdeploy (fixes libwayland-client exclusion)
+      - name: Set up pinned linuxdeploy
         if: inputs.platform == 'linux'
-        run: |
-          # Mirror the pre-populate step from desktop-release.yml. Tauri's pinned
-          # linuxdeploy binary predates `LINUXDEPLOY_EXCLUDED_LIBRARIES` env-var
-          # support; pre-placing the current `continuous` build in Tauri's cache
-          # dir makes Tauri's `if !exists() { download }` guard skip the outdated
-          # download and use this one. See thunderbird/thunderbolt#955.
-          mkdir -p ~/.cache/tauri
-          curl -fsSL 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage' \
-            -o ~/.cache/tauri/linuxdeploy-x86_64.AppImage
-          chmod +x ~/.cache/tauri/linuxdeploy-x86_64.AppImage
+        uses: ./.github/actions/setup-linuxdeploy
 
       - name: Build
         run: |
@@ -105,9 +96,6 @@ jobs:
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
           LIBSQL_BUNDLED: ${{ inputs.platform == 'windows-arm' && '1' || '' }}
-          # Mirror the AppImage exclusion from desktop-release.yml so test builds
-          # reflect what real users get. See thunderbird/thunderbolt#955.
-          LINUXDEPLOY_EXCLUDED_LIBRARIES: ${{ inputs.platform == 'linux' && 'libwayland-client.so*' || '' }}
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           # Intel macOS cross-compilation settings
           CC_x86_64_apple_darwin: ${{ inputs.platform == 'macos-intel' && 'clang -target x86_64-apple-darwin' || '' }}

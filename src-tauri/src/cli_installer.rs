@@ -8,7 +8,7 @@
 //! scheme the CLI release pipeline defines (`.github/workflows/cli-release.yml`):
 //!
 //! ```text
-//! https://github.com/thunderbird/thunderbolt/releases/download/v{version}/thunderbolt-{target}
+//! https://github.com/thunderbird/thunderbolt/releases/download/v{version}/thunderbolt-cli-{target}
 //! https://github.com/thunderbird/thunderbolt/releases/download/v{version}/SHA256SUMS
 //! ```
 //!
@@ -86,11 +86,11 @@ fn resolve_target(os: &str, arch: &str) -> Option<&'static str> {
 
 /// The release asset filename for a target (matches the `SHA256SUMS` entries).
 fn asset_name(target: &str) -> String {
-    format!("thunderbolt-{target}")
+    format!("thunderbolt-cli-{target}")
 }
 
 fn binary_url(version: &str, target: &str) -> String {
-    format!("{RELEASE_BASE}/v{version}/thunderbolt-{target}")
+    format!("{RELEASE_BASE}/v{version}/thunderbolt-cli-{target}")
 }
 
 fn checksums_url(version: &str) -> String {
@@ -288,7 +288,7 @@ mod tests {
     fn urls_follow_the_release_scheme() {
         assert_eq!(
             binary_url("0.1.105", "darwin-arm64"),
-            "https://github.com/thunderbird/thunderbolt/releases/download/v0.1.105/thunderbolt-darwin-arm64"
+            "https://github.com/thunderbird/thunderbolt/releases/download/v0.1.105/thunderbolt-cli-darwin-arm64"
         );
         assert_eq!(
             checksums_url("0.1.105"),
@@ -298,18 +298,18 @@ mod tests {
 
     #[test]
     fn asset_name_matches_the_binary_filename() {
-        assert_eq!(asset_name("linux-x64"), "thunderbolt-linux-x64");
+        assert_eq!(asset_name("linux-x64"), "thunderbolt-cli-linux-x64");
     }
 
     #[test]
     fn expected_sha_parses_text_mode_manifest() {
         let manifest = "\
-aaaa1111  thunderbolt-darwin-arm64
-bbbb2222  thunderbolt-linux-x64
-cccc3333  thunderbolt-linux-arm64
+aaaa1111  thunderbolt-cli-darwin-arm64
+bbbb2222  thunderbolt-cli-linux-x64
+cccc3333  thunderbolt-cli-linux-arm64
 ";
         assert_eq!(
-            expected_sha_for(manifest, "thunderbolt-linux-x64"),
+            expected_sha_for(manifest, "thunderbolt-cli-linux-x64"),
             Some("bbbb2222".to_string())
         );
     }
@@ -317,19 +317,22 @@ cccc3333  thunderbolt-linux-arm64
     #[test]
     fn expected_sha_parses_binary_mode_and_lowercases() {
         // sha256sum binary mode uses ` *filename`; digests are compared lowercase.
-        let manifest = "ABCD1234 *thunderbolt-darwin-arm64\n";
+        let manifest = "ABCD1234 *thunderbolt-cli-darwin-arm64\n";
         assert_eq!(
-            expected_sha_for(manifest, "thunderbolt-darwin-arm64"),
+            expected_sha_for(manifest, "thunderbolt-cli-darwin-arm64"),
             Some("abcd1234".to_string())
         );
     }
 
     #[test]
     fn expected_sha_returns_none_for_absent_or_partial_names() {
-        let manifest = "aaaa1111  thunderbolt-linux-x64-old\n";
+        let manifest = "aaaa1111  thunderbolt-cli-linux-x64-old\n";
         // Must match the asset exactly, not as a prefix of another entry.
-        assert_eq!(expected_sha_for(manifest, "thunderbolt-linux-x64"), None);
-        assert_eq!(expected_sha_for("", "thunderbolt-linux-x64"), None);
+        assert_eq!(
+            expected_sha_for(manifest, "thunderbolt-cli-linux-x64"),
+            None
+        );
+        assert_eq!(expected_sha_for("", "thunderbolt-cli-linux-x64"), None);
     }
 
     #[test]

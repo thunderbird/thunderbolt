@@ -15,9 +15,9 @@
     "test": "bun test ./src --timeout 5000 --randomize",
     "test:5x": "bun test ./src --timeout 5000 --randomize --rerun-each 5",
     "build": "bun build --compile --minify --sourcemap src/index.ts --outfile dist/thunderbolt",
-    "build:darwin-arm64": "bun build --compile --minify --target=bun-darwin-arm64 src/index.ts --outfile dist/thunderbolt-darwin-arm64",
-    "build:linux-x64": "bun build --compile --minify --target=bun-linux-x64 src/index.ts --outfile dist/thunderbolt-linux-x64",
-    "build:linux-arm64": "bun build --compile --minify --target=bun-linux-arm64 src/index.ts --outfile dist/thunderbolt-linux-arm64",
+    "build:darwin-arm64": "bun build --compile --minify --target=bun-darwin-arm64 src/index.ts --outfile dist/thunderbolt-cli-darwin-arm64",
+    "build:linux-x64": "bun build --compile --minify --target=bun-linux-x64 src/index.ts --outfile dist/thunderbolt-cli-linux-x64",
+    "build:linux-arm64": "bun build --compile --minify --target=bun-linux-arm64 src/index.ts --outfile dist/thunderbolt-cli-linux-arm64",
     "build:all": "bun run build:darwin-arm64 && bun run build:linux-x64 && bun run build:linux-arm64"
   },
   "dependencies": {

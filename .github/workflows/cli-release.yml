@@ -5,7 +5,7 @@ run-name: CLI release for v${{ inputs.version }}
 # SHA256SUMS manifest, to the shared `v{version}` GitHub Release. The desktop
 # app derives download URLs from its own version:
 #
-#   https://github.com/thunderbird/thunderbolt/releases/download/v{APP_VERSION}/thunderbolt-{target}
+#   https://github.com/thunderbird/thunderbolt/releases/download/v{APP_VERSION}/thunderbolt-cli-{target}
 #   https://github.com/thunderbird/thunderbolt/releases/download/v{APP_VERSION}/SHA256SUMS
 #
 # where {target} is one of: darwin-arm64 | linux-x64 | linux-arm64.
@@ -128,8 +128,8 @@ jobs:
       - name: Upload CLI binary artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: thunderbolt-${{ matrix.target }}
-          path: cli/dist/thunderbolt-${{ matrix.target }}
+          name: thunderbolt-cli-${{ matrix.target }}
+          path: cli/dist/thunderbolt-cli-${{ matrix.target }}
           if-no-files-found: error
           retention-days: 1
 
@@ -144,7 +144,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
-          pattern: thunderbolt-*
+          pattern: thunderbolt-cli-*
           merge-multiple: true
 
       - name: Generate SHA256SUMS and upload all assets to the release
@@ -154,5 +154,5 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           cd dist
-          sha256sum thunderbolt-* > SHA256SUMS
-          gh release upload "v${VERSION}" thunderbolt-* SHA256SUMS --clobber --repo "$REPO"
+          sha256sum thunderbolt-cli-* > SHA256SUMS
+          gh release upload "v${VERSION}" thunderbolt-cli-* SHA256SUMS --clobber --repo "$REPO"

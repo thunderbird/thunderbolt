@@ -47,14 +47,14 @@ see below) and verify the checksum before running:
 TARGET=darwin-arm64
 BASE=https://github.com/thunderbird/thunderbolt/releases/latest/download
 
-curl -fsSLO "$BASE/thunderbolt-$TARGET"
+curl -fsSLO "$BASE/thunderbolt-cli-$TARGET"
 curl -fsSLO "$BASE/SHA256SUMS"
-grep " thunderbolt-$TARGET\$" SHA256SUMS | shasum -a 256 -c -
+grep " thunderbolt-cli-$TARGET\$" SHA256SUMS | shasum -a 256 -c -
 
-chmod +x "thunderbolt-$TARGET"
+chmod +x "thunderbolt-cli-$TARGET"
 # macOS only: clear the download quarantine so Gatekeeper allows the unsigned binary
-xattr -d com.apple.quarantine "thunderbolt-$TARGET" 2>/dev/null || true
-mv "thunderbolt-$TARGET" ~/.local/bin/thunderbolt
+xattr -d com.apple.quarantine "thunderbolt-cli-$TARGET" 2>/dev/null || true
+mv "thunderbolt-cli-$TARGET" ~/.local/bin/thunderbolt
 ```
 
 > **What the checksum covers.** `SHA256SUMS` and the binary come from the same

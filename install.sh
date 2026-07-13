@@ -152,7 +152,7 @@ else
   version=$(resolve_latest_version)
 fi
 
-binary_name="thunderbolt-${target}"
+binary_name="thunderbolt-cli-${target}"
 binary_file="${temp_dir}/${binary_name}"
 checksums_file="${temp_dir}/SHA256SUMS"
 download_url="${releases_url}/${version}"

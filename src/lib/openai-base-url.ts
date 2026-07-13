@@ -8,8 +8,11 @@
  * URLs as `${baseURL}${path}` where `path` is e.g. `/chat/completions`; a
  * baseURL without `/v1` sends the request to the wrong path (404), and a
  * baseURL with a trailing slash produces `//chat/completions` which some
- * servers reject. Applying the same normalisation to the `Load Models` fetch
- * and the runtime provider keeps both paths in lockstep.
+ * servers reject. Applied to the `Load Models` fetch and the runtime provider
+ * so both compose the upstream URL from the same normalized base — the two
+ * paths still dispatch their transport independently (Load Models is always a
+ * direct browser fetch; the runtime provider only bypasses the proxy for
+ * loopback hosts).
  */
 export const normalizeOpenAiBaseUrl = (raw: string): string => {
   const trimmed = raw.trim().replace(/\/+$/, '')

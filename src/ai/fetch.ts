@@ -23,7 +23,7 @@ import { hydrateQuotesAsText } from '@/lib/quotes'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
-import { isLocalUrl } from '@/lib/is-local-url'
+import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
@@ -431,17 +431,21 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!conn) {
         throw new Error('No URL provided for custom provider')
       }
-      // Dispatch on whether the target is on the user's own network. Local
-      // Custom URLs (LM Studio at localhost:1234, Ollama, LAN model servers,
-      // etc.) skip the universal proxy so `localhost` means what the browser
-      // sees, not what the backend container sees — this fixes docker-compose
-      // where the backend can't reach the host's LM Studio. Public Custom
-      // URLs keep going through the proxy because THU-424 established that
-      // most public OpenAI-compat endpoints don't set CORS headers and would
-      // fail a direct browser fetch. `baseFetch` is the plain browser fetch
-      // (or Tauri fetch when opted in); it doesn't attach session
-      // credentials, so the local server never sees our auth.
-      const providerFetch: typeof baseFetch = isLocalUrl(conn.baseURL) ? baseFetch : conn.fetch
+      // Loopback Custom URLs (LM Studio at localhost:1234, Ollama, `127.x.x.x`,
+      // `[::1]`, `*.localhost`) skip the universal proxy so `localhost` means
+      // what the browser sees, not what the backend container sees — this fixes
+      // docker-compose where the backend can't reach the host's LM Studio.
+      // Everything else — including RFC1918 LAN IPs, `host.docker.internal`,
+      // mDNS `.local` names, and true public endpoints — keeps going through
+      // the proxy. Loopback is the only cross-origin `http://` target an
+      // https-served frontend can reach anyway (mixed-content blocking), and
+      // public Custom endpoints rely on the proxy for CORS bypass (THU-424).
+      // `baseFetch` is the plain browser fetch (or Tauri fetch when opted in);
+      // it doesn't attach session credentials, so the local server never sees
+      // our auth.
+      const hostname = URL.canParse(conn.baseURL) ? new URL(conn.baseURL).hostname : ''
+      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : conn.fetch
+
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
         baseURL: normalizeOpenAiBaseUrl(conn.baseURL),

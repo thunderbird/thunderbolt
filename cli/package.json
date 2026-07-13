@@ -1,6 +1,6 @@
 {
   "name": "@thunderbolt/cli",
-  "version": "0.2.0",
+  "version": "0.1.106",
   "private": true,
   "type": "module",
   "license": "MPL-2.0",

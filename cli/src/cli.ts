@@ -363,7 +363,7 @@ const resolveApiKey = (
 /** Resolves omitted `--model` against selected provider's catalog default. */
 const resolveModelId = (flags: Flags, provider: ModelProvider, config: CliConfig | null): string => {
   if (flags.model !== undefined) return flags.model
-  if (config !== null) return config.model
+  if (config?.provider === provider) return config.model
   return provider === 'openai-compat' ? DEFAULT_MODEL : DEFAULT_MODELS[provider]
 }
 

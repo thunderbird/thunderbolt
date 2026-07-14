@@ -237,6 +237,7 @@ describe('parseArgs — persisted config precedence', () => {
   test('saved key and base URL do not cross provider boundaries', () => {
     const config = runConfig(['--provider', 'anthropic'], { config: stored, env: {} })
 
+    expect(config.model).toBe('claude-opus-4-8')
     expect(config.apiKey).toBeUndefined()
     expect(config.baseUrl).toBeUndefined()
   })

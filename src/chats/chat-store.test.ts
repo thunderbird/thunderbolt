@@ -19,7 +19,7 @@ import {
 } from '@/test-utils/chat-store-mocks'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { useChatStore } from './chat-store'
+import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 describe('chat-store', () => {
   beforeAll(async () => {
@@ -434,6 +434,49 @@ describe('chat-store', () => {
 
     it('throws when the session is missing', async () => {
       await expect(useChatStore.getState().setSelectedAgent('nope', customAgent)).rejects.toThrow('No session found')
+    })
+  })
+
+  describe('session permission allowances', () => {
+    afterEach(() => {
+      useChatStore.setState({ alwaysAllowedAgentIds: new Set(), alwaysAllowedAgentToolKeys: new Set() })
+    })
+
+    it('limits a tool allowance to the matching tool and agent', () => {
+      const { allowAlwaysForTool, isAlwaysAllowed } = useChatStore.getState()
+
+      allowAlwaysForTool('agent-a', 'read_file')
+
+      expect(isAlwaysAllowed('agent-a', 'read_file')).toBe(true)
+      expect(isAlwaysAllowed('agent-a', 'write_file')).toBe(false)
+      expect(isAlwaysAllowed('agent-b', 'read_file')).toBe(false)
+    })
+
+    it('allows every tool for an allowed agent without affecting other agents', () => {
+      const { allowAlwaysForAgent, isAlwaysAllowed } = useChatStore.getState()
+
+      allowAlwaysForAgent('agent-wholesale')
+
+      expect(isAlwaysAllowed('agent-wholesale', 'read_file')).toBe(true)
+      expect(isAlwaysAllowed('agent-wholesale', 'write_file')).toBe(true)
+      expect(isAlwaysAllowed('agent-other', 'read_file')).toBe(false)
+    })
+  })
+
+  describe('permission request helpers', () => {
+    it('derives a tool key from title, kind, then the unknown fallback', () => {
+      expect(deriveToolKey({ toolCall: { title: 'read_file', kind: 'execute' } } as never)).toBe('read_file')
+      expect(deriveToolKey({ toolCall: { kind: 'execute' } } as never)).toBe('execute')
+      expect(deriveToolKey({ toolCall: {} } as never)).toBe('unknown')
+    })
+
+    it('prefers allow-once, falls back to allow-always, and rejects non-allow options', () => {
+      const allowAlways = { optionId: 'always', name: 'Always', kind: 'allow_always' } as const
+      const allowOnce = { optionId: 'once', name: 'Once', kind: 'allow_once' } as const
+
+      expect(findAllowOption([allowAlways, allowOnce])).toBe(allowOnce)
+      expect(findAllowOption([allowAlways])).toBe(allowAlways)
+      expect(findAllowOption([{ optionId: 'reject', name: 'Reject', kind: 'reject_once' }])).toBeUndefined()
     })
   })
 })

@@ -11,7 +11,7 @@ import type { Agent } from '@/types/acp'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
-import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
+import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { useShallow } from 'zustand/react/shallow'
 
 /** Outstanding ACP permission request awaiting user response. The promise
@@ -19,10 +19,22 @@ import { useShallow } from 'zustand/react/shallow'
  *  the adapter awaits the same promise inside its `requestPermission` client
  *  handler. */
 export type PendingPermission = {
+  agentId: string
   requestId: string
   request: RequestPermissionRequest
   resolve: (response: RequestPermissionResponse) => void
 }
+
+/** Derives the stable session permission key for an ACP tool request. */
+export const deriveToolKey = (request: RequestPermissionRequest): string =>
+  request.toolCall?.title ?? request.toolCall?.kind ?? 'unknown'
+
+/** Finds the option used to approve a request, preferring one-time approval. */
+export const findAllowOption = (options: PermissionOption[]): PermissionOption | undefined =>
+  options.find((option) => option.kind === 'allow_once') ?? options.find((option) => option.kind === 'allow_always')
+
+/** Builds the stored key for an agent-specific tool allowance. */
+const getToolAllowanceKey = (agentId: string, toolKey: string): string => `${agentId}::${toolKey}`
 
 /** Connection state for the per-agent ACP adapter. `idle` covers built-in
  *  agents (no handshake) and the initial state before the first send. */
@@ -44,6 +56,8 @@ export type ChatSession = {
 }
 
 type ChatStoreState = {
+  alwaysAllowedAgentIds: Set<string>
+  alwaysAllowedAgentToolKeys: Set<string>
   currentSessionId: string | null
   getMcpClients: () => NamedMCPClient[]
   reconnectClient: ReconnectClient
@@ -53,7 +67,10 @@ type ChatStoreState = {
 }
 
 type ChatStoreActions = {
+  allowAlwaysForAgent(agentId: string): void
+  allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
+  isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
   setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
   setReconnectClient(reconnectClient: ReconnectClient): void
@@ -70,6 +87,8 @@ type ChatStoreActions = {
 type ChatStore = ChatStoreState & ChatStoreActions
 
 const initialState: ChatStoreState = {
+  alwaysAllowedAgentIds: new Set(),
+  alwaysAllowedAgentToolKeys: new Set(),
   currentSessionId: null,
   // Read fresh per send (not snapshotted) so that after a provider reconnect
   // swaps a server's client, the next send sees the new client instead of a
@@ -87,6 +106,16 @@ const initialState: ChatStoreState = {
 
 export const useChatStore = create<ChatStore>()((set, get) => ({
   ...initialState,
+  allowAlwaysForAgent: (agentId) => {
+    set((state) => ({ alwaysAllowedAgentIds: new Set(state.alwaysAllowedAgentIds).add(agentId) }))
+  },
+
+  allowAlwaysForTool: (agentId, toolKey) => {
+    set((state) => ({
+      alwaysAllowedAgentToolKeys: new Set(state.alwaysAllowedAgentToolKeys).add(getToolAllowanceKey(agentId, toolKey)),
+    }))
+  },
+
   createSession: (session) => {
     const { sessions } = get()
 
@@ -103,6 +132,12 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   setCurrentSessionId: (id) => {
     set({ currentSessionId: id })
+  },
+
+  isAlwaysAllowed: (agentId, toolKey) => {
+    const { alwaysAllowedAgentIds, alwaysAllowedAgentToolKeys } = get()
+
+    return alwaysAllowedAgentIds.has(agentId) || alwaysAllowedAgentToolKeys.has(getToolAllowanceKey(agentId, toolKey))
   },
 
   setGetMcpClients: (getMcpClients) => {

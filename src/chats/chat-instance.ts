@@ -8,6 +8,7 @@ import type { AcpCommand, SessionSideEffect } from '@/acp/translators/acp-to-ai-
 import { useAgentCommandsStore } from '@/acp/agent-commands-store'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
+import { isBuiltInAgent } from '@/defaults/agents'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
 import { getErrorRetryable, isContentRejectionError, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
@@ -19,7 +20,7 @@ import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
-import { useChatStore } from './chat-store'
+import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 export const maxRetries = 3
 
@@ -30,17 +31,25 @@ export const maxRetries = 3
 const getRetryDelay = (attempt: number) => 2000 * attempt * (0.5 + Math.random())
 
 /** Bridge an ACP `requestPermission` call to the chat-store dialog flow.
- *  Generates a request id, stashes the resolver on the session's
- *  `pendingPermission` slot, and returns the promise the adapter awaits. The
- *  store's `resolvePendingPermission` action completes it from the dialog. */
+ *  Auto-approves remembered allowances; otherwise stashes the request until
+ *  the dialog resolves it. */
 const requestPermissionViaStore = (
   sessionId: string,
+  agentId: string,
   request: RequestPermissionRequest,
-): Promise<RequestPermissionResponse> =>
-  new Promise<RequestPermissionResponse>((resolve) => {
+): Promise<RequestPermissionResponse> => {
+  const toolKey = deriveToolKey(request)
+  const allowOption = findAllowOption(request.options)
+
+  if (allowOption && useChatStore.getState().isAlwaysAllowed(agentId, toolKey)) {
+    return Promise.resolve({ outcome: { outcome: 'selected', optionId: allowOption.optionId } })
+  }
+
+  return new Promise<RequestPermissionResponse>((resolve) => {
     const requestId = uuidv7()
-    useChatStore.getState().setPendingPermission(sessionId, { requestId, request, resolve })
+    useChatStore.getState().setPendingPermission(sessionId, { agentId, requestId, request, resolve })
   })
+}
 
 /** Forward translator side effects to the chat store + analytics. The server
  *  is the source of truth for ACP-side mode and config option state, so a
@@ -211,6 +220,10 @@ export const createAgentRoutingFetch = (
       // agents we resolve here and fold them into the prompt via the adapter.
       const skillInstructions =
         selectedAgent.type === 'built-in' ? undefined : await resolveAcpSkillInstructions(requestBody.messages)
+      // Built-in tools auto-run inside a per-thread, network-less OPFS sandbox, so no permission sink is needed.
+      const requestPermission = isBuiltInAgent(selectedAgent)
+        ? undefined
+        : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
 
       return adapter.fetch(init, {
         threadId: id,
@@ -226,8 +239,7 @@ export const createAgentRoutingFetch = (
         regenerationRevision: routingState.regenerationRevision ?? 0,
         skillInstructions,
         onAcpSessionId: persistAcpSessionId,
-        requestPermission:
-          selectedAgent.type === 'built-in' ? undefined : (request) => requestPermissionViaStore(id, request),
+        requestPermission,
         onSessionSideEffect: applySessionSideEffect,
       })
     },

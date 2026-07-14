@@ -34,6 +34,7 @@ import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
 import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
+import { withAppEnvironmentPrompt } from './environment-prompt.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
 
 /** Mount-relative root under which every thread carves its isolated workspace. */
@@ -162,7 +163,7 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     tools,
     activeToolNames: tools.map((tool) => tool.name),
     thinkingLevel: options.thinkingLevel,
-    systemPrompt: options.systemPrompt,
+    systemPrompt: withAppEnvironmentPrompt(options.systemPrompt),
   })
 
   // Seed prior turns into the (idle) session so the first prompt runs with full

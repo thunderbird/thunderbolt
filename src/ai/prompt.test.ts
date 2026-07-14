@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
+import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
 import { createPrompt, createPromptParts, type PromptParams } from './prompt'
 
 const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile => ({
@@ -177,5 +178,11 @@ describe('createPrompt', () => {
     expect(first.stablePrompt).not.toContain('Current date/time')
     expect(first.volatilePrompt).not.toBe(second.volatilePrompt)
     expect(first.fullPrompt).toBe(`${first.stablePrompt}\n\n${first.volatilePrompt}`)
+  })
+
+  test('does not include the Pi app harness environment', () => {
+    const result = createPromptParts(baseParams)
+
+    expect(result.fullPrompt).not.toContain(APP_HARNESS_ENVIRONMENT_PROMPT)
   })
 })

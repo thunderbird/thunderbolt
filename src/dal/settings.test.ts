@@ -15,7 +15,7 @@ import {
   getSettings,
   getSettingsRecords,
   getThemeSetting,
-  hasCurrentBundleVersions,
+  hasCurrentDefaultsVersions,
   hasSetting,
   resetSettingToDefault,
   updateSettings,
@@ -25,7 +25,7 @@ import { defaultModesVersion } from '../defaults/modes'
 import { defaultSettingsVersion } from '../defaults/settings'
 import { defaultSkillsVersion } from '../defaults/skills'
 import { defaultTasksVersion } from '../defaults/tasks'
-import { versionMarkerKeys } from '../lib/reconcile-defaults'
+import { versionMarkerKeys, type VersionMarkerKey } from '../lib/reconcile-defaults'
 import { hashValues } from '../lib/utils'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -62,7 +62,7 @@ describe('Settings DAL', () => {
     })
   })
 
-  describe('hasCurrentBundleVersions', () => {
+  describe('hasCurrentDefaultsVersions', () => {
     // Every reconciled table's (marker-key, bundled-version) pair — driving
     // the parametric "any one marker behind flips the check to false" case.
     const markerCases = [
@@ -72,6 +72,12 @@ describe('Settings DAL', () => {
       { key: versionMarkerKeys.skills, version: defaultSkillsVersion },
       { key: versionMarkerKeys.settings, version: defaultSettingsVersion },
     ] as const
+
+    // Targets a caller would build for the "no OTA in play" case.
+    const bundledTargets = Object.fromEntries(markerCases.map((c) => [c.key, c.version])) as Record<
+      VersionMarkerKey,
+      number
+    >
 
     const seedAllMarkers = async (offset = 0) => {
       const db = getDb()
@@ -83,23 +89,23 @@ describe('Settings DAL', () => {
     it('returns false on a truly fresh DB with no markers', async () => {
       // `resetTestDatabase` (beforeEach) reapplies schema without reconciling,
       // so no `defaults_version.*` rows exist here.
-      const seen = await hasCurrentBundleVersions(getDb())
+      const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
       expect(seen).toBe(false)
     })
 
-    it('returns true when every marker meets its bundled version exactly', async () => {
+    it('returns true when every marker meets its target exactly', async () => {
       await seedAllMarkers(0)
-      const seen = await hasCurrentBundleVersions(getDb())
+      const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
       expect(seen).toBe(true)
     })
 
-    it('returns true when every marker exceeds its bundled version (peer ahead of this build)', async () => {
+    it('returns true when every marker exceeds its target (peer ahead of this build)', async () => {
       // Every stored version is one ahead of what this build ships — a peer
       // that shipped a newer bundle already reconciled and synced its marker.
       // Reconcile would no-op via `rawCanOverwrite=false`, so the fast path
       // is safe.
       await seedAllMarkers(1)
-      const seen = await hasCurrentBundleVersions(getDb())
+      const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
       expect(seen).toBe(true)
     })
 
@@ -107,18 +113,32 @@ describe('Settings DAL', () => {
     // one of the versions. Reconcile has work to do — the fast path must not
     // fire, otherwise the bump would be stranded (nothing re-runs reconcile
     // after the background sync settles). Parameterized across every marker
-    // so a typo dropping any one key from the return chain fails a test.
+    // so a typo dropping any one key from the target map fails a test.
     for (const { key, version } of markerCases) {
-      it(`returns false when ${key} is behind its bundled version`, async () => {
+      it(`returns false when ${key} is behind its target`, async () => {
         await seedAllMarkers(0)
         await getDb()
           .update(settingsTable)
           .set({ value: String(version - 1) })
           .where(eq(settingsTable.key, key))
-        const seen = await hasCurrentBundleVersions(getDb())
+        const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
         expect(seen).toBe(false)
       })
     }
+
+    it('returns false when the caller passes an OTA target above the stored marker (models)', async () => {
+      // Direct regression guard for the OTA-stranding bug: stored marker is
+      // at the bundled version, but the caller's picked target is one ahead
+      // (via `pickModelsDefaults(useConfigStore.getState().config.defaults?.models)`).
+      // Fast path must not fire so reconcile can apply the OTA payload.
+      await seedAllMarkers(0)
+      const otaTargets: Record<VersionMarkerKey, number> = {
+        ...bundledTargets,
+        [versionMarkerKeys.models]: defaultModelsVersion + 1,
+      }
+      const seen = await hasCurrentDefaultsVersions(getDb(), otaTargets)
+      expect(seen).toBe(false)
+    })
 
     it('returns false when a marker is missing entirely', async () => {
       // A device that reconciled everything but one marker never got written
@@ -128,7 +148,7 @@ describe('Settings DAL', () => {
         await createSetting(db, key, String(version))
       }
       // Last marker deliberately missing.
-      const seen = await hasCurrentBundleVersions(db)
+      const seen = await hasCurrentDefaultsVersions(db, bundledTargets)
       expect(seen).toBe(false)
     })
 
@@ -141,7 +161,7 @@ describe('Settings DAL', () => {
         .update(settingsTable)
         .set({ value: 'not-a-number' })
         .where(eq(settingsTable.key, versionMarkerKeys.tasks))
-      const seen = await hasCurrentBundleVersions(getDb())
+      const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
       expect(seen).toBe(false)
     })
 
@@ -151,7 +171,7 @@ describe('Settings DAL', () => {
       // that drops the null-guard fails loudly.
       await seedAllMarkers(0)
       await getDb().update(settingsTable).set({ value: '' }).where(eq(settingsTable.key, versionMarkerKeys.modes))
-      const seen = await hasCurrentBundleVersions(getDb())
+      const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
       expect(seen).toBe(false)
     })
 
@@ -160,14 +180,14 @@ describe('Settings DAL', () => {
       // === 'object'` fails the number check. Pin the null-branch behavior.
       await seedAllMarkers(0)
       await getDb().update(settingsTable).set({ value: null }).where(eq(settingsTable.key, versionMarkerKeys.settings))
-      const seen = await hasCurrentBundleVersions(getDb())
+      const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
       expect(seen).toBe(false)
     })
 
     it('ignores non-marker settings rows', async () => {
       // A user preference row is not a marker; it must not affect the check.
       await createSetting(getDb(), 'preferred_name', 'test-user')
-      const seen = await hasCurrentBundleVersions(getDb())
+      const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
       expect(seen).toBe(false)
     })
   })

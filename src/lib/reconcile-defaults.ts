@@ -26,7 +26,7 @@ const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, d
  * in AGENTS.md and the THU-637 rationale for the version-gate design; THU-677
  * extended the pattern from models-only to every reconciled table.
  *
- * Exported so read-side callers (`hasCurrentBundleVersions` in
+ * Exported so read-side callers (`hasCurrentDefaultsVersions` in
  * `src/dal/settings.ts`) share the exact same key strings — a rename here
  * shouldn't require touching two files.
  */
@@ -37,6 +37,14 @@ export const versionMarkerKeys = {
   skills: 'defaults_version.skills',
   settings: 'defaults_version.settings',
 } as const
+
+/**
+ * Union of the marker key strings — every valid entry in a `targets` map
+ * passed to `hasCurrentDefaultsVersions`. Tightens the caller/callee
+ * contract so a typo like `'defaults_version.mode'` is a compile error
+ * instead of a silent skip.
+ */
+export type VersionMarkerKey = (typeof versionMarkerKeys)[keyof typeof versionMarkerKeys]
 
 type StoredVersion = { exists: boolean; version: number | null }
 
@@ -157,12 +165,19 @@ export type ReconcileDefaultsForTableOptions = {
  * Result of a `reconcileDefaultsForTable` pass.
  *
  * @property mutated - True iff at least one row was inserted or updated (this
- *   includes the legacy null-defaultHash bootstrap). Callers use this to
- *   decide whether to advance an external version marker — advancing when
- *   nothing was actually written would falsely signal to peers that the
- *   picked version has been applied here.
+ *   includes the legacy null-defaultHash bootstrap).
+ * @property everyBundleRowAtTarget - True iff every id in `defaults` ended
+ *   the pass with a row whose stored `defaultHash` matches the effective
+ *   target hash (i.e. content genuinely matches this version). False if any
+ *   default row is missing without insert, user-edited (hash mismatch), or
+ *   was skipped under `!canOverwrite`. Combined with `mutated` this lets
+ *   callers decide when to advance an external version marker: advance when
+ *   either something was written OR every row is verifiably at target
+ *   (existing-users-upgrade case). Refuse when neither holds — the "all
+ *   rows user-edited" case must not signal `stored=version` to peers, or
+ *   fresh-install peers would receive the marker and stop seeding.
  */
-export type ReconcileDefaultsForTableResult = { mutated: boolean }
+export type ReconcileDefaultsForTableResult = { mutated: boolean; everyBundleRowAtTarget: boolean }
 
 /**
  * Generic function to reconcile defaults into a table
@@ -187,7 +202,8 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   } = options
 
   if (defaults.length === 0) {
-    return { mutated: false }
+    // Vacuously "at target" — no bundle-known rows means nothing to verify.
+    return { mutated: false, everyBundleRowAtTarget: true }
   }
 
   const keyValues = defaults.map((defaultItem) => (defaultItem as any)[keyField])
@@ -195,6 +211,12 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   const existingByKey = new Map(existingRows.map((row) => [row[keyField], row] as const))
 
   let mutated = false
+  // Starts optimistic — cleared to false as soon as any bundle-known id ends
+  // the pass in a state that doesn't match the effective target: a missing
+  // row we couldn't insert, a user-edited row (hash mismatch), a
+  // cleanup-shaped soft-delete we couldn't resurrect, or any skip under
+  // `!canOverwrite` where we can't verify or fix content.
+  let everyBundleRowAtTarget = true
 
   for (const defaultItem of defaults) {
     const keyValue = (defaultItem as any)[keyField]
@@ -206,6 +228,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       // into `insertMissing: true` seed regardless because their row must
       // exist for correctness (e.g. profiles paired with models).
       if (!insertMissing) {
+        everyBundleRowAtTarget = false
         continue
       }
       await db.insert(table).values({
@@ -240,12 +263,17 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       if (canResurrect) {
         await db.update(table).set({ deletedAt: null }).where(eq(table[keyField], keyValue))
         mutated = true
+      } else {
+        // Row is soft-deleted and we can't resurrect it right now — not at target.
+        everyBundleRowAtTarget = false
       }
       continue
     }
 
     // Any write against an existing row requires authority.
     if (!canOverwrite) {
+      // We couldn't compare or update. Conservatively treat as "unverified".
+      everyBundleRowAtTarget = false
       continue
     }
 
@@ -262,6 +290,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 
     // If hashes don't match, user has modified (including soft-delete) - skip update
     if (currentHash !== existing.defaultHash) {
+      everyBundleRowAtTarget = false
       continue
     }
 
@@ -277,7 +306,8 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 
     // Skip update if the effective default matches what's already stored
     // (prevents empty PATCH operations, and collapses OTA payloads that only
-    // touch frozen fields to a no-op).
+    // touch frozen fields to a no-op). Row content genuinely matches target —
+    // keep `everyBundleRowAtTarget` true for this row.
     if (existing.defaultHash === effectiveHash) {
       continue
     }
@@ -289,6 +319,9 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const wouldOverwriteUserValue = existing.value !== null && (effectiveDefault as any).value === null
 
     if (wouldOverwriteUserValue) {
+      // User set a value; we're not overwriting it. Content is user-managed,
+      // not at bundle target — same category as a hash-mismatch user edit.
+      everyBundleRowAtTarget = false
       continue
     }
 
@@ -303,7 +336,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     mutated = true
   }
 
-  return { mutated }
+  return { mutated, everyBundleRowAtTarget }
 }
 
 /**
@@ -502,20 +535,31 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       },
     )
 
-    // Advance the models version marker. Two conditions must hold together:
+    // Advance the models version marker. Three conditions:
     //   1. `canOverwrite` — writing the marker under a closed gate would let
     //      peers falsely believe the picked version was applied here and stop
     //      their own in-place upgrades even though we never wrote the content.
-    //   2. Something actually mutated. Advancing on a pure no-op (all rows
-    //      user-edited, or all already at target) has the same false-signal
-    //      hazard as (1) — we effectively promised to peers we're at version
-    //      N without having verified our content matches N.
-    // Extra `droppedOtaModelIds.length === 0` check for models: our apply is
-    // a strict subset of the picked version when we filter OTA models, and
-    // stamping the full version would lock later fuller-bundle clients
-    // (canOverwrite=false because stored>=picked) out of inserting the
-    // missing models.
-    if (modelsGate.canOverwrite && (modelsPass.mutated || profilesPass.mutated) && droppedOtaModelIds.length === 0) {
+    //   2. Either something mutated OR both passes verified every row is
+    //      already at target (`everyBundleRowAtTarget`). The "all rows
+    //      already at target" case is a legitimate verification — our
+    //      content genuinely matches version N even though nothing changed —
+    //      and existing-user upgrades depend on it (rows seeded pre-THU-677
+    //      already hash to the current bundle, so `mutated=false` alone
+    //      would strand the marker forever). The "all rows user-edited"
+    //      case still refuses because a hash mismatch means content doesn't
+    //      match version N — advancing would tell fresh-install peers to
+    //      stop seeding their own rows.
+    //   3. `droppedOtaModelIds.length === 0` — our apply is a strict subset
+    //      of the picked version when we filter OTA models, and stamping the
+    //      full version would lock later fuller-bundle clients out of
+    //      inserting the missing models.
+    const passVerified = (p: ReconcileDefaultsForTableResult): boolean => p.mutated || p.everyBundleRowAtTarget
+    if (
+      modelsGate.canOverwrite &&
+      passVerified(modelsPass) &&
+      passVerified(profilesPass) &&
+      droppedOtaModelIds.length === 0
+    ) {
       await advanceVersionMarker(tx, versionMarkerKeys.models, modelsSource.version, modelsGate.stored)
     }
 
@@ -548,7 +592,9 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
         canResurrect: initialSyncCompleted,
         ...(keyField ? { keyField } : {}),
       })
-      if (gate.canOverwrite && pass.mutated) {
+      // Advance when we wrote something OR verified every row is at target.
+      // See the models-path guard above for the full rationale.
+      if (gate.canOverwrite && passVerified(pass)) {
         await advanceVersionMarker(tx, versionKey, currentVersion, gate.stored)
       }
     }

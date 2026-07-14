@@ -5,7 +5,7 @@
 import { fetchConfig } from '@/api/config'
 import { useConfigStore } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
-import { getSettings, hasCurrentBundleVersions } from '@/dal'
+import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
@@ -19,7 +19,11 @@ import { pickModelsDefaults } from '@/lib/pick-defaults'
 import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { runDataMigrations } from '@/lib/data-migrations'
-import { reconcileDefaults } from '@/lib/reconcile-defaults'
+import { reconcileDefaults, versionMarkerKeys, type VersionMarkerKey } from '@/lib/reconcile-defaults'
+import { defaultModesVersion } from '@/defaults/modes'
+import { defaultSettingsVersion } from '@/defaults/settings'
+import { defaultSkillsVersion } from '@/defaults/skills'
+import { defaultTasksVersion } from '@/defaults/tasks'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
@@ -203,17 +207,38 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     await db.get(sql`select 1`)
   })
 
-  // Step 2c: Returning-boot detection via `hasCurrentBundleVersions`. Every
-  // `defaults_version.*` marker must exist AND meet-or-exceed the version
-  // this build ships. This is stricter than a "marker exists" probe on
-  // purpose — a client upgrade that bumped any bundled version needs the
-  // fresh-await path to run so reconcile can apply it; nothing re-runs
-  // reconcile when the background `waitForInitialSync()` later resolves, so
-  // an outstanding bump on the fast path would be stranded forever.
+  // Read the persisted `/config` cache once, up front. `pickModelsDefaults`
+  // returns whichever of (bundled models, OTA models) declares the higher
+  // version — reconcile uses this at step 4, and the returning-boot probe
+  // below needs the same value so a device sitting behind a cached OTA
+  // bump correctly takes the fresh-await path.
+  const modelsDefaults = pickModelsDefaults(useConfigStore.getState().config.defaults?.models)
+
+  // Step 2c: Returning-boot detection via `hasCurrentDefaultsVersions`.
+  // Every `defaults_version.*` marker must exist AND meet-or-exceed the
+  // version reconcile would pick this boot — that's the bundled version
+  // for modes/tasks/skills/settings and the OTA-or-bundle picked version
+  // for models. This is stricter than a "marker exists" probe on purpose:
+  // a client upgrade that bumped any bundled version OR a fresh OTA
+  // payload needs the fresh-await path so reconcile can apply it. Nothing
+  // re-runs reconcile when the background `waitForInitialSync()` later
+  // resolves, so an outstanding bump on the fast path would be stranded
+  // forever.
   //
-  // When every marker is current: skipping is safe because reconcile would
-  // no-op anyway (`rawCanOverwrite=false` for every table).
-  const bundleVersionsCurrent = await time('step2c_returning_boot_probe', () => hasCurrentBundleVersions(db))
+  // When every marker meets its target: skipping is safe. Reconcile still
+  // runs at step 4 and correctly advances the marker on the fresh-await
+  // path even for existing-user upgrades where rows already hash to target
+  // (see `everyBundleRowAtTarget` in `reconcileDefaultsForTable`).
+  const defaultsTargets: Record<VersionMarkerKey, number> = {
+    [versionMarkerKeys.models]: modelsDefaults.version,
+    [versionMarkerKeys.modes]: defaultModesVersion,
+    [versionMarkerKeys.tasks]: defaultTasksVersion,
+    [versionMarkerKeys.skills]: defaultSkillsVersion,
+    [versionMarkerKeys.settings]: defaultSettingsVersion,
+  }
+  const bundleVersionsCurrent = await time('step2c_returning_boot_probe', () =>
+    hasCurrentDefaultsVersions(db, defaultsTargets),
+  )
 
   // Step 3: Wait for PowerSync initial sync — only on fresh boots when sync is
   // enabled AND we already applied the current bundle versions. Returning
@@ -240,12 +265,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     resolveInitialSyncStep(database, canSkipSyncWait),
   )
 
-  // Read the persisted /config cache directly. The step-0 fetch runs in the
-  // background and hydrates the store on completion; whatever it eventually
-  // writes lands cleanly on the next boot via reconcile's version gate.
-  const modelsDefaults = pickModelsDefaults(useConfigStore.getState().config.defaults?.models)
-
-  // Step 4: Reconcile defaults
+  // Step 4: Reconcile defaults (uses `modelsDefaults` picked above step 2c
+  // so both the returning-boot probe and reconcile see the same OTA payload).
   try {
     await time('step4_reconcile_defaults', () =>
       reconcileDefaults(db, { models: modelsDefaults, initialSyncCompleted }),

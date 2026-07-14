@@ -675,6 +675,66 @@ describe('reconcileDefaultsForTable', () => {
     const afterReconcile = await db.select().from(settingsTable).where(eq(settingsTable.key, 'optional_setting')).get()
     expect(afterReconcile?.value).toBeNull()
   })
+
+  // Direct return-shape assertions for the `everyBundleRowAtTarget` field.
+  // Integration-level tests (marker advance / no advance) cover the wiring
+  // downstream; these lock the per-branch flag semantics so a future
+  // refactor that flips a polarity fails loudly close to the source.
+  describe('everyBundleRowAtTarget', () => {
+    test('empty defaults returns vacuous true (no rows to disprove target)', async () => {
+      const result = await reconcileDefaultsForTable(getDb(), modelsTable, [], hashModel)
+      expect(result).toEqual({ mutated: false, everyBundleRowAtTarget: true })
+    })
+
+    test('fresh install seeds all rows → true (all rows now at target)', async () => {
+      const result = await reconcileDefaultsForTable(getDb(), modelsTable, defaultModels, hashModel)
+      expect(result.mutated).toBe(true)
+      expect(result.everyBundleRowAtTarget).toBe(true)
+    })
+
+    test('every row already at target with no writes → true', async () => {
+      const db = getDb()
+      // Seed then run again — second run finds every row already at target.
+      await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+      const result = await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+      expect(result.mutated).toBe(false)
+      expect(result.everyBundleRowAtTarget).toBe(true)
+    })
+
+    test('any user-edited row (hash mismatch) → false', async () => {
+      const db = getDb()
+      await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+      // Edit one row so its content-hash no longer matches its defaultHash.
+      await db.update(modelsTable).set({ name: 'user rename' }).where(eq(modelsTable.id, defaultModels[0].id))
+      const result = await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+      expect(result.mutated).toBe(false)
+      expect(result.everyBundleRowAtTarget).toBe(false)
+    })
+
+    test('missing row with insertMissing=false → false', async () => {
+      const result = await reconcileDefaultsForTable(getDb(), modelsTable, defaultModels, hashModel, {
+        canOverwrite: false,
+        // insertMissing defaults to canOverwrite → false. Rows are missing
+        // and we don't seed → not at target.
+      })
+      expect(result.mutated).toBe(false)
+      expect(result.everyBundleRowAtTarget).toBe(false)
+    })
+
+    test('canOverwrite=false on populated table → false (unverifiable)', async () => {
+      const db = getDb()
+      // Seed rows so `existing` rows are present, then re-run with
+      // canOverwrite=false. Even though rows are still at target, the flag
+      // stays false because the closed gate means we deliberately can't
+      // trust our view enough to advance the marker.
+      await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+      const result = await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, {
+        canOverwrite: false,
+      })
+      expect(result.mutated).toBe(false)
+      expect(result.everyBundleRowAtTarget).toBe(false)
+    })
+  })
 })
 
 /**
@@ -888,6 +948,80 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     // Marker must stay at the rewound value — advancing it here would signal
     // to peers that this version was applied when in fact nothing was written.
     expect(await readStoredModelsVersion()).toBe(defaultModelsVersion - 1)
+  })
+
+  test('marker advances when reconcile is a no-op but every row is at target (existing-user upgrade)', async () => {
+    const db = getDb()
+
+    // Seed at the current bundle so every row has a matching defaultHash.
+    // This models the state of a pre-THU-677 device on its first boot after
+    // upgrading to this build: the four new markers (modes/tasks/skills/
+    // settings) don't exist yet, but the rows themselves were already
+    // seeded by earlier reconcile runs and their hashes match the bundle.
+    await reconcileDefaults(db)
+
+    // Wipe the marker to simulate the pre-THU-677 "no marker written yet"
+    // state. The gate stays open (`stored=null → rawCanOverwrite=true`)
+    // but reconcile finds every row already at target so `mutated=false`.
+    // With the `everyBundleRowAtTarget` result on, the marker still
+    // advances — otherwise this device would take the full sync-wait path
+    // on every boot forever.
+    await db.delete(settingsTable).where(eq(settingsTable.key, modelsVersionKey))
+
+    await reconcileDefaults(db)
+
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+  })
+
+  // Coverage guard for `runGatedPass` (modes/tasks/skills/settings) — the
+  // models path has its own dedicated test above. Modes is a good stand-in
+  // for the loop because it has multiple rows and its own hashFn/defaults.
+  const readStoredModesVersion = async () => {
+    const db = getDb()
+    const row = await db.select().from(settingsTable).where(eq(settingsTable.key, 'defaults_version.modes')).get()
+    return row?.value == null ? null : Number(row.value)
+  }
+
+  test('runGatedPass advances marker when every mode row is at target and mutated is false', async () => {
+    const db = getDb()
+
+    // Seed at the current bundle so every modes row hashes to target.
+    await reconcileDefaults(db)
+
+    // Wipe the modes marker to simulate the pre-THU-677 "no marker yet"
+    // state for the non-models tables. The gate opens, reconcile finds
+    // every row already at target (mutated=false), and the marker must
+    // still advance via the `everyBundleRowAtTarget` branch.
+    await db.delete(settingsTable).where(eq(settingsTable.key, 'defaults_version.modes'))
+
+    await reconcileDefaults(db)
+
+    expect(await readStoredModesVersion()).toBe(defaultModesVersion)
+  })
+
+  test('runGatedPass does not advance marker when every mode row is user-edited', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    // Every modes row user-edited (hash mismatch) and marker rewound so the
+    // version gate opens. Reconcile skips every row → `mutated=false` AND
+    // `everyBundleRowAtTarget=false` (hash-mismatch branch). Marker must
+    // stay at the rewound value — mirrors the existing models-path
+    // regression guard for the runGatedPass loop.
+    for (const mode of defaultModes) {
+      await db
+        .update(modesTable)
+        .set({ label: `user-edited ${mode.id}` })
+        .where(eq(modesTable.id, mode.id))
+    }
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultModesVersion - 1) })
+      .where(eq(settingsTable.key, 'defaults_version.modes'))
+
+    await reconcileDefaults(db)
+
+    expect(await readStoredModesVersion()).toBe(defaultModesVersion - 1)
   })
 
   test('sync-incomplete + populated table + stale stored version → skip mutations', async () => {

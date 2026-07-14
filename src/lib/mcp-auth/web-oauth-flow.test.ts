@@ -17,7 +17,7 @@ import {
   type WebOAuthDeps,
 } from './web-oauth-flow'
 import type { LoopbackCallbackParams } from './mcp-oauth-loopback'
-import { getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
+import { clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 
 const serverId = 'srv-1'
 const serverUrl = 'https://mcp.example.com'
@@ -55,6 +55,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await teardownTestDatabase()
+})
+
+// Bun runs test files in one worker, so a fresh pending handshake left in
+// localStorage would leak into the next file and make isMcpOAuthCallback claim
+// callbacks that aren't ours (e.g. the deep-link routing test). Clear it after
+// every test so nothing escapes this file.
+afterEach(() => {
+  clearMcpOAuthState()
 })
 
 describe('isOAuthServer', () => {
@@ -205,6 +213,60 @@ describe('startMcpOAuthFlow', () => {
 
     // The browser is redirected to the authorization URL after the handshake is saved.
     expect(redirectedTo).toBe(`${authServerUrl}/authorize?x=1`)
+  })
+
+  it('requests the resource-advertised scopes_supported on registration and authorization', async () => {
+    const db = getDb()
+    let registeredScope: string | undefined
+    let authorizedScope: string | undefined
+
+    await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        // A scope-gated resource (like Metabase) advertises the scopes its tools require.
+        discoverOAuthProtectedResourceMetadata: async () =>
+          ({
+            resource: serverUrl,
+            authorization_servers: [authServerUrl],
+            scopes_supported: ['agent:query', 'agent:search'],
+          }) as never,
+        discoverAuthorizationServerMetadata: async () => metadata(),
+        registerClient: async (_url, opts) => {
+          registeredScope = opts.scope
+          return { client_id: 'dcr-client', redirect_uris: [`${origin}/oauth/callback`] } as OAuthClientInformationFull
+        },
+        startAuthorization: async (_url, opts) => {
+          authorizedScope = opts.scope
+          return { authorizationUrl: new URL(`${authServerUrl}/authorize?x=1`), codeVerifier: 'verifier-1' }
+        },
+      },
+    )
+
+    // The advertised scopes are requested space-delimited on both the DCR registration
+    // and the authorization request — without this a scope-gated server issues a token
+    // authorized for nothing and tools/list comes back empty.
+    expect(registeredScope).toBe('agent:query agent:search')
+    expect(authorizedScope).toBe('agent:query agent:search')
+  })
+
+  it('omits scope when the resource advertises no scopes_supported (non-gated server)', async () => {
+    const db = getDb()
+    let authorizedScope: string | undefined = 'unset'
+
+    await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        ...happyDiscovery(metadata()),
+        registerClient: async () =>
+          ({ client_id: 'dcr-client', redirect_uris: [`${origin}/oauth/callback`] }) as OAuthClientInformationFull,
+        startAuthorization: async (_url, opts) => {
+          authorizedScope = opts.scope
+          return { authorizationUrl: new URL(`${authServerUrl}/authorize?x=1`), codeVerifier: 'verifier-1' }
+        },
+      },
+    )
+
+    expect(authorizedScope).toBeUndefined()
   })
 
   it('rejects an AS that does not advertise PKCE S256', async () => {

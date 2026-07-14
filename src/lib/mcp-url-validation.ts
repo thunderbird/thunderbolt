@@ -23,6 +23,12 @@ const parseIpv4Octets = (host: string): [number, number, number, number] | null 
   return octets as [number, number, number, number]
 }
 
+/** True for the IPv4 loopback range 127.0.0.0/8. */
+const isLoopbackIpv4 = (host: string): boolean => {
+  const octets = parseIpv4Octets(host)
+  return octets !== null && octets[0] === 127
+}
+
 /** True for loopback (127.0.0.0/8) or RFC-1918 private ranges (10/8, 172.16/12, 192.168/16). */
 const isPrivateIpv4 = (host: string): boolean => {
   const octets = parseIpv4Octets(host)
@@ -41,6 +47,28 @@ const isPrivateIpv6 = (host: string): boolean => {
   }
   const firstHextet = normalized.split(':')[0]
   return /^f[cd][0-9a-f]{0,2}$/.test(firstHextet)
+}
+
+/**
+ * True for hostnames the browser treats as loopback — the only cross-origin
+ * `http://` targets an `https://` page can fetch without hitting mixed-content
+ * blocking. Matches `localhost`, `*.localhost` (RFC 6761), the entire IPv4
+ * loopback range 127.0.0.0/8, and IPv6 `::1`. Uses `parseIpv4Octets` so real
+ * DNS names starting with numeric-looking labels (e.g. `127.0.0.1.evil.com`)
+ * are NOT matched — each octet must be a numeric 0–255. Callers hand it a
+ * hostname (no scheme, no brackets on IPv6 required — both `::1` and `[::1]`
+ * work).
+ */
+export const isLoopbackHost = (rawHost: string): boolean => {
+  const host = rawHost.startsWith('[') && rawHost.endsWith(']') ? rawHost.slice(1, -1) : rawHost
+  const lower = host.toLowerCase()
+  if (lower === 'localhost' || lower.endsWith('.localhost')) {
+    return true
+  }
+  if (host.includes(':')) {
+    return lower === '::1'
+  }
+  return isLoopbackIpv4(host)
 }
 
 /** True for localhost, *.localhost, loopback/private IPv4, or loopback/ULA IPv6. */

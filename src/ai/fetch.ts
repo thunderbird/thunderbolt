@@ -23,6 +23,8 @@ import { hydrateQuotesAsText } from '@/lib/quotes'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
+import { isLoopbackHost } from '@/lib/mcp-url-validation'
+import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
 import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
@@ -349,10 +351,25 @@ export const resolveOpenAiCompatConnection = (
       return modelConfig.apiKey
         ? { baseURL: 'https://api.openai.com/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
         : null
-    case 'custom':
-      return modelConfig.url
-        ? { baseURL: modelConfig.url, apiKey: modelConfig.apiKey ?? '', fetch: getProxyFetch() }
-        : null
+    case 'custom': {
+      if (!modelConfig.url) {
+        return null
+      }
+      // Canonicalise `/v1` and dispatch loopback vs proxy right here, so BOTH
+      // consumers of this connection (`createModel` legacy path and
+      // `resolvePiModel` built-in agent path) see the same `baseURL` + `fetch`
+      // and can't drift. Loopback Custom URLs (LM Studio at localhost:1234,
+      // Ollama, `127.x.x.x`, `[::1]`, `*.localhost`) skip the universal proxy
+      // so `localhost` means what the browser sees, not what the backend
+      // container sees. Everything else — RFC1918 LAN IPs, `host.docker.internal`,
+      // mDNS `.local`, public endpoints — stays on the proxy path (browser
+      // blocks non-loopback http from https origins as mixed content, and
+      // public Custom endpoints rely on the proxy for CORS bypass; THU-424).
+      const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
+      const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
+      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
+      return { baseURL, apiKey: modelConfig.apiKey ?? '', fetch: providerFetch }
+    }
     case 'openrouter':
       return modelConfig.apiKey
         ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
@@ -429,6 +446,11 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!conn) {
         throw new Error('No URL provided for custom provider')
       }
+      // `conn.baseURL` and `conn.fetch` already carry the `/v1` normalization
+      // and the loopback-vs-proxy dispatch (see resolveOpenAiCompatConnection).
+      // Both the legacy path here and the Pi path in `resolvePiModel` read
+      // through the same connection object, so their upstream URL + transport
+      // stay in lockstep by construction.
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
         baseURL: conn.baseURL,

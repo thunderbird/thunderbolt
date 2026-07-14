@@ -39,6 +39,7 @@ import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToD
 import { defaultModels } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
+import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -614,9 +615,7 @@ export default function ModelsPage() {
           break
         case 'custom':
           if (url) {
-            // Ensure URL ends with /v1 if not already
-            const baseUrl = url.endsWith('/v1') ? url : url.endsWith('/') ? `${url}v1` : `${url}/v1`
-            endpoint = `${baseUrl}/models`
+            endpoint = `${normalizeOpenAiBaseUrl(url)}/models`
             if (apiKey) {
               headers = { Authorization: `Bearer ${apiKey}` }
             }

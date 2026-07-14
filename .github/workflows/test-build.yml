@@ -42,7 +42,19 @@ jobs:
         if: inputs.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y webkit2gtk-4.1 libappindicator3-dev
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            squashfs-tools
+          # No libfuse2 needed: Tauri spawns linuxdeploy with
+          # APPIMAGE_EXTRACT_AND_RUN=1 (see crates/tauri-bundler/.../linuxdeploy.rs),
+          # so the AppImage self-extracts instead of self-mounting via FUSE.
+          # Kept in sync with desktop-release.yml.
+
+      - name: Set up pinned linuxdeploy
+        if: inputs.platform == 'linux'
+        uses: ./.github/actions/setup-linuxdeploy
 
       - name: Build
         run: |
@@ -93,13 +105,21 @@ jobs:
         with:
           name: ${{ inputs.platform }}-build
           # actions/upload-artifact does not expand brace patterns, so list
-          # each extension on its own line.
+          # each extension on its own line. `target/**/bundle/**` matches both
+          # native builds (`target/release/bundle/…`, used by the Linux job)
+          # and cross-compiled builds (`target/<triple>/release/bundle/…`, used
+          # by Windows/macOS jobs) — the previous `target/*/release/bundle/**`
+          # glob missed the native Linux path entirely.
           path: |
-            src-tauri/target/*/release/bundle/**/*.deb
-            src-tauri/target/*/release/bundle/**/*.AppImage
-            src-tauri/target/*/release/bundle/**/*.rpm
-            src-tauri/target/*/release/bundle/**/*.msi
-            src-tauri/target/*/release/bundle/**/*.exe
-            src-tauri/target/*/release/bundle/**/*.dmg
-            src-tauri/target/*/release/bundle/**/*.app.tar.gz
+            src-tauri/target/**/bundle/**/*.deb
+            src-tauri/target/**/bundle/**/*.AppImage
+            src-tauri/target/**/bundle/**/*.rpm
+            src-tauri/target/**/bundle/**/*.msi
+            src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/**/bundle/**/*.app.tar.gz
+          # Fail loudly if the glob matches nothing — default `warn` lets a
+          # broken glob leave the job green with no uploaded artifacts, which
+          # burned us earlier when native-Linux paths didn't match.
+          if-no-files-found: error
           retention-days: 7

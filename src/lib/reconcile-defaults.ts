@@ -25,12 +25,18 @@ const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, d
  * account per reconciled table. See "Reconciled defaults and version bumps"
  * in AGENTS.md and the THU-637 rationale for the version-gate design; THU-677
  * extended the pattern from models-only to every reconciled table.
+ *
+ * Exported so read-side callers (`hasCurrentBundleVersions` in
+ * `src/dal/settings.ts`) share the exact same key strings — a rename here
+ * shouldn't require touching two files.
  */
-const modelsVersionKey = 'defaults_version.models'
-const modesVersionKey = 'defaults_version.modes'
-const tasksVersionKey = 'defaults_version.tasks'
-const skillsVersionKey = 'defaults_version.skills'
-const settingsVersionKey = 'defaults_version.settings'
+export const versionMarkerKeys = {
+  models: 'defaults_version.models',
+  modes: 'defaults_version.modes',
+  tasks: 'defaults_version.tasks',
+  skills: 'defaults_version.skills',
+  settings: 'defaults_version.settings',
+} as const
 
 type StoredVersion = { exists: boolean; version: number | null }
 
@@ -413,7 +419,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // near the bottom of this transaction (THU-677).
     const modelsGate = await computeCanOverwrite(
       tx,
-      modelsVersionKey,
+      versionMarkerKeys.models,
       modelsSource.version,
       hasAnyModelRow,
       initialSyncCompleted,
@@ -510,7 +516,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // (canOverwrite=false because stored>=picked) out of inserting the
     // missing models.
     if (modelsGate.canOverwrite && (modelsPass.mutated || profilesPass.mutated) && droppedOtaModelIds.length === 0) {
-      await advanceVersionMarker(tx, modelsVersionKey, modelsSource.version, modelsGate.stored)
+      await advanceVersionMarker(tx, versionMarkerKeys.models, modelsSource.version, modelsGate.stored)
     }
 
     // Modes / tasks / skills / settings share the same shape: gate on the
@@ -547,14 +553,21 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       }
     }
 
-    await runGatedPass(modesTable, defaultModes, hashMode, modesVersionKey, defaultModesVersion, hasAnyModeRow)
-    await runGatedPass(tasksTable, defaultTasks, hashTask, tasksVersionKey, defaultTasksVersion, hasAnyTaskRow)
-    await runGatedPass(skillsTable, defaultSkills, hashSkill, skillsVersionKey, defaultSkillsVersion, hasAnySkillRow)
+    await runGatedPass(modesTable, defaultModes, hashMode, versionMarkerKeys.modes, defaultModesVersion, hasAnyModeRow)
+    await runGatedPass(tasksTable, defaultTasks, hashTask, versionMarkerKeys.tasks, defaultTasksVersion, hasAnyTaskRow)
+    await runGatedPass(
+      skillsTable,
+      defaultSkills,
+      hashSkill,
+      versionMarkerKeys.skills,
+      defaultSkillsVersion,
+      hasAnySkillRow,
+    )
     await runGatedPass(
       settingsTable,
       defaultSettings,
       hashSetting,
-      settingsVersionKey,
+      versionMarkerKeys.settings,
       defaultSettingsVersion,
       hasAnySettingsRow,
       'key',

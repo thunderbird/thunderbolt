@@ -6,7 +6,12 @@ import { eq, inArray, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { isInsertConflictError } from '../lib/sqlite-errors'
 import { settingsTable } from '../db/tables'
-import { hashSetting } from '../defaults/settings'
+import { defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModesVersion } from '../defaults/modes'
+import { defaultSettingsVersion, hashSetting } from '../defaults/settings'
+import { defaultSkillsVersion } from '../defaults/skills'
+import { defaultTasksVersion } from '../defaults/tasks'
+import { versionMarkerKeys } from '../lib/reconcile-defaults'
 import { serializeValue } from '../lib/serialization'
 import { camelCased, hashValues } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Setting } from '@/types'
@@ -216,20 +221,39 @@ export const hasSetting = async (db: AnyDrizzleDatabase, key: string): Promise<b
 }
 
 /**
- * Whether any `defaults_version.*` marker exists in `settingsTable`. Presence
- * proves `reconcileDefaults` (see `src/lib/reconcile-defaults.ts`) has run to
- * completion on some prior boot on this device — or synced in from a peer
- * that did — because `advanceVersionMarker` is the only writer of that key
- * namespace and it fires only on a real mutation. Used by the init pipeline
- * (THU-677) to route boots to the returning-boot fast path.
+ * Whether every reconciled-defaults version marker exists AND is at or above
+ * the bundled version this build ships. Used by the init pipeline (THU-677)
+ * to gate the returning-boot fast path: the fast path skips
+ * `waitForInitialSync` and passes `initialSyncCompleted: false` to reconcile,
+ * which collapses the version gate to a no-op for populated tables. That is
+ * only safe when there's no reconcile work pending — i.e. we already applied
+ * the current build's bundle versions. Otherwise a client-upgrade bump would
+ * be stranded forever (reconcile isn't re-run when the background sync
+ * settles).
+ *
+ * A missing marker or one behind the bundle → returns false → init takes the
+ * fresh-await path, sync settles, reconcile runs with
+ * `initialSyncCompleted: true`, marker advances, next boot is fast again.
+ * A marker above the bundle (peer at a newer version) is safe to skip on —
+ * reconcile would no-op via `rawCanOverwrite=false` regardless.
  */
-export const hasReconciledDefaults = async (db: AnyDrizzleDatabase): Promise<boolean> => {
+export const hasCurrentBundleVersions = async (db: AnyDrizzleDatabase): Promise<boolean> => {
   const rows = await db
-    .select({ key: settingsTable.key })
+    .select({ key: settingsTable.key, value: settingsTable.value })
     .from(settingsTable)
     .where(sql`${settingsTable.key} LIKE 'defaults_version.%'`)
-    .limit(1)
-  return rows.length > 0
+  const stored = new Map(rows.map((r) => [r.key, r.value == null ? null : Number(r.value)]))
+  const isCurrent = (key: string, bundled: number): boolean => {
+    const v = stored.get(key)
+    return typeof v === 'number' && Number.isFinite(v) && v >= bundled
+  }
+  return (
+    isCurrent(versionMarkerKeys.models, defaultModelsVersion) &&
+    isCurrent(versionMarkerKeys.modes, defaultModesVersion) &&
+    isCurrent(versionMarkerKeys.tasks, defaultTasksVersion) &&
+    isCurrent(versionMarkerKeys.skills, defaultSkillsVersion) &&
+    isCurrent(versionMarkerKeys.settings, defaultSettingsVersion)
+  )
 }
 
 /**

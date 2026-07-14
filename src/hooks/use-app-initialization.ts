@@ -5,7 +5,7 @@
 import { fetchConfig } from '@/api/config'
 import { useConfigStore } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
-import { getSettings, hasReconciledDefaults } from '@/dal'
+import { getSettings, hasCurrentBundleVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
@@ -203,37 +203,39 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     await db.get(sql`select 1`)
   })
 
-  // Step 2c: Returning-boot detection via the `hasReconciledDefaults` DAL
-  // helper. Presence of any `defaults_version.*` marker proves a prior
-  // reconcile completed on this device (or synced in from a peer that did).
-  // Under the per-table version-gate (THU-637 + THU-677) that same reconcile
-  // is safe to re-run without first waiting for cloud sync — with
-  // `initialSyncCompleted=false` the gate collapses to a no-op for any table
-  // that already has rows. This shaves the 10s waitForInitialSync ceiling
-  // off every refresh, at the cost of bundled default updates taking one
-  // extra boot to apply (they land on the next boot where sync completes).
-  const hasReconciledBefore = await time('step2c_returning_boot_probe', () => hasReconciledDefaults(db))
+  // Step 2c: Returning-boot detection via `hasCurrentBundleVersions`. Every
+  // `defaults_version.*` marker must exist AND meet-or-exceed the version
+  // this build ships. This is stricter than a "marker exists" probe on
+  // purpose — a client upgrade that bumped any bundled version needs the
+  // fresh-await path to run so reconcile can apply it; nothing re-runs
+  // reconcile when the background `waitForInitialSync()` later resolves, so
+  // an outstanding bump on the fast path would be stranded forever.
+  //
+  // When every marker is current: skipping is safe because reconcile would
+  // no-op anyway (`rawCanOverwrite=false` for every table).
+  const bundleVersionsCurrent = await time('step2c_returning_boot_probe', () => hasCurrentBundleVersions(db))
 
   // Step 3: Wait for PowerSync initial sync — only on fresh boots when sync is
-  // enabled. Returning boots on sync-enabled devices kick off the sync
-  // fire-and-forget so the engine still warms up and background updates land
-  // as they arrive, then feed `initialSyncCompleted: false` to reconcile so
-  // the version-gate stays closed against unsynced cloud state.
+  // enabled AND we already applied the current bundle versions. Returning
+  // boots on sync-enabled, up-to-date devices kick off the sync fire-and-
+  // forget so the engine still warms up and background updates land as they
+  // arrive, then feed `initialSyncCompleted: false` to reconcile so the
+  // version-gate stays closed against unsynced cloud state.
   //
   // Sync-disabled devices ALWAYS take the fresh path: `waitForInitialSync`
   // returns `'disabled'` immediately (zero wait), which sets
-  // `initialSyncCompleted=true` and lets reconcile freely apply bundle updates
-  // — the only way a standalone device ever picks up new defaults from a
-  // client upgrade. Taking the returning-boot skip here would force
-  // `initialSyncCompleted=false` and freeze standalone users on their current
-  // defaults forever (nothing else ever advances the marker).
+  // `initialSyncCompleted=true` and lets reconcile freely apply bundle
+  // updates — the only way a standalone device ever picks up new defaults
+  // from a client upgrade. Taking the returning-boot skip here would force
+  // `initialSyncCompleted=false` and freeze standalone users on their
+  // current defaults forever.
   //
   // `waitForInitialSync` never rejects (best-effort with internal timeout);
   // the `.catch` guards against that policy weakening.
   //
   // The outcome ('synced' / 'timed_out' / 'failed' / 'disabled' /
   // 'skipped_returning') is reported in the app_init_timing event below.
-  const canSkipSyncWait = hasReconciledBefore && getLocalSetting('syncEnabled')
+  const canSkipSyncWait = bundleVersionsCurrent && getLocalSetting('syncEnabled')
   const { initialSyncOutcome, initialSyncCompleted } = await time('step3_wait_for_initial_sync', () =>
     resolveInitialSyncStep(database, canSkipSyncWait),
   )

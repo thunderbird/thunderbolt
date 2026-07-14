@@ -15,11 +15,17 @@ import {
   getSettings,
   getSettingsRecords,
   getThemeSetting,
-  hasReconciledDefaults,
+  hasCurrentBundleVersions,
   hasSetting,
   resetSettingToDefault,
   updateSettings,
 } from './settings'
+import { defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModesVersion } from '../defaults/modes'
+import { defaultSettingsVersion } from '../defaults/settings'
+import { defaultSkillsVersion } from '../defaults/skills'
+import { defaultTasksVersion } from '../defaults/tasks'
+import { versionMarkerKeys } from '../lib/reconcile-defaults'
 import { hashValues } from '../lib/utils'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -56,26 +62,112 @@ describe('Settings DAL', () => {
     })
   })
 
-  describe('hasReconciledDefaults', () => {
+  describe('hasCurrentBundleVersions', () => {
+    // Every reconciled table's (marker-key, bundled-version) pair — driving
+    // the parametric "any one marker behind flips the check to false" case.
+    const markerCases = [
+      { key: versionMarkerKeys.models, version: defaultModelsVersion },
+      { key: versionMarkerKeys.modes, version: defaultModesVersion },
+      { key: versionMarkerKeys.tasks, version: defaultTasksVersion },
+      { key: versionMarkerKeys.skills, version: defaultSkillsVersion },
+      { key: versionMarkerKeys.settings, version: defaultSettingsVersion },
+    ] as const
+
+    const seedAllMarkers = async (offset = 0) => {
+      const db = getDb()
+      for (const { key, version } of markerCases) {
+        await createSetting(db, key, String(version + offset))
+      }
+    }
+
     it('returns false on a truly fresh DB with no markers', async () => {
       // `resetTestDatabase` (beforeEach) reapplies schema without reconciling,
       // so no `defaults_version.*` rows exist here.
-      const seen = await hasReconciledDefaults(getDb())
+      const seen = await hasCurrentBundleVersions(getDb())
       expect(seen).toBe(false)
     })
 
-    it('returns true after a `defaults_version.*` marker is written', async () => {
-      await createSetting(getDb(), 'defaults_version.models', '1')
-      const seen = await hasReconciledDefaults(getDb())
+    it('returns true when every marker meets its bundled version exactly', async () => {
+      await seedAllMarkers(0)
+      const seen = await hasCurrentBundleVersions(getDb())
       expect(seen).toBe(true)
     })
 
-    it('ignores non-marker settings rows (LIKE pattern is prefix-scoped)', async () => {
-      // A settings row that isn't a marker (e.g. a user preference) must not
-      // flip the probe — otherwise the returning-boot fast path would fire
-      // before any reconcile ever ran.
+    it('returns true when every marker exceeds its bundled version (peer ahead of this build)', async () => {
+      // Every stored version is one ahead of what this build ships — a peer
+      // that shipped a newer bundle already reconciled and synced its marker.
+      // Reconcile would no-op via `rawCanOverwrite=false`, so the fast path
+      // is safe.
+      await seedAllMarkers(1)
+      const seen = await hasCurrentBundleVersions(getDb())
+      expect(seen).toBe(true)
+    })
+
+    // Regression guard: this is the state after a client upgrade that bumped
+    // one of the versions. Reconcile has work to do — the fast path must not
+    // fire, otherwise the bump would be stranded (nothing re-runs reconcile
+    // after the background sync settles). Parameterized across every marker
+    // so a typo dropping any one key from the return chain fails a test.
+    for (const { key, version } of markerCases) {
+      it(`returns false when ${key} is behind its bundled version`, async () => {
+        await seedAllMarkers(0)
+        await getDb()
+          .update(settingsTable)
+          .set({ value: String(version - 1) })
+          .where(eq(settingsTable.key, key))
+        const seen = await hasCurrentBundleVersions(getDb())
+        expect(seen).toBe(false)
+      })
+    }
+
+    it('returns false when a marker is missing entirely', async () => {
+      // A device that reconciled everything but one marker never got written
+      // (e.g. mid-rollout) — treat as "reconcile pending".
+      const db = getDb()
+      for (const { key, version } of markerCases.slice(0, -1)) {
+        await createSetting(db, key, String(version))
+      }
+      // Last marker deliberately missing.
+      const seen = await hasCurrentBundleVersions(db)
+      expect(seen).toBe(false)
+    })
+
+    it('returns false when a marker exists with a non-numeric value', async () => {
+      // Data corruption / older schema — must not open the fast path on a
+      // marker we can't compare. `Number('not-a-number') === NaN`, rejected
+      // by the `Number.isFinite` guard.
+      await seedAllMarkers(0)
+      await getDb()
+        .update(settingsTable)
+        .set({ value: 'not-a-number' })
+        .where(eq(settingsTable.key, versionMarkerKeys.tasks))
+      const seen = await hasCurrentBundleVersions(getDb())
+      expect(seen).toBe(false)
+    })
+
+    it('returns false when a marker exists with an empty-string value', async () => {
+      // `Number('') === 0` — would silently pass `>= bundled` if the DAL
+      // didn't null-guard the map builder. Pin this behavior so a refactor
+      // that drops the null-guard fails loudly.
+      await seedAllMarkers(0)
+      await getDb().update(settingsTable).set({ value: '' }).where(eq(settingsTable.key, versionMarkerKeys.modes))
+      const seen = await hasCurrentBundleVersions(getDb())
+      expect(seen).toBe(false)
+    })
+
+    it('returns false when a marker exists with a null value', async () => {
+      // `r.value == null` short-circuits the map to `null`, and `typeof null
+      // === 'object'` fails the number check. Pin the null-branch behavior.
+      await seedAllMarkers(0)
+      await getDb().update(settingsTable).set({ value: null }).where(eq(settingsTable.key, versionMarkerKeys.settings))
+      const seen = await hasCurrentBundleVersions(getDb())
+      expect(seen).toBe(false)
+    })
+
+    it('ignores non-marker settings rows', async () => {
+      // A user preference row is not a marker; it must not affect the check.
       await createSetting(getDb(), 'preferred_name', 'test-user')
-      const seen = await hasReconciledDefaults(getDb())
+      const seen = await hasCurrentBundleVersions(getDb())
       expect(seen).toBe(false)
     })
   })

@@ -14,25 +14,27 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Pinned to the linuxdeploy `continuous` release asset uploaded on
-        # 2026-07-01 (upstream commit a9f929ff0e32d5c4bcb7b5c380adff4802f918ba).
-        # We can't pin to a formal tag because upstream hasn't cut one since
-        # the env-var feature landed (98f393c4, 2024-06-13); instead we verify
-        # sha256 and require a deliberate bump when the asset changes
-        # (lockfile-style). Tauri's `if !exists() { download }` guard in
-        # crates/tauri-bundler/.../linuxdeploy.rs sees this file and skips its
-        # own outdated download.
+        # Pinned to the linuxdeploy tagged release `1-alpha-20251107-1` (upstream
+        # commit cc7b86472c3caa3fd729b9dc502fd2aa78394257, published 2025-11-07).
+        # It's the first tagged release after `LINUXDEPLOY_EXCLUDED_LIBRARIES`
+        # env-var support landed (upstream 98f393c4, 2024-06-13), so pinning to
+        # this tag avoids the supply-chain risk of the rolling `continuous` URL.
+        # The sha256 check is a belt-and-suspenders: the tagged URL is stable,
+        # but verifying still catches any registry/mirror tamper. Tauri's
+        # `if !exists() { download }` guard in crates/tauri-bundler/.../linuxdeploy.rs
+        # sees this file and skips its own outdated download.
         #
         # To bump the pin:
-        #   1. curl -fsSL '<URL below>' -o /tmp/linuxdeploy-x86_64.AppImage
-        #   2. sha256sum /tmp/linuxdeploy-x86_64.AppImage
-        #   3. Sanity-check against upstream (release notes, commit metadata at
-        #      GET repos/linuxdeploy/linuxdeploy/releases/tags/continuous — the
-        #      `target_commitish` there should be a commit you're comfortable
-        #      shipping into a signed release AppImage).
-        #   4. Update EXPECTED_SHA below in a dedicated review-required commit.
-        readonly URL='https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage'
-        readonly EXPECTED_SHA='e87ee0815d109282fdda73e34c2361d64d02b0ffaea3674b18f1fd1f6a687dcf'
+        #   1. Pick a newer tag from `gh api repos/linuxdeploy/linuxdeploy/releases`
+        #      (avoid `continuous` — always pin to a fixed tag).
+        #   2. `curl -fsSL '<new URL>' -o /tmp/linuxdeploy-x86_64.AppImage`
+        #      and `sha256sum /tmp/linuxdeploy-x86_64.AppImage`.
+        #   3. Cross-check `target_commitish` from `GET .../releases/tags/<tag>`
+        #      against the upstream commit history — it should be a commit
+        #      you're comfortable shipping into a signed release AppImage.
+        #   4. Update URL + EXPECTED_SHA below in a dedicated review-required commit.
+        readonly URL='https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage'
+        readonly EXPECTED_SHA='c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d'
         # Follow the XDG spec so a runner that customises the cache dir still
         # lines up with what Tauri's `dirs::cache_dir()` reads at bundle time.
         readonly TAURI_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"

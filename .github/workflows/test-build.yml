@@ -47,13 +47,10 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             squashfs-tools
-          # Install libfuse2 for running linuxdeploy (which is itself an AppImage).
-          # Ubuntu 24.04 uses libfuse2t64 as a transition package. Kept in sync
-          # with desktop-release.yml so test builds match release builds and can
-          # actually produce the AppImage bundle.
-          sudo add-apt-repository universe -y
-          sudo apt-get update
-          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
+          # No libfuse2 needed: Tauri spawns linuxdeploy with
+          # APPIMAGE_EXTRACT_AND_RUN=1 (see crates/tauri-bundler/.../linuxdeploy.rs),
+          # so the AppImage self-extracts instead of self-mounting via FUSE.
+          # Kept in sync with desktop-release.yml.
 
       - name: Set up pinned linuxdeploy
         if: inputs.platform == 'linux'
@@ -121,4 +118,8 @@ jobs:
             src-tauri/target/**/bundle/**/*.exe
             src-tauri/target/**/bundle/**/*.dmg
             src-tauri/target/**/bundle/**/*.app.tar.gz
+          # Fail loudly if the glob matches nothing — default `warn` lets a
+          # broken glob leave the job green with no uploaded artifacts, which
+          # burned us earlier when native-Linux paths didn't match.
+          if-no-files-found: error
           retention-days: 7

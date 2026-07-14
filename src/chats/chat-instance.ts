@@ -226,7 +226,8 @@ export const createAgentRoutingFetch = (
         regenerationRevision: routingState.regenerationRevision ?? 0,
         skillInstructions,
         onAcpSessionId: persistAcpSessionId,
-        requestPermission: (request) => requestPermissionViaStore(id, request),
+        requestPermission:
+          selectedAgent.type === 'built-in' ? undefined : (request) => requestPermissionViaStore(id, request),
         onSessionSideEffect: applySessionSideEffect,
       })
     },

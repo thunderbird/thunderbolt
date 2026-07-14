@@ -2,14 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * Tests that the routing fetch's permission bridge stashes pending requests
- * on the store and that `resolvePendingPermission` completes the adapter's
- * awaited promise.
- */
-
 import '@/testing-library'
 
+import { builtInAgent } from '@/defaults/agents'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -22,6 +17,19 @@ import { createAgentRoutingFetch } from './chat-instance'
 const sessionId = 'sess-p1'
 const httpClient: HttpClient = {} as HttpClient
 const getProxyFetch: () => FetchFn = () => (async () => new Response('ok')) as unknown as FetchFn
+const remoteAgent: Agent = {
+  id: 'remote-agent',
+  name: 'Remote Agent',
+  type: 'remote-acp',
+  transport: 'websocket',
+  url: 'wss://example.test/ws',
+  description: null,
+  icon: null,
+  isSystem: 0,
+  enabled: 1,
+  deletedAt: null,
+  userId: 'user-1',
+}
 
 const hydrate = () => {
   hydrateStore({
@@ -43,17 +51,39 @@ describe('requestPermission bridge', () => {
     resetStore()
   })
 
-  it('routes the adapter requestPermission into the store and resolves on dialog response', async () => {
-    // `requestPermission` now travels on the per-FETCH context — a shared agent
-    // connection routes each thread's prompts to its own handler — so capture
-    // it from `adapter.fetch`, not the connect context.
-    let capturedRequestPermission: AgentAdapterContext['requestPermission'] | undefined
+  it('omits requestPermission for the built-in agent', async () => {
+    const contexts: AgentAdapterContext[] = []
 
     const adapter: AgentAdapter = {
-      agent: {} as Agent,
+      agent: builtInAgent,
       capabilities: null,
       fetch: async (_init: RequestInit, ctx: AgentAdapterContext) => {
-        capturedRequestPermission = ctx.requestPermission
+        contexts.push(ctx)
+        return new Response('ok')
+      },
+      ensureSession: async () => {},
+      disconnect: () => {},
+    }
+
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      connectToAgent: mock(async () => adapter) as never,
+      updateChatThread: (async () => {}) as never,
+      getDb: (() => ({})) as never,
+    })
+
+    await fetch('http://x', { body: '{}' } as RequestInit)
+
+    expect(contexts[0].requestPermission).toBeUndefined()
+  })
+
+  it('routes an ACP requestPermission into the store and resolves on dialog response', async () => {
+    const contexts: AgentAdapterContext[] = []
+
+    const adapter: AgentAdapter = {
+      agent: remoteAgent,
+      capabilities: null,
+      fetch: async (_init: RequestInit, ctx: AgentAdapterContext) => {
+        contexts.push(ctx)
         return new Response('ok')
       },
       ensureSession: async () => {},
@@ -61,6 +91,8 @@ describe('requestPermission bridge', () => {
     }
 
     const connectToAgent = mock(async () => adapter)
+
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: remoteAgent })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
@@ -70,7 +102,7 @@ describe('requestPermission bridge', () => {
 
     await fetch('http://x', { body: '{}' } as RequestInit)
 
-    expect(capturedRequestPermission).toBeDefined()
+    expect(contexts[0].requestPermission).toBeDefined()
 
     const request: RequestPermissionRequest = {
       sessionId: 'remote',
@@ -78,7 +110,7 @@ describe('requestPermission bridge', () => {
       toolCall: { toolCallId: 't', title: 'do thing', status: 'pending' },
     } as RequestPermissionRequest
 
-    const promise = capturedRequestPermission!(request)
+    const promise = contexts[0].requestPermission!(request)
 
     const pending = useChatStore.getState().sessions.get(sessionId)!.pendingPermission
     expect(pending).not.toBeNull()

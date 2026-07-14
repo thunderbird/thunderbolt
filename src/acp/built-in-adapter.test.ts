@@ -23,6 +23,7 @@ import {
   type ResolvedPiModel,
 } from './built-in-adapter'
 import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
+import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
 import type { AgentHarness, AgentTool } from '@earendil-works/pi-agent-core'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
@@ -127,17 +128,23 @@ describe('createBuiltInAdapter persistent harness', () => {
         toolset,
         mcpToolsMetadata: undefined,
         stableSystemPrompt: 'stable prompt',
-        systemPrompt: `full prompt ${index + 1}`,
+        volatileSystemPrompt: `timestamp ${index + 1}`,
+        systemPrompt: `stable prompt\n\ntimestamp ${index + 1}`,
       }),
     )
     const prepareConfig = mock(async () => configs.shift()!)
     const buildCalls: BuildAppHarnessOptions[] = []
+    const seededSystemPrompts: string[] = []
     const setToolsCalls: Array<Array<{ tools: AgentTool[]; activeToolNames: string[] | undefined }>> = []
     const promptCalls: Array<{ text: string; images: unknown[] }> = []
     const toPiCalls: PreparedAiRequestConfig['toolset'][] = []
     const harnesses: AgentHarness[] = []
     const buildHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
       buildCalls.push(options)
+      const systemPrompt = options.systemPrompt
+      seededSystemPrompts.push(
+        typeof systemPrompt === 'function' ? await systemPrompt({} as never) : (systemPrompt ?? ''),
+      )
       const setToolsForHarness: Array<{ tools: AgentTool[]; activeToolNames: string[] | undefined }> = []
       setToolsCalls.push(setToolsForHarness)
       const harness = {
@@ -223,8 +230,11 @@ describe('createBuiltInAdapter persistent harness', () => {
     ])
     const firstSystemPrompt = buildCalls[0]?.systemPrompt as () => string
     const secondSystemPrompt = buildCalls[1]?.systemPrompt as () => string
-    expect(firstSystemPrompt()).toBe('full prompt 2')
-    expect(secondSystemPrompt()).toBe('full prompt 3')
+    const expectedPrompt = (timestamp: string): string =>
+      `stable prompt\n\n${APP_HARNESS_ENVIRONMENT_PROMPT}\n\n${timestamp}`
+    expect(seededSystemPrompts).toEqual([expectedPrompt('timestamp 1'), expectedPrompt('timestamp 3')])
+    expect(firstSystemPrompt()).toBe(expectedPrompt('timestamp 2'))
+    expect(secondSystemPrompt()).toBe(expectedPrompt('timestamp 3'))
     expect(harnesses).toHaveLength(2)
   })
 })

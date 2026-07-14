@@ -27,7 +27,6 @@ export {
   type PiModelDescriptor,
 } from './build-app-harness.ts'
 export { ensureBufferPolyfill } from './ensure-buffer.ts'
-export { APP_HARNESS_ENVIRONMENT_PROMPT } from './environment-prompt.ts'
 export { toPiAgentTools } from './mcp-tools.ts'
 export type { SeedTurn } from './seed-history.ts'
 export { piHarnessToUiMessageStream, type AiSdkChunk, type PiStreamMetadata } from './pi-to-aisdk-stream.ts'

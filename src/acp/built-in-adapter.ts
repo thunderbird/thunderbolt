@@ -35,8 +35,8 @@
  * (the workspace, keyed by `threadId`, is kept so its files survive the rebuild). Each thread's
  * harness is bound to its own isolated OPFS workspace (`/workspace/<threadId>`),
  * jailed so a thread's coding tools and shell can't reach another thread's files.
- * Side-effecting tool calls (`bash`/`write`/`edit`/MCP) are gated on the chat
- * layer's permission dialog; read-only `read` auto-allows.
+ * Built-in tools auto-run without a permission dialog because they execute in a
+ * per-thread, network-less OPFS/ZenFS sandbox.
  *
  * No ACP handshake either way; `capabilities` is null and `ensureSession` is a
  * no-op (no wire to warm). `disconnect` is real: it disposes every cached harness
@@ -53,15 +53,8 @@ import {
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
-import { isReadOnlyAgentTool, resolveToolPermission, toAcpToolKind } from '@shared/agent-tool-permissions'
-import type { PermissionOption, RequestPermissionResponse } from '@agentclientprotocol/sdk'
-import type {
-  AgentHarness,
-  AgentTool,
-  ThinkingLevel,
-  ToolCallEvent,
-  ToolCallResult,
-} from '@earendil-works/pi-agent-core'
+import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
+import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { prepareBuiltInConversation } from './built-in-conversation'
 
 /** The type of the lazily-imported Pi engine module. A pure type reference — it
@@ -97,6 +90,9 @@ type CachedHarness = {
  *  build; a failed build is evicted so the next turn retries against a fresh
  *  harness. */
 type HarnessCache = Map<string, CachedHarness>
+
+/** Stable and volatile prompt parts needed by the Pi harness. */
+type AppHarnessSystemPromptConfig = Pick<PreparedAiRequestConfig, 'stableSystemPrompt' | 'volatileSystemPrompt'>
 
 /** Production injection point — production binds to `aiFetchStreamingResponse`. */
 export type AiFetchStreamingResponseFn = typeof aiFetchStreamingResponse
@@ -207,85 +203,12 @@ const hasExplicitReasoning = (profile: ModelProfile | null): boolean => {
   return level !== null && level !== 'off'
 }
 
-/** The two choices we surface for a built-in tool-call permission prompt.
- *  Stable ids so the response can be mapped back to allow/deny by kind. */
-const permissionOptions: readonly PermissionOption[] = [
-  { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
-  { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
-]
-
-/** Translate the user's permission response into a Pi `tool_call` hook result.
- *  A cancelled prompt or a reject-kind selection blocks the tool (Pi encodes a
- *  blocked call as an error tool result); anything else allows it. */
-const toToolCallResult = (response: RequestPermissionResponse): ToolCallResult | undefined => {
-  const { outcome } = response
-  if (outcome.outcome === 'cancelled') {
-    return { block: true, reason: 'Tool call was not approved.' }
-  }
-  if (resolveToolPermission(outcome, permissionOptions) === 'reject') {
-    return { block: true, reason: 'Tool call was rejected.' }
-  }
-  return undefined
-}
-
 /** Parse the AI SDK request transcript for Pi-specific content preparation. */
 const parseMessages = (init: RequestInit): ThunderboltUIMessage[] => {
   if (typeof init.body !== 'string') {
     throw new Error('Built-in adapter expects a string body on init')
   }
   return (JSON.parse(init.body) as { messages: ThunderboltUIMessage[] }).messages
-}
-
-/** Resolve to a cancelled outcome when `signal` aborts. Raced against the
- *  permission dialog so stopping generation mid-prompt settles the harness's
- *  pending tool-call hook instead of leaving it awaiting a dialog that will
- *  never be answered (which would dangle the aborted run). */
-const cancelledOnAbort = (signal: AbortSignal): Promise<RequestPermissionResponse> =>
-  new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve({ outcome: { outcome: 'cancelled' } })
-      return
-    }
-    signal.addEventListener('abort', () => resolve({ outcome: { outcome: 'cancelled' } }), { once: true })
-  })
-
-/** No-op unsubscribe, returned when no permission sink is wired (tools auto-run). */
-const noop = (): void => {}
-
-/**
- * Register the tool-call permission hook for ONE turn and return its unsubscribe.
- * The hook closes over this turn's `requestPermission` sink and abort `signal`, so
- * on a persistent (reused) harness it MUST be removed when the turn settles —
- * leaving stacked hooks would fire one stale dialog per past turn. Read-only tools
- * auto-allow; with no `requestPermission` sink nothing is registered (tools auto-run).
- */
-const registerToolCallPermission = (
-  harness: AgentHarness,
-  context: AgentAdapterContext,
-  signal: AbortSignal | null | undefined,
-): (() => void) => {
-  const { requestPermission } = context
-  if (!requestPermission) {
-    return noop
-  }
-  return harness.on('tool_call', async (event: ToolCallEvent) => {
-    if (isReadOnlyAgentTool(event.toolName)) {
-      return undefined
-    }
-    const ask = requestPermission({
-      sessionId: context.threadId,
-      toolCall: {
-        toolCallId: event.toolCallId,
-        title: event.toolName,
-        kind: toAcpToolKind(event.toolName),
-        rawInput: event.input,
-        status: 'pending',
-      },
-      options: [...permissionOptions],
-    })
-    const response = signal ? await Promise.race([ask, cancelledOnAbort(signal)]) : await ask
-    return toToolCallResult(response)
-  })
 }
 
 /** A resolved Pi model descriptor plus the thinking level derived from its
@@ -376,6 +299,10 @@ export const harnessSignature = (
   return `${model}|${resolved.thinkingLevel}|${stableSystemPrompt}|regenerate:${regenerationRevision}`
 }
 
+/** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
+const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string =>
+  `${config.stableSystemPrompt}\n\n${APP_HARNESS_ENVIRONMENT_PROMPT}\n\n${config.volatileSystemPrompt}`
+
 /** Build a thread's harness from the lazily-loaded engine and bind it to the
  *  thread's isolated workspace with resolved model + thinking level. Per-send app
  *  and MCP tools are installed afterward by {@link prepareHarnessForSend}. `history` is seeded only
@@ -387,9 +314,9 @@ const buildHarnessRecord = async (
   context: AgentAdapterContext,
   resolved: ResolvedPiModel,
   history: readonly SeedTurn[],
-  systemPromptText: string,
+  config: AppHarnessSystemPromptConfig,
 ): Promise<HarnessRecord> => {
-  const systemPrompt = { current: systemPromptText }
+  const systemPrompt = { current: composeAppHarnessSystemPrompt(config) }
   const harness = await agentCore.buildAppHarness({
     model: resolved.descriptor,
     systemPrompt: () => systemPrompt.current,
@@ -411,7 +338,7 @@ const prepareHarnessForSend = async (
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
 ): Promise<void> => {
-  record.systemPrompt.current = config.systemPrompt
+  record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
   const tools = await agentCore.toPiAgentTools(config.toolset)
   const allTools = [...record.baseTools, ...tools]
   await record.harness.setTools(
@@ -518,25 +445,17 @@ const fetchViaHarness = async (
   // signature drifts (a mid-thread model / provider / key / mode / thinking / MCP switch).
   const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
   const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
-    buildHarnessRecord(agentCore, context, resolved, history, config.systemPrompt),
+    buildHarnessRecord(agentCore, context, resolved, history, config),
   )
   await prepareHarnessForSend(agentCore, record, config)
   const { harness } = record
-
-  // Gate side-effecting tool calls on the chat layer's permission dialog for THIS
-  // turn, then unregister so the reused harness never carries a stale turn's hook.
-  const unregisterPermission = registerToolCallPermission(harness, context, init.signal)
 
   return new Response(
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
-        try {
-          await harness.prompt(prompt.text, { images: prompt.images })
-          await harness.waitForIdle()
-        } finally {
-          unregisterPermission()
-        }
+        await harness.prompt(prompt.text, { images: prompt.images })
+        await harness.waitForIdle()
       },
       {
         initial: { modelId: context.selectedModel.id },

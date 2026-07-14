@@ -553,6 +553,7 @@ export type PreparedAiRequestConfig = {
   readonly toolset: Record<string, Tool>
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
   readonly stableSystemPrompt: string
+  readonly volatileSystemPrompt: string
   readonly systemPrompt: string
 }
 
@@ -641,6 +642,7 @@ export const prepareAiRequestConfig = async ({
     toolset: merged.toolset,
     mcpToolsMetadata: merged.mcpTools,
     stableSystemPrompt: prompt.stablePrompt,
+    volatileSystemPrompt: prompt.volatilePrompt,
     systemPrompt: prompt.fullPrompt,
   }
 }

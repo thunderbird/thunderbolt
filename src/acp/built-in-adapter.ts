@@ -413,7 +413,11 @@ const prepareHarnessForSend = async (
 ): Promise<void> => {
   record.systemPrompt.current = config.systemPrompt
   const tools = await agentCore.toPiAgentTools(config.toolset)
-  await record.harness.setTools([...record.baseTools, ...tools])
+  const allTools = [...record.baseTools, ...tools]
+  await record.harness.setTools(
+    allTools,
+    allTools.map((tool) => tool.name),
+  )
 }
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it

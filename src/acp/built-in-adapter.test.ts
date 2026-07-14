@@ -132,17 +132,18 @@ describe('createBuiltInAdapter persistent harness', () => {
     )
     const prepareConfig = mock(async () => configs.shift()!)
     const buildCalls: BuildAppHarnessOptions[] = []
-    const setToolsCalls: AgentTool[][][] = []
+    const setToolsCalls: Array<Array<{ tools: AgentTool[]; activeToolNames: string[] | undefined }>> = []
     const promptCalls: Array<{ text: string; images: unknown[] }> = []
     const toPiCalls: PreparedAiRequestConfig['toolset'][] = []
     const harnesses: AgentHarness[] = []
     const buildHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
       buildCalls.push(options)
-      const setToolsForHarness: AgentTool[][] = []
+      const setToolsForHarness: Array<{ tools: AgentTool[]; activeToolNames: string[] | undefined }> = []
       setToolsCalls.push(setToolsForHarness)
       const harness = {
         getTools: () => [{ name: 'read' } as AgentTool],
-        setTools: async (tools: AgentTool[]) => void setToolsForHarness.push(tools),
+        setTools: async (tools: AgentTool[], activeToolNames?: string[]) =>
+          void setToolsForHarness.push({ tools, activeToolNames }),
         prompt: async (text: string, promptOptions?: { images?: unknown[] }) =>
           void promptCalls.push({ text, images: promptOptions?.images ?? [] }),
         waitForIdle: async () => {},
@@ -208,6 +209,11 @@ describe('createBuiltInAdapter persistent harness', () => {
 
     expect(buildCalls).toHaveLength(2)
     expect(setToolsCalls.map((calls) => calls.length)).toEqual([2, 1])
+    expect(setToolsCalls.flat().map((call) => call.activeToolNames)).toEqual([
+      ['read', 'first'],
+      ['read', 'second'],
+      ['read', 'third'],
+    ])
     expect(toPiCalls).toEqual(toolsets)
     expect(promptCalls.map((call) => call.text)).toEqual(['first', 'second', 'second'])
     expect(buildCalls[0]?.history).toEqual([])

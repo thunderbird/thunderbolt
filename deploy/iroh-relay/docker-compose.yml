@@ -9,10 +9,8 @@
 #   CLI  : THUNDERBOLT_IROH_RELAY_URL=http://localhost:3340
 #   App  : VITE_IROH_RELAY_URL=http://localhost:3340 (build-time)
 #
-# Production runs on Render as a derived GHCR image with the config baked in
-# (deploy/docker/iroh-relay.Dockerfile + deploy/config/iroh-relay.toml); the
-# VPS-shaped alternative with real TLS is config.example.toml. Full walkthrough:
-# docs/architecture/iroh-relay-self-hosting.md
+# See docs/architecture/iroh-relay-self-hosting.md for the relay's role and
+# self-hosting guidance.
 services:
   iroh-relay:
     image: n0computer/iroh-relay:v1.0.2

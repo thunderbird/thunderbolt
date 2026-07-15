@@ -90,32 +90,6 @@ Same-host native peers can migrate to a direct path after the relay-mediated han
 relay URL and successful authenticated round-trip verify relay configuration even when migration
 occurs.
 
-## Production deployment
-
-This repository ships a Render/GHCR deployment pattern. `.github/workflows/images-publish.yml` builds
-`deploy/docker/iroh-relay.Dockerfile`, which embeds `deploy/config/iroh-relay.toml`, and publishes
-`ghcr.io/thunderbird/thunderbolt/thunderbolt-iroh-relay:<version>`. A Render image service runs that
-stateless image behind Render's TLS-terminating proxy.
-
-The relay listens for plain HTTP/WebSocket traffic on one container port (`10000`). Render exposes
-that port through an HTTPS service URL, so the relay config has no `[tls]` section. `/` serves as the
-health-check path. Metrics use a separate listener and remain disabled because Render exposes only
-one service port.
-
-Render does not expose UDP, so this deployment cannot provide relay-side QUIC address discovery.
-Encrypted relaying and hole-punch coordination still work, and the browser path remains relay-only.
-This shape suits deployments that prioritize managed HTTPS and a single forwarded port.
-
-Self-hosters who need UDP/QUIC discovery can use the VPS-shaped
-`deploy/iroh-relay/config.example.toml`: expose TCP 80/443 and UDP 4433 directly, let the relay
-terminate TLS with Let's Encrypt, and optionally enable its metrics listener. A small VPS or VM is
-sufficient because the relay is stateless and forwards ciphertext without terminating peer QUIC.
-
-Set the deployed HTTPS URL as `THUNDERBOLT_IROH_RELAY_URL` at CLI runtime and
-`VITE_IROH_RELAY_URL` when building the app. Fleets using different relays remain interoperable
-because tickets carry the relay URL chosen by their issuer. To restrict access, configure
-`access.shared_token` and append the token query parameter to client relay URLs.
-
 ## Operational notes
 
 - **Version coupling**: keep the server minor version aligned with the `iroh` and `@number0/iroh`

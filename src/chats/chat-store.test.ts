@@ -442,14 +442,14 @@ describe('chat-store', () => {
       useChatStore.setState({ alwaysAllowedAgentIds: new Set(), alwaysAllowedAgentToolKeys: new Set() })
     })
 
-    it('limits a tool allowance to the matching tool and agent', () => {
+    it('limits an action-kind allowance to the matching kind and agent', () => {
       const { allowAlwaysForTool, isAlwaysAllowed } = useChatStore.getState()
 
-      allowAlwaysForTool('agent-a', 'read_file')
+      allowAlwaysForTool('agent-a', 'read')
 
-      expect(isAlwaysAllowed('agent-a', 'read_file')).toBe(true)
-      expect(isAlwaysAllowed('agent-a', 'write_file')).toBe(false)
-      expect(isAlwaysAllowed('agent-b', 'read_file')).toBe(false)
+      expect(isAlwaysAllowed('agent-a', 'read')).toBe(true)
+      expect(isAlwaysAllowed('agent-a', 'edit')).toBe(false)
+      expect(isAlwaysAllowed('agent-b', 'read')).toBe(false)
     })
 
     it('allows every tool for an allowed agent without affecting other agents', () => {
@@ -457,16 +457,17 @@ describe('chat-store', () => {
 
       allowAlwaysForAgent('agent-wholesale')
 
-      expect(isAlwaysAllowed('agent-wholesale', 'read_file')).toBe(true)
-      expect(isAlwaysAllowed('agent-wholesale', 'write_file')).toBe(true)
-      expect(isAlwaysAllowed('agent-other', 'read_file')).toBe(false)
+      expect(isAlwaysAllowed('agent-wholesale', 'read')).toBe(true)
+      expect(isAlwaysAllowed('agent-wholesale', 'edit')).toBe(true)
+      expect(isAlwaysAllowed('agent-other', 'read')).toBe(false)
     })
   })
 
   describe('permission request helpers', () => {
-    it('derives a tool key from title, kind, then the unknown fallback', () => {
-      expect(deriveToolKey({ toolCall: { title: 'read_file', kind: 'execute' } } as never)).toBe('read_file')
-      expect(deriveToolKey({ toolCall: { kind: 'execute' } } as never)).toBe('execute')
+    it('derives a tool key from kind regardless of the argument-bearing title', () => {
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/passwd', kind: 'read' } } as never)).toBe('read')
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/shadow', kind: 'read' } } as never)).toBe('read')
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/passwd', kind: 'execute' } } as never)).toBe('execute')
       expect(deriveToolKey({ toolCall: {} } as never)).toBe('unknown')
     })
 

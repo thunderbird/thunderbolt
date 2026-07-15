@@ -25,9 +25,8 @@ export type PendingPermission = {
   resolve: (response: RequestPermissionResponse) => void
 }
 
-/** Derives the stable session permission key for an ACP tool request. */
-export const deriveToolKey = (request: RequestPermissionRequest): string =>
-  request.toolCall?.title ?? request.toolCall?.kind ?? 'unknown'
+/** Keys a remembered allowance for this agent on the ACP tool kind. */
+export const deriveToolKey = (request: RequestPermissionRequest): string => request.toolCall?.kind ?? 'unknown'
 
 /** Finds the option used to approve a request, preferring one-time approval. */
 export const findAllowOption = (options: PermissionOption[]): PermissionOption | undefined =>

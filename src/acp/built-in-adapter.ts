@@ -35,8 +35,10 @@
  * (the workspace, keyed by `threadId`, is kept so its files survive the rebuild). Each thread's
  * harness is bound to its own isolated OPFS workspace (`/workspace/<threadId>`),
  * jailed so a thread's coding tools and shell can't reach another thread's files.
- * Built-in tools auto-run without a permission dialog because they execute in a
- * per-thread, network-less OPFS/ZenFS sandbox.
+ * Built-in tools auto-run by product decision, restoring the pre-#1032 baseline
+ * where the legacy pipeline ran every tool ungated. The harness also runs
+ * network-capable app, integration, and MCP tools that are not sandboxed;
+ * OPFS/ZenFS isolation is not the safety rationale for auto-run.
  *
  * No ACP handshake either way; `capabilities` is null and `ensureSession` is a
  * no-op (no wire to warm). `disconnect` is real: it disposes every cached harness

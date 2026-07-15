@@ -218,9 +218,10 @@ export const createAgentRoutingFetch = (
 
       // Built-in re-resolves skill instructions itself (ai/fetch.ts); for ACP
       // agents we resolve here and fold them into the prompt via the adapter.
-      const skillInstructions =
-        selectedAgent.type === 'built-in' ? undefined : await resolveAcpSkillInstructions(requestBody.messages)
-      // Built-in tools auto-run inside a per-thread, network-less OPFS sandbox, so no permission sink is needed.
+      const skillInstructions = isBuiltInAgent(selectedAgent)
+        ? undefined
+        : await resolveAcpSkillInstructions(requestBody.messages)
+      // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
       const requestPermission = isBuiltInAgent(selectedAgent)
         ? undefined
         : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)

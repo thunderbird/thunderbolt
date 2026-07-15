@@ -92,7 +92,7 @@ describe('PermissionDialog', () => {
   it('renders both always-allow actions when an allow option exists', () => {
     render(<PermissionDialog {...defaultHandlers} request={baseRequest} />)
 
-    expect(screen.getByText('Always allow this tool')).toBeInTheDocument()
+    expect(screen.getByText('Always allow this type of action')).toBeInTheDocument()
     expect(screen.getByText('Always allow everything from this agent')).toBeInTheDocument()
   })
 
@@ -104,7 +104,7 @@ describe('PermissionDialog', () => {
 
     render(<PermissionDialog {...defaultHandlers} request={request} />)
 
-    expect(screen.queryByText('Always allow this tool')).not.toBeInTheDocument()
+    expect(screen.queryByText('Always allow this type of action')).not.toBeInTheDocument()
     expect(screen.queryByText('Always allow everything from this agent')).not.toBeInTheDocument()
   })
 
@@ -120,7 +120,7 @@ describe('PermissionDialog', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('Always allow this tool'))
+    fireEvent.click(screen.getByText('Always allow this type of action'))
     fireEvent.click(screen.getByText('Always allow everything from this agent'))
 
     expect(onAlwaysAllowTool).toHaveBeenCalledTimes(1)
@@ -167,10 +167,11 @@ describe('PermissionDialogHost', () => {
     const resolve = mock(() => {})
     renderPendingPermission(resolve)
 
-    fireEvent.click(screen.getByText('Always allow this tool'))
+    fireEvent.click(screen.getByText('Always allow this type of action'))
 
-    expect(useChatStore.getState().isAlwaysAllowed('agent-1', 'Read /etc/passwd')).toBe(true)
-    expect(useChatStore.getState().isAlwaysAllowed('agent-1', 'another tool')).toBe(false)
+    expect(useChatStore.getState().isAlwaysAllowed('agent-1', 'execute')).toBe(true)
+    expect(useChatStore.getState().isAlwaysAllowed('agent-1', 'read')).toBe(false)
+    expect(useChatStore.getState().isAlwaysAllowed('agent-1', 'Read /etc/passwd')).toBe(false)
     expect(resolve).toHaveBeenCalledWith({ outcome: { outcome: 'selected', optionId: 'allow' } })
     expect(useChatStore.getState().sessions.get('session-1')!.pendingPermission).toBeNull()
   })

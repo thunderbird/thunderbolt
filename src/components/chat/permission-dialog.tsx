@@ -130,7 +130,7 @@ export const PermissionDialog = ({
       {allowOption && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowTool)}>
-            Always allow this tool
+            Always allow this type of action
           </Button>
           <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowAgent)}>
             Always allow everything from this agent

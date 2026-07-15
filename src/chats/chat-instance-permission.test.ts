@@ -68,7 +68,7 @@ const getRemoteRequestPermission = async (): Promise<NonNullable<AgentAdapterCon
     getDb: (() => ({})) as never,
   })
 
-  await fetch('http://x', { body: '{}' } as RequestInit)
+  await fetch('https://x', { body: '{}' } as RequestInit)
 
   const requestPermission = contexts[0].requestPermission
   if (!requestPermission) {
@@ -110,7 +110,7 @@ describe('requestPermission bridge', () => {
       getDb: (() => ({})) as never,
     })
 
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
 
     expect(contexts[0].requestPermission).toBeUndefined()
   })
@@ -138,23 +138,41 @@ describe('requestPermission bridge', () => {
     expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission).toBeNull()
   })
 
-  it('auto-approves an always-allowed ACP tool without opening the dialog', async () => {
+  it('auto-approves an allowed ACP tool kind across titles but prompts for another kind', async () => {
     const requestPermission = await getRemoteRequestPermission()
-    const request: RequestPermissionRequest = {
+    const firstExecuteRequest: RequestPermissionRequest = {
       sessionId: 'remote',
       options: [
         { optionId: 'allow-once', name: 'Allow', kind: 'allow_once' },
         { optionId: 'allow-always', name: 'Always allow', kind: 'allow_always' },
       ],
-      toolCall: { toolCallId: 't', title: 'do thing', status: 'pending' },
+      toolCall: { toolCallId: 't1', title: 'Run pwd', kind: 'execute', status: 'pending' },
+    } as RequestPermissionRequest
+    const secondExecuteRequest: RequestPermissionRequest = {
+      ...firstExecuteRequest,
+      toolCall: { toolCallId: 't2', title: 'Run whoami', kind: 'execute', status: 'pending' },
+    } as RequestPermissionRequest
+    const readRequest: RequestPermissionRequest = {
+      ...firstExecuteRequest,
+      toolCall: { toolCallId: 't3', title: 'Read /etc/passwd', kind: 'read', status: 'pending' },
     } as RequestPermissionRequest
 
-    useChatStore.getState().allowAlwaysForTool(remoteAgent.id, 'do thing')
+    useChatStore.getState().allowAlwaysForTool(remoteAgent.id, 'execute')
 
-    await expect(requestPermission(request)).resolves.toEqual({
+    await expect(requestPermission(firstExecuteRequest)).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'allow-once' },
+    })
+    await expect(requestPermission(secondExecuteRequest)).resolves.toEqual({
       outcome: { outcome: 'selected', optionId: 'allow-once' },
     })
     expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission).toBeNull()
+
+    const readPromise = requestPermission(readRequest)
+    expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission?.request).toBe(readRequest)
+
+    const response: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } }
+    useChatStore.getState().resolvePendingPermission(sessionId, response)
+    await expect(readPromise).resolves.toEqual(response)
   })
 
   it('opens the dialog for an always-allowed agent when no allow option exists', async () => {

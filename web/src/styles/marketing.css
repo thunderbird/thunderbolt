@@ -14,7 +14,7 @@
 
 @theme {
   --font-sans: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
-  --font-mono: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-button: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
 }
 

@@ -1033,6 +1033,54 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
   })
 
+  test('models marker advances when models mutated even if a user has edited a profile', async () => {
+    // A user tweaked a model profile (temperature, tools, addenda) — their
+    // profile row is hash-mismatched relative to the bundled profile default.
+    // A subsequent models bundle bump lands and the models pass mutates the
+    // row it targets. Guard must advance the marker on the strength of the
+    // models mutation alone; requiring BOTH passes to individually verify
+    // would strand the marker permanently for anyone who edited a profile.
+    const db = getDb()
+
+    await reconcileDefaults(db)
+
+    // Simulate a user-edited model profile: hash-mismatched relative to its
+    // stored `defaultHash` (as would happen after a `updateModelProfile` write
+    // that intentionally diverges from the bundle default).
+    const targetProfile = defaultModelProfiles[0]
+    await db
+      .update(modelProfilesTable)
+      .set({ temperature: 0.77 })
+      .where(eq(modelProfilesTable.modelId, targetProfile.modelId))
+
+    // Rewind stored version and stale one models row so the pass has real
+    // work to do (mutated=true), then re-run reconcile.
+    const targetModel = defaultModels[0]
+    const staleModel = { ...targetModel, name: 'stale' }
+    await db
+      .update(modelsTable)
+      .set({ name: 'stale', defaultHash: hashModel(staleModel) })
+      .where(eq(modelsTable.id, targetModel.id))
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultModelsVersion - 1) })
+      .where(eq(settingsTable.key, modelsVersionKey))
+
+    await reconcileDefaults(db)
+
+    // Marker advances because the models pass mutated, even though the
+    // profiles pass sees a user-edited row (not at target, not mutated).
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+
+    // User-edited profile stays user-edited (hash mismatch → skip).
+    const preservedProfile = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, targetProfile.modelId))
+      .get()
+    expect(preservedProfile?.temperature).toBe(0.77)
+  })
+
   // Coverage guard for `runGatedPass` (modes/tasks/skills/settings) — the
   // models path has its own dedicated test above. Modes is a good stand-in
   // for the loop because it has multiple rows and its own hashFn/defaults.

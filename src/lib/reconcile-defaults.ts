@@ -548,27 +548,25 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     //   1. `canOverwrite` — writing the marker under a closed gate would let
     //      peers falsely believe the picked version was applied here and stop
     //      their own in-place upgrades even though we never wrote the content.
-    //   2. Either something mutated OR both passes verified every row is
-    //      already at target (`everyBundleRowAtTarget`). The "all rows
-    //      already at target" case is a legitimate verification — our
-    //      content genuinely matches version N even though nothing changed —
-    //      and existing-user upgrades depend on it (rows seeded pre-THU-677
-    //      already hash to the current bundle, so `mutated=false` alone
-    //      would strand the marker forever). The "all rows user-edited"
-    //      case still refuses because a hash mismatch means content doesn't
-    //      match version N — advancing would tell fresh-install peers to
-    //      stop seeding their own rows.
+    //   2. Either pass mutated OR both passes have every row at target.
+    //      The mutation-OR clause covers the common case: a bundle bump
+    //      writes to models (or profiles), and the marker legitimately
+    //      advances even if the OTHER pass is a no-op — e.g. a user who
+    //      customized a model profile shouldn't strand the models marker
+    //      just because their profile is user-edited (hash mismatch). The
+    //      at-target-AND clause covers the existing-user upgrade case:
+    //      pre-THU-677 rows already hash to the current bundle, both
+    //      passes verify without writing, and the marker still needs to
+    //      advance. The "all rows user-edited" case still refuses because
+    //      neither pass mutated and neither is at target — advancing would
+    //      tell fresh-install peers to stop seeding their own rows.
     //   3. `droppedOtaModelIds.length === 0` — our apply is a strict subset
     //      of the picked version when we filter OTA models, and stamping the
     //      full version would lock later fuller-bundle clients out of
     //      inserting the missing models.
-    const passVerified = (p: ReconcileDefaultsForTableResult): boolean => p.mutated || p.everyBundleRowAtTarget
-    if (
-      modelsGate.canOverwrite &&
-      passVerified(modelsPass) &&
-      passVerified(profilesPass) &&
-      droppedOtaModelIds.length === 0
-    ) {
+    const eitherPassMutated = modelsPass.mutated || profilesPass.mutated
+    const bothPassesAtTarget = modelsPass.everyBundleRowAtTarget && profilesPass.everyBundleRowAtTarget
+    if (modelsGate.canOverwrite && (eitherPassMutated || bothPassesAtTarget) && droppedOtaModelIds.length === 0) {
       await advanceVersionMarker(tx, versionMarkerKeys.models, modelsSource.version, modelsGate.stored)
     }
 
@@ -602,8 +600,9 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
         ...(keyField ? { keyField } : {}),
       })
       // Advance when we wrote something OR verified every row is at target.
-      // See the models-path guard above for the full rationale.
-      if (gate.canOverwrite && passVerified(pass)) {
+      // See the models-path guard above for the full rationale — single-table
+      // case is simpler because there's no sibling pass to coordinate with.
+      if (gate.canOverwrite && (pass.mutated || pass.everyBundleRowAtTarget)) {
         await advanceVersionMarker(tx, versionKey, currentVersion, gate.stored)
       }
     }

@@ -377,6 +377,7 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
       // deferred storage open) must surface as an error screen rather than
       // leaving the app stuck on the loading spinner forever. Tracked like the
       // per-step failures so an unexpected throw stays observable.
+      console.error('Failed to initialize app:', error)
       const unknownError = createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error)
       trackError(unknownError, { initialization_step: 'uncaught' })
       setInitError(unknownError)

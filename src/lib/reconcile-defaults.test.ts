@@ -734,6 +734,66 @@ describe('reconcileDefaultsForTable', () => {
       expect(result.mutated).toBe(false)
       expect(result.everyBundleRowAtTarget).toBe(false)
     })
+
+    test('cleanup-shaped soft-delete + canResurrect=false → false', async () => {
+      // Sync-incomplete device: cleanup-shape row (`deletedAt` set,
+      // `defaultHash` still matches content) can't be safely resurrected
+      // because a peer's authoritative retirement may just be partially
+      // synced. Row stays deleted — content isn't at bundle target — flag
+      // must flip. Seed the other default rows unedited so the only branch
+      // exercised on this pass is the resurrect skip.
+      const db = getDb()
+      const [soft, ...rest] = defaultModels
+      await db.insert(modelsTable).values({
+        ...soft,
+        deletedAt: '2026-01-01T00:00:00.000Z',
+        defaultHash: hashModel(soft),
+      })
+      for (const other of rest) {
+        await db.insert(modelsTable).values({ ...other, defaultHash: hashModel(other) })
+      }
+      const result = await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, {
+        canOverwrite: true,
+        canResurrect: false,
+      })
+      expect(result.mutated).toBe(false)
+      expect(result.everyBundleRowAtTarget).toBe(false)
+    })
+
+    test('user-filled null-default setting counts as at-target (wouldOverwriteUserValue branch)', async () => {
+      // A user who filled in a null-default via `setValue(..., { recomputeHash:
+      // true })` (onboarding pattern for preferred_name / location_* /
+      // distance_unit / etc.) creates a row whose stored `defaultHash`
+      // matches its user value — passes the user-edit check — but trips
+      // `wouldOverwriteUserValue` because the bundle default is null and the
+      // row's value isn't. Target IS "user-owned" for those rows; keeping
+      // `everyBundleRowAtTarget=true` here lets the settings marker advance
+      // on the first THU-677 boot for existing users who ran onboarding
+      // instead of stranding them on the slow sync-wait path.
+      const db = getDb()
+      const target = defaultSettings.find((s) => s.key === 'preferred_name')
+      if (!target) {
+        throw new Error('fixture drift: `preferred_name` no longer in defaultSettings')
+      }
+      // User filled in the setting via recomputeHash — value populated, hash
+      // matches the user's current content.
+      const userFilled = { ...target, value: 'John' }
+      await db.insert(settingsTable).values({ ...userFilled, defaultHash: hashSetting(userFilled) })
+      // Also seed the other defaults untouched so the only "concerning" row
+      // in the pass is the user-filled one.
+      for (const other of defaultSettings.filter((s) => s.key !== target.key)) {
+        await db.insert(settingsTable).values({ ...other, defaultHash: hashSetting(other) })
+      }
+
+      const result = await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, {
+        keyField: 'key',
+      })
+
+      expect(result.mutated).toBe(false)
+      // The critical assertion — must not be flipped false by the
+      // wouldOverwriteUserValue branch.
+      expect(result.everyBundleRowAtTarget).toBe(true)
+    })
   })
 })
 
@@ -1556,6 +1616,53 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
       const preserved = await db.select().from(settingsTable).where(eq(settingsTable.key, target.key)).get()
       expect(preserved?.value).toBe('from-newer-bundle')
       expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion + 1)
+    })
+
+    test('marker advances even when a user has filled in null-default settings (pre-THU-677 upgrade path)', async () => {
+      // On a pre-THU-677 device where the user filled in `preferred_name`
+      // (and similar null-default settings) via onboarding, the settings
+      // marker used to get stuck at absent — the `wouldOverwriteUserValue`
+      // branch flipped `everyBundleRowAtTarget` to false, so with
+      // `mutated=false` the marker never advanced. That kept
+      // `hasCurrentDefaultsVersions` returning false on every boot and the
+      // returning-boot fast path never activated.
+      //
+      // Now that the wouldOverwriteUserValue branch treats the row as
+      // at-target (user IS the intended target for null-default settings),
+      // the marker advances cleanly and the next boot takes the fast path.
+      const db = getDb()
+
+      // Seed the bundle defaults so the pre-THU-677 device has all rows.
+      await reconcileDefaults(db)
+
+      // Simulate the pre-THU-677 state: settings marker doesn't exist yet.
+      await db.delete(settingsTable).where(eq(settingsTable.key, 'defaults_version.settings'))
+
+      // User filled in `preferred_name` via onboarding (`setValue(..., {
+      // recomputeHash: true })` — the row's `defaultHash` matches its user
+      // value, so it passes the user-edit check, but the bundle default has
+      // `value: null`).
+      const target = defaultSettings.find((s) => s.key === 'preferred_name')
+      if (!target) {
+        throw new Error('fixture drift: `preferred_name` no longer in defaultSettings')
+      }
+      const userFilled = { ...target, value: 'John' }
+      await db
+        .update(settingsTable)
+        .set({ value: 'John', defaultHash: hashSetting(userFilled) })
+        .where(eq(settingsTable.key, target.key))
+
+      await reconcileDefaults(db)
+
+      // Marker advances despite `mutated=false` — the user-filled null-default
+      // row counts as at-target via the wouldOverwriteUserValue branch's
+      // updated semantics.
+      expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
+
+      // The user's value must still be preserved (that's what
+      // wouldOverwriteUserValue exists for).
+      const preserved = await db.select().from(settingsTable).where(eq(settingsTable.key, target.key)).get()
+      expect(preserved?.value).toBe('John')
     })
   })
 

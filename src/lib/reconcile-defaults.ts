@@ -167,15 +167,19 @@ export type ReconcileDefaultsForTableOptions = {
  * @property mutated - True iff at least one row was inserted or updated (this
  *   includes the legacy null-defaultHash bootstrap).
  * @property everyBundleRowAtTarget - True iff every id in `defaults` ended
- *   the pass with a row whose stored `defaultHash` matches the effective
- *   target hash (i.e. content genuinely matches this version). False if any
- *   default row is missing without insert, user-edited (hash mismatch), or
- *   was skipped under `!canOverwrite`. Combined with `mutated` this lets
- *   callers decide when to advance an external version marker: advance when
- *   either something was written OR every row is verifiably at target
- *   (existing-users-upgrade case). Refuse when neither holds — the "all
- *   rows user-edited" case must not signal `stored=version` to peers, or
- *   fresh-install peers would receive the marker and stop seeding.
+ *   the pass in a state we consider "at target": either its stored
+ *   `defaultHash` matches the effective target hash (content genuinely
+ *   matches this version), OR it hit the `wouldOverwriteUserValue` branch
+ *   (settings-only: user filled in a null-default the app expects them to
+ *   own — target IS "user-owned" for those rows). False if any default row
+ *   is missing without insert, user-edited (hash mismatch), soft-deleted
+ *   without resurrect, or was skipped under `!canOverwrite`. Combined with
+ *   `mutated` this lets callers decide when to advance an external version
+ *   marker: advance when either something was written OR every row is
+ *   verifiably at target (existing-users-upgrade case). Refuse when neither
+ *   holds — the "all rows user-edited" case must not signal `stored=version`
+ *   to peers, or fresh-install peers would receive the marker and stop
+ *   seeding.
  */
 export type ReconcileDefaultsForTableResult = { mutated: boolean; everyBundleRowAtTarget: boolean }
 
@@ -319,9 +323,14 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const wouldOverwriteUserValue = existing.value !== null && (effectiveDefault as any).value === null
 
     if (wouldOverwriteUserValue) {
-      // User set a value; we're not overwriting it. Content is user-managed,
-      // not at bundle target — same category as a hash-mismatch user edit.
-      everyBundleRowAtTarget = false
+      // User filled in a null-default setting the app expects them to own
+      // (preferred_name, location_*, distance_unit, etc.). The row IS at its
+      // intended target — target IS "user-owned" for these null defaults, and
+      // the whole point of `wouldOverwriteUserValue` is to preserve that
+      // ownership. Keeping `everyBundleRowAtTarget=true` here lets the
+      // settings marker advance on the first THU-677 boot for existing users
+      // who ran onboarding, instead of stranding them on the slow sync-wait
+      // path until a `defaultSettingsVersion` bump fires a real mutation.
       continue
     }
 

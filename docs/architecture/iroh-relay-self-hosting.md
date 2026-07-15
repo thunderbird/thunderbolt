@@ -34,8 +34,7 @@ exposure; payload confidentiality does not depend on relay trust.
 Relay traffic moves fully to the configured self-hosted relay. DNS discovery for bare-NodeId dials
 still queries n0's DNS service because the transport retains `presetN0`. Ticket-based dials, the
 normal Thunderbolt flow, never use DNS discovery because each ticket contains its relay URL. A
-custom discovery service can remove the remaining n0 DNS dependency; that integration is separate
-follow-up work.
+custom discovery service can remove the remaining n0 DNS dependency.
 
 ## Client configuration
 

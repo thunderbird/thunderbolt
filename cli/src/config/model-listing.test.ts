@@ -198,6 +198,27 @@ describe('listModels', () => {
     })
   })
 
+  test('returns catalog models when fetch rejects with a network TypeError', async () => {
+    const fetchFn: ModelListingFetch = async () => {
+      throw new TypeError('Network request failed.')
+    }
+
+    expect(await listModels({ provider: 'openai', apiKey: 'key', fetchFn })).toEqual({
+      source: 'catalog',
+      ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'],
+    })
+  })
+
+  test('returns catalog models when response JSON is invalid', async () => {
+    const fetchFn: ModelListingFetch = async () =>
+      new Response('{"data":', { headers: { 'Content-Type': 'application/json' } })
+
+    expect(await listModels({ provider: 'openai', apiKey: 'key', fetchFn })).toEqual({
+      source: 'catalog',
+      ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'],
+    })
+  })
+
   test('returns catalog models for non-success and malformed responses', async () => {
     const unavailable = await listModels({
       provider: 'openai',
@@ -212,6 +233,41 @@ describe('listModels', () => {
 
     expect(unavailable).toEqual({ source: 'catalog', ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'] })
     expect(malformed).toEqual({ source: 'catalog', ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'] })
+  })
+
+  test('treats unrecognized provider responses as empty model lists', async () => {
+    const providerResponses = [
+      ['openai', { data: [{ broken: true }] }],
+      ['google', { models: [{ broken: true }] }],
+      ['xai', { models: [{ broken: true }] }],
+      ['together', [{ broken: true }]],
+    ] as const
+
+    for (const [provider, response] of providerResponses) {
+      const result = await listModels({
+        provider,
+        apiKey: 'key',
+        fetchFn: async () => Response.json(response),
+      })
+
+      expect(result.source).toBe('catalog')
+    }
+  })
+
+  test('propagates unexpected errors from model post-processing', async () => {
+    const unexpectedError = new Error('Unexpected post-processing failure.')
+    const parsed = new Proxy<Record<string, unknown>>({}, {
+      get: () => {
+        throw unexpectedError
+      },
+    })
+    class PostProcessingResponse extends Response {
+      override readonly json = async (): Promise<unknown> => parsed
+    }
+
+    await expect(
+      listModels({ provider: 'openai', apiKey: 'key', fetchFn: async () => new PostProcessingResponse() }),
+    ).rejects.toBe(unexpectedError)
   })
 
   test('marks 401 and 403 catalog fallbacks as authentication rejections', async () => {

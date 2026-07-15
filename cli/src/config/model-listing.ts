@@ -61,23 +61,25 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /** Reads OpenAI-compatible `{ data: [{ id, created? }] }` responses. */
 const parseOpenAiModels = (value: unknown): readonly ListedModel[] => {
-  if (!isRecord(value) || !Array.isArray(value.data)) throw new Error('Invalid model list response.')
-  return value.data.map((candidate) => {
-    if (!isRecord(candidate) || typeof candidate.id !== 'string') throw new Error('Invalid model entry.')
+  if (!isRecord(value) || !Array.isArray(value.data)) return []
+  return value.data.flatMap((candidate) => {
+    if (!isRecord(candidate) || typeof candidate.id !== 'string') return []
     const created = createdTimestamp(candidate)
-    return {
-      id: candidate.id,
-      ...(created === undefined ? {} : { created }),
-    }
+    return [
+      {
+        id: candidate.id,
+        ...(created === undefined ? {} : { created }),
+      },
+    ]
   })
 }
 
 /** Gemini listing schema: https://ai.google.dev/api/models#method:-models.list */
 const parseGeminiModels = (value: unknown): readonly ListedModel[] => {
-  if (!isRecord(value) || !Array.isArray(value.models)) throw new Error('Invalid Gemini model list response.')
+  if (!isRecord(value) || !Array.isArray(value.models)) return []
   return value.models.flatMap((candidate) => {
-    if (!isRecord(candidate) || typeof candidate.name !== 'string') throw new Error('Invalid Gemini model entry.')
-    if (!Array.isArray(candidate.supportedGenerationMethods)) throw new Error('Invalid Gemini methods.')
+    if (!isRecord(candidate) || typeof candidate.name !== 'string') return []
+    if (!Array.isArray(candidate.supportedGenerationMethods)) return []
     if (!candidate.supportedGenerationMethods.includes('generateContent')) return []
     return [{ id: candidate.name.replace(/^models\//, '') }]
   })
@@ -85,21 +87,19 @@ const parseGeminiModels = (value: unknown): readonly ListedModel[] => {
 
 /** xAI language-model schema: https://docs.x.ai/developers/rest-api-reference/inference/models#list-language-models */
 const parseXaiModels = (value: unknown): readonly ListedModel[] => {
-  if (!isRecord(value) || !Array.isArray(value.models)) throw new Error('Invalid xAI model list response.')
-  return value.models.map((candidate) => {
-    if (!isRecord(candidate) || typeof candidate.id !== 'string') throw new Error('Invalid xAI model entry.')
+  if (!isRecord(value) || !Array.isArray(value.models)) return []
+  return value.models.flatMap((candidate) => {
+    if (!isRecord(candidate) || typeof candidate.id !== 'string') return []
     const created = createdTimestamp(candidate)
-    return { id: candidate.id, ...(created === undefined ? {} : { created }) }
+    return [{ id: candidate.id, ...(created === undefined ? {} : { created }) }]
   })
 }
 
 /** Together listing schema: https://docs.together.ai/reference/models */
 const parseTogetherModels = (value: unknown): readonly ListedModel[] => {
-  if (!Array.isArray(value)) throw new Error('Invalid Together model list response.')
+  if (!Array.isArray(value)) return []
   return value.flatMap((candidate) => {
-    if (!isRecord(candidate) || typeof candidate.id !== 'string' || typeof candidate.type !== 'string') {
-      throw new Error('Invalid Together model entry.')
-    }
+    if (!isRecord(candidate) || typeof candidate.id !== 'string' || typeof candidate.type !== 'string') return []
     if (!['chat', 'language', 'code'].includes(candidate.type)) return []
     const created = createdTimestamp(candidate)
     return [{ id: candidate.id, ...(created === undefined ? {} : { created }) }]
@@ -113,6 +113,9 @@ const parseListedModels = (provider: ModelProvider, value: unknown): readonly Li
   if (provider === 'together') return parseTogetherModels(value)
   return parseOpenAiModels(value)
 }
+
+/** Identifies fetch failures that should use catalog models. */
+const isExpectedFetchError = (error: unknown): boolean => error instanceof DOMException || error instanceof TypeError
 
 /** Keeps model ids intended for chat rather than specialized media or ranking APIs. */
 const chatModels = (models: readonly ListedModel[]): readonly ListedModel[] =>
@@ -197,10 +200,11 @@ const listingRequest = (provider: ModelProvider, apiKey: string, baseUrl?: strin
   }
 }
 
-/** Lists live provider models, returning Pi catalog ids for every failure mode. */
+/** Lists live provider models, returning Pi catalog ids for expected provider failures. */
 export const listModels = async (options: ListModelsOptions): Promise<ModelListingResult> => {
   const fallback = (): ModelListingResult => ({ source: 'catalog', ids: catalogIds(options.provider) })
   if (FALLBACK_ONLY_PROVIDERS.has(options.provider)) return fallback()
+  const request = listingRequest(options.provider, options.apiKey, options.baseUrl)
   const controller = new AbortController()
   const timeout = Promise.withResolvers<never>()
   const timeoutId = setTimeout(() => {
@@ -208,29 +212,42 @@ export const listModels = async (options: ListModelsOptions): Promise<ModelListi
     timeout.reject(new DOMException('Model listing timed out.', 'TimeoutError'))
   }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
 
-  try {
-    const request = listingRequest(options.provider, options.apiKey, options.baseUrl)
-    const response = await Promise.race([
-      (options.fetchFn ?? globalThis.fetch)(request.url, {
-        headers: request.headers,
-        signal: controller.signal,
-      }),
-      timeout.promise,
-    ])
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        return { ...fallback(), authRejected: true, status: response.status }
-      }
-      return fallback()
+  const response = await (async (): Promise<Response | undefined> => {
+    try {
+      return await Promise.race([
+        (options.fetchFn ?? globalThis.fetch)(request.url, {
+          headers: request.headers,
+          signal: controller.signal,
+        }),
+        timeout.promise,
+      ])
+    } catch (error) {
+      if (isExpectedFetchError(error)) return undefined
+      throw error
+    } finally {
+      clearTimeout(timeoutId)
     }
-    const parsed = (await response.json()) as unknown
-    const listedModels = parseListedModels(options.provider, parsed)
-    const models = newestModelsFirst(chatModels(listedModels))
-    if (models.length === 0) return fallback()
-    return { source: 'live', ids: models.slice(0, MAX_LIVE_MODELS).map(({ id }) => id) }
-  } catch {
+  })()
+  if (!response) return fallback()
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      return { ...fallback(), authRejected: true, status: response.status }
+    }
     return fallback()
-  } finally {
-    clearTimeout(timeoutId)
   }
+
+  const parsed = await (async (): Promise<unknown> => {
+    try {
+      return (await response.json()) as unknown
+    } catch (error) {
+      if (error instanceof SyntaxError) return undefined
+      throw error
+    }
+  })()
+  if (parsed === undefined) return fallback()
+
+  const listedModels = parseListedModels(options.provider, parsed)
+  const models = newestModelsFirst(chatModels(listedModels))
+  if (models.length === 0) return fallback()
+  return { source: 'live', ids: models.slice(0, MAX_LIVE_MODELS).map(({ id }) => id) }
 }

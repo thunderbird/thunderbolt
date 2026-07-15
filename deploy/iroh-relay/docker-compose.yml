@@ -1,4 +1,4 @@
-# Self-hosted iroh relay — local development / PoC.
+# Self-hosted iroh relay for local development.
 #
 # Runs the official n0 relay in `--dev` mode: plain HTTP (no TLS) on :3340,
 # which is exactly what the CLI/app accept for a localhost relay URL.
@@ -9,8 +9,9 @@
 #   CLI  : THUNDERBOLT_IROH_RELAY_URL=http://localhost:3340
 #   App  : VITE_IROH_RELAY_URL=http://localhost:3340 (build-time)
 #
-# Production runs the same image WITHOUT `--dev`, with a config file mounted
-# (see config.example.toml) and real TLS on 443. Full walkthrough:
+# Production runs on Render as a derived GHCR image with the config baked in
+# (deploy/docker/iroh-relay.Dockerfile + deploy/config/iroh-relay.toml); the
+# VPS-shaped alternative with real TLS is config.example.toml. Full walkthrough:
 # docs/architecture/iroh-relay-self-hosting.md
 services:
   iroh-relay:

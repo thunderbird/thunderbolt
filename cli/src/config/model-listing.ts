@@ -34,6 +34,19 @@ type ListedModel = {
   readonly created?: number
 }
 
+type ListingRequest = {
+  readonly url: string
+  readonly headers: Readonly<Record<string, string>>
+}
+
+/** Z.AI API reference has no model-list operation: https://docs.z.ai/llms.txt */
+const ZAI_FALLBACK_ONLY: ModelProvider = 'zai'
+
+/** Fireworks listing needs an account ID: https://docs.fireworks.ai/api-reference/list-models */
+const FIREWORKS_FALLBACK_ONLY: ModelProvider = 'fireworks'
+
+const FALLBACK_ONLY_PROVIDERS: ReadonlySet<ModelProvider> = new Set([ZAI_FALLBACK_ONLY, FIREWORKS_FALLBACK_ONLY])
+
 /** Reads numeric OpenAI or ISO Anthropic creation metadata. */
 const createdTimestamp = (candidate: Readonly<Record<string, unknown>>): number | undefined => {
   if (typeof candidate.created === 'number') return candidate.created
@@ -59,7 +72,7 @@ const parseOpenAiModels = (value: unknown): readonly ListedModel[] => {
   })
 }
 
-/** Reads Gemini model entries capable of `generateContent`. */
+/** Gemini listing schema: https://ai.google.dev/api/models#method:-models.list */
 const parseGeminiModels = (value: unknown): readonly ListedModel[] => {
   if (!isRecord(value) || !Array.isArray(value.models)) throw new Error('Invalid Gemini model list response.')
   return value.models.flatMap((candidate) => {
@@ -70,6 +83,37 @@ const parseGeminiModels = (value: unknown): readonly ListedModel[] => {
   })
 }
 
+/** xAI language-model schema: https://docs.x.ai/developers/rest-api-reference/inference/models#list-language-models */
+const parseXaiModels = (value: unknown): readonly ListedModel[] => {
+  if (!isRecord(value) || !Array.isArray(value.models)) throw new Error('Invalid xAI model list response.')
+  return value.models.map((candidate) => {
+    if (!isRecord(candidate) || typeof candidate.id !== 'string') throw new Error('Invalid xAI model entry.')
+    const created = createdTimestamp(candidate)
+    return { id: candidate.id, ...(created === undefined ? {} : { created }) }
+  })
+}
+
+/** Together listing schema: https://docs.together.ai/reference/models */
+const parseTogetherModels = (value: unknown): readonly ListedModel[] => {
+  if (!Array.isArray(value)) throw new Error('Invalid Together model list response.')
+  return value.flatMap((candidate) => {
+    if (!isRecord(candidate) || typeof candidate.id !== 'string' || typeof candidate.type !== 'string') {
+      throw new Error('Invalid Together model entry.')
+    }
+    if (!['chat', 'language', 'code'].includes(candidate.type)) return []
+    const created = createdTimestamp(candidate)
+    return [{ id: candidate.id, ...(created === undefined ? {} : { created }) }]
+  })
+}
+
+/** Selects the documented response schema for the requested provider. */
+const parseListedModels = (provider: ModelProvider, value: unknown): readonly ListedModel[] => {
+  if (provider === 'google') return parseGeminiModels(value)
+  if (provider === 'xai') return parseXaiModels(value)
+  if (provider === 'together') return parseTogetherModels(value)
+  return parseOpenAiModels(value)
+}
+
 /** Keeps model ids intended for chat rather than specialized media or ranking APIs. */
 const chatModels = (models: readonly ListedModel[]): readonly ListedModel[] =>
   models.filter(({ id }) => !NON_CHAT_MODEL_PATTERN.test(id))
@@ -78,8 +122,7 @@ const chatModels = (models: readonly ListedModel[]): readonly ListedModel[] =>
 const newestModelsFirst = (models: readonly ListedModel[]): readonly ListedModel[] => {
   if (!models.some(({ created }) => created !== undefined)) return models
   return [...models].sort(
-    (left, right) =>
-      (right.created ?? Number.NEGATIVE_INFINITY) - (left.created ?? Number.NEGATIVE_INFINITY),
+    (left, right) => (right.created ?? Number.NEGATIVE_INFINITY) - (left.created ?? Number.NEGATIVE_INFINITY),
   )
 }
 
@@ -110,36 +153,44 @@ const providerBaseUrl = (provider: ModelProvider, customBaseUrl?: string): strin
 /** Joins one endpoint path without duplicating a trailing slash. */
 const endpoint = (baseUrl: string, path: string): string => `${baseUrl.replace(/\/$/, '')}/${path}`
 
+/** Mistral listing route: https://docs.mistral.ai/api/endpoint/models */
+const mistralListingBaseUrl = (baseUrl: string): string => endpoint(baseUrl, 'v1')
+
+/** MiniMax listing route: https://platform.minimax.io/docs/api-reference/models/openai/list-models */
+const minimaxListingBaseUrl = (baseUrl: string): string => new URL('/v1', baseUrl).toString()
+
 /** Adapts Pi inference bases to providers' OpenAI-compatible model-listing bases. */
 const compatibleBaseUrl = (provider: ModelProvider, baseUrl?: string): string => {
   const resolvedBaseUrl = providerBaseUrl(provider, baseUrl)
-  if (provider === 'mistral') return endpoint(resolvedBaseUrl, 'v1')
-  if (provider === 'minimax') return new URL('/v1', resolvedBaseUrl).toString()
-  if (provider !== 'fireworks') return resolvedBaseUrl
-
-  const openAiModel = builtinModels()
-    .getModels(provider)
-    .find(({ api }) => api === 'openai-completions')
-  return openAiModel?.baseUrl ?? resolvedBaseUrl
+  if (provider === 'mistral') return mistralListingBaseUrl(resolvedBaseUrl)
+  if (provider === 'minimax') return minimaxListingBaseUrl(resolvedBaseUrl)
+  return resolvedBaseUrl
 }
 
+/** Anthropic listing request: https://platform.claude.com/docs/en/api/models/list */
+const anthropicListingRequest = (apiKey: string): ListingRequest => ({
+  url: endpoint(providerBaseUrl('anthropic'), 'v1/models'),
+  headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+})
+
+/** Gemini listing request: https://ai.google.dev/api/models#method:-models.list */
+const googleListingRequest = (apiKey: string): ListingRequest => {
+  const url = new URL(endpoint(providerBaseUrl('google'), 'models'))
+  url.searchParams.set('key', apiKey)
+  return { url: url.toString(), headers: {} }
+}
+
+/** xAI chat-model route: https://docs.x.ai/developers/rest-api-reference/inference/models#list-language-models */
+const xaiListingRequest = (apiKey: string): ListingRequest => ({
+  url: endpoint(providerBaseUrl('xai'), 'language-models'),
+  headers: { Authorization: `Bearer ${apiKey}` },
+})
+
 /** Builds provider-specific listing URL and authentication headers. */
-const listingRequest = (
-  provider: ModelProvider,
-  apiKey: string,
-  baseUrl?: string,
-): { readonly url: string; readonly headers: Readonly<Record<string, string>> } => {
-  if (provider === 'anthropic') {
-    return {
-      url: endpoint(providerBaseUrl(provider), 'v1/models'),
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    }
-  }
-  if (provider === 'google') {
-    const url = new URL(endpoint(providerBaseUrl(provider), 'models'))
-    url.searchParams.set('key', apiKey)
-    return { url: url.toString(), headers: {} }
-  }
+const listingRequest = (provider: ModelProvider, apiKey: string, baseUrl?: string): ListingRequest => {
+  if (provider === 'anthropic') return anthropicListingRequest(apiKey)
+  if (provider === 'google') return googleListingRequest(apiKey)
+  if (provider === 'xai') return xaiListingRequest(apiKey)
   return {
     url: endpoint(compatibleBaseUrl(provider, baseUrl), 'models'),
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -149,6 +200,7 @@ const listingRequest = (
 /** Lists live provider models, returning Pi catalog ids for every failure mode. */
 export const listModels = async (options: ListModelsOptions): Promise<ModelListingResult> => {
   const fallback = (): ModelListingResult => ({ source: 'catalog', ids: catalogIds(options.provider) })
+  if (FALLBACK_ONLY_PROVIDERS.has(options.provider)) return fallback()
   const controller = new AbortController()
   const timeout = Promise.withResolvers<never>()
   const timeoutId = setTimeout(() => {
@@ -172,9 +224,8 @@ export const listModels = async (options: ListModelsOptions): Promise<ModelListi
       return fallback()
     }
     const parsed = (await response.json()) as unknown
-    const models = newestModelsFirst(
-      chatModels(options.provider === 'google' ? parseGeminiModels(parsed) : parseOpenAiModels(parsed)),
-    )
+    const listedModels = parseListedModels(options.provider, parsed)
+    const models = newestModelsFirst(chatModels(listedModels))
     if (models.length === 0) return fallback()
     return { source: 'live', ids: models.slice(0, MAX_LIVE_MODELS).map(({ id }) => id) }
   } catch {

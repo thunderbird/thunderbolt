@@ -33,15 +33,10 @@ const runConfig = (argv: string[], dependencies?: ParseArgsDependencies) => {
 
 describe('parseArgs — resolveApiKey precedence (security)', () => {
   test('--api-key flag wins over the env var', () => {
-    const config = runConfig([
-      '--provider',
-      'openai-compat',
-      '--base-url',
-      'https://h/v1',
-      '--api-key',
-      'flag-key',
-      'hi',
-    ], { env: { [ENV_KEY]: 'env-key' } })
+    const config = runConfig(
+      ['--provider', 'openai-compat', '--base-url', 'https://h/v1', '--api-key', 'flag-key', 'hi'],
+      { env: { [ENV_KEY]: 'env-key' } },
+    )
     expect(config.apiKey).toBe('flag-key')
   })
 
@@ -137,7 +132,7 @@ describe('parseArgs — defaults', () => {
   test('uses provider-specific default models when --model is omitted', () => {
     const expected = {
       anthropic: 'claude-opus-4-8',
-      openai: 'gpt-5.3-codex',
+      openai: 'gpt-5.6-sol',
       google: 'gemini-3.1-pro-preview',
       xai: 'grok-build-0.1',
       deepseek: 'deepseek-v4-pro',
@@ -209,7 +204,7 @@ describe('parseArgs — persisted config precedence', () => {
 
   test('matching built-in provider env suppresses saved-key injection so Pi owns env auth', () => {
     const config = runConfig([], {
-      config: { provider: 'openai', model: 'gpt-5.3-codex', apiKey: 'saved-key' },
+      config: { provider: 'openai', model: 'gpt-5.6-sol', apiKey: 'saved-key' },
       env: { OPENAI_API_KEY: 'env-key' },
     })
 
@@ -347,16 +342,7 @@ describe('parseArgs — bridge subcommands (acp / mcp)', () => {
 describe('parseArgs — acp serve', () => {
   test('resolves the same flag set as a run, including api-key precedence', () => {
     const parsed = parseArgs(
-      [
-        'acp',
-        'serve',
-        '--provider',
-        'openai-compat',
-        '--base-url',
-        'https://h/v1',
-        '--api-key',
-        'flag-key',
-      ],
+      ['acp', 'serve', '--provider', 'openai-compat', '--base-url', 'https://h/v1', '--api-key', 'flag-key'],
       { env: { [ENV_KEY]: 'env-key' } },
     )
     if (parsed.kind !== 'acp-serve') throw new Error(`expected acp-serve, got ${parsed.kind}`)

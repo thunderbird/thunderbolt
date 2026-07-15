@@ -14,7 +14,7 @@ import type { Api, AssistantMessageEventStream, Context, Model } from '@earendil
 import { describe, expect, test } from 'bun:test'
 import { type OpenAiStreamFns, buildOpenAiCompatModel } from './openai-compat-model.ts'
 
-const opts = { modelId: 'mimo-v2.5-pro', baseUrl: 'https://h.example/v1', apiKey: 'k' }
+const opts = { modelId: 'llama3.3', baseUrl: 'http://localhost:11434/v1', apiKey: 'local' }
 
 /** A fake pair of raw stream fns that record the options they were handed and
  *  return an inert stream, so the bearer-key injection is observable offline. */
@@ -37,10 +37,10 @@ const capturingStreamFns = () => {
 describe('buildOpenAiCompatModel — synthetic descriptor', () => {
   test('carries the upstream id, base URL, and provider id', () => {
     const { model } = buildOpenAiCompatModel(opts)
-    expect(model.id).toBe('mimo-v2.5-pro')
-    expect(model.name).toBe('mimo-v2.5-pro')
+    expect(model.id).toBe('llama3.3')
+    expect(model.name).toBe('llama3.3')
     expect(model.provider).toBe('openai-compat')
-    expect(model.baseUrl).toBe('https://h.example/v1')
+    expect(model.baseUrl).toBe('http://localhost:11434/v1')
     expect(model.api).toBe('openai-completions')
   })
 
@@ -53,8 +53,8 @@ describe('buildOpenAiCompatModel — synthetic descriptor', () => {
 
   test('registers the model in the returned collection under its provider', () => {
     const { models } = buildOpenAiCompatModel(opts)
-    expect(models.getModel('openai-compat', 'mimo-v2.5-pro')?.id).toBe('mimo-v2.5-pro')
-    expect(models.getProvider('openai-compat')?.baseUrl).toBe('https://h.example/v1')
+    expect(models.getModel('openai-compat', 'llama3.3')?.id).toBe('llama3.3')
+    expect(models.getProvider('openai-compat')?.baseUrl).toBe('http://localhost:11434/v1')
   })
 })
 
@@ -86,7 +86,7 @@ describe('buildOpenAiCompatModel — bearer key injection (security)', () => {
     const provider = models.getProvider('openai-compat')!
     provider.stream(model, {} as Context, { maxTokens: 256 })
     expect(calls).toHaveLength(1)
-    expect(calls[0]!.options.apiKey).toBe('k')
+    expect(calls[0]!.options.apiKey).toBe('local')
     // Caller-supplied options must be preserved alongside the injected key.
     expect(calls[0]!.options.maxTokens).toBe(256)
   })
@@ -97,7 +97,7 @@ describe('buildOpenAiCompatModel — bearer key injection (security)', () => {
     const provider = models.getProvider('openai-compat')!
     // A caller trying to slip a different key in must not win over the resolved one.
     provider.stream(model, {} as Context, { apiKey: 'attacker-supplied' } as never)
-    expect(calls[0]!.options.apiKey).toBe('k')
+    expect(calls[0]!.options.apiKey).toBe('local')
   })
 
   test('streamSimple also injects the configured key', () => {
@@ -105,6 +105,6 @@ describe('buildOpenAiCompatModel — bearer key injection (security)', () => {
     const { models, model } = buildOpenAiCompatModel(opts, streamFns)
     const provider = models.getProvider('openai-compat')!
     provider.streamSimple(model, {} as Context, {})
-    expect(calls[0]).toMatchObject({ fn: 'streamSimple', options: { apiKey: 'k' } })
+    expect(calls[0]).toMatchObject({ fn: 'streamSimple', options: { apiKey: 'local' } })
   })
 })

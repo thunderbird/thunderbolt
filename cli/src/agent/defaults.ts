@@ -15,7 +15,7 @@ export const DEFAULT_MODEL = 'claude-opus-4-8'
 /** Default catalog model for each built-in provider. */
 export const DEFAULT_MODELS: Readonly<Record<BuiltinProvider, string>> = {
   anthropic: DEFAULT_MODEL,
-  openai: 'gpt-5.3-codex',
+  openai: 'gpt-5.6-sol',
   google: 'gemini-3.1-pro-preview',
   xai: 'grok-build-0.1',
   deepseek: 'deepseek-v4-pro',

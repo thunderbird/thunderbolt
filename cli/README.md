@@ -60,7 +60,7 @@ mv "thunderbolt-cli-$TARGET" ~/.local/bin/thunderbolt
 
 > **What the checksum covers.** `SHA256SUMS` and the binary come from the same
 > release over the same TLS connection, so the checksum catches a corrupted or
-> truncated download but *not* a compromised release host — whoever could swap the
+> truncated download but _not_ a compromised release host — whoever could swap the
 > binary could swap its digest too. The binaries are unsigned and the quarantine
 > strip bypasses macOS Gatekeeper. Signature verification (minisign) over the
 > manifest against a pinned key is the planned follow-up hardening.
@@ -119,15 +119,15 @@ thunderbolt
 
 ### Subcommands
 
-| Command | Purpose |
-| ------- | ------- |
-| `thunderbolt agent [options] [prompt]` | Run coding agent; `agent` is optional/default. |
-| `thunderbolt config` | Run guided provider setup and overwrite saved defaults. |
-| `thunderbolt acp serve [options]` | Expose built-in coding agent as stdio ACP server. |
-| `thunderbolt acp --transport <wss\|iroh> [--port N] -- <agent-cmd...>` | Bridge stdio ACP agent. |
-| `thunderbolt mcp --transport <wss\|iroh> [--port N] -- <server-cmd...>` | Bridge stdio MCP server. |
-| `thunderbolt <acp\|mcp> connect <ticket\|nodeid> [-- <local-client-cmd...>]` | Dial iroh bridge. |
-| `thunderbolt iroh id` / `pair` / `allow <nodeid>` | Inspect ACP identity, print pairing ticket, or authorize peer. |
+| Command                                                                      | Purpose                                                        |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `thunderbolt agent [options] [prompt]`                                       | Run coding agent; `agent` is optional/default.                 |
+| `thunderbolt config`                                                         | Run guided provider setup and overwrite saved defaults.        |
+| `thunderbolt acp serve [options]`                                            | Expose built-in coding agent as stdio ACP server.              |
+| `thunderbolt acp --transport <wss\|iroh> [--port N] -- <agent-cmd...>`       | Bridge stdio ACP agent.                                        |
+| `thunderbolt mcp --transport <wss\|iroh> [--port N] -- <server-cmd...>`      | Bridge stdio MCP server.                                       |
+| `thunderbolt <acp\|mcp> connect <ticket\|nodeid> [-- <local-client-cmd...>]` | Dial iroh bridge.                                              |
+| `thunderbolt iroh id` / `pair` / `allow <nodeid>`                            | Inspect ACP identity, print pairing ticket, or authorize peer. |
 
 ### Served agent workspace
 
@@ -154,17 +154,17 @@ elsewhere on the machine are outside its workspace and unavailable.
 
 ### Agent and `acp serve` flags
 
-| Flag | Description |
-| ---- | ----------- |
-| `-m`, `--model <id>` | Provider model id (provider-specific default). |
-| `--provider <name>` | Built-in provider or `openai-compat` (default: `anthropic`). |
-| `--base-url <url>` | Custom endpoint URL (required for `openai-compat`). |
-| `--api-key <key>` | Explicit key for any provider; overrides provider environment. |
+| Flag                 | Description                                                                |
+| -------------------- | -------------------------------------------------------------------------- |
+| `-m`, `--model <id>` | Provider model id (provider-specific default).                             |
+| `--provider <name>`  | Built-in provider or `openai-compat` (default: `anthropic`).               |
+| `--base-url <url>`   | Custom endpoint URL (required for `openai-compat`).                        |
+| `--api-key <key>`    | Explicit key for any provider; overrides provider environment.             |
 | `--thinking <level>` | `off`, `minimal`, `low`, `medium`, `high`, or `xhigh` (default: `medium`). |
-| `-y`, `--yolo` | Auto-approve tool calls (alias: `--dangerously-skip-permissions`). |
-| `--no-tui` | Force plain readline REPL. |
-| `-h`, `--help` | Show help and exit. |
-| `-v`, `--version` | Print version and exit. |
+| `-y`, `--yolo`       | Auto-approve tool calls (alias: `--dangerously-skip-permissions`).         |
+| `--no-tui`           | Force plain readline REPL.                                                 |
+| `-h`, `--help`       | Show help and exit.                                                        |
+| `-v`, `--version`    | Print version and exit.                                                    |
 
 ACP/MCP bridge commands accept `--transport wss|iroh` (default `wss`) and
 `--port <0-65535>` for WSS (defaults: ACP `8839`, MCP `8840`). Arguments after
@@ -185,8 +185,8 @@ catalog ids for selected provider.
 ```sh
 THUNDERBOLT_OPENAI_COMPAT_KEY=sk-... thunderbolt \
   --provider openai-compat \
-  --base-url https://host.example/v1 \
-  --model upstream-model \
+  --base-url http://localhost:11434/v1 \
+  --model llama3.3 \
   "review this repository"
 ```
 
@@ -196,47 +196,47 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 
 ### Provider defaults
 
-| Provider | Default model |
-| -------- | ------------- |
-| `anthropic` | `claude-opus-4-8` |
-| `openai` | `gpt-5.3-codex` |
-| `google` | `gemini-3.1-pro-preview` |
-| `xai` | `grok-build-0.1` |
-| `deepseek` | `deepseek-v4-pro` |
-| `zai` | `glm-5.2` |
-| `mistral` | `devstral-medium-latest` |
-| `groq` | `openai/gpt-oss-120b` |
-| `openrouter` | `anthropic/claude-opus-4.8` |
-| `moonshotai` | `kimi-k2.7-code` |
-| `minimax` | `MiniMax-M3` |
-| `cerebras` | `gpt-oss-120b` |
-| `together` | `moonshotai/Kimi-K2.7-Code` |
-| `fireworks` | `accounts/fireworks/models/kimi-k2p7-code` |
+| Provider     | Default model                              |
+| ------------ | ------------------------------------------ |
+| `anthropic`  | `claude-opus-4-8`                          |
+| `openai`     | `gpt-5.6-sol`                              |
+| `google`     | `gemini-3.1-pro-preview`                   |
+| `xai`        | `grok-build-0.1`                           |
+| `deepseek`   | `deepseek-v4-pro`                          |
+| `zai`        | `glm-5.2`                                  |
+| `mistral`    | `devstral-medium-latest`                   |
+| `groq`       | `openai/gpt-oss-120b`                      |
+| `openrouter` | `anthropic/claude-opus-4.8`                |
+| `moonshotai` | `kimi-k2.7-code`                           |
+| `minimax`    | `MiniMax-M3`                               |
+| `cerebras`   | `gpt-oss-120b`                             |
+| `together`   | `moonshotai/Kimi-K2.7-Code`                |
+| `fireworks`  | `accounts/fireworks/models/kimi-k2p7-code` |
 
 ### Environment
 
-| Variable                      | Description                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| `ANTHROPIC_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` | Anthropic credentials, checked in that order.                |
-| `OPENAI_API_KEY`              | OpenAI API key.                                                             |
-| `GEMINI_API_KEY`              | Google Gemini API key.                                                      |
-| `XAI_API_KEY`                 | xAI API key.                                                                |
-| `DEEPSEEK_API_KEY`            | DeepSeek API key.                                                           |
-| `ZAI_API_KEY`                 | Z.AI API key.                                                               |
-| `MISTRAL_API_KEY`             | Mistral API key.                                                            |
-| `GROQ_API_KEY`                | Groq API key.                                                               |
-| `OPENROUTER_API_KEY`          | OpenRouter API key.                                                         |
-| `MOONSHOT_API_KEY`            | Moonshot AI API key.                                                        |
-| `MINIMAX_API_KEY`             | MiniMax API key.                                                            |
-| `CEREBRAS_API_KEY`            | Cerebras API key.                                                           |
-| `TOGETHER_API_KEY`            | Together API key.                                                           |
-| `FIREWORKS_API_KEY`           | Fireworks API key.                                                          |
-| `THUNDERBOLT_OPENAI_COMPAT_KEY` | Dedicated fallback key for arbitrary `openai-compat` URLs.                |
-| `THUNDERBOLT_HOME`             | CLI state root containing `config.json`, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
-| `THUNDERBOLT_IROH_RELAY_URL`   | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                 |
-| `THUNDERBOLT_APP_ORIGIN`       | Extra comma-separated allowed browser origins for WSS bridges.              |
-| `THUNDERBOLT_NO_TUI`           | Force plain readline REPL when set.                                         |
-| `NO_COLOR`                     | Disable terminal color when set.                                            |
+| Variable                                     | Description                                                                                                     |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` | Anthropic credentials, checked in that order.                                                                   |
+| `OPENAI_API_KEY`                             | OpenAI API key.                                                                                                 |
+| `GEMINI_API_KEY`                             | Google Gemini API key.                                                                                          |
+| `XAI_API_KEY`                                | xAI API key.                                                                                                    |
+| `DEEPSEEK_API_KEY`                           | DeepSeek API key.                                                                                               |
+| `ZAI_API_KEY`                                | Z.AI API key.                                                                                                   |
+| `MISTRAL_API_KEY`                            | Mistral API key.                                                                                                |
+| `GROQ_API_KEY`                               | Groq API key.                                                                                                   |
+| `OPENROUTER_API_KEY`                         | OpenRouter API key.                                                                                             |
+| `MOONSHOT_API_KEY`                           | Moonshot AI API key.                                                                                            |
+| `MINIMAX_API_KEY`                            | MiniMax API key.                                                                                                |
+| `CEREBRAS_API_KEY`                           | Cerebras API key.                                                                                               |
+| `TOGETHER_API_KEY`                           | Together API key.                                                                                               |
+| `FIREWORKS_API_KEY`                          | Fireworks API key.                                                                                              |
+| `THUNDERBOLT_OPENAI_COMPAT_KEY`              | Dedicated fallback key for arbitrary `openai-compat` URLs.                                                      |
+| `THUNDERBOLT_HOME`                           | CLI state root containing `config.json`, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
+| `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                    |
+| `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                  |
+| `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                             |
+| `NO_COLOR`                                   | Disable terminal color when set.                                                                                |
 
 ## Demo
 

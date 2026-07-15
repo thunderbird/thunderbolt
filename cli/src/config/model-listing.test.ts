@@ -65,10 +65,46 @@ describe('listModels', () => {
     const result = await listModels({ provider: 'google', apiKey: 'gemini-key', fetchFn })
 
     expect(result).toEqual({ source: 'live', ids: ['gemini-live-chat'] })
-    expect(String(requests[0]?.input)).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models?key=gemini-key',
-    )
+    expect(String(requests[0]?.input)).toBe('https://generativelanguage.googleapis.com/v1beta/models?key=gemini-key')
     expect(new Headers(requests[0]?.init?.headers).has('Authorization')).toBe(false)
+  })
+
+  test('uses xAI language-model listing instead of mixed-modality models', async () => {
+    const requests: { readonly input: string | URL | Request; readonly init?: RequestInit }[] = []
+    const fetchFn: ModelListingFetch = async (input, init) => {
+      requests.push({ input, init })
+      return Response.json({
+        models: [
+          { id: 'grok-live-a', created: 2 },
+          { id: 'grok-live-b', created: 1 },
+        ],
+      })
+    }
+
+    const result = await listModels({ provider: 'xai', apiKey: 'xai-key', fetchFn })
+
+    expect(result).toEqual({ source: 'live', ids: ['grok-live-a', 'grok-live-b'] })
+    expect(String(requests[0]?.input)).toBe('https://api.x.ai/v1/language-models')
+    expect(new Headers(requests[0]?.init?.headers).get('Authorization')).toBe('Bearer xai-key')
+  })
+
+  test('reads Together bare-array model responses', async () => {
+    const requests: { readonly input: string | URL | Request; readonly init?: RequestInit }[] = []
+    const result = await listModels({
+      provider: 'together',
+      apiKey: 'together-key',
+      fetchFn: async (input, init) => {
+        requests.push({ input, init })
+        return Response.json([
+          { id: 'chat-model', type: 'chat', created: 2 },
+          { id: 'embedding-model', type: 'embedding', created: 1 },
+        ])
+      },
+    })
+
+    expect(result).toEqual({ source: 'live', ids: ['chat-model'] })
+    expect(String(requests[0]?.input)).toBe('https://api.together.ai/v1/models')
+    expect(new Headers(requests[0]?.init?.headers).get('Authorization')).toBe('Bearer together-key')
   })
 
   test('filters non-chat model id patterns from compatible responses', async () => {
@@ -107,40 +143,50 @@ describe('listModels', () => {
 
   test('derives compatible listing routes from Pi descriptors', async () => {
     const urls: string[] = []
-    const fetchFn: ModelListingFetch = async (input) => {
+    const authorizations: (string | null)[] = []
+    const fetchFn: ModelListingFetch = async (input, init) => {
       urls.push(String(input))
+      authorizations.push(new Headers(init?.headers).get('Authorization'))
       return Response.json({ data: [{ id: 'chat-model' }] })
     }
 
     for (const provider of [
-      'xai',
       'deepseek',
-      'zai',
       'mistral',
       'groq',
       'openrouter',
       'moonshotai',
       'minimax',
       'cerebras',
-      'together',
-      'fireworks',
     ] as const) {
       await listModels({ provider, apiKey: 'key', fetchFn })
     }
 
     expect(urls).toEqual([
-      'https://api.x.ai/v1/models',
       'https://api.deepseek.com/models',
-      'https://api.z.ai/api/coding/paas/v4/models',
       'https://api.mistral.ai/v1/models',
       'https://api.groq.com/openai/v1/models',
       'https://openrouter.ai/api/v1/models',
       'https://api.moonshot.ai/v1/models',
       'https://api.minimax.io/v1/models',
       'https://api.cerebras.ai/v1/models',
-      'https://api.together.ai/v1/models',
-      'https://api.fireworks.ai/inference/v1/models',
     ])
+    expect(authorizations).toEqual(Array.from({ length: 7 }, () => 'Bearer key'))
+  })
+
+  test('uses catalog fallback without network calls when official docs expose no usable list route', async () => {
+    const requestedProviders: string[] = []
+    const fetchFn: ModelListingFetch = async (input) => {
+      requestedProviders.push(String(input))
+      return Response.json({ data: [{ id: 'unexpected-live-model' }] })
+    }
+
+    const zai = await listModels({ provider: 'zai', apiKey: 'key', fetchFn })
+    const fireworks = await listModels({ provider: 'fireworks', apiKey: 'key', fetchFn })
+
+    expect(zai.source).toBe('catalog')
+    expect(fireworks.source).toBe('catalog')
+    expect(requestedProviders).toEqual([])
   })
 
   test('returns catalog models on timeout even when injected fetch ignores abort', async () => {
@@ -195,13 +241,21 @@ describe('listModels', () => {
   })
 
   test('treats an empty chat-capable result as catalog fallback', async () => {
+    const urls: string[] = []
+    const authorizations: (string | null)[] = []
     const result = await listModels({
       provider: 'openai-compat',
       baseUrl: 'http://localhost:11434/v1',
       apiKey: 'local',
-      fetchFn: async () => Response.json({ data: [{ id: 'nomic-embed-text' }] }),
+      fetchFn: async (input, init) => {
+        urls.push(String(input))
+        authorizations.push(new Headers(init?.headers).get('Authorization'))
+        return Response.json({ data: [{ id: 'nomic-embed-text' }] })
+      },
     })
 
     expect(result).toEqual({ source: 'catalog', ids: [] })
+    expect(urls).toEqual(['http://localhost:11434/v1/models'])
+    expect(authorizations).toEqual(['Bearer local'])
   })
 })

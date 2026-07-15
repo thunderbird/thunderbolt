@@ -65,58 +65,58 @@ const capturingBuiltinModels = () => {
 
 describe('resolveModel — openai-compat branch', () => {
   test('throws when --base-url is missing', () => {
-    expect(() => resolveModel({ model: 'mimo', provider: 'openai-compat', apiKey: 'k' })).toThrow(/--base-url/)
+    expect(() => resolveModel({ model: 'llama3.3', provider: 'openai-compat', apiKey: 'local' })).toThrow(/--base-url/)
   })
 
   test('throws when the api key is missing even with a base URL', () => {
-    expect(() => resolveModel({ model: 'mimo', provider: 'openai-compat', baseUrl: 'https://h/v1' })).toThrow(
-      /requires an api key/,
-    )
+    expect(() =>
+      resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: 'http://localhost:11434/v1' }),
+    ).toThrow(/requires an api key/)
   })
 
   test('missing custom key error points non-TTY users to guided setup', () => {
-    expect(() => resolveModel({ model: 'mimo', provider: 'openai-compat', baseUrl: 'https://h/v1' })).toThrow(
-      /THUNDERBOLT_OPENAI_COMPAT_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/,
-    )
+    expect(() =>
+      resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: 'http://localhost:11434/v1' }),
+    ).toThrow(/THUNDERBOLT_OPENAI_COMPAT_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/)
   })
 
   test('missing custom key stays actionable when the base URL is also missing', () => {
-    expect(() => resolveModel({ model: 'mimo', provider: 'openai-compat' })).toThrow(
+    expect(() => resolveModel({ model: 'llama3.3', provider: 'openai-compat' })).toThrow(
       /THUNDERBOLT_OPENAI_COMPAT_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/,
     )
   })
 
   test('rejects an empty-string base URL (falsy guard, not just undefined)', () => {
-    expect(() => resolveModel({ model: 'mimo', provider: 'openai-compat', baseUrl: '', apiKey: 'k' })).toThrow(
+    expect(() => resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: '', apiKey: 'local' })).toThrow(
       /--base-url/,
     )
   })
 
   test('rejects an empty-string api key', () => {
-    expect(() => resolveModel({ model: 'mimo', provider: 'openai-compat', baseUrl: 'https://h/v1', apiKey: '' })).toThrow(
-      /requires an api key/,
-    )
+    expect(() =>
+      resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: 'http://localhost:11434/v1', apiKey: '' }),
+    ).toThrow(/requires an api key/)
   })
 
   test('resolves a synthetic model carrying the upstream id and base URL', () => {
     const { models, model } = resolveModel({
-      model: 'mimo-v2.5-pro',
+      model: 'llama3.3',
       provider: 'openai-compat',
-      baseUrl: 'https://h/v1',
-      apiKey: 'secret',
+      baseUrl: 'http://localhost:11434/v1',
+      apiKey: 'local',
     })
-    expect(model.id).toBe('mimo-v2.5-pro')
+    expect(model.id).toBe('llama3.3')
     expect(model.provider).toBe('openai-compat')
-    expect(model.baseUrl).toBe('https://h/v1')
+    expect(model.baseUrl).toBe('http://localhost:11434/v1')
     // The model is registered in the returned collection under its provider.
-    expect(models.getModel('openai-compat', 'mimo-v2.5-pro')?.id).toBe('mimo-v2.5-pro')
+    expect(models.getModel('openai-compat', 'llama3.3')?.id).toBe('llama3.3')
   })
 
   test('the resolved model descriptor does not embed the secret key', () => {
     const { model } = resolveModel({
-      model: 'mimo',
+      model: 'llama3.3',
       provider: 'openai-compat',
-      baseUrl: 'https://h/v1',
+      baseUrl: 'http://localhost:11434/v1',
       apiKey: 'super-secret-key',
     })
     expect(JSON.stringify(model)).not.toContain('super-secret-key')
@@ -167,10 +167,7 @@ describe('resolveModel — built-in providers', () => {
 
   test('missing built-in credentials stay actionable when the model id is also invalid', () => {
     expect(() =>
-      resolveModel(
-        { model: 'not-a-google-model', provider: 'google' },
-        { builtinModels, env: EMPTY_ENV },
-      ),
+      resolveModel({ model: 'not-a-google-model', provider: 'google' }, { builtinModels, env: EMPTY_ENV }),
     ).toThrow(/GEMINI_API_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/)
   })
 

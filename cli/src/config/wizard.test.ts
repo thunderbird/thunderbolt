@@ -46,8 +46,10 @@ const scriptedIO = (lines: readonly string[], secrets: readonly string[]) => {
 }
 
 /** Returns one injected OpenAI-compatible model-list response. */
-const liveModels = (...ids: readonly string[]): ModelListingFetch => async () =>
-  Response.json({ data: ids.map((id) => ({ id })) })
+const liveModels =
+  (...ids: readonly string[]): ModelListingFetch =>
+  async () =>
+    Response.json({ data: ids.map((id) => ({ id })) })
 
 /** Simulates provider unavailability without touching ambient network state. */
 const unavailableModels: ModelListingFetch = async () => new Response(null, { status: 503 })
@@ -74,9 +76,7 @@ describe('shouldRunSetupWizard', () => {
 
   test('custom endpoints recognize only the dedicated environment key', () => {
     const custom = runConfig({ provider: 'openai-compat', baseUrl: 'https://host/v1' })
-    expect(
-      shouldRunSetupWizard(custom, runtime({ env: { THUNDERBOLT_OPENAI_COMPAT_KEY: 'custom-key' } })),
-    ).toBe(false)
+    expect(shouldRunSetupWizard(custom, runtime({ env: { THUNDERBOLT_OPENAI_COMPAT_KEY: 'custom-key' } }))).toBe(false)
     expect(shouldRunSetupWizard(custom, runtime({ env: { OPENAI_API_KEY: 'real-openai-key' } }))).toBe(true)
   })
 })
@@ -94,7 +94,7 @@ describe('runSetupWizard', () => {
       fetchFn: liveModels('gpt-live-a', 'gpt-live-b'),
     })
 
-    const expected: CliConfig = { provider: 'openai', model: 'gpt-5.3-codex', apiKey: 'sk-openai' }
+    const expected: CliConfig = { provider: 'openai', model: 'gpt-5.6-sol', apiKey: 'sk-openai' }
     expect(result).toEqual(expected)
     expect(saved).toEqual([expected])
     expect(output.join('')).toContain('2. OpenAI')
@@ -212,10 +212,10 @@ describe('runSetupWizard', () => {
     await runSetupWizard(io, {
       path: '/tmp/config.json',
       save: async () => {},
-      fetchFn: liveModels('gpt-5.3-codex', 'gpt-live-a', 'gpt-live-a'),
+      fetchFn: liveModels('gpt-5.6-sol', 'gpt-live-a', 'gpt-live-a'),
     })
 
-    expect(output.join('').match(/gpt-5\.3-codex/g)).toHaveLength(1)
+    expect(output.join('').match(/gpt-5\.6-sol/g)).toHaveLength(1)
     expect(output.join('').match(/gpt-live-a/g)).toHaveLength(1)
   })
 
@@ -262,7 +262,7 @@ describe('runSetupWizard', () => {
       fetchFn,
     })
 
-    expect(result).toEqual({ provider: 'openai', model: 'gpt-5.3-codex', apiKey: 'still-bad' })
+    expect(result).toEqual({ provider: 'openai', model: 'gpt-5.6-sol', apiKey: 'still-bad' })
     expect(output.join('')).toContain('Available models (offline list):')
   })
 })

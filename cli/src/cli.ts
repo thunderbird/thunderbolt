@@ -105,7 +105,7 @@ EXAMPLES
   thunderbolt --provider google --api-key AIza… "review this repository"
   thunderbolt config
   thunderbolt
-  THUNDERBOLT_OPENAI_COMPAT_KEY=sk-… thunderbolt --provider openai-compat --base-url https://host/v1 --model my-model "hello"
+  THUNDERBOLT_OPENAI_COMPAT_KEY=local thunderbolt --provider openai-compat --base-url http://localhost:11434/v1 --model llama3.3 "hello"
   thunderbolt acp --transport wss -- npx @zed-industries/claude-code-acp
   thunderbolt mcp --transport wss --port 9001 -- uvx mcp-server-fetch
   thunderbolt acp --transport iroh -- thunderbolt acp serve   # share THIS agent
@@ -368,11 +368,7 @@ const resolveModelId = (flags: Flags, provider: ModelProvider, config: CliConfig
 }
 
 /** Resolves custom endpoint flag against provider-scoped saved config. */
-const resolveBaseUrl = (
-  flags: Flags,
-  provider: ModelProvider,
-  config: CliConfig | null,
-): string | undefined => {
+const resolveBaseUrl = (flags: Flags, provider: ModelProvider, config: CliConfig | null): string | undefined => {
   if (flags.baseUrl !== undefined) return flags.baseUrl
   return config?.provider === provider ? config.baseUrl : undefined
 }

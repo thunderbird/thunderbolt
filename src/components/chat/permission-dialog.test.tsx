@@ -89,11 +89,21 @@ describe('PermissionDialog', () => {
     expect(screen.getByText('Action')).toBeInTheDocument()
   })
 
-  it('renders both always-allow actions when an allow option exists', () => {
+  it('renders both always-allow actions, naming the kind breadth, when an allow option exists', () => {
     render(<PermissionDialog {...defaultHandlers} request={baseRequest} />)
 
-    expect(screen.getByText('Always allow this type of action')).toBeInTheDocument()
+    expect(screen.getByText('Always allow all Run command actions')).toBeInTheDocument()
     expect(screen.getByText('Always allow everything from this agent')).toBeInTheDocument()
+  })
+
+  it('falls back to a generic breadth label when the kind is unknown', () => {
+    const request: RequestPermissionRequest = {
+      ...baseRequest,
+      toolCall: { ...baseRequest.toolCall, kind: undefined } as RequestPermissionRequest['toolCall'],
+    }
+    render(<PermissionDialog {...defaultHandlers} request={request} />)
+
+    expect(screen.getByText('Always allow all actions of this kind')).toBeInTheDocument()
   })
 
   it('hides always-allow actions when no allow option exists', () => {
@@ -104,7 +114,7 @@ describe('PermissionDialog', () => {
 
     render(<PermissionDialog {...defaultHandlers} request={request} />)
 
-    expect(screen.queryByText('Always allow this type of action')).not.toBeInTheDocument()
+    expect(screen.queryByText('Always allow all Run command actions')).not.toBeInTheDocument()
     expect(screen.queryByText('Always allow everything from this agent')).not.toBeInTheDocument()
   })
 
@@ -120,7 +130,7 @@ describe('PermissionDialog', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('Always allow this type of action'))
+    fireEvent.click(screen.getByText('Always allow all Run command actions'))
     fireEvent.click(screen.getByText('Always allow everything from this agent'))
 
     expect(onAlwaysAllowTool).toHaveBeenCalledTimes(1)
@@ -167,7 +177,7 @@ describe('PermissionDialogHost', () => {
     const resolve = mock(() => {})
     renderPendingPermission(resolve)
 
-    fireEvent.click(screen.getByText('Always allow this type of action'))
+    fireEvent.click(screen.getByText('Always allow all Run command actions'))
 
     expect(useChatStore.getState().isAlwaysAllowed('agent-1', 'execute')).toBe(true)
     expect(useChatStore.getState().isAlwaysAllowed('agent-1', 'read')).toBe(false)

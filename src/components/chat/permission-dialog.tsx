@@ -30,6 +30,14 @@ const toolKindLabel = (kind?: string | null) => {
   }
 }
 
+/** Label for the kind-scoped always-allow button. Names the breadth granted so
+ *  the user sees they're allowing every action of this kind, not just the one
+ *  command shown. */
+const alwaysAllowKindLabel = (kind?: string | null): string => {
+  const label = toolKindLabel(kind)
+  return label === 'Action' ? 'Always allow all actions of this kind' : `Always allow all ${label} actions`
+}
+
 const optionVariant = (kind: PermissionOption['kind']): 'default' | 'destructive' | 'outline' | 'secondary' => {
   switch (kind) {
     case 'allow_once':
@@ -130,7 +138,7 @@ export const PermissionDialog = ({
       {allowOption && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowTool)}>
-            Always allow this type of action
+            {alwaysAllowKindLabel(kind)}
           </Button>
           <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowAgent)}>
             Always allow everything from this agent

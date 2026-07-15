@@ -229,6 +229,38 @@ describe('parseArgs — persisted config precedence', () => {
     expect(config.apiKey).toBe('saved-key')
   })
 
+  test('saved openai-compat key is not forwarded when --base-url targets a different endpoint', () => {
+    const config = runConfig(['--base-url', 'https://other.example/v1'], { config: stored, env: {} })
+
+    expect(config.baseUrl).toBe('https://other.example/v1')
+    expect(config.apiKey).toBeUndefined()
+  })
+
+  test('saved openai-compat key is used when effective base URL matches saved endpoint', () => {
+    const config = runConfig(['--base-url', 'https://saved.example/v1'], { config: stored, env: {} })
+
+    expect(config.baseUrl).toBe('https://saved.example/v1')
+    expect(config.apiKey).toBe('saved-key')
+  })
+
+  test('--api-key remains explicit opt-in when --base-url targets a different endpoint', () => {
+    const config = runConfig(['--base-url', 'https://other.example/v1', '--api-key', 'flag-key'], {
+      config: stored,
+      env: {},
+    })
+
+    expect(config.apiKey).toBe('flag-key')
+  })
+
+  test('dedicated env key remains explicit opt-in when --base-url targets a different endpoint', () => {
+    const config = runConfig(['--base-url', 'https://other.example/v1'], {
+      config: stored,
+      env: { THUNDERBOLT_OPENAI_COMPAT_KEY: 'env-key' },
+    })
+
+    expect(config.apiKey).toBe('env-key')
+  })
+
   test('saved key and base URL do not cross provider boundaries', () => {
     const config = runConfig(['--provider', 'anthropic'], { config: stored, env: {} })
 

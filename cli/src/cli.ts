@@ -340,18 +340,22 @@ const resolveProvider = (flags: Flags, config: CliConfig | null): ModelProvider 
  *
  * @param provider - selected model provider
  * @param flagApiKey - value passed via `--api-key`, if any
+ * @param effectiveBaseUrl - endpoint selected after flag and config precedence
  * @returns the resolved api key, or `undefined`
  */
 const resolveApiKey = (
   provider: ModelProvider,
   flagApiKey: string | undefined,
+  effectiveBaseUrl: string | undefined,
   dependencies: ResolvedDependencies,
 ): string | undefined => {
   if (flagApiKey !== undefined) return flagApiKey
   if (provider === 'openai-compat') {
     return (
       dependencies.env.THUNDERBOLT_OPENAI_COMPAT_KEY ||
-      (dependencies.config?.provider === provider ? dependencies.config.apiKey : undefined)
+      (dependencies.config?.provider === provider && effectiveBaseUrl === dependencies.config.baseUrl
+        ? dependencies.config.apiKey
+        : undefined)
     )
   }
 
@@ -376,14 +380,15 @@ const resolveBaseUrl = (flags: Flags, provider: ModelProvider, config: CliConfig
 /** Resolves harness fields after argv scanning preserves explicit flags. */
 const resolveAgentFlags = (flags: Flags, dependencies: ResolvedDependencies) => {
   const provider = resolveProvider(flags, dependencies.config)
+  const baseUrl = resolveBaseUrl(flags, provider, dependencies.config)
   return {
     model: resolveModelId(flags, provider, dependencies.config),
     cwd: dependencies.cwd,
     yolo: flags.yolo,
     thinking: flags.thinking,
     provider,
-    baseUrl: resolveBaseUrl(flags, provider, dependencies.config),
-    apiKey: resolveApiKey(provider, flags.apiKey, dependencies),
+    baseUrl,
+    apiKey: resolveApiKey(provider, flags.apiKey, baseUrl, dependencies),
   }
 }
 

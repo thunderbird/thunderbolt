@@ -95,9 +95,10 @@ Config lives at `~/.thunderbolt/config.json`, or
 }
 ```
 
-`apiKey` and `baseUrl` are optional. Saved keys and base URLs apply only when
-saved provider matches effective provider, preventing cross-provider credential
-forwarding. Missing, malformed, or invalid config is treated as absent.
+`apiKey` and `baseUrl` are optional. Saved keys apply only when saved provider
+and base URL match effective provider and base URL, preventing cross-provider or
+cross-endpoint credential forwarding. Missing, malformed, or invalid config is
+treated as absent.
 
 Resolution order is explicit flag, supported provider environment variable,
 config file, then built-in default. Current environment tier contains credential

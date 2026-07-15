@@ -42,7 +42,7 @@ const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
     className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-center justify-center gap-2 rounded-[8px] bg-[#142952] px-5 font-mono text-sm font-bold tracking-wider text-white transition-colors hover:bg-[#142952]/90`}
   >
     <GitHubIcon />
-    Star on GitHub
+    STAR ON GITHUB
   </a>
 )
 
@@ -117,7 +117,7 @@ const EnterpriseInquiriesButton = () => (
       <path d="M22 2L11 13" />
       <path d="M22 2l-7 20-4-9-9-4 20-7z" />
     </svg>
-    Get in Touch
+    GET IN TOUCH
   </a>
 )
 
@@ -462,7 +462,7 @@ const CompromiseSection = () => (
       <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
         <div>
           <p className="font-['IBM_Plex_Mono'] font-normal text-[13px] uppercase tracking-[-0.28px] text-[#667085]">
-            Open Source &bull; Self-Hosted &bull; Enterprise-Ready
+            OPEN SOURCE &bull; SELF-HOSTED &bull; ENTERPRISE-READY
           </p>
           <h2 className="mt-2 text-[32px] font-medium leading-[1.2] tracking-[-0.8px] text-[#101828] md:text-[40px]">
             AI Without Compromise
@@ -574,7 +574,7 @@ const QuoteSection = () => (
       <div className="flex shrink-0 flex-col items-start gap-3 pr-6 md:pr-0 md:w-[248px] lg:ml-[calc((100vw-1120px)/2)]">
         <img src="/enterprise/icon-factory-24.svg" alt="" className="size-6" />
         <p className="font-['IBM_Plex_Mono'] font-normal text-[13px] uppercase tracking-[-0.36px] text-[#667085]">
-          Trusted by Organizations That Won&rsquo;t Compromise
+          TRUSTED BY ORGANIZATIONS THAT WON&rsquo;T COMPROMISE
         </p>
       </div>
       {/* Quote card group — stretches to right edge of screen */}
@@ -589,8 +589,8 @@ const QuoteSection = () => (
             </span>.&rdquo;
           </p>
           <p className="mt-6 font-['IBM_Plex_Mono'] font-normal text-[13px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
-            <span className="hidden md:inline">Ryan Sipes, CEO, MZLA Technologies</span>
-            <span className="md:hidden">Ryan Sipes,<br />CEO, MZLA Technologies</span>
+            <span className="hidden md:inline">RYAN SIPES, CEO, MZLA TECHNOLOGIES</span>
+            <span className="md:hidden">RYAN SIPES,<br />CEO, MZLA TECHNOLOGIES</span>
           </p>
         </div>
       </div>
@@ -629,7 +629,7 @@ const FeaturedInSection = () => (
   <section className="relative pt-8 pb-0 md:pt-12 md:pb-0">
     <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
       <p className="text-center font-['IBM_Plex_Mono'] font-normal text-[13px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
-        As Featured In
+        AS FEATURED IN
       </p>
       <div className="mt-10 flex flex-col items-center justify-center gap-10 md:flex-row md:gap-20">
         {featuredArticles.map((article) => (
@@ -690,7 +690,7 @@ export const EnterprisePage = () => {
           className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#4A6FD3] to-[#8B9FE8] px-4 py-2.5 text-sm font-semibold text-white"
         >
           <span className="font-mono">
-            Thunderbolt is here! <span className="text-white/80">&mdash; Read the announcement</span>
+            THUNDERBOLT IS HERE! <span className="text-white/80">&mdash; READ THE ANNOUNCEMENT</span>
           </span>
           <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
         </a>

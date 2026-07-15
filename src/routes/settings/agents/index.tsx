@@ -8,6 +8,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { AgentCatalog } from '@/components/settings/agents/agent-catalog'
 import { ThunderboltCliInstallCard } from '@/components/settings/agents/thunderbolt-cli-install-card'
@@ -120,19 +121,28 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="Agents">
         {allowCustomAgents && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="rounded-lg"
-            aria-label="Add Custom Agent"
-            onClick={() => {
-              setEditingAgent(null)
-              setDialogOpen(true)
-            }}
-            disabled={!currentUserId}
-          >
-            <Plus />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="rounded-lg"
+                  aria-label="Add custom agent"
+                  onClick={() => {
+                    setEditingAgent(null)
+                    setDialogOpen(true)
+                  }}
+                  disabled={!currentUserId}
+                >
+                  <Plus />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Add custom agent</p>
+            </TooltipContent>
+          </Tooltip>
         )}
       </PageHeader>
 

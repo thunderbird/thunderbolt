@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSidebar } from '@/components/ui/sidebar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { Skill } from '@/types'
 import { LibraryRow, skillRowTransition } from './library-row'
@@ -78,15 +79,22 @@ export const SkillsList = ({
             Skills
           </h1>
         )}
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="Create skill"
-          className="size-8 rounded-md"
-          onClick={onCreate}
-        >
-          <Plus />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Create skill"
+              className="size-8 rounded-md"
+              onClick={onCreate}
+            >
+              <Plus />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>Create skill</p>
+          </TooltipContent>
+        </Tooltip>
       </header>
 
       <div className="relative">

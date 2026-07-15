@@ -6,12 +6,13 @@
 
 import { createInterface } from 'node:readline/promises'
 import { Writable } from 'node:stream'
-import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { BUILTIN_PROVIDER_ENV_VARS, DEFAULT_MODELS, DEFAULT_PROVIDER } from '../agent/defaults.ts'
 import type { BuiltinProvider, ModelProvider, RunConfig } from '../agent/types.ts'
 import { configPath } from '../paths.ts'
 import { saveConfig } from './config.ts'
 import type { CliConfig } from './config.ts'
+import { listModels } from './model-listing.ts'
+import type { ModelListingFetch, ModelListingResult } from './model-listing.ts'
 
 type BuiltinChoice = {
   readonly kind: 'builtin'
@@ -61,7 +62,8 @@ export type SetupWizardTerminalIO = SetupWizardIO & { readonly close: () => void
 type SetupWizardDependencies = {
   readonly path?: string
   readonly save?: (config: CliConfig, path: string) => Promise<void>
-  readonly catalogIds?: (provider: BuiltinProvider) => readonly string[]
+  readonly fetchFn?: ModelListingFetch
+  readonly modelListingTimeoutMs?: number
   readonly requiredProvider?: ModelProvider
 }
 
@@ -131,24 +133,79 @@ const readApiKey = async (io: SetupWizardIO, local: boolean): Promise<string> =>
   }
 }
 
-/** Builds unique default-first model suggestions from Pi catalog ids. */
-const modelChoices = (provider: BuiltinProvider, catalogIds: readonly string[]): readonly string[] =>
-  [...new Set([DEFAULT_MODELS[provider], ...catalogIds])].slice(0, 4)
+/** Builds unique default-first model suggestions from live or Pi catalog ids. */
+const modelChoices = (provider: BuiltinProvider, ids: readonly string[]): readonly string[] =>
+  [...new Set([DEFAULT_MODELS[provider], ...ids])]
 
 /** Reads a built-in model, accepting Enter for default, number, or free-form id. */
 const chooseBuiltinModel = async (
   io: SetupWizardIO,
   provider: BuiltinProvider,
-  catalogIds: readonly string[],
+  listing: ModelListingResult,
 ): Promise<string> => {
-  const choices = modelChoices(provider, catalogIds)
-  io.write('Available models:\n')
+  const choices = modelChoices(provider, listing.ids)
+  io.write(listing.source === 'catalog' ? 'Available models (offline list):\n' : 'Available models:\n')
   choices.forEach((model, index) => io.write(`  ${index + 1}. ${model}${index === 0 ? ' (default)' : ''}\n`))
   const answer = await io.readLine(`Model [${DEFAULT_MODELS[provider]}]: `)
   if (answer === null) throw new Error('Setup cancelled.')
   if (answer.trim() === '') return DEFAULT_MODELS[provider]
   const numbered = choices[Number(answer.trim()) - 1]
   return numbered ?? answer.trim()
+}
+
+/** Reads a numbered or free-form model id for a custom compatible endpoint. */
+const chooseCompatModel = async (io: SetupWizardIO, listing: ModelListingResult): Promise<string> => {
+  if (listing.source === 'catalog') {
+    io.write('Available models (offline list):\n')
+    return readRequiredLine(io, 'Model id: ')
+  }
+
+  const choices = [...new Set(listing.ids)]
+  io.write('Available models:\n')
+  choices.forEach((model, index) => io.write(`  ${index + 1}. ${model}\n`))
+  while (true) {
+    const answer = await io.readLine('Model id or number: ')
+    if (answer === null) throw new Error('Setup cancelled.')
+    if (answer.trim() === '') {
+      io.write('Value required.\n')
+      continue
+    }
+    return choices[Number(answer.trim()) - 1] ?? answer.trim()
+  }
+}
+
+type ApiKeyAndListing = {
+  readonly apiKey: string
+  readonly listing: ModelListingResult
+}
+
+/** Lists models and allows one key correction after provider authentication rejection. */
+const listModelsWithKeyRetry = async (
+  io: SetupWizardIO,
+  provider: ModelProvider,
+  apiKey: string,
+  baseUrl: string | undefined,
+  local: boolean,
+  dependencies: SetupWizardDependencies,
+): Promise<ApiKeyAndListing> => {
+  const listForKey = (key: string) =>
+    listModels({
+      provider,
+      apiKey: key,
+      ...(baseUrl === undefined ? {} : { baseUrl }),
+      ...(dependencies.fetchFn === undefined ? {} : { fetchFn: dependencies.fetchFn }),
+      ...(dependencies.modelListingTimeoutMs === undefined ? {} : { timeoutMs: dependencies.modelListingTimeoutMs }),
+    })
+  const firstListing = await listForKey(apiKey)
+  if (!firstListing.authRejected) return { apiKey, listing: firstListing }
+
+  io.write(`provider rejected this API key (${firstListing.status}) — check it.\n`)
+  const retriedApiKey = await readApiKey(io, local)
+  const secondListing = await listForKey(retriedApiKey)
+  if (secondListing.authRejected) {
+    io.write(`provider rejected this API key (${secondListing.status}) — check it.\n`)
+  }
+  return { apiKey: retriedApiKey, listing: secondListing }
 }
 
 /** Resolves selected choice into provider and optional custom base URL. */
@@ -168,18 +225,20 @@ export const runSetupWizard = async (
 ): Promise<CliConfig> => {
   const choice = await chooseProvider(io, dependencies.requiredProvider)
   const resolved = await resolveChoice(choice, io)
-  const apiKey = await readApiKey(io, choice.kind === 'compat' && choice.local)
-  const catalogIds =
-    dependencies.catalogIds ??
-    ((provider) =>
-      builtinModels()
-        .getModels(provider)
-        .slice(0, 3)
-        .map(({ id }) => id))
+  const local = choice.kind === 'compat' && choice.local
+  const initialApiKey = await readApiKey(io, local)
+  const { apiKey, listing } = await listModelsWithKeyRetry(
+    io,
+    resolved.provider,
+    initialApiKey,
+    resolved.baseUrl,
+    local,
+    dependencies,
+  )
   const model =
     choice.kind === 'builtin'
-      ? await chooseBuiltinModel(io, choice.provider, catalogIds(choice.provider))
-      : await readRequiredLine(io, 'Model id: ')
+      ? await chooseBuiltinModel(io, choice.provider, listing)
+      : await chooseCompatModel(io, listing)
   const config: CliConfig = {
     provider: resolved.provider,
     model,

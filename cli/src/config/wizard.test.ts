@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test'
 import type { RunConfig } from '../agent/types.ts'
 import { parseArgs } from '../cli.ts'
 import type { CliConfig } from './config.ts'
+import type { ModelListingFetch } from './model-listing.ts'
 import { runSetupWizard, shouldRunSetupWizard } from './wizard.ts'
 import type { SetupWizardIO } from './wizard.ts'
 
@@ -43,6 +44,13 @@ const scriptedIO = (lines: readonly string[], secrets: readonly string[]) => {
   }
   return { io, output }
 }
+
+/** Returns one injected OpenAI-compatible model-list response. */
+const liveModels = (...ids: readonly string[]): ModelListingFetch => async () =>
+  Response.json({ data: ids.map((id) => ({ id })) })
+
+/** Simulates provider unavailability without touching ambient network state. */
+const unavailableModels: ModelListingFetch = async () => new Response(null, { status: 503 })
 
 describe('shouldRunSetupWizard', () => {
   test('uses setup for a credential-less run when stdin and stdout are TTYs', () => {
@@ -83,14 +91,14 @@ describe('runSetupWizard', () => {
       save: async (config) => {
         saved.push(config)
       },
-      catalogIds: () => ['gpt-catalog-a', 'gpt-catalog-b'],
+      fetchFn: liveModels('gpt-live-a', 'gpt-live-b'),
     })
 
     const expected: CliConfig = { provider: 'openai', model: 'gpt-5.3-codex', apiKey: 'sk-openai' }
     expect(result).toEqual(expected)
     expect(saved).toEqual([expected])
     expect(output.join('')).toContain('2. OpenAI')
-    expect(output.join('')).toContain('gpt-catalog-a')
+    expect(output.join('')).toContain('gpt-live-a')
     expect(output.join('')).toContain('Saved config to /tmp/thunderbolt/config.json')
   })
 
@@ -103,7 +111,7 @@ describe('runSetupWizard', () => {
       save: async (config) => {
         saved.push(config)
       },
-      catalogIds: () => [],
+      fetchFn: unavailableModels,
     })
 
     expect(saved).toEqual([
@@ -125,7 +133,7 @@ describe('runSetupWizard', () => {
       save: async (config) => {
         saved.push(config)
       },
-      catalogIds: () => [],
+      fetchFn: unavailableModels,
     })
 
     expect(saved).toEqual([
@@ -138,6 +146,30 @@ describe('runSetupWizard', () => {
     ])
   })
 
+  test('lists and selects numbered models from the entered compatible base URL', async () => {
+    const { io, output } = scriptedIO(['17', 'https://custom.example/v1/', '2'], ['custom-secret'])
+    const urls: string[] = []
+    const fetchFn: ModelListingFetch = async (input) => {
+      urls.push(String(input))
+      return Response.json({ data: [{ id: 'custom-live-a' }, { id: 'custom-live-b' }] })
+    }
+
+    const result = await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn,
+    })
+
+    expect(urls).toEqual(['https://custom.example/v1/models'])
+    expect(result).toEqual({
+      provider: 'openai-compat',
+      model: 'custom-live-b',
+      apiKey: 'custom-secret',
+      baseUrl: 'https://custom.example/v1/',
+    })
+    expect(output.join('')).not.toContain('custom-secret')
+  })
+
   test('re-prompts when a choice conflicts with an explicit provider flag', async () => {
     const { io, output } = scriptedIO(['2', '3', ''], ['google-key'])
     const saved: CliConfig[] = []
@@ -148,7 +180,10 @@ describe('runSetupWizard', () => {
       save: async (config) => {
         saved.push(config)
       },
-      catalogIds: () => [],
+      fetchFn: async () =>
+        Response.json({
+          models: [{ name: 'models/gemini-3.1-pro-preview', supportedGenerationMethods: ['generateContent'] }],
+        }),
     })
 
     expect(saved).toEqual([{ provider: 'google', model: 'gemini-3.1-pro-preview', apiKey: 'google-key' }])
@@ -157,5 +192,77 @@ describe('runSetupWizard', () => {
     if (reparsed.kind !== 'run') throw new Error(`expected run, got ${reparsed.kind}`)
     expect(reparsed.config.apiKey).toBe('google-key')
     expect(reparsed.config.model).toBe('gemini-3.1-pro-preview')
+  })
+
+  test('selects a numbered live model through the full scripted wizard flow', async () => {
+    const { io } = scriptedIO(['2', '3'], ['sk-live'])
+
+    const result = await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn: liveModels('gpt-live-a', 'gpt-live-b'),
+    })
+
+    expect(result).toEqual({ provider: 'openai', model: 'gpt-live-b', apiKey: 'sk-live' })
+  })
+
+  test('shows the curated default once before deduplicated live ids', async () => {
+    const { io, output } = scriptedIO(['2', ''], ['sk-live'])
+
+    await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn: liveModels('gpt-5.3-codex', 'gpt-live-a', 'gpt-live-a'),
+    })
+
+    expect(output.join('').match(/gpt-5\.3-codex/g)).toHaveLength(1)
+    expect(output.join('').match(/gpt-live-a/g)).toHaveLength(1)
+  })
+
+  test('marks catalog suggestions as an offline list', async () => {
+    const { io, output } = scriptedIO(['2', ''], ['sk-offline'])
+
+    await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn: unavailableModels,
+    })
+
+    expect(output.join('')).toContain('Available models (offline list):')
+  })
+
+  test('warns and re-prompts the key once after a 401 before using live models', async () => {
+    const { io, output } = scriptedIO(['2', '2'], ['bad-key', 'good-key'])
+    const requestedKeys: string[] = []
+    const fetchFn: ModelListingFetch = async (_input, init) => {
+      const key = new Headers(init?.headers).get('Authorization') ?? ''
+      requestedKeys.push(key)
+      if (key === 'Bearer bad-key') return new Response(null, { status: 401 })
+      return Response.json({ data: [{ id: 'gpt-live' }] })
+    }
+
+    const result = await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn,
+    })
+
+    expect(requestedKeys).toEqual(['Bearer bad-key', 'Bearer good-key'])
+    expect(result).toEqual({ provider: 'openai', model: 'gpt-live', apiKey: 'good-key' })
+    expect(output.join('')).toContain('provider rejected this API key (401) — check it.')
+  })
+
+  test('continues with catalog models after a second authentication rejection', async () => {
+    const { io, output } = scriptedIO(['2', ''], ['bad-key', 'still-bad'])
+    const fetchFn: ModelListingFetch = async () => new Response(null, { status: 403 })
+
+    const result = await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn,
+    })
+
+    expect(result).toEqual({ provider: 'openai', model: 'gpt-5.3-codex', apiKey: 'still-bad' })
+    expect(output.join('')).toContain('Available models (offline list):')
   })
 })

@@ -2,9 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, test } from 'bun:test'
 import { listModels } from './model-listing.ts'
 import type { ModelListingFetch } from './model-listing.ts'
+
+/** Derives fallback expectations from Pi's wired catalog so catalog churn does not break behavior tests. */
+const openAiCatalogIds = builtinModels()
+  .getModels('openai')
+  .slice(0, 3)
+  .map(({ id }) => id)
 
 describe('listModels', () => {
   test('reads an OpenAI-compatible model list with bearer authentication', async () => {
@@ -191,11 +198,10 @@ describe('listModels', () => {
 
   test('returns catalog models on timeout even when injected fetch ignores abort', async () => {
     const fetchFn: ModelListingFetch = async () => new Promise<Response>(() => {})
+    const result = await listModels({ provider: 'openai', apiKey: 'key', fetchFn, timeoutMs: 1 })
 
-    expect(await listModels({ provider: 'openai', apiKey: 'key', fetchFn, timeoutMs: 1 })).toEqual({
-      source: 'catalog',
-      ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'],
-    })
+    expect(result.source).toBe('catalog')
+    expect(result.ids).toEqual(openAiCatalogIds)
   })
 
   test('returns catalog models when fetch rejects with a network TypeError', async () => {
@@ -203,20 +209,20 @@ describe('listModels', () => {
       throw new TypeError('Network request failed.')
     }
 
-    expect(await listModels({ provider: 'openai', apiKey: 'key', fetchFn })).toEqual({
-      source: 'catalog',
-      ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'],
-    })
+    const result = await listModels({ provider: 'openai', apiKey: 'key', fetchFn })
+
+    expect(result.source).toBe('catalog')
+    expect(result.ids).toEqual(openAiCatalogIds)
   })
 
   test('returns catalog models when response JSON is invalid', async () => {
     const fetchFn: ModelListingFetch = async () =>
       new Response('{"data":', { headers: { 'Content-Type': 'application/json' } })
 
-    expect(await listModels({ provider: 'openai', apiKey: 'key', fetchFn })).toEqual({
-      source: 'catalog',
-      ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'],
-    })
+    const result = await listModels({ provider: 'openai', apiKey: 'key', fetchFn })
+
+    expect(result.source).toBe('catalog')
+    expect(result.ids).toEqual(openAiCatalogIds)
   })
 
   test('returns catalog models for non-success and malformed responses', async () => {
@@ -231,8 +237,10 @@ describe('listModels', () => {
       fetchFn: async () => Response.json({ unexpected: [] }),
     })
 
-    expect(unavailable).toEqual({ source: 'catalog', ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'] })
-    expect(malformed).toEqual({ source: 'catalog', ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'] })
+    expect(unavailable.source).toBe('catalog')
+    expect(unavailable.ids).toEqual(openAiCatalogIds)
+    expect(malformed.source).toBe('catalog')
+    expect(malformed.ids).toEqual(openAiCatalogIds)
   })
 
   test('treats unrecognized provider responses as empty model lists', async () => {
@@ -282,18 +290,14 @@ describe('listModels', () => {
       fetchFn: async () => new Response(null, { status: 403 }),
     })
 
-    expect(unauthorized).toEqual({
-      source: 'catalog',
-      ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'],
-      authRejected: true,
-      status: 401,
-    })
-    expect(forbidden).toEqual({
-      source: 'catalog',
-      ids: ['gpt-4', 'gpt-4-turbo', 'gpt-4.1'],
-      authRejected: true,
-      status: 403,
-    })
+    expect(unauthorized.source).toBe('catalog')
+    expect(unauthorized.ids).toEqual(openAiCatalogIds)
+    expect(unauthorized.authRejected).toBe(true)
+    expect(unauthorized.status).toBe(401)
+    expect(forbidden.source).toBe('catalog')
+    expect(forbidden.ids).toEqual(openAiCatalogIds)
+    expect(forbidden.authRejected).toBe(true)
+    expect(forbidden.status).toBe(403)
   })
 
   test('treats an empty chat-capable result as catalog fallback', async () => {

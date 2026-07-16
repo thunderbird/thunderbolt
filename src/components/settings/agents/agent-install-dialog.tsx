@@ -14,27 +14,31 @@ import {
 } from '@/components/ui/responsive-modal'
 import type { AgentInstallMeta } from '@/defaults/agent-install-metadata'
 import { buildRunCommand } from '@/lib/agent-install-command'
-import { getPlatform } from '@/lib/platform'
 import type { RegistryEntry } from '@/types/registry'
 
 type AgentInstallDialogProps = {
   entry: RegistryEntry
-  /** Extra setup detail the registry doesn't carry (API-key env vars, docs). When
-   *  omitted, the dialog shows only the derived run command. */
+  /** Extra setup detail the registry doesn't carry, including authored commands,
+   *  API-key environment variables, and docs. */
   meta?: AgentInstallMeta
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Test/DI override for the runtime platform used to resolve a binary agent's
-   *  command. Production omits and reads the real platform. */
-  platform?: string
 }
+
+/** Titled copyable command, shared by the install and run steps. */
+const CommandSection = ({ title, command, copyLabel }: { title: string; command: string; copyLabel: string }) => (
+  <div className="grid grid-cols-1 gap-2">
+    <p className="text-[length:var(--font-size-sm)] font-medium">{title}</p>
+    <CopyCommandRow command={command} label={copyLabel} />
+  </div>
+)
 
 /** Setup instructions for a catalogue agent: the exact command to run it (with
  *  copy-to-clipboard), plus any authored API-key requirements and setup-doc link.
  *  These agents run on the user's own machine — this is the "how to run it" panel,
  *  not an in-app installer. */
-export const AgentInstallDialog = ({ entry, meta, open, onOpenChange, platform }: AgentInstallDialogProps) => {
-  const command = buildRunCommand(entry, platform ?? getPlatform())
+export const AgentInstallDialog = ({ entry, meta, open, onOpenChange }: AgentInstallDialogProps) => {
+  const command = meta?.runCommand ?? buildRunCommand(entry)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -46,11 +50,14 @@ export const AgentInstallDialog = ({ entry, meta, open, onOpenChange, platform }
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
         <div className="flex flex-col gap-4 pt-4 pb-2">
-          {command && (
-            <div className="grid grid-cols-1 gap-2">
-              <p className="text-[length:var(--font-size-sm)] font-medium">Run this command</p>
-              <CopyCommandRow command={command} label="Copy run command" />
-            </div>
+          {meta?.installCommand && (
+            <CommandSection title="Install" command={meta.installCommand} copyLabel="Copy install command" />
+          )}
+          {command && <CommandSection title="Run this command" command={command} copyLabel="Copy run command" />}
+          {!command && !meta?.installCommand && (
+            <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+              Check the agent's website for install instructions.
+            </p>
           )}
           {meta?.requiredEnv && meta.requiredEnv.length > 0 && (
             <div className="grid grid-cols-1 gap-2">

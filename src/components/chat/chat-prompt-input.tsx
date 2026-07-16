@@ -27,9 +27,10 @@ import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
+import { AlertCircle, Loader2, Paperclip, Plus, X } from 'lucide-react'
 import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
@@ -526,19 +527,26 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     }))
 
     const footerStartElements = (
-      // -ml-1 optically aligns the ghost buttons with the filled submit button
-      // on the right: their glyphs sit inside transparent hit-boxes, so without
-      // the nudge the left cluster reads as further from the card edge.
-      <div className="-ml-1 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          aria-label="Attach a file"
-          title="Attach a file"
-          className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <Paperclip className="size-[var(--icon-size-default)]" />
-        </button>
+      <div className="flex items-center gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Add to chat"
+              title="Add to chat"
+              className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+            >
+              <Plus className="size-[var(--icon-size-sm)]" />
+            </button>
+          </DropdownMenuTrigger>
+          {/* Opens downward on desktop, matching the mode/model selectors. */}
+          <DropdownMenuContent side={isMobile ? 'top' : 'bottom'} align="start" className="min-w-44 rounded-xl">
+            <DropdownMenuItem onSelect={() => fileInputRef.current?.click()} className="cursor-pointer">
+              <Paperclip className="size-[var(--icon-size-sm)]" />
+              Upload file
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {isConnecting ? (
           <div
             role="status"
@@ -558,17 +566,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               Failed to connect to {selectedAgent.name}
             </span>
           </div>
-        ) : (
-          <>
-            <ChatModePicker iconOnly={isMobile} />
-            <ChatModelPicker />
-          </>
-        )}
+        ) : null}
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
         )}
       </div>
     )
+
+    // Mode/model pickers sit in the footer's right cluster, next to the send
+    // button; the connecting / connection-error status replaces them on the
+    // left, so the right side only renders them in the healthy state.
+    const footerEndElements =
+      !isConnecting && !isConnectionError ? (
+        <>
+          <ChatModePicker iconOnly={isMobile} />
+          <ChatModelPicker />
+        </>
+      ) : undefined
 
     const handleAddChipFromBar = useCallback(
       (slug: string) => {
@@ -731,6 +745,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
             className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border bg-sidebar p-2"
             footerStartElements={footerStartElements}
+            footerEndElements={footerEndElements}
             renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}
             popoverSlot={
               popupOpen ? (

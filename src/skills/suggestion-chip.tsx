@@ -17,7 +17,6 @@ import { useIsMobile } from '@/hooks/use-mobile'
  */
 export const SuggestionChip = ({
   label,
-  dimmed,
   onClick,
   onOpenChange,
   onAddInstruction,
@@ -26,7 +25,6 @@ export const SuggestionChip = ({
 }: {
   /** Display label — the bare slug; the leading `/` is added at render time. */
   label: string
-  dimmed: boolean
   onClick: () => void
   onOpenChange?: (open: boolean) => void
   onAddInstruction: () => void
@@ -117,9 +115,7 @@ export const SuggestionChip = ({
           // share/copy callout pops) while our long-press timer is waiting
           // to open the action menu. Leaving `touch-action` at its default
           // so the chip strip's horizontal scroll on mobile still works.
-          className={`h-[var(--touch-height-sm)] shrink-0 cursor-pointer select-none rounded-full border-border bg-sidebar px-3 text-sm font-normal transition-opacity dark:border-border dark:bg-sidebar [-webkit-touch-callout:none] ${
-            dimmed ? 'opacity-40' : ''
-          }`}
+          className="h-[var(--touch-height-sm)] shrink-0 cursor-pointer select-none rounded-full border-border bg-sidebar px-3 text-sm font-normal dark:border-border dark:bg-sidebar [-webkit-touch-callout:none]"
           aria-label={`Pinned skill /${label}`}
         >
           /{label}
@@ -127,27 +123,28 @@ export const SuggestionChip = ({
       </DropdownMenuTrigger>
       {/*
         Anchor the menu's bottom-left to the chip's top-left so the popup
-        opens upward from the chip's anchor corner — matches the
-        ModeSelector dropdown shape elsewhere on the chat screen, including
-        its `rounded-xl` border-radius.
+        opens upward from the chip's anchor corner. Container and item
+        styling inherit the DropdownMenu defaults (`rounded-xl` panel,
+        `rounded-md` items) so it matches every other menu on this screen.
       */}
       <DropdownMenuContent
         side="top"
         align="start"
-        // `sideOffset={12}` matches the `gap-3` (12px) between the chips bar
-        // and the chat input below it, so the menu sits off the chip by the
-        // same gap the chip sits off the chat area. The default 4px read as
-        // cramped.
-        sideOffset={12}
-        collisionPadding={16}
-        className={isMobile ? 'w-[calc(100vw-2rem)] min-w-56 rounded-xl' : 'min-w-56 rounded-xl'}
+        // `sideOffset={8}` matches the `pb-2` (8px) gap between the chips bar
+        // and the chat composer below it, so the menu sits off the chip by
+        // the same distance the chip sits off the composer.
+        sideOffset={8}
+        // 12px collision padding + 100vw-1.5rem width on mobile makes the menu
+        // exactly as wide as the chat composer (which sits at px-3 insets).
+        collisionPadding={12}
+        className={isMobile ? 'w-[calc(100vw-1.5rem)] min-w-56' : 'min-w-56'}
       >
         <DropdownMenuItem
           onSelect={() => {
             onClick()
             handleOpenChange(false)
           }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
           <Plus />
           Add to chat
@@ -157,7 +154,7 @@ export const SuggestionChip = ({
             onAddInstruction()
             handleOpenChange(false)
           }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
           <File />
           Add instructions to chat
@@ -167,11 +164,11 @@ export const SuggestionChip = ({
             // Close before triggering reorder mode — the parent unmounts the
             // chip when entering reorder, so Radix's automatic
             // `onOpenChange(false)` may not reach `setOpenChipId(null)` and
-            // would leave sibling chips visually dimmed.
+            // would leave the mobile overlay stuck open.
             handleOpenChange(false)
             onReorder()
           }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
           <ListOrdered />
           Reorder
@@ -179,11 +176,11 @@ export const SuggestionChip = ({
         <DropdownMenuItem
           onSelect={() => {
             // Same reasoning as Reorder: unpinning unmounts the chip, so we
-            // close the menu first to guarantee the dim-state callback fires.
+            // close the menu first to guarantee the open-state callback fires.
             handleOpenChange(false)
             onUnpin()
           }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
           <Pin />
           Unpin

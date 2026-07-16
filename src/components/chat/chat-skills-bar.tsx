@@ -5,6 +5,7 @@
 import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -60,6 +61,7 @@ export const ChatSkillsBar = ({
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
   const trackSkillEvent = useSkillTelemetry()
+  const navigate = useNavigate()
 
   const [openChipId, setOpenChipId] = useState<string | null>(null)
   const [reorderMode, setReorderMode] = useState(false)
@@ -104,16 +106,12 @@ export const ChatSkillsBar = ({
   // chip's own dropdown.
   const pinnable = library.filter((s) => isEnabled(s.id) && !pinnedSet.has(s.id))
   const pinCapReached = pinnedSet.size >= maxPinnedSkills
-  // Disable the trigger when there's nothing to pin OR when adding one more
-  // would exceed the cap — the DAL throws PinLimitExceededError on the 11th
-  // pin and the catch below would swallow it silently; better to block the
-  // click upstream with explicit copy.
-  const addDisabled = pinnable.length === 0 || pinCapReached
-  const addTooltip = pinCapReached
-    ? `Pin limit reached (${maxPinnedSkills}). Unpin one first.`
-    : pinnable.length === 0
-      ? 'No more skills to pin'
-      : 'Pin a skill'
+  // The trigger stays clickable even with nothing left to pin — the popover
+  // still offers "New Skill". Only the pin cap blocks it: the DAL throws
+  // PinLimitExceededError on the 11th pin and the catch below would swallow
+  // it silently, so that case is blocked upstream with explicit copy.
+  const addDisabled = pinCapReached
+  const addTooltip = pinCapReached ? `Pin limit reached (${maxPinnedSkills}). Unpin one first.` : 'Add a skill'
 
   // Hide the whole bar only when there's nothing to display *and* nothing
   // to add. If the user has zero pins but unpinned skills exist, we still
@@ -130,7 +128,6 @@ export const ChatSkillsBar = ({
           <SuggestionChip
             key={skill.id}
             label={skill.name}
-            dimmed={openChipId !== null && openChipId !== skill.id}
             onClick={() => onAddToChat(skill.name)}
             onOpenChange={(open) => setOpenChipId(open ? skill.id : null)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
@@ -154,11 +151,9 @@ export const ChatSkillsBar = ({
                 <Button
                   variant="outline"
                   size="icon-sm"
-                  aria-label="Pin a skill"
+                  aria-label="Add a skill"
                   disabled={addDisabled}
-                  className={`shrink-0 cursor-pointer rounded-full border-border bg-sidebar transition-opacity hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-sidebar ${
-                    openChipId ? 'opacity-40' : ''
-                  }`}
+                  className="shrink-0 cursor-pointer rounded-full border-border bg-sidebar hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-sidebar"
                 >
                   <Plus />
                 </Button>
@@ -167,22 +162,27 @@ export const ChatSkillsBar = ({
             <TooltipContent>{addTooltip}</TooltipContent>
           </Tooltip>
           {/*
-            `collisionPadding={16}` keeps the popover 16px off the viewport
-            edges. On mobile the content is sized to `calc(100vw-2rem)` (32px
+            `collisionPadding={12}` keeps the popover 12px off the viewport
+            edges. On mobile the content is sized to `calc(100vw-1.5rem)` (24px
             narrower than the viewport), so collision avoidance pins it to a
-            16px-both-sides margin — i.e. full-width and centered on the chat
-            input — mirroring the chip dropdown. On desktop the fixed `w-72`
-            leaves room, so the padding never shifts the `align="start"`
-            anchor off the `+` button.
+            12px-both-sides margin — i.e. exactly as wide as the chat composer
+            (px-3 insets) and centered on it, mirroring the chip dropdown. On
+            desktop the fixed `w-72` leaves room, so the padding never shifts
+            the `align="start"` anchor off the `+` button.
           */}
           <PopoverContent
             side="top"
             align="start"
-            sideOffset={6}
-            collisionPadding={16}
-            className={isMobile ? 'w-[calc(100vw-2rem)] p-1' : 'w-72 max-w-[calc(100vw-2rem)] p-1'}
+            sideOffset={8}
+            collisionPadding={12}
+            className={isMobile ? 'w-[calc(100vw-1.5rem)] p-1' : 'w-72 max-w-[calc(100vw-1.5rem)] p-1'}
           >
             <ul className="max-h-64 overflow-y-auto">
+              {pinnable.length === 0 && (
+                <li className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+                  All skills are pinned
+                </li>
+              )}
               {pinnable.map((skill) => (
                 <li key={skill.id}>
                   <button
@@ -216,6 +216,22 @@ export const ChatSkillsBar = ({
                 </li>
               ))}
             </ul>
+            {/* Fixed footer below the scrollable list: full-bleed divider
+                (negative margins cancel the container's p-1) with a "New
+                Skill" row that jumps to the create form in settings. */}
+            <div className="-mx-1 mt-1 border-t border-border px-1 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddOpen(false)
+                  void navigate('/settings/skills', { state: { createSkill: '' } })
+                }}
+                className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Plus className="size-4" />
+                New Skill
+              </button>
+            </div>
           </PopoverContent>
         </Popover>
       </div>

@@ -226,7 +226,7 @@ export const SearchableMenu = <T,>({
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col bg-background">
+        <div className="flex flex-col">
           <div className="flex flex-col gap-2">
             {searchable && (
               <div className="px-1 pt-1">

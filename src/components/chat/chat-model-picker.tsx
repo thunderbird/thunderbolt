@@ -41,7 +41,7 @@ export const ChatModelPicker = () => {
       onModelChange={handleModelChange}
       onAddModels={() => navigate('/settings/models')}
       side={isMobile ? 'top' : 'bottom'}
-      align="start"
+      align="end"
     />
   )
 }

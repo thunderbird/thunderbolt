@@ -145,17 +145,6 @@ export const ModelSelector = ({
             ),
       )}
     >
-      {/* In the composer (`bordered`) the chevron leads, mirroring the mode
-          selector's icon-then-label layout; the standalone pill keeps the
-          conventional trailing chevron. */}
-      {variant === 'bordered' && (
-        <ChevronDown
-          className={cn(
-            'size-[var(--icon-size-sm)] text-muted-foreground transition-transform',
-            isOpen && 'rotate-180',
-          )}
-        />
-      )}
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
         <AlertTriangle className="size-3.5 text-amber-500" />
       ) : selected?.data?.model.isConfidential === 1 ? (
@@ -164,9 +153,7 @@ export const ModelSelector = ({
       <span className={cn('font-medium', variant === 'bordered' && 'text-muted-foreground')}>
         {selected?.label ?? 'Select Model'}
       </span>
-      {variant !== 'bordered' && (
-        <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
-      )}
+      <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>
   )
 

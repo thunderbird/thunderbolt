@@ -39,6 +39,8 @@ type PromptInputProps = {
   isStreaming?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
+  /** Rendered in the footer's right cluster, just before the submit button. */
+  footerEndElements?: ReactNode
   // Model selection props - optional, only used in automation modal
   chatThread?: ChatThread | null
   models?: Model[]
@@ -90,6 +92,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       isStreaming = false,
       onStop,
       footerStartElements,
+      footerEndElements,
       chatThread = null,
       models,
       selectedModel,
@@ -142,8 +145,6 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
     const showModelSelect = models && models.length > 0 && onModelChange
 
-    // Streaming always shows Stop; otherwise the send button only appears once
-    // there's something to send (no greyed-out button on an empty composer).
     const submitButton =
       showSubmitButton &&
       (isStreaming ? (
@@ -156,17 +157,17 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         >
           <Square className="size-[var(--icon-size-default)]" />
         </Button>
-      ) : submittable ? (
+      ) : (
         <Button
           type="submit"
           variant="default"
           aria-label="Send message"
           className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
-          disabled={isLoading}
+          disabled={isLoading || !submittable}
         >
           <ArrowUp className="size-[var(--icon-size-default)]" />
         </Button>
-      ) : null)
+      ))
 
     const content = (
       <>
@@ -204,6 +205,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           <div className="flex items-center gap-2">{footerStartElements}</div>
 
           <div className="flex gap-2 items-center">
+            {footerEndElements}
             {showModelSelect && (
               <ModelSelector
                 chatThread={chatThread}

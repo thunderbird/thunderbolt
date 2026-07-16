@@ -92,7 +92,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
       searchable={false}
       blurBackdrop
       side={isMobile ? 'top' : 'bottom'}
-      align="start"
+      align="end"
       trigger={renderTrigger}
       renderItem={renderItem}
       itemGap="gap-0.5"

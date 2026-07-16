@@ -73,7 +73,7 @@ describe('ChatSkillsBar', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders one chip per pinned skill plus the "Pin a skill" trigger', () => {
+  it('renders one chip per pinned skill plus the "Add a skill" trigger', () => {
     const a = skill('a', 'daily-brief')
     const b = skill('b', 'important-emails')
     renderBar({
@@ -83,31 +83,31 @@ describe('ChatSkillsBar', () => {
     })
     expect(screen.getByText('/daily-brief')).toBeTruthy()
     expect(screen.getByText('/important-emails')).toBeTruthy()
-    expect(screen.getByLabelText('Pin a skill')).toBeTruthy()
+    expect(screen.getByLabelText('Add a skill')).toBeTruthy()
   })
 
-  it('renders the "+ Pin a skill" trigger even when nothing is pinned, so long as the library has pin candidates', () => {
+  it('renders the "+ Add a skill" trigger even when nothing is pinned, so long as the library has pin candidates', () => {
     const a = skill('a', 'daily-brief')
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [] }),
       useLibrarySkills: fakeUseLibrarySkills([a]),
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
     })
-    expect(screen.getByLabelText('Pin a skill')).toBeTruthy()
+    expect(screen.getByLabelText('Add a skill')).toBeTruthy()
   })
 
-  it('disables the "+ Pin a skill" trigger when every enabled skill is already pinned', () => {
+  it('keeps the "+ Add a skill" trigger clickable when every enabled skill is already pinned (popover still offers New Skill)', () => {
     const a = skill('a', 'daily-brief')
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
       useLibrarySkills: fakeUseLibrarySkills([a]),
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
     })
-    const trigger = screen.getByLabelText('Pin a skill') as HTMLButtonElement
-    expect(trigger.disabled).toBe(true)
+    const trigger = screen.getByLabelText('Add a skill') as HTMLButtonElement
+    expect(trigger.disabled).toBe(false)
   })
 
-  it('disables the "+ Pin a skill" trigger when the pin cap is reached (even with unpinned candidates available)', () => {
+  it('disables the "+ Add a skill" trigger when the pin cap is reached (even with unpinned candidates available)', () => {
     // 10 pinned + 1 unpinned candidate → cap reached. Without this guard the
     // popover would show the candidate but clicking would silently fail
     // because the DAL throws PinLimitExceededError on the 11th pin.
@@ -118,7 +118,7 @@ describe('ChatSkillsBar', () => {
       useLibrarySkills: fakeUseLibrarySkills([...pinnedSkills, candidate]),
       useEnabledSkills: fakeUseEnabledSkills(new Set([...pinnedSkills.map((s) => s.id), 'c'])),
     })
-    const trigger = screen.getByLabelText('Pin a skill') as HTMLButtonElement
+    const trigger = screen.getByLabelText('Add a skill') as HTMLButtonElement
     expect(trigger.disabled).toBe(true)
   })
 

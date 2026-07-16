@@ -227,7 +227,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col gap-2 bg-background">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2 px-3 pt-3 pb-1 text-[length:var(--font-size-body)]">
             <div className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-lg border border-border">
               <UserRound className={cn(iconSize, 'text-muted-foreground')} />

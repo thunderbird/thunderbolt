@@ -68,12 +68,14 @@ export const SkillsView = () => {
       navigate(location.pathname, { replace: true, state: {} })
     })
   }
-  if (!createSkillNav) {
+  // `''` is a valid deep link (open a blank create form — e.g. the chat
+  // skills bar's "New Skill" row), so only null/undefined mean "no link".
+  if (createSkillNav == null) {
     consumedCreateSkillRef.current = null
   } else if (consumedCreateSkillRef.current !== createSkillNav) {
     consumedCreateSkillRef.current = createSkillNav
     queueMicrotask(() => {
-      dispatch({ type: 'START_CREATE', initialName: createSkillNav })
+      dispatch({ type: 'START_CREATE', initialName: createSkillNav || undefined })
       navigate(location.pathname, { replace: true, state: {} })
     })
   }

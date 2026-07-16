@@ -40,16 +40,11 @@ const noop = () => {}
 export const Default: Story = {
   args: {
     label: 'daily-brief',
-    dimmed: false,
     onClick: noop,
     onAddInstruction: noop,
     onReorder: noop,
     onUnpin: noop,
   },
-}
-
-export const Dimmed: Story = {
-  args: { ...Default.args, dimmed: true },
 }
 
 export const LongName: Story = {

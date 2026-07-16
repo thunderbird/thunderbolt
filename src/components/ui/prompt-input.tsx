@@ -142,6 +142,8 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
     const showModelSelect = models && models.length > 0 && onModelChange
 
+    // Streaming always shows Stop; otherwise the send button only appears once
+    // there's something to send (no greyed-out button on an empty composer).
     const submitButton =
       showSubmitButton &&
       (isStreaming ? (
@@ -154,17 +156,17 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         >
           <Square className="size-[var(--icon-size-default)]" />
         </Button>
-      ) : (
+      ) : submittable ? (
         <Button
           type="submit"
           variant="default"
           aria-label="Send message"
           className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
-          disabled={isLoading || !submittable}
+          disabled={isLoading}
         >
           <ArrowUp className="size-[var(--icon-size-default)]" />
         </Button>
-      ))
+      ) : null)
 
     const content = (
       <>

@@ -53,7 +53,11 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-sm)] border border-border',
+        // The shared iconMap renders icons at --icon-size-default (for the
+        // dropdown items); the trigger's descendant override shrinks its copy
+        // to --icon-size-sm so it sits proportionally with the sm label and
+        // matches the model selector's chevron.
+        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-sm)] [&_svg]:size-[var(--icon-size-sm)]',
         iconOnly ? 'size-[var(--touch-height-control)] justify-center' : 'gap-1.5 px-2 h-[var(--touch-height-control)]',
         isOpen ? 'bg-accent' : 'hover:bg-accent/50',
       )}

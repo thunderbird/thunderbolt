@@ -526,13 +526,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     }))
 
     const footerStartElements = (
-      <div className="flex items-center gap-2">
+      // -ml-1 optically aligns the ghost buttons with the filled submit button
+      // on the right: their glyphs sit inside transparent hit-boxes, so without
+      // the nudge the left cluster reads as further from the card edge.
+      <div className="-ml-1 flex items-center gap-2">
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           aria-label="Attach a file"
           title="Attach a file"
-          className="flex size-[var(--touch-height-sm)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <Paperclip className="size-[var(--icon-size-default)]" />
         </button>

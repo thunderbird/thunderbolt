@@ -21,7 +21,7 @@ export type ModelSelectorProps = {
   align?: 'start' | 'center' | 'end'
   /** Trigger appearance. `pill` (default) is the rounded standalone style used
    *  in modals; `bordered` matches the chat composer's ModeSelector (squared,
-   *  bordered, taller) so the two composer controls read as a pair. */
+   *  borderless, hover-accent) so the two composer controls read as a pair. */
   variant?: 'pill' | 'bordered'
 }
 
@@ -136,7 +136,7 @@ export const ModelSelector = ({
         'flex items-center cursor-pointer transition-colors',
         variant === 'bordered'
           ? cn(
-              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-lg border border-border text-[length:var(--font-size-sm)]',
+              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-lg text-[length:var(--font-size-sm)]',
               isOpen ? 'bg-accent' : 'hover:bg-accent/50',
             )
           : cn(
@@ -145,6 +145,17 @@ export const ModelSelector = ({
             ),
       )}
     >
+      {/* In the composer (`bordered`) the chevron leads, mirroring the mode
+          selector's icon-then-label layout; the standalone pill keeps the
+          conventional trailing chevron. */}
+      {variant === 'bordered' && (
+        <ChevronDown
+          className={cn(
+            'size-[var(--icon-size-sm)] text-muted-foreground transition-transform',
+            isOpen && 'rotate-180',
+          )}
+        />
+      )}
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
         <AlertTriangle className="size-3.5 text-amber-500" />
       ) : selected?.data?.model.isConfidential === 1 ? (
@@ -153,7 +164,9 @@ export const ModelSelector = ({
       <span className={cn('font-medium', variant === 'bordered' && 'text-muted-foreground')}>
         {selected?.label ?? 'Select Model'}
       </span>
-      <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
+      {variant !== 'bordered' && (
+        <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
+      )}
     </div>
   )
 

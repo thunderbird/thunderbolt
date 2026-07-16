@@ -18,7 +18,6 @@ import { useIsMobile } from '@/hooks/use-mobile'
 export const SuggestionChip = ({
   label,
   onClick,
-  onOpenChange,
   onAddInstruction,
   onReorder,
   onUnpin,
@@ -26,18 +25,12 @@ export const SuggestionChip = ({
   /** Display label — the bare slug; the leading `/` is added at render time. */
   label: string
   onClick: () => void
-  onOpenChange?: (open: boolean) => void
   onAddInstruction: () => void
   onReorder: () => void
   onUnpin: () => void
 }) => {
   const [open, setOpen] = useState(false)
   const { isMobile } = useIsMobile()
-
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next)
-    onOpenChange?.(next)
-  }
 
   // Long-press detection for touch — opens the action menu without firing
   // the chip-insertion onClick. Mouse left-clicks fall through to onClick.
@@ -52,7 +45,7 @@ export const SuggestionChip = ({
   }
 
   // If the chip unmounts mid-press, kill the pending timer so it can't fire
-  // `handleOpenChange(true)` on a gone component (React warns; harmless but
+  // `setOpen(true)` on a gone component (React warns; harmless but
   // noisy in dev).
   useEffect(() => clearLongPress, [])
 
@@ -67,7 +60,7 @@ export const SuggestionChip = ({
       clearLongPress()
       longPressTimerRef.current = setTimeout(() => {
         longPressFiredRef.current = true
-        handleOpenChange(true)
+        setOpen(true)
       }, 500)
       // Block Radix from opening on touch — we manage open via long-press.
       e.preventDefault()
@@ -90,7 +83,7 @@ export const SuggestionChip = ({
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
@@ -103,7 +96,7 @@ export const SuggestionChip = ({
           onContextMenu={(e) => {
             e.preventDefault()
             clearLongPress()
-            handleOpenChange(true)
+            setOpen(true)
           }}
           // `h-[var(--touch-height-sm)]` resolves to 40px on mobile, 32px on
           // desktop — keeps the compact desktop look while meeting the
@@ -125,7 +118,8 @@ export const SuggestionChip = ({
         Anchor the menu's bottom-left to the chip's top-left so the popup
         opens upward from the chip's anchor corner. Container and item
         styling inherit the DropdownMenu defaults (`rounded-xl` panel,
-        `rounded-md` items) so it matches every other menu on this screen.
+        `rounded-md` items), minus the drop shadow — the menu should read
+        as a flat, ordinary menu over the chat screen.
       */}
       <DropdownMenuContent
         side="top"
@@ -142,7 +136,7 @@ export const SuggestionChip = ({
         <DropdownMenuItem
           onSelect={() => {
             onClick()
-            handleOpenChange(false)
+            setOpen(false)
           }}
           className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
@@ -152,7 +146,7 @@ export const SuggestionChip = ({
         <DropdownMenuItem
           onSelect={() => {
             onAddInstruction()
-            handleOpenChange(false)
+            setOpen(false)
           }}
           className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
@@ -161,11 +155,7 @@ export const SuggestionChip = ({
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
-            // Close before triggering reorder mode — the parent unmounts the
-            // chip when entering reorder, so Radix's automatic
-            // `onOpenChange(false)` may not reach `setOpenChipId(null)` and
-            // would leave the mobile overlay stuck open.
-            handleOpenChange(false)
+            setOpen(false)
             onReorder()
           }}
           className="min-h-[var(--min-touch-height)] cursor-pointer"
@@ -175,9 +165,7 @@ export const SuggestionChip = ({
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
-            // Same reasoning as Reorder: unpinning unmounts the chip, so we
-            // close the menu first to guarantee the open-state callback fires.
-            handleOpenChange(false)
+            setOpen(false)
             onUnpin()
           }}
           className="min-h-[var(--min-touch-height)] cursor-pointer"

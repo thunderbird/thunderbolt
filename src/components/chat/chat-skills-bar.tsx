@@ -63,7 +63,6 @@ export const ChatSkillsBar = ({
   const trackSkillEvent = useSkillTelemetry()
   const navigate = useNavigate()
 
-  const [openChipId, setOpenChipId] = useState<string | null>(null)
   const [reorderMode, setReorderMode] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
 
@@ -71,16 +70,10 @@ export const ChatSkillsBar = ({
     return null
   }
 
-  const showOverlay = isMobile && (openChipId !== null || reorderMode)
-  const dismissOverlay = () => {
-    setOpenChipId(null)
-    setReorderMode(false)
-  }
-
   if (reorderMode) {
     return (
       <>
-        {showOverlay && <MobileOverlay onDismiss={dismissOverlay} />}
+        {isMobile && <MobileOverlay onDismiss={() => setReorderMode(false)} />}
         <ReorderPanel
           pinned={pinned}
           onReorder={async (ids, move) => {
@@ -122,14 +115,12 @@ export const ChatSkillsBar = ({
 
   return (
     <>
-      {showOverlay && <MobileOverlay onDismiss={dismissOverlay} />}
       <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
         {pinned.map((skill) => (
           <SuggestionChip
             key={skill.id}
             label={skill.name}
             onClick={() => onAddToChat(skill.name)}
-            onOpenChange={(open) => setOpenChipId(open ? skill.id : null)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onReorder={() => setReorderMode(true)}
             onUnpin={async () => {
@@ -240,7 +231,7 @@ export const ChatSkillsBar = ({
 }
 
 /**
- * Backdrop shown behind an open chip menu / the reorder panel on mobile.
+ * Backdrop shown behind the reorder panel on mobile.
  * A `<button>` rather than a `<div>` so keyboard users can `Escape` /
  * `Enter` / `Space` to dismiss; the document-level Escape listener is the
  * primary path, but the button keeps the dismiss target focusable for

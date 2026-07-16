@@ -2,14 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * Tests that the routing fetch's permission bridge stashes pending requests
- * on the store and that `resolvePendingPermission` completes the adapter's
- * awaited promise.
- */
-
 import '@/testing-library'
 
+import { builtInAgent } from '@/defaults/agents'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -22,6 +17,19 @@ import { createAgentRoutingFetch } from './chat-instance'
 const sessionId = 'sess-p1'
 const httpClient: HttpClient = {} as HttpClient
 const getProxyFetch: () => FetchFn = () => (async () => new Response('ok')) as unknown as FetchFn
+const remoteAgent: Agent = {
+  id: 'remote-agent',
+  name: 'Remote Agent',
+  type: 'remote-acp',
+  transport: 'websocket',
+  url: 'wss://example.test/ws',
+  description: null,
+  icon: null,
+  isSystem: 0,
+  enabled: 1,
+  deletedAt: null,
+  userId: 'user-1',
+}
 
 const hydrate = () => {
   hydrateStore({
@@ -33,44 +41,82 @@ const hydrate = () => {
   })
 }
 
+/** Clears session-only permission state between randomized tests. */
+const resetPermissionAllowances = () => {
+  useChatStore.setState({ alwaysAllowedAgentIds: new Set(), alwaysAllowedAgentToolKeys: new Set() })
+}
+
+/** Captures the permission sink passed to a real ACP adapter context. */
+const getRemoteRequestPermission = async (): Promise<NonNullable<AgentAdapterContext['requestPermission']>> => {
+  const contexts: AgentAdapterContext[] = []
+  const adapter: AgentAdapter = {
+    agent: remoteAgent,
+    capabilities: null,
+    fetch: async (_init: RequestInit, ctx: AgentAdapterContext) => {
+      contexts.push(ctx)
+      return new Response('ok')
+    },
+    ensureSession: async () => {},
+    disconnect: () => {},
+  }
+
+  useChatStore.getState().updateSession(sessionId, { selectedAgent: remoteAgent })
+
+  const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+    connectToAgent: mock(async () => adapter) as never,
+    updateChatThread: (async () => {}) as never,
+    getDb: (() => ({})) as never,
+  })
+
+  await fetch('https://x', { body: '{}' } as RequestInit)
+
+  const requestPermission = contexts[0].requestPermission
+  if (!requestPermission) {
+    throw new Error('ACP permission sink missing')
+  }
+
+  return requestPermission
+}
+
 describe('requestPermission bridge', () => {
   beforeEach(() => {
     resetStore()
+    resetPermissionAllowances()
     hydrate()
   })
 
   afterEach(() => {
     resetStore()
+    resetPermissionAllowances()
   })
 
-  it('routes the adapter requestPermission into the store and resolves on dialog response', async () => {
-    // `requestPermission` now travels on the per-FETCH context — a shared agent
-    // connection routes each thread's prompts to its own handler — so capture
-    // it from `adapter.fetch`, not the connect context.
-    let capturedRequestPermission: AgentAdapterContext['requestPermission'] | undefined
+  it('omits requestPermission for the built-in agent', async () => {
+    const contexts: AgentAdapterContext[] = []
 
     const adapter: AgentAdapter = {
-      agent: {} as Agent,
+      agent: builtInAgent,
       capabilities: null,
       fetch: async (_init: RequestInit, ctx: AgentAdapterContext) => {
-        capturedRequestPermission = ctx.requestPermission
+        contexts.push(ctx)
         return new Response('ok')
       },
       ensureSession: async () => {},
       disconnect: () => {},
     }
 
-    const connectToAgent = mock(async () => adapter)
-
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
-      connectToAgent: connectToAgent as never,
+      connectToAgent: mock(async () => adapter) as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
     })
 
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
 
-    expect(capturedRequestPermission).toBeDefined()
+    expect(contexts[0].requestPermission).toBeUndefined()
+  })
+
+  it('routes an ACP requestPermission into the store and resolves on dialog response', async () => {
+    const requestPermission = await getRemoteRequestPermission()
 
     const request: RequestPermissionRequest = {
       sessionId: 'remote',
@@ -78,10 +124,11 @@ describe('requestPermission bridge', () => {
       toolCall: { toolCallId: 't', title: 'do thing', status: 'pending' },
     } as RequestPermissionRequest
 
-    const promise = capturedRequestPermission!(request)
+    const promise = requestPermission(request)
 
     const pending = useChatStore.getState().sessions.get(sessionId)!.pendingPermission
     expect(pending).not.toBeNull()
+    expect(pending!.agentId).toBe(remoteAgent.id)
     expect(pending!.request).toBe(request)
 
     const response: RequestPermissionResponse = { outcome: { outcome: 'selected', optionId: 'allow' } }
@@ -89,6 +136,61 @@ describe('requestPermission bridge', () => {
 
     await expect(promise).resolves.toEqual(response)
     expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission).toBeNull()
+  })
+
+  it('auto-approves an allowed ACP tool kind across titles but prompts for another kind', async () => {
+    const requestPermission = await getRemoteRequestPermission()
+    const firstExecuteRequest: RequestPermissionRequest = {
+      sessionId: 'remote',
+      options: [
+        { optionId: 'allow-once', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'allow-always', name: 'Always allow', kind: 'allow_always' },
+      ],
+      toolCall: { toolCallId: 't1', title: 'Run pwd', kind: 'execute', status: 'pending' },
+    } as RequestPermissionRequest
+    const secondExecuteRequest: RequestPermissionRequest = {
+      ...firstExecuteRequest,
+      toolCall: { toolCallId: 't2', title: 'Run whoami', kind: 'execute', status: 'pending' },
+    } as RequestPermissionRequest
+    const readRequest: RequestPermissionRequest = {
+      ...firstExecuteRequest,
+      toolCall: { toolCallId: 't3', title: 'Read /etc/passwd', kind: 'read', status: 'pending' },
+    } as RequestPermissionRequest
+
+    useChatStore.getState().allowAlwaysForTool(remoteAgent.id, 'execute')
+
+    await expect(requestPermission(firstExecuteRequest)).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'allow-once' },
+    })
+    await expect(requestPermission(secondExecuteRequest)).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'allow-once' },
+    })
+    expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission).toBeNull()
+
+    const readPromise = requestPermission(readRequest)
+    expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission?.request).toBe(readRequest)
+
+    const response: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } }
+    useChatStore.getState().resolvePendingPermission(sessionId, response)
+    await expect(readPromise).resolves.toEqual(response)
+  })
+
+  it('opens the dialog for an always-allowed agent when no allow option exists', async () => {
+    const requestPermission = await getRemoteRequestPermission()
+    const request: RequestPermissionRequest = {
+      sessionId: 'remote',
+      options: [{ optionId: 'reject', name: 'Reject', kind: 'reject_once' }],
+      toolCall: { toolCallId: 't', title: 'do thing', status: 'pending' },
+    } as RequestPermissionRequest
+
+    useChatStore.getState().allowAlwaysForAgent(remoteAgent.id)
+
+    const promise = requestPermission(request)
+    expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission?.request).toBe(request)
+
+    const response: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } }
+    useChatStore.getState().resolvePendingPermission(sessionId, response)
+    await expect(promise).resolves.toEqual(response)
   })
 
   it('resolvePendingPermission is a no-op when there is no pending request', () => {

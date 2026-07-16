@@ -5,10 +5,10 @@
 import { fetchConfig } from '@/api/config'
 import { useConfigStore } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
-import { getSettings } from '@/dal'
+import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
-import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
@@ -19,7 +19,11 @@ import { pickModelsDefaults } from '@/lib/pick-defaults'
 import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { runDataMigrations } from '@/lib/data-migrations'
-import { reconcileDefaults } from '@/lib/reconcile-defaults'
+import { reconcileDefaults, versionMarkerKeys, type VersionMarkerKey } from '@/lib/reconcile-defaults'
+import { defaultModesVersion } from '@/defaults/modes'
+import { defaultSettingsVersion } from '@/defaults/settings'
+import { defaultSkillsVersion } from '@/defaults/skills'
+import { defaultTasksVersion } from '@/defaults/tasks'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
@@ -28,6 +32,44 @@ import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
 import { sql } from 'drizzle-orm'
 import { useCallback, useEffect, useState } from 'react'
+
+/**
+ * Wider outcome type reported in the `app_init_timing` PostHog event. Callers
+ * of `waitForInitialSync` see the primitive `InitialSyncOutcome`; the init
+ * orchestration additionally reports `'skipped_returning'` when the
+ * returning-boot fast path bypassed the wait (THU-677).
+ */
+export type InitTimingSyncOutcome = InitialSyncOutcome | 'skipped_returning'
+
+type SyncGate = { waitForInitialSync(): Promise<InitialSyncOutcome> }
+
+/**
+ * Resolves the step-3 sync-gate outcome. On the fast path (returning boot +
+ * sync enabled) it fires `waitForInitialSync` in the background and returns
+ * `'skipped_returning'` + `initialSyncCompleted: false` synchronously so
+ * reconcile's version-gate stays closed against unsynced cloud state; on
+ * every other path it awaits the outcome and derives `initialSyncCompleted`.
+ *
+ * Exported so the branch can be unit-tested directly — the containing hook
+ * body isn't easily observable, and the two branches diverge on both return
+ * value and side effect (does the caller await or not).
+ */
+export const resolveInitialSyncStep = async (
+  database: SyncGate,
+  canSkipSyncWait: boolean,
+): Promise<{ initialSyncOutcome: InitTimingSyncOutcome; initialSyncCompleted: boolean }> => {
+  if (canSkipSyncWait) {
+    database.waitForInitialSync().catch((error) => {
+      console.warn('[init] Background waitForInitialSync failed:', error)
+    })
+    return { initialSyncOutcome: 'skipped_returning', initialSyncCompleted: false }
+  }
+  const outcome = await database.waitForInitialSync()
+  return {
+    initialSyncOutcome: outcome,
+    initialSyncCompleted: outcome === 'synced' || outcome === 'disabled',
+  }
+}
 
 const createAppDirectory = async (): Promise<string> => {
   return await createAppDir()
@@ -97,13 +139,23 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const totalStartedAt = performance.now()
   console.info('[init] start')
 
-  // Step 0: Fetch backend config and hydrate store (only on success).
-  // When fetch fails (offline/error), the store retains its persisted localStorage value.
-  // Not awaited here: nothing in this pipeline consumes the config (it is read
-  // reactively from the store later), so it overlaps with the steps below
-  // (including the storage probe) and is only awaited at the end to land its
-  // duration in app_init_timing.
-  const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
+  // Step 0: Fire-and-forget `/config` fetch. On success `fetchConfig` hydrates
+  // `useConfigStore` (persisted to localStorage), so subsequent boots read the
+  // last-known value synchronously — `pickModelsDefaults` below reads the
+  // cache directly and no downstream step awaits this fetch. Reconcile's
+  // version gate no-ops any OTA payload that isn't strictly newer than the
+  // stored marker, so a fresh OTA arriving mid-boot lands cleanly on the
+  // next boot without needing to gate this one.
+  //
+  // `.catch` consumes the promise so it can't float unhandled — `fetchConfig`
+  // swallows errors internally today, but this guards the invariant against
+  // future changes. `step0_fetch_config_ms` still appears in the timing
+  // payload whenever the fetch completes before `trackEvent` fires; on
+  // returning boots where init finishes quickly it may be absent, which is
+  // the acceptable trade for not blocking every refresh on the network.
+  time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient)).catch((error) => {
+    console.warn('[init] /config fetch failed:', error)
+  })
 
   // Step 0.5: Storage pre-flight. IndexedDB is required by both the local
   // PowerSync VFS (web) and the E2EE key store (all platforms). iOS Lockdown
@@ -155,26 +207,66 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     await db.get(sql`select 1`)
   })
 
-  // Step 3: Wait for PowerSync initial sync before reconciling defaults.
-  // This ensures synced data from the cloud is available before we check for missing
-  // defaults. The implementation never rejects (best-effort with internal timeout);
-  // the outcome is reported in the app_init_timing event below.
-  const initialSyncOutcome = await time('step3_wait_for_initial_sync', () => database.waitForInitialSync())
-
-  // Step 3.5: Settle the /config fetch so reconcile can prefer server-shipped
-  // defaults when they declare a higher version than the bundle. Awaited
-  // unconditionally: (a) `step0_fetch_config` must land in the timing payload
-  // for every boot, not just first launch; (b) leaving the promise floating
-  // past this point risks an unhandled rejection on any environment where
-  // fetchConfig's error handling weakens. `fetchConfig` is bounded by its
-  // internal timeout and swallows errors — the persisted cache remains in
-  // the store until a successful fetch replaces it, so `pickModelsDefaults`
-  // still reads the same value it would on the cache-hit fast path.
-  await fetchConfigPromise
+  // Read the persisted `/config` cache once, up front. `pickModelsDefaults`
+  // returns whichever of (bundled models, OTA models) declares the higher
+  // version — reconcile uses this at step 4, and the returning-boot probe
+  // below needs the same value so a device sitting behind a cached OTA
+  // bump correctly takes the fresh-await path.
   const modelsDefaults = pickModelsDefaults(useConfigStore.getState().config.defaults?.models)
-  const initialSyncCompleted = initialSyncOutcome === 'synced' || initialSyncOutcome === 'disabled'
 
-  // Step 4: Reconcile defaults
+  // Step 2c: Returning-boot detection via `hasCurrentDefaultsVersions`.
+  // Every `defaults_version.*` marker must exist AND meet-or-exceed the
+  // version reconcile would pick this boot — that's the bundled version
+  // for modes/tasks/skills/settings and the OTA-or-bundle picked version
+  // for models. This is stricter than a "marker exists" probe on purpose:
+  // a client upgrade that bumped any bundled version OR a fresh OTA
+  // payload needs the fresh-await path so reconcile can apply it. Nothing
+  // re-runs reconcile when the background `waitForInitialSync()` later
+  // resolves, so an outstanding bump on the fast path would be stranded
+  // forever.
+  //
+  // When every marker meets its target: skipping is safe. Reconcile still
+  // runs at step 4 and correctly advances the marker on the fresh-await
+  // path even for existing-user upgrades where rows already hash to target
+  // (see `everyBundleRowAtTarget` in `reconcileDefaultsForTable`).
+  const defaultsTargets: Record<VersionMarkerKey, number> = {
+    [versionMarkerKeys.models]: modelsDefaults.version,
+    [versionMarkerKeys.modes]: defaultModesVersion,
+    [versionMarkerKeys.tasks]: defaultTasksVersion,
+    [versionMarkerKeys.skills]: defaultSkillsVersion,
+    [versionMarkerKeys.settings]: defaultSettingsVersion,
+  }
+  const bundleVersionsCurrent = await time('step2c_returning_boot_probe', () =>
+    hasCurrentDefaultsVersions(db, defaultsTargets),
+  )
+
+  // Step 3: Wait for PowerSync initial sync — only on fresh boots when sync is
+  // enabled AND we already applied the current bundle versions. Returning
+  // boots on sync-enabled, up-to-date devices kick off the sync fire-and-
+  // forget so the engine still warms up and background updates land as they
+  // arrive, then feed `initialSyncCompleted: false` to reconcile so the
+  // version-gate stays closed against unsynced cloud state.
+  //
+  // Sync-disabled devices ALWAYS take the fresh path: `waitForInitialSync`
+  // returns `'disabled'` immediately (zero wait), which sets
+  // `initialSyncCompleted=true` and lets reconcile freely apply bundle
+  // updates — the only way a standalone device ever picks up new defaults
+  // from a client upgrade. Taking the returning-boot skip here would force
+  // `initialSyncCompleted=false` and freeze standalone users on their
+  // current defaults forever.
+  //
+  // `waitForInitialSync` never rejects (best-effort with internal timeout);
+  // the `.catch` guards against that policy weakening.
+  //
+  // The outcome ('synced' / 'timed_out' / 'failed' / 'disabled' /
+  // 'skipped_returning') is reported in the app_init_timing event below.
+  const canSkipSyncWait = bundleVersionsCurrent && getLocalSetting('syncEnabled')
+  const { initialSyncOutcome, initialSyncCompleted } = await time('step3_wait_for_initial_sync', () =>
+    resolveInitialSyncStep(database, canSkipSyncWait),
+  )
+
+  // Step 4: Reconcile defaults (uses `modelsDefaults` picked above step 2c
+  // so both the returning-boot probe and reconcile see the same OTA payload).
   try {
     await time('step4_reconcile_defaults', () =>
       reconcileDefaults(db, { models: modelsDefaults, initialSyncCompleted }),
@@ -241,6 +333,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     ...getInitTimingPayload(),
     init_total_ms: initTotalMs,
     initial_sync_outcome: initialSyncOutcome,
+    init_path: canSkipSyncWait ? ('returning' as const) : ('fresh' as const),
     sync_enabled: getLocalSetting('syncEnabled'),
     platform: getPlatform(),
   }
@@ -284,6 +377,7 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
       // deferred storage open) must surface as an error screen rather than
       // leaving the app stuck on the loading spinner forever. Tracked like the
       // per-step failures so an unexpected throw stays observable.
+      console.error('Failed to initialize app:', error)
       const unknownError = createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error)
       trackError(unknownError, { initialization_step: 'uncaught' })
       setInitError(unknownError)

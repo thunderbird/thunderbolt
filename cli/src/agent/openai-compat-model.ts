@@ -4,8 +4,8 @@
 
 /**
  * Builds a Pi `openai-completions` model bound to a custom base URL + bearer
- * key, so the CLI can run any OpenAI-compatible endpoint (e.g. Xiaomi MiMo at
- * `https://token-plan-sgp.xiaomimimo.com/v1`) instead of only Anthropic.
+ * key, so the CLI can run any OpenAI-compatible endpoint (e.g. Ollama at
+ * `http://localhost:11434/v1`) outside Pi's built-in providers.
  *
  * This is the CLI sibling of `shared/agent-core/openai-compat-model.ts`, but
  * deliberately simpler. The app's version SYNCHRONOUSLY swaps `globalThis.fetch`
@@ -53,9 +53,9 @@ const DEFAULT_MAX_TOKENS = 8_192
 
 /** Inputs for {@link buildOpenAiCompatModel}. */
 export type BuildOpenAiCompatModelOptions = {
-  /** Upstream model id sent on the wire, e.g. `mimo-v2.5-pro`. */
+  /** Upstream model id sent on the wire, e.g. `llama3.3`. */
   readonly modelId: string
-  /** OpenAI-compatible base URL, e.g. `https://token-plan-sgp.xiaomimimo.com/v1`. */
+  /** OpenAI-compatible base URL, e.g. `http://localhost:11434/v1`. */
   readonly baseUrl: string
   /** Bearer key handed to the OpenAI SDK (sent as `Authorization: Bearer <key>`). */
   readonly apiKey: string
@@ -108,7 +108,7 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof API>
 /**
  * Resolves an OpenAI-compatible model and wires it through a Pi provider bound
  * to `opts.baseUrl` + `opts.apiKey`. Drop-in sibling of `resolveModel`'s
- * Anthropic branch: returns the same `{ models, model }` shape the harness
+ * built-in branch: returns the same `{ models, model }` shape the harness
  * consumes.
  *
  * @param opts - model id, base URL, and bearer api key

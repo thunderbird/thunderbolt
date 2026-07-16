@@ -1,0 +1,42 @@
+# Production config for a self-hosted iroh relay (iroh-relay v1.0.x).
+# Mount into the container and run WITHOUT `--dev`:
+#
+#   docker run -d -p 80:80 -p 443:443 -p 4433:4433/udp \
+#     -v ./config.toml:/config.toml -v ./certs:/certs \
+#     n0computer/iroh-relay:v1.0.2 --config-path /config.toml
+#
+# Field reference: https://github.com/n0-computer/iroh/tree/main/iroh-relay
+# Walkthrough + rationale: docs/architecture/iroh-relay-self-hosting.md
+
+# Relay traffic proxying (the actual job of this server).
+enable_relay = true
+
+# Port 80 serves the captive-portal page and the ACME HTTP-01 challenge.
+http_bind_addr = "[::]:80"
+
+# QUIC address discovery lets clients learn their public IP/port (the role STUN
+# played pre-1.0). Requires TLS. UDP 4433 must be reachable — skip on hosts
+# that can't expose UDP (relaying still works; discovery falls back).
+enable_quic_addr_discovery = true
+
+[tls]
+https_bind_addr = "[::]:443"
+quic_bind_addr = "[::]:4433"
+hostname = "relay.thunderbolt.example"   # <- real domain pointing at this host
+cert_mode = "LetsEncrypt"
+contact = "ops@thunderbolt.example"      # <- ACME contact email
+cert_dir = "/certs"
+
+# Without this section the relay is open like the n0 public relays. A shared
+# token gates it to our own clients: the CLI/app would append `?token=…` to the
+# relay URL. Start open for the pilot; lock down before announcing the URL.
+# [access]
+# shared_token = ["<long-random-token>"]   # or env IROH_RELAY_ACCESS_TOKEN
+
+# Per-client receive-rate limiting — sane flood protection for a public host.
+[limits.client.rx]
+bytes_per_second = 1048576   # 1 MiB/s steady
+max_burst_bytes = 4194304    # 4 MiB burst
+
+# Prometheus metrics on :9090 (keep firewalled / internal-only).
+enable_metrics = true

@@ -19,7 +19,7 @@ import {
 } from '@/test-utils/chat-store-mocks'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { useChatStore } from './chat-store'
+import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 describe('chat-store', () => {
   beforeAll(async () => {
@@ -434,6 +434,50 @@ describe('chat-store', () => {
 
     it('throws when the session is missing', async () => {
       await expect(useChatStore.getState().setSelectedAgent('nope', customAgent)).rejects.toThrow('No session found')
+    })
+  })
+
+  describe('session permission allowances', () => {
+    afterEach(() => {
+      useChatStore.setState({ alwaysAllowedAgentIds: new Set(), alwaysAllowedAgentToolKeys: new Set() })
+    })
+
+    it('limits an action-kind allowance to the matching kind and agent', () => {
+      const { allowAlwaysForTool, isAlwaysAllowed } = useChatStore.getState()
+
+      allowAlwaysForTool('agent-a', 'read')
+
+      expect(isAlwaysAllowed('agent-a', 'read')).toBe(true)
+      expect(isAlwaysAllowed('agent-a', 'edit')).toBe(false)
+      expect(isAlwaysAllowed('agent-b', 'read')).toBe(false)
+    })
+
+    it('allows every tool for an allowed agent without affecting other agents', () => {
+      const { allowAlwaysForAgent, isAlwaysAllowed } = useChatStore.getState()
+
+      allowAlwaysForAgent('agent-wholesale')
+
+      expect(isAlwaysAllowed('agent-wholesale', 'read')).toBe(true)
+      expect(isAlwaysAllowed('agent-wholesale', 'edit')).toBe(true)
+      expect(isAlwaysAllowed('agent-other', 'read')).toBe(false)
+    })
+  })
+
+  describe('permission request helpers', () => {
+    it('derives a tool key from kind regardless of the argument-bearing title', () => {
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/passwd', kind: 'read' } } as never)).toBe('read')
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/shadow', kind: 'read' } } as never)).toBe('read')
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/passwd', kind: 'execute' } } as never)).toBe('execute')
+      expect(deriveToolKey({ toolCall: {} } as never)).toBe('unknown')
+    })
+
+    it('prefers allow-once, falls back to allow-always, and rejects non-allow options', () => {
+      const allowAlways = { optionId: 'always', name: 'Always', kind: 'allow_always' } as const
+      const allowOnce = { optionId: 'once', name: 'Once', kind: 'allow_once' } as const
+
+      expect(findAllowOption([allowAlways, allowOnce])).toBe(allowOnce)
+      expect(findAllowOption([allowAlways])).toBe(allowAlways)
+      expect(findAllowOption([{ optionId: 'reject', name: 'Reject', kind: 'reject_once' }])).toBeUndefined()
     })
   })
 })

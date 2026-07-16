@@ -25,7 +25,7 @@ import { join } from 'node:path'
 import { JsonlSessionRepo } from '@earendil-works/pi-agent-core'
 import type { Session } from '@earendil-works/pi-agent-core'
 import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
-import { thunderboltHomeDir } from '../iroh/paths.ts'
+import { thunderboltHomeDir } from '../paths.ts'
 
 /** Creates and resumes disk-backed Pi sessions for ACP session ids. */
 export type SessionStore = {

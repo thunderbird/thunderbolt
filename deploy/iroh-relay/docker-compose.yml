@@ -1,0 +1,21 @@
+# Self-hosted iroh relay for local development.
+#
+# Runs the official n0 relay in `--dev` mode: plain HTTP (no TLS) on :3340,
+# which is exactly what the CLI/app accept for a localhost relay URL.
+#
+#   docker compose up -d
+#
+# Point the two sides at it:
+#   CLI  : THUNDERBOLT_IROH_RELAY_URL=http://localhost:3340
+#   App  : VITE_IROH_RELAY_URL=http://localhost:3340 (build-time)
+#
+# See docs/architecture/iroh-relay-self-hosting.md for the relay's role and
+# self-hosting guidance.
+services:
+  iroh-relay:
+    image: n0computer/iroh-relay:v1.0.2
+    container_name: thunderbolt-iroh-relay
+    command: ['--dev']
+    ports:
+      - '3340:3340'
+    restart: unless-stopped

@@ -87,3 +87,16 @@ export const defaultSkillImportantEmails: Skill = {
 }
 
 export const defaultSkills: ReadonlyArray<Skill> = [defaultSkillDailyBrief, defaultSkillImportantEmails] as const
+
+/**
+ * Monotonic version of the shipped skill defaults. Bump every time
+ * `defaultSkills` changes in any way. Reconcile uses this as the ordering
+ * signal so multi-device sync groups converge without ping-ponging (THU-637
+ * pattern extended to skills in THU-677): a device only overwrites existing
+ * rows when this bundled version is strictly newer than the highest ever
+ * applied on this account.
+ *
+ * The paired snapshot test in `skills.test.ts` fails on any change to this
+ * file's defaults without a matching version bump.
+ */
+export const defaultSkillsVersion = 1

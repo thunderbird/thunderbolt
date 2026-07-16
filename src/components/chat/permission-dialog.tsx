@@ -3,13 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
+import { findAllowOption } from '@/chats/chat-store'
 import { Button } from '@/components/ui/button'
 import { ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
 
 type PermissionDialogProps = {
-  request: RequestPermissionRequest
+  onAlwaysAllowAgent: () => void
+  onAlwaysAllowTool: () => void
   onRespond: (response: RequestPermissionResponse) => void
+  request: RequestPermissionRequest
 }
 
 const toolKindLabel = (kind?: string | null) => {
@@ -25,6 +28,14 @@ const toolKindLabel = (kind?: string | null) => {
     default:
       return 'Action'
   }
+}
+
+/** Label for the kind-scoped always-allow button. Names the breadth granted so
+ *  the user sees they're allowing every action of this kind, not just the one
+ *  command shown. */
+const alwaysAllowKindLabel = (kind?: string | null): string => {
+  const label = toolKindLabel(kind)
+  return label === 'Action' ? 'Always allow all actions of this kind' : `Always allow all ${label} actions`
 }
 
 const optionVariant = (kind: PermissionOption['kind']): 'default' | 'destructive' | 'outline' | 'secondary' => {
@@ -49,23 +60,34 @@ const formatToolInput = (input: unknown): string | undefined =>
  * issues a `requestPermission` for a tool call. The dialog disables itself
  * after the first selection so a fast double-click can't fire two responses.
  */
-export const PermissionDialog = ({ request, onRespond }: PermissionDialogProps) => {
+export const PermissionDialog = ({
+  request,
+  onRespond,
+  onAlwaysAllowTool,
+  onAlwaysAllowAgent,
+}: PermissionDialogProps) => {
   const [responded, setResponded] = useState(false)
 
+  const allowOption = findAllowOption(request.options)
   const toolCall = request.toolCall
   const title = toolCall?.title ?? 'Permission Required'
   const kind = toolCall?.kind
   const toolInput = toolCall?.rawInput === undefined ? undefined : formatToolInput(toolCall.rawInput)
 
-  const handleSelect = (option: PermissionOption) => {
+  const respondOnce = (respond: () => void) => {
     if (responded) {
       return
     }
     setResponded(true)
-    onRespond({
-      outcome: { outcome: 'selected', optionId: option.optionId },
-    })
+    respond()
   }
+
+  const handleSelect = (option: PermissionOption) =>
+    respondOnce(() =>
+      onRespond({
+        outcome: { outcome: 'selected', optionId: option.optionId },
+      }),
+    )
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 my-2" role="dialog">
@@ -112,6 +134,17 @@ export const PermissionDialog = ({ request, onRespond }: PermissionDialogProps) 
           </Button>
         ))}
       </div>
+
+      {allowOption && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowTool)}>
+            {alwaysAllowKindLabel(kind)}
+          </Button>
+          <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowAgent)}>
+            Always allow everything from this agent
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

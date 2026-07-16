@@ -4,9 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Binary entrypoint. Parses argv, dispatches the terminal info actions
- * (`help`/`version`/`error`) inline, and runs the agent inside the single
- * top-level try/catch that turns any uncaught failure into a clean exit.
+ * Binary entrypoint. Loads persisted defaults, parses argv, dispatches commands,
+ * and turns uncaught failures into clean terminal errors at one boundary.
  */
 
 import { HELP_TEXT, VERSION, parseArgs } from './cli.ts'
@@ -16,59 +15,76 @@ import { runBridge } from './commands/bridge.ts'
 import { runIrohBridge } from './iroh/bridge.ts'
 import { runIrohConnect } from './iroh/connect.ts'
 import { runIrohAdmin } from './iroh/admin.ts'
+import { loadConfig } from './config/config.ts'
+import type { CliConfig } from './config/config.ts'
+import { createSetupWizardIO, runSetupWizard, shouldRunSetupWizard } from './config/wizard.ts'
+import type { ModelProvider } from './agent/types.ts'
 
-const parsed = parseArgs(Bun.argv.slice(2))
+/** Runs interactive setup with production terminal I/O and guaranteed cleanup. */
+const configure = async (requiredProvider?: ModelProvider): Promise<CliConfig> => {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error('config requires stdin and stdout to be terminals')
+  }
+  const io = createSetupWizardIO()
+  try {
+    return await runSetupWizard(io, { requiredProvider })
+  } finally {
+    io.close()
+  }
+}
 
-switch (parsed.kind) {
-  case 'help':
-    console.log(HELP_TEXT)
-    break
-  case 'version':
-    console.log(VERSION)
-    break
-  case 'error':
-    process.stderr.write(parsed.message + '\n')
-    process.exitCode = 1
-    break
-  case 'run':
-    try {
-      await runAgent(parsed.config)
-    } catch (err) {
-      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
+try {
+  const argv = Bun.argv.slice(2)
+  const storedConfig = await loadConfig()
+  const parsed = parseArgs(argv, { config: storedConfig })
+
+  switch (parsed.kind) {
+    case 'help':
+      console.log(HELP_TEXT)
+      break
+    case 'version':
+      console.log(VERSION)
+      break
+    case 'error':
+      process.stderr.write(parsed.message + '\n')
       process.exitCode = 1
+      break
+    case 'config':
+      await configure()
+      break
+    case 'run': {
+      if (
+        shouldRunSetupWizard(parsed.config, {
+          stdinIsTty: Boolean(process.stdin.isTTY),
+          stdoutIsTty: Boolean(process.stdout.isTTY),
+          env: process.env,
+        })
+      ) {
+        const requiredProvider = argv.includes('--provider') ? parsed.config.provider : undefined
+        const freshConfig = await configure(requiredProvider)
+        const reparsed = parseArgs(argv, { config: freshConfig })
+        if (reparsed.kind !== 'run') throw new Error('failed to resume agent after setup')
+        await runAgent(reparsed.config)
+        break
+      }
+      await runAgent(parsed.config)
+      break
     }
-    break
-  case 'bridge':
-    try {
+    case 'bridge':
       if (parsed.config.transport === 'iroh') await runIrohBridge(parsed.config)
       else await runBridge(parsed.config)
-    } catch (err) {
-      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
-      process.exitCode = 1
-    }
-    break
-  case 'connect':
-    try {
+      break
+    case 'connect':
       await runIrohConnect(parsed.config)
-    } catch (err) {
-      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
-      process.exitCode = 1
-    }
-    break
-  case 'acp-serve':
-    try {
+      break
+    case 'acp-serve':
       await runAcpServe(parsed.config)
-    } catch (err) {
-      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
-      process.exitCode = 1
-    }
-    break
-  case 'iroh-admin':
-    try {
+      break
+    case 'iroh-admin':
       await runIrohAdmin(parsed.action)
-    } catch (err) {
-      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
-      process.exitCode = 1
-    }
-    break
+      break
+  }
+} catch (error) {
+  process.stderr.write(`thunderbolt: ${error instanceof Error ? error.message : String(error)}\n`)
+  process.exitCode = 1
 }

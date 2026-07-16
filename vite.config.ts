@@ -152,7 +152,15 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // Bind an explicit loopback address rather than `false`. Vite maps `false`
+    // to the hostname string "localhost", which Node resolves to a SINGLE,
+    // nondeterministic address family (127.0.0.1 or ::1) per listen() call. A
+    // `.env` change restarts the dev server, which re-resolves "localhost" and
+    // can FLIP families — leaving nothing bound on the address the browser (or
+    // an OrbStack/VM port-forward) is actually connecting to, so localhost:1420
+    // goes dead until the process is killed. Pinning 127.0.0.1 keeps the bind
+    // deterministic and loopback-only across restarts.
+    host: host || '127.0.0.1',
     hmr: host
       ? {
           protocol: 'ws',

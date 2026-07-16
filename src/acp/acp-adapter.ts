@@ -458,6 +458,11 @@ export const connectAcpAdapter = async (
     readonly persistence?: Promise<void>
   }
   const freshPending = new Map<string, FreshSessionState>()
+  // In-flight `session/prompt` per ACP session. Stop tears down the local SSE
+  // stream immediately, but the remote turn may still hold the agent's busy
+  // slot until `connection.prompt` settles — the next fetch awaits this so we
+  // don't race a second prompt onto a still-busy session.
+  const inFlightPromptBySession = new Map<string, Promise<void>>()
 
   const guardHandshake = <T>(step: Promise<T>): Promise<T> =>
     withHandshakeGuard(step, transport.closed, handshakeTimeoutMs)
@@ -550,6 +555,11 @@ export const connectAcpAdapter = async (
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     const sessionId = await resolveThreadSession(context)
 
+    const previousPrompt = inFlightPromptBySession.get(sessionId)
+    if (previousPrompt) {
+      await previousPrompt
+    }
+
     // First real send of a freshly-minted session: persist the id we actually
     // used, and (tier-3 only) seed the prior transcript as context. The marker
     // is keyed on "fresh session's first prompt" (not "we prepended a
@@ -598,7 +608,9 @@ export const connectAcpAdapter = async (
     // Stop: the AI SDK aborts the *local* stream, but the remote ACP turn keeps
     // running (burning tokens, still executing tool calls) until we tell the
     // agent. Send `session/cancel` — fire-and-forget, since teardown must not
-    // block on the wire — then run the same teardown.
+    // block on the wire — then run the same teardown. The next `fetch` still
+    // awaits `inFlightPromptBySession` so a follow-up send cannot race the
+    // agent's busy slot before this prompt settles.
     const onAbort = (): void => {
       // Fire-and-forget: teardown must not block on the wire. A rejection means
       // the transport is already tearing down (the turn is ending anyway), so
@@ -607,6 +619,12 @@ export const connectAcpAdapter = async (
       void connection.cancel({ sessionId }).catch(() => {})
       teardown()
     }
+
+    let settleInFlight!: () => void
+    const inFlight = new Promise<void>((resolve) => {
+      settleInFlight = resolve
+    })
+    inFlightPromptBySession.set(sessionId, inFlight)
 
     // Drive the prompt off the request thread — the response stream is the
     // synchronous return value so the AI SDK can attach immediately.
@@ -624,6 +642,10 @@ export const connectAcpAdapter = async (
         translator.error(err instanceof Error ? err.message : String(err))
       } finally {
         teardown()
+        if (inFlightPromptBySession.get(sessionId) === inFlight) {
+          inFlightPromptBySession.delete(sessionId)
+        }
+        settleInFlight()
       }
     })()
 

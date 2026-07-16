@@ -29,6 +29,21 @@ export const isRateLimitError = (error?: Error | null): boolean => {
 }
 
 /**
+ * ACP agents (e.g. Zeroclaw) reject a new `session/prompt` while a prior turn
+ * still holds the session slot — often right after Stop, when `session/cancel`
+ * has fired but the turn has not exited yet. Auto-retrying the identical send
+ * only amplifies the race; surface the error and let the user retry once idle.
+ */
+export const isAcpSessionBusyError = (error?: Error | null): boolean => {
+  if (!error?.message) {
+    return false
+  }
+  const parsed = parseJson(error.message)
+  const message = (typeof parsed?.error === 'string' ? parsed.error : error.message).toLowerCase()
+  return message.includes('active prompt turn')
+}
+
+/**
  * Extract an HTTP status code from a serialized stream/transport error, if one
  * is present. The frontend serializes API errors as `{"error":...,"status":N}`
  * (see `aiFetchStreamingResponse`), which is the only place the upstream status

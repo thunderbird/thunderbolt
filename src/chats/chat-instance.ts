@@ -11,7 +11,13 @@ import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
-import { getErrorRetryable, isContentRejectionError, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
+import {
+  getErrorRetryable,
+  isAcpSessionBusyError,
+  isContentRejectionError,
+  isContextOverflowError,
+  isRateLimitError,
+} from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -322,6 +328,14 @@ export const createChatInstance = (
 
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
       if (isRateLimitError(lastError)) {
+        lastError = null
+        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+        return
+      }
+
+      // Don't auto-retry ACP SESSION_BUSY — the prior turn still owns the slot
+      // (common right after Stop). Blind retries worsen the race.
+      if (isAcpSessionBusyError(lastError)) {
         lastError = null
         useChatStore.getState().updateSession(id, { retriesExhausted: true })
         return

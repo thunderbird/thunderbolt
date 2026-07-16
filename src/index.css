@@ -55,6 +55,37 @@
   --color-sidebar-border: #eee9e1;
   --color-sidebar-ring: #393530;
   --color-card-border: #e5dfd5;
+
+  /* Softer elevation — same geometry as Tailwind's defaults, but the color
+     is routed through --elevation-color / --elevation-color-strong (defined
+     in :root and .dark below) instead of a literal. Tailwind v4 inlines
+     these token values into the shadow-* utilities at build time, so a
+     var() indirection is the only way dark mode can swap the color; a
+     .dark { --shadow-lg: ... } override would never be read. Applies
+     uniformly to every shadow-* utility. */
+  --shadow-2xs: 0 1px var(--elevation-faint);
+  --shadow-xs: 0 1px 2px 0 var(--elevation-faint);
+  --shadow-sm: 0 1px 3px 0 var(--elevation-color), 0 1px 2px -1px var(--elevation-color);
+  --shadow-md: 0 4px 6px -1px var(--elevation-color), 0 2px 4px -2px var(--elevation-color);
+  --shadow-lg: 0 10px 15px -3px var(--elevation-color), 0 4px 6px -4px var(--elevation-color);
+  --shadow-xl: 0 20px 25px -5px var(--elevation-color), 0 8px 10px -6px var(--elevation-color);
+  --shadow-2xl: 0 25px 50px -12px var(--elevation-strong);
+}
+
+/* Shadow colors for the three elevation intensities above. Light mode runs
+   at roughly two-thirds of Tailwind's default opacity so surfaces read as
+   gently lifted rather than floating; dark mode raises opacity because a 6%
+   black shadow is invisible on #1b1e1f. */
+:root {
+  --elevation-faint: rgb(0 0 0 / 0.03);
+  --elevation-color: rgb(0 0 0 / 0.06);
+  --elevation-strong: rgb(0 0 0 / 0.15);
+}
+
+.dark {
+  --elevation-faint: rgb(0 0 0 / 0.1);
+  --elevation-color: rgb(0 0 0 / 0.18);
+  --elevation-strong: rgb(0 0 0 / 0.35);
 }
 
 /* ===========================

@@ -11,7 +11,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
@@ -46,7 +45,11 @@ export const SettingsSidebarContent = ({
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={onBackClick} tooltip="Back to Chat" className="cursor-pointer">
+              <SidebarMenuButton
+                onClick={onBackClick}
+                tooltip="Back to Chat"
+                className="cursor-pointer bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/80"
+              >
                 <ArrowLeft className="size-4" />
                 <span>Back</span>
               </SidebarMenuButton>
@@ -55,43 +58,40 @@ export const SettingsSidebarContent = ({
         </SidebarGroupContent>
       </SidebarGroup>
 
-      <SidebarSeparator className="m-0" />
+      {!agentsHidden && (
+        <SidebarGroup>
+          <SidebarGroupLabel>Agents</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/agents')}
+                  tooltip="All agents"
+                  className="cursor-pointer"
+                  isActive={location.pathname === '/settings/agents'}
+                >
+                  <Bot className="size-4" />
+                  <span>All agents</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
 
-      <SidebarGroup className="flex-1">
-        <SidebarGroupLabel>Settings</SidebarGroupLabel>
+      <SidebarGroup>
+        <SidebarGroupLabel>What agents use</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/preferences')}
-                tooltip="Preferences"
+                onClick={() => onSettingsNavigate('/settings/skills')}
+                tooltip="Skills"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/preferences'}
+                isActive={location.pathname === '/settings/skills'}
               >
-                <SlidersHorizontal className="size-4" />
-                <span>Preferences</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/integrations')}
-                tooltip="Integrations"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/integrations'}
-              >
-                <Plug className="size-4" />
-                <span>Integrations</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/devices')}
-                tooltip="Devices"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/devices'}
-              >
-                <Smartphone className="size-4" />
-                <span>Devices</span>
+                <Zap className="size-4" />
+                <span>Skills</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -107,6 +107,17 @@ export const SettingsSidebarContent = ({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/integrations')}
+                tooltip="Integrations"
+                className="cursor-pointer"
+                isActive={location.pathname === '/settings/integrations'}
+              >
+                <Plug className="size-4" />
+                <span>Integrations</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
                 onClick={() => onSettingsNavigate('/settings/mcp-servers')}
                 tooltip="MCP Servers"
                 className="cursor-pointer"
@@ -116,33 +127,41 @@ export const SettingsSidebarContent = ({
                 <span>MCP Servers</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/skills')}
-                tooltip="Skills"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/skills'}
-              >
-                <Zap className="size-4" />
-                <span>Skills</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {!agentsHidden && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onSettingsNavigate('/settings/agents')}
-                  tooltip="Agents"
-                  className="cursor-pointer"
-                  isActive={location.pathname === '/settings/agents'}
-                >
-                  <Bot className="size-4" />
-                  <span>Agents</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
+
+      <SidebarGroup>
+        <SidebarGroupLabel>Account Settings</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/preferences')}
+                tooltip="Preferences"
+                className="cursor-pointer"
+                isActive={location.pathname === '/settings/preferences'}
+              >
+                <SlidersHorizontal className="size-4" />
+                <span>Preferences</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/devices')}
+                tooltip="Devices"
+                className="cursor-pointer"
+                isActive={location.pathname === '/settings/devices'}
+              >
+                <Smartphone className="size-4" />
+                <span>Devices</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <div className="flex-1" />
 
       <SidebarFooter />
     </SidebarContent>

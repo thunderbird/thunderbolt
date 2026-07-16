@@ -221,7 +221,7 @@ const SimulatorChat = ({ sseContent, onStop, stopRef }: SimulatorChatProps) => {
               <CardDescription>JSON structure updates in real-time as the SSE log is processed.</CardDescription>
             </CardHeader>
             <CardContent>
-              <pre className="p-3 bg-muted rounded text-xs whitespace-pre-wrap word-break-all min-h-[200px] max-h-[400px] overflow-y-auto">
+              <pre className="p-3 bg-muted rounded-md text-xs whitespace-pre-wrap word-break-all min-h-[200px] max-h-[400px] overflow-y-auto">
                 {messages.length > 0
                   ? JSON.stringify(
                       messages.filter((msg) => msg.role === 'assistant'),

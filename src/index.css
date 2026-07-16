@@ -10,45 +10,51 @@
 @variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-popover: oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-primary: #191919;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f7f7f8;
-  --color-secondary-foreground: #000000;
-  --color-tertiary: #808080;
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  /* No pure white/black anywhere — remap Tailwind's white/black utilities
+     (bg-white, text-white, bg-black/40 overlays, etc.) to the theme's off-white
+     and slate so nothing renders as #ffffff or #000000. */
+  --color-white: #faf8f5;
+  --color-black: #1c1e20;
+
+  --color-background: #f5f2ee;
+  --color-foreground: #262120;
+  --color-card: #faf8f5;
+  --color-card-foreground: #262120;
+  --color-popover: #faf8f5;
+  --color-popover-foreground: #262120;
+  --color-primary: #393530;
+  --color-primary-foreground: #faf8f5;
+  --color-secondary: #f0ede6;
+  --color-secondary-foreground: #262120;
+  --color-tertiary: #7f7870;
+  --color-muted: #f0ede6;
+  --color-muted-foreground: #7f7870;
+  --color-accent: #efeae2;
+  --color-accent-foreground: #262120;
+  --color-destructive: #ff5f5f;
+  --color-destructive-foreground: #262120;
   --color-success: oklch(0.627 0.17 149.214);
   --color-success-foreground: oklch(0.985 0 0);
   --color-warning: oklch(0.769 0.171 70.67);
   --color-warning-foreground: oklch(0.205 0 0);
-  --color-border: oklch(0.922 0 0);
-  --color-input: oklch(0.922 0 0);
-  --color-ring: oklch(0.708 0 0);
+  --color-border: #e5dfd5;
+  --color-input: #e5dfd5;
+  --color-ring: #393530;
   --color-chart-1: oklch(0.646 0.222 41.116);
   --color-chart-2: oklch(0.6 0.118 184.704);
   --color-chart-3: oklch(0.398 0.07 227.392);
   --color-chart-4: oklch(0.828 0.189 84.429);
   --color-chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
-  --color-sidebar: oklch(0.985 0 0);
-  --color-sidebar-foreground: oklch(0.145 0 0);
-  --color-sidebar-primary: oklch(0.205 0 0);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.97 0 0);
-  --color-sidebar-accent-foreground: oklch(0.205 0 0);
-  --color-sidebar-border: oklch(0.922 0 0);
-  --color-sidebar-ring: oklch(0.708 0 0);
-  --color-card-border: #dee8df;
+  --color-sidebar: #faf8f5;
+  --color-sidebar-foreground: #262120;
+  --color-sidebar-primary: #393530;
+  --color-sidebar-primary-foreground: #faf8f5;
+  --color-sidebar-accent: #efeae2;
+  --color-sidebar-accent-foreground: #262120;
+  --color-sidebar-border: #eee9e1;
+  --color-sidebar-ring: #393530;
+  --color-card-border: #e5dfd5;
 }
 
 /* ===========================
@@ -71,7 +77,23 @@
   --font-size-sm: 0.875rem; /* 14px mobile */
   --font-size-xs: 0.75rem; /* 12px mobile */
 
-  /* Border radius - overrides Tailwind's default --radius-* theme values */
+  /* Border radius - overrides Tailwind's default --radius-* theme values.
+   *
+   * CONCENTRIC RADIUS SCALE — pick the tier by nesting depth, not by taste:
+   *   rounded-md   inner    — elements nested inside a rounded parent
+   *                           (menu/list items, chips-in-a-card, thumbnails,
+   *                           skeletons, small toolbar controls)
+   *   rounded-lg   default  — standalone atoms (buttons, inputs, textareas,
+   *                           select triggers, badges, standalone chips/rows)
+   *   rounded-xl   container — surfaces that wrap other content (cards, alerts,
+   *                           popovers, dropdown/select/menu panels, hover-cards)
+   *   rounded-2xl  hero      — the chat composer, blocking modals/dialogs/sheets,
+   *                           and chat message bubbles (their own bubble language)
+   *   rounded-full pills/avatars/dots · rounded-none flush edges
+   *
+   * Corners step DOWN as you nest (outer radius − padding ≈ inner radius), so a
+   * xl panel with p-1 holds md/lg items. Never hardcode px (`rounded-[12px]`) —
+   * it defeats the responsive mobile→desktop step-down below. */
   --radius-sm: 0.25rem; /* 4px mobile */
   --radius-md: 0.5rem; /* 8px mobile */
   --radius-lg: 0.75rem; /* 12px mobile */
@@ -84,8 +106,11 @@
   /* Switch component specific */
   --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
   --switch-track-width: 2.75rem; /* 44px mobile */
-  --switch-thumb-size: 1.25rem; /* 20px mobile */
-  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
+  /* Track = 1px border + 2px inner padding; thumb fills exactly what's left so the
+   *  2px gap to the border is identical on every side and in every state. Whole-px
+   *  values only, so the dot never shifts size as it slides. */
+  --switch-thumb-size: 1.125rem; /* 18px mobile (24 - 2*border - 2*pad) */
+  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 20px */
 }
 
 @media (min-width: 768px) {
@@ -117,50 +142,52 @@
     --min-touch-height: 0; /* No min on desktop */
 
     /* Switch component specific */
-    --switch-track-height: 1.15rem; /* desktop */
-    --switch-track-width: 2rem; /* desktop */
-    --switch-thumb-size: 1rem; /* desktop */
-    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
+    --switch-track-height: 1.25rem; /* 20px desktop - whole-px so the thumb is round */
+    --switch-track-width: 2rem; /* 32px desktop */
+    --switch-thumb-size: 0.875rem; /* 14px desktop (20 - 2*border - 2*pad) */
+    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 12px */
   }
 }
 
 .dark {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.145 0 0);
-  --color-card-foreground: oklch(0.985 0 0);
-  --color-popover: oklch(0.145 0 0);
-  --color-popover-foreground: oklch(0.985 0 0);
-  --color-primary: oklch(0.985 0 0);
-  --color-primary-foreground: oklch(0.205 0 0);
-  --color-secondary: oklch(0.269 0 0);
-  --color-secondary-foreground: oklch(0.985 0 0);
-  --color-muted: oklch(0.269 0 0);
-  --color-muted-foreground: oklch(0.708 0 0);
-  --color-accent: oklch(0.269 0 0);
-  --color-accent-foreground: oklch(0.985 0 0);
-  --color-destructive: oklch(0.396 0.141 25.723);
-  --color-destructive-foreground: oklch(0.637 0.237 25.331);
+  --color-background: #1b1e1f;
+  --color-foreground: #f2f1ee;
+  --color-card: #282a2b;
+  --color-card-foreground: #f2f1ee;
+  --color-popover: #282a2b;
+  --color-popover-foreground: #f2f1ee;
+  --color-primary: #f6f3ed;
+  --color-primary-foreground: #252220;
+  --color-secondary: #313334;
+  --color-secondary-foreground: #f2f1ee;
+  --color-tertiary: #a19a91;
+  --color-muted: #313334;
+  --color-muted-foreground: #a19a91;
+  --color-accent: #383a39;
+  --color-accent-foreground: #f2f1ee;
+  --color-destructive: #ff5f5f;
+  --color-destructive-foreground: #252220;
   --color-success: oklch(0.696 0.17 162.48);
   --color-success-foreground: oklch(0.985 0 0);
   --color-warning: oklch(0.828 0.189 84.429);
   --color-warning-foreground: oklch(0.205 0 0);
-  --color-border: oklch(0.269 0 0);
-  --color-input: oklch(0.269 0 0);
-  --color-ring: oklch(0.439 0 0);
+  --color-border: #434546;
+  --color-input: #282a2b;
+  --color-ring: #515150;
   --color-chart-1: oklch(0.488 0.243 264.376);
   --color-chart-2: oklch(0.696 0.17 162.48);
   --color-chart-3: oklch(0.769 0.188 70.08);
   --color-chart-4: oklch(0.627 0.265 303.9);
   --color-chart-5: oklch(0.645 0.246 16.439);
-  --color-sidebar: oklch(0.205 0 0);
-  --color-sidebar-foreground: oklch(0.985 0 0);
-  --color-sidebar-primary: oklch(0.488 0.243 264.376);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.269 0 0);
-  --color-sidebar-accent-foreground: oklch(0.985 0 0);
-  --color-sidebar-border: oklch(0.269 0 0);
-  --color-sidebar-ring: oklch(0.439 0 0);
+  --color-sidebar: #282a2b;
+  --color-sidebar-foreground: #f2f1ee;
+  --color-sidebar-primary: #f6f3ed;
+  --color-sidebar-primary-foreground: #252220;
+  --color-sidebar-accent: #383a39;
+  --color-sidebar-accent-foreground: #f2f1ee;
+  --color-sidebar-border: #434546;
+  --color-sidebar-ring: #515150;
+  --color-card-border: #434546;
 }
 
 @keyframes accordion-down {

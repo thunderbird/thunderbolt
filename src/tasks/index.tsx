@@ -520,9 +520,9 @@ export default function TasksPage() {
                 <div className="space-y-2">
                   {[...Array(5)].map((_, i) => (
                     <div key={i} className="flex items-center gap-3 p-3">
-                      <Skeleton className="h-5 w-5 rounded" />
+                      <Skeleton className="h-5 w-5 rounded-md" />
                       <Skeleton className="h-5 flex-1" />
-                      <Skeleton className="h-5 w-5 rounded" />
+                      <Skeleton className="h-5 w-5 rounded-md" />
                     </div>
                   ))}
                 </div>

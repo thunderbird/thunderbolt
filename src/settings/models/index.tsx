@@ -948,7 +948,12 @@ export default function ModelsPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <DialogTrigger asChild>
-                <Button variant="outline" size="icon" className="rounded-lg" aria-label={modelAddTooltip()}>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="rounded-lg bg-card hover:bg-accent"
+                  aria-label={modelAddTooltip()}
+                >
                   <Plus />
                 </Button>
               </DialogTrigger>

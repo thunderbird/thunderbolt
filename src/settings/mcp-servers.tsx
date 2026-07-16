@@ -179,7 +179,7 @@ const testResultPanels: Record<
     tone: 'destructive',
     icon: <X className="h-4 w-4" />,
     title: 'Token rejected',
-    body: 'The server rejected the credential — check your bearer token or API key.',
+    body: 'The server rejected the credential. Check your bearer token or API key.',
   },
   error: {
     tone: 'destructive',
@@ -727,7 +727,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
           }}
         >
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
+            <Button variant="outline" size="icon" className="rounded-lg bg-card hover:bg-accent">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -1065,7 +1065,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                          <p>Authorized — re-run the OAuth flow if access was revoked</p>
+                          <p>Authorized. Re-run the OAuth flow if access was revoked</p>
                         </TooltipContent>
                       </Tooltip>
                     )}

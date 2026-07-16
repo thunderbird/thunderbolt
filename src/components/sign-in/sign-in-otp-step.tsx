@@ -97,7 +97,7 @@ export const SignInOtpStep = ({
             type="button"
             onClick={() => onOtpComplete(otp)}
             disabled={isVerifying || otp.length !== otpLength}
-            className="h-[46px] w-full rounded-[12px] bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
+            className="h-[46px] w-full rounded-lg bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
             {isVerifying ? (
               <>
@@ -133,8 +133,9 @@ export const SignInOtpStep = ({
         <p className="mt-2 text-sm text-muted-foreground">
           {isLocalhost ? (
             <>
-              You appear to be using a <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">localhost</code>{' '}
-              backend. Check your backend server logs for the code or magic link.
+              You appear to be using a{' '}
+              <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">localhost</code> backend. Check your
+              backend server logs for the code or magic link.
             </>
           ) : (
             <>

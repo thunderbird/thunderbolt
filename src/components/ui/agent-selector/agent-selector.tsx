@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Button } from '@/components/ui/button'
-import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { SearchableMenu, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
@@ -42,15 +41,29 @@ const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   return {
     id: agent.id,
     label: agent.name,
-    description: agent.description ?? undefined,
     icon: <Icon className="size-3.5 text-muted-foreground" />,
     data: { agent },
   }
 }
 
-/** Bucket agents by flavor for the dropdown. Order mirrors `composeAllAgents`:
- *  Built-in → System → Custom. Empty buckets are dropped so the menu stays tight. */
-export const categorizeAgents = (agents: Agent[]): SearchableMenuGroup<AgentItemData>[] => {
+/** Compact item renderer — label-only rows (no descriptions) pinned to 14px
+ *  (`--font-size-body`) so the menu stays tight. */
+const renderAgentItem = (item: SearchableMenuItem<AgentItemData>, isSelected: boolean) => (
+  <div
+    className={cn(
+      'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]',
+      isSelected ? 'bg-accent' : 'hover:bg-accent/50',
+    )}
+  >
+    {item.icon && <span className="flex-shrink-0">{item.icon}</span>}
+    <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+  </div>
+)
+
+/** Flatten agents into one unlabeled list. Order mirrors `composeAllAgents`:
+ *  Built-in → System → Custom — no section headers, the flavors just read as
+ *  one continuous menu. */
+export const buildAgentItems = (agents: Agent[]): SearchableMenuItem<AgentItemData>[] => {
   const builtIn: SearchableMenuItem<AgentItemData>[] = []
   const system: SearchableMenuItem<AgentItemData>[] = []
   const custom: SearchableMenuItem<AgentItemData>[] = []
@@ -66,17 +79,7 @@ export const categorizeAgents = (agents: Agent[]): SearchableMenuGroup<AgentItem
     }
   }
 
-  const groups: SearchableMenuGroup<AgentItemData>[] = []
-  if (builtIn.length > 0) {
-    groups.push({ id: 'built-in', label: 'Built-in', items: builtIn })
-  }
-  if (system.length > 0) {
-    groups.push({ id: 'system', label: 'System', items: system })
-  }
-  if (custom.length > 0) {
-    groups.push({ id: 'custom', label: 'Custom', items: custom })
-  }
-  return groups
+  return [...builtIn, ...system, ...custom]
 }
 
 export const AgentSelector = ({
@@ -88,7 +91,7 @@ export const AgentSelector = ({
   side,
   align,
 }: AgentSelectorProps) => {
-  const groupedItems = useMemo(() => categorizeAgents(agents), [agents])
+  const items = useMemo(() => buildAgentItems(agents), [agents])
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
 
@@ -139,22 +142,24 @@ export const AgentSelector = ({
   }
 
   const footer = onAddAgent ? (
-    <Button
-      variant="ghost"
+    <button
+      type="button"
       onClick={() => {
         setOpen(false)
         onAddAgent()
       }}
-      className="w-full justify-start gap-2 text-muted-foreground"
+      // Negative margins cancel the shared footer's px-2 py-2 so the row is a
+      // flush, 36px-tall, full-width item (hover fills edge to edge).
+      className="-m-2 flex h-[var(--touch-height-default)] w-[calc(100%_+_1rem)] cursor-pointer items-center justify-start gap-2 px-4 text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
       <Plus className="size-4" />
-      Add Agent
-    </Button>
+      Add agent
+    </button>
   ) : undefined
 
   return (
     <SearchableMenu
-      items={groupedItems}
+      items={items}
       value={selectedAgent.id}
       onValueChange={handleAgentChange}
       searchable={agents.length > 10}
@@ -162,6 +167,8 @@ export const AgentSelector = ({
       emptyMessage="No agents found"
       blurBackdrop
       trigger={renderTrigger}
+      renderItem={renderAgentItem}
+      itemGap="gap-0.5"
       footer={footer}
       width={320}
       maxHeight={340}

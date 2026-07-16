@@ -117,7 +117,7 @@ export const SuggestionChip = ({
           // share/copy callout pops) while our long-press timer is waiting
           // to open the action menu. Leaving `touch-action` at its default
           // so the chip strip's horizontal scroll on mobile still works.
-          className={`h-[var(--touch-height-sm)] shrink-0 cursor-pointer select-none rounded-full bg-card px-3 text-sm font-normal transition-opacity [-webkit-touch-callout:none] ${
+          className={`h-[var(--touch-height-sm)] shrink-0 cursor-pointer select-none rounded-full border-border bg-sidebar px-3 text-sm font-normal transition-opacity dark:border-border dark:bg-sidebar [-webkit-touch-callout:none] ${
             dimmed ? 'opacity-40' : ''
           }`}
           aria-label={`Pinned skill /${label}`}
@@ -129,7 +129,7 @@ export const SuggestionChip = ({
         Anchor the menu's bottom-left to the chip's top-left so the popup
         opens upward from the chip's anchor corner — matches the
         ModeSelector dropdown shape elsewhere on the chat screen, including
-        its `rounded-2xl` border-radius.
+        its `rounded-xl` border-radius.
       */}
       <DropdownMenuContent
         side="top"
@@ -140,7 +140,7 @@ export const SuggestionChip = ({
         // cramped.
         sideOffset={12}
         collisionPadding={16}
-        className={isMobile ? 'w-[calc(100vw-2rem)] min-w-56 rounded-2xl' : 'min-w-56 rounded-2xl'}
+        className={isMobile ? 'w-[calc(100vw-2rem)] min-w-56 rounded-xl' : 'min-w-56 rounded-xl'}
       >
         <DropdownMenuItem
           onSelect={() => {

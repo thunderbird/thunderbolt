@@ -123,7 +123,7 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
           <Button
             variant="outline"
             size="icon"
-            className="rounded-lg"
+            className="rounded-lg bg-card hover:bg-accent"
             aria-label="Add Custom Agent"
             onClick={() => {
               setEditingAgent(null)

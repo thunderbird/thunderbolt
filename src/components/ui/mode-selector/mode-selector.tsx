@@ -69,7 +69,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     return (
       <div
         className={cn(
-          'w-full flex items-center gap-2 px-3 py-3 md:py-2 rounded-lg transition-colors text-left cursor-pointer',
+          'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]',
           isSelected ? 'bg-accent' : 'hover:bg-accent/50',
         )}
       >
@@ -91,6 +91,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
       align="start"
       trigger={renderTrigger}
       renderItem={renderItem}
+      itemGap="gap-0.5"
       width={280}
       maxHeight={300}
     />

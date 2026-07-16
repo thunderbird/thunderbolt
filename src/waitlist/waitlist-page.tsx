@@ -77,7 +77,7 @@ export const WaitlistPage = () => {
               type="button"
               onClick={() => actions.handleOtpComplete(state.otp)}
               disabled={isVerifying || state.otp.length !== otpLength}
-              className="h-[46px] w-full rounded-[12px] text-base"
+              className="h-[46px] w-full rounded-lg text-base"
             >
               {isVerifying ? (
                 <>
@@ -123,7 +123,7 @@ export const WaitlistPage = () => {
             <Button
               type="submit"
               disabled={state.status === 'joining' || !isValidEmail}
-              className="h-[46px] w-full rounded-[12px] text-base"
+              className="h-[46px] w-full rounded-lg text-base"
             >
               {state.status === 'joining' ? (
                 <>

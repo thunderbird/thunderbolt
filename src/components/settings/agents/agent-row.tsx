@@ -97,10 +97,12 @@ export const AgentRow = ({ agent, currentUserId, onToggle, onEdit, onDelete }: A
       <CardHeader className="py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <Icon className="size-5 text-muted-foreground shrink-0" aria-hidden="true" />
+            <div className="flex aspect-square size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <Icon className="size-5 text-muted-foreground" aria-hidden="true" />
+            </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-lg font-medium truncate">{agent.name}</span>
+                <span className="text-base font-medium truncate">{agent.name}</span>
                 <span
                   className="text-[length:var(--font-size-xs)] text-muted-foreground rounded-md border border-border px-2 py-0.5 shrink-0"
                   data-testid={`agent-badge-${agent.id}`}

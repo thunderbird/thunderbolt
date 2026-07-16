@@ -156,7 +156,7 @@ export const ChatSkillsBar = ({
                   size="icon-sm"
                   aria-label="Pin a skill"
                   disabled={addDisabled}
-                  className={`shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`shrink-0 cursor-pointer rounded-full border-border bg-sidebar transition-opacity hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-sidebar ${
                     openChipId ? 'opacity-40' : ''
                   }`}
                 >
@@ -200,11 +200,11 @@ export const ChatSkillsBar = ({
                         console.warn('togglePin failed:', error)
                       }
                     }}
-                    // `rounded-xl` (not `rounded-md`) so the hover highlight
-                    // sits concentrically inside the `rounded-2xl` container's
-                    // `p-1` padding — outer radius minus 4px padding. Matches
-                    // the slash autocomplete popover.
-                    className="flex w-full cursor-pointer flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-accent"
+                    // `rounded-lg` so the hover highlight sits concentrically
+                    // inside the `rounded-xl` container's `p-1` padding — outer
+                    // radius minus 4px padding. Matches the slash autocomplete
+                    // popover.
+                    className="flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent"
                   >
                     <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{skill.name}</span>
                     {skill.description && (

@@ -44,7 +44,10 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
     >
       {item.icon && <span className="flex-shrink-0">{item.icon}</span>}
       <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-        <span className="font-medium truncate">{item.label}</span>
+        <span className="flex items-center gap-1.5 min-w-0">
+          <span className="font-medium truncate">{item.label}</span>
+          {item.badge && <span className="flex-shrink-0">{item.badge}</span>}
+        </span>
         {item.description && <span className="text-sm text-muted-foreground truncate">{item.description}</span>}
       </div>
     </button>
@@ -58,35 +61,38 @@ type GroupSectionProps<T> = {
   onSelect: (id: string, item: SearchableMenuItem<T>) => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
   hideLabel?: boolean
+  itemGap?: string
 }
 
-const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }: GroupSectionProps<T>) => {
-  if (group.items.length === 0) {
-    return null
-  }
+const GroupSection = memo(
+  <T,>({ group, value, onSelect, renderItem, hideLabel, itemGap = 'gap-0.5' }: GroupSectionProps<T>) => {
+    if (group.items.length === 0) {
+      return null
+    }
 
-  return (
-    <div className="flex flex-col gap-1">
-      {!hideLabel && group.label && (
-        <div className="px-3 pt-2">
-          <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
-          {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
+    return (
+      <div className="flex flex-col gap-1">
+        {!hideLabel && group.label && (
+          <div className="px-3 pt-2">
+            <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
+            {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
+          </div>
+        )}
+        <div className={cn('flex flex-col', itemGap)}>
+          {group.items.map((item) => (
+            <ItemButton
+              key={item.id}
+              item={item}
+              isSelected={value === item.id}
+              onClick={() => onSelect(item.id, item)}
+              renderItem={renderItem}
+            />
+          ))}
         </div>
-      )}
-      <div className="flex flex-col gap-1.5">
-        {group.items.map((item) => (
-          <ItemButton
-            key={item.id}
-            item={item}
-            isSelected={value === item.id}
-            onClick={() => onSelect(item.id, item)}
-            renderItem={renderItem}
-          />
-        ))}
       </div>
-    </div>
-  )
-}) as <T>(props: GroupSectionProps<T>) => ReactNode
+    )
+  },
+) as <T>(props: GroupSectionProps<T>) => ReactNode
 ;(GroupSection as { displayName?: string }).displayName = 'GroupSection'
 
 const DefaultTrigger = <T,>({
@@ -125,9 +131,11 @@ export const SearchableMenu = <T,>({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   contentClassName,
+  triggerClassName,
   align = 'start',
   side,
   maxHeight = 300,
+  itemGap = 'gap-0.5',
 }: SearchableMenuProps<T>) => {
   const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -199,7 +207,10 @@ export const SearchableMenu = <T,>({
   return (
     <Popover open={open} onOpenChange={setOpen} modal={isMobile}>
       <PopoverTrigger asChild>
-        <button type="button" className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50')}>
+        <button
+          type="button"
+          className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50', triggerClassName)}
+        >
           {triggerContent}
         </button>
       </PopoverTrigger>
@@ -211,59 +222,62 @@ export const SearchableMenu = <T,>({
         side={side}
         sideOffset={5}
         collisionPadding={isMobile ? edgeSpacing.mobile : edgeSpacing.desktop}
-        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
+        className={cn('p-0 rounded-xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col gap-2 bg-background">
-          {searchable && (
-            <div className="px-2 pt-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  placeholder={searchPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 rounded-lg"
-                  autoFocus={false}
-                />
-              </div>
-            </div>
-          )}
-
-          <div
-            className="overflow-y-auto"
-            style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
-          >
-            <div className={cn('flex flex-col gap-4 px-2', !searchable && 'pt-2', !footer && 'pb-2')}>
-              {isGroupedItems(filteredItems) ? (
-                filteredItems.map((group) => (
-                  <GroupSection
-                    key={group.id}
-                    group={group}
-                    value={value}
-                    onSelect={handleSelect}
-                    renderItem={renderItem}
-                    hideLabel={filteredItems.length === 1}
+        <div className="flex flex-col bg-background">
+          <div className="flex flex-col gap-2">
+            {searchable && (
+              <div className="px-1 pt-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder={searchPlaceholder}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 rounded-lg"
+                    autoFocus={false}
                   />
-                ))
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
-                    <ItemButton
-                      key={item.id}
-                      item={item}
-                      isSelected={value === item.id}
-                      onClick={() => handleSelect(item.id, item)}
-                      renderItem={renderItem}
-                    />
-                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {flatFiltered.length === 0 && (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
-              )}
+            <div
+              className="overflow-y-auto"
+              style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
+            >
+              <div className={cn('flex flex-col gap-4 px-1 pb-1', !searchable && 'pt-1')}>
+                {isGroupedItems(filteredItems) ? (
+                  filteredItems.map((group) => (
+                    <GroupSection
+                      key={group.id}
+                      group={group}
+                      value={value}
+                      onSelect={handleSelect}
+                      renderItem={renderItem}
+                      hideLabel={filteredItems.length === 1}
+                      itemGap={itemGap}
+                    />
+                  ))
+                ) : (
+                  <div className={cn('flex flex-col', itemGap)}>
+                    {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
+                      <ItemButton
+                        key={item.id}
+                        item={item}
+                        isSelected={value === item.id}
+                        onClick={() => handleSelect(item.id, item)}
+                        renderItem={renderItem}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {flatFiltered.length === 0 && (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+                )}
+              </div>
             </div>
           </div>
 

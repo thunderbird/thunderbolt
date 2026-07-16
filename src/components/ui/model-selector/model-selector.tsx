@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Button } from '@/components/ui/button'
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
@@ -167,19 +166,14 @@ export const ModelSelector = ({
     const content = (
       <div
         className={cn(
-          'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+          'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]',
           'hover:bg-accent/50',
           isSelected && 'bg-accent',
           item.disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium truncate">{item.label}</span>
-            {showMissingKeyHint ? <AlertTriangle className="size-3.5 text-amber-500 flex-shrink-0" /> : item.icon}
-          </div>
-          <span className="text-sm text-muted-foreground truncate">{item.description}</span>
-        </div>
+        <span className="font-medium truncate">{item.label}</span>
+        {showMissingKeyHint ? <AlertTriangle className="size-3.5 text-amber-500 flex-shrink-0" /> : item.icon}
       </div>
     )
 
@@ -198,10 +192,17 @@ export const ModelSelector = ({
   }
 
   const footer = onAddModels ? (
-    <Button variant="ghost" onClick={onAddModels} className="w-full justify-start gap-2 text-muted-foreground">
+    <button
+      type="button"
+      onClick={onAddModels}
+      // Negative margins cancel the shared footer's px-2 py-2 so the row is a flush,
+      // 36px-tall, full-width item (hover fills edge to edge; the popover clips the
+      // rounded bottom).
+      className="-m-2 flex h-[var(--touch-height-default)] w-[calc(100%_+_1rem)] cursor-pointer items-center justify-start gap-2 px-4 text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
       <Plus className="size-4" />
-      Add Models
-    </Button>
+      Add models
+    </button>
   ) : undefined
 
   const { triggerSelection } = useHaptics()
@@ -224,6 +225,7 @@ export const ModelSelector = ({
       blurBackdrop
       trigger={renderTrigger}
       renderItem={renderItem}
+      itemGap="gap-0.5"
       footer={footer}
       width={320}
       maxHeight={340}

@@ -28,7 +28,7 @@ const SetNodeIdDialog = lazy(() => import('@/components/set-node-id-dialog'))
 
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) {
-    return '—'
+    return '-'
   }
   const date = dayjs(ts)
   const now = dayjs()

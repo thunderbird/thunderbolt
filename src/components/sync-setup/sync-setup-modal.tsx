@@ -208,7 +208,7 @@ const IntroStep = ({ onContinue, isLoading }: { onContinue: () => void; isLoadin
       </IconCircle>
       <h2 className="text-2xl font-bold">Set up sync</h2>
       <p className="text-muted-foreground">
-        Keep your data in sync across all your devices. Everything is encrypted end-to-end — only your devices can read
+        Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read
         your data.
       </p>
     </div>
@@ -283,8 +283,8 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
         a recovery key to keep safe.
       </p>
       <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
-        Please store your recovery key somewhere safe — you&apos;ll need it to access your data if you ever lose all
-        your devices.
+        Please store your recovery key somewhere safe. You&apos;ll need it to access your data if you ever lose all your
+        devices.
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>

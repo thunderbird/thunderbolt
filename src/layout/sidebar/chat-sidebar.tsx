@@ -5,14 +5,7 @@
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { SidebarFooter } from '@/components/sidebar-footer'
-import {
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarMenu,
-  SidebarSeparator,
-  useSidebar,
-} from '@/components/ui/sidebar'
+import { SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, useSidebar } from '@/components/ui/sidebar'
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
 import type { MouseEvent, RefObject } from 'react'
 import { useLocation } from 'react-router'
@@ -86,8 +79,6 @@ export const ChatSidebarContent = ({
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
-
-      <SidebarSeparator className="m-0 flex-shrink-0" />
 
       <ChatList
         chatThreads={chatThreads}

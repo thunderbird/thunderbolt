@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
-import { AgentSelector, categorizeAgents } from './agent-selector'
+import { AgentSelector, buildAgentItems } from './agent-selector'
 
 const systemAgent: Agent = {
   id: 'haystack-rag',
@@ -41,29 +41,18 @@ afterEach(() => {
   cleanup()
 })
 
-describe('categorizeAgents', () => {
-  it('produces three groups when every flavor is present, in canonical order', () => {
-    const groups = categorizeAgents([builtInAgent, systemAgent, customAgent])
+describe('buildAgentItems', () => {
+  it('flattens every flavor into one list in canonical order', () => {
+    const items = buildAgentItems([customAgent, systemAgent, builtInAgent])
 
-    expect(groups.map((g) => g.id)).toEqual(['built-in', 'system', 'custom'])
-    expect(groups[0].items[0].id).toBe(builtInAgent.id)
-    expect(groups[1].items[0].id).toBe(systemAgent.id)
-    expect(groups[2].items[0].id).toBe(customAgent.id)
+    expect(items.map((i) => i.id)).toEqual([builtInAgent.id, systemAgent.id, customAgent.id])
   })
 
-  it('drops empty buckets', () => {
-    const groups = categorizeAgents([builtInAgent])
-
-    expect(groups).toHaveLength(1)
-    expect(groups[0].id).toBe('built-in')
-  })
-
-  it('groups multiple customs into the custom bucket', () => {
+  it('keeps multiple customs after built-in and system agents', () => {
     const other: Agent = { ...customAgent, id: 'custom-2', name: 'Another' }
-    const groups = categorizeAgents([builtInAgent, customAgent, other])
+    const items = buildAgentItems([builtInAgent, customAgent, other])
 
-    const customGroup = groups.find((g) => g.id === 'custom')
-    expect(customGroup?.items).toHaveLength(2)
+    expect(items.map((i) => i.id)).toEqual([builtInAgent.id, customAgent.id, 'custom-2'])
   })
 })
 
@@ -136,7 +125,7 @@ describe('AgentSelector', () => {
     )
 
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
-    fireEvent.click(screen.getByText('Add Agent'))
+    fireEvent.click(screen.getByText('Add agent'))
 
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })

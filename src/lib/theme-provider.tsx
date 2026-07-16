@@ -67,7 +67,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
       root.classList.add(systemTheme)
 
-      const bgColor = systemTheme === 'dark' ? '#0a0a0a' : '#fff'
+      const bgColor = systemTheme === 'dark' ? '#1a2329' : '#fafafa'
       root.style.backgroundColor = bgColor
       metaThemeColor?.setAttribute('content', bgColor)
 
@@ -79,7 +79,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
     root.classList.add(theme)
 
-    const bgColor = theme === 'dark' ? '#0a0a0a' : '#fff'
+    const bgColor = theme === 'dark' ? '#1a2329' : '#fafafa'
     root.style.backgroundColor = bgColor
     metaThemeColor?.setAttribute('content', bgColor)
 
@@ -99,7 +99,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         const systemTheme = mediaQuery.matches ? 'dark' : 'light'
         root.classList.add(systemTheme)
 
-        const bgColor = systemTheme === 'dark' ? '#0a0a0a' : '#fff'
+        const bgColor = systemTheme === 'dark' ? '#1a2329' : '#fafafa'
         root.style.backgroundColor = bgColor
         metaThemeColor?.setAttribute('content', bgColor)
 

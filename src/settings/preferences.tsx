@@ -1087,7 +1087,7 @@ export default function PreferencesSettingsPage() {
           {pendingImport?.accountMismatch && (
             <p className="text-sm text-destructive font-medium" role="alert">
               ⚠ This export was made by a different account ({pendingImport.sourceEmail}). Importing it here will mix
-              that data into your account — confirm only if you intend to.
+              that data into your account. Confirm only if you intend to.
             </p>
           )}
           {importError && (

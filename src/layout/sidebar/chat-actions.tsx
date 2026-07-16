@@ -4,6 +4,7 @@
 
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import type { ChatActionsProps } from './types'
 
@@ -24,9 +25,12 @@ export const ChatActions = ({
         <TooltipTrigger asChild>
           <SidebarMenuButton
             onClick={(e) => onSearchClick(e)}
-            className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
+            className={cn(
+              'w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer',
+              debouncedSearchQuery && 'bg-primary/15 text-primary hover:bg-primary/25 hover:text-primary',
+            )}
           >
-            <Search className={`size-4 ${debouncedSearchQuery ? 'text-blue-500' : ''}`} />
+            <Search className={cn('size-4', debouncedSearchQuery && 'text-primary')} />
           </SidebarMenuButton>
         </TooltipTrigger>
         <TooltipContent side="right">

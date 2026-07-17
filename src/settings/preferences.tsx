@@ -27,7 +27,6 @@ import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
-import { ThemeToggle } from '@/components/theme-toggle'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -519,13 +518,6 @@ export default function PreferencesSettingsPage() {
 
       <SectionCard title="User Experience">
         <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium">Theme</label>
-            <ThemeToggle />
-          </div>
-
-          <div className="h-px bg-border -mx-6" />
-
           <div className="flex-row flex items-center gap-4">
             <div className="flex-1">
               <ModificationIndicator

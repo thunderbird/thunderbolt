@@ -48,9 +48,6 @@ export const PowerSyncStatus = () => {
   const isConnecting = connectionStatus === 'connecting'
 
   const getStatusText = () => {
-    if (!syncEnabled) {
-      return 'Sync disabled'
-    }
     if (isConnecting) {
       return 'Connecting...'
     }
@@ -100,7 +97,9 @@ export const PowerSyncStatus = () => {
   return (
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen} modal={isMobile}>
-        <Tooltip open={popoverOpen ? false : undefined}>
+        {/* No tooltip while the popover is open, and none when sync is off —
+            the popover itself explains the disabled state. */}
+        <Tooltip open={popoverOpen || !syncEnabled ? false : undefined}>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
               <button

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { PowerSyncStatus } from '@/components/powersync-status'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isDesktop, isTauri } from '@/lib/platform'
 import { PanelLeft } from 'lucide-react'
@@ -71,7 +72,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton onClick={onToggle} tooltip="Expand Sidebar" className="cursor-pointer">
+                  <SidebarMenuButton onClick={onToggle} className="cursor-pointer">
                     <PanelLeft className="size-[var(--icon-size-default)]" />
                     <span className="sr-only">Expand Sidebar</span>
                   </SidebarMenuButton>
@@ -90,7 +91,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     <SidebarMenuItem>
-                      <SidebarMenuButton onClick={onToggle} tooltip="Expand Sidebar" className="cursor-pointer">
+                      <SidebarMenuButton onClick={onToggle} className="cursor-pointer">
                         <PanelLeft className="size-[var(--icon-size-default)]" />
                         <span className="sr-only">Expand Sidebar</span>
                       </SidebarMenuButton>
@@ -103,7 +104,10 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
           {isExpanded && (
             <div className="flex items-center">
               {isMobile ? (
-                <PowerSyncStatus />
+                <>
+                  <ThemeToggle />
+                  <PowerSyncStatus />
+                </>
               ) : (
                 <SidebarGroup className="p-0 w-auto">
                   <SidebarGroupContent>

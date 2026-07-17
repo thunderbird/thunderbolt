@@ -20,6 +20,7 @@ import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
 import { PowerSyncStatus } from '@/components/powersync-status'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 /** Subscribes to the active chat instance's status to disable the agent
  *  selector while a reply is streaming. Pulled into its own component so
@@ -69,7 +70,8 @@ export const Header = () => {
   const enableDragRegion = isTauri() && isDesktop()
   const dragProps = enableDragRegion ? { 'data-tauri-drag-region': true } : {}
   // The macOS traffic lights (ending at ~x=68) are wider than the collapsed
-  // 48px icon rail, so nudge the header content right of the overhang.
+  // 48px icon rail, so nudge the header content right of the overhang with
+  // some breathing room so the agent selector pill doesn't crowd the buttons.
   const clearTrafficLights = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
   const navigate = useNavigate()
   const location = useLocation()
@@ -177,10 +179,11 @@ export const Header = () => {
       {...dragProps}
       className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
-      <div {...dragProps} className={cn('flex items-center gap-2', clearTrafficLights && 'ml-4')}>
+      <div {...dragProps} className={cn('flex items-center gap-2', clearTrafficLights && 'ml-8')}>
         {agentSelector}
       </div>
-      <div {...dragProps} className="flex items-center gap-2">
+      <div {...dragProps} className="flex items-center gap-1">
+        <ThemeToggle />
         <PowerSyncStatus />
       </div>
     </header>

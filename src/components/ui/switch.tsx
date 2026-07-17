@@ -14,9 +14,9 @@ import { cn } from '@/lib/utils'
  * left — so the dot's size and its 2px gap to the border are identical for OFF,
  * ON, and DISABLED. Only COLOR changes between states:
  *  - OFF      → `bg-input` track with a `border-border` outline.
- *  - ON       → a light `primary` tint track with a solid `primary` thumb, so it
- *               reads dark-on-warm in light mode and light-on-slate in dark mode
- *               (same neutral family as the checkbox and theme toggle).
+ *  - ON       → a solid `success` green track with a light thumb (the iOS
+ *               convention), matching the green "connected" sync icon — reads
+ *               unambiguously as "on" in both light and dark mode.
  *  - DISABLED → dimmed, keeps the outline.
  */
 const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof SwitchPrimitive.Root>) => {
@@ -38,9 +38,8 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
         'peer inline-flex h-[var(--switch-track-height)] w-[var(--switch-track-width)] shrink-0 cursor-pointer items-center rounded-full border p-[2px] shadow-xs transition-colors outline-none',
         // OFF (default): filled track + visible outline.
         'border-border bg-input dark:bg-input/80',
-        // ON — neutral primary in both modes: a light tint track with a matching
-        // soft border; the thumb goes solid primary below.
-        'data-[state=checked]:border-primary/40 data-[state=checked]:bg-primary/15',
+        // ON — solid success-green track in both modes; the thumb stays light below.
+        'data-[state=checked]:border-success data-[state=checked]:bg-success',
         // Focus + disabled (disabled keeps its outline).
         'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
         'disabled:cursor-not-allowed disabled:border-border disabled:opacity-50',
@@ -53,7 +52,7 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
         className={cn(
           'pointer-events-none block size-[var(--switch-thumb-size)] rounded-full bg-background shadow-sm ring-0 transition-transform',
           'data-[state=unchecked]:translate-x-0 data-[state=checked]:translate-x-[var(--switch-thumb-translate)]',
-          'data-[state=checked]:bg-primary',
+          'data-[state=checked]:bg-white',
           'dark:data-[state=unchecked]:bg-foreground',
         )}
       />

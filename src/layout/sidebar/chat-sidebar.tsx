@@ -110,7 +110,7 @@ export const ChatSidebarContent = ({
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
-      {isCollapsed && <RailDivider />}
+      {isCollapsed && chatThreads.length > 0 && <RailDivider />}
 
       <ChatList
         chatThreads={chatThreads}

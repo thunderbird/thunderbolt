@@ -38,7 +38,7 @@ export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
             <img
               src={entry.icon}
               alt=""
-              className="size-8 rounded-md shrink-0"
+              className="size-8 rounded-md shrink-0 dark:invert"
               draggable={false}
               onError={() => setIconFailed(true)}
             />

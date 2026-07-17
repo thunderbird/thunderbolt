@@ -118,15 +118,19 @@ export default function AgentsSettingsPage() {
         )}
       </PageHeader>
 
-      <AgentList
-        agents={agents}
-        currentUserId={currentUserId}
-        onToggle={handleToggle}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-      />
+      {/* gap-3 matches AgentList's internal row gap so the CLI card sits the
+          same distance from the last agent as the agents do from each other. */}
+      <div className="flex flex-col gap-3">
+        <AgentList
+          agents={agents}
+          currentUserId={currentUserId}
+          onToggle={handleToggle}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
 
-      <ThunderboltCliInstallCard />
+        <ThunderboltCliInstallCard />
+      </div>
 
       <AgentCatalog />
 

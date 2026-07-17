@@ -534,7 +534,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               type="button"
               aria-label="Add to chat"
               title="Add to chat"
-              className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+              // `hover:bg-accent/50` / open `bg-accent` match the mode and
+              // model picker triggers sitting in the same footer row.
+              className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
             >
               <Plus className="size-[var(--icon-size-sm)]" />
             </button>

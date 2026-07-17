@@ -1177,11 +1177,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
           <Card className="border-dashed border-2 border-muted-foreground/25">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <Server className="size-10 text-muted-foreground mb-4" />
-              <h3 className="font-medium text-foreground mb-1">No MCP servers configured</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Get started by adding your first MCP server connection.
-              </p>
-              <Button onClick={form.openDialog} variant="outline">
+              <h3 className="font-medium text-foreground mb-4">No MCP servers configured</h3>
+              <Button onClick={form.openDialog}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Server
               </Button>

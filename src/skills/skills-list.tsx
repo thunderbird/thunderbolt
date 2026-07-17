@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button'
 import { PageSearch } from '@/components/ui/page-search'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { isDesktop, isTauri } from '@/lib/platform'
+import { cn } from '@/lib/utils'
 import type { Skill } from '@/types'
 import { LibraryRow, skillRowTransition } from './library-row'
 
@@ -38,6 +40,12 @@ export const SkillsList = ({
   const [search, setSearch] = useState('')
   const { isMobile } = useIsMobile()
   const { toggleSidebar } = useSidebar()
+  // On a Tauri desktop window narrowed into the mobile layout, the settings
+  // Header still renders above this page (it carries the sidebar toggle and
+  // clears the macOS traffic lights), so the page's own burger would be a
+  // duplicate.
+  const hasSharedHeaderAbove = !isMobile || (isTauri() && isDesktop())
+  const showBurger = !hasSharedHeaderAbove
 
   const { enabledRows, disabledRows } = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -50,18 +58,24 @@ export const SkillsList = ({
     return { enabledRows: enabled, disabledRows: disabled }
   }, [skills, search, isEnabled])
 
-  // md:pt-4 matches the other settings pages' `p-4` top padding so the header
-  // row starts at the same y-position; mobile stays flush so the heading
-  // lines up with the sidebar's app logo.
+  // pt-4 matches the other settings pages' `p-4` top padding so the header row
+  // (and its + button) starts at the same y-position whenever the shared
+  // Header renders above; true mobile stays flush so the heading lines up
+  // with the sidebar's app logo.
   return (
-    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background px-4 pb-4 md:px-5 md:pt-4 text-foreground">
+    <section
+      className={cn(
+        'mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background px-4 pb-4 md:px-5 text-foreground',
+        hasSharedHeaderAbove && 'pt-4',
+      )}
+    >
       <PageSearch onSearch={setSearch}>
         {/* On mobile this row is the page's only chrome (the settings-level
             Header is skipped there) and matches the sidebar header height so
             the "Skills" heading sits at the same y-position as the app logo. */}
-        <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-2">
+        <header className="flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            {isMobile && (
+            {showBurger && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -72,13 +86,8 @@ export const SkillsList = ({
                 <Menu strokeWidth={1.5} />
               </Button>
             )}
-            {!isMobile && <h1 className="text-[24px] leading-[32px] font-bold tracking-tight text-primary">Skills</h1>}
+            <h1 className="text-[24px] leading-[32px] font-bold tracking-tight text-primary">Skills</h1>
           </div>
-          {isMobile && (
-            <h1 className="absolute left-1/2 -translate-x-1/2 text-[24px] leading-[32px] font-bold tracking-tight text-primary pointer-events-none">
-              Skills
-            </h1>
-          )}
           <div className="flex items-center gap-2">
             <PageSearch.Button />
             <Button

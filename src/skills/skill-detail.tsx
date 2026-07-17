@@ -2,12 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ChevronLeft, Info, MoreVertical, SquarePen, Trash2, X } from 'lucide-react'
+import { Info, MoreVertical, SquarePen, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useIsMobile } from '@/hooks/use-mobile'
 
 /**
  * Detail panel for a single skill. Pinning is managed from the chat composer
@@ -25,7 +24,6 @@ export const SkillDetail = ({
   instruction,
   onEdit,
   onDelete,
-  onBack,
   onClose,
 }: {
   name: string
@@ -33,37 +31,16 @@ export const SkillDetail = ({
   instruction: string
   onEdit: () => void
   onDelete: () => void
-  /** Mobile back chevron (left side). */
-  onBack?: () => void
-  /** Desktop close (X, right side) for the slide-in panel. */
-  onClose?: () => void
+  /** Close (X, right of the actions menu) — dismisses the desktop slide-in
+   *  panel or the mobile overlay. */
+  onClose: () => void
 }) => {
-  const { isMobile } = useIsMobile()
-
   return (
     <section className="flex h-full flex-1 flex-col overflow-hidden px-4 pb-5 md:px-6 text-foreground">
       {/* Mobile keeps the list's title-row height (shared page chrome); the
           desktop card gets a taller header so the title has room to breathe. */}
       <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-4 md:h-16">
-        <div className="flex min-w-0 items-center gap-2">
-          {onBack && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onBack}
-              aria-label="Back to skills"
-              className="size-8 shrink-0 rounded-md border border-border text-muted-foreground hover:text-foreground"
-            >
-              <ChevronLeft className="size-5 md:size-4" />
-            </Button>
-          )}
-          {!isMobile && <h2 className="truncate text-xl leading-tight text-foreground">/{name}</h2>}
-        </div>
-        {isMobile && (
-          <h2 className="absolute left-1/2 -translate-x-1/2 truncate max-w-[60%] text-center text-xl text-foreground pointer-events-none">
-            /{name}
-          </h2>
-        )}
+        <h2 className="min-w-0 truncate text-xl leading-tight text-foreground">/{name}</h2>
         {/* Desktop: pin the actions to the card's top-right corner, 8px from
             both edges (right: 24px padding − 16px), independent of the taller
             header so the X stays equidistant from top and right. */}
@@ -90,17 +67,15 @@ export const SkillDetail = ({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {onClose && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              aria-label="Close details"
-              className="size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-            >
-              <X className="size-4" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="Close details"
+            className="size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+          >
+            <X className="size-4" />
+          </Button>
         </div>
       </header>
 

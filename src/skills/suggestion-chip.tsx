@@ -108,7 +108,10 @@ export const SuggestionChip = ({
           // share/copy callout pops) while our long-press timer is waiting
           // to open the action menu. Leaving `touch-action` at its default
           // so the chip strip's horizontal scroll on mobile still works.
-          className="h-[var(--touch-height-sm)] shrink-0 cursor-pointer select-none rounded-full border-none bg-sidebar px-3 text-sm font-normal shadow-[0_0_16px_rgba(38,33,32,0.06)] dark:bg-sidebar [-webkit-touch-callout:none]"
+          // `hover:bg-accent/50` softens the light-mode hover — full accent is
+          // too dark a step from the chip's near-white resting bg; dark mode
+          // keeps the outline variant's `dark:hover:bg-input/50`.
+          className="h-[var(--touch-height-sm)] shrink-0 cursor-pointer select-none rounded-full border-none bg-sidebar px-3 text-sm font-normal shadow-[0_0_16px_rgba(38,33,32,0.06)] hover:bg-accent/50 dark:bg-sidebar [-webkit-touch-callout:none]"
           aria-label={`Pinned skill /${label}`}
         >
           /{label}

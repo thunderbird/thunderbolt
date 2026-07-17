@@ -113,7 +113,11 @@ export const AgentSelector = ({
         className={cn(
           'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full transition-colors text-[length:var(--font-size-body)] max-w-[50vw] md:max-w-none',
           disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-          !disabled && isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+          // Light secondary is nearly the same shade as the page background,
+          // so at 50% the hover reads as invisible — use full accent there
+          // (same hover as the header's ghost buttons). Dark keeps the
+          // subtler half-secondary.
+          !disabled && isOpen ? 'bg-secondary' : 'hover:bg-accent dark:hover:bg-secondary/50',
         )}
       >
         <Icon className="size-3.5 text-muted-foreground shrink-0" />

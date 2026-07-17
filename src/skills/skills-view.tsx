@@ -230,8 +230,7 @@ export const SkillsView = () => {
         instruction={active.instruction}
         onEdit={() => onEdit(active.id)}
         onDelete={() => onDelete(active.id)}
-        onBack={isMobile ? () => dispatch({ type: 'BACK_TO_LIST' }) : undefined}
-        onClose={!isMobile ? () => dispatch({ type: 'BACK_TO_LIST' }) : undefined}
+        onClose={() => dispatch({ type: 'BACK_TO_LIST' })}
       />
     ) : (
       <SkillForm

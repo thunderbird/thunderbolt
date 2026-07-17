@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button'
 import { PowerSyncStatus } from '@/components/powersync-status'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isDesktop, isTauri } from '@/lib/platform'
+import { isDesktop, isMacDesktop, isTauri } from '@/lib/platform'
+import { cn } from '@/lib/utils'
 import { PanelLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -39,18 +40,29 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
       {showChromeStrip && isExpanded && (
         <div
           data-tauri-drag-region
-          className="h-[var(--touch-height-xl)] bg-sidebar flex-shrink-0 relative flex items-center justify-end px-2"
+          className="h-[var(--touch-height-xl)] bg-sidebar flex-shrink-0 flex items-center gap-2 px-2"
         >
-          {navToggle && <div className="absolute left-1/2 z-10 -translate-x-1/2">{navToggle}</div>}
+          {/* Same spot as the collapsed state's toggle in the main Header (and
+              the mobile-layout burger): just right of the macOS traffic
+              lights, so the button doesn't jump when the sidebar toggles. The
+              nav pill right-aligns opposite it. */}
           <Button
             variant="ghost"
             size="icon"
-            className="size-[var(--touch-height-sm)] cursor-pointer"
+            className={cn(
+              'size-[var(--touch-height-sm)] shrink-0 cursor-pointer text-muted-foreground hover:text-foreground',
+              isMacDesktop() && 'ml-20',
+            )}
             onClick={onToggle}
           >
             <PanelLeft className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Collapse Sidebar</span>
           </Button>
+          {navToggle && (
+            <div data-tauri-drag-region className="flex flex-1 items-center justify-end">
+              {navToggle}
+            </div>
+          )}
         </div>
       )}
       {showChromeStrip && !isExpanded && (
@@ -59,7 +71,8 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
               the main header background, so no sidebar seam runs through the
               window controls (the macOS traffic lights are wider than the 48px
               rail). The sidebar surface resumes below it with a curved
-              top-right shoulder, and the expand toggle is the first rail item. */}
+              top-right shoulder. The expand toggle lives in the main Header
+              (right of the traffic lights), not in the rail. */}
           {/* Taller than the expanded strip (+0.5rem) so the rail's curved top
               starts with clear air below the window controls. */}
           <div
@@ -68,32 +81,28 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 rounded-tr-xl bg-sidebar" />
           </div>
-          <SidebarGroup className="flex-shrink-0 py-0">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton onClick={onToggle} className="cursor-pointer">
-                    <PanelLeft className="size-[var(--icon-size-default)]" />
-                    <span className="sr-only">Expand Sidebar</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
         </>
       )}
       {!showChromeStrip && (
         <div className="h-[var(--touch-height-xl)] relative flex items-center justify-between px-2 flex-shrink-0">
           {isExpanded && navToggle && <div className="absolute left-1/2 z-10 -translate-x-1/2">{navToggle}</div>}
           <div className="flex items-center h-8 relative flex-1 min-w-0">
-            {!isExpanded && (
+            {/* Desktop web: the toggle lives in the same left slot whether the
+                sidebar is expanded or collapsed, so the mouse never has to
+                chase it across the header. Mobile's overlay sidebar closes by
+                tapping outside, so it carries no toggle. */}
+            {!isMobile && (
               <SidebarGroup className="p-0 absolute left-0 right-0">
                 <SidebarGroupContent>
                   <SidebarMenu>
                     <SidebarMenuItem>
-                      <SidebarMenuButton onClick={onToggle} className="cursor-pointer">
+                      <SidebarMenuButton
+                        onClick={onToggle}
+                        tooltip="Toggle Sidebar"
+                        className="cursor-pointer size-8 justify-center text-muted-foreground hover:text-foreground"
+                      >
                         <PanelLeft className="size-[var(--icon-size-default)]" />
-                        <span className="sr-only">Expand Sidebar</span>
+                        <span className="sr-only">Toggle Sidebar</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   </SidebarMenu>
@@ -101,31 +110,10 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
               </SidebarGroup>
             )}
           </div>
-          {isExpanded && (
+          {isExpanded && isMobile && (
             <div className="flex items-center">
-              {isMobile ? (
-                <>
-                  <ThemeToggle />
-                  <PowerSyncStatus />
-                </>
-              ) : (
-                <SidebarGroup className="p-0 w-auto">
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      <SidebarMenuItem className="w-auto">
-                        <SidebarMenuButton
-                          onClick={onToggle}
-                          tooltip="Toggle Sidebar"
-                          className="cursor-pointer size-8 justify-center"
-                        >
-                          <PanelLeft className="size-[var(--icon-size-default)]" />
-                          <span className="sr-only">Toggle Sidebar</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              )}
+              <ThemeToggle />
+              <PowerSyncStatus />
             </div>
           )}
         </div>

@@ -11,8 +11,6 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
-import { PowerSyncStatus } from '@/components/powersync-status'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
@@ -34,6 +32,12 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
   // Tauri desktop hides the OS title bar; the sidebar's top drag strip carries
   // the traffic lights (macOS) and, while expanded, the collapse toggle.
   const showChromeStrip = isTauriDesktop() && !isMobile
+  // Mobile-width desktop app: the overlay drawer slides over the content, so
+  // its first row (New Chat) would sit directly under the OS window controls.
+  // A bare drag strip — same height as the content header, no controls —
+  // pushes the list clear of them, the same clearance idea as the content
+  // header's traffic-light padding.
+  const showMobileChromeSpacer = isTauriDesktop() && isMobile
 
   return (
     <>
@@ -81,42 +85,36 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 rounded-tr-xl bg-sidebar" />
         </div>
       )}
-      {!showChromeStrip && (
+      {showMobileChromeSpacer && <div data-tauri-drag-region className="h-[var(--touch-height-xl)] flex-shrink-0" />}
+      {/* Mobile renders no header strip at all: the overlay sidebar closes by
+          tapping outside (no toggle) and the theme/sync/account controls live
+          in the footer row, so the list gets the vertical space instead. */}
+      {!showChromeStrip && !isMobile && (
         <div className="h-[var(--touch-height-xl)] relative flex items-center justify-between px-2 flex-shrink-0">
           {/* Desktop web right-aligns the nav pill opposite the toggle,
-              matching the desktop-app strip. The mobile overlay carries its
-              pill in the footer row (thumb reach) instead of up here. */}
-          {isExpanded && !isMobile && navToggle && <div className="absolute right-2 z-10">{navToggle}</div>}
+              matching the desktop-app strip. */}
+          {isExpanded && navToggle && <div className="absolute right-2 z-10">{navToggle}</div>}
           <div className="flex items-center h-8 relative flex-1 min-w-0">
             {/* Desktop web: the toggle lives in the same left slot whether the
                 sidebar is expanded or collapsed, so the mouse never has to
-                chase it across the header. Mobile's overlay sidebar closes by
-                tapping outside, so it carries no toggle. */}
-            {!isMobile && (
-              <SidebarGroup className="p-0 absolute left-0 right-0">
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={onToggle}
-                        tooltip="Toggle Sidebar"
-                        className="cursor-pointer size-8 justify-center text-muted-foreground hover:text-foreground"
-                      >
-                        <PanelLeft className="size-[var(--icon-size-default)]" />
-                        <span className="sr-only">Toggle Sidebar</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            )}
+                chase it across the header. */}
+            <SidebarGroup className="p-0 absolute left-0 right-0">
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={onToggle}
+                      tooltip="Toggle Sidebar"
+                      className="cursor-pointer size-8 justify-center text-muted-foreground hover:text-foreground"
+                    >
+                      <PanelLeft className="size-[var(--icon-size-default)]" />
+                      <span className="sr-only">Toggle Sidebar</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
           </div>
-          {isExpanded && isMobile && (
-            <div className="flex items-center">
-              <ThemeToggle />
-              <PowerSyncStatus />
-            </div>
-          )}
         </div>
       )}
     </>

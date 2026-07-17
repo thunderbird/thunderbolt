@@ -35,6 +35,16 @@
      page. */
   --color-accent: #eeebe6;
   --color-accent-foreground: #262120;
+  /* Brand accent — drawn from the logo's two color families: the bolt's
+     golden yellow (#ffcc00) and its magenta shadow facets (#ce00cb). The
+     solid token is the pink stop (used alone for icons/text); --color-brand-2
+     is the gold stop; --gradient-brand (in :root below) sweeps pink → gold
+     for surfaces like the switch ON track. Both stops are darkened from the
+     logo literals so they hold contrast on the warm off-white background.
+     Dark mode brightens both (see .dark below). */
+  --color-brand: #db2777;
+  --color-brand-2: #f0a105;
+  --color-brand-foreground: #faf8f5;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #262120;
   --color-success: oklch(0.627 0.17 149.214);
@@ -96,6 +106,14 @@
   --elevation-faint: rgb(0 0 0 / 0.03);
   --elevation-medium: rgb(0 0 0 / 0.06);
   --elevation-strong: rgb(0 0 0 / 0.15);
+
+  /* Brand gradient — the logo's gold→magenta sweep. References the theme
+     tokens, so the .dark overrides above flow through automatically. Applied
+     via [background-image:var(--gradient-brand)] on "on" surfaces (switch ON
+     track); single-color call sites keep the solid --color-brand. Gold leads
+     (left) because the switch thumb parks on the RIGHT when checked — with
+     pink first, the thumb hid the gold end and the track read as plain red. */
+  --gradient-brand: linear-gradient(90deg, var(--color-brand-2), var(--color-brand));
 }
 
 .dark {
@@ -149,6 +167,12 @@
 
   /* Minimum sizes */
   --min-touch-height: 2.5rem; /* 40px mobile */
+
+  /* The floating app header overlays the content area (main/settings layouts
+     position it absolutely so pages scroll beneath it). Pages whose content
+     starts at the top of the scroll area pad by this inset so nothing renders
+     hidden under the header at rest. */
+  --header-inset: calc(var(--safe-area-top-padding, 0px) + var(--touch-height-xl));
 
   /* Switch component specific */
   --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
@@ -211,6 +235,11 @@
   --color-muted-foreground: #a19a91;
   --color-accent: #383a39;
   --color-accent-foreground: #f2f1ee;
+  /* Brand stops at full brightness — dark surfaces can afford the extra
+     luminance that would glare on the light theme. */
+  --color-brand: #f25c9e;
+  --color-brand-2: #ffbe3d;
+  --color-brand-foreground: #252220;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #252220;
   --color-success: oklch(0.696 0.17 162.48);
@@ -284,6 +313,29 @@
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* Inline badge for committed /skill tokens in the chat composer overlay.
+   The overlay must mirror the textarea's text metrics exactly, so the pill
+   is drawn with background + a 2px box-shadow "padding ring" — both paint-
+   only properties that never affect line height or character positions.
+   The tint derives from currentColor so each token state (enabled /
+   disabled / unknown) recolors the pill with its own text color class.
+   Translucent so the textarea's caret stays visible through the badge. */
+.skill-token {
+  --skill-token-bg: color-mix(in oklab, currentColor 11%, transparent);
+  border-radius: 0.45em;
+  background-color: var(--skill-token-bg);
+  box-shadow: 0 0 0 2px var(--skill-token-bg);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  /* Extra horizontal breathing room: the padding widens the pill while the
+     negative margin cancels it out of layout, so glyph positions still
+     mirror the textarea exactly. Asymmetric on purpose: the chip's leading
+     `/` is rendered invisibly (kept for caret alignment) and already acts
+     as left padding, so only the right side needs the extra 3px. */
+  padding-inline: 0 3px;
+  margin-inline: 0 -3px;
 }
 
 @layer base {

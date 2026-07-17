@@ -12,6 +12,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
+import { skillDisplayName, titleCaseFromSlug } from './display'
 import { findDependents } from './find-dependents'
 import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
@@ -224,7 +225,17 @@ export const SkillsView = () => {
       // user clicks "Create it" for a different slug back-to-back.
       key={createInitialName ? `create:${createInitialName}` : 'create'}
       mode="create"
-      initialValues={createInitialName ? { name: createInitialName, description: '', instruction: '' } : undefined}
+      initialValues={
+        createInitialName
+          ? {
+              name: createInitialName,
+              // Suggest a Title Case name from the slug the user typed in chat.
+              label: titleCaseFromSlug(createInitialName),
+              description: '',
+              instruction: '',
+            }
+          : undefined
+      }
       onCancel={() => requestLeave({ type: 'cancel' })}
       onSubmit={handleSubmit}
       onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
@@ -244,7 +255,7 @@ export const SkillsView = () => {
     if (mode === 'detail') {
       return (
         <SkillDetail
-          name={active.name}
+          name={skillDisplayName(active)}
           description={active.description}
           instruction={active.instruction}
           onEdit={() => onEdit(active.id)}
@@ -259,6 +270,9 @@ export const SkillsView = () => {
         mode="edit"
         initialValues={{
           name: active.name,
+          // Legacy rows without a label get a Title Case suggestion so the
+          // required Name field doesn't start empty.
+          label: active.label ?? titleCaseFromSlug(active.name),
           description: active.description,
           instruction: active.instruction,
         }}
@@ -330,7 +344,7 @@ export const SkillsView = () => {
             }
           }}
           action={pendingDependents.action}
-          targetName={pendingDependents.skill.name}
+          targetName={skillDisplayName(pendingDependents.skill)}
           dependents={pendingDependents.dependents}
           onConfirm={confirmPendingDependents}
           onJumpToDependent={onJumpToDependent}
@@ -348,7 +362,7 @@ export const SkillsView = () => {
             void removeSkill(pendingDelete.id)
             dispatch({ type: 'CLOSE_DELETE' })
           }}
-          skillName={pendingDelete.name}
+          skillName={skillDisplayName(pendingDelete)}
         />
       )}
       <DiscardCreateDialog

@@ -13,6 +13,7 @@ import { ChatSkillsBar } from './chat-skills-bar'
 const skill = (id: string, name: string): Skill => ({
   id,
   name,
+  label: null,
   description: `desc for ${name}`,
   instruction: `instruction for ${name}`,
   enabled: 1,
@@ -74,15 +75,17 @@ describe('ChatSkillsBar', () => {
   })
 
   it('renders one chip per pinned skill plus the "Add a skill" trigger', () => {
-    const a = skill('a', 'daily-brief')
+    // Chips show the display name (label) when present; label-less legacy
+    // rows fall back to a title-cased slug — no leading slash either way.
+    const a = { ...skill('a', 'daily-brief'), label: 'Daily Brief' }
     const b = skill('b', 'important-emails')
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [a, b] }),
       useLibrarySkills: fakeUseLibrarySkills([a, b]),
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a', 'b'])),
     })
-    expect(screen.getByText('/daily-brief')).toBeTruthy()
-    expect(screen.getByText('/important-emails')).toBeTruthy()
+    expect(screen.getByText('Daily Brief')).toBeTruthy()
+    expect(screen.getByText('Important Emails')).toBeTruthy()
     expect(screen.getByLabelText('Add a skill')).toBeTruthy()
   })
 

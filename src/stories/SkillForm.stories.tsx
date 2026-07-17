@@ -33,6 +33,7 @@ export const Edit: Story = {
     mode: 'edit',
     initialValues: {
       name: 'meeting-notes',
+      label: 'Meeting Notes',
       description:
         'Use this skill when the user shares raw meeting notes, a transcript, or bullets from a recent call and wants them cleaned up, summarized, or turned into action items.',
       instruction:

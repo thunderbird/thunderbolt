@@ -4,7 +4,9 @@
 
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import type { Arch, Platform } from '@tauri-apps/plugin-os'
-import { isRecord } from '@/lib/agent-registry-filter'
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 export type CliInstallPlatform = Platform | 'web'
 export type CliInstallArchitecture = Arch | 'unknown'

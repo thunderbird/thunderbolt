@@ -10,6 +10,7 @@ import { fn } from 'storybook/test'
 const dep = (id: string, name: string): Skill => ({
   id,
   name,
+  label: null,
   description: 'desc',
   instruction: 'inst',
   enabled: 1,

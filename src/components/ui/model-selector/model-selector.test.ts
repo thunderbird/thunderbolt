@@ -29,26 +29,23 @@ const confidentialChat = { isEncrypted: 1 } as ChatThread
 const standardChat = { isEncrypted: 0 } as ChatThread
 
 describe('categorizeModels', () => {
-  test('no chat thread: all models are available, no disabled sections', () => {
+  test('no chat thread: all models are available in one group, no disabled sections', () => {
     const groups = categorizeModels([confidentialModel, standardModel, customModel], null)
 
-    expect(groups).toHaveLength(2)
-    expect(groups[0].id).toBe('provided')
-    expect(groups[0].items).toHaveLength(2)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].id).toBe('available')
+    expect(groups[0].items).toHaveLength(3)
     expect(groups[0].items.every((i) => !i.disabled)).toBe(true)
-    expect(groups[1].id).toBe('custom')
-    expect(groups[1].items).toHaveLength(1)
-    expect(groups[1].items[0].disabled).toBe(false)
   })
 
   test('encrypted chat: standard models in disabled section', () => {
     const groups = categorizeModels([confidentialModel, standardModel], confidentialChat)
 
-    const provided = groups.find((g) => g.id === 'provided')
-    expect(provided).toBeDefined()
-    expect(provided!.items).toHaveLength(1)
-    expect(provided!.items[0].id).toBe('conf-1')
-    expect(provided!.items[0].disabled).toBe(false)
+    const available = groups.find((g) => g.id === 'available')
+    expect(available).toBeDefined()
+    expect(available!.items).toHaveLength(1)
+    expect(available!.items[0].id).toBe('conf-1')
+    expect(available!.items[0].disabled).toBe(false)
 
     const disabled = groups.find((g) => g.id === 'standard-disabled')
     expect(disabled).toBeDefined()
@@ -62,10 +59,10 @@ describe('categorizeModels', () => {
   test('standard chat: encrypted models in disabled section', () => {
     const groups = categorizeModels([confidentialModel, standardModel], standardChat)
 
-    const provided = groups.find((g) => g.id === 'provided')
-    expect(provided).toBeDefined()
-    expect(provided!.items).toHaveLength(1)
-    expect(provided!.items[0].id).toBe('std-1')
+    const available = groups.find((g) => g.id === 'available')
+    expect(available).toBeDefined()
+    expect(available!.items).toHaveLength(1)
+    expect(available!.items[0].id).toBe('std-1')
 
     const disabled = groups.find((g) => g.id === 'confidential-disabled')
     expect(disabled).toBeDefined()
@@ -76,11 +73,11 @@ describe('categorizeModels', () => {
     expect(disabled!.items[0].disabled).toBe(true)
   })
 
-  test('custom models are grouped separately when available', () => {
+  test('custom models merge into the same group as built-in models', () => {
     const groups = categorizeModels([standardModel, customModel], null)
 
-    expect(groups.find((g) => g.id === 'provided')!.items).toHaveLength(1)
-    expect(groups.find((g) => g.id === 'custom')!.items).toHaveLength(1)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].items.map((i) => i.id)).toEqual(['std-1', 'custom-1'])
   })
 
   test('disabled custom models go to the disabled section', () => {

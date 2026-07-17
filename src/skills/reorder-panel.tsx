@@ -23,6 +23,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, X } from 'lucide-react'
 
 import type { Skill } from '@/types'
+import { skillDisplayName } from './display'
 
 const SortableRow = ({ skill }: { skill: Skill }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: skill.id })
@@ -41,7 +42,7 @@ const SortableRow = ({ skill }: { skill: Skill }) => {
       }`}
     >
       <GripVertical size={16} className="shrink-0 text-muted-foreground" />
-      <span className="text-[length:var(--font-size-body)] text-foreground">/{skill.name}</span>
+      <span className="truncate text-[length:var(--font-size-body)] text-foreground">{skillDisplayName(skill)}</span>
     </div>
   )
 }

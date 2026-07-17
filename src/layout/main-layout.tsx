@@ -91,13 +91,24 @@ export default function Page() {
     <SidebarInset className="h-full flex flex-col">
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel>
-          <div
-            className="flex flex-col h-full"
-            style={{
-              paddingTop: 'var(--safe-area-top-padding)',
-            }}
-          >
-            <Header />
+          <div className="relative flex flex-col h-full">
+            {/* Top scrim: fades the page background from the very top of the
+                viewport down past the floating header, so content scrolling
+                beneath stays legible behind the header controls. Painted
+                background-on-background, it is invisible until content
+                actually scrolls under it. Holds full opacity through the top
+                40% (where the header buttons sit) before fading, so text
+                scrolling underneath can't bleed through the controls. */}
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-background via-background/60 to-transparent"
+              style={{ height: 'calc(var(--header-inset) + 1.75rem)' }}
+            />
+            {/* The header floats over the content instead of consuming layout
+                height — pages own the full viewport and pad by
+                --header-inset where needed. */}
+            <div className="absolute inset-x-0 top-0 z-30" style={{ paddingTop: 'var(--safe-area-top-padding)' }}>
+              <Header />
+            </div>
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />

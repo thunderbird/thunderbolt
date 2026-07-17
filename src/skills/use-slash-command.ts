@@ -6,25 +6,31 @@ import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } 
 
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
+import { skillDisplayName } from './display'
 
 /**
  * A selectable slash suggestion: a user-authored skill or an external command
  * advertised by the connected ACP agent (`kind: 'command'`).
+ * `label` is the display name; `name` is the slug that gets inserted.
  */
 export type SlashItem =
-  | { kind: 'skill'; id: string; name: string; description: string; skill: Skill }
-  | { kind: 'command'; id: string; name: string; description: string }
+  | { kind: 'skill'; id: string; name: string; label: string; description: string; skill: Skill }
+  | { kind: 'command'; id: string; name: string; label: string; description: string }
 
-/** Position of the in-progress `/slug` token at the caret, or `null`. */
-export type SlashState = { tokenStart: number; query: string }
+/** Position of the in-progress `/slug` (or `@slug`) token at the caret, or `null`. */
+export type SlashState = { tokenStart: number; query: string; trigger: '/' | '@' }
 
 /**
  * Detect whether the caret in `value` sits inside (or right after) a slash
- * token, and return the token's start offset + the slug prefix typed so far.
+ * token, and return the token's start offset + the query prefix typed so far.
  *
  * The token begins at the first character after the most recent whitespace
  * (space / tab / newline) before the caret, or at index 0 if none. It must
- * start with `/` to be considered a slash token; otherwise we return `null`.
+ * start with `/` or `@` to be considered a trigger token; otherwise we return
+ * `null`. Both triggers open the same skill picker; selecting a skill inserts
+ * its `/Display Title` token (normalized to the slug at send time), while
+ * agent commands insert their literal `/name`. Mid-word `@` (e.g. an email
+ * address) never matches because the token wouldn't *start* with the trigger.
  *
  * Note: the caller is expected to compare against the *current* caret
  * position, which is React-state-driven via {@link useSlashCommand}.
@@ -37,10 +43,10 @@ export const getSlashState = (value: string, cursor: number): SlashState | null 
   const lastWs = Math.max(before.lastIndexOf(' '), before.lastIndexOf('\n'), before.lastIndexOf('\t'))
   const tokenStart = lastWs + 1
   const token = value.slice(tokenStart, cursor)
-  if (!token.startsWith('/')) {
+  if (!token.startsWith('/') && !token.startsWith('@')) {
     return null
   }
-  return { tokenStart, query: token.slice(1) }
+  return { tokenStart, query: token.slice(1), trigger: token[0] as '/' | '@' }
 }
 
 type SlashAction =
@@ -110,24 +116,40 @@ export const useSlashCommand = ({
   const slashState = useMemo(() => getSlashState(value, cursorPos), [value, cursorPos])
 
   // User skills first, then the agent's external commands; each alphabetical,
-  // both filtered by the in-progress query.
+  // both filtered by the in-progress query. Skills match on the slug prefix
+  // OR anywhere in the display name, so searching "brief" finds "Daily
+  // Brief" (/daily-brief).
   const popupItems = useMemo<SlashItem[]>(() => {
     if (!slashState) {
       return []
     }
     const query = slashState.query.toLowerCase()
-    const matches = (name: string) => query === '' || name.toLowerCase().startsWith(query)
+    const matchesSlug = (name: string) => query === '' || name.toLowerCase().startsWith(query)
+    const matchesSkill = (s: Skill) => matchesSlug(s.name) || (s.label ?? '').toLowerCase().includes(query)
     const skillItems: SlashItem[] = library
-      .filter((s) => isEnabled(s.name) && matches(s.name))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((s) => ({ kind: 'skill', id: s.id, name: s.name, description: s.description, skill: s }))
+      .filter((s) => isEnabled(s.name) && matchesSkill(s))
+      .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)))
+      .map((s) => ({
+        kind: 'skill',
+        id: s.id,
+        name: s.name,
+        label: skillDisplayName(s),
+        description: s.description,
+        skill: s,
+      }))
     // A skill and an agent command can share a name; the skill wins so the
     // menu doesn't show two identical `/foo` rows.
     const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
     const commandItems: SlashItem[] = [...agentCommands]
-      .filter((c) => matches(c.name) && !skillNames.has(c.name.toLowerCase()))
+      .filter((c) => matchesSlug(c.name) && !skillNames.has(c.name.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((c) => ({ kind: 'command', id: `command:${c.name}`, name: c.name, description: c.description }))
+      .map((c) => ({
+        kind: 'command',
+        id: `command:${c.name}`,
+        name: c.name,
+        label: c.name,
+        description: c.description,
+      }))
     return [...skillItems, ...commandItems]
   }, [slashState, library, isEnabled, agentCommands])
 
@@ -174,9 +196,15 @@ export const useSlashCommand = ({
     [slashState, value, setValue, inputRef],
   )
 
-  const selectItem = useCallback((item: SlashItem) => insertToken(item.name), [insertToken])
+  // Skills insert their display title (`/Daily Brief`) — the user never sees
+  // the slug in chat; send-time normalization maps it back for the model.
+  // Agent commands insert their literal name, which IS what the agent expects.
+  const selectItem = useCallback(
+    (item: SlashItem) => insertToken(item.kind === 'skill' ? item.label : item.name),
+    [insertToken],
+  )
   /** Insert a skill's slash token. Convenience for the skill path (and tests). */
-  const selectSkill = useCallback((skill: Skill) => insertToken(skill.name), [insertToken])
+  const selectSkill = useCallback((skill: Skill) => insertToken(skillDisplayName(skill)), [insertToken])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {

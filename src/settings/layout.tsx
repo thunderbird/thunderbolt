@@ -9,23 +9,31 @@ import { Suspense } from 'react'
 import { Outlet } from 'react-router'
 
 const SettingsLayout = () => {
-  // Universal header: settings shows the same bar as chat so the theme and
-  // sync controls stay in the top-right everywhere (on mobile it also carries
-  // the sidebar burger).
+  // Universal header: settings shows the same floating bar as chat (on mobile
+  // it also carries the sidebar burger). The header overlays the content and a
+  // top scrim keeps its controls legible while pages scroll beneath it; the
+  // scroll container pads by --header-inset so content starts below the bar
+  // at rest but clips at the viewport top once scrolled.
   return (
     <>
       <SidebarInset className="h-full overflow-hidden flex flex-col">
         <div
-          className="flex flex-col h-full"
+          className="relative flex flex-col h-full"
           style={{
-            paddingTop: 'var(--safe-area-top-padding)',
             paddingBottom: 'var(--kb, 0px)',
           }}
         >
-          <Header />
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-background via-background/60 to-transparent"
+            style={{ height: 'calc(var(--header-inset) + 1.75rem)' }}
+          />
+          <div className="absolute inset-x-0 top-0 z-30" style={{ paddingTop: 'var(--safe-area-top-padding)' }}>
+            <Header />
+          </div>
           <div
             className="flex-1 overflow-auto"
             style={{
+              paddingTop: 'var(--header-inset)',
               paddingBottom: 'var(--safe-area-bottom-padding)',
             }}
           >

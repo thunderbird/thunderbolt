@@ -26,6 +26,7 @@ export const SkillDetail = ({
   onDelete,
   onClose,
 }: {
+  /** Display name (the human label). */
   name: string
   description: string
   instruction: string
@@ -40,7 +41,7 @@ export const SkillDetail = ({
       {/* Mobile keeps the list's title-row height (shared page chrome); the
           desktop card gets a taller header so the title has room to breathe. */}
       <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-4 md:h-16">
-        <h2 className="min-w-0 truncate text-xl leading-tight text-foreground">/{name}</h2>
+        <h2 className="min-w-0 truncate text-xl leading-tight text-foreground">{name}</h2>
         {/* Desktop: pin the actions to the card's top-right corner, 8px from
             both edges (right: 24px padding − 16px), independent of the taller
             header so the X stays equidistant from top and right. */}

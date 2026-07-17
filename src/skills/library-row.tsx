@@ -8,6 +8,7 @@ import { SquarePen, Trash2 } from 'lucide-react'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Switch } from '@/components/ui/switch'
 import type { Skill } from '@/types'
+import { skillDisplayName } from './display'
 
 /**
  * Shared spring transition for the row's own layout shift AND for the
@@ -65,7 +66,7 @@ export const LibraryRow = ({
               enabled ? 'text-foreground' : 'text-muted-foreground/60'
             } ${isActive ? 'bg-accent' : 'hover:bg-accent'}`}
           >
-            <span className="min-w-0 flex-1 truncate leading-none">/{skill.name}</span>
+            <span className="min-w-0 flex-1 truncate leading-none">{skillDisplayName(skill)}</span>
             {/* `inline-flex items-center` keeps the Switch optically centered
                 with the name's text baseline. stopPropagation so toggling
                 doesn't also open the detail panel. */}

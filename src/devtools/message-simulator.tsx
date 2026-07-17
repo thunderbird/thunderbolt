@@ -307,7 +307,7 @@ const SimulatorContent = () => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto pt-[var(--header-inset)]">
         <div className="flex flex-col gap-6 p-6 w-full">
           <div>
             <h1 className="text-3xl font-bold">Message Simulator</h1>

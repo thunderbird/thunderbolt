@@ -9,9 +9,10 @@ import { createRef, type KeyboardEvent } from 'react'
 import type { Skill } from '@/types'
 import { getSlashState, useSlashCommand } from './use-slash-command'
 
-const fakeSkill = (name: string): Skill => ({
+const fakeSkill = (name: string, label: string | null = null): Skill => ({
   id: name,
   name,
+  label,
   description: '',
   instruction: `instruction for ${name}`,
   enabled: 1,
@@ -39,19 +40,29 @@ describe('getSlashState', () => {
   })
 
   it('detects a slash token at the start of the input', () => {
-    expect(getSlashState('/meet', 5)).toEqual({ tokenStart: 0, query: 'meet' })
+    expect(getSlashState('/meet', 5)).toEqual({ tokenStart: 0, query: 'meet', trigger: '/' })
   })
 
   it('detects a slash token after a space', () => {
-    expect(getSlashState('hello /meet', 11)).toEqual({ tokenStart: 6, query: 'meet' })
+    expect(getSlashState('hello /meet', 11)).toEqual({ tokenStart: 6, query: 'meet', trigger: '/' })
   })
 
   it('detects a slash token after a newline', () => {
-    expect(getSlashState('line one\n/meet', 14)).toEqual({ tokenStart: 9, query: 'meet' })
+    expect(getSlashState('line one\n/meet', 14)).toEqual({ tokenStart: 9, query: 'meet', trigger: '/' })
   })
 
   it('treats a lone slash with no query as a token (empty query opens the full popup)', () => {
-    expect(getSlashState('hello /', 7)).toEqual({ tokenStart: 6, query: '' })
+    expect(getSlashState('hello /', 7)).toEqual({ tokenStart: 6, query: '', trigger: '/' })
+  })
+
+  it('detects an @ token as an alternative trigger', () => {
+    expect(getSlashState('hello @mee', 10)).toEqual({ tokenStart: 6, query: 'mee', trigger: '@' })
+    expect(getSlashState('@', 1)).toEqual({ tokenStart: 0, query: '', trigger: '@' })
+  })
+
+  it('does not treat a mid-word @ (email address) as a trigger', () => {
+    // The token starts at "foo…", not at the @ — so no trigger.
+    expect(getSlashState('mail foo@bar.com', 16)).toBeNull()
   })
 
   it('returns null when the would-be token does not start with /', () => {
@@ -68,7 +79,7 @@ describe('getSlashState', () => {
     // value = "hi /meet later"; caret at index 7 (just after "mee"), so the
     // in-progress query is "mee" — the trailing "t later" is not yet typed
     // from the autocomplete state machine's perspective.
-    expect(getSlashState('hi /meet later', 7)).toEqual({ tokenStart: 3, query: 'mee' })
+    expect(getSlashState('hi /meet later', 7)).toEqual({ tokenStart: 3, query: 'mee', trigger: '/' })
   })
 })
 
@@ -101,8 +112,9 @@ describe('useSlashCommand handleKeyDown', () => {
     const event = keyEvent('Tab')
     act(() => hook.result.current.handleKeyDown(event))
     expect(event.preventDefault).toHaveBeenCalled()
-    // setValue was called with the canonical token + trailing space.
-    expect(getValue()).toBe('/alpha ')
+    // setValue was called with the display-title token + trailing space
+    // (send-time normalization maps it back to the slug).
+    expect(getValue()).toBe('/Alpha ')
   })
 
   it('Enter accepts (regression — Tab path must not break Enter)', () => {
@@ -110,7 +122,7 @@ describe('useSlashCommand handleKeyDown', () => {
     const event = keyEvent('Enter')
     act(() => hook.result.current.handleKeyDown(event))
     expect(event.preventDefault).toHaveBeenCalled()
-    expect(getValue()).toBe('/alpha ')
+    expect(getValue()).toBe('/Alpha ')
   })
 
   it('does nothing on non-accept keys', () => {
@@ -148,13 +160,13 @@ describe('useSlashCommand selectSkill', () => {
     // caret right after "/al"; text after the token starts with " world".
     const { hook, getValue } = setup('/al world', 3)
     act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
-    expect(getValue()).toBe('/alpha world')
+    expect(getValue()).toBe('/Alpha world')
   })
 
   it('inserts a trailing space when there is no whitespace after the token', () => {
     const { hook, getValue } = setup('/al', 3)
     act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
-    expect(getValue()).toBe('/alpha ')
+    expect(getValue()).toBe('/Alpha ')
   })
 
   it('does not leave the popup open at the stale cursor after selection', () => {
@@ -165,6 +177,45 @@ describe('useSlashCommand selectSkill', () => {
     expect(hook.result.current.popupOpen).toBe(true)
     act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
     expect(hook.result.current.popupOpen).toBe(false)
+  })
+
+  it('selecting from an @-trigger inserts a /-prefixed display token', () => {
+    const { hook, getValue } = setup('@al', 3)
+    expect(hook.result.current.popupOpen).toBe(true)
+    act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
+    expect(getValue()).toBe('/Alpha ')
+  })
+})
+
+describe('useSlashCommand label search', () => {
+  const inputRef = createRef<HTMLTextAreaElement>()
+
+  const setup = (initial: string, caret: number) => {
+    let value = initial
+    const setValue = (v: string) => {
+      value = v
+    }
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value,
+        setValue,
+        inputRef,
+        library: [fakeSkill('daily-brief', 'Daily Brief'), fakeSkill('unrelated', 'Something Else')],
+        isEnabled: () => true,
+      }),
+    )
+    act(() => hook.result.current.setCursorPos(caret))
+    return { hook, getValue: () => value }
+  }
+
+  it('matches a substring of the display name, not just the slug prefix', () => {
+    const { hook } = setup('/brief', 6)
+    expect(hook.result.current.popupItems.map((i) => i.name)).toEqual(['daily-brief'])
+  })
+
+  it('exposes the display name as the item label', () => {
+    const { hook } = setup('/daily', 6)
+    expect(hook.result.current.popupItems[0]?.label).toBe('Daily Brief')
   })
 })
 

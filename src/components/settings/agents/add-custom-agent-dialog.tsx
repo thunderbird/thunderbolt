@@ -20,7 +20,6 @@ import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
 import { isIrohTarget } from '@/lib/iroh-target'
-import type { Agent } from '@/types/acp'
 import type { CustomAgentTransport } from '@/dal/agents'
 
 /** Maps a user-entered endpoint to the ACP transport flavor we support, or `null`
@@ -82,11 +81,6 @@ type AddCustomAgentDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSubmit: (payload: AddCustomAgentPayload) => Promise<void> | void
-  /** When provided, the dialog renders in edit mode: title and submit label
-   *  switch, and initial state is seeded from this agent. Pass `null`/omit for
-   *  the create flow. The parent should also vary the dialog's React `key` on
-   *  the agent id so switching between agents resets the reducer cleanly. */
-  editingAgent?: Agent | null
   /** Test/DI override for the iOS guard. Production callers omit this. */
   isIos?: () => boolean
   /** Test/DI override for the connection probe. Production callers omit this. */
@@ -128,19 +122,6 @@ const emptyState: AgentDialogState = {
   connectionError: null,
 }
 
-/** Builds the initial reducer state. With an agent, the form is seeded with its
- *  current values (a connection test is still required before save). Without,
- *  the form starts blank for the create flow. */
-const buildInitialState = (agent: Agent | null): AgentDialogState =>
-  agent
-    ? {
-        ...emptyState,
-        name: agent.name,
-        url: agent.url ?? '',
-        description: agent.description ?? '',
-      }
-    : emptyState
-
 const agentDialogReducer = (state: AgentDialogState, action: AgentDialogAction): AgentDialogState => {
   switch (action.type) {
     case 'SET_NAME':
@@ -172,16 +153,11 @@ export const AddCustomAgentDialog = ({
   open,
   onOpenChange,
   onSubmit,
-  editingAgent,
   isIos,
   testAcpConnection = defaultTestAcpConnection,
   loadAppNodeId = irohClientNodeId,
 }: AddCustomAgentDialogProps) => {
-  const isEditing = !!editingAgent
-  // Lazy init seeds the form from the agent on first mount. The parent varies
-  // the React `key` on agent id to remount when switching between editing
-  // targets, so this initializer fires fresh each time.
-  const [state, dispatch] = useReducer(agentDialogReducer, editingAgent ?? null, buildInitialState)
+  const [state, dispatch] = useReducer(agentDialogReducer, emptyState)
 
   const trimmedName = state.name.trim()
   const trimmedUrl = state.url.trim()
@@ -209,9 +185,8 @@ export const AddCustomAgentDialog = ({
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
-      // On close, reset back to the seeded state (empty for create, the agent's
-      // values for edit) so a reopen without remount lands in a predictable shape.
-      dispatch({ type: 'RESET', next: buildInitialState(editingAgent ?? null) })
+      // On close, reset so a reopen without remount lands in a predictable shape.
+      dispatch({ type: 'RESET', next: emptyState })
     }
     onOpenChange(next)
   }
@@ -241,7 +216,7 @@ export const AddCustomAgentDialog = ({
       transport: validation.transport,
     })
     dispatch({ type: 'END_SUBMIT' })
-    dispatch({ type: 'RESET', next: buildInitialState(editingAgent ?? null) })
+    dispatch({ type: 'RESET', next: emptyState })
     onOpenChange(false)
   }
 
@@ -249,11 +224,9 @@ export const AddCustomAgentDialog = ({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <ResponsiveModalContentComposable className="sm:max-w-[500px]">
         <ResponsiveModalHeader>
-          <ResponsiveModalTitle>{isEditing ? 'Edit Custom Agent' : 'Add Custom Agent'}</ResponsiveModalTitle>
+          <ResponsiveModalTitle>Add Custom Agent</ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            {isEditing
-              ? 'Update the connection details for this remote agent.'
-              : 'Connect a remote agent that speaks the Agent Client Protocol.'}
+            Connect a remote agent that speaks the Agent Client Protocol.
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
         <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
@@ -348,7 +321,7 @@ export const AddCustomAgentDialog = ({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
-            {isEditing ? 'Save Changes' : 'Add Agent'}
+            Add Agent
           </Button>
         </div>
       </ResponsiveModalContentComposable>

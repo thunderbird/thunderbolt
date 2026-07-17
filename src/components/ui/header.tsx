@@ -10,7 +10,7 @@ import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
-import { Menu, MessageCirclePlus, PanelLeft } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Menu, MessageCirclePlus, PanelLeft } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
@@ -19,8 +19,6 @@ import { useNavigate, useLocation } from 'react-router'
 import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
-import { PowerSyncStatus } from '@/components/powersync-status'
-import { ThemeToggle } from '@/components/theme-toggle'
 
 /** Subscribes to the active chat instance's status to disable the agent
  *  selector while a reply is streaming. Pulled into its own component so
@@ -53,6 +51,38 @@ const HeaderAgentSelector = ({
       onAddAgent={onAddAgent}
       disabled={disabled}
     />
+  )
+}
+
+/**
+ * Back/forward history arrows for the Tauri desktop app, where there's no
+ * browser chrome to navigate with. Web is skipped (the browser has its own
+ * buttons) and so are mobile-width layouts (no room in the 3-column header).
+ * Enabled state derives from react-router's history index (`history.state.idx`),
+ * re-read on every location change.
+ */
+const HistoryNavButtons = () => {
+  const navigate = useNavigate()
+  // Subscribe to location so the enabled states recompute after navigation.
+  useLocation()
+
+  const index = (window.history.state as { idx?: number } | null)?.idx ?? 0
+  const canGoBack = index > 0
+  const canGoForward = index < window.history.length - 1
+
+  const buttonClass = 'size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground'
+
+  return (
+    <div className="flex items-center">
+      <Button variant="ghost" size="icon" className={buttonClass} disabled={!canGoBack} onClick={() => navigate(-1)}>
+        <ArrowLeft className="size-[var(--icon-size-default)]" />
+        <span className="sr-only">Go back</span>
+      </Button>
+      <Button variant="ghost" size="icon" className={buttonClass} disabled={!canGoForward} onClick={() => navigate(1)}>
+        <ArrowRight className="size-[var(--icon-size-default)]" />
+        <span className="sr-only">Go forward</span>
+      </Button>
+    </div>
   )
 }
 
@@ -178,7 +208,10 @@ export const Header = () => {
     )
   }
 
-  // Desktop: Agent selector left-aligned, PowerSync status right.
+  // Desktop: history arrows (Tauri app only) + optional expand toggle on the
+  // left, agent selector centered. Theme and sync/account controls live in
+  // the sidebar footer, so the right side stays empty (it remains a drag
+  // surface on the Tauri desktop app).
   // On the Tauri desktop app the expand toggle lives here while the sidebar is
   // collapsed to a rail — just right of the macOS traffic lights, the same
   // spot the collapse toggle occupies in the expanded sidebar's strip. On web
@@ -188,7 +221,7 @@ export const Header = () => {
   return (
     <header
       {...dragProps}
-      className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
+      className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
       <div {...dragProps} className={cn('flex items-center gap-2', needsTrafficLightClearance && 'ml-8')}>
         {showSidebarToggle && (
@@ -202,11 +235,17 @@ export const Header = () => {
             <span className="sr-only">Expand Sidebar</span>
           </Button>
         )}
-        {agentSelector}
+        {isTauriDesktop() && <HistoryNavButtons />}
       </div>
-      <div {...dragProps} className="flex items-center gap-1">
-        <ThemeToggle />
-        <PowerSyncStatus />
+
+      {/* Absolutely centered (same rationale as the mobile branch): the
+          traffic-light clearance on the left column would skew a flex-based
+          center. */}
+      <div
+        {...dragProps}
+        className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2"
+      >
+        {agentSelector}
       </div>
     </header>
   )

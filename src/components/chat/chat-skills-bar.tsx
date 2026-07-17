@@ -8,11 +8,13 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+import { skillDisplayName } from '@/skills/display'
 import { ReorderPanel } from '@/skills/reorder-panel'
 import { chipSurfaceClass, SuggestionChip } from '@/skills/suggestion-chip'
 import { useSkillTelemetry } from '@/skills/telemetry'
@@ -66,6 +68,7 @@ export const ChatSkillsBar = ({
 
   const [reorderMode, setReorderMode] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
+  const [addQuery, setAddQuery] = useState('')
 
   if (hidden) {
     return null
@@ -99,6 +102,11 @@ export const ChatSkillsBar = ({
   // pin candidates, never a dual "pin / unpin" surface — unpin lives on the
   // chip's own dropdown.
   const pinnable = library.filter((s) => isEnabled(s.id) && !pinnedSet.has(s.id))
+  const query = addQuery.trim().toLowerCase()
+  const pinnableFiltered =
+    query === ''
+      ? pinnable
+      : pinnable.filter((s) => s.name.toLowerCase().includes(query) || (s.label ?? '').toLowerCase().includes(query))
   const pinCapReached = pinnedSet.size >= maxPinnedSkills
   // While the bar renders, the trigger stays clickable even with nothing left
   // to pin — the popover still offers "New skill". Only the pin cap blocks it:
@@ -138,7 +146,7 @@ export const ChatSkillsBar = ({
         {pinned.map((skill) => (
           <SuggestionChip
             key={skill.id}
-            label={skill.name}
+            label={skillDisplayName(skill)}
             onClick={() => onAddToChat(skill.name)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onReorder={() => setReorderMode(true)}
@@ -154,7 +162,15 @@ export const ChatSkillsBar = ({
             }}
           />
         ))}
-        <Popover open={addOpen} onOpenChange={setAddOpen}>
+        <Popover
+          open={addOpen}
+          onOpenChange={(open) => {
+            setAddOpen(open)
+            if (!open) {
+              setAddQuery('')
+            }
+          }}
+        >
           {/* Tooltip only in the disabled pin-cap state — it explains why the
               button doesn't work. The enabled `+` needs no hover copy. */}
           {pinCapReached ? (
@@ -181,13 +197,32 @@ export const ChatSkillsBar = ({
             collisionPadding={12}
             className={isMobile ? 'w-[calc(100vw-1.5rem)] p-1' : 'w-72 max-w-[calc(100vw-1.5rem)] p-1'}
           >
+            {/* Search only appears once the list is long enough for scanning
+                to hurt — a filter box above three rows is just noise. */}
+            {pinnable.length > 5 && (
+              <div className="p-1 pb-2">
+                <Input
+                  value={addQuery}
+                  onChange={(e) => setAddQuery(e.target.value)}
+                  inputSize="sm"
+                  placeholder="Search skills"
+                  aria-label="Search skills"
+                  autoFocus={!isMobile}
+                />
+              </div>
+            )}
             <ul className="max-h-64 overflow-y-auto">
               {pinnable.length === 0 && (
                 <li className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
                   All skills are pinned
                 </li>
               )}
-              {pinnable.map((skill) => (
+              {pinnable.length > 0 && pinnableFiltered.length === 0 && (
+                <li className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+                  No matching skills
+                </li>
+              )}
+              {pinnableFiltered.map((skill) => (
                 <li key={skill.id}>
                   <button
                     type="button"
@@ -210,7 +245,9 @@ export const ChatSkillsBar = ({
                     // popover.
                     className="flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent"
                   >
-                    <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{skill.name}</span>
+                    <span className="truncate text-[length:var(--font-size-body)] text-foreground">
+                      {skillDisplayName(skill)}
+                    </span>
                     {skill.description && (
                       <span className="line-clamp-1 text-[length:var(--font-size-sm)] text-muted-foreground">
                         {skill.description}

@@ -70,8 +70,9 @@ export const categorizeModels = (
   models: Model[],
   chatThread: ModelSelectorProps['chatThread'],
 ): SearchableMenuGroup<ModelItemData>[] => {
-  const provided: SearchableMenuItem<ModelItemData>[] = []
-  const custom: SearchableMenuItem<ModelItemData>[] = []
+  // Custom and built-in models share one group — the selector only splits by
+  // confidentiality (available vs the greyed-out opposite-mode section below).
+  const available: SearchableMenuItem<ModelItemData>[] = []
   const disabledConfidential: SearchableMenuItem<ModelItemData>[] = []
   const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
 
@@ -86,20 +87,15 @@ export const categorizeModels = (
       } else {
         disabledStandard.push(item)
       }
-    } else if (model.isSystem) {
-      provided.push(item)
     } else {
-      custom.push(item)
+      available.push(item)
     }
   }
 
   const groups: SearchableMenuGroup<ModelItemData>[] = []
 
-  if (provided.length > 0) {
-    groups.push({ id: 'provided', items: provided })
-  }
-  if (custom.length > 0) {
-    groups.push({ id: 'custom', label: 'Custom Models', items: custom })
+  if (available.length > 0) {
+    groups.push({ id: 'available', items: available })
   }
   // A chat is locked to its confidentiality mode, so the opposite-mode models
   // are shown greyed out with a header explaining why. Only one of these

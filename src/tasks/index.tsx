@@ -468,7 +468,8 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-1 overflow-y-auto">
+      {/* pt clears the floating header; scrolled rows pass beneath it. */}
+      <div className="flex-1 overflow-y-auto pt-[var(--header-inset)]">
         <div className="flex flex-col gap-6 px-8 py-4 md:px-12 w-full max-w-[1200px] mx-auto">
           <PageSearch onSearch={handleSearch}>
             <PageHeader title="Tasks">

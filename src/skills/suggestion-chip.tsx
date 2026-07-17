@@ -34,7 +34,8 @@ export const SuggestionChip = ({
   onReorder,
   onUnpin,
 }: {
-  /** Display label — the bare slug; the leading `/` is added at render time. */
+  /** Human display name of the pinned skill (no slash — chips read as names,
+   *  the `/slug` form lives in the composer's token badges). */
   label: string
   onClick: () => void
   onAddInstruction: () => void
@@ -124,9 +125,9 @@ export const SuggestionChip = ({
             chipSurfaceClass,
             'h-[var(--touch-height-sm)] select-none px-3 text-sm font-normal [-webkit-touch-callout:none]',
           )}
-          aria-label={`Pinned skill /${label}`}
+          aria-label={`Pinned skill ${label}`}
         >
-          /{label}
+          {label}
         </Button>
       </DropdownMenuTrigger>
       {/*

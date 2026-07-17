@@ -42,7 +42,9 @@ export const SignInEmailStep = ({
   const isLoading = status === 'sending'
 
   return (
-    <form onSubmit={onSubmit} className="flex h-full w-full flex-1 flex-col">
+    // Page variant fills the viewport so the feature cards can center between
+    // title and controls; modal variant hugs content for outer centering.
+    <form onSubmit={onSubmit} className={variant === 'page' ? 'flex h-full w-full flex-1 flex-col' : 'w-full'}>
       {/* Title — page variant only (modal has its own header) */}
       {variant === 'page' && (
         <div className="text-center">

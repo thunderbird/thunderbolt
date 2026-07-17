@@ -14,6 +14,7 @@ import {
 const skill = (id: string, name: string): Skill => ({
   id,
   name,
+  label: null,
   description: 'd',
   instruction: 'i',
   enabled: 1,

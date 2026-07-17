@@ -64,7 +64,6 @@ export default function ChatUI() {
         <AnimatePresence mode="wait">
           {hasMessages ? (
             <div key="messages" className="relative flex-1 min-h-0">
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b from-background via-background/50 to-transparent" />
               <m.div
                 ref={scrollContainerRef}
                 {...scrollHandlers}
@@ -73,8 +72,10 @@ export default function ChatUI() {
                 exit={{ opacity: 0 }}
                 className="h-full overflow-y-auto hide-scrollbar"
               >
-                {/* Scroll captures the full width; the content stays centered. */}
-                <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-4 pb-0 md:px-4">
+                {/* Scroll captures the full width; the content stays centered.
+                    Top padding clears the floating header (the layout's scrim
+                    keeps scrolled messages legible behind it). */}
+                <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-[calc(var(--header-inset)+1rem)] pb-0 md:px-4">
                   <ChatMessages />
                   <div ref={scrollTargetRef} className="shrink-0 !mt-0 h-2 md:h-3" />
                 </div>

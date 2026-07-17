@@ -75,13 +75,34 @@ describe('SidebarFooter', () => {
   })
 
   describe('real authenticated users', () => {
-    it('shows the user email and not the Sign In affordance', () => {
+    it('shows the account pill with the display name and not the Sign In affordance', () => {
       const authClient = createMockAuthClient({
         session: { user: { id: 'real-1', email: 'user@example.com', name: 'Real User', isAnonymous: false } },
       })
       renderWithProviders(authClient)
-      expect(screen.getByText('user@example.com')).toBeInTheDocument()
+      expect(screen.getByText('Real User')).toBeInTheDocument()
       expect(screen.queryByText('Sign In')).toBeNull()
+    })
+
+    it('falls back to the email when the account has no display name', () => {
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'real-2', email: 'noname@example.com', isAnonymous: false } },
+      })
+      renderWithProviders(authClient)
+      expect(screen.getByText('noname@example.com')).toBeInTheDocument()
+    })
+
+    it('collapses to an icon-only perfect circle when the display label is blank', () => {
+      // OTP sign-ups get name '' (not null); the old pill kept its horizontal
+      // padding and rendered a 48×32 oval around the cloud icon. Blank labels
+      // must produce the square rounded-full control that matches ThemeToggle.
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'real-3', email: '', name: '', isAnonymous: false } },
+      })
+      renderWithProviders(authClient)
+      const button = screen.getByRole('button', { name: 'Account menu' })
+      expect(button.className).toContain('size-[var(--touch-height-sm)]')
+      expect(button.querySelector('span')).toBeNull()
     })
   })
 

@@ -71,7 +71,9 @@ export const SlashPopup = ({
               }`}
             >
               <span className="flex items-center gap-1.5">
-                <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{item.name}</span>
+                <span className="truncate text-[length:var(--font-size-body)] text-foreground">
+                  {item.kind === 'command' ? `/${item.name}` : item.label}
+                </span>
                 {item.kind === 'command' && (
                   <span className="max-w-[10rem] shrink-0 truncate rounded-sm border border-border px-1 py-px text-[length:var(--font-size-xs)] text-muted-foreground">
                     {agentName}

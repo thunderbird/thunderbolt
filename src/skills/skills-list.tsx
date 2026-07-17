@@ -42,7 +42,10 @@ export const SkillsList = ({
 
   const { enabledRows, disabledRows } = useMemo(() => {
     const query = search.trim().toLowerCase()
-    const filtered = query === '' ? skills : skills.filter((s) => s.name.toLowerCase().includes(query))
+    const filtered =
+      query === ''
+        ? skills
+        : skills.filter((s) => s.name.toLowerCase().includes(query) || (s.label ?? '').toLowerCase().includes(query))
     const enabled: Skill[] = []
     const disabled: Skill[] = []
     for (const s of filtered) {

@@ -60,19 +60,26 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
         onOpenChange(open)
       }}
     >
-      <ResponsiveModalHeader className={step === 'email' ? 'text-center' : ''}>
-        {step === 'otp' && <BackButton onClick={handleGoBack} className="absolute left-4 top-4" />}
-        <ResponsiveModalTitle className={step === 'email' ? 'text-2xl font-semibold' : 'sr-only'}>
-          {step === 'email' ? 'Sign In' : 'Enter your code'}
-        </ResponsiveModalTitle>
-        {/* sr-only: Radix dialogs want a description for a11y, but the title
-            says everything the sighted user needs. */}
-        {step === 'email' && (
-          <ResponsiveModalDescription className="sr-only">Sign in to Thunderbolt</ResponsiveModalDescription>
-        )}
-      </ResponsiveModalHeader>
+      {/* The back button stays pinned to the modal's top-left corner,
+          outside the centered block. */}
+      {step === 'otp' && <BackButton onClick={handleGoBack} className="absolute left-4 top-4" />}
 
-      <ResponsiveModalContent centered={step === 'otp'} className="flex flex-col gap-4">
+      {/* Header lives INSIDE the centered content block so the title and the
+          form center together as one group on mobile's full-screen modal,
+          instead of the title pinning to the top with the form floating
+          separately below it. Desktop is content-height (md:min-h-0), so
+          centering is a no-op there. */}
+      <ResponsiveModalContent centered className="flex flex-col gap-4">
+        <ResponsiveModalHeader className={step === 'email' ? 'text-center' : ''}>
+          <ResponsiveModalTitle className={step === 'email' ? 'text-2xl font-semibold' : 'sr-only'}>
+            {step === 'email' ? 'Sign In' : 'Enter your code'}
+          </ResponsiveModalTitle>
+          {/* sr-only: Radix dialogs want a description for a11y, but the title
+              says everything the sighted user needs. */}
+          {step === 'email' && (
+            <ResponsiveModalDescription className="sr-only">Sign in to Thunderbolt</ResponsiveModalDescription>
+          )}
+        </ResponsiveModalHeader>
         <SignInForm
           variant="modal"
           onSuccess={handleSuccess}

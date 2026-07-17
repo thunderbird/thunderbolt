@@ -14,8 +14,8 @@ import { cn } from '@/lib/utils'
  * left — so the dot's size and its 2px gap to the border are identical for OFF,
  * ON, and DISABLED. Only COLOR changes between states:
  *  - OFF      → `bg-input` track with a `border-border` outline.
- *  - ON       → a solid `success` green track with a light thumb (the iOS
- *               convention), matching the green "connected" sync icon — reads
+ *  - ON       → the brand magenta→gold gradient track with a light thumb
+ *               (the iOS convention), echoing the logo's colors — reads
  *               unambiguously as "on" in both light and dark mode.
  *  - DISABLED → dimmed, keeps the outline.
  */
@@ -38,8 +38,13 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
         'peer inline-flex h-[var(--switch-track-height)] w-[var(--switch-track-width)] shrink-0 cursor-pointer items-center rounded-full border p-[2px] shadow-xs transition-colors outline-none',
         // OFF (default): filled track + visible outline.
         'border-border bg-input dark:bg-input/80',
-        // ON — solid success-green track in both modes; the thumb stays light below.
-        'data-[state=checked]:border-success data-[state=checked]:bg-success',
+        // ON — brand gradient track in both modes; the thumb stays light below.
+        // bg-brand doubles as the fallback color under the gradient image.
+        // bg-origin-border makes the gradient span the border-box — without it
+        // the image starts inside the (transparent) 1px border and a ring of
+        // the fallback color shows at the track edges.
+        'data-[state=checked]:border-transparent data-[state=checked]:bg-brand data-[state=checked]:bg-origin-border',
+        'data-[state=checked]:[background-image:var(--gradient-brand)]',
         // Focus + disabled (disabled keeps its outline).
         'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
         'disabled:cursor-not-allowed disabled:border-border disabled:opacity-50',

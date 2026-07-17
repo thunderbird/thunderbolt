@@ -20,6 +20,7 @@ import {
   setPinned,
   SkillNameInvalidError,
   SkillNameTakenError,
+  slugifySkillName,
   softDeleteSkill,
   updateSkill,
   validateSkillName,
@@ -38,9 +39,10 @@ beforeEach(async () => {
   await resetTestDatabase()
 })
 
-const seed = async (input: { name: string; description?: string; instruction?: string }) =>
+const seed = async (input: { name: string; label?: string; description?: string; instruction?: string }) =>
   createSkill(getDb(), {
     name: input.name,
+    label: input.label ?? `Label for ${input.name}`,
     description: input.description ?? `desc for ${input.name}`,
     instruction: input.instruction ?? `instruction for ${input.name}`,
   })
@@ -82,6 +84,49 @@ describe('validateSkillName (AgentSkills spec)', () => {
   it('rejects consecutive hyphens', () => {
     expect(validateSkillName('meeting--notes')).toMatch(/consecutive hyphens/i)
     expect(validateSkillName('a--b')).toMatch(/consecutive hyphens/i)
+  })
+})
+
+describe('slugifySkillName', () => {
+  it('lowercases letters and hyphenates spaces', () => {
+    expect(slugifySkillName('Daily Brief')).toBe('daily-brief')
+  })
+
+  it('collapses runs of non-alphanumeric chars into single hyphens', () => {
+    expect(slugifySkillName('Daily   Brief')).toBe('daily-brief')
+    expect(slugifySkillName('Daily / Brief')).toBe('daily-brief')
+    expect(slugifySkillName("It's a brief — daily!")).toBe('it-s-a-brief-daily')
+  })
+
+  it('strips leading and trailing hyphens', () => {
+    expect(slugifySkillName('  daily-brief  ')).toBe('daily-brief')
+    expect(slugifySkillName('!daily-brief?')).toBe('daily-brief')
+  })
+
+  it('preserves single hyphens already present', () => {
+    expect(slugifySkillName('weekly-review')).toBe('weekly-review')
+  })
+
+  it('truncates to 64 chars without leaving a trailing hyphen', () => {
+    expect(slugifySkillName('a'.repeat(70))).toBe('a'.repeat(64))
+    expect(slugifySkillName(`${'a'.repeat(63)} b`)).toBe('a'.repeat(63))
+  })
+
+  it('handles unicode by replacing non-ascii letters with hyphens', () => {
+    expect(slugifySkillName('café résumé')).toBe('caf-r-sum')
+  })
+
+  it('returns an empty string when nothing is slugifiable', () => {
+    expect(slugifySkillName('')).toBe('')
+    expect(slugifySkillName('   ')).toBe('')
+    expect(slugifySkillName('!!!')).toBe('')
+    expect(slugifySkillName('---')).toBe('')
+  })
+
+  it('always produces a spec-valid slug for non-empty results', () => {
+    for (const input of ['Daily Brief', '  !!Weekly -- Review!!  ', 'café', 'a'.repeat(100)]) {
+      expect(validateSkillName(slugifySkillName(input))).toBeNull()
+    }
   })
 })
 
@@ -157,6 +202,7 @@ describe('skills DAL', () => {
       const tomb = await getDb().select().from(skillsTable).where(eq(skillsTable.id, skill.id)).get()
       expect(tomb?.deletedAt).toBeTruthy()
       expect(tomb?.name).toBeNull()
+      expect(tomb?.label).toBeNull()
       expect(tomb?.description).toBeNull()
       expect(tomb?.instruction).toBeNull()
     })

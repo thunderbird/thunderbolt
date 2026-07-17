@@ -494,31 +494,6 @@ export default function PreferencesSettingsPage() {
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Preferences" />
 
-      <SectionCard title="User Experience">
-        <div className="flex flex-col gap-6">
-          <div className="flex-row flex items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={hapticsEnabled !== initialLocalSettings.hapticsEnabled}
-                onReset={() => setLocalSetting('hapticsEnabled', initialLocalSettings.hapticsEnabled)}
-              >
-                Haptic Feedback
-              </ModificationIndicator>
-              <p className="text-sm text-muted-foreground">Vibrate on tap</p>
-            </div>
-            <Switch
-              checked={hapticsEnabled}
-              onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)}
-              aria-label="Haptic Feedback"
-            />
-          </div>
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
       <SectionCard title="Personalization">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
@@ -741,6 +716,31 @@ export default function PreferencesSettingsPage() {
               contentClassName="w-[300px]"
               align="end"
               disabled={unitsOptionsLoading}
+            />
+          </div>
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="User Experience">
+        <div className="flex flex-col gap-6">
+          <div className="flex-row flex items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={hapticsEnabled !== initialLocalSettings.hapticsEnabled}
+                onReset={() => setLocalSetting('hapticsEnabled', initialLocalSettings.hapticsEnabled)}
+              >
+                Haptic Feedback
+              </ModificationIndicator>
+              <p className="text-sm text-muted-foreground">Vibrate on tap</p>
+            </div>
+            <Switch
+              checked={hapticsEnabled}
+              onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)}
+              aria-label="Haptic Feedback"
             />
           </div>
         </div>

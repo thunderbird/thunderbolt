@@ -20,6 +20,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { needsApiKey } from '@/components/ui/model-selector/model-selector'
 import { Dialog, DialogTrigger } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
@@ -46,7 +47,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { http } from '@/lib/http'
-import { AlertTriangle, Check, Cpu, Loader2, Lock, Pen, Plus, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, Cpu, Loader2, Lock, MoreVertical, Plus, SquarePen, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -469,12 +470,8 @@ const EditModelModal = ({
   </Dialog>
 )
 
-/** Tooltip copy for model row edit/remove actions. Exported for unit tests. */
-export const modelEditTooltip = (isSystemModel: boolean): string =>
-  isSystemModel ? "Built-in models can't be edited" : 'Edit model'
-
-export const modelRemoveTooltip = (isSystemModel: boolean): string =>
-  isSystemModel ? "Built-in models can't be removed" : 'Remove model'
+/** Copy shown in the actions menu for built-in models. Exported for unit tests. */
+export const systemModelMenuMessage = "Built-in models can't be edited or removed"
 
 export default function ModelsPage() {
   const db = useDatabase()
@@ -1182,7 +1179,7 @@ export default function ModelsPage() {
             <Card key={model.id} className="border border-border">
               <CardHeader className="py-0">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="flex items-center gap-6 min-w-0 flex-1">
                     <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0">
                       {getModelInitial(model)}
                     </div>
@@ -1227,56 +1224,50 @@ export default function ModelsPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="More"
+                          className="size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground [&_svg:not([class*='size-'])]:size-5"
+                        >
+                          <MoreVertical />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-56">
+                        {isSystemModel ? (
+                          <div className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+                            {systemModelMenuMessage}
+                          </div>
+                        ) : (
+                          <>
+                            <DropdownMenuItem onClick={() => setEditingModel(model)} className="cursor-pointer">
+                              <SquarePen />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
+                              className="cursor-pointer"
+                            >
+                              <Trash2 />
+                              Delete
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <Switch
                       checked={isEnabled}
                       onCheckedChange={(checked) => toggleModelMutation.mutate({ id: model.id, enabled: checked })}
                       className="cursor-pointer"
                       aria-label={isEnabled ? 'Disable model' : 'Enable model'}
                     />
-
-                    <div className="flex items-center gap-2">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => setEditingModel(model)}
-                              disabled={isSystemModel}
-                              aria-label={modelEditTooltip(isSystemModel)}
-                            >
-                              <Pen className="h-3 w-3" />
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p>{modelEditTooltip(isSystemModel)}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
-                              disabled={isSystemModel}
-                              aria-label={modelRemoveTooltip(isSystemModel)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p>{modelRemoveTooltip(isSystemModel)}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
                   </div>
                 </div>
               </CardHeader>
-              {isEnabled && (
+              {isEnabled && ((model.provider !== 'thunderbolt' && model.apiKey) || model.url) && (
                 <CardContent className="pt-0 border-t">
                   <div className="space-y-3 pt-4">
                     {model.provider !== 'thunderbolt' && model.apiKey && (
@@ -1290,9 +1281,6 @@ export default function ModelsPage() {
                         <span className="text-sm text-muted-foreground">URL</span>
                         <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
                       </div>
-                    )}
-                    {model.provider === 'thunderbolt' && (
-                      <div className="text-sm text-muted-foreground">Uses Thunderbolt cloud service</div>
                     )}
                   </div>
                 </CardContent>

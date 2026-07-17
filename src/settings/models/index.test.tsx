@@ -11,7 +11,7 @@ import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import ModelsPage, { modelEditTooltip, modelRemoveTooltip } from './index'
+import ModelsPage, { systemModelMenuMessage } from './index'
 
 describe('ModelsPage reactivity', () => {
   beforeAll(async () => {
@@ -68,14 +68,8 @@ describe('ModelsPage reactivity', () => {
   })
 })
 
-describe('model action tooltips', () => {
+describe('system model menu message', () => {
   it('explains why built-in models cannot be edited or removed', () => {
-    expect(modelEditTooltip(true)).toBe("Built-in models can't be edited")
-    expect(modelRemoveTooltip(true)).toBe("Built-in models can't be removed")
-  })
-
-  it('uses action labels for user-added models', () => {
-    expect(modelEditTooltip(false)).toBe('Edit model')
-    expect(modelRemoveTooltip(false)).toBe('Remove model')
+    expect(systemModelMenuMessage).toBe("Built-in models can't be edited or removed")
   })
 })

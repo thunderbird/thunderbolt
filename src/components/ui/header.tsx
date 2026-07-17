@@ -208,8 +208,9 @@ export const Header = () => {
     )
   }
 
-  // Desktop: history arrows (Tauri app only) + optional expand toggle on the
-  // left, agent selector centered. Theme and sync/account controls live in
+  // Desktop: a single left-aligned group — optional expand toggle, history
+  // arrows (Tauri app only), then the agent selector (fully left on web,
+  // right of the arrows in the app). Theme and sync/account controls live in
   // the sidebar footer, so the right side stays empty (it remains a drag
   // surface on the Tauri desktop app).
   // On the Tauri desktop app the expand toggle lives here while the sidebar is
@@ -236,15 +237,6 @@ export const Header = () => {
           </Button>
         )}
         {isTauriDesktop() && <HistoryNavButtons />}
-      </div>
-
-      {/* Absolutely centered (same rationale as the mobile branch): the
-          traffic-light clearance on the left column would skew a flex-based
-          center. */}
-      <div
-        {...dragProps}
-        className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2"
-      >
         {agentSelector}
       </div>
     </header>

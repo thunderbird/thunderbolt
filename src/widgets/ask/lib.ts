@@ -7,9 +7,12 @@
  * - `single`   — exactly one designated answer (radio-style)
  * - `multiple` — one or more designated answers (checkbox-style)
  * - `choice`   — no designated answer, an open prompt like "What do you want to do next?"
- * - `free`     — open free-text response; the user types an answer
+ *
+ * (A `free` text-response mode existed briefly and was removed — typing an
+ * answer belongs in the regular composer. Cached `free` entries from old
+ * conversations still parse; see {@link formatAskResponsesNote}.)
  */
-export type AskMode = 'single' | 'multiple' | 'choice' | 'free'
+export type AskMode = 'single' | 'multiple' | 'choice'
 
 export type AskOption = {
   id: string
@@ -22,21 +25,21 @@ export type AskData = {
   /** The question or prompt shown above the options. */
   prompt: string
   mode: AskMode
-  /** Selectable options. Empty for `free` (text-response) prompts. */
+  /** Selectable options. */
   options: AskOption[]
   /**
-   * Optional context shown after the user responds. For modes with a designated
-   * answer it explains that answer; for `free` mode it's an optional sample answer.
+   * Optional context shown after the user responds — for modes with a
+   * designated answer it explains that answer.
    */
   explanation?: string
 }
 
 /**
  * Compares a set of selected option ids against the designated answer(s).
- * Returns `null` for modes without a designated answer (`choice`, `free`).
+ * Returns `null` for modes without a designated answer (`choice`).
  */
 export const evaluateAnswer = (data: AskData, selectedIds: Set<string>): boolean | null => {
-  if (data.mode === 'choice' || data.mode === 'free') {
+  if (data.mode === 'choice') {
     return null
   }
 
@@ -83,14 +86,15 @@ export const askStorageKey = (data: Pick<AskData, 'prompt' | 'mode' | 'options'>
  */
 export type AskCacheEntry = {
   prompt: string
-  mode: AskMode
-  /** The option ids the user chose — used to restore the widget UI. Empty for `free`. */
+  /** `'free'` appears only in entries persisted before the mode was removed. */
+  mode: AskMode | 'free'
+  /** The option ids the user chose — used to restore the widget UI. */
   selectedIds: string[]
   /** The option texts the user chose — used to report the response to the model. */
   chosen: string[]
-  /** Whether the selection matched the designated answer; `null` for `choice` / `free`. */
+  /** Whether the selection matched the designated answer; `null` for `choice`. */
   matched: boolean | null
-  /** The free-text answer for `free` mode — restores the textarea and is reported to the model. */
+  /** The typed answer of a legacy `free` entry — still reported to the model. */
   text?: string
 }
 
@@ -136,16 +140,16 @@ export const formatAskResponsesNote = (entries: AskCacheEntry[]): string | null 
 
 /**
  * The user-turn text to dispatch when an ask is submitted, or `null` if none
- * should be sent. `choice` (an action pick) and `free` (a typed answer) are
- * conversational responses the model should act on / reply to, so they produce a
- * turn; graded `single`/`multiple` reveal the answer client-side and produce none
- * (auto-sending them would goad single-prompt backends into endlessly asking the
- * next question). Empty input produces `null`.
+ * should be sent. `choice` (an action pick) is a conversational response the
+ * model should act on, so it produces a turn; graded `single`/`multiple`
+ * reveal the answer client-side and produce none (auto-sending them would
+ * goad single-prompt backends into endlessly asking the next question).
+ * Empty input produces `null`.
  */
-export const turnTextForAnswer = (mode: AskMode, chosen: string[], text?: string): string | null => {
-  if (mode !== 'choice' && mode !== 'free') {
+export const turnTextForAnswer = (mode: AskMode, chosen: string[]): string | null => {
+  if (mode !== 'choice') {
     return null
   }
-  const answer = (text ?? chosen[0] ?? '').trim()
+  const answer = (chosen[0] ?? '').trim()
   return answer || null
 }

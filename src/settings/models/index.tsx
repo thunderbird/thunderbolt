@@ -1240,21 +1240,13 @@ export default function ModelsPage() {
                   </div>
                 </div>
               </CardHeader>
-              {isEnabled && ((model.provider !== 'thunderbolt' && model.apiKey) || model.url) && (
+              {isEnabled && model.url && (
                 <CardContent className="pt-0 border-t">
                   <div className="space-y-3 pt-4">
-                    {model.provider !== 'thunderbolt' && model.apiKey && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">API Key</span>
-                        <span className="text-sm font-mono">{'•'.repeat(8)}</span>
-                      </div>
-                    )}
-                    {model.url && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">URL</span>
-                        <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
-                      </div>
-                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">URL</span>
+                      <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
+                    </div>
                   </div>
                 </CardContent>
               )}
@@ -1306,7 +1298,7 @@ export default function ModelsPage() {
                 }
               }}
               disabled={deleteModelMutation.isPending}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
             >
               {deleteModelMutation.isPending ? 'Removing...' : 'Remove'}
             </AlertDialogAction>

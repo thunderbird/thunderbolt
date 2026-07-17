@@ -78,8 +78,9 @@ export const SettingsSidebarContent = ({
 
       {isCollapsed && (
         // pb-0: the next group's own top padding provides the 8px gap,
-        // matching the toggle→New Chat spacing on the chats rail.
-        <SidebarGroup className="pb-0">
+        // matching the toggle→New Chat spacing on the chats rail. pt-2 gives
+        // the toggle the same 8px above as the rail leaves on its sides.
+        <SidebarGroup className="pt-2 pb-0">
           <SidebarGroupContent>
             <SidebarNavToggle vertical activeSection="settings" onSectionChange={onSectionChange} />
           </SidebarGroupContent>

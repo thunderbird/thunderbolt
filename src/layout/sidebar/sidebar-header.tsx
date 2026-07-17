@@ -73,17 +73,21 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
       {/* Collapsed rail: the strip stays a pure drag region and blends into
           the main header background, so no sidebar seam runs through the
           window controls (the macOS traffic lights are wider than the 48px
-          rail). The sidebar surface resumes below it with a curved top-right
-          shoulder. The expand toggle lives in the main Header (right of the
-          traffic lights), not in the rail. Taller than the expanded strip
-          (+0.5rem) so the rail's curved top starts with clear air below the
-          window controls. */}
+          rail). The expand toggle lives in the main Header (right of the
+          traffic lights), not in the rail. The sidebar surface resumes at the
+          strip's bottom edge with a 3xl top-right curve, drawn as an
+          inverted-corner mask (background painted outside a quarter-circle)
+          so the curve costs no layout height — the nav toggle below keeps its
+          even 8px inset from the surface's top and side edges. */}
       {showChromeStrip && !isExpanded && (
-        <div
-          data-tauri-drag-region
-          className="h-[calc(var(--touch-height-xl)+0.5rem)] flex-shrink-0 relative bg-background"
-        >
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 rounded-tr-xl bg-sidebar" />
+        <div data-tauri-drag-region className="h-[var(--touch-height-xl)] flex-shrink-0 relative bg-background">
+          <div
+            className="pointer-events-none absolute right-0 top-full size-[var(--radius-3xl)]"
+            style={{
+              background:
+                'radial-gradient(circle at 0 100%, transparent calc(var(--radius-3xl) - 1px), var(--color-background) var(--radius-3xl))',
+            }}
+          />
         </div>
       )}
       {showMobileChromeSpacer && <div data-tauri-drag-region className="h-[var(--touch-height-xl)] flex-shrink-0" />}

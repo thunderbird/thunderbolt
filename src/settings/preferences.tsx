@@ -22,6 +22,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } fr
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
+import { ThemeToggleGroup } from '@/components/theme-toggle-group'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
 import {
@@ -494,6 +495,38 @@ export default function PreferencesSettingsPage() {
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Preferences" />
 
+      <SectionCard title="User Experience">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">Theme</label>
+            <ThemeToggleGroup />
+          </div>
+
+          <div className="h-px bg-border -mx-6" />
+
+          <div className="flex-row flex items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={hapticsEnabled !== initialLocalSettings.hapticsEnabled}
+                onReset={() => setLocalSetting('hapticsEnabled', initialLocalSettings.hapticsEnabled)}
+              >
+                Haptic Feedback
+              </ModificationIndicator>
+              <p className="text-sm text-muted-foreground">Vibrate on tap</p>
+            </div>
+            <Switch
+              checked={hapticsEnabled}
+              onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)}
+              aria-label="Haptic Feedback"
+            />
+          </div>
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
       <SectionCard title="Personalization">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
@@ -723,31 +756,6 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="User Experience">
-        <div className="flex flex-col gap-6">
-          <div className="flex-row flex items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={hapticsEnabled !== initialLocalSettings.hapticsEnabled}
-                onReset={() => setLocalSetting('hapticsEnabled', initialLocalSettings.hapticsEnabled)}
-              >
-                Haptic Feedback
-              </ModificationIndicator>
-              <p className="text-sm text-muted-foreground">Vibrate on tap</p>
-            </div>
-            <Switch
-              checked={hapticsEnabled}
-              onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)}
-              aria-label="Haptic Feedback"
-            />
-          </div>
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
       <SectionCard title="Help Thunderbolt Improve">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
@@ -934,10 +942,7 @@ export default function PreferencesSettingsPage() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleResetDatabase}
-                        className="bg-destructive text-white hover:bg-destructive/90"
-                      >
+                      <AlertDialogAction onClick={handleResetDatabase} variant="destructive">
                         Reset Database
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -963,7 +968,9 @@ export default function PreferencesSettingsPage() {
                 )}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="destructive" disabled={isDeletingAccount}>
+                    {/* Secondary on the page; the red danger styling lives on the
+                        confirm button inside the dialog. */}
+                    <Button variant="secondary" disabled={isDeletingAccount}>
                       {isDeletingAccount ? 'Deleting...' : 'Delete My Account'}
                     </Button>
                   </AlertDialogTrigger>
@@ -977,10 +984,7 @@ export default function PreferencesSettingsPage() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleDeleteAccount}
-                        className="bg-destructive text-white hover:bg-destructive/90"
-                      >
+                      <AlertDialogAction onClick={handleDeleteAccount} variant="destructive">
                         Delete account
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -1035,7 +1039,7 @@ export default function PreferencesSettingsPage() {
               onClick={handleConfirmImport}
               disabled={isImporting}
               aria-busy={isImporting}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
             >
               {isImporting ? 'Importing...' : 'Import'}
             </AlertDialogAction>

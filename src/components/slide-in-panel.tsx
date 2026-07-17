@@ -20,7 +20,10 @@ const slideEasing = 'cubic-bezier(0.32, 0.72, 0, 1)'
  */
 export const SlideInPanel = ({ open, width, children }: { open: boolean; width: string; children: ReactNode }) => (
   <aside
-    className="h-full shrink-0 overflow-hidden transition-[width] duration-300 motion-reduce:transition-none"
+    // z-30 lifts the panel above the layout's top header scrim (z-20) so the
+    // gradient fades out over the list only and never washes over the panel's
+    // top edge. The panel starts below the header, so nothing else competes.
+    className="relative z-30 h-full shrink-0 overflow-hidden transition-[width] duration-300 motion-reduce:transition-none"
     style={{ width: open ? width : '0px', transitionTimingFunction: slideEasing }}
     aria-hidden={!open}
     inert={!open}

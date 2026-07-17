@@ -756,10 +756,16 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                   clearDialogError()
                   setMode(value)
                 }}
-                className="w-full flex-shrink-0"
+                className="w-full flex-shrink-0 rounded-lg"
               >
-                <ToggleGroupItem value="simple">Simple</ToggleGroupItem>
-                <ToggleGroupItem value="advanced">Advanced (JSON)</ToggleGroupItem>
+                {/* rounded-lg to match the Input fields below (same treatment
+                    as the preferences ThemeToggleGroup). */}
+                <ToggleGroupItem value="simple" className="first:rounded-l-lg last:rounded-r-lg">
+                  Simple
+                </ToggleGroupItem>
+                <ToggleGroupItem value="advanced" className="first:rounded-l-lg last:rounded-r-lg">
+                  Advanced (JSON)
+                </ToggleGroupItem>
               </ToggleGroup>
             )}
 

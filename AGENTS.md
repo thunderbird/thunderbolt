@@ -140,7 +140,8 @@ The project overrides Tailwind's CSS theme variables in `/src/index.css` `:root`
 - `rounded-md` — **inner**: elements nested inside a rounded parent (menu/list items, chips-in-a-card, thumbnails, skeletons, small toolbar controls)
 - `rounded-lg` — **default**: standalone atoms (buttons, inputs, textareas, select triggers, badges, standalone chips/rows)
 - `rounded-xl` — **container**: surfaces that wrap other content (cards, alerts, popovers, dropdown/select/menu panels, hover-cards)
-- `rounded-2xl` — **hero**: the chat composer, blocking modals/dialogs/sheets, and chat message bubbles
+- `rounded-2xl` — **hero**: blocking modals/dialogs/sheets and chat message bubbles
+- `rounded-3xl` — **marquee**: the chat composer only
 - `rounded-full` pills/avatars/dots · `rounded-none` flush edges
 
 Corners step **down** as you nest (outer radius − padding ≈ inner radius): an `xl` panel with `p-1` holds `md`/`lg` children. Never hardcode px (`rounded-[12px]`, bare `rounded`, `rounded-xs`) — it breaks the responsive mobile→desktop step-down. The `ui/` primitives already encode these tiers; inherit from them rather than overriding.

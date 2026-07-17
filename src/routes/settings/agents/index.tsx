@@ -103,17 +103,21 @@ export default function AgentsSettingsPage() {
           </PageHeader>
 
           {/* Clicking the already-open row closes the panel — the rows carry
-              aria-pressed, so they behave as the toggles they announce. */}
-          <AgentList
-            agents={agents}
-            selectedId={active?.id ?? null}
-            onOpenAgent={(agent) => setActiveAgentId((current) => (current === agent.id ? null : agent.id))}
-          />
+              aria-pressed, so they behave as the toggles they announce.
+              The CLI row shares the list's row gap so it reads as one list
+              (gap-4, matching the models page). */}
+          <div className="flex flex-col gap-4">
+            <AgentList
+              agents={agents}
+              selectedId={active?.id ?? null}
+              onOpenAgent={(agent) => setActiveAgentId((current) => (current === agent.id ? null : agent.id))}
+            />
 
-          <ThunderboltCliRow
-            selected={cliOpen}
-            onOpen={() => setActiveAgentId((current) => (current === 'cli' ? null : 'cli'))}
-          />
+            <ThunderboltCliRow
+              selected={cliOpen}
+              onOpen={() => setActiveAgentId((current) => (current === 'cli' ? null : 'cli'))}
+            />
+          </div>
         </div>
       </div>
 

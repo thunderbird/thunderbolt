@@ -84,8 +84,10 @@ export const ChatSidebarContent = ({
         navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
       />
 
-      {/* Collapsed: pb-0 so SidebarContent's gap-2 alone spaces the divider below. */}
-      <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pb-0')}>
+      {/* Collapsed: pb-0 so SidebarContent's gap-2 alone spaces the divider
+          below; pt-2 gives the nav toggle the same 8px above as the rail's
+          p-2 leaves on its sides. */}
+      <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pt-2 pb-0')}>
         <SidebarGroupContent className="flex flex-col gap-2">
           {isCollapsed && <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />}
           <SidebarMenu>

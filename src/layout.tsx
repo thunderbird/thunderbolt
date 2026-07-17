@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { NewChatFab } from '@/components/new-chat-fab'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { useSettings } from '@/hooks/use-settings'
 import SidebarComponent from '@/layout/sidebar'
@@ -29,7 +28,6 @@ export default function Layout() {
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>
-        <NewChatFab />
       </main>
     </SidebarProvider>
   )

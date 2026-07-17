@@ -8,11 +8,9 @@ import { getMessage, updateMessageCache } from '@/dal/chat-messages'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Ask, type AskSubmission } from './display'
-import { type AskCacheEntry, type AskData, type AskOption, askStorageKey, turnTextForAnswer } from './lib'
+import { type AskCacheEntry, type AskData, askStorageKey, turnTextForAnswer } from './lib'
 
-type AskWidgetProps = Omit<AskData, 'options'> & {
-  /** Absent for `free` (text-response) prompts; defaults to an empty list. */
-  options?: AskOption[]
+type AskWidgetProps = AskData & {
   messageId: string
 }
 
@@ -21,7 +19,7 @@ type AskWidgetProps = Omit<AskData, 'options'> & {
  * prior response on mount and persists the user's response on submit. Persisted
  * entries are later surfaced to the model (see `formatAskResponsesNote`).
  */
-export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }: AskWidgetProps) => {
+export const AskWidget = ({ prompt, mode, options, explanation, messageId }: AskWidgetProps) => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { chatInstance } = useCurrentChatSession()
@@ -39,10 +37,9 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
     gcTime: Infinity,
   })
 
-  const handleSubmit = async ({ selectedIds, matched, text }: AskSubmission) => {
-    // `free` mode carries a typed answer; option modes map ids back to their texts.
-    const chosen = text !== undefined ? [text] : selectedIds.map((id) => options.find((o) => o.id === id)?.text ?? id)
-    const entry: AskCacheEntry = { prompt, mode, selectedIds, chosen, matched, text }
+  const handleSubmit = async ({ selectedIds, matched }: AskSubmission) => {
+    const chosen = selectedIds.map((id) => options.find((o) => o.id === id)?.text ?? id)
+    const entry: AskCacheEntry = { prompt, mode, selectedIds, chosen, matched }
     // Persist first so the response is recorded (and restores on reload)
     // regardless of what follows.
     await updateMessageCache(db, messageId, storageKey, entry)
@@ -50,9 +47,9 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
     // same session restores the answer instead of re-reading the stale `null`.
     queryClient.setQueryData(queryKey, entry)
 
-    // For `choice`/`free`, dispatch the answer as a normal user turn so the model
-    // acts on / replies to it; graded modes return null (see `turnTextForAnswer`).
-    const turnText = turnTextForAnswer(mode, chosen, text)
+    // For `choice`, dispatch the pick as a normal user turn so the model acts
+    // on it; graded modes return null (see `turnTextForAnswer`).
+    const turnText = turnTextForAnswer(mode, chosen)
     if (turnText) {
       try {
         await chatInstance.sendMessage({ text: turnText })
@@ -77,7 +74,6 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
       options={options}
       explanation={explanation}
       initialSelectedIds={saved?.selectedIds}
-      initialText={saved?.text}
       initialSubmitted={saved !== null}
       onSubmit={handleSubmit}
     />

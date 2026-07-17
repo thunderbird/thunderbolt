@@ -308,7 +308,9 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
       <ShadcnSidebarFooter className={cn('!gap-0', isDesktopCollapsed && '!p-0', className)}>
         {isDesktopCollapsed ? (
           <div className="flex flex-col items-center gap-1 py-2">
-            <ThemeToggle />
+            {/* Dev-only quick toggle; users switch themes in Preferences →
+                User Experience. */}
+            {import.meta.env.DEV && <ThemeToggle />}
             {isPending ? (
               <div className="flex size-[var(--touch-height-default)] items-center justify-center">
                 <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />
@@ -321,7 +323,9 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
           <div className="flex w-full min-w-0 items-center gap-1">
             <div className="min-w-0 flex-1">{accountControl}</div>
             <div className="flex shrink-0 items-center gap-1">
-              <ThemeToggle />
+              {/* Dev-only quick toggle; users switch themes in Preferences →
+                  User Experience. */}
+              {import.meta.env.DEV && <ThemeToggle />}
               {isMobile && navToggle}
               {/* Mobile-only: desktop's New Chat list item covers this. Brand
                   gradient, matching the primary Button variant. */}

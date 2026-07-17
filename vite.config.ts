@@ -97,7 +97,13 @@ export default defineConfig({
     },
   ],
   resolve: {
-    dedupe: ['@powersync/common', '@powersync/react', 'react'],
+    // react-dismissable-layer must be a single module instance: it tracks
+    // open layers in module-scope state to know when to restore the body's
+    // pointer-events. Bun nests a second copy under @radix-ui/react-menu;
+    // with two instances, closing a dialog opened from a dropdown menu item
+    // restores `pointer-events: none` and the whole app stops being
+    // clickable.
+    dedupe: ['@powersync/common', '@powersync/react', 'react', '@radix-ui/react-dismissable-layer'],
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, './shared'),

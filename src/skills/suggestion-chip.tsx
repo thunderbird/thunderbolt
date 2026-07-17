@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
  * the chat skills bar. Full-accent hover: anything softer (accent/50 over
  * the chip's near-white resting bg) composites to almost exactly the page
  * background, making the pill vanish on hover. Dark needs the explicit
- * accent too — Button's dark:hover:bg-input/50 is the same color as the
+ * accent too — Button's dark:hover:bg-card/50 is the same color as the
  * chip's resting bg-sidebar, i.e. no feedback.
  */
 export const chipSurfaceClass =

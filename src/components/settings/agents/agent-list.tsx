@@ -37,9 +37,10 @@ export const AgentList = ({ agents, selectedId, onOpenAgent }: AgentListProps) =
       <AgentRow key={agent.id} agent={agent} selected={selectedId === agent.id} onOpen={onOpenAgent} />
     ))
 
+  // gap-4 between rows — same rhythm as the models page's card list.
   if (!showSections) {
     return (
-      <div className="flex flex-col gap-2" data-testid="agent-list">
+      <div className="flex flex-col gap-4" data-testid="agent-list">
         {rows(agents)}
       </div>
     )
@@ -49,11 +50,11 @@ export const AgentList = ({ agents, selectedId, onOpenAgent }: AgentListProps) =
     <div className="flex flex-col gap-6" data-testid="agent-list">
       <section className="flex flex-col gap-2" data-testid="agent-section-yours">
         <SectionLabel>Your agents</SectionLabel>
-        <div className="flex flex-col gap-2">{rows(yourAgents)}</div>
+        <div className="flex flex-col gap-4">{rows(yourAgents)}</div>
       </section>
       <section className="flex flex-col gap-2" data-testid="agent-section-system">
         <SectionLabel>System agents</SectionLabel>
-        <div className="flex flex-col gap-2">{rows(systemAgents)}</div>
+        <div className="flex flex-col gap-4">{rows(systemAgents)}</div>
       </section>
     </div>
   )

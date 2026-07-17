@@ -36,8 +36,10 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
       onCheckedChange={handleCheckedChange}
       className={cn(
         'peer inline-flex h-[var(--switch-track-height)] w-[var(--switch-track-width)] shrink-0 cursor-pointer items-center rounded-full border p-[2px] shadow-xs transition-colors outline-none',
-        // OFF (default): filled track + visible outline.
-        'border-border bg-input dark:bg-input/80',
+        // OFF (default): filled track + visible outline. Dark uses secondary —
+        // --color-input is a faint translucent field fill there, too weak for
+        // a control that must read as a solid track.
+        'border-border bg-input dark:bg-secondary',
         // ON — brand gradient track in both modes; the thumb stays light below.
         // bg-brand doubles as the fallback color under the gradient image.
         // bg-origin-border makes the gradient span the border-box — without it

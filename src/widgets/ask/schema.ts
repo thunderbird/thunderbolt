@@ -32,13 +32,8 @@ export const schema = z.object({
   widget: z.literal('ask'),
   args: z.object({
     prompt: z.string().min(1),
-    mode: z.enum(['single', 'multiple', 'choice', 'free']),
-    // Optional: `free` (open text-response) prompts carry no options. The other
-    // modes still emit them; `optionsAttr` enforces min-2 when present. (A
-    // cross-field "non-free ⇒ options required" rule can't live here without
-    // wrapping args in `.refine()`, which would break `createParser`'s reliance
-    // on `args.shape`.)
-    options: optionsAttr.optional(),
+    mode: z.enum(['single', 'multiple', 'choice']),
+    options: optionsAttr,
     explanation: z.string().optional(),
   }),
 })

@@ -8,7 +8,11 @@ import { forwardRef, type InputHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
 const inputVariants = cva(
-  'border-border file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex min-w-0 rounded-lg border bg-transparent px-3 py-1 text-[length:var(--font-size-body)] outline-none file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+  // dark:bg-input (matching Textarea) — a translucent white fill that lifts
+  // the field one step off whatever dark surface it sits on (page, card,
+  // modal, panel); light mode stays transparent, its borders carry enough
+  // contrast.
+  'border-border file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input flex min-w-0 rounded-lg border bg-transparent px-3 py-1 text-[length:var(--font-size-body)] outline-none file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {

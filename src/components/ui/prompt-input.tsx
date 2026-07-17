@@ -152,7 +152,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           type="button"
           variant="default"
           aria-label="Stop generating"
-          className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
+          className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
           onClick={onStop}
         >
           <Square className="size-[var(--icon-size-default)]" />
@@ -163,7 +163,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           variant="default"
           aria-label="Send message"
           className={cn(
-            'size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0',
+            'size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0',
             // Not submittable → an inert low-contrast grey instead of the
             // default washed-out (opacity-50) brand gradient; the gradient
             // appearing is the "you can send now" signal.

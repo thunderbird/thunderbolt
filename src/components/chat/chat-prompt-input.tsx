@@ -550,7 +550,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               title="Add to chat"
               // `hover:bg-accent/50` / open `bg-accent` match the mode and
               // model picker triggers sitting in the same footer row.
-              className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+              className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
             >
               <Plus className="size-[var(--icon-size-sm)]" />
             </button>
@@ -661,7 +661,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     return (
       <>
         <div
-          className="relative flex w-full flex-col rounded-2xl"
+          className="relative flex w-full flex-col rounded-3xl"
           onDragOver={(e) => {
             e.preventDefault()
             setIsDragging(true)
@@ -674,7 +674,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           }}
         >
           {isDragging && (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
               <span className="text-[length:var(--font-size-sm)] font-medium text-muted-foreground">
                 Drop file to attach
               </span>
@@ -784,7 +784,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onStop={stop}
             autoFocus={!isMobile}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
+            className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
             renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill, displayNameToSlug)}

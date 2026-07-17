@@ -34,8 +34,14 @@ const RenameChatForm = ({ title, onOpenChange, onRename }: Omit<RenameChatDialog
       className="top-[30%]"
       onOpenAutoFocus={(e) => {
         e.preventDefault()
-        inputRef.current?.focus()
-        inputRef.current?.select()
+        // Deferred a frame: this dialog opens from a dropdown-menu item, and
+        // the closing menu restores focus to its (already unmounted) trigger
+        // AFTER this event — a synchronous focus() here gets clobbered and
+        // focus lands on <body>.
+        requestAnimationFrame(() => {
+          inputRef.current?.focus()
+          inputRef.current?.select()
+        })
       }}
     >
       <DialogHeader>

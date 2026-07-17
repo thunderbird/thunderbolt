@@ -138,7 +138,7 @@ export const ModelSelector = ({
         'flex items-center cursor-pointer transition-colors',
         variant === 'composer'
           ? cn(
-              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-lg text-[length:var(--font-size-sm)]',
+              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)]',
               isOpen ? 'bg-accent' : 'hover:bg-accent/50',
             )
           : cn(

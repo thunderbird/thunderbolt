@@ -33,7 +33,6 @@ export default function Sidebar() {
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
-  const lastChatPathRef = useRef<string | null>(null)
 
   const { chatThreadId: currentChatThreadId } = useParams()
 
@@ -46,15 +45,12 @@ export default function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const [showSearch, setShowSearch] = useState(false)
+  const [sectionOverride, setSectionOverride] = useState<{ section: SidebarSection; pathname: string } | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
   })
-
-  if (location.pathname.startsWith('/chats/')) {
-    lastChatPathRef.current = location.pathname
-  }
 
   useEffect(() => {
     if (showSearch && searchInputRef.current && !isCollapsed) {
@@ -64,7 +60,7 @@ export default function Sidebar() {
     }
   }, [showSearch, isCollapsed])
 
-  const { data, isPending } = useQuery({
+  const { data } = useQuery({
     queryKey: ['chatThreads'],
     query: toCompilableQuery(getAllChatThreads(db)),
     placeholderData: (previousData) => previousData,
@@ -119,10 +115,10 @@ export default function Sidebar() {
     },
   })
 
-  const createNewChat = async (closeAfter: boolean = true) => {
+  const createNewChat = () => {
     trackEvent('chat_new_clicked')
     navigate(`/chats/new`)
-    if (closeAfter && isMobile) {
+    if (isMobile) {
       setOpenMobile(false)
     }
   }
@@ -145,22 +141,7 @@ export default function Sidebar() {
     }
   }
 
-  const goToMainMenu = async () => {
-    // Only wait if query is pending and we have no fallback
-    if (isPending && !lastChatPathRef.current) {
-      return
-    }
-
-    if (lastChatPathRef.current) {
-      navigate(lastChatPathRef.current)
-    } else if (data && data.length > 0) {
-      navigate(`/chats/${data[0].id}`)
-    } else {
-      await createNewChat(false)
-    }
-  }
-
-  const getActiveSection = (): SidebarSection => {
+  const getRouteSection = (): SidebarSection => {
     if (isSettingsRoute) {
       return 'settings'
     }
@@ -169,24 +150,26 @@ export default function Sidebar() {
     }
     return 'chats'
   }
-  const activeSection = getActiveSection()
+  const routeSection = getRouteSection()
 
-  // Chats keeps the sidebar open (the chat list lives there); Settings swaps
-  // the sidebar to the settings menu, so it stays open too. Tasks navigates
-  // to a full page, so close the mobile drawer to reveal it.
+  // Toggling sections swaps the sidebar without navigating; the override is
+  // keyed to the pathname it was set on, so any navigation invalidates it and
+  // the section falls back to being derived from the route.
+  const activeSection = sectionOverride?.pathname === location.pathname ? sectionOverride.section : routeSection
+
+  // Toggling between Chats and Settings only swaps the sidebar content — the
+  // current page stays until the user picks an entry from the new sidebar.
+  // Tasks navigates to a full page, so close the mobile drawer to reveal it.
   const handleSectionChange = (section: SidebarSection) => {
-    if (section === 'chats') {
-      void goToMainMenu()
-      return
-    }
     if (section === 'tasks') {
+      setSectionOverride(null)
       navigate('/tasks')
       if (isMobile) {
         setOpenMobile(false)
       }
       return
     }
-    navigate('/settings/preferences')
+    setSectionOverride(section === routeSection ? null : { section, pathname: location.pathname })
   }
 
   const handleSearchClick = (e?: MouseEvent) => {
@@ -209,7 +192,7 @@ export default function Sidebar() {
   return (
     <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <TooltipProvider>
-        {isSettingsRoute ? (
+        {activeSection === 'settings' ? (
           <SettingsSidebarContent
             isCollapsed={isCollapsed}
             showTasks={experimentalFeatureTasks.value}
@@ -234,7 +217,7 @@ export default function Sidebar() {
             showTasks={experimentalFeatureTasks.value}
             activeSection={activeSection}
             onSectionChange={handleSectionChange}
-            onCreateNewChat={() => createNewChat()}
+            onCreateNewChat={createNewChat}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={handleSearchClick}

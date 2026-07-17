@@ -57,8 +57,8 @@ export const SkillDetail = ({
   return (
     <section className="flex h-full flex-1 flex-col gap-4 overflow-hidden bg-background px-4 pb-4 md:px-5 text-foreground">
       <header className="flex flex-col gap-5 md:gap-2.5">
-        {/* Title row matches the sidebar's app-logo height so the skill name
-            sits at the same y-position as the Thunderbolt label. */}
+        {/* Title row matches the skills list's title-row height so the skill
+            name sits at the same y-position as the "Skills" heading. */}
         <div className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             {onBack && (

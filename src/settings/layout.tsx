@@ -4,20 +4,23 @@
 
 import { Header } from '@/components/ui/header'
 import { SidebarInset } from '@/components/ui/sidebar'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { PageFallback } from '@/loading'
 import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router'
 
-// Sub-routes that provide their own page chrome and want the full content height.
-// The settings-level Header would otherwise add ~56px of unused space at the top.
-const routesWithOwnHeader = new Set(['/settings/skills'])
+// Sub-routes that provide their own mobile page chrome (burger + title row).
+// On mobile the Header would only duplicate that chrome, so it's skipped; on
+// desktop it still renders so the theme/sync controls stay in the top-right.
+const routesWithOwnMobileHeader = new Set(['/settings/skills'])
 
 const SettingsLayout = () => {
   const location = useLocation()
+  const { isMobile } = useIsMobile()
   // Universal header: settings shows the same bar as chat so the theme and
   // sync controls stay in the top-right everywhere (on mobile it also carries
   // the sidebar burger).
-  const showHeader = !routesWithOwnHeader.has(location.pathname)
+  const showHeader = !isMobile || !routesWithOwnMobileHeader.has(location.pathname)
 
   return (
     <>

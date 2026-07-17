@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { LayoutGroup, m } from 'framer-motion'
-import { Menu, Plus, Search } from 'lucide-react'
+import { Menu, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PageSearch } from '@/components/ui/page-search'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { Skill } from '@/types'
@@ -55,50 +55,52 @@ export const SkillsList = ({
   }, [skills, search, isEnabled])
 
   return (
-    <section className="flex h-full w-full flex-col gap-3 border-r border-sidebar-border bg-background px-4 pb-4 md:px-5 text-foreground md:w-[378px] md:shrink-0">
-      {/* Title row matches the sidebar's Thunderbolt header height so the
-          "Skills" heading sits at the same y-position as the app logo. */}
-      <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+    <section className="flex h-full w-full flex-col gap-3 bg-background px-4 pb-4 md:px-5 text-foreground md:w-[378px] md:shrink-0">
+      <PageSearch onSearch={setSearch}>
+        {/* On mobile this row is the page's only chrome (the settings-level
+            Header is skipped there) and matches the sidebar header height so
+            the "Skills" heading sits at the same y-position as the app logo. */}
+        <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleSidebar}
+                aria-label="Open menu"
+                className="size-8 -ml-1 rounded-md text-muted-foreground hover:text-foreground"
+              >
+                <Menu strokeWidth={1.5} />
+              </Button>
+            )}
+            {!isMobile && <h1 className="text-xl leading-tight text-foreground">Skills</h1>}
+          </div>
           {isMobile && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleSidebar}
-              aria-label="Open menu"
-              className="size-8 -ml-1 rounded-md text-muted-foreground hover:text-foreground"
-            >
-              <Menu strokeWidth={1.5} />
-            </Button>
+            <h1 className="absolute left-1/2 -translate-x-1/2 text-xl leading-tight text-foreground pointer-events-none">
+              Skills
+            </h1>
           )}
-          {!isMobile && <h1 className="text-xl leading-tight text-foreground">Skills</h1>}
-        </div>
-        {isMobile && (
-          <h1 className="absolute left-1/2 -translate-x-1/2 text-xl leading-tight text-foreground pointer-events-none">
-            Skills
-          </h1>
-        )}
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="Create skill"
-          className="size-8 rounded-md"
-          onClick={onCreate}
-        >
-          <Plus />
-        </Button>
-      </header>
+          <div className="flex items-center gap-2">
+            <PageSearch.Button tooltip="Search skills" className="size-8 rounded-md" />
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Create skill"
+              className="size-8 rounded-md"
+              onClick={onCreate}
+            >
+              <Plus />
+            </Button>
+          </div>
+        </header>
 
-      <div className="relative">
-        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="text"
+        <PageSearch.Input
           placeholder="Search skills"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="h-9 rounded-lg border-border pl-9 text-sm placeholder:text-muted-foreground"
+          onSearch={setSearch}
+          wrapperClassName="pr-0"
+          className="h-9 rounded-lg border-border bg-card text-sm placeholder:text-muted-foreground"
         />
-      </div>
+      </PageSearch>
 
       {/* LayoutGroup links the Enabled and Disabled <ul>s so a row's
           `layoutId` carries through when toggling enabled state — the row

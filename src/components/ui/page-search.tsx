@@ -65,16 +65,23 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
 
 type PageSearchButtonProps = {
   tooltip?: string
+  className?: string
 }
 
-const PageSearchButton = ({ tooltip = 'Search' }: PageSearchButtonProps) => {
+const PageSearchButton = ({ tooltip = 'Search', className }: PageSearchButtonProps) => {
   const { toggle } = usePageSearchContext()
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" className="rounded-lg bg-card hover:bg-accent" onClick={toggle}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={tooltip}
+            className={cn('rounded-lg bg-card hover:bg-accent', className)}
+            onClick={toggle}
+          >
             <Search className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
@@ -89,9 +96,16 @@ const PageSearchButton = ({ tooltip = 'Search' }: PageSearchButtonProps) => {
 type PageSearchInputProps = Omit<SearchInputProps, 'onChange' | 'value' | 'debouncedOnChange'> & {
   delay?: number
   onSearch: (value: string) => void
+  wrapperClassName?: string
 }
 
-const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: PageSearchInputProps) => {
+const PageSearchInput = ({
+  delay,
+  onSearch,
+  placeholder,
+  wrapperClassName,
+  ...searchInputProps
+}: PageSearchInputProps) => {
   const { open, inputRef, searchValue, setSearchValue } = usePageSearchContext()
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -103,6 +117,7 @@ const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: 
       className={cn(
         'transition-all duration-300 ease-in-out flex-shrink-0 pr-2',
         open ? 'max-h-14 opacity-100' : 'max-h-0 opacity-0 overflow-hidden',
+        wrapperClassName,
       )}
     >
       <SearchInput

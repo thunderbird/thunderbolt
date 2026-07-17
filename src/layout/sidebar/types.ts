@@ -7,6 +7,9 @@ import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import type { UseMutationResult } from '@tanstack/react-query'
 import type { MouseEvent, RefObject } from 'react'
 
+/** Top-level sidebar sections switchable via the nav toggle. */
+export type SidebarSection = 'chats' | 'tasks' | 'settings'
+
 export type ChatThread = {
   id: string
   title: string | null

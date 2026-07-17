@@ -35,7 +35,13 @@ const renderSidebar = (authClient: AuthClient, isStandalone: () => boolean) => {
     </TestProvider>
   )
   return render(
-    <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={isStandalone} />,
+    <SettingsSidebarContent
+      isCollapsed={false}
+      showTasks={false}
+      onSectionChange={() => {}}
+      onSettingsNavigate={() => {}}
+      isStandalone={isStandalone}
+    />,
     { wrapper: Wrapper },
   )
 }

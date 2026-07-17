@@ -15,12 +15,15 @@ import { PowerSyncStatus } from '@/components/powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isDesktop, isTauri } from '@/lib/platform'
 import { PanelLeft } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 type SidebarHeaderProps = {
   onToggle: () => void
+  /** Centered slot for the section nav toggle; rendered only while expanded. */
+  navToggle?: ReactNode
 }
 
-export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
+export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
   const { isMobile } = useIsMobile()
   const { state } = useSidebar()
 
@@ -37,8 +40,9 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
       {showChromeStrip && (
         <div
           data-tauri-drag-region
-          className="h-[var(--touch-height-xl)] bg-sidebar flex-shrink-0 flex items-center justify-end px-2"
+          className="h-[var(--touch-height-xl)] bg-sidebar flex-shrink-0 relative flex items-center justify-end px-2"
         >
+          {navToggle && <div className="absolute left-1/2 z-10 -translate-x-1/2">{navToggle}</div>}
           <Button
             variant="ghost"
             size="icon"
@@ -51,7 +55,8 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
         </div>
       )}
       {!showChromeStrip && (
-        <div className="h-[var(--touch-height-xl)] flex items-center justify-between px-2 flex-shrink-0">
+        <div className="h-[var(--touch-height-xl)] relative flex items-center justify-between px-2 flex-shrink-0">
+          {isExpanded && navToggle && <div className="absolute left-1/2 z-10 -translate-x-1/2">{navToggle}</div>}
           <div className="flex items-center h-8 relative flex-1 min-w-0">
             {!isExpanded && (
               <SidebarGroup className="p-0 absolute left-0 right-0">

@@ -14,12 +14,17 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
-import { ArrowLeft, Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
+import { Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
+import { SidebarNavToggle } from './nav-toggle'
+import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
+import type { SidebarSection } from './types'
 
 type SettingsSidebarContentProps = {
-  onBackClick: () => void
+  isCollapsed: boolean
+  showTasks: boolean
+  onSectionChange: (section: SidebarSection) => void
   onSettingsNavigate: (path: string) => void
   /** Test seam — production omits; the hook falls back to `isTauri()`. Lets
    *  tests exercise Tauri Standalone vs. Hosted code paths without mocking
@@ -29,7 +34,9 @@ type SettingsSidebarContentProps = {
 }
 
 export const SettingsSidebarContent = ({
-  onBackClick,
+  isCollapsed,
+  showTasks,
+  onSectionChange,
   onSettingsNavigate,
   isStandalone,
 }: SettingsSidebarContentProps) => {
@@ -37,29 +44,38 @@ export const SettingsSidebarContent = ({
   const location = useLocation()
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
 
+  // Collapsed rail: the group labels are hidden, so a hairline divider takes
+  // over as the section boundary.
+  const groupDivider = isCollapsed ? <RailDivider /> : null
+
   return (
     <SidebarContent className="flex flex-col h-full">
-      <SidebarHeader onToggle={toggleSidebar} />
+      <SidebarHeader
+        onToggle={toggleSidebar}
+        navToggle={
+          <SidebarNavToggle activeSection="settings" showTasks={showTasks} onSectionChange={onSectionChange} />
+        }
+      />
 
-      <SidebarGroup>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={onBackClick}
-                tooltip="Back to Chat"
-                className="cursor-pointer bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/80"
-              >
-                <ArrowLeft className="size-4" />
-                <span>Back</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
+      {isCollapsed && (
+        // pb-0: the next group's own top padding provides the 8px gap,
+        // matching the toggle→New Chat spacing on the chats rail.
+        <SidebarGroup className="pb-0">
+          <SidebarGroupContent>
+            <SidebarNavToggle
+              vertical
+              activeSection="settings"
+              showTasks={showTasks}
+              onSectionChange={onSectionChange}
+            />
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
 
       {!agentsHidden && (
-        <SidebarGroup>
+        // Collapsed: SidebarContent's gap-2 alone spaces the groups and their
+        // dividers, so the groups' own vertical padding would double it.
+        <SidebarGroup className={isCollapsed ? 'py-0' : undefined}>
           <SidebarGroupLabel>Agents</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -78,8 +94,9 @@ export const SettingsSidebarContent = ({
           </SidebarGroupContent>
         </SidebarGroup>
       )}
+      {!agentsHidden && groupDivider}
 
-      <SidebarGroup>
+      <SidebarGroup className={isCollapsed ? 'py-0' : undefined}>
         <SidebarGroupLabel>What agents use</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
@@ -130,8 +147,9 @@ export const SettingsSidebarContent = ({
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
+      {groupDivider}
 
-      <SidebarGroup>
+      <SidebarGroup className={isCollapsed ? 'pt-0' : undefined}>
         <SidebarGroupLabel>Account Settings</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>

@@ -19,6 +19,7 @@ import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
+import type { SidebarSection } from './types'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 /**
@@ -145,12 +146,6 @@ export default function Sidebar() {
     }
   }
 
-  const showSettingsMenu = () => {
-    if (!isSettingsRoute) {
-      navigate('/settings/preferences')
-    }
-  }
-
   const goToMainMenu = async () => {
     // Only wait if query is pending and we have no fallback
     if (isPending && !lastChatPathRef.current) {
@@ -164,6 +159,35 @@ export default function Sidebar() {
     } else {
       await createNewChat(false)
     }
+  }
+
+  const getActiveSection = (): SidebarSection => {
+    if (isSettingsRoute) {
+      return 'settings'
+    }
+    if (location.pathname.startsWith('/tasks')) {
+      return 'tasks'
+    }
+    return 'chats'
+  }
+  const activeSection = getActiveSection()
+
+  // Chats keeps the sidebar open (the chat list lives there); Settings swaps
+  // the sidebar to the settings menu, so it stays open too. Tasks navigates
+  // to a full page, so close the mobile drawer to reveal it.
+  const handleSectionChange = (section: SidebarSection) => {
+    if (section === 'chats') {
+      void goToMainMenu()
+      return
+    }
+    if (section === 'tasks') {
+      navigate('/tasks')
+      if (isMobile) {
+        setOpenMobile(false)
+      }
+      return
+    }
+    navigate('/settings/preferences')
   }
 
   const handleSearchClick = (e?: MouseEvent) => {
@@ -193,7 +217,12 @@ export default function Sidebar() {
     <SidebarRoot collapsible={collapsible}>
       <TooltipProvider>
         {isSettingsRoute ? (
-          <SettingsSidebarContent onBackClick={goToMainMenu} onSettingsNavigate={handleSettingsNavigation} />
+          <SettingsSidebarContent
+            isCollapsed={isCollapsed}
+            showTasks={experimentalFeatureTasks.value}
+            onSectionChange={handleSectionChange}
+            onSettingsNavigate={handleSettingsNavigation}
+          />
         ) : (
           <ChatSidebarContent
             isMobile={isMobile}
@@ -210,12 +239,13 @@ export default function Sidebar() {
             deleteChatDialogRef={deleteChatDialogRef}
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
+            activeSection={activeSection}
+            onSectionChange={handleSectionChange}
             onCreateNewChat={() => createNewChat()}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={handleSearchClick}
             onSearchQueryChange={setSearchQuery}
-            onSettingsClick={showSettingsMenu}
           />
         )}
       </TooltipProvider>

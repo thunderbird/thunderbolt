@@ -468,7 +468,10 @@ const SidebarGroupLabel = forwardRef<HTMLDivElement, ComponentProps<'div'> & { a
         data-sidebar="group-label"
         className={cn(
           'duration-200 flex h-[var(--touch-height-sm)] shrink-0 items-center rounded-lg px-2 text-xs font-medium text-sidebar-foreground/70 outline-hidden ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-[var(--icon-size-default)] [&>svg]:shrink-0',
-          'group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0',
+          // pointer-events-none: while collapsed the label is invisible but its
+          // -mt-8 slides it over the previous group's last button — without
+          // this it silently blocks hover/clicks on that button's lower half.
+          'group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 group-data-[collapsible=icon]:pointer-events-none',
           className,
         )}
         {...props}

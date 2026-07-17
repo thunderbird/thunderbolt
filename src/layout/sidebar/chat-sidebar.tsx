@@ -5,14 +5,25 @@
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { SidebarFooter } from '@/components/sidebar-footer'
-import { SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, useSidebar } from '@/components/ui/sidebar'
+import {
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@/components/ui/sidebar'
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
+import { cn } from '@/lib/utils'
+import { MessageCirclePlus } from 'lucide-react'
 import type { MouseEvent, RefObject } from 'react'
 import { useLocation } from 'react-router'
 import { ChatList } from './chat-list'
-import { NavigationMenu } from './navigation-menu'
+import { SidebarNavToggle } from './nav-toggle'
+import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
-import type { ChatThread } from './types'
+import type { ChatThread, SidebarSection } from './types'
 
 type ChatSidebarContentProps = {
   isMobile: boolean
@@ -29,12 +40,13 @@ type ChatSidebarContentProps = {
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   threadIdRef: RefObject<string | null>
   showTasks: boolean
+  activeSection: SidebarSection
+  onSectionChange: (section: SidebarSection) => void
   onCreateNewChat: () => void
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: (e?: MouseEvent) => void
   onSearchQueryChange: (value: string) => void
-  onSettingsClick: () => void
 }
 
 export const ChatSidebarContent = ({
@@ -52,33 +64,53 @@ export const ChatSidebarContent = ({
   deleteChatDialogRef,
   threadIdRef,
   showTasks,
+  activeSection,
+  onSectionChange,
   onCreateNewChat,
   onChatClick,
   onRename,
   onSearchClick,
   onSearchQueryChange,
-  onSettingsClick,
 }: ChatSidebarContentProps) => {
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
 
   return (
     <SidebarContent className="flex flex-col h-full overflow-hidden">
-      <SidebarHeader onToggle={toggleSidebar} />
+      <SidebarHeader
+        onToggle={toggleSidebar}
+        navToggle={
+          <SidebarNavToggle activeSection={activeSection} showTasks={showTasks} onSectionChange={onSectionChange} />
+        }
+      />
 
-      <SidebarGroup className="flex-shrink-0">
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <NavigationMenu
-              isMobile={isMobile}
-              currentPath={location.pathname}
+      {/* Collapsed: pb-0 so SidebarContent's gap-2 alone spaces the divider below. */}
+      <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pb-0')}>
+        <SidebarGroupContent className="flex flex-col gap-2">
+          {isCollapsed && (
+            <SidebarNavToggle
+              vertical
+              activeSection={activeSection}
               showTasks={showTasks}
-              onCreateNewChat={onCreateNewChat}
-              onSettingsClick={onSettingsClick}
+              onSectionChange={onSectionChange}
             />
+          )}
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={onCreateNewChat}
+                tooltip="New Chat"
+                className="cursor-pointer"
+                isActive={location.pathname === '/chats/new'}
+              >
+                <MessageCirclePlus className="size-[var(--icon-size-default)]" />
+                <span>New Chat</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
+      {isCollapsed && <RailDivider />}
 
       <ChatList
         chatThreads={chatThreads}

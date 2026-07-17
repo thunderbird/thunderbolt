@@ -12,9 +12,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
+import { RailDivider } from './rail-divider'
 import type { ChatListProps } from './types'
 
 export const ChatList = ({
@@ -38,7 +40,7 @@ export const ChatList = ({
 }: ChatListProps) => {
   return (
     <>
-      <SidebarGroup className="flex-1 flex flex-col min-h-0">
+      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0', isCollapsed && 'pt-0')}>
         {!isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
           <div className="flex items-center justify-between flex-shrink-0">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
@@ -90,6 +92,10 @@ export const ChatList = ({
                   )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
+              <li aria-hidden>
+                <RailDivider className="my-1.5" />
+              </li>
             </>
           )}
           {chatThreads.map((thread) => (

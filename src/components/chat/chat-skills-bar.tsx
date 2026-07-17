@@ -104,7 +104,6 @@ export const ChatSkillsBar = ({
   // PinLimitExceededError on the 11th pin and the catch below would swallow
   // it silently, so that case is blocked upstream with explicit copy.
   const addDisabled = pinCapReached
-  const addTooltip = pinCapReached ? `Pin limit reached (${maxPinnedSkills}). Unpin one first.` : 'Add a skill'
 
   // Hide the whole bar only when there's nothing to display *and* nothing
   // to add. If the user has zero pins but unpinned skills exist, we still
@@ -112,6 +111,20 @@ export const ChatSkillsBar = ({
   if (pinned.length === 0 && pinnable.length === 0) {
     return null
   }
+
+  const addButton = (
+    <PopoverTrigger asChild>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        aria-label="Add a skill"
+        disabled={addDisabled}
+        className="shrink-0 cursor-pointer rounded-full border-border bg-sidebar hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-sidebar"
+      >
+        <Plus />
+      </Button>
+    </PopoverTrigger>
+  )
 
   return (
     <>
@@ -136,22 +149,16 @@ export const ChatSkillsBar = ({
           />
         ))}
         <Popover open={addOpen} onOpenChange={setAddOpen}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label="Add a skill"
-                  disabled={addDisabled}
-                  className="shrink-0 cursor-pointer rounded-full border-border bg-sidebar hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-sidebar"
-                >
-                  <Plus />
-                </Button>
-              </PopoverTrigger>
-            </TooltipTrigger>
-            <TooltipContent>{addTooltip}</TooltipContent>
-          </Tooltip>
+          {/* Tooltip only in the disabled pin-cap state — it explains why the
+              button doesn't work. The enabled `+` needs no hover copy. */}
+          {pinCapReached ? (
+            <Tooltip>
+              <TooltipTrigger asChild>{addButton}</TooltipTrigger>
+              <TooltipContent>{`Pin limit reached (${maxPinnedSkills}). Unpin one first.`}</TooltipContent>
+            </Tooltip>
+          ) : (
+            addButton
+          )}
           {/*
             `collisionPadding={12}` keeps the popover 12px off the viewport
             edges. On mobile the content is sized to `calc(100vw-1.5rem)` (24px

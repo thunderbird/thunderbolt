@@ -21,22 +21,16 @@ export const ChatActions = ({
 
   return (
     <div className="flex items-center gap-0.5">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <SidebarMenuButton
-            onClick={(e) => onSearchClick(e)}
-            className={cn(
-              'w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer',
-              debouncedSearchQuery && 'bg-primary/15 text-primary hover:bg-primary/25 hover:text-primary',
-            )}
-          >
-            <Search className={cn('size-4', debouncedSearchQuery && 'text-primary')} />
-          </SidebarMenuButton>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          <p>Search chats</p>
-        </TooltipContent>
-      </Tooltip>
+      <SidebarMenuButton
+        onClick={(e) => onSearchClick(e)}
+        aria-label="Search chats"
+        className={cn(
+          'w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer',
+          debouncedSearchQuery && 'bg-primary/15 text-primary hover:bg-primary/25 hover:text-primary',
+        )}
+      >
+        <Search className={cn('size-4', debouncedSearchQuery && 'text-primary')} />
+      </SidebarMenuButton>
       <Tooltip>
         <TooltipTrigger asChild>
           <SidebarMenuButton

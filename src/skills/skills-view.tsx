@@ -3,11 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AnimatePresence, m } from 'framer-motion'
-import { Plus } from 'lucide-react'
 import { useCallback, useReducer, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { Button } from '@/components/ui/button'
+import { SlideInPanel } from '@/components/slide-in-panel'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
@@ -36,7 +35,7 @@ export const SkillsView = () => {
   const {
     mode,
     activeId,
-    mobileView,
+    panelView,
     isDirty,
     resetSignal,
     pendingLeave,
@@ -80,11 +79,10 @@ export const SkillsView = () => {
     })
   }
 
-  // `.at(0)` returns `Skill | undefined` honestly — `[0]` would be typed as
-  // `Skill` even on an empty array (no `noUncheckedIndexedAccess` in tsconfig),
-  // and a `| undefined` annotation wouldn't widen the rhs. Forcing undefined
-  // into the type means TS catches every unguarded `active.*` access.
-  const active = skills.find((s) => s.id === activeId) ?? skills.at(0)
+  // No first-skill fallback: the detail panel only opens when the user
+  // explicitly selects a skill (or a deep link does), matching the
+  // slide-in-from-the-right behavior. `undefined` means "nothing selected".
+  const active = skills.find((s) => s.id === activeId)
 
   // Disabling a pinned skill auto-unpins it. Re-enabling does NOT auto-repin;
   // the user pins again deliberately from the chat composer.
@@ -206,25 +204,6 @@ export const SkillsView = () => {
     }
   }
 
-  // Empty-state panel — the "I deleted everything" path. `active` falls back
-  // to `skills.at(0)` (see below), so when the library has rows the panel
-  // always renders a skill detail; this empty state only fires when
-  // `skills.length === 0`. Stays inside the master/detail layout so the
-  // list (and its + button) keep their normal position.
-  const emptyPanel = (
-    <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
-      <h2 className="text-xl">No skills yet</h2>
-      <p className="max-w-md text-sm text-muted-foreground">
-        Skills are reusable instruction templates you summon in chat with{' '}
-        <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
-      </p>
-      <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
-        <Plus />
-        Create your first skill
-      </Button>
-    </section>
-  )
-
   const createForm = (
     <SkillForm
       // Keying on the pre-filled slug forces a fresh form mount when the
@@ -244,18 +223,15 @@ export const SkillsView = () => {
   const panel =
     mode === 'create' ? (
       createForm
-    ) : !active ? (
-      emptyPanel
-    ) : mode === 'detail' ? (
+    ) : !active ? null : mode === 'detail' ? (
       <SkillDetail
         name={active.name}
         description={active.description}
         instruction={active.instruction}
-        enabled={isEnabled(active.id)}
-        onToggleEnabled={(next) => handleToggleEnabled(active.id, next)}
         onEdit={() => onEdit(active.id)}
         onDelete={() => onDelete(active.id)}
         onBack={isMobile ? () => dispatch({ type: 'BACK_TO_LIST' }) : undefined}
+        onClose={!isMobile ? () => dispatch({ type: 'BACK_TO_LIST' }) : undefined}
       />
     ) : (
       <SkillForm
@@ -275,27 +251,44 @@ export const SkillsView = () => {
       />
     )
 
+  const panelOpen = panelView === 'panel' && panel !== null
+
   return (
     <div className="relative flex h-full">
-      <SkillsList
-        skills={skills}
-        activeSkillId={mode === 'detail' && active ? active.id : null}
-        isEnabled={isEnabled}
-        onToggleEnabled={handleToggleEnabled}
-        onCreate={() => {
-          if ((mode === 'create' || mode === 'edit') && isDirty) {
-            return
-          }
-          dispatch({ type: 'START_CREATE' })
-        }}
-        onSelectSkill={onSelectSkill}
-        onEdit={onEdit}
-        onDelete={onDelete}
-      />
-      {!isMobile && panel}
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <SkillsList
+          skills={skills}
+          activeSkillId={panelOpen && mode === 'detail' && active ? active.id : null}
+          isEnabled={isEnabled}
+          onToggleEnabled={handleToggleEnabled}
+          onCreate={() => {
+            if ((mode === 'create' || mode === 'edit') && isDirty) {
+              return
+            }
+            dispatch({ type: 'START_CREATE' })
+          }}
+          onSelectSkill={onSelectSkill}
+        />
+      </div>
+      {/* ~50/50 split with the list: half the viewport minus half the sidebar. */}
+      {!isMobile && (
+        <SlideInPanel open={panelOpen} width="clamp(400px, calc(50vw - 128px), 800px)">
+          {/* One continuous surface for the whole detail column, lifted off the
+              page by the app's soft glow shadow instead of a border. bg-sidebar
+              (near-white in light mode) like the chat composer, so the surface
+              reads against the page in both themes. Bottom padding floats the
+              card off the window edge; the right edge stays flush and square —
+              only the left corners are rounded. */}
+          <div className="h-full pb-3">
+            <div className="h-full overflow-hidden rounded-l-2xl bg-sidebar shadow-[0_0_32px_rgba(38,33,32,0.06)]">
+              {panel}
+            </div>
+          </div>
+        </SlideInPanel>
+      )}
       {isMobile && (
         <AnimatePresence>
-          {mobileView === 'panel' && (
+          {panelOpen && (
             <m.div
               key="mobile-panel"
               className="absolute inset-0 z-10 flex bg-background"

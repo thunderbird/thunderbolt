@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Info } from 'lucide-react'
+import { Info, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -133,7 +133,21 @@ export const SkillForm = ({
   }
 
   return (
-    <section className="flex h-full flex-1 flex-col bg-background text-foreground">
+    // No background of its own: inherits the desktop slide-in surface card
+    // or the mobile overlay's background.
+    <section className="relative flex h-full flex-1 flex-col text-foreground">
+      {/* Same corner placement as the detail panel's close button (8px from
+          top and right); behaves exactly like Cancel, including the
+          unsaved-changes guard. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onCancel}
+        aria-label="Close"
+        className="absolute right-2 top-2 size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+      >
+        <X className="size-4" />
+      </Button>
       <div className="flex min-h-0 flex-1 flex-col gap-5 px-6 py-5">
         <h2 className="text-xl text-foreground">{mode === 'edit' ? 'Edit Skill' : 'Create Skill'}</h2>
 
@@ -158,7 +172,7 @@ export const SkillForm = ({
               placeholder="daily-brief"
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
-              className="h-9 pl-7"
+              className="h-9 pl-4"
               aria-invalid={localNameError || nameError ? true : undefined}
             />
           </div>
@@ -207,7 +221,9 @@ export const SkillForm = ({
       </div>
 
       <footer className="flex items-center justify-end gap-2 px-6 py-4">
-        <Button variant="outline" size="lg" onClick={onCancel} className="text-sm">
+        {/* The outline variant's dark hover (bg-input/50) is invisible on the
+            sidebar-surface card; use the accent hover so it reads. */}
+        <Button variant="outline" size="lg" onClick={onCancel} className="text-sm dark:hover:bg-accent">
           Cancel
         </Button>
         <Button variant="default" size="lg" disabled={!canSubmit} className="text-sm" onClick={handleSubmit}>

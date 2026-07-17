@@ -32,7 +32,7 @@ describe('skillsViewReducer', () => {
     it('sets active and slides the panel in on mobile', () => {
       const next = skillsViewReducer(initialSkillsViewState, { type: 'SELECT_SKILL', id: 'a' })
       expect(next.activeId).toBe('a')
-      expect(next.mobileView).toBe('panel')
+      expect(next.panelView).toBe('panel')
     })
   })
 
@@ -41,7 +41,7 @@ describe('skillsViewReducer', () => {
       const next = run([{ type: 'SET_NAME_ERROR', message: 'old' }, { type: 'START_CREATE' }])
       expect(next.mode).toBe('create')
       expect(next.nameError).toBeNull()
-      expect(next.mobileView).toBe('panel')
+      expect(next.panelView).toBe('panel')
     })
 
     it('enters edit mode for a specific id', () => {
@@ -120,14 +120,14 @@ describe('skillsViewReducer', () => {
         ...initialSkillsViewState,
         mode: 'edit',
         activeId: 'a',
-        mobileView: 'panel',
+        panelView: 'panel',
       }
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
         leave: { type: 'cancel' },
         isMobile: true,
       })
-      expect(next.mobileView).toBe('list')
+      expect(next.panelView).toBe('list')
     })
 
     it('on mobile select, stays on the panel (the user is jumping skills, not leaving)', () => {
@@ -135,7 +135,7 @@ describe('skillsViewReducer', () => {
         ...initialSkillsViewState,
         mode: 'edit',
         activeId: 'a',
-        mobileView: 'panel',
+        panelView: 'panel',
       }
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
@@ -143,7 +143,7 @@ describe('skillsViewReducer', () => {
         isMobile: true,
       })
       expect(next.activeId).toBe('b')
-      expect(next.mobileView).toBe('panel')
+      expect(next.panelView).toBe('panel')
     })
   })
 
@@ -190,11 +190,11 @@ describe('skillsViewReducer', () => {
     it('on mobile jump-to-dependent, also slides the panel in so the edit form is visible', () => {
       const open: SkillsViewState = {
         ...initialSkillsViewState,
-        mobileView: 'list',
+        panelView: 'list',
         pendingDependents: { action: 'delete', skill: skill('a', 'foo'), dependents: [skill('b', 'bar')] },
       }
       const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b', isMobile: true })
-      expect(next.mobileView).toBe('panel')
+      expect(next.panelView).toBe('panel')
     })
   })
 
@@ -254,9 +254,9 @@ describe('skillsViewReducer', () => {
 
   describe('BACK_TO_LIST', () => {
     it('slides the panel back to the list on mobile', () => {
-      const panel: SkillsViewState = { ...initialSkillsViewState, mobileView: 'panel' }
+      const panel: SkillsViewState = { ...initialSkillsViewState, panelView: 'panel' }
       const next = skillsViewReducer(panel, { type: 'BACK_TO_LIST' })
-      expect(next.mobileView).toBe('list')
+      expect(next.panelView).toBe('list')
     })
   })
 })

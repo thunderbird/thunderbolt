@@ -64,27 +64,34 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
 }
 
 type PageSearchButtonProps = {
+  /** Optional tooltip text. When omitted the button renders without a tooltip. */
   tooltip?: string
   className?: string
 }
 
-const PageSearchButton = ({ tooltip = 'Search', className }: PageSearchButtonProps) => {
-  const { toggle } = usePageSearchContext()
+const PageSearchButton = ({ tooltip, className }: PageSearchButtonProps) => {
+  const { open, toggle } = usePageSearchContext()
+
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label={tooltip ?? 'Search'}
+      className={cn('rounded-lg hover:bg-accent', open && 'bg-accent', className)}
+      onClick={toggle}
+    >
+      <Search className="h-4 w-4" />
+    </Button>
+  )
+
+  if (!tooltip) {
+    return button
+  }
 
   return (
     <TooltipProvider>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={tooltip}
-            className={cn('rounded-lg bg-card hover:bg-accent', className)}
-            onClick={toggle}
-          >
-            <Search className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
         <TooltipContent>
           <p>{tooltip}</p>
         </TooltipContent>

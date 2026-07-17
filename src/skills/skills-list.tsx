@@ -27,8 +27,6 @@ export const SkillsList = ({
   onToggleEnabled,
   onCreate,
   onSelectSkill,
-  onEdit,
-  onDelete,
 }: {
   skills: Skill[]
   activeSkillId: string | null
@@ -36,8 +34,6 @@ export const SkillsList = ({
   onToggleEnabled: (id: string, next: boolean) => void
   onCreate: () => void
   onSelectSkill: (id: string) => void
-  onEdit: (id: string) => void
-  onDelete: (id: string) => void
 }) => {
   const [search, setSearch] = useState('')
   const { isMobile } = useIsMobile()
@@ -55,7 +51,7 @@ export const SkillsList = ({
   }, [skills, search, isEnabled])
 
   return (
-    <section className="flex h-full w-full flex-col gap-3 bg-background px-4 pb-4 md:px-5 text-foreground md:w-[378px] md:shrink-0">
+    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background px-4 pb-4 md:px-5 text-foreground">
       <PageSearch onSearch={setSearch}>
         {/* On mobile this row is the page's only chrome (the settings-level
             Header is skipped there) and matches the sidebar header height so
@@ -81,7 +77,7 @@ export const SkillsList = ({
             </h1>
           )}
           <div className="flex items-center gap-2">
-            <PageSearch.Button tooltip="Search skills" className="size-8 rounded-md" />
+            <PageSearch.Button className="size-8 rounded-md" />
             <Button
               variant="outline"
               size="icon"
@@ -126,8 +122,6 @@ export const SkillsList = ({
                   isActive={skill.id === activeSkillId}
                   onSelect={onSelectSkill}
                   onToggleEnabled={onToggleEnabled}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
                 />
               ))}
             </m.ul>
@@ -145,18 +139,32 @@ export const SkillsList = ({
                     isActive={skill.id === activeSkillId}
                     onSelect={onSelectSkill}
                     onToggleEnabled={onToggleEnabled}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
                   />
                 ))}
               </m.ul>
             </m.div>
           )}
 
-          {enabledRows.length === 0 && disabledRows.length === 0 && (
-            // Search-empty state. The user-deleted-everything empty state lives
-            // a level up in SkillsView.
-            <p className="flex h-32 items-center justify-center text-sm text-muted-foreground">No matching skills.</p>
+          {skills.length === 0 ? (
+            // The "I deleted everything" empty state — the list is the page's
+            // main surface now, so the create CTA lives here.
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+              <h2 className="text-xl">No skills yet</h2>
+              <p className="max-w-md text-sm text-muted-foreground">
+                Skills are reusable instruction templates you summon in chat with{' '}
+                <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
+              </p>
+              <Button size="sm" onClick={onCreate}>
+                <Plus />
+                Create your first skill
+              </Button>
+            </div>
+          ) : (
+            enabledRows.length === 0 &&
+            disabledRows.length === 0 && (
+              // Search-empty state.
+              <p className="flex h-32 items-center justify-center text-sm text-muted-foreground">No matching skills.</p>
+            )
           )}
         </div>
       </LayoutGroup>

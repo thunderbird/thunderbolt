@@ -6,7 +6,12 @@ import type { Skill } from '@/types'
 import type { DependentsAction } from './dependents-dialog'
 
 export type Mode = 'detail' | 'create' | 'edit'
-export type MobileView = 'list' | 'panel'
+/**
+ * Whether the detail surface is showing. On mobile it's the full-screen
+ * overlay; on desktop it's the right-hand slide-in panel. `'list'` means only
+ * the list is visible.
+ */
+export type PanelView = 'list' | 'panel'
 
 /**
  * Pending "leave the form" intent. The user typed in the create/edit form
@@ -22,7 +27,7 @@ export type SkillsViewState = {
   mode: Mode
   /** `null` only when the library is empty and nothing has been selected yet. */
   activeId: string | null
-  mobileView: MobileView
+  panelView: PanelView
   /** Tracked separately from form values: SkillForm computes it and reports up. */
   isDirty: boolean
   /** Incremented to force SkillForm to re-mount with `initialValues`. */
@@ -42,7 +47,7 @@ export type SkillsViewState = {
 export const initialSkillsViewState: SkillsViewState = {
   mode: 'detail',
   activeId: null,
-  mobileView: 'list',
+  panelView: 'list',
   isDirty: false,
   resetSignal: 0,
   pendingLeave: null,
@@ -94,20 +99,20 @@ export type SkillsViewAction =
   | { type: 'SET_NAME_ERROR'; message: string }
   /** User edited the name field — clear any stale uniqueness error. */
   | { type: 'CLEAR_NAME_ERROR' }
-  /** Mobile back button on the detail panel. */
+  /** Mobile back button on the detail panel / desktop close (X) on the slide-in panel. */
   | { type: 'BACK_TO_LIST' }
 
 export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewAction): SkillsViewState => {
   switch (action.type) {
     case 'SELECT_SKILL':
-      return { ...state, activeId: action.id, mobileView: 'panel' }
+      return { ...state, activeId: action.id, panelView: 'panel' }
 
     case 'START_CREATE':
       return {
         ...state,
         mode: 'create',
         nameError: null,
-        mobileView: 'panel',
+        panelView: 'panel',
         createInitialName: action.initialName ?? null,
         // Bump the reset signal so SkillForm remounts with the new initial
         // values when the user clicks "Create it" twice for different slugs.
@@ -115,7 +120,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       }
 
     case 'START_EDIT':
-      return { ...state, mode: 'edit', activeId: action.id, nameError: null, mobileView: 'panel' }
+      return { ...state, mode: 'edit', activeId: action.id, nameError: null, panelView: 'panel' }
 
     case 'PERFORM_LEAVE': {
       const nextActiveId = action.leave.type === 'select' ? action.leave.id : state.activeId
@@ -123,7 +128,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       // this here (not in the form's onCancel) means the panel stays visible
       // while the discard-confirmation dialog is open — if the user picks
       // "Keep editing" the form remains accessible.
-      const nextMobileView = action.isMobile && action.leave.type === 'cancel' ? 'list' : state.mobileView
+      const nextPanelView = action.isMobile && action.leave.type === 'cancel' ? 'list' : state.panelView
       return {
         ...state,
         activeId: nextActiveId,
@@ -132,7 +137,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         isDirty: false,
         nameError: null,
         pendingLeave: null,
-        mobileView: nextMobileView,
+        panelView: nextPanelView,
         createInitialName: null,
       }
     }
@@ -180,9 +185,9 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         isDirty: false,
         nameError: null,
         // The dependents dialog can be opened from a list-row action while
-        // mobileView is still 'list'; sliding the panel in here gives the
+        // panelView is still 'list'; sliding the panel in here gives the
         // edit form a surface to render on.
-        mobileView: action.isMobile ? 'panel' : state.mobileView,
+        panelView: action.isMobile ? 'panel' : state.panelView,
       }
 
     case 'SET_DIRTY':
@@ -206,6 +211,6 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return state.nameError === null ? state : { ...state, nameError: null }
 
     case 'BACK_TO_LIST':
-      return { ...state, mobileView: 'list' }
+      return { ...state, panelView: 'list' }
   }
 }

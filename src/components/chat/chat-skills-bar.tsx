@@ -119,7 +119,7 @@ export const ChatSkillsBar = ({
         size="icon-sm"
         aria-label="Add a skill"
         disabled={addDisabled}
-        className="shrink-0 cursor-pointer rounded-full border-border bg-sidebar hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 dark:border-border dark:bg-sidebar"
+        className="shrink-0 cursor-pointer rounded-full border-none bg-sidebar shadow-[0_0_16px_rgba(38,33,32,0.06)] hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 dark:bg-sidebar"
       >
         <Plus />
       </Button>
@@ -128,7 +128,10 @@ export const ChatSkillsBar = ({
 
   return (
     <>
-      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+      {/* Generous padding (cancelled by matching negative margins) keeps the
+          chips' soft glow shadow from being clipped by the scroll container —
+          overflow-x-auto forces vertical clipping too. */}
+      <div className="-mx-4 -my-4 flex items-center gap-2 overflow-x-auto px-4 py-4 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
         {pinned.map((skill) => (
           <SuggestionChip
             key={skill.id}

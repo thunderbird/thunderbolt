@@ -743,7 +743,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onStop={stop}
             autoFocus={!isMobile}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border bg-sidebar p-2"
+            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-[0_0_32px_rgba(38,33,32,0.06)] transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
             renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}

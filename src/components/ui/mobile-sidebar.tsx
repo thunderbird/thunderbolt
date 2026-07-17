@@ -148,7 +148,7 @@ export const MobileSidebar = ({
           onDragEnd={handleDragEnd}
           style={{ x, ...style }}
           className={cn(
-            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] border-r shadow-lg flex flex-col',
+            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] shadow-lg flex flex-col',
             side === 'left' ? 'left-0' : 'right-0',
             className,
           )}

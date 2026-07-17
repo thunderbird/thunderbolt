@@ -24,7 +24,7 @@ export const ErrorMessage = memo(
     // Show rate limit message immediately — don't auto-retry since the server told us to slow down
     if (rateLimited) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
+        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
           <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
             Too many requests. Please try again in a moment.
           </p>
@@ -36,7 +36,7 @@ export const ErrorMessage = memo(
     // request rather than show a generic error.
     if (isContextOverflowError(error)) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
+        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
           <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
             This conversation is too large for the model&apos;s context window. Start a new chat, remove some
             attachments, or switch to a model with a larger context window.
@@ -50,7 +50,7 @@ export const ErrorMessage = memo(
     // before onFinish has scheduled a retry — in both cases show the Retry button.
     if (retryCount > 0 && !retriesExhausted) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
+        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
           <div className="flex items-center gap-2">
             <Loader2 className="size-[var(--icon-size-sm)] text-amber-500 animate-spin" />
             <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
@@ -62,7 +62,7 @@ export const ErrorMessage = memo(
     }
 
     return (
-      <div className="px-4 py-3 rounded-2xl bg-destructive/10 border border-destructive/20 mr-auto w-full mt-2">
+      <div className="px-4 py-3 rounded-2xl bg-destructive/10 mr-auto w-full mt-2">
         <div className="flex items-center justify-between gap-2 min-h-[var(--touch-height-sm)]">
           <p className="text-destructive/80 text-[length:var(--font-size-body)]">
             {deliveryExhausted

@@ -68,10 +68,9 @@ export const Header = () => {
   // buttons inline on the right (self-nulls on macOS/web).
   const enableDragRegion = isTauri() && isDesktop()
   const dragProps = enableDragRegion ? { 'data-tauri-drag-region': true } : {}
-  // Tauri desktop fully hides the sidebar on collapse (see layout/sidebar/
-  // index.tsx) — surface a re-open toggle in the header in that state so it
-  // stays discoverable.
-  const showReopenSidebarButton = isTauri() && isDesktop() && !isMobile && sidebarState === 'collapsed'
+  // The macOS traffic lights (ending at ~x=68) are wider than the collapsed
+  // 48px icon rail, so nudge the header content right of the overhang.
+  const clearTrafficLights = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
   const navigate = useNavigate()
   const location = useLocation()
   const allAgents = useAllAgents()
@@ -178,21 +177,7 @@ export const Header = () => {
       {...dragProps}
       className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
-      <div
-        {...dragProps}
-        className={cn('flex items-center gap-2', showReopenSidebarButton && isMacDesktop() && 'ml-20')}
-      >
-        {showReopenSidebarButton && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-[var(--touch-height-sm)] cursor-pointer"
-            onClick={toggleSidebar}
-          >
-            <PanelLeft className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Open Sidebar</span>
-          </Button>
-        )}
+      <div {...dragProps} className={cn('flex items-center gap-2', clearTrafficLights && 'ml-4')}>
         {agentSelector}
       </div>
       <div {...dragProps} className="flex items-center gap-2">

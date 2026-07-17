@@ -30,14 +30,12 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
   // On mobile, always treat the sidebar as expanded when it's open
   const isExpanded = isMobile || state === 'expanded'
   // Tauri desktop hides the OS title bar; the sidebar's top drag strip carries
-  // the traffic lights (macOS) and the collapse toggle. Below that strip the
-  // sidebar-header row would be empty (logo/text removed to match how most
-  // apps present their sidebar), so skip it entirely on this path.
+  // the traffic lights (macOS) and, while expanded, the collapse toggle.
   const showChromeStrip = isTauri() && isDesktop() && !isMobile
 
   return (
     <>
-      {showChromeStrip && (
+      {showChromeStrip && isExpanded && (
         <div
           data-tauri-drag-region
           className="h-[var(--touch-height-xl)] bg-sidebar flex-shrink-0 relative flex items-center justify-end px-2"
@@ -53,6 +51,35 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
             <span className="sr-only">Collapse Sidebar</span>
           </Button>
         </div>
+      )}
+      {showChromeStrip && !isExpanded && (
+        <>
+          {/* Collapsed rail: the strip stays a pure drag region and blends into
+              the main header background, so no sidebar seam runs through the
+              window controls (the macOS traffic lights are wider than the 48px
+              rail). The sidebar surface resumes below it with a curved
+              top-right shoulder, and the expand toggle is the first rail item. */}
+          {/* Taller than the expanded strip (+0.5rem) so the rail's curved top
+              starts with clear air below the window controls. */}
+          <div
+            data-tauri-drag-region
+            className="h-[calc(var(--touch-height-xl)+0.5rem)] flex-shrink-0 relative bg-background"
+          >
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 rounded-tr-xl bg-sidebar" />
+          </div>
+          <SidebarGroup className="flex-shrink-0 py-0">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={onToggle} tooltip="Expand Sidebar" className="cursor-pointer">
+                    <PanelLeft className="size-[var(--icon-size-default)]" />
+                    <span className="sr-only">Expand Sidebar</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </>
       )}
       {!showChromeStrip && (
         <div className="h-[var(--touch-height-xl)] relative flex items-center justify-between px-2 flex-shrink-0">

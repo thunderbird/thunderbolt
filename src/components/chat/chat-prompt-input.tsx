@@ -542,7 +542,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </button>
           </DropdownMenuTrigger>
           {/* Opens downward on desktop, matching the mode/model selectors. */}
-          <DropdownMenuContent side={isMobile ? 'top' : 'bottom'} align="start" className="min-w-44 rounded-xl">
+          <DropdownMenuContent side={isMobile ? 'top' : 'bottom'} align="start" className="min-w-44">
             <DropdownMenuItem onSelect={() => fileInputRef.current?.click()} className="cursor-pointer">
               <Paperclip className="size-[var(--icon-size-sm)]" />
               Upload file
@@ -745,7 +745,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onStop={stop}
             autoFocus={!isMobile}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-[0_0_32px_rgba(38,33,32,0.06)] dark:shadow-none transition-colors"
+            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
             renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}

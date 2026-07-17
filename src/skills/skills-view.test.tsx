@@ -47,6 +47,18 @@ const Wrapper = ({ children }: { children: ReactNode }) => (
   </LazyMotion>
 )
 
+/** Wrapper that mounts the route with router state, for deep-link tests. */
+const wrapperWithNavState = (state: Record<string, unknown>) => {
+  const WrapperWithState = ({ children }: { children: ReactNode }) => (
+    <LazyMotion features={domMax}>
+      <MemoryRouter initialEntries={[{ pathname: '/settings/skills', state }]}>
+        <SidebarProvider>{children}</SidebarProvider>
+      </MemoryRouter>
+    </LazyMotion>
+  )
+  return WrapperWithState
+}
+
 // Flush pending mutation work + React's effect queue so the next assertion
 // sees the post-write state. The global fake clock means microtasks scheduled
 // by useMutation / setState don't run on their own.
@@ -150,6 +162,34 @@ describe('SkillsView state machine', () => {
       expect(submitBtn).toBeDisabled()
     })
 
+    it('opens a blank create form for the empty-string deep link', async () => {
+      // The chat skills bar's "New skill" row navigates with
+      // `createSkill: ''` — a valid deep link that must open the form blank
+      // rather than being treated as "no link".
+      await createSkill(getDb(), { name: 'seed', description: 'desc', instruction: 'i' })
+
+      renderWithReactivity(<SkillsView />, {
+        tables: ['skills'],
+        wrapper: wrapperWithNavState({ createSkill: '' }),
+      })
+
+      const nameInput = await waitForElement(() => screen.queryByRole('textbox', { name: /Skill name/ }))
+      expect((nameInput as HTMLInputElement).value).toBe('')
+      expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument()
+    })
+
+    it('pre-fills the create form when the deep link carries a slug', async () => {
+      await createSkill(getDb(), { name: 'seed', description: 'desc', instruction: 'i' })
+
+      renderWithReactivity(<SkillsView />, {
+        tables: ['skills'],
+        wrapper: wrapperWithNavState({ createSkill: 'meeting-notes' }),
+      })
+
+      const nameInput = await waitForElement(() => screen.queryByRole('textbox', { name: /Skill name/ }))
+      expect((nameInput as HTMLInputElement).value).toBe('meeting-notes')
+    })
+
     it('surfaces SkillNameTakenError inline when submitting a duplicate name', async () => {
       await createSkill(getDb(), { name: 'meeting-notes', description: 'd', instruction: 'i' })
       await createSkill(getDb(), { name: 'other', description: 'd', instruction: 'i' })
@@ -173,6 +213,81 @@ describe('SkillsView state machine', () => {
 
       const errorText = await waitForElement(() => screen.queryByText(/already exists/i))
       expect(errorText).toBeTruthy()
+    })
+  })
+
+  describe('panel visibility', () => {
+    it('shows no detail panel until a skill is explicitly selected (no first-skill fallback)', async () => {
+      await createSkill(getDb(), { name: 'alpha', description: 'd', instruction: 'do alpha things' })
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+      await waitForElement(() => screen.queryByText('/alpha'))
+
+      // The detail surface (with its close affordance) must not auto-open.
+      expect(screen.queryByRole('button', { name: 'Close details' })).not.toBeInTheDocument()
+      expect(screen.queryByText('do alpha things')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('/alpha'))
+      await flush()
+
+      expect(screen.getByText('do alpha things')).toBeInTheDocument()
+    })
+  })
+
+  describe('dirty form guard', () => {
+    const openCreateFormAndDirty = async () => {
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      fireEvent.click(createBtn)
+      await flush()
+      const nameInput = screen.getByRole('textbox', { name: /Skill name/ }) as HTMLInputElement
+      fireEvent.change(nameInput, { target: { value: 'draft' } })
+      await flush()
+    }
+
+    const editSkillFromRowContextMenu = async (name: string) => {
+      fireEvent.contextMenu(screen.getByText(`/${name}`))
+      await flush()
+      fireEvent.click(await waitForElement(() => screen.queryByText('Edit')))
+      await flush()
+    }
+
+    it('editing another skill from a dirty create form routes through the discard dialog', async () => {
+      await createSkill(getDb(), { name: 'alpha', description: 'd', instruction: 'i' })
+      await createSkill(getDb(), { name: 'beta', description: 'd', instruction: 'i' })
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+      await waitForElement(() => screen.queryByText('/beta'))
+
+      await openCreateFormAndDirty()
+      await editSkillFromRowContextMenu('beta')
+
+      // Guarded: the dialog appears instead of the click silently dying.
+      expect(screen.getByText('Leave without creating?')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
+      await flush()
+
+      // Confirming lands in a fresh edit form on the target skill.
+      const editName = screen.getByRole('textbox', { name: /Skill name/ }) as HTMLInputElement
+      expect(editName.value).toBe('beta')
+      expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+    })
+
+    it('"Keep editing" preserves the dirty form', async () => {
+      await createSkill(getDb(), { name: 'alpha', description: 'd', instruction: 'i' })
+      await createSkill(getDb(), { name: 'beta', description: 'd', instruction: 'i' })
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+      await waitForElement(() => screen.queryByText('/beta'))
+
+      await openCreateFormAndDirty()
+      await editSkillFromRowContextMenu('beta')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+      await flush()
+
+      const nameInput = screen.getByRole('textbox', { name: /Skill name/ }) as HTMLInputElement
+      expect(nameInput.value).toBe('draft')
     })
   })
 })

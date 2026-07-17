@@ -12,8 +12,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
 import { ReorderPanel } from '@/skills/reorder-panel'
-import { SuggestionChip } from '@/skills/suggestion-chip'
+import { chipSurfaceClass, SuggestionChip } from '@/skills/suggestion-chip'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import {
   useEnabledSkills as useEnabledSkills_default,
@@ -99,15 +100,17 @@ export const ChatSkillsBar = ({
   // chip's own dropdown.
   const pinnable = library.filter((s) => isEnabled(s.id) && !pinnedSet.has(s.id))
   const pinCapReached = pinnedSet.size >= maxPinnedSkills
-  // The trigger stays clickable even with nothing left to pin — the popover
-  // still offers "New Skill". Only the pin cap blocks it: the DAL throws
-  // PinLimitExceededError on the 11th pin and the catch below would swallow
-  // it silently, so that case is blocked upstream with explicit copy.
+  // While the bar renders, the trigger stays clickable even with nothing left
+  // to pin — the popover still offers "New skill". Only the pin cap blocks it:
+  // the DAL throws PinLimitExceededError on the 11th pin and the catch below
+  // would swallow it silently, so that case is blocked upstream with explicit
+  // copy.
   const addDisabled = pinCapReached
 
-  // Hide the whole bar only when there's nothing to display *and* nothing
-  // to add. If the user has zero pins but unpinned skills exist, we still
-  // show the `+` button so they can pin one.
+  // Hide the whole bar only when there's nothing to display *and* nothing to
+  // pin (empty library or every skill disabled) — brand-new users get the
+  // create CTA on /settings/skills instead of a lone `+` here. If the user
+  // has zero pins but unpinned skills exist, the `+` button still shows.
   if (pinned.length === 0 && pinnable.length === 0) {
     return null
   }
@@ -119,9 +122,7 @@ export const ChatSkillsBar = ({
         size="icon-sm"
         aria-label="Add a skill"
         disabled={addDisabled}
-        // Full-accent hover, matching SuggestionChip — softer mixes composite
-        // to the page background and the button vanishes on hover.
-        className="shrink-0 cursor-pointer rounded-full border-none bg-sidebar text-muted-foreground shadow-[0_0_16px_rgba(38,33,32,0.06)] hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:bg-sidebar dark:hover:bg-accent"
+        className={cn(chipSurfaceClass, 'disabled:cursor-not-allowed disabled:opacity-40')}
       >
         <Plus />
       </Button>
@@ -221,7 +222,7 @@ export const ChatSkillsBar = ({
             </ul>
             {/* Fixed footer below the scrollable list: full-bleed divider
                 (negative margins cancel the container's p-1) with a "New
-                Skill" row that jumps to the create form in settings. */}
+                skill" row that jumps to the create form in settings. */}
             <div className="-mx-1 mt-1 border-t border-border px-1 pt-1">
               <button
                 type="button"
@@ -232,7 +233,7 @@ export const ChatSkillsBar = ({
                 className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <Plus className="size-4" />
-                New Skill
+                New skill
               </button>
             </div>
           </PopoverContent>

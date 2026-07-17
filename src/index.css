@@ -26,7 +26,6 @@
   --color-primary-foreground: #faf8f5;
   --color-secondary: #f0ede6;
   --color-secondary-foreground: #262120;
-  --color-tertiary: #7f7870;
   --color-muted: #f0ede6;
   --color-muted-foreground: #7f7870;
   /* Hover/selected tint. Deliberately low-saturation: at these near-white
@@ -65,22 +64,28 @@
   --color-sidebar-accent-foreground: #262120;
   --color-sidebar-border: #eee9e1;
   --color-sidebar-ring: #393530;
-  --color-card-border: #e5dfd5;
 
   /* Softer elevation — same geometry as Tailwind's defaults, but the color
-     is routed through --elevation-color / --elevation-color-strong (defined
-     in :root and .dark below) instead of a literal. Tailwind v4 inlines
-     these token values into the shadow-* utilities at build time, so a
-     var() indirection is the only way dark mode can swap the color; a
-     .dark { --shadow-lg: ... } override would never be read. Applies
-     uniformly to every shadow-* utility. */
+     is routed through --elevation-faint / --elevation-medium /
+     --elevation-strong (defined in :root and .dark below) instead of a
+     literal. Tailwind v4 inlines these token values into the shadow-*
+     utilities at build time, so a var() indirection is the only way dark
+     mode can swap the color; a .dark { --shadow-lg: ... } override would
+     never be read. Applies uniformly to every shadow-* utility. */
   --shadow-2xs: 0 1px var(--elevation-faint);
   --shadow-xs: 0 1px 2px 0 var(--elevation-faint);
-  --shadow-sm: 0 1px 3px 0 var(--elevation-color), 0 1px 2px -1px var(--elevation-color);
-  --shadow-md: 0 4px 6px -1px var(--elevation-color), 0 2px 4px -2px var(--elevation-color);
-  --shadow-lg: 0 10px 15px -3px var(--elevation-color), 0 4px 6px -4px var(--elevation-color);
-  --shadow-xl: 0 20px 25px -5px var(--elevation-color), 0 8px 10px -6px var(--elevation-color);
+  --shadow-sm: 0 1px 3px 0 var(--elevation-medium), 0 1px 2px -1px var(--elevation-medium);
+  --shadow-md: 0 4px 6px -1px var(--elevation-medium), 0 2px 4px -2px var(--elevation-medium);
+  --shadow-lg: 0 10px 15px -3px var(--elevation-medium), 0 4px 6px -4px var(--elevation-medium);
+  --shadow-xl: 0 20px 25px -5px var(--elevation-medium), 0 8px 10px -6px var(--elevation-medium);
   --shadow-2xl: 0 25px 50px -12px var(--elevation-strong);
+
+  /* Warm soft glow used to lift key light-mode surfaces (chat composer, the
+     skills slide-in panel, pinned-skill chips) off the page. Same color at
+     two blur radii; call sites that shouldn't glow in dark mode pair these
+     with dark:shadow-none. */
+  --shadow-glow: 0 0 32px rgb(38 33 32 / 0.06);
+  --shadow-glow-sm: 0 0 16px rgb(38 33 32 / 0.06);
 }
 
 /* Shadow colors for the three elevation intensities above. Light mode runs
@@ -89,13 +94,13 @@
    black shadow is invisible on #1b1e1f. */
 :root {
   --elevation-faint: rgb(0 0 0 / 0.03);
-  --elevation-color: rgb(0 0 0 / 0.06);
+  --elevation-medium: rgb(0 0 0 / 0.06);
   --elevation-strong: rgb(0 0 0 / 0.15);
 }
 
 .dark {
   --elevation-faint: rgb(0 0 0 / 0.1);
-  --elevation-color: rgb(0 0 0 / 0.18);
+  --elevation-medium: rgb(0 0 0 / 0.18);
   --elevation-strong: rgb(0 0 0 / 0.35);
 }
 
@@ -202,7 +207,6 @@
   --color-primary-foreground: #252220;
   --color-secondary: #313334;
   --color-secondary-foreground: #f2f1ee;
-  --color-tertiary: #a19a91;
   --color-muted: #313334;
   --color-muted-foreground: #a19a91;
   --color-accent: #383a39;
@@ -217,7 +221,7 @@
   /* Lighter than --color-border (dark mode inverts: "stronger" = lighter). */
   --color-border-strong: #8a8a88;
   --color-input: #282a2b;
-  /* Lighter than --color-border so the focused-input border swap is visible in dark mode. */
+  /* Focus outlines — lighter than --color-border so rings stand out in dark mode. */
   --color-ring: #8a8a88;
   --color-chart-1: oklch(0.488 0.243 264.376);
   --color-chart-2: oklch(0.696 0.17 162.48);
@@ -234,7 +238,6 @@
   --color-sidebar-accent-foreground: #f2f1ee;
   --color-sidebar-border: #434546;
   --color-sidebar-ring: #8a8a88;
-  --color-card-border: #434546;
 }
 
 @keyframes accordion-down {

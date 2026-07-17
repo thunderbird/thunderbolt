@@ -8,21 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useState } from 'react'
-import { Globe, Pencil, Server, Trash2 } from 'lucide-react'
-import { AppLogo } from '@/components/app-logo'
+import { Pencil, Trash2 } from 'lucide-react'
+import { iconForAgent } from '@/components/agent-icon'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
-
-/** Visual order: built-in (app logo) → managed/system (server) → remote (globe). */
-const iconForAgent = (agent: Agent) => {
-  if (agent.type === 'built-in') {
-    return AppLogo
-  }
-  if (agent.type === 'managed-acp') {
-    return Server
-  }
-  return Globe
-}
 
 /** Human label rendered next to each row's name. */
 const badgeForAgent = (agent: Agent): string => {

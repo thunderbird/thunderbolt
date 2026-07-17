@@ -15,7 +15,7 @@ import { DiscardCreateDialog } from './discard-create-dialog'
 import { findDependents } from './find-dependents'
 import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
-import { initialSkillsViewState, skillsViewReducer } from './skills-view-state'
+import { initialSkillsViewState, skillsViewReducer, type LeaveIntent } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { useSkillTelemetry } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
@@ -68,7 +68,7 @@ export const SkillsView = () => {
     })
   }
   // `''` is a valid deep link (open a blank create form — e.g. the chat
-  // skills bar's "New Skill" row), so only null/undefined mean "no link".
+  // skills bar's "New skill" row), so only null/undefined mean "no link".
   if (createSkillNav == null) {
     consumedCreateSkillRef.current = null
   } else if (consumedCreateSkillRef.current !== createSkillNav) {
@@ -114,7 +114,7 @@ export const SkillsView = () => {
   )
 
   const requestLeave = useCallback(
-    (leave: { type: 'cancel' } | { type: 'select'; id: string }) => {
+    (leave: LeaveIntent) => {
       if ((mode === 'create' || mode === 'edit') && isDirty) {
         dispatch({ type: 'REQUEST_LEAVE', leave })
       } else {
@@ -138,12 +138,22 @@ export const SkillsView = () => {
     }
   }
 
+  // Edit/create from a dirty form routes through the discard dialog like
+  // `onSelectSkill` — never a silent dead click.
   const onEdit = (id: string) => {
-    // Same guard as onCreate: don't blow away a dirty form under the user.
-    if ((mode === 'create' || mode === 'edit') && isDirty) {
-      return
+    if (mode === 'detail') {
+      dispatch({ type: 'START_EDIT', id })
+    } else {
+      requestLeave({ type: 'edit', id })
     }
-    dispatch({ type: 'START_EDIT', id })
+  }
+
+  const onCreate = () => {
+    if (mode === 'detail') {
+      dispatch({ type: 'START_CREATE' })
+    } else {
+      requestLeave({ type: 'create' })
+    }
   }
 
   const onDelete = (id: string) => {
@@ -184,7 +194,7 @@ export const SkillsView = () => {
   }
 
   const onJumpToDependent = (id: string) => {
-    dispatch({ type: 'JUMP_TO_DEPENDENT', id, isMobile })
+    dispatch({ type: 'JUMP_TO_DEPENDENT', id })
   }
 
   const handleSubmit = async (values: SkillFormValues) => {
@@ -224,19 +234,26 @@ export const SkillsView = () => {
     />
   )
 
-  const panel =
-    mode === 'create' ? (
-      createForm
-    ) : !active ? null : mode === 'detail' ? (
-      <SkillDetail
-        name={active.name}
-        description={active.description}
-        instruction={active.instruction}
-        onEdit={() => onEdit(active.id)}
-        onDelete={() => onDelete(active.id)}
-        onClose={() => dispatch({ type: 'BACK_TO_LIST' })}
-      />
-    ) : (
+  const renderPanel = () => {
+    if (mode === 'create') {
+      return createForm
+    }
+    if (!active) {
+      return null
+    }
+    if (mode === 'detail') {
+      return (
+        <SkillDetail
+          name={active.name}
+          description={active.description}
+          instruction={active.instruction}
+          onEdit={() => onEdit(active.id)}
+          onDelete={() => onDelete(active.id)}
+          onClose={() => dispatch({ type: 'BACK_TO_LIST' })}
+        />
+      )
+    }
+    return (
       <SkillForm
         key={`edit:${active.id}`}
         mode="edit"
@@ -253,7 +270,9 @@ export const SkillsView = () => {
         nameError={nameError}
       />
     )
+  }
 
+  const panel = renderPanel()
   const panelOpen = panelView === 'panel' && panel !== null
 
   return (
@@ -264,12 +283,7 @@ export const SkillsView = () => {
           activeSkillId={panelOpen && mode === 'detail' && active ? active.id : null}
           isEnabled={isEnabled}
           onToggleEnabled={handleToggleEnabled}
-          onCreate={() => {
-            if ((mode === 'create' || mode === 'edit') && isDirty) {
-              return
-            }
-            dispatch({ type: 'START_CREATE' })
-          }}
+          onCreate={onCreate}
           onSelectSkill={onSelectSkill}
           onEditSkill={onEdit}
           onDeleteSkill={onDelete}
@@ -285,7 +299,7 @@ export const SkillsView = () => {
               card off the window edge; the right edge stays flush and square —
               only the left corners are rounded. */}
           <div className="h-full pb-4">
-            <div className="h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar shadow-[0_0_32px_rgba(38,33,32,0.06)]">
+            <div className="h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar shadow-glow">
               {panel}
             </div>
           </div>

@@ -2,7 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import {
+  SearchableMenu,
+  searchableMenuFooterActionClass,
+  searchableMenuRowClass,
+  type SearchableMenuGroup,
+  type SearchableMenuItem,
+} from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
@@ -20,9 +26,9 @@ export type ModelSelectorProps = {
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
   /** Trigger appearance. `pill` (default) is the rounded standalone style used
-   *  in modals; `bordered` matches the chat composer's ModeSelector (squared,
+   *  in modals; `composer` matches the chat composer's ModeSelector (squared,
    *  borderless, hover-accent) so the two composer controls read as a pair. */
-  variant?: 'pill' | 'bordered'
+  variant?: 'pill' | 'composer'
 }
 
 type ModelItemData = {
@@ -134,7 +140,7 @@ export const ModelSelector = ({
     <div
       className={cn(
         'flex items-center cursor-pointer transition-colors',
-        variant === 'bordered'
+        variant === 'composer'
           ? cn(
               'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-lg text-[length:var(--font-size-sm)]',
               isOpen ? 'bg-accent' : 'hover:bg-accent/50',
@@ -165,7 +171,7 @@ export const ModelSelector = ({
     const content = (
       <div
         className={cn(
-          'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]',
+          searchableMenuRowClass,
           'hover:bg-accent/50',
           isSelected && 'bg-accent',
           item.disabled && 'opacity-50 cursor-not-allowed',
@@ -191,14 +197,7 @@ export const ModelSelector = ({
   }
 
   const footer = onAddModels ? (
-    <button
-      type="button"
-      onClick={onAddModels}
-      // Negative margins cancel the shared footer's px-2 py-2 so the row is a flush,
-      // 36px-tall, full-width item (hover fills edge to edge; the popover clips the
-      // rounded bottom).
-      className="-m-2 flex h-[var(--touch-height-default)] w-[calc(100%_+_1rem)] cursor-pointer items-center justify-start gap-2 px-4 text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-    >
+    <button type="button" onClick={onAddModels} className={searchableMenuFooterActionClass}>
       <Plus className="size-4" />
       Add models
     </button>
@@ -224,7 +223,6 @@ export const ModelSelector = ({
       blurBackdrop
       trigger={renderTrigger}
       renderItem={renderItem}
-      itemGap="gap-0.5"
       footer={footer}
       width={320}
       maxHeight={340}

@@ -46,19 +46,19 @@ export default function DevSettingsPage() {
   // request transport (privacy on Tauri vs. CORS bypass on Web), not a synced
   // user preference. Web ignores the stored value — browser CORS forces the
   // proxy path — so the toggle is UI-disabled with an explanatory tooltip.
-  const onTauri = isTauri()
+  const runningInTauri = isTauri()
   const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
   const effectiveProxyEnabled = computeEffectiveProxyEnabled(
-    () => onTauri,
+    () => runningInTauri,
     () => proxyEnabledStr,
   )
-  const proxyDisabled = !onTauri || !isAuthenticated
-  const proxyTooltipReason = !onTauri
+  const proxyDisabled = !runningInTauri || !isAuthenticated
+  const proxyTooltipReason = !runningInTauri
     ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
     : 'Sign in to enable cloud proxy.'
   // When the toggle is auth-disabled, render it as OFF so the UI honestly reflects
   // that the user can't use the proxy until they sign in.
-  const proxyChecked = proxyDisabled && onTauri ? false : effectiveProxyEnabled
+  const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
 
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">

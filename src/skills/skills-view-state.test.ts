@@ -105,6 +105,62 @@ describe('skillsViewReducer', () => {
       expect(next.pendingLeave).toBeNull()
     })
 
+    it('on desktop cancel, keeps the panel open (it shows the detail view)', () => {
+      const editing: SkillsViewState = {
+        ...initialSkillsViewState,
+        mode: 'edit',
+        activeId: 'a',
+        panelView: 'panel',
+      }
+      const next = skillsViewReducer(editing, {
+        type: 'PERFORM_LEAVE',
+        leave: { type: 'cancel' },
+        isMobile: false,
+      })
+      expect(next.panelView).toBe('panel')
+    })
+
+    it('an edit intent lands in a fresh edit form on the target skill', () => {
+      const creating: SkillsViewState = {
+        ...initialSkillsViewState,
+        mode: 'create',
+        isDirty: true,
+        panelView: 'list',
+        resetSignal: 1,
+      }
+      const next = skillsViewReducer(creating, {
+        type: 'PERFORM_LEAVE',
+        leave: { type: 'edit', id: 'b' },
+        isMobile: false,
+      })
+      expect(next.mode).toBe('edit')
+      expect(next.activeId).toBe('b')
+      expect(next.panelView).toBe('panel')
+      expect(next.isDirty).toBe(false)
+      expect(next.resetSignal).toBe(2)
+    })
+
+    it('a create intent lands in a blank create form', () => {
+      const editing: SkillsViewState = {
+        ...initialSkillsViewState,
+        mode: 'edit',
+        activeId: 'a',
+        isDirty: true,
+        createInitialName: 'stale',
+        panelView: 'panel',
+      }
+      const next = skillsViewReducer(editing, {
+        type: 'PERFORM_LEAVE',
+        leave: { type: 'create' },
+        isMobile: false,
+      })
+      expect(next.mode).toBe('create')
+      // The prior edit target stays active — SUBMIT_SUCCESS overwrites it.
+      expect(next.activeId).toBe('a')
+      expect(next.createInitialName).toBeNull()
+      expect(next.panelView).toBe('panel')
+    })
+
     it('clears createInitialName so the next START_CREATE starts blank again', () => {
       const editing: SkillsViewState = {
         ...initialSkillsViewState,
@@ -181,19 +237,21 @@ describe('skillsViewReducer', () => {
         ...initialSkillsViewState,
         pendingDependents: { action: 'disable', skill: skill('a', 'foo'), dependents: [skill('b', 'bar')] },
       }
-      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b', isMobile: false })
+      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b' })
       expect(next.mode).toBe('edit')
       expect(next.activeId).toBe('b')
       expect(next.pendingDependents).toBeNull()
     })
 
-    it('on mobile jump-to-dependent, also slides the panel in so the edit form is visible', () => {
+    it('opens the panel so the edit form is visible even when jumping from a list-row action', () => {
+      // The dependents dialog can open from the list (panelView 'list') on
+      // both mobile and desktop — the jump must reveal the edit surface.
       const open: SkillsViewState = {
         ...initialSkillsViewState,
         panelView: 'list',
         pendingDependents: { action: 'delete', skill: skill('a', 'foo'), dependents: [skill('b', 'bar')] },
       }
-      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b', isMobile: true })
+      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b' })
       expect(next.panelView).toBe('panel')
     })
   })

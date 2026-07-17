@@ -14,11 +14,18 @@ export type Mode = 'detail' | 'create' | 'edit'
 export type PanelView = 'list' | 'panel'
 
 /**
- * Pending "leave the form" intent. The user typed in the create/edit form
- * and now wants to navigate away — `requestLeave` parks the intent here so
- * the discard-changes dialog can confirm before applying it.
+ * "Leave the form" intent: `cancel` returns to detail of the current active
+ * skill, `select` switches active to the supplied id, `edit`/`create` open a
+ * fresh form on the target. When the form is dirty, `requestLeave` parks the
+ * intent in `pendingLeave` so the discard-changes dialog can confirm first.
  */
-export type PendingLeave = { type: 'cancel' } | { type: 'select'; id: string } | null
+export type LeaveIntent =
+  | { type: 'cancel' }
+  | { type: 'select'; id: string }
+  | { type: 'edit'; id: string }
+  | { type: 'create' }
+
+export type PendingLeave = LeaveIntent | null
 
 /** Captured at dialog-open time so a concurrent sync can't redirect the action. */
 export type PendingDependents = { action: DependentsAction; skill: Skill; dependents: Skill[] } | null
@@ -73,12 +80,11 @@ export type SkillsViewAction =
   | { type: 'START_CREATE'; initialName?: string }
   /** User opened the edit form for a specific skill. */
   | { type: 'START_EDIT'; id: string }
-  /** Leave the form (confirmed). `cancel` returns to detail of the current
-   *  active skill; `select` switches active to the supplied id. */
-  | { type: 'PERFORM_LEAVE'; leave: { type: 'cancel' } | { type: 'select'; id: string }; isMobile: boolean }
+  /** Leave the form (confirmed) and apply the parked intent. */
+  | { type: 'PERFORM_LEAVE'; leave: LeaveIntent; isMobile: boolean }
   /** User asked to leave but the form is dirty — park the intent for the
    *  discard-changes dialog. */
-  | { type: 'REQUEST_LEAVE'; leave: { type: 'cancel' } | { type: 'select'; id: string } }
+  | { type: 'REQUEST_LEAVE'; leave: LeaveIntent }
   /** User dismissed the discard-changes dialog without confirming. */
   | { type: 'CANCEL_DISCARD' }
   /** Open the delete confirm dialog for a snapshot of the target skill. */
@@ -90,7 +96,7 @@ export type SkillsViewAction =
   /** Close the dependents confirm dialog (cancelled or confirmed). */
   | { type: 'CLOSE_DEPENDENTS' }
   /** User clicked a row in the dependents dialog — jump to edit that skill. */
-  | { type: 'JUMP_TO_DEPENDENT'; id: string; isMobile: boolean }
+  | { type: 'JUMP_TO_DEPENDENT'; id: string }
   /** Form reports its dirty state changed. */
   | { type: 'SET_DIRTY'; dirty: boolean }
   /** Form submit succeeded — return to detail mode on the (possibly new) skill. */
@@ -123,16 +129,27 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return { ...state, mode: 'edit', activeId: action.id, nameError: null, panelView: 'panel' }
 
     case 'PERFORM_LEAVE': {
-      const nextActiveId = action.leave.type === 'select' ? action.leave.id : state.activeId
-      // On mobile a `cancel` should drop the user back to the list. Driving
-      // this here (not in the form's onCancel) means the panel stays visible
-      // while the discard-confirmation dialog is open — if the user picks
-      // "Keep editing" the form remains accessible.
-      const nextPanelView = action.isMobile && action.leave.type === 'cancel' ? 'list' : state.panelView
+      const { leave } = action
+      const nextActiveId = leave.type === 'select' || leave.type === 'edit' ? leave.id : state.activeId
+      // `edit`/`create` land in a fresh form on the target; `cancel`/`select`
+      // land in detail.
+      const nextMode = leave.type === 'edit' ? 'edit' : leave.type === 'create' ? 'create' : 'detail'
+      // `edit`/`create` need the panel open — they can be triggered from a
+      // list-row action while panelView is still 'list'. On mobile a `cancel`
+      // drops the user back to the list. Driving this here (not in the form's
+      // onCancel) means the panel stays visible while the discard-confirmation
+      // dialog is open — if the user picks "Keep editing" the form remains
+      // accessible.
+      const nextPanelView =
+        leave.type === 'edit' || leave.type === 'create'
+          ? 'panel'
+          : action.isMobile && leave.type === 'cancel'
+            ? 'list'
+            : state.panelView
       return {
         ...state,
         activeId: nextActiveId,
-        mode: 'detail',
+        mode: nextMode,
         resetSignal: state.resetSignal + 1,
         isDirty: false,
         nameError: null,
@@ -185,9 +202,10 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         isDirty: false,
         nameError: null,
         // The dependents dialog can be opened from a list-row action while
-        // panelView is still 'list'; sliding the panel in here gives the
-        // edit form a surface to render on.
-        panelView: action.isMobile ? 'panel' : state.panelView,
+        // panelView is still 'list'; opening the panel here gives the edit
+        // form a surface to render on (full-screen overlay on mobile, the
+        // right-hand slide-in on desktop).
+        panelView: 'panel',
       }
 
     case 'SET_DIRTY':

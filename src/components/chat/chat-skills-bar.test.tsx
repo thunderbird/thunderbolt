@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -96,7 +96,7 @@ describe('ChatSkillsBar', () => {
     expect(screen.getByLabelText('Add a skill')).toBeTruthy()
   })
 
-  it('keeps the "+ Add a skill" trigger clickable when every enabled skill is already pinned (popover still offers New Skill)', () => {
+  it('keeps the "+ Add a skill" trigger clickable when every enabled skill is already pinned (popover still offers New skill)', () => {
     const a = skill('a', 'daily-brief')
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
@@ -105,6 +105,10 @@ describe('ChatSkillsBar', () => {
     })
     const trigger = screen.getByLabelText('Add a skill') as HTMLButtonElement
     expect(trigger.disabled).toBe(false)
+
+    fireEvent.click(trigger)
+    expect(screen.getByText('All skills are pinned')).toBeTruthy()
+    expect(screen.getByText('New skill')).toBeTruthy()
   })
 
   it('disables the "+ Add a skill" trigger when the pin cap is reached (even with unpinned candidates available)', () => {

@@ -36,6 +36,7 @@ export const PowerSyncStatus = () => {
   const isAuthenticated = !!session?.user && !sessionUser?.isAnonymous
   const { openSignInModal } = useSignInModal()
   const [popoverOpen, setPopoverOpen] = useState(false)
+  const [tooltipOpen, setTooltipOpen] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
   const { isMobile } = useIsMobile()
   const { setOpenMobile } = useSidebar()
@@ -97,9 +98,11 @@ export const PowerSyncStatus = () => {
   return (
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen} modal={isMobile}>
-        {/* No tooltip while the popover is open, and none when sync is off —
-            the popover itself explains the disabled state. */}
-        <Tooltip open={popoverOpen || !syncEnabled ? false : undefined}>
+        {/* Always controlled (Radix warns when `open` flips between a value
+            and undefined). No tooltip while the popover is open, and none
+            when sync is off — the popover itself explains the disabled
+            state. */}
+        <Tooltip open={tooltipOpen && !popoverOpen && syncEnabled} onOpenChange={setTooltipOpen}>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
               <button

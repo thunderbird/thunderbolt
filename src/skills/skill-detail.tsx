@@ -4,7 +4,7 @@
 
 import { Info, MoreVertical, SquarePen, Trash2, X } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
@@ -47,12 +47,7 @@ export const SkillDetail = ({
         <div className="flex shrink-0 items-center gap-0.5 md:absolute md:-right-4 md:top-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="More"
-                className="size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground [&_svg:not([class*='size-'])]:size-5"
-              >
+              <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>
@@ -72,7 +67,7 @@ export const SkillDetail = ({
             size="icon"
             onClick={onClose}
             aria-label="Close details"
-            className="size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            className={mutedIconButtonClass}
           >
             <X className="size-4" />
           </Button>

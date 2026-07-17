@@ -17,7 +17,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'Pinned-skill chip rendered above the chat input. Click inserts the `/slug` token; right-click / long-press opens the action menu (Run · Add · Add instructions · Reorder · Unpin). Run uses router-state navigation — no `?run=` URL surface (Skills v1 §5).',
+          'Pinned-skill chip rendered above the chat input. Click inserts the `/slug` token; right-click / long-press opens the action menu (Add to chat · Add instructions to chat · Reorder · Unpin).',
       },
     },
   },

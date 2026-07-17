@@ -2,7 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import {
+  SearchableMenu,
+  searchableMenuRowClass,
+  type SearchableMenuGroup,
+  type SearchableMenuItem,
+} from '@/components/ui/searchable-menu'
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
 import { Globe, MessageCircle, Microscope } from 'lucide-react'
@@ -71,12 +76,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     const isDefault = item.data?.mode.isDefault === 1
 
     return (
-      <div
-        className={cn(
-          'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]',
-          isSelected ? 'bg-accent' : 'hover:bg-accent/50',
-        )}
-      >
+      <div className={cn(searchableMenuRowClass, isSelected ? 'bg-accent' : 'hover:bg-accent/50')}>
         {item.icon}
         <span className="font-medium">{item.label}</span>
         {isDefault && <span className="text-muted-foreground text-[length:var(--font-size-sm)]">Default</span>}
@@ -95,7 +95,6 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
       align="end"
       trigger={renderTrigger}
       renderItem={renderItem}
-      itemGap="gap-0.5"
       width={280}
       maxHeight={300}
     />

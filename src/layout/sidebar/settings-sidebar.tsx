@@ -13,12 +13,44 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
+import { Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
 import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
 import type { SidebarSection } from './types'
+
+type NavItem = {
+  path: string
+  label: string
+  icon: LucideIcon
+  /** Match sub-routes too (e.g. /settings/models/:id). Default: exact match. */
+  matchPrefix?: boolean
+}
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Agents',
+    items: [{ path: '/settings/agents', label: 'All agents', icon: Bot }],
+  },
+  {
+    label: 'What agents use',
+    items: [
+      { path: '/settings/skills', label: 'Skills', icon: Zap },
+      { path: '/settings/models', label: 'Models', icon: Cpu, matchPrefix: true },
+      { path: '/settings/integrations', label: 'Integrations', icon: Plug },
+      { path: '/settings/mcp-servers', label: 'MCP servers', icon: Server },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { path: '/settings/preferences', label: 'Preferences', icon: SlidersHorizontal },
+      { path: '/settings/devices', label: 'Devices', icon: Smartphone },
+    ],
+  },
+]
 
 type SettingsSidebarContentProps = {
   isCollapsed: boolean
@@ -34,9 +66,8 @@ export const SettingsSidebarContent = ({
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
 
-  // Collapsed rail: the group labels are hidden, so a hairline divider takes
-  // over as the section boundary.
-  const groupDivider = isCollapsed ? <RailDivider /> : null
+  const isItemActive = ({ path, matchPrefix }: NavItem) =>
+    matchPrefix ? location.pathname.startsWith(path) : location.pathname === path
 
   return (
     <SidebarContent className="flex flex-col h-full">
@@ -55,110 +86,36 @@ export const SettingsSidebarContent = ({
         </SidebarGroup>
       )}
 
-      {/* Collapsed: SidebarContent's gap-2 alone spaces the groups and their
-          dividers, so the groups' own vertical padding would double it. */}
-      <SidebarGroup className={isCollapsed ? 'py-0' : undefined}>
-        <SidebarGroupLabel>Agents</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/agents')}
-                tooltip="All agents"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/agents'}
-              >
-                <Bot className="size-4" />
-                <span>All agents</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-      {groupDivider}
-
-      <SidebarGroup className={isCollapsed ? 'py-0' : undefined}>
-        <SidebarGroupLabel>What agents use</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/skills')}
-                tooltip="Skills"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/skills'}
-              >
-                <Zap className="size-4" />
-                <span>Skills</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/models')}
-                tooltip="Models"
-                className="cursor-pointer"
-                isActive={location.pathname.startsWith('/settings/models')}
-              >
-                <Cpu className="size-4" />
-                <span>Models</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/integrations')}
-                tooltip="Integrations"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/integrations'}
-              >
-                <Plug className="size-4" />
-                <span>Integrations</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/mcp-servers')}
-                tooltip="MCP Servers"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/mcp-servers'}
-              >
-                <Server className="size-4" />
-                <span>MCP Servers</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-      {groupDivider}
-
-      <SidebarGroup className={isCollapsed ? 'pt-0' : undefined}>
-        <SidebarGroupLabel>Settings</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/preferences')}
-                tooltip="Preferences"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/preferences'}
-              >
-                <SlidersHorizontal className="size-4" />
-                <span>Preferences</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/devices')}
-                tooltip="Devices"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/devices'}
-              >
-                <Smartphone className="size-4" />
-                <span>Devices</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
+      {navGroups.map((group, index) => (
+        <Fragment key={group.label}>
+          {/* Collapsed rail: the group labels are hidden, so a hairline
+              divider takes over as the section boundary. */}
+          {index > 0 && isCollapsed && <RailDivider />}
+          {/* Collapsed: SidebarContent's gap-2 alone spaces the groups and
+              their dividers, so the groups' own vertical padding would double
+              it. The last group keeps its bottom padding against the footer. */}
+          <SidebarGroup className={isCollapsed ? (index === navGroups.length - 1 ? 'pt-0' : 'py-0') : undefined}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      onClick={() => onSettingsNavigate(item.path)}
+                      tooltip={item.label}
+                      className="cursor-pointer"
+                      isActive={isItemActive(item)}
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </Fragment>
+      ))}
 
       <div className="flex-1" />
 

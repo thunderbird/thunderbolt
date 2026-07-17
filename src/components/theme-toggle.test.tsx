@@ -23,18 +23,18 @@ describe('ThemeToggle', () => {
     mockSetTheme.mockClear()
   })
 
-  it('labels the button with the current theme', () => {
+  it('labels the button with the action it performs', () => {
     mockTheme = 'dark'
     render(<ThemeToggle />)
 
-    expect(screen.getByRole('button', { name: 'Dark theme' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Switch to system theme' })).toBeInTheDocument()
   })
 
   it('cycles light → dark', () => {
     mockTheme = 'light'
     render(<ThemeToggle />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Light theme' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to dark theme' }))
 
     expect(mockSetTheme).toHaveBeenCalledWith('dark')
   })
@@ -43,7 +43,7 @@ describe('ThemeToggle', () => {
     mockTheme = 'dark'
     render(<ThemeToggle />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dark theme' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to system theme' }))
 
     expect(mockSetTheme).toHaveBeenCalledWith('system')
   })
@@ -52,7 +52,7 @@ describe('ThemeToggle', () => {
     mockTheme = 'system'
     render(<ThemeToggle />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'System theme' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to light theme' }))
 
     expect(mockSetTheme).toHaveBeenCalledWith('light')
   })

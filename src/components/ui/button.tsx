@@ -41,6 +41,12 @@ const buttonVariants = cva(
   },
 )
 
+/** Compact 32px muted icon action (panel-header close/X, kebab menus). Pair
+ *  with `variant="ghost" size="icon"`. The svg rule bumps icons to 20px unless
+ *  the icon carries its own explicit `size-*` class. */
+export const mutedIconButtonClass =
+  "size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground [&_svg:not([class*='size-'])]:size-5"
+
 const Button = ({
   className,
   variant,

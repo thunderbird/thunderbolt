@@ -5,11 +5,12 @@
 import { Info, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { validateSkillName } from '@/dal'
+import { cn } from '@/lib/utils'
 
 export type SkillFormMode = 'create' | 'edit'
 
@@ -144,12 +145,12 @@ export const SkillForm = ({
         size="icon"
         onClick={onCancel}
         aria-label="Close"
-        className="absolute right-2 top-2 size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+        className={cn('absolute right-2 top-2', mutedIconButtonClass)}
       >
         <X className="size-4" />
       </Button>
       <div className="flex min-h-0 flex-1 flex-col gap-5 px-6 py-5">
-        <h2 className="text-xl text-foreground">{mode === 'edit' ? 'Edit Skill' : 'Create Skill'}</h2>
+        <h2 className="text-xl text-foreground">{mode === 'edit' ? 'Edit skill' : 'Create skill'}</h2>
 
         <div className="flex flex-col gap-2">
           <label htmlFor="skill-name" className="text-base text-foreground">

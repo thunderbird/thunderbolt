@@ -2,14 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { SearchableMenu, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import {
+  SearchableMenu,
+  searchableMenuFooterActionClass,
+  searchableMenuRowClass,
+  type SearchableMenuItem,
+} from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
-import { AppLogo } from '@/components/app-logo'
-import { ChevronDown, Globe, Plus, Server } from 'lucide-react'
-import { useMemo, useState, type ComponentType } from 'react'
+import { iconForAgent } from '@/components/agent-icon'
+import { ChevronDown, Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 export type AgentSelectorProps = {
   selectedAgent: Agent
@@ -25,18 +30,6 @@ type AgentItemData = {
   agent: Agent
 }
 
-/** Visual icon for each agent flavor. Mirrors `agent-row.tsx` so list + selector
- *  stay perceptually consistent across Settings and the chat header. */
-const iconForAgent = (agent: Agent): ComponentType<{ className?: string }> => {
-  if (agent.type === 'built-in') {
-    return AppLogo
-  }
-  if (agent.isSystem === 1) {
-    return Server
-  }
-  return Globe
-}
-
 const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   const Icon = iconForAgent(agent)
   return {
@@ -49,15 +42,10 @@ const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   }
 }
 
-/** Compact item renderer — label-only rows (no descriptions) pinned to 14px
- *  (`--font-size-body`) so the menu stays tight. */
+/** Compact item renderer — label-only rows (no descriptions) at
+ *  `--font-size-body` (16px mobile / 14px desktop) so the menu stays tight. */
 const renderAgentItem = (item: SearchableMenuItem<AgentItemData>, isSelected: boolean) => (
-  <div
-    className={cn(
-      'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]',
-      isSelected ? 'bg-accent' : 'hover:bg-accent/50',
-    )}
-  >
+  <div className={cn(searchableMenuRowClass, isSelected ? 'bg-accent' : 'hover:bg-accent/50')}>
     {item.icon && <span className="flex-shrink-0">{item.icon}</span>}
     <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
   </div>
@@ -159,9 +147,7 @@ export const AgentSelector = ({
         setOpen(false)
         onAddAgent()
       }}
-      // Negative margins cancel the shared footer's px-2 py-2 so the row is a
-      // flush, 36px-tall, full-width item (hover fills edge to edge).
-      className="-m-2 flex h-[var(--touch-height-default)] w-[calc(100%_+_1rem)] cursor-pointer items-center justify-start gap-2 px-4 text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      className={searchableMenuFooterActionClass}
     >
       <Plus className="size-4" />
       Add agent
@@ -179,7 +165,6 @@ export const AgentSelector = ({
       blurBackdrop
       trigger={renderTrigger}
       renderItem={renderAgentItem}
-      itemGap="gap-0.5"
       footer={footer}
       width={320}
       maxHeight={340}

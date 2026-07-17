@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createContext, useContext, type ReactNode } from 'react'
-import { isDesktop, isTauri } from './platform'
+import { isTauri, isTauriDesktop } from './platform'
 
 // Lazy load Tauri modules only when needed
 let tauriApp: any = null
@@ -64,7 +64,7 @@ export class TrayManager {
   }
 
   static async initIfSupported(): Promise<{ tray: any | undefined; window: any | undefined }> {
-    if (isTauri() && isDesktop()) {
+    if (isTauriDesktop()) {
       return TrayManager.init()
     }
     // Return empty tray/window for mobile platforms or web
@@ -95,7 +95,7 @@ export class TrayManager {
     await this.appWindow.show()
     await this.appWindow.setSkipTaskbar(false)
 
-    if (isDesktop()) {
+    if (isTauriDesktop()) {
       try {
         await tauriCore.invoke('toggle_dock_icon', { show: true })
       } catch (error) {
@@ -136,7 +136,7 @@ export class TrayManager {
       await this.appWindow.hide()
       await this.appWindow.setSkipTaskbar(true)
 
-      if (isDesktop()) {
+      if (isTauriDesktop()) {
         try {
           await tauriCore.invoke('toggle_dock_icon', { show: false })
         } catch (error) {
@@ -164,7 +164,7 @@ export class TrayManager {
     this.appWindow = tauriWindow.getCurrentWindow()
 
     // Only set up tray-related features on desktop platforms
-    if (isDesktop() && tauriMenu && tauriTray) {
+    if (isTauriDesktop() && tauriMenu && tauriTray) {
       await this.setupWindowBehavior()
 
       try {

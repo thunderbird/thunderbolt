@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { needsApiKey } from '@/components/ui/model-selector/model-selector'
@@ -935,7 +935,7 @@ export default function ModelsPage() {
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg bg-card hover:bg-accent" aria-label="Add model">
+            <Button variant="outline" size="icon" className="bg-card" aria-label="Add model">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -1205,12 +1205,7 @@ export default function ModelsPage() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="More"
-                          className="size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground [&_svg:not([class*='size-'])]:size-5"
-                        >
+                        <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
                           <MoreVertical />
                         </Button>
                       </DropdownMenuTrigger>

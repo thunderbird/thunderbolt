@@ -30,7 +30,6 @@ export const AgentCatalogView = ({ entries }: AgentCatalogViewProps) => {
         <PageSearch.Input
           placeholder="Search agents"
           onSearch={setQuery}
-          wrapperClassName="pr-0"
           className="h-9 rounded-lg border-border bg-card text-sm placeholder:text-muted-foreground"
         />
       </PageSearch>

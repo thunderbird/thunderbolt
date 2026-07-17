@@ -481,7 +481,7 @@ export default function TasksPage() {
                     variant="outline"
                     size="icon"
                     aria-label="Add task"
-                    className="mr-2 rounded-lg"
+                    className="mr-2 bg-card"
                     onClick={() => setIsAddingNew(true)}
                     disabled={isAddingNew}
                   >
@@ -491,7 +491,7 @@ export default function TasksPage() {
               )}
             </PageHeader>
 
-            <PageSearch.Input placeholder="Search tasks..." onSearch={handleSearch} />
+            <PageSearch.Input placeholder="Search tasks..." onSearch={handleSearch} wrapperClassName="pr-2" />
           </PageSearch>
 
           {showEmptyState ? (

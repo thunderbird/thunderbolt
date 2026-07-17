@@ -105,7 +105,7 @@ export default function AgentsSettingsPage() {
           <Button
             variant="outline"
             size="icon"
-            className="rounded-lg bg-card hover:bg-accent"
+            className="bg-card"
             aria-label="Add Custom Agent"
             onClick={() => {
               setEditingAgent(null)

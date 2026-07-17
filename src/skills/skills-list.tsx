@@ -3,15 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { LayoutGroup, m } from 'framer-motion'
-import { Menu, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
-import { useSidebar } from '@/components/ui/sidebar'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { isDesktop, isTauri } from '@/lib/platform'
-import { cn } from '@/lib/utils'
 import type { Skill } from '@/types'
 import { LibraryRow, skillRowTransition } from './library-row'
 
@@ -42,14 +39,6 @@ export const SkillsList = ({
   onDeleteSkill: (id: string) => void
 }) => {
   const [search, setSearch] = useState('')
-  const { isMobile } = useIsMobile()
-  const { toggleSidebar } = useSidebar()
-  // On a Tauri desktop window narrowed into the mobile layout, the settings
-  // Header still renders above this page (it carries the sidebar toggle and
-  // clears the macOS traffic lights), so the page's own burger would be a
-  // duplicate.
-  const hasSharedHeaderAbove = !isMobile || (isTauri() && isDesktop())
-  const showBurger = !hasSharedHeaderAbove
 
   const { enabledRows, disabledRows } = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -62,57 +51,22 @@ export const SkillsList = ({
     return { enabledRows: enabled, disabledRows: disabled }
   }, [skills, search, isEnabled])
 
-  // pt-4 matches the other settings pages' `p-4` top padding so the header row
-  // (and its + button) starts at the same y-position whenever the shared
-  // Header renders above; true mobile stays flush so the heading lines up
-  // with the sidebar's app logo.
+  // The shared settings Header (burger on mobile, drag region on Tauri)
+  // always renders above this page, so the header row here starts at the
+  // same `p-4` offset as the other settings pages.
   return (
-    <section
-      className={cn(
-        'mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background px-4 pb-4 md:px-5 text-foreground',
-        hasSharedHeaderAbove && 'pt-4',
-      )}
-    >
+    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background p-4 md:px-5 text-foreground">
       <PageSearch onSearch={setSearch}>
-        {/* On mobile this row is the page's only chrome (the settings-level
-            Header is skipped there) and matches the sidebar header height so
-            the "Skills" heading sits at the same y-position as the app logo. */}
-        <header className="flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            {showBurger && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleSidebar}
-                aria-label="Open menu"
-                className="size-8 -ml-1 rounded-md text-muted-foreground hover:text-foreground"
-              >
-                <Menu strokeWidth={1.5} />
-              </Button>
-            )}
-            <h1 className="text-[24px] leading-[32px] font-bold tracking-tight text-primary">Skills</h1>
-          </div>
-          {/* pr-2 pulls the actions in so the + button sits on the same
-              vertical line as the row toggles (rows carry px-2.5 of their own
-              inset; 8px aligns the two centers). */}
-          <div className="flex items-center gap-2 pr-2">
-            <PageSearch.Button />
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Create skill"
-              className="rounded-lg bg-card hover:bg-accent"
-              onClick={onCreate}
-            >
-              <Plus />
-            </Button>
-          </div>
-        </header>
+        <PageHeader title="Skills">
+          <PageSearch.Button />
+          <Button variant="outline" size="icon" aria-label="Create skill" className="bg-card" onClick={onCreate}>
+            <Plus />
+          </Button>
+        </PageHeader>
 
         <PageSearch.Input
           placeholder="Search skills"
           onSearch={setSearch}
-          wrapperClassName="pr-0"
           className="h-9 rounded-lg border-border bg-card text-sm placeholder:text-muted-foreground"
         />
       </PageSearch>

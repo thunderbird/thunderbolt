@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo, useState, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
@@ -21,6 +21,39 @@ import { RenameChatDialog } from './rename-chat-dialog'
 type ChatListItemComponentProps = ChatListItemProps & {
   useChat?: typeof useChat_default
 }
+
+type MenuItemComponent = ComponentType<{
+  onClick?: MouseEventHandler
+  disabled?: boolean
+  className?: string
+  children?: ReactNode
+}>
+
+/** The same Rename/Delete actions back both the right-click context menu and
+ *  the `⋯` dropdown — only the Radix item primitive differs. */
+const ChatItemActions = ({
+  Item,
+  onRename,
+  onDelete,
+  deleteLabel,
+  deletePending,
+}: {
+  Item: MenuItemComponent
+  onRename: () => void
+  onDelete: () => void
+  deleteLabel: ReactNode
+  deletePending: boolean
+}) => (
+  <>
+    <Item onClick={onRename} className="cursor-pointer">
+      <Pencil className="size-4 mr-2" />
+      Rename
+    </Item>
+    <Item onClick={onDelete} disabled={deletePending} className="cursor-pointer">
+      {deleteLabel}
+    </Item>
+  </>
+)
 
 export const ChatListItem = memo(
   ({
@@ -49,8 +82,10 @@ export const ChatListItem = memo(
       chatInstance ? { chat: chatInstance, experimental_throttle: statusOnlyThrottleMs } : undefined,
     )
     const [renameDialogOpen, setRenameDialogOpen] = useState(false)
-    const [menuOpen, setMenuOpen] = useState(false)
-    const [contextMenuOpen, setContextMenuOpen] = useState(false)
+    // One value for both action surfaces — they're mutually exclusive (Radix
+    // closes one before the other opens), and the row highlight just needs
+    // "is any menu open".
+    const [openMenu, setOpenMenu] = useState<'dropdown' | 'context' | null>(null)
     const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null)
     const [prevTitle, setPrevTitle] = useState(thread.title)
 
@@ -102,12 +137,17 @@ export const ChatListItem = memo(
       </>
     )
 
-    const anyMenuOpen = menuOpen || contextMenuOpen
+    const anyMenuOpen = openMenu !== null
+    // A close event may arrive after the *other* menu already claimed the
+    // slot (opening one dismisses the other), so only the current owner may
+    // clear it.
+    const handleMenuOpenChange = (menu: 'dropdown' | 'context') => (open: boolean) =>
+      setOpenMenu((current) => (open ? menu : current === menu ? null : current))
 
     return (
       <>
-        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-          <ContextMenu onOpenChange={setContextMenuOpen}>
+        <DropdownMenu open={openMenu === 'dropdown'} onOpenChange={handleMenuOpenChange('dropdown')}>
+          <ContextMenu onOpenChange={handleMenuOpenChange('context')}>
             <SidebarMenuItem className="group/item">
               <ContextMenuTrigger asChild>
                 <SidebarMenuButton
@@ -149,41 +189,28 @@ export const ChatListItem = memo(
 
               {/* Right-click / touch long-press: a true context menu at the
                   cursor position. */}
-              <ContextMenuContent className="min-w-56 rounded-xl">
-                <ContextMenuItem onClick={startRename} className="cursor-pointer">
-                  <Pencil className="size-4 mr-2" />
-                  Rename
-                </ContextMenuItem>
-                <ContextMenuItem
-                  onClick={startDelete}
-                  disabled={deleteChatMutation.isPending}
-                  className="cursor-pointer"
-                >
-                  {deleteLabel}
-                </ContextMenuItem>
+              <ContextMenuContent className="min-w-56">
+                <ChatItemActions
+                  Item={ContextMenuItem}
+                  onRename={startRename}
+                  onDelete={startDelete}
+                  deleteLabel={deleteLabel}
+                  deletePending={deleteChatMutation.isPending}
+                />
               </ContextMenuContent>
 
               {/* The trigger is the vertically-centered dots icon; the negative
                   alignOffset walks the menu back up so its top edge lines up with
                   the row's top edge (row is 32px on desktop, 44px on mobile;
                   icon is 16px). */}
-              <DropdownMenuContent
-                side="right"
-                align="start"
-                alignOffset={isMobile ? -14 : -8}
-                className="min-w-56 rounded-xl"
-              >
-                <DropdownMenuItem onClick={startRename} className="cursor-pointer">
-                  <Pencil className="size-4 mr-2" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={startDelete}
-                  disabled={deleteChatMutation.isPending}
-                  className="cursor-pointer"
-                >
-                  {deleteLabel}
-                </DropdownMenuItem>
+              <DropdownMenuContent side="right" align="start" alignOffset={isMobile ? -14 : -8} className="min-w-56">
+                <ChatItemActions
+                  Item={DropdownMenuItem}
+                  onRename={startRename}
+                  onDelete={startDelete}
+                  deleteLabel={deleteLabel}
+                  deletePending={deleteChatMutation.isPending}
+                />
               </DropdownMenuContent>
             </SidebarMenuItem>
           </ContextMenu>

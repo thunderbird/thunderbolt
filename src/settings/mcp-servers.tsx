@@ -712,7 +712,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
 
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
-      <PageHeader title="MCP Servers">
+      <PageHeader title="MCP servers">
         <Dialog
           open={form.isAddDialogOpen}
           onOpenChange={(open) => {
@@ -727,7 +727,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
           }}
         >
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg bg-card hover:bg-accent">
+            <Button variant="outline" size="icon" className="bg-card" aria-label="Add server">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -1065,7 +1065,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                          <p>Authorized. Re-run the OAuth flow if access was revoked</p>
+                          <p>Authorized. Re-run the OAuth flow if access was revoked.</p>
                         </TooltipContent>
                       </Tooltip>
                     )}

@@ -82,7 +82,7 @@ export const LibraryRow = ({
             </span>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="min-w-56 rounded-xl">
+        <ContextMenuContent className="min-w-56">
           <ContextMenuItem onClick={() => onEdit(skill.id)} className="cursor-pointer">
             <SquarePen className="size-4 mr-2" />
             Edit

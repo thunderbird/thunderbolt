@@ -17,6 +17,28 @@ const syncNativeInterfaceStyle = (resolvedTheme: 'dark' | 'light') => {
 }
 
 /**
+ * The `--color-background` values from src/index.css, mirrored onto the root
+ * element and the `theme-color` meta tag so overscroll areas and browser
+ * chrome match the page. Must stay in sync with index.css and the pre-paint
+ * boot script in index.html.
+ */
+const themeBackgroundColors = { dark: '#1b1e1f', light: '#f5f2ee' } as const
+
+/** Apply a resolved theme to the document: root class, background, meta tag, and native chrome. */
+const applyResolvedTheme = (resolvedTheme: 'dark' | 'light') => {
+  const root = window.document.documentElement
+  root.classList.remove('light', 'dark')
+  root.classList.add(resolvedTheme)
+
+  const bgColor = themeBackgroundColors[resolvedTheme]
+  root.style.backgroundColor = bgColor
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bgColor)
+
+  void setAndroidBarColor(resolvedTheme === 'dark' ? 'light' : 'dark')
+  syncNativeInterfaceStyle(resolvedTheme)
+}
+
+/**
  * Mirror theme to Tauri's plugin-store so native code can read it at startup.
  * Currently the Rust side doesn't read this yet — it will once we upgrade to
  * Tauri 2.10.3+ which supports WebView background color on macOS. At that point
@@ -57,34 +79,12 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }, [theme])
 
   useEffect(() => {
-    const root = window.document.documentElement
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]')
-
-    root.classList.remove('light', 'dark')
-
     if (theme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-
-      root.classList.add(systemTheme)
-
-      const bgColor = systemTheme === 'dark' ? '#1a2329' : '#fafafa'
-      root.style.backgroundColor = bgColor
-      metaThemeColor?.setAttribute('content', bgColor)
-
-      void setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
-      syncNativeInterfaceStyle(systemTheme)
-
+      applyResolvedTheme(systemTheme)
       return
     }
-
-    root.classList.add(theme)
-
-    const bgColor = theme === 'dark' ? '#1a2329' : '#fafafa'
-    root.style.backgroundColor = bgColor
-    metaThemeColor?.setAttribute('content', bgColor)
-
-    void setAndroidBarColor(theme === 'dark' ? 'light' : 'dark')
-    syncNativeInterfaceStyle(theme)
+    applyResolvedTheme(theme)
   }, [theme])
 
   useEffect(() => {
@@ -92,19 +92,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
     const handleChange = () => {
       if (theme === 'system') {
-        const root = window.document.documentElement
-        const metaThemeColor = document.querySelector('meta[name="theme-color"]')
-        root.classList.remove('light', 'dark')
-
-        const systemTheme = mediaQuery.matches ? 'dark' : 'light'
-        root.classList.add(systemTheme)
-
-        const bgColor = systemTheme === 'dark' ? '#1a2329' : '#fafafa'
-        root.style.backgroundColor = bgColor
-        metaThemeColor?.setAttribute('content', bgColor)
-
-        void setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
-        syncNativeInterfaceStyle(systemTheme)
+        applyResolvedTheme(mediaQuery.matches ? 'dark' : 'light')
       }
     }
 

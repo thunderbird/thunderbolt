@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { type ComponentProps, type ReactNode } from 'react'
+import { type ComponentProps } from 'react'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
 
@@ -91,16 +91,7 @@ const SelectLabel = ({ className, ...props }: ComponentProps<typeof SelectPrimit
   )
 }
 
-const SelectItem = ({
-  className,
-  children,
-  description,
-  ...props
-}: ComponentProps<typeof SelectPrimitive.Item> & {
-  /** Optional explanation rendered UNDER the label — inside the dropdown item
-   *  only (outside `ItemText`, so the collapsed trigger shows just the label). */
-  description?: ReactNode
-}) => {
+const SelectItem = ({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Item>) => {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
@@ -113,14 +104,7 @@ const SelectItem = ({
       )}
       {...props}
     >
-      {description ? (
-        <div className="flex flex-col gap-0.5">
-          <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-          <span className="text-xs whitespace-normal text-muted-foreground">{description}</span>
-        </div>
-      ) : (
-        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-      )}
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
     </SelectPrimitive.Item>
   )
 }

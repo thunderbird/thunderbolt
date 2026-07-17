@@ -4,12 +4,8 @@
 
 import type { ReactNode } from 'react'
 
-/** Default detail column width when open. The width animation reflows the
- *  sibling list; the content translate slides it in — together they read as
- *  one motion. */
-const DEFAULT_WIDTH = 'clamp(360px, 42vw, 560px)'
 // Linear's spring curve — fast start, smooth tail, no overshoot.
-const SLIDE = 'cubic-bezier(0.32, 0.72, 0, 1)'
+const slideEasing = 'cubic-bezier(0.32, 0.72, 0, 1)'
 
 /**
  * An inline right-side detail panel (no overlay, no portal). Rendered as a real
@@ -22,18 +18,10 @@ const SLIDE = 'cubic-bezier(0.32, 0.72, 0, 1)'
  * the inner content div reuses it as a stable width while the outer collapses
  * to 0, and a percentage would resolve against the collapsed parent.
  */
-export const SlideInPanel = ({
-  open,
-  width = DEFAULT_WIDTH,
-  children,
-}: {
-  open: boolean
-  width?: string
-  children: ReactNode
-}) => (
+export const SlideInPanel = ({ open, width, children }: { open: boolean; width: string; children: ReactNode }) => (
   <aside
     className="h-full shrink-0 overflow-hidden transition-[width] duration-300 motion-reduce:transition-none"
-    style={{ width: open ? width : '0px', transitionTimingFunction: SLIDE }}
+    style={{ width: open ? width : '0px', transitionTimingFunction: slideEasing }}
     aria-hidden={!open}
     inert={!open}
   >
@@ -42,7 +30,7 @@ export const SlideInPanel = ({
       style={{
         width,
         transform: open ? 'translateX(0)' : 'translateX(100%)',
-        transitionTimingFunction: SLIDE,
+        transitionTimingFunction: slideEasing,
       }}
     >
       {children}

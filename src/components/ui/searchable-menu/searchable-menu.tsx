@@ -14,6 +14,18 @@ import { flushSync } from 'react-dom'
 import type { SearchableMenuGroup, SearchableMenuItem, SearchableMenuProps } from './types'
 import { findItemById, flattenItems, isGroupedItems } from './types'
 
+/** Row shell for custom `renderItem` implementations — same geometry as the
+ *  menu's default row (full-width, `--touch-height-sm`, `px-3`, `rounded-lg`)
+ *  so custom rows sit flush with it. Callers append hover/selected tints. */
+export const searchableMenuRowClass =
+  'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]'
+
+/** Flush, full-width footer action (e.g. "Add models"). Negative margins
+ *  cancel the footer slot's px-2 py-2 so the hover fill runs edge to edge;
+ *  the popover clips the rounded bottom corners. */
+export const searchableMenuFooterActionClass =
+  '-m-2 flex h-[var(--touch-height-default)] w-[calc(100%_+_1rem)] cursor-pointer items-center justify-start gap-2 px-4 text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+
 type ItemButtonProps<T> = {
   item: SearchableMenuItem<T>
   isSelected: boolean
@@ -44,10 +56,7 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
     >
       {item.icon && <span className="flex-shrink-0">{item.icon}</span>}
       <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-        <span className="flex items-center gap-1.5 min-w-0">
-          <span className="font-medium truncate">{item.label}</span>
-          {item.badge && <span className="flex-shrink-0">{item.badge}</span>}
-        </span>
+        <span className="font-medium truncate">{item.label}</span>
         {item.description && <span className="text-sm text-muted-foreground truncate">{item.description}</span>}
       </div>
     </button>
@@ -61,38 +70,35 @@ type GroupSectionProps<T> = {
   onSelect: (id: string, item: SearchableMenuItem<T>) => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
   hideLabel?: boolean
-  itemGap?: string
 }
 
-const GroupSection = memo(
-  <T,>({ group, value, onSelect, renderItem, hideLabel, itemGap = 'gap-0.5' }: GroupSectionProps<T>) => {
-    if (group.items.length === 0) {
-      return null
-    }
+const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }: GroupSectionProps<T>) => {
+  if (group.items.length === 0) {
+    return null
+  }
 
-    return (
-      <div className="flex flex-col gap-1">
-        {!hideLabel && group.label && (
-          <div className="px-3 pt-2">
-            <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
-            {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
-          </div>
-        )}
-        <div className={cn('flex flex-col', itemGap)}>
-          {group.items.map((item) => (
-            <ItemButton
-              key={item.id}
-              item={item}
-              isSelected={value === item.id}
-              onClick={() => onSelect(item.id, item)}
-              renderItem={renderItem}
-            />
-          ))}
+  return (
+    <div className="flex flex-col gap-1">
+      {!hideLabel && group.label && (
+        <div className="px-3 pt-2">
+          <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
+          {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
         </div>
+      )}
+      <div className="flex flex-col gap-0.5">
+        {group.items.map((item) => (
+          <ItemButton
+            key={item.id}
+            item={item}
+            isSelected={value === item.id}
+            onClick={() => onSelect(item.id, item)}
+            renderItem={renderItem}
+          />
+        ))}
       </div>
-    )
-  },
-) as <T>(props: GroupSectionProps<T>) => ReactNode
+    </div>
+  )
+}) as <T>(props: GroupSectionProps<T>) => ReactNode
 ;(GroupSection as { displayName?: string }).displayName = 'GroupSection'
 
 const DefaultTrigger = <T,>({
@@ -131,11 +137,9 @@ export const SearchableMenu = <T,>({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   contentClassName,
-  triggerClassName,
   align = 'start',
   side,
   maxHeight = 300,
-  itemGap = 'gap-0.5',
 }: SearchableMenuProps<T>) => {
   const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -207,10 +211,7 @@ export const SearchableMenu = <T,>({
   return (
     <Popover open={open} onOpenChange={setOpen} modal={isMobile}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50', triggerClassName)}
-        >
+        <button type="button" className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50')}>
           {triggerContent}
         </button>
       </PopoverTrigger>
@@ -257,11 +258,10 @@ export const SearchableMenu = <T,>({
                       onSelect={handleSelect}
                       renderItem={renderItem}
                       hideLabel={filteredItems.length === 1}
-                      itemGap={itemGap}
                     />
                   ))
                 ) : (
-                  <div className={cn('flex flex-col', itemGap)}>
+                  <div className="flex flex-col gap-0.5">
                     {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
                       <ItemButton
                         key={item.id}

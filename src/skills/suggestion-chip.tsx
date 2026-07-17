@@ -8,6 +8,18 @@ import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
+
+/**
+ * Shared pill surface for the pinned-skill chips and the `+` add button in
+ * the chat skills bar. Full-accent hover: anything softer (accent/50 over
+ * the chip's near-white resting bg) composites to almost exactly the page
+ * background, making the pill vanish on hover. Dark needs the explicit
+ * accent too — Button's dark:hover:bg-input/50 is the same color as the
+ * chip's resting bg-sidebar, i.e. no feedback.
+ */
+export const chipSurfaceClass =
+  'shrink-0 cursor-pointer rounded-full border-none bg-sidebar text-muted-foreground shadow-glow-sm hover:bg-accent hover:text-foreground dark:bg-sidebar dark:hover:bg-accent'
 
 /**
  * Pinned-skill chip shown above the chat input. Click → adds the slash
@@ -108,12 +120,10 @@ export const SuggestionChip = ({
           // share/copy callout pops) while our long-press timer is waiting
           // to open the action menu. Leaving `touch-action` at its default
           // so the chip strip's horizontal scroll on mobile still works.
-          // Full-accent hover: anything softer (accent/50 over the chip's
-          // near-white resting bg) composites to almost exactly the page
-          // background, making the pill vanish on hover. Dark needs the
-          // explicit accent too — the variant's dark:hover:bg-input/50 is the
-          // same color as the chip's resting bg-sidebar, i.e. no feedback.
-          className="h-[var(--touch-height-sm)] shrink-0 cursor-pointer select-none rounded-full border-none bg-sidebar px-3 text-sm font-normal text-muted-foreground shadow-[0_0_16px_rgba(38,33,32,0.06)] hover:bg-accent hover:text-foreground dark:bg-sidebar dark:hover:bg-accent [-webkit-touch-callout:none]"
+          className={cn(
+            chipSurfaceClass,
+            'h-[var(--touch-height-sm)] select-none px-3 text-sm font-normal [-webkit-touch-callout:none]',
+          )}
           aria-label={`Pinned skill /${label}`}
         >
           /{label}

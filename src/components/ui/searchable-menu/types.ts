@@ -9,8 +9,6 @@ export type SearchableMenuItem<T = unknown> = {
   label: string
   description?: string
   icon?: ReactNode
-  /** Trailing adornment rendered after the label (e.g. a "New" grant badge). */
-  badge?: ReactNode
   disabled?: boolean
   data?: T
   /** Additional searchable text (not displayed) */
@@ -53,19 +51,12 @@ export type SearchableMenuProps<T = unknown> = {
   onOpenChange?: (open: boolean) => void
   /** Additional class for the content */
   contentClassName?: string
-  /** Additional class merged onto the trigger button (the wrapper that hosts
-   *  the `trigger` render). Use to opt into `w-full` for triggers that should
-   *  fill their parent — Radix's `asChild` button is content-sized by default. */
-  triggerClassName?: string
   /** Align popover */
   align?: 'start' | 'center' | 'end'
   /** Side of the trigger to open the popover (top opens upward, bottom opens downward) */
   side?: 'top' | 'bottom' | 'left' | 'right'
   /** Max height for the items list */
   maxHeight?: string | number
-  /** Tailwind gap class for the vertical spacing between items (default `gap-1.5`).
-   *  Pass e.g. `gap-0.5` to match the side-nav item spacing. */
-  itemGap?: string
 }
 
 /** Check if items are grouped */

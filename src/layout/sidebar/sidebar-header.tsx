@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { PowerSyncStatus } from '@/components/powersync-status'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isDesktop, isMacDesktop, isTauri } from '@/lib/platform'
+import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { PanelLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -33,7 +33,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
   const isExpanded = isMobile || state === 'expanded'
   // Tauri desktop hides the OS title bar; the sidebar's top drag strip carries
   // the traffic lights (macOS) and, while expanded, the collapse toggle.
-  const showChromeStrip = isTauri() && isDesktop() && !isMobile
+  const showChromeStrip = isTauriDesktop() && !isMobile
 
   return (
     <>
@@ -65,23 +65,21 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
           )}
         </div>
       )}
+      {/* Collapsed rail: the strip stays a pure drag region and blends into
+          the main header background, so no sidebar seam runs through the
+          window controls (the macOS traffic lights are wider than the 48px
+          rail). The sidebar surface resumes below it with a curved top-right
+          shoulder. The expand toggle lives in the main Header (right of the
+          traffic lights), not in the rail. Taller than the expanded strip
+          (+0.5rem) so the rail's curved top starts with clear air below the
+          window controls. */}
       {showChromeStrip && !isExpanded && (
-        <>
-          {/* Collapsed rail: the strip stays a pure drag region and blends into
-              the main header background, so no sidebar seam runs through the
-              window controls (the macOS traffic lights are wider than the 48px
-              rail). The sidebar surface resumes below it with a curved
-              top-right shoulder. The expand toggle lives in the main Header
-              (right of the traffic lights), not in the rail. */}
-          {/* Taller than the expanded strip (+0.5rem) so the rail's curved top
-              starts with clear air below the window controls. */}
-          <div
-            data-tauri-drag-region
-            className="h-[calc(var(--touch-height-xl)+0.5rem)] flex-shrink-0 relative bg-background"
-          >
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 rounded-tr-xl bg-sidebar" />
-          </div>
-        </>
+        <div
+          data-tauri-drag-region
+          className="h-[calc(var(--touch-height-xl)+0.5rem)] flex-shrink-0 relative bg-background"
+        >
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 rounded-tr-xl bg-sidebar" />
+        </div>
       )}
       {!showChromeStrip && (
         <div className="h-[var(--touch-height-xl)] relative flex items-center justify-between px-2 flex-shrink-0">

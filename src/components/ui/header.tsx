@@ -8,7 +8,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isDesktop, isMacDesktop, isTauri } from '@/lib/platform'
+import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { Menu, MessageCirclePlus, PanelLeft } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
@@ -67,12 +67,12 @@ export const Header = () => {
   // the drag surface — including when the viewport is narrow enough to fall
   // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
   // buttons inline on the right (self-nulls on macOS/web).
-  const enableDragRegion = isTauri() && isDesktop()
+  const enableDragRegion = isTauriDesktop()
   const dragProps = enableDragRegion ? { 'data-tauri-drag-region': true } : {}
   // The macOS traffic lights (ending at ~x=68) are wider than the collapsed
   // 48px icon rail, so nudge the header content right of the overhang with
   // some breathing room so the agent selector pill doesn't crowd the buttons.
-  const clearTrafficLights = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
+  const needsTrafficLightClearance = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
   const navigate = useNavigate()
   const location = useLocation()
   const allAgents = useAllAgents()
@@ -183,14 +183,14 @@ export const Header = () => {
   // collapsed to a rail — just right of the macOS traffic lights, the same
   // spot the collapse toggle occupies in the expanded sidebar's strip. On web
   // the toggle stays inside the sidebar itself.
-  const showSidebarToggle = isTauri() && isDesktop() && sidebarState === 'collapsed'
+  const showSidebarToggle = isTauriDesktop() && sidebarState === 'collapsed'
 
   return (
     <header
       {...dragProps}
       className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
-      <div {...dragProps} className={cn('flex items-center gap-2', clearTrafficLights && 'ml-8')}>
+      <div {...dragProps} className={cn('flex items-center gap-2', needsTrafficLightClearance && 'ml-8')}>
         {showSidebarToggle && (
           <Button
             variant="ghost"

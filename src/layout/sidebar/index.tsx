@@ -18,7 +18,7 @@ import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
-import type { SidebarSection } from './types'
+import { useSidebarSection } from './use-sidebar-section'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 /**
@@ -36,16 +36,13 @@ export default function Sidebar() {
 
   const { chatThreadId: currentChatThreadId } = useParams()
 
-  // Simple route check: any /settings/* path triggers the settings sidebar variant on mobile
-  const isSettingsRoute = location.pathname.startsWith('/settings')
-
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
 
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const [showSearch, setShowSearch] = useState(false)
-  const [sectionOverride, setSectionOverride] = useState<{ section: SidebarSection; pathname: string } | null>(null)
+  const { activeSection, setActiveSection } = useSidebarSection(location.pathname)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { experimentalFeatureTasks } = useSettings({
@@ -141,19 +138,6 @@ export default function Sidebar() {
     }
   }
 
-  const routeSection: SidebarSection = isSettingsRoute ? 'settings' : 'chats'
-
-  // Toggling sections swaps the sidebar without navigating; the override is
-  // keyed to the pathname it was set on, so any navigation invalidates it and
-  // the section falls back to being derived from the route.
-  const activeSection = sectionOverride?.pathname === location.pathname ? sectionOverride.section : routeSection
-
-  // Toggling between Chats and Settings only swaps the sidebar content — the
-  // current page stays until the user picks an entry from the new sidebar.
-  const handleSectionChange = (section: SidebarSection) => {
-    setSectionOverride(section === routeSection ? null : { section, pathname: location.pathname })
-  }
-
   const handleSearchClick = (e?: MouseEvent) => {
     e?.preventDefault()
     e?.stopPropagation()
@@ -177,7 +161,7 @@ export default function Sidebar() {
         {activeSection === 'settings' ? (
           <SettingsSidebarContent
             isCollapsed={isCollapsed}
-            onSectionChange={handleSectionChange}
+            onSectionChange={setActiveSection}
             onSettingsNavigate={handleNavigate}
           />
         ) : (
@@ -197,7 +181,7 @@ export default function Sidebar() {
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
             activeSection={activeSection}
-            onSectionChange={handleSectionChange}
+            onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
             onRename={handleRename}

@@ -204,7 +204,8 @@
   --color-warning-foreground: oklch(0.205 0 0);
   --color-border: #434546;
   --color-input: #282a2b;
-  --color-ring: #515150;
+  /* Lighter than --color-border so the focused-input border swap is visible in dark mode. */
+  --color-ring: #8a8a88;
   --color-chart-1: oklch(0.488 0.243 264.376);
   --color-chart-2: oklch(0.696 0.17 162.48);
   --color-chart-3: oklch(0.769 0.188 70.08);
@@ -217,7 +218,7 @@
   --color-sidebar-accent: #383a39;
   --color-sidebar-accent-foreground: #f2f1ee;
   --color-sidebar-border: #434546;
-  --color-sidebar-ring: #515150;
+  --color-sidebar-ring: #8a8a88;
   --color-card-border: #434546;
 }
 

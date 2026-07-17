@@ -12,11 +12,10 @@ const inputVariants = cva(
   {
     variants: {
       variant: {
-        default: 'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-        filled:
-          'bg-muted/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-        outline: 'border-2 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[2px]',
-        ghost: 'border-none focus-visible:bg-accent/50 focus-visible:ring-0',
+        default: 'focus-visible:border-ring',
+        filled: 'bg-muted/50 focus-visible:bg-transparent focus-visible:border-ring',
+        outline: 'border-2 focus-visible:border-ring',
+        ghost: 'border-none focus-visible:bg-accent/50',
       },
       inputSize: {
         default: 'h-[var(--touch-height-default)] w-full',
@@ -26,8 +25,8 @@ const inputVariants = cva(
       },
       state: {
         default: '',
-        error: 'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
-        success: 'border-green-500 focus-visible:border-green-600 focus-visible:ring-green-300/50',
+        error: 'aria-invalid:border-destructive',
+        success: 'border-green-500 focus-visible:border-green-600',
       },
     },
     defaultVariants: {

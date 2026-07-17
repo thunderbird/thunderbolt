@@ -2,8 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Cloud, CloudAlert, CloudOff, Download, Loader2, LogOut, RefreshCw, Terminal, UserRound } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import {
+  Cloud,
+  CloudAlert,
+  CloudOff,
+  Download,
+  Loader2,
+  LogOut,
+  MessageCirclePlus,
+  RefreshCw,
+  Terminal,
+  UserRound,
+} from 'lucide-react'
+import { type ReactNode, useId, useState } from 'react'
+import { useNavigate } from 'react-router'
 
 import type { User } from '@shared/types/auth'
 
@@ -22,6 +34,7 @@ import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
 import { getDownloadUrl } from '@/lib/download-links'
 import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
+import { trackEvent } from '@/lib/posthog'
 import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
@@ -71,12 +84,43 @@ const AccountMenuItemButton = ({ icon, label, onClick, to, onNavigate }: Account
 const iconSize = 'size-[var(--icon-size-default)]'
 
 /**
+ * Lucide's Cloud outline drawn with the brand gold→pink gradient stroke.
+ * CSS can't gradient-fill an SVG stroke, so this re-renders the same path
+ * with an inline `<linearGradient>` whose stops read the theme tokens
+ * (`--color-brand-2` → `--color-brand`), matching the switch ON track.
+ */
+const GradientCloud = ({ className }: { className?: string }) => {
+  const gradientId = useId()
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+          <stop stopColor="var(--color-brand-2)" />
+          <stop offset="1" stopColor="var(--color-brand)" />
+        </linearGradient>
+      </defs>
+      {/* Path data mirrors lucide-react's Cloud so the glyph stays identical. */}
+      <path stroke={`url(#${gradientId})`} d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+    </svg>
+  )
+}
+
+/**
  * Single cloud glyph carrying both auth and sync state:
  * - logged out            → muted outline cloud (paired with a "Sign In" label)
  * - logged in, sync off   → muted CloudOff ("connected account, not syncing")
  * - syncing, connecting   → spinner
  * - syncing, offline      → amber CloudAlert ("will sync when back online")
- * - syncing, connected    → brand-pink cloud, the healthy steady state
+ * - syncing, connected    → brand gradient cloud, the healthy steady state
  */
 const SyncStateIcon = ({
   loggedIn,
@@ -99,7 +143,7 @@ const SyncStateIcon = ({
   if (connectionStatus !== 'connected') {
     return <CloudAlert className={cn(iconSize, 'shrink-0 text-warning')} />
   }
-  return <Cloud className={cn(iconSize, 'shrink-0 text-brand')} />
+  return <GradientCloud className={cn(iconSize, 'shrink-0')} />
 }
 
 /** Human status line for the account menu's Cloud Sync section. */
@@ -135,6 +179,7 @@ const syncStatusText = (
 
 export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
   const authClient = useAuth()
+  const navigate = useNavigate()
   const { isMobile, setOpenMobile, state } = useSidebar()
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
@@ -153,6 +198,12 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
     // Close mobile sidebar first so modal is visible
     setOpenMobile(false)
     openSignInModal()
+  }
+
+  const handleNewChat = () => {
+    trackEvent('chat_new_clicked')
+    navigate('/chats/new')
+    setOpenMobile(false)
   }
 
   const { data: session, isPending } = authClient.useSession()
@@ -193,8 +244,8 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
   // content on the left edge of the footer.
   const pillClassName = (hasLabel: boolean) =>
     cn(
-      'flex h-[var(--touch-height-sm)] max-w-full min-w-0 cursor-pointer items-center rounded-full',
-      hasLabel ? 'w-fit gap-2 px-3' : 'size-[var(--touch-height-sm)] justify-center',
+      'flex h-[var(--touch-height-default)] max-w-full min-w-0 cursor-pointer items-center rounded-full',
+      hasLabel ? 'w-fit gap-2 px-3' : 'size-[var(--touch-height-default)] justify-center',
       'text-[length:var(--font-size-body)] transition-colors outline-none',
       'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
       menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
@@ -229,7 +280,7 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
     <button
       type="button"
       aria-label="Sign in"
-      className="flex size-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent"
+      className="flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent"
       onClick={handleSignInClick}
     >
       {stateIcon}
@@ -240,7 +291,7 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
         type="button"
         aria-label="Account menu"
         className={cn(
-          'flex size-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent',
+          'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent',
           menuOpen && 'bg-sidebar-accent',
         )}
       >
@@ -259,7 +310,7 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
           <div className="flex flex-col items-center gap-1 py-2">
             <ThemeToggle />
             {isPending ? (
-              <div className="flex size-[var(--touch-height-sm)] items-center justify-center">
+              <div className="flex size-[var(--touch-height-default)] items-center justify-center">
                 <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />
               </div>
             ) : (
@@ -272,6 +323,19 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
             <div className="flex shrink-0 items-center gap-1">
               <ThemeToggle />
               {isMobile && navToggle}
+              {/* Mobile-only: desktop's New Chat list item covers this. Brand
+                  gradient, matching the primary Button variant. */}
+              {isMobile && (
+                <button
+                  type="button"
+                  aria-label="New Chat"
+                  title="New Chat"
+                  onClick={handleNewChat}
+                  className="flex size-[var(--touch-height-default)] shrink-0 cursor-pointer items-center justify-center rounded-full bg-brand text-brand-foreground shadow-sm [background-image:var(--gradient-brand)] transition-[filter] hover:brightness-[1.06] active:brightness-95"
+                >
+                  <MessageCirclePlus className={iconSize} />
+                </button>
+              )}
             </div>
           </div>
         )}

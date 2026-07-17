@@ -101,7 +101,7 @@ describe('SidebarFooter', () => {
       })
       renderWithProviders(authClient)
       const button = screen.getByRole('button', { name: 'Account menu' })
-      expect(button.className).toContain('size-[var(--touch-height-sm)]')
+      expect(button.className).toContain('size-[var(--touch-height-default)]')
       expect(button.querySelector('span')).toBeNull()
     })
   })

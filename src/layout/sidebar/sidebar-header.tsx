@@ -19,7 +19,8 @@ import type { ReactNode } from 'react'
 
 type SidebarHeaderProps = {
   onToggle: () => void
-  /** Centered slot for the section nav toggle; rendered only while expanded. */
+  /** Chats/Settings pill, right-aligned in the desktop header while expanded.
+   *  (Mobile renders no header; its pill lives in the footer instead.) */
   navToggle?: ReactNode
 }
 

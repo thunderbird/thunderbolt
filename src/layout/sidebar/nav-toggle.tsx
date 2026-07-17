@@ -95,8 +95,8 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
 
   return (
     <nav aria-label="Sidebar sections">
-      {/* Same height as the header's sidebar-toggle button so the row reads as one line. */}
-      <div className="flex h-[var(--touch-height-sm)] w-fit items-center rounded-full border border-sidebar-border bg-sidebar-accent p-0.5 dark:border-transparent">
+      {/* Same height as the footer's New Chat / theme / account controls so the row reads as one line. */}
+      <div className="flex h-[var(--touch-height-default)] w-fit items-center rounded-full border border-sidebar-border bg-sidebar-accent p-0.5 dark:border-transparent">
         {sections.map(renderSegment)}
       </div>
     </nav>

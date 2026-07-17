@@ -31,7 +31,7 @@ export const ThemeToggle = () => {
     <button
       type="button"
       onClick={handleClick}
-      className="flex items-center justify-center size-[var(--touch-height-sm)] rounded-full transition-colors hover:bg-secondary/50 cursor-pointer select-none outline-none"
+      className="flex items-center justify-center size-[var(--touch-height-default)] rounded-full transition-colors hover:bg-secondary/50 cursor-pointer select-none outline-none"
       aria-label={label}
       title={label}
     >

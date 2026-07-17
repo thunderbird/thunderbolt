@@ -14,7 +14,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground shadow-xs hover:bg-primary/90',
+        // Primary action — brand gradient (same gold→pink sweep as the switch
+        // ON track). bg-brand is the fallback under the image; hover dims via
+        // brightness since the background is an image, not a color.
+        default:
+          'bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95',
         destructive:
           'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         outline:

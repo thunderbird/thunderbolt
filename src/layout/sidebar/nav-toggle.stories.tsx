@@ -19,7 +19,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'Segmented pill toggle that switches the sidebar between Chats, Tasks (feature-gated) and Settings. The selected thumb slides between segments.',
+          'Segmented pill toggle that switches the sidebar between Chats and Settings. The selected thumb slides between segments.',
       },
     },
   },
@@ -43,38 +43,21 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-const InteractiveToggle = ({ showTasks }: { showTasks: boolean }) => {
+const InteractiveToggle = () => {
   const [active, setActive] = useState<SidebarSection>('chats')
-  return <SidebarNavToggle activeSection={active} showTasks={showTasks} onSectionChange={setActive} />
+  return <SidebarNavToggle activeSection={active} onSectionChange={setActive} />
 }
 
 export const Interactive: Story = {
   args: {
     activeSection: 'chats',
-    showTasks: true,
     onSectionChange: () => {},
   },
-  render: () => <InteractiveToggle showTasks />,
+  render: () => <InteractiveToggle />,
   parameters: {
     docs: {
       description: {
-        story: 'Fully interactive toggle with the Tasks feature enabled — click segments to see the thumb slide.',
-      },
-    },
-  },
-}
-
-export const WithoutTasks: Story = {
-  args: {
-    activeSection: 'chats',
-    showTasks: false,
-    onSectionChange: () => {},
-  },
-  render: () => <InteractiveToggle showTasks={false} />,
-  parameters: {
-    docs: {
-      description: {
-        story: 'Two-way toggle when the experimental Tasks feature is disabled.',
+        story: 'Fully interactive toggle — click segments to see the thumb slide.',
       },
     },
   },
@@ -83,7 +66,6 @@ export const WithoutTasks: Story = {
 export const SettingsActive: Story = {
   args: {
     activeSection: 'settings',
-    showTasks: true,
     onSectionChange: () => {},
   },
   parameters: {

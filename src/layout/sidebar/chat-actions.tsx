@@ -11,6 +11,7 @@ import type { ChatActionsProps } from './types'
 export const ChatActions = ({
   isCollapsed,
   debouncedSearchQuery,
+  showSearch,
   deleteAllChatsMutation,
   deleteAllChatsDialogRef,
   onSearchClick,
@@ -20,12 +21,13 @@ export const ChatActions = ({
   }
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex shrink-0 items-center gap-0.5">
       <SidebarMenuButton
         onClick={(e) => onSearchClick(e)}
         aria-label="Search chats"
         className={cn(
           'w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer',
+          showSearch && 'bg-sidebar-accent',
           debouncedSearchQuery && 'bg-primary/15 text-primary hover:bg-primary/25 hover:text-primary',
         )}
       >

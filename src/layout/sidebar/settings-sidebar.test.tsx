@@ -35,13 +35,10 @@ const renderSidebar = (authClient: AuthClient) => {
     </TestProvider>
   )
   return render(
-    <SettingsSidebarContent
-      isCollapsed={false}
-      showTasks={false}
-      onSectionChange={() => {}}
-      onSettingsNavigate={() => {}}
-    />,
-    { wrapper: Wrapper },
+    <SettingsSidebarContent isCollapsed={false} onSectionChange={() => {}} onSettingsNavigate={() => {}} />,
+    {
+      wrapper: Wrapper,
+    },
   )
 }
 

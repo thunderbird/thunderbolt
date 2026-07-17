@@ -134,23 +134,14 @@ export default function Sidebar() {
     [navigate, isMobile, setOpenMobile],
   )
 
-  const handleSettingsNavigation = (path: string) => {
+  const handleNavigate = (path: string) => {
     navigate(path)
     if (isMobile) {
       setOpenMobile(false)
     }
   }
 
-  const getRouteSection = (): SidebarSection => {
-    if (isSettingsRoute) {
-      return 'settings'
-    }
-    if (location.pathname.startsWith('/tasks')) {
-      return 'tasks'
-    }
-    return 'chats'
-  }
-  const routeSection = getRouteSection()
+  const routeSection: SidebarSection = isSettingsRoute ? 'settings' : 'chats'
 
   // Toggling sections swaps the sidebar without navigating; the override is
   // keyed to the pathname it was set on, so any navigation invalidates it and
@@ -159,16 +150,7 @@ export default function Sidebar() {
 
   // Toggling between Chats and Settings only swaps the sidebar content — the
   // current page stays until the user picks an entry from the new sidebar.
-  // Tasks navigates to a full page, so close the mobile drawer to reveal it.
   const handleSectionChange = (section: SidebarSection) => {
-    if (section === 'tasks') {
-      setSectionOverride(null)
-      navigate('/tasks')
-      if (isMobile) {
-        setOpenMobile(false)
-      }
-      return
-    }
     setSectionOverride(section === routeSection ? null : { section, pathname: location.pathname })
   }
 
@@ -195,9 +177,8 @@ export default function Sidebar() {
         {activeSection === 'settings' ? (
           <SettingsSidebarContent
             isCollapsed={isCollapsed}
-            showTasks={experimentalFeatureTasks.value}
             onSectionChange={handleSectionChange}
-            onSettingsNavigate={handleSettingsNavigation}
+            onSettingsNavigate={handleNavigate}
           />
         ) : (
           <ChatSidebarContent
@@ -218,6 +199,7 @@ export default function Sidebar() {
             activeSection={activeSection}
             onSectionChange={handleSectionChange}
             onCreateNewChat={createNewChat}
+            onTasksClick={() => handleNavigate('/tasks')}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={handleSearchClick}

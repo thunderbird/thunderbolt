@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/sidebar'
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
-import { MessageCirclePlus } from 'lucide-react'
+import { CheckSquare, MessageCirclePlus } from 'lucide-react'
 import type { MouseEvent, RefObject } from 'react'
 import { useLocation } from 'react-router'
 import { ChatList } from './chat-list'
@@ -43,6 +43,7 @@ type ChatSidebarContentProps = {
   activeSection: SidebarSection
   onSectionChange: (section: SidebarSection) => void
   onCreateNewChat: () => void
+  onTasksClick: () => void
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: (e?: MouseEvent) => void
@@ -67,6 +68,7 @@ export const ChatSidebarContent = ({
   activeSection,
   onSectionChange,
   onCreateNewChat,
+  onTasksClick,
   onChatClick,
   onRename,
   onSearchClick,
@@ -79,22 +81,13 @@ export const ChatSidebarContent = ({
     <SidebarContent className="flex flex-col h-full overflow-hidden">
       <SidebarHeader
         onToggle={toggleSidebar}
-        navToggle={
-          <SidebarNavToggle activeSection={activeSection} showTasks={showTasks} onSectionChange={onSectionChange} />
-        }
+        navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
       />
 
       {/* Collapsed: pb-0 so SidebarContent's gap-2 alone spaces the divider below. */}
       <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pb-0')}>
         <SidebarGroupContent className="flex flex-col gap-2">
-          {isCollapsed && (
-            <SidebarNavToggle
-              vertical
-              activeSection={activeSection}
-              showTasks={showTasks}
-              onSectionChange={onSectionChange}
-            />
-          )}
+          {isCollapsed && <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />}
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -107,6 +100,19 @@ export const ChatSidebarContent = ({
                 <span>New Chat</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {showTasks && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={onTasksClick}
+                  tooltip="Tasks"
+                  className="cursor-pointer"
+                  isActive={location.pathname.startsWith('/tasks')}
+                >
+                  <CheckSquare className="size-[var(--icon-size-default)]" />
+                  <span>Tasks</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>

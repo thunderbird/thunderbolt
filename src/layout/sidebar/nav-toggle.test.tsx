@@ -13,12 +13,8 @@ import type { SidebarSection } from './types'
 
 const Wrapper = ({ children }: { children: ReactNode }) => <SidebarProvider>{children}</SidebarProvider>
 
-const renderToggle = ({
-  activeSection = 'chats' as SidebarSection,
-  showTasks = true,
-  onSectionChange = () => {},
-} = {}) =>
-  render(<SidebarNavToggle activeSection={activeSection} showTasks={showTasks} onSectionChange={onSectionChange} />, {
+const renderToggle = ({ activeSection = 'chats' as SidebarSection, onSectionChange = () => {} } = {}) =>
+  render(<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />, {
     wrapper: Wrapper,
   })
 
@@ -27,16 +23,8 @@ describe('SidebarNavToggle', () => {
     cleanup()
   })
 
-  it('renders Chats, Tasks and Settings segments when tasks are enabled', () => {
-    renderToggle({ showTasks: true })
-
-    expect(screen.getByLabelText('Chats')).toBeInTheDocument()
-    expect(screen.getByLabelText('Tasks')).toBeInTheDocument()
-    expect(screen.getByLabelText('Settings')).toBeInTheDocument()
-  })
-
-  it('hides the Tasks segment when the feature is disabled', () => {
-    renderToggle({ showTasks: false })
+  it('renders Chats and Settings segments', () => {
+    renderToggle()
 
     expect(screen.getByLabelText('Chats')).toBeInTheDocument()
     expect(screen.queryByLabelText('Tasks')).not.toBeInTheDocument()

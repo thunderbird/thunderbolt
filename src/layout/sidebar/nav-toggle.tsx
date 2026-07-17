@@ -5,7 +5,7 @@
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { m, useReducedMotion } from 'framer-motion'
-import { CheckSquare, MessageCircle, Settings, type LucideIcon } from 'lucide-react'
+import { MessageCircle, Settings, type LucideIcon } from 'lucide-react'
 import type { SidebarSection } from './types'
 
 type SectionDefinition = {
@@ -14,9 +14,8 @@ type SectionDefinition = {
   icon: LucideIcon
 }
 
-const allSections: SectionDefinition[] = [
+const sections: SectionDefinition[] = [
   { id: 'chats', label: 'Chats', icon: MessageCircle },
-  { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
@@ -25,27 +24,24 @@ const thumbSpring = { type: 'spring', stiffness: 500, damping: 40 } as const
 
 type SidebarNavToggleProps = {
   activeSection: SidebarSection
-  showTasks: boolean
   onSectionChange: (section: SidebarSection) => void
   /** Vertical stack for the collapsed desktop icon rail. */
   vertical?: boolean
 }
 
 /**
- * Segmented pill toggle that switches the sidebar between the Chats, Tasks
- * (feature-gated) and Settings sections. Icon-only segments; the selected
- * state is a raised thumb that slides between segments (shared `layoutId`).
+ * Segmented pill toggle that switches the sidebar between the Chats and
+ * Settings sections. Icon-only segments; the selected state is a raised
+ * thumb that slides between segments (shared `layoutId`).
  *
  * Purely presentational: the expanded sidebar centers the horizontal pill in
  * its header, while the collapsed desktop rail mounts a `vertical` instance
  * in the content area. Only one orientation mounts at a time, so the thumb
  * keeps its `layoutId` and animates across the collapse/expand transition.
  */
-export const SidebarNavToggle = ({ activeSection, showTasks, onSectionChange, vertical }: SidebarNavToggleProps) => {
+export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: SidebarNavToggleProps) => {
   const { triggerSelection } = useHaptics()
   const reducedMotion = useReducedMotion()
-
-  const sections = allSections.filter((section) => section.id !== 'tasks' || showTasks)
 
   const handleSelect = (section: SidebarSection) => {
     if (section === activeSection) {

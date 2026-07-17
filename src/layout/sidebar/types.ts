@@ -8,7 +8,7 @@ import type { UseMutationResult } from '@tanstack/react-query'
 import type { MouseEvent, RefObject } from 'react'
 
 /** Top-level sidebar sections switchable via the nav toggle. */
-export type SidebarSection = 'chats' | 'tasks' | 'settings'
+export type SidebarSection = 'chats' | 'settings'
 
 export type ChatThread = {
   id: string
@@ -23,6 +23,8 @@ export type DeleteAllChatsMutationType = UseMutationResult<void, Error, void, un
 export type ChatActionsProps = {
   isCollapsed: boolean
   debouncedSearchQuery: string
+  /** Whether the search input is currently expanded — tints the search button. */
+  showSearch: boolean
   deleteAllChatsMutation: DeleteAllChatsMutationType
   deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
   onSearchClick: (e?: MouseEvent) => void

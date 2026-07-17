@@ -22,14 +22,12 @@ import type { SidebarSection } from './types'
 
 type SettingsSidebarContentProps = {
   isCollapsed: boolean
-  showTasks: boolean
   onSectionChange: (section: SidebarSection) => void
   onSettingsNavigate: (path: string) => void
 }
 
 export const SettingsSidebarContent = ({
   isCollapsed,
-  showTasks,
   onSectionChange,
   onSettingsNavigate,
 }: SettingsSidebarContentProps) => {
@@ -44,9 +42,7 @@ export const SettingsSidebarContent = ({
     <SidebarContent className="flex flex-col h-full">
       <SidebarHeader
         onToggle={toggleSidebar}
-        navToggle={
-          <SidebarNavToggle activeSection="settings" showTasks={showTasks} onSectionChange={onSectionChange} />
-        }
+        navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />}
       />
 
       {isCollapsed && (
@@ -54,12 +50,7 @@ export const SettingsSidebarContent = ({
         // matching the toggle→New Chat spacing on the chats rail.
         <SidebarGroup className="pb-0">
           <SidebarGroupContent>
-            <SidebarNavToggle
-              vertical
-              activeSection="settings"
-              showTasks={showTasks}
-              onSectionChange={onSectionChange}
-            />
+            <SidebarNavToggle vertical activeSection="settings" onSectionChange={onSectionChange} />
           </SidebarGroupContent>
         </SidebarGroup>
       )}

@@ -27,6 +27,7 @@ export const AgentCatalogView = ({ entries }: AgentCatalogViewProps) => {
       <SearchInput
         ref={searchRef}
         showIcon
+        className="bg-card"
         placeholder="Search agents"
         value={query}
         onChange={(event) => setQuery(event.target.value)}

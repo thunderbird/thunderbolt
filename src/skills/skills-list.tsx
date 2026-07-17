@@ -50,8 +50,11 @@ export const SkillsList = ({
     return { enabledRows: enabled, disabledRows: disabled }
   }, [skills, search, isEnabled])
 
+  // md:pt-4 matches the other settings pages' `p-4` top padding so the header
+  // row starts at the same y-position; mobile stays flush so the heading
+  // lines up with the sidebar's app logo.
   return (
-    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background px-4 pb-4 md:px-5 text-foreground">
+    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background px-4 pb-4 md:px-5 md:pt-4 text-foreground">
       <PageSearch onSearch={setSearch}>
         {/* On mobile this row is the page's only chrome (the settings-level
             Header is skipped there) and matches the sidebar header height so
@@ -69,20 +72,20 @@ export const SkillsList = ({
                 <Menu strokeWidth={1.5} />
               </Button>
             )}
-            {!isMobile && <h1 className="text-xl leading-tight text-foreground">Skills</h1>}
+            {!isMobile && <h1 className="text-[24px] leading-[32px] font-bold tracking-tight text-primary">Skills</h1>}
           </div>
           {isMobile && (
-            <h1 className="absolute left-1/2 -translate-x-1/2 text-xl leading-tight text-foreground pointer-events-none">
+            <h1 className="absolute left-1/2 -translate-x-1/2 text-[24px] leading-[32px] font-bold tracking-tight text-primary pointer-events-none">
               Skills
             </h1>
           )}
           <div className="flex items-center gap-2">
-            <PageSearch.Button className="size-8 rounded-md" />
+            <PageSearch.Button />
             <Button
               variant="outline"
               size="icon"
               aria-label="Create skill"
-              className="size-8 rounded-md"
+              className="rounded-lg bg-card hover:bg-accent"
               onClick={onCreate}
             >
               <Plus />

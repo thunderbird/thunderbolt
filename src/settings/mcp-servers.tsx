@@ -726,11 +726,18 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
             resetLocalDialogState()
           }}
         >
-          <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
-              <Plus />
-            </Button>
-          </DialogTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="icon" className="rounded-lg" aria-label="Add MCP server">
+                  <Plus />
+                </Button>
+              </DialogTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Add MCP server</p>
+            </TooltipContent>
+          </Tooltip>
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[85vh]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>{dialogTitle}</ResponsiveModalTitle>

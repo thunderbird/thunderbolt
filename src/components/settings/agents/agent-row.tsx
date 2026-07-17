@@ -8,13 +8,15 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useState } from 'react'
-import { Globe, Pencil, Server, Trash2, Zap } from 'lucide-react'
+import { Globe, Pencil, Server, Trash2 } from 'lucide-react'
+import { AppLogo } from '@/components/app-logo'
+import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
 
-/** Visual order: built-in (zap) → managed/system (server) → remote (globe). */
+/** Visual order: built-in (app logo) → managed/system (server) → remote (globe). */
 const iconForAgent = (agent: Agent) => {
   if (agent.type === 'built-in') {
-    return Zap
+    return AppLogo
   }
   if (agent.type === 'managed-acp') {
     return Server
@@ -98,7 +100,12 @@ export const AgentRow = ({ agent, currentUserId, onToggle, onEdit, onDelete }: A
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="flex aspect-square size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <Icon className="size-5 text-muted-foreground" aria-hidden="true" />
+              {/* The logo reads slightly smaller than the lucide glyphs at
+                  equal box size, so it gets a half-step bump. */}
+              <Icon
+                className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-5.5' : 'size-5')}
+                aria-hidden="true"
+              />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 min-w-0">

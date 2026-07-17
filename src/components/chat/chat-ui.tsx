@@ -93,7 +93,7 @@ export default function ChatUI() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <AppLogo size={64} className="opacity-60" />
+              <AppLogo size={88} className="opacity-60" />
             </m.div>
           ) : null}
         </AnimatePresence>

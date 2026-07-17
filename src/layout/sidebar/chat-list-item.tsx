@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
@@ -48,6 +49,8 @@ export const ChatListItem = memo(
       chatInstance ? { chat: chatInstance, experimental_throttle: statusOnlyThrottleMs } : undefined,
     )
     const [renameDialogOpen, setRenameDialogOpen] = useState(false)
+    const [menuOpen, setMenuOpen] = useState(false)
+    const [contextMenuOpen, setContextMenuOpen] = useState(false)
     const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null)
     const [prevTitle, setPrevTitle] = useState(thread.title)
 
@@ -84,65 +87,106 @@ export const ChatListItem = memo(
       )
     }
 
+    const startRename = () => setRenameDialogOpen(true)
+    const startDelete = () => {
+      threadIdRef.current = thread.id
+      deleteChatDialogRef.current?.open()
+    }
+
+    const deleteLabel = deleteChatMutation.isPending ? (
+      <Loader2 className="size-4 animate-spin" />
+    ) : (
+      <>
+        <Trash2 className="size-4 mr-2" />
+        Delete
+      </>
+    )
+
+    const anyMenuOpen = menuOpen || contextMenuOpen
+
     return (
       <>
-        <DropdownMenu>
-          <SidebarMenuItem className="group/item">
-            <SidebarMenuButton
-              onClick={() => onChatClick(thread.id)}
-              isActive={isActive}
-              className="cursor-pointer data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground flex items-center gap-2"
-            >
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <AnimatePresence>
-                  {status === 'streaming' && (
-                    <m.div
-                      key={`${thread.id}-loading`}
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: 'auto' }}
-                      exit={{ opacity: 0, width: 0 }}
-                      className="flex-shrink-0"
-                    >
-                      <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-                    </m.div>
-                  )}
-                </AnimatePresence>
-                <span className="truncate flex-1 min-w-0">{displayTitle}</span>
-              </div>
-              <DropdownMenuTrigger asChild>
-                <MoreHorizontal
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <ContextMenu onOpenChange={setContextMenuOpen}>
+            <SidebarMenuItem className="group/item">
+              <ContextMenuTrigger asChild>
+                <SidebarMenuButton
+                  onClick={() => onChatClick(thread.id)}
+                  isActive={isActive}
                   className={cn(
-                    'shrink-0 size-4',
-                    !isMobile &&
-                      'opacity-0 group-hover/item:opacity-100 group-data-[state=open]/item:opacity-100 transition-opacity',
+                    'cursor-pointer flex items-center gap-2',
+                    // Radix puts data-state on the triggers, not this button, so
+                    // the open-state highlight is driven by our own state.
+                    anyMenuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
                   )}
-                />
-              </DropdownMenuTrigger>
-            </SidebarMenuButton>
-            <DropdownMenuContent side="right" align="start" className="min-w-56 rounded-xl">
-              <DropdownMenuItem onClick={() => setRenameDialogOpen(true)} className="cursor-pointer">
-                <Pencil className="size-4 mr-2" />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  threadIdRef.current = thread.id
-                  deleteChatDialogRef.current?.open()
-                }}
-                disabled={deleteChatMutation.isPending}
-                className="cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <AnimatePresence>
+                      {status === 'streaming' && (
+                        <m.div
+                          key={`${thread.id}-loading`}
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: 'auto' }}
+                          exit={{ opacity: 0, width: 0 }}
+                          className="flex-shrink-0"
+                        >
+                          <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
+                        </m.div>
+                      )}
+                    </AnimatePresence>
+                    <span className="truncate flex-1 min-w-0">{displayTitle}</span>
+                  </div>
+                  <DropdownMenuTrigger asChild>
+                    <MoreHorizontal
+                      className={cn(
+                        'shrink-0 size-4',
+                        !isMobile && !anyMenuOpen && 'opacity-0 group-hover/item:opacity-100 transition-opacity',
+                      )}
+                    />
+                  </DropdownMenuTrigger>
+                </SidebarMenuButton>
+              </ContextMenuTrigger>
+
+              {/* Right-click / touch long-press: a true context menu at the
+                  cursor position. */}
+              <ContextMenuContent className="min-w-56 rounded-xl">
+                <ContextMenuItem onClick={startRename} className="cursor-pointer">
+                  <Pencil className="size-4 mr-2" />
+                  Rename
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={startDelete}
+                  disabled={deleteChatMutation.isPending}
+                  className="cursor-pointer"
+                >
+                  {deleteLabel}
+                </ContextMenuItem>
+              </ContextMenuContent>
+
+              {/* The trigger is the vertically-centered dots icon; the negative
+                  alignOffset walks the menu back up so its top edge lines up with
+                  the row's top edge (row is 32px on desktop, 44px on mobile;
+                  icon is 16px). */}
+              <DropdownMenuContent
+                side="right"
+                align="start"
+                alignOffset={isMobile ? -14 : -8}
+                className="min-w-56 rounded-xl"
               >
-                {deleteChatMutation.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <>
-                    <Trash2 className="size-4 mr-2" />
-                    Delete
-                  </>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </SidebarMenuItem>
+                <DropdownMenuItem onClick={startRename} className="cursor-pointer">
+                  <Pencil className="size-4 mr-2" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={startDelete}
+                  disabled={deleteChatMutation.isPending}
+                  className="cursor-pointer"
+                >
+                  {deleteLabel}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </SidebarMenuItem>
+          </ContextMenu>
         </DropdownMenu>
         <RenameChatDialog
           open={renameDialogOpen}

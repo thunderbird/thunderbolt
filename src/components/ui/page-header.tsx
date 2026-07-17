@@ -27,6 +27,10 @@ type PageHeaderProps = {
 export const PageHeader = ({ title, children, titleClassName }: PageHeaderProps) => (
   <div className="flex min-h-[var(--touch-height-xl)] items-center justify-between">
     <h1 className={cn('text-[24px] leading-[32px] font-bold tracking-tight text-primary', titleClassName)}>{title}</h1>
-    <div className="flex items-center gap-2">{children}</div>
+    {/* pr-2 matches the skills page's header actions, which are pulled in to
+        center-align the + button with the list rows' trailing toggles — kept
+        identical here so page-level + buttons sit at the same x across
+        settings pages. */}
+    <div className="flex items-center gap-2 pr-2">{children}</div>
   </div>
 )

@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { needsApiKey } from '@/components/ui/model-selector/model-selector'
 import { Dialog, DialogTrigger } from '@/components/ui/dialog'
@@ -253,7 +252,6 @@ const formSchema = z
     customModel: z.string().optional(),
     url: z.string().optional(),
     apiKey: z.string().optional(),
-    toolUsage: z.boolean(),
   })
   .refine(
     (data) => {
@@ -500,7 +498,10 @@ export default function ModelsPage() {
         url: values.url || null,
         isSystem: 0,
         enabled: 1,
-        toolUsage: values.toolUsage ? 1 : 0,
+        // Tool use is always on for user-added models; the form no longer
+        // exposes a toggle (the compatibility warning below the model picker
+        // still flags models that may not support it).
+        toolUsage: 1,
         contextWindow: null,
       })
     },
@@ -563,7 +564,6 @@ export default function ModelsPage() {
       customModel: '',
       url: '',
       apiKey: '',
-      toolUsage: true,
     },
   })
 
@@ -815,10 +815,6 @@ export default function ModelsPage() {
         const generatedName = generateModelName(modelId)
         form.setValue('name', generatedName)
       }
-
-      // Set tool usage based on model support
-      const supportsTools = (model as any)?.supports_tools === true
-      form.setValue('toolUsage', supportsTools, { shouldDirty: false })
     }
   }
 
@@ -843,7 +839,6 @@ export default function ModelsPage() {
         shouldDirty: false,
       })
       form.setValue('apiKey', '', { shouldValidate: false, shouldDirty: false })
-      form.setValue('toolUsage', true, { shouldValidate: false, shouldDirty: false })
 
       // Fetch models if we have the necessary credentials
       if (['thunderbolt', 'tinfoil', 'anthropic'].includes(currentProvider)) {
@@ -1095,36 +1090,19 @@ export default function ModelsPage() {
 
                 {/* Display Name - Only show when model is selected */}
                 {(watchedModel || selectedModelId === 'custom') && (
-                  <>
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Display Name</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="toolUsage"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <div className="flex items-center gap-3">
-                              <Checkbox checked={field.value} onCheckedChange={field.onChange} id="toolUsage" />
-                              <FormLabel htmlFor="toolUsage">Enable tool use</FormLabel>
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Display Name</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
 
                 {/* Warning when model lacks tool support */}

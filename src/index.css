@@ -29,7 +29,12 @@
   --color-tertiary: #7f7870;
   --color-muted: #f0ede6;
   --color-muted-foreground: #7f7870;
-  --color-accent: #efeae2;
+  /* Hover/selected tint. Deliberately low-saturation: at these near-white
+     lightness levels a yellow-warm beige reads as a color change rather than
+     a shading change, which makes hovers feel louder than they are. Keep it
+     darker than --color-background so hovered pills never blend into the
+     page. */
+  --color-accent: #eeebe6;
   --color-accent-foreground: #262120;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #262120;
@@ -56,7 +61,7 @@
   --color-sidebar-foreground: #47413c;
   --color-sidebar-primary: #393530;
   --color-sidebar-primary-foreground: #faf8f5;
-  --color-sidebar-accent: #efeae2;
+  --color-sidebar-accent: #eeebe6;
   --color-sidebar-accent-foreground: #262120;
   --color-sidebar-border: #eee9e1;
   --color-sidebar-ring: #393530;

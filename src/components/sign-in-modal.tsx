@@ -65,8 +65,10 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
         <ResponsiveModalTitle className={step === 'email' ? 'text-2xl font-semibold' : 'sr-only'}>
           {step === 'email' ? 'Sign In' : 'Enter your code'}
         </ResponsiveModalTitle>
+        {/* sr-only: Radix dialogs want a description for a11y, but the title
+            says everything the sighted user needs. */}
         {step === 'email' && (
-          <ResponsiveModalDescription>Sign in to get more out of Thunderbolt</ResponsiveModalDescription>
+          <ResponsiveModalDescription className="sr-only">Sign in to Thunderbolt</ResponsiveModalDescription>
         )}
       </ResponsiveModalHeader>
 

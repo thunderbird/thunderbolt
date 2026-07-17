@@ -78,7 +78,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
         )}
       >
         {item.icon}
-        <span>{item.label}</span>
+        <span className="font-medium">{item.label}</span>
         {isDefault && <span className="text-muted-foreground text-[length:var(--font-size-sm)]">Default</span>}
       </div>
     )

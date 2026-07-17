@@ -7,7 +7,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
-import { ChevronDown, Globe, Plus, Server, Zap } from 'lucide-react'
+import { AppLogo } from '@/components/app-logo'
+import { ChevronDown, Globe, Plus, Server } from 'lucide-react'
 import { useMemo, useState, type ComponentType } from 'react'
 
 export type AgentSelectorProps = {
@@ -28,7 +29,7 @@ type AgentItemData = {
  *  stay perceptually consistent across Settings and the chat header. */
 const iconForAgent = (agent: Agent): ComponentType<{ className?: string }> => {
   if (agent.type === 'built-in') {
-    return Zap
+    return AppLogo
   }
   if (agent.isSystem === 1) {
     return Server
@@ -41,7 +42,9 @@ const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   return {
     id: agent.id,
     label: agent.name,
-    icon: <Icon className="size-3.5 text-muted-foreground" />,
+    // The logo reads slightly smaller than the lucide glyphs at equal box
+    // size, so it gets a half-step bump.
+    icon: <Icon className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-4' : 'size-3.5')} />,
     data: { agent },
   }
 }
@@ -105,7 +108,8 @@ export const AgentSelector = ({
   }
 
   const renderTrigger = (selected: SearchableMenuItem<AgentItemData> | undefined, isOpen: boolean) => {
-    const Icon = iconForAgent(selected?.data?.agent ?? selectedAgent)
+    const triggerAgent = selected?.data?.agent ?? selectedAgent
+    const Icon = iconForAgent(triggerAgent)
     const triggerInner = (
       <div
         data-testid="agent-selector-trigger"
@@ -120,7 +124,9 @@ export const AgentSelector = ({
           !disabled && isOpen ? 'bg-secondary' : 'hover:bg-accent dark:hover:bg-secondary/50',
         )}
       >
-        <Icon className="size-3.5 text-muted-foreground shrink-0" />
+        <Icon
+          className={cn('text-muted-foreground shrink-0', triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5')}
+        />
         {/* Muted like the mode/model picker labels — chrome, not content. */}
         <span className="font-medium truncate text-muted-foreground">{selected?.label ?? selectedAgent.name}</span>
         <ChevronDown

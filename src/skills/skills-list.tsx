@@ -29,6 +29,8 @@ export const SkillsList = ({
   onToggleEnabled,
   onCreate,
   onSelectSkill,
+  onEditSkill,
+  onDeleteSkill,
 }: {
   skills: Skill[]
   activeSkillId: string | null
@@ -36,6 +38,8 @@ export const SkillsList = ({
   onToggleEnabled: (id: string, next: boolean) => void
   onCreate: () => void
   onSelectSkill: (id: string) => void
+  onEditSkill: (id: string) => void
+  onDeleteSkill: (id: string) => void
 }) => {
   const [search, setSearch] = useState('')
   const { isMobile } = useIsMobile()
@@ -88,7 +92,10 @@ export const SkillsList = ({
             )}
             <h1 className="text-[24px] leading-[32px] font-bold tracking-tight text-primary">Skills</h1>
           </div>
-          <div className="flex items-center gap-2">
+          {/* pr-2 pulls the actions in so the + button sits on the same
+              vertical line as the row toggles (rows carry px-2.5 of their own
+              inset; 8px aligns the two centers). */}
+          <div className="flex items-center gap-2 pr-2">
             <PageSearch.Button />
             <Button
               variant="outline"
@@ -134,6 +141,8 @@ export const SkillsList = ({
                   isActive={skill.id === activeSkillId}
                   onSelect={onSelectSkill}
                   onToggleEnabled={onToggleEnabled}
+                  onEdit={onEditSkill}
+                  onDelete={onDeleteSkill}
                 />
               ))}
             </m.ul>
@@ -151,6 +160,8 @@ export const SkillsList = ({
                     isActive={skill.id === activeSkillId}
                     onSelect={onSelectSkill}
                     onToggleEnabled={onToggleEnabled}
+                    onEdit={onEditSkill}
+                    onDelete={onDeleteSkill}
                   />
                 ))}
               </m.ul>

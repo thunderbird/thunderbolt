@@ -91,7 +91,10 @@ export const SignInEmailStep = ({
             onChange={(e) => onEmailChange(e.target.value)}
             className={
               variant === 'modal'
-                ? 'h-12 pl-12 text-base'
+                ? // Same height token as the submit button below so the pair
+                  // reads as one unit; rounded-xl steps down from the modal's
+                  // rounded-2xl shell.
+                  'h-[var(--touch-height-lg)] rounded-xl pl-12 text-base'
                 : 'h-[46px] rounded-xl border-border bg-secondary px-3 text-base'
             }
             disabled={isLoading}
@@ -101,9 +104,10 @@ export const SignInEmailStep = ({
 
         <Button
           type="submit"
+          size={variant === 'modal' ? 'lg' : undefined}
           className={
             variant === 'modal'
-              ? 'w-full'
+              ? 'w-full rounded-xl'
               : 'h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90'
           }
           disabled={isLoading || !isValidEmail}

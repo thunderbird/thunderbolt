@@ -139,6 +139,10 @@ export const SkillsView = () => {
   }
 
   const onEdit = (id: string) => {
+    // Same guard as onCreate: don't blow away a dirty form under the user.
+    if ((mode === 'create' || mode === 'edit') && isDirty) {
+      return
+    }
     dispatch({ type: 'START_EDIT', id })
   }
 
@@ -267,19 +271,21 @@ export const SkillsView = () => {
             dispatch({ type: 'START_CREATE' })
           }}
           onSelectSkill={onSelectSkill}
+          onEditSkill={onEdit}
+          onDeleteSkill={onDelete}
         />
       </div>
       {/* ~50/50 split with the list: half the viewport minus half the sidebar. */}
       {!isMobile && (
         <SlideInPanel open={panelOpen} width="clamp(400px, calc(50vw - 128px), 800px)">
           {/* One continuous surface for the whole detail column, lifted off the
-              page by the app's soft glow shadow instead of a border. bg-sidebar
+              page by the app's soft glow shadow plus a faint border. bg-sidebar
               (near-white in light mode) like the chat composer, so the surface
               reads against the page in both themes. Bottom padding floats the
               card off the window edge; the right edge stays flush and square —
               only the left corners are rounded. */}
-          <div className="h-full pb-3">
-            <div className="h-full overflow-hidden rounded-l-2xl bg-sidebar shadow-[0_0_32px_rgba(38,33,32,0.06)]">
+          <div className="h-full pb-4">
+            <div className="h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar shadow-[0_0_32px_rgba(38,33,32,0.06)]">
               {panel}
             </div>
           </div>

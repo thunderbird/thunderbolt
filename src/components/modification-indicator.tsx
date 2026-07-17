@@ -142,7 +142,7 @@ export const ModificationIndicator = ({
           {/* Footer */}
           <div className="p-3 pt-2">
             {!showConfirmation ? (
-              <Button size="sm" variant="outline" onClick={handleResetClick} className="w-full">
+              <Button size="sm" onClick={handleResetClick} className="w-full">
                 Reset to Default
               </Button>
             ) : (

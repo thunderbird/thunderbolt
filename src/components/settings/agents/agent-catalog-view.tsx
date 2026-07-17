@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { SearchInput } from '@/components/ui/search-input'
+import { PageSearch } from '@/components/ui/page-search'
 import { useAgentRegistrySearch } from '@/hooks/use-agent-registry-search'
 import type { RegistryEntry } from '@/types/registry'
-import { useRef } from 'react'
 import { AgentCatalogCard } from './agent-catalog-card'
 
 type AgentCatalogViewProps = {
@@ -19,19 +18,22 @@ type AgentCatalogViewProps = {
 export const AgentCatalogView = ({ entries }: AgentCatalogViewProps) => {
   const { query, setQuery, results, isEmpty } = useAgentRegistrySearch(entries)
   const showEmptyState = isEmpty && query.trim().length > 0
-  const searchRef = useRef<HTMLInputElement>(null)
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-medium">Browse agents</h2>
-      <SearchInput
-        ref={searchRef}
-        showIcon
-        className="bg-card"
-        placeholder="Search agents"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
+      <PageSearch onSearch={setQuery}>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-medium">Browse agents</h2>
+          <PageSearch.Button />
+        </div>
+
+        <PageSearch.Input
+          placeholder="Search agents"
+          onSearch={setQuery}
+          wrapperClassName="pr-0"
+          className="h-9 rounded-lg border-border bg-card text-sm placeholder:text-muted-foreground"
+        />
+      </PageSearch>
       {showEmptyState ? (
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground py-6 text-center">No agents found</p>
       ) : (

@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { m } from 'framer-motion'
+import { SquarePen, Trash2 } from 'lucide-react'
 
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Switch } from '@/components/ui/switch'
 import type { Skill } from '@/types'
 
@@ -34,45 +36,63 @@ export const LibraryRow = ({
   isActive,
   onSelect,
   onToggleEnabled,
+  onEdit,
+  onDelete,
 }: {
   skill: Skill
   enabled: boolean
   isActive: boolean
   onSelect: (id: string) => void
   onToggleEnabled: (id: string, next: boolean) => void
+  onEdit: (id: string) => void
+  onDelete: (id: string) => void
 }) => {
   return (
     <m.li layout layoutId={skill.id} transition={skillRowTransition}>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => onSelect(skill.id)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onSelect(skill.id)
-          }
-        }}
-        className={`group flex h-[var(--touch-height-default)] w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-base transition-colors ${
-          enabled ? 'text-foreground' : 'text-muted-foreground/60'
-        } ${isActive ? 'bg-accent' : 'hover:bg-accent'}`}
-      >
-        <span className="min-w-0 flex-1 truncate leading-none">/{skill.name}</span>
-        {/* `inline-flex items-center` keeps the Switch optically centered
-            with the name's text baseline. stopPropagation so toggling
-            doesn't also open the detail panel. */}
-        <span
-          className="inline-flex shrink-0 items-center"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
-          <Switch
-            checked={enabled}
-            onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
-            aria-label={enabled ? `Disable /${skill.name}` : `Enable /${skill.name}`}
-          />
-        </span>
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => onSelect(skill.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect(skill.id)
+              }
+            }}
+            className={`group flex h-[var(--touch-height-default)] w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-base transition-colors ${
+              enabled ? 'text-foreground' : 'text-muted-foreground/60'
+            } ${isActive ? 'bg-accent' : 'hover:bg-accent'}`}
+          >
+            <span className="min-w-0 flex-1 truncate leading-none">/{skill.name}</span>
+            {/* `inline-flex items-center` keeps the Switch optically centered
+                with the name's text baseline. stopPropagation so toggling
+                doesn't also open the detail panel. */}
+            <span
+              className="inline-flex shrink-0 items-center"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Switch
+                checked={enabled}
+                onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
+                aria-label={enabled ? `Disable /${skill.name}` : `Enable /${skill.name}`}
+              />
+            </span>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="min-w-56 rounded-xl">
+          <ContextMenuItem onClick={() => onEdit(skill.id)} className="cursor-pointer">
+            <SquarePen className="size-4 mr-2" />
+            Edit
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => onDelete(skill.id)} className="cursor-pointer">
+            <Trash2 className="size-4 mr-2" />
+            Delete
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </m.li>
   )
 }

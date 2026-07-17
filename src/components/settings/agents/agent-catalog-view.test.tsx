@@ -3,10 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
+import { getClock } from '@/testing-library'
 import type { RegistryEntry } from '@/types/registry'
 import { AgentCatalogView } from './agent-catalog-view'
+
+/** Flush the page search's debounce timer under the global fake clock. */
+const flushDebounce = async () => {
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+}
 
 const entry = (overrides: Partial<RegistryEntry> & Pick<RegistryEntry, 'id' | 'name'>): RegistryEntry => ({
   version: '1.2.3',
@@ -67,33 +75,38 @@ describe('AgentCatalogView', () => {
     expect(card.querySelector('a[href="https://github.com/example/claude-acp"]')).toBeInTheDocument()
   })
 
-  it('filters by search query', () => {
+  it('filters by search query', async () => {
     renderCatalog()
     fireEvent.change(screen.getByPlaceholderText('Search agents'), { target: { value: 'gemini' } })
 
-    expect(screen.getByTestId('agent-catalog-card-gemini')).toBeInTheDocument()
+    // The page-level search debounces before applying the query.
+    await flushDebounce()
     expect(screen.queryByTestId('agent-catalog-card-goose')).not.toBeInTheDocument()
+    expect(screen.getByTestId('agent-catalog-card-gemini')).toBeInTheDocument()
   })
 
-  it('clears the query and restores every card when the clear button is clicked', () => {
+  it('clears the query and restores every card when the clear button is clicked', async () => {
     renderCatalog()
     const input = screen.getByPlaceholderText('Search agents') as HTMLInputElement
 
     fireEvent.change(input, { target: { value: 'gemini' } })
     expect(input.value).toBe('gemini')
+    await flushDebounce()
     expect(screen.queryByTestId('agent-catalog-card-goose')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /clear search/i }))
 
+    await flushDebounce()
     expect(input.value).toBe('')
-    expect(screen.getByTestId('agent-catalog-card-gemini')).toBeInTheDocument()
     expect(screen.getByTestId('agent-catalog-card-goose')).toBeInTheDocument()
+    expect(screen.getByTestId('agent-catalog-card-gemini')).toBeInTheDocument()
   })
 
-  it('shows a no-results message when nothing matches', () => {
+  it('shows a no-results message when nothing matches', async () => {
     renderCatalog()
     fireEvent.change(screen.getByPlaceholderText('Search agents'), { target: { value: 'zzzqqqxx' } })
 
+    await flushDebounce()
     expect(screen.getByText(/no agents found/i)).toBeInTheDocument()
     expect(screen.queryByTestId('agent-catalog-card-goose')).not.toBeInTheDocument()
   })

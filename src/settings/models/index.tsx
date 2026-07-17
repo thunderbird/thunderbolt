@@ -15,7 +15,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
@@ -476,8 +475,6 @@ export const modelEditTooltip = (isSystemModel: boolean): string =>
 
 export const modelRemoveTooltip = (isSystemModel: boolean): string =>
   isSystemModel ? "Built-in models can't be removed" : 'Remove model'
-
-export const modelAddTooltip = (): string => 'Add model'
 
 export default function ModelsPage() {
   const db = useDatabase()
@@ -945,23 +942,11 @@ export default function ModelsPage() {
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="rounded-lg bg-card hover:bg-accent"
-                  aria-label={modelAddTooltip()}
-                >
-                  <Plus />
-                </Button>
-              </DialogTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>{modelAddTooltip()}</p>
-            </TooltipContent>
-          </Tooltip>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="icon" className="rounded-lg bg-card hover:bg-accent" aria-label="Add model">
+              <Plus />
+            </Button>
+          </DialogTrigger>
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
@@ -1243,37 +1228,26 @@ export default function ModelsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div>
-                            <Switch
-                              checked={isEnabled}
-                              onCheckedChange={(checked) =>
-                                toggleModelMutation.mutate({ id: model.id, enabled: checked })
-                              }
-                              className="cursor-pointer"
-                            />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p>{isEnabled ? 'Disable model' : 'Enable model'}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <Switch
+                      checked={isEnabled}
+                      onCheckedChange={(checked) => toggleModelMutation.mutate({ id: model.id, enabled: checked })}
+                      className="cursor-pointer"
+                      aria-label={isEnabled ? 'Disable model' : 'Enable model'}
+                    />
 
-                    <ButtonGroup size="icon">
+                    <div className="flex items-center gap-2">
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="inline-flex">
-                            <ButtonGroupItem
+                            <Button
                               variant="outline"
+                              size="icon"
                               onClick={() => setEditingModel(model)}
                               disabled={isSystemModel}
                               aria-label={modelEditTooltip(isSystemModel)}
                             >
                               <Pen className="h-3 w-3" />
-                            </ButtonGroupItem>
+                            </Button>
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
@@ -1283,21 +1257,22 @@ export default function ModelsPage() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="inline-flex">
-                            <ButtonGroupItem
+                            <Button
                               variant="outline"
+                              size="icon"
                               onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
                               disabled={isSystemModel}
                               aria-label={modelRemoveTooltip(isSystemModel)}
                             >
                               <Trash2 className="h-3 w-3" />
-                            </ButtonGroupItem>
+                            </Button>
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
                           <p>{modelRemoveTooltip(isSystemModel)}</p>
                         </TooltipContent>
                       </Tooltip>
-                    </ButtonGroup>
+                    </div>
                   </div>
                 </div>
               </CardHeader>

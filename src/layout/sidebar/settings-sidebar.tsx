@@ -140,7 +140,7 @@ export const SettingsSidebarContent = ({
       {groupDivider}
 
       <SidebarGroup className={isCollapsed ? 'pt-0' : undefined}>
-        <SidebarGroupLabel>Account Settings</SidebarGroupLabel>
+        <SidebarGroupLabel>Settings</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>

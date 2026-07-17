@@ -8,8 +8,11 @@ import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAuth } from '@/contexts'
+import { useLocalStorage } from '@/hooks/use-local-storage'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getCapabilities, isTauri } from '@/lib/platform'
+import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -34,6 +37,28 @@ export default function DevSettingsPage() {
     queryFn: getCapabilities,
     enabled: isTauri(),
   })
+
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const isAuthenticated = !!session?.user
+
+  // Network: `proxy_enabled` is device-local (localStorage) because it controls
+  // request transport (privacy on Tauri vs. CORS bypass on Web), not a synced
+  // user preference. Web ignores the stored value — browser CORS forces the
+  // proxy path — so the toggle is UI-disabled with an explanatory tooltip.
+  const onTauri = isTauri()
+  const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
+  const effectiveProxyEnabled = computeEffectiveProxyEnabled(
+    () => onTauri,
+    () => proxyEnabledStr,
+  )
+  const proxyDisabled = !onTauri || !isAuthenticated
+  const proxyTooltipReason = !onTauri
+    ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
+    : 'Sign in to enable cloud proxy.'
+  // When the toggle is auth-disabled, render it as OFF so the UI honestly reflects
+  // that the user can't use the proxy until they sign in.
+  const proxyChecked = proxyDisabled && onTauri ? false : effectiveProxyEnabled
 
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
@@ -92,6 +117,41 @@ export default function DevSettingsPage() {
                 </TooltipContent>
               )}
             </Tooltip>
+          </div>
+
+          {/* Divider between settings */}
+          <div className="border-t -mx-6" />
+
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium">Use Cloud Proxy</label>
+              <p className="text-sm text-muted-foreground">
+                When enabled, requests are routed through Thunderbolt's cloud proxy.
+              </p>
+            </div>
+            {proxyDisabled ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} aria-label={proxyTooltipReason}>
+                    <Switch
+                      checked={proxyChecked}
+                      disabled
+                      aria-label="Use Cloud Proxy"
+                      className="pointer-events-none"
+                    />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p>{proxyTooltipReason}</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Switch
+                checked={proxyChecked}
+                onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+                aria-label="Use Cloud Proxy"
+              />
+            )}
           </div>
 
           {/* Divider between settings */}

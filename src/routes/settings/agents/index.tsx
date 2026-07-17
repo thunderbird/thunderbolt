@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useState } from 'react'
-import { Navigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,16 +16,7 @@ import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { useAuth } from '@/contexts'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
-import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import type { Agent } from '@/types/acp'
-
-type AgentsSettingsPageProps = {
-  /** Test seam — production omits; the hidden-check hook falls back to
-   *  `isTauri()`. Lets tests exercise Tauri Standalone vs. Hosted code paths
-   *  without mocking the shared `@/lib/platform` module (which would leak
-   *  across files — see `docs/development/testing.md`). */
-  isStandalone?: () => boolean
-}
 
 /**
  * Settings page listing every agent the user can chat with: the built-in
@@ -35,26 +25,18 @@ type AgentsSettingsPageProps = {
  * ACP endpoints. The composition lives in `useAllAgents` — this page is just
  * a thin orchestrator wiring DAL writes to UI events.
  */
-export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageProps = {}) {
+export default function AgentsSettingsPage() {
   const db = useDatabase()
   const agents = useAllAgents()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
-  const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
 
   const [dialogOpen, setDialogOpen] = useState(false)
   // `null` ⇒ Add mode; an Agent ⇒ Edit mode. The dialog receives a `key`
   // derived from the agent id so its reducer remounts when switching targets.
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
-
-  // Defence against direct URL / bookmark when the entry is hidden in the
-  // sidebar. Anonymous users behind the proxy can't reach managed agents, so
-  // sending them back to the settings index keeps the UI honest.
-  if (agentsHidden) {
-    return <Navigate to="/settings" replace />
-  }
 
   const handleToggle = async (agent: Agent, enabled: boolean) => {
     if (agent.type === 'built-in') {

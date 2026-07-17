@@ -13,7 +13,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import { Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
@@ -26,11 +25,6 @@ type SettingsSidebarContentProps = {
   showTasks: boolean
   onSectionChange: (section: SidebarSection) => void
   onSettingsNavigate: (path: string) => void
-  /** Test seam — production omits; the hook falls back to `isTauri()`. Lets
-   *  tests exercise Tauri Standalone vs. Hosted code paths without mocking
-   *  the shared `@/lib/platform` module (which would leak across files —
-   *  see `docs/development/testing.md`). */
-  isStandalone?: () => boolean
 }
 
 export const SettingsSidebarContent = ({
@@ -38,11 +32,9 @@ export const SettingsSidebarContent = ({
   showTasks,
   onSectionChange,
   onSettingsNavigate,
-  isStandalone,
 }: SettingsSidebarContentProps) => {
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
-  const agentsHidden = useAgentsSettingsHidden({ isStandalone })
 
   // Collapsed rail: the group labels are hidden, so a hairline divider takes
   // over as the section boundary.
@@ -72,29 +64,27 @@ export const SettingsSidebarContent = ({
         </SidebarGroup>
       )}
 
-      {!agentsHidden && (
-        // Collapsed: SidebarContent's gap-2 alone spaces the groups and their
-        // dividers, so the groups' own vertical padding would double it.
-        <SidebarGroup className={isCollapsed ? 'py-0' : undefined}>
-          <SidebarGroupLabel>Agents</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onSettingsNavigate('/settings/agents')}
-                  tooltip="All agents"
-                  className="cursor-pointer"
-                  isActive={location.pathname === '/settings/agents'}
-                >
-                  <Bot className="size-4" />
-                  <span>All agents</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      )}
-      {!agentsHidden && groupDivider}
+      {/* Collapsed: SidebarContent's gap-2 alone spaces the groups and their
+          dividers, so the groups' own vertical padding would double it. */}
+      <SidebarGroup className={isCollapsed ? 'py-0' : undefined}>
+        <SidebarGroupLabel>Agents</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/agents')}
+                tooltip="All agents"
+                className="cursor-pointer"
+                isActive={location.pathname === '/settings/agents'}
+              >
+                <Bot className="size-4" />
+                <span>All agents</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+      {groupDivider}
 
       <SidebarGroup className={isCollapsed ? 'py-0' : undefined}>
         <SidebarGroupLabel>What agents use</SidebarGroupLabel>

@@ -38,6 +38,10 @@
   --color-warning: oklch(0.769 0.171 70.67);
   --color-warning-foreground: oklch(0.205 0 0);
   --color-border: #e5dfd5;
+  /* Darker sibling of --color-border for focused-input borders — same warm
+     hue, stepped-down lightness, so focus reads as "border, but firmer"
+     instead of a black outline. */
+  --color-border-strong: #bfb4a3;
   --color-input: #e5dfd5;
   --color-ring: #393530;
   --color-chart-1: oklch(0.646 0.222 41.116);
@@ -203,6 +207,8 @@
   --color-warning: oklch(0.828 0.189 84.429);
   --color-warning-foreground: oklch(0.205 0 0);
   --color-border: #434546;
+  /* Lighter than --color-border (dark mode inverts: "stronger" = lighter). */
+  --color-border-strong: #8a8a88;
   --color-input: #282a2b;
   /* Lighter than --color-border so the focused-input border swap is visible in dark mode. */
   --color-ring: #8a8a88;

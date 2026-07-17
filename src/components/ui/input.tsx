@@ -12,9 +12,9 @@ const inputVariants = cva(
   {
     variants: {
       variant: {
-        default: 'focus-visible:border-ring',
-        filled: 'bg-muted/50 focus-visible:bg-transparent focus-visible:border-ring',
-        outline: 'border-2 focus-visible:border-ring',
+        default: 'focus-visible:border-border-strong',
+        filled: 'bg-muted/50 focus-visible:bg-transparent focus-visible:border-border-strong',
+        outline: 'border-2 focus-visible:border-border-strong',
         ghost: 'border-none focus-visible:bg-accent/50',
       },
       inputSize: {

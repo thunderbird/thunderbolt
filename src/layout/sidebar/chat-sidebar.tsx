@@ -138,7 +138,10 @@ export const ChatSidebarContent = ({
         onSearchQueryChange={onSearchQueryChange}
       />
 
-      <SidebarFooter className="flex-shrink-0" />
+      <SidebarFooter
+        className="flex-shrink-0"
+        navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
+      />
     </SidebarContent>
   )
 }

@@ -85,7 +85,10 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
       )}
       {!showChromeStrip && (
         <div className="h-[var(--touch-height-xl)] relative flex items-center justify-between px-2 flex-shrink-0">
-          {isExpanded && navToggle && <div className="absolute left-1/2 z-10 -translate-x-1/2">{navToggle}</div>}
+          {/* Desktop web right-aligns the nav pill opposite the toggle,
+              matching the desktop-app strip. The mobile overlay carries its
+              pill in the footer row (thumb reach) instead of up here. */}
+          {isExpanded && !isMobile && navToggle && <div className="absolute right-2 z-10">{navToggle}</div>}
           <div className="flex items-center h-8 relative flex-1 min-w-0">
             {/* Desktop web: the toggle lives in the same left slot whether the
                 sidebar is expanded or collapsed, so the mouse never has to

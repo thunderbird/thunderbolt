@@ -51,7 +51,9 @@
   --color-chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
   --color-sidebar: #fefdfb;
-  --color-sidebar-foreground: #262120;
+  /* A step softer than --color-foreground so sidebar labels/icons read as
+     chrome, not content. */
+  --color-sidebar-foreground: #47413c;
   --color-sidebar-primary: #393530;
   --color-sidebar-primary-foreground: #faf8f5;
   --color-sidebar-accent: #efeae2;
@@ -218,7 +220,9 @@
   --color-chart-4: oklch(0.627 0.265 303.9);
   --color-chart-5: oklch(0.645 0.246 16.439);
   --color-sidebar: #282a2b;
-  --color-sidebar-foreground: #f2f1ee;
+  /* A step dimmer than --color-foreground so sidebar labels/icons read as
+     chrome, not content. */
+  --color-sidebar-foreground: #d5d2cc;
   --color-sidebar-primary: #f6f3ed;
   --color-sidebar-primary-foreground: #252220;
   --color-sidebar-accent: #383a39;

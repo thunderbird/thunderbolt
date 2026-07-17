@@ -162,7 +162,7 @@ export const SettingsSidebarContent = ({
 
       <div className="flex-1" />
 
-      <SidebarFooter />
+      <SidebarFooter navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />} />
     </SidebarContent>
   )
 }

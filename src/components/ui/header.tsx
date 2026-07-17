@@ -132,11 +132,8 @@ export const Header = () => {
     return (
       <header
         {...dragProps}
-        className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
+        className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
       >
-        {/* macOS traffic-light clearance is padding (not margin) so the left
-            and right flex-1 columns resolve to identical widths and the agent
-            selector stays viewport-centered. */}
         <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'pl-20')}>
           {/* In the mobile layout the sidebar opens as an overlay on top of the
               content, so the toggle reads as a menu (burger) rather than a
@@ -153,7 +150,14 @@ export const Header = () => {
           </Button>
         </div>
 
-        <div {...dragProps} className="flex shrink-0 items-center justify-center gap-2 min-w-0">
+        {/* Absolutely centered so the macOS traffic-light clearance on the
+            left column can't push it off-center — flex sizing counts that
+            padding as part of the column's outer width, so symmetric flex-1
+            columns alone don't keep the middle truly centered. */}
+        <div
+          {...dragProps}
+          className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2"
+        >
           {agentSelector}
         </div>
 
@@ -162,7 +166,7 @@ export const Header = () => {
             <Button
               variant="ghost"
               size="icon"
-              className="size-[var(--touch-height-sm)] cursor-pointer"
+              className="size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground"
               onClick={handleNewChat}
             >
               <MessageCirclePlus className="size-[var(--icon-size-default)]" />

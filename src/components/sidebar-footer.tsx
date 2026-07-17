@@ -30,6 +30,10 @@ const openLink = (url: string) => window.open(url, '_blank', 'noopener,noreferre
 
 type SidebarFooterProps = {
   className?: string
+  /** Chats/Settings pill. On the mobile overlay it renders here, at the right
+   *  of the account row, so section switching sits in thumb reach; desktop
+   *  ignores it (the pill lives in the sidebar header there). */
+  navToggle?: ReactNode
 }
 
 type AccountMenuItem = {
@@ -68,12 +72,10 @@ const iconSize = 'size-[var(--icon-size-default)]'
 const triggerButtonClassName = (isOpen: boolean) =>
   cn(
     'flex w-full items-center gap-2 px-3 h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
-    isOpen
-      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-      : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+    isOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
   )
 
-export const SidebarFooter = ({ className }: SidebarFooterProps) => {
+export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
   const authClient = useAuth()
   const { isMobile, setOpenMobile, state } = useSidebar()
   const { openSignInModal } = useSignInModal()
@@ -129,72 +131,71 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   return (
     <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
       <ShadcnSidebarFooter className={cn('border-t border-border !p-0 !gap-0', className)}>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            {isPending ? (
-              // Loading state
-              <SidebarMenuButton size="lg" className="cursor-default">
-                <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg">
-                  <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-                </div>
-                {isExpanded && (
-                  <div className="grid flex-1 text-left text-[length:var(--font-size-body)] leading-tight">
-                    <span className="truncate text-muted-foreground">Loading...</span>
+        {/* Hover lives on the row (not the account button) so the highlight
+            runs the full footer width — past the non-interactive gap around
+            the mobile nav pill. */}
+        <div className="flex items-center transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+          <SidebarMenu className="min-w-0 flex-1">
+            <SidebarMenuItem>
+              {isPending ? (
+                // Loading state
+                <SidebarMenuButton size="lg" className="cursor-default">
+                  <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg">
+                    <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
                   </div>
-                )}
-              </SidebarMenuButton>
-            ) : !user && isDesktopCollapsed ? (
-              // Not logged in - collapsed desktop
-              <button
-                type="button"
-                aria-label="Sign in"
-                className={cn(
-                  'flex w-full items-center justify-center h-[var(--touch-height-xl)] cursor-pointer transition-colors',
-                  'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                )}
-                onClick={handleSignInClick}
-              >
-                <UserRound className="size-[var(--icon-size-default)] text-muted-foreground" />
-              </button>
-            ) : !user ? (
-              // Not logged in - expanded
-              <button
-                type="button"
-                className={cn(
-                  'flex w-full items-center gap-2 px-3 h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]',
-                  'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                )}
-                onClick={handleSignInClick}
-              >
-                <UserRound className="size-[var(--icon-size-default)] shrink-0 text-muted-foreground" />
-                <span className="truncate">Sign In</span>
-              </button>
-            ) : isDesktopCollapsed ? (
-              <PopoverTrigger asChild>
+                  {isExpanded && (
+                    <div className="grid flex-1 text-left text-[length:var(--font-size-body)] leading-tight">
+                      <span className="truncate text-muted-foreground">Loading...</span>
+                    </div>
+                  )}
+                </SidebarMenuButton>
+              ) : !user && isDesktopCollapsed ? (
+                // Not logged in - collapsed desktop
                 <button
                   type="button"
-                  aria-label="Account menu"
-                  className={cn(
-                    'flex w-full items-center justify-center h-[var(--touch-height-xl)] cursor-pointer transition-colors',
-                    'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                    menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
-                  )}
+                  aria-label="Sign in"
+                  className="flex w-full items-center justify-center h-[var(--touch-height-xl)] cursor-pointer transition-colors"
+                  onClick={handleSignInClick}
                 >
                   <UserRound className="size-[var(--icon-size-default)] text-muted-foreground" />
                 </button>
-              </PopoverTrigger>
-            ) : (
-              <PopoverTrigger asChild>
+              ) : !user ? (
+                // Not logged in - expanded
                 <button
                   type="button"
-                  className={cn(triggerButtonClassName(menuOpen), isMobile && menuOpen && 'relative z-50')}
+                  className="flex w-full items-center gap-2 px-3 h-[var(--touch-height-xl)] cursor-pointer transition-colors text-[length:var(--font-size-body)]"
+                  onClick={handleSignInClick}
                 >
-                  {triggerContent}
+                  <UserRound className="size-[var(--icon-size-default)] shrink-0 text-muted-foreground" />
+                  <span className="truncate">Sign In</span>
                 </button>
-              </PopoverTrigger>
-            )}
-          </SidebarMenuItem>
-        </SidebarMenu>
+              ) : isDesktopCollapsed ? (
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Account menu"
+                    className={cn(
+                      'flex w-full items-center justify-center h-[var(--touch-height-xl)] cursor-pointer transition-colors',
+                      menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
+                    )}
+                  >
+                    <UserRound className="size-[var(--icon-size-default)] text-muted-foreground" />
+                  </button>
+                </PopoverTrigger>
+              ) : (
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(triggerButtonClassName(menuOpen), isMobile && menuOpen && 'relative z-50')}
+                  >
+                    {triggerContent}
+                  </button>
+                </PopoverTrigger>
+              )}
+            </SidebarMenuItem>
+          </SidebarMenu>
+          {isMobile && navToggle && <div className="shrink-0 pr-3">{navToggle}</div>}
+        </div>
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
       </ShadcnSidebarFooter>
 

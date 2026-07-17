@@ -121,7 +121,8 @@ export const AgentSelector = ({
         )}
       >
         <Icon className="size-3.5 text-muted-foreground shrink-0" />
-        <span className="font-medium truncate">{selected?.label ?? selectedAgent.name}</span>
+        {/* Muted like the mode/model picker labels — chrome, not content. */}
+        <span className="font-medium truncate text-muted-foreground">{selected?.label ?? selectedAgent.name}</span>
         <ChevronDown
           className={cn(
             'size-3.5 text-muted-foreground transition-transform shrink-0',

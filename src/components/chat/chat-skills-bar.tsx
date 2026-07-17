@@ -119,10 +119,9 @@ export const ChatSkillsBar = ({
         size="icon-sm"
         aria-label="Add a skill"
         disabled={addDisabled}
-        // `hover:bg-accent/50` matches the SuggestionChip hover — full accent
-        // is too dark a step in light mode; dark mode keeps the outline
-        // variant's `dark:hover:bg-input/50`.
-        className="shrink-0 cursor-pointer rounded-full border-none bg-sidebar shadow-[0_0_16px_rgba(38,33,32,0.06)] hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-sidebar"
+        // Full-accent hover, matching SuggestionChip — softer mixes composite
+        // to the page background and the button vanishes on hover.
+        className="shrink-0 cursor-pointer rounded-full border-none bg-sidebar text-muted-foreground shadow-[0_0_16px_rgba(38,33,32,0.06)] hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:bg-sidebar dark:hover:bg-accent"
       >
         <Plus />
       </Button>

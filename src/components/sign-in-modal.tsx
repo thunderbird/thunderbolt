@@ -49,6 +49,10 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
   return (
     <ResponsiveModal
       open={open}
+      // md:min-h-0 drops the desktop dialog's default 550px minimum so the
+      // simple email form doesn't float in empty space (mobile stays
+      // full-screen via its own min-h-dvh).
+      className="md:min-h-0"
       onOpenChange={(open) => {
         if (!open) {
           setStep('email')

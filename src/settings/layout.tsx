@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Header } from '@/components/ui/header'
+import { FloatingHeader } from '@/components/floating-header'
 import { SidebarInset } from '@/components/ui/sidebar'
 import { PageFallback } from '@/loading'
 import { Suspense } from 'react'
@@ -23,13 +23,7 @@ const SettingsLayout = () => {
             paddingBottom: 'var(--kb, 0px)',
           }}
         >
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-background via-background/60 to-transparent"
-            style={{ height: 'calc(var(--header-inset) + 1.75rem)' }}
-          />
-          <div className="absolute inset-x-0 top-0 z-30" style={{ paddingTop: 'var(--safe-area-top-padding)' }}>
-            <Header />
-          </div>
+          <FloatingHeader />
           <div
             className="flex-1 overflow-auto"
             style={{

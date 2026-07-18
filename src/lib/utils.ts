@@ -19,6 +19,10 @@ export const cn = (...inputs: ClassValue[]) => {
   return twMerge(clsx(inputs))
 }
 
+/** Narrows an unknown value to a plain object (non-null, non-array). */
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
 export const uuidv7ToDate = (uuid: string) => {
   return new Date(parseInt(uuid.slice(0, 8), 16) * 1000)
 }

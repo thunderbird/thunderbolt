@@ -3,57 +3,64 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+
+import { ThemeProvider } from '@/lib/theme-provider'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { ThemeToggle } from './theme-toggle'
 
-const mockSetTheme = mock()
-let mockTheme = 'system'
-
-mock.module('@/lib/theme-provider', () => ({
-  useTheme: () => ({
-    theme: mockTheme,
-    setTheme: mockSetTheme,
-  }),
-}))
+// Rendered under the REAL ThemeProvider — mocking `@/lib/theme-provider` with
+// `mock.module` is process-global and breaks sibling suites (the group picker
+// test) under `--randomize`. Theme state is driven through the settings store.
+const renderToggle = (theme: 'light' | 'dark' | 'system') => {
+  useLocalSettingsStore.getState().setLocalSetting('theme', theme)
+  return render(
+    <ThemeProvider>
+      <ThemeToggle />
+    </ThemeProvider>,
+  )
+}
 
 describe('ThemeToggle', () => {
   beforeEach(() => {
-    mockTheme = 'system'
-    mockSetTheme.mockClear()
+    useLocalSettingsStore.getState().setLocalSetting('theme', 'system')
+  })
+
+  afterEach(() => {
+    cleanup()
+    // Don't leak a persisted theme into other suites.
+    useLocalSettingsStore.getState().setLocalSetting('theme', 'system')
+    document.documentElement.classList.remove('light', 'dark')
   })
 
   it('labels the button with the action it performs', () => {
-    mockTheme = 'dark'
-    render(<ThemeToggle />)
+    renderToggle('dark')
 
     expect(screen.getByRole('button', { name: 'Switch to system theme' })).toBeInTheDocument()
   })
 
   it('cycles light → dark', () => {
-    mockTheme = 'light'
-    render(<ThemeToggle />)
+    renderToggle('light')
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch to dark theme' }))
 
-    expect(mockSetTheme).toHaveBeenCalledWith('dark')
+    expect(useLocalSettingsStore.getState().theme).toBe('dark')
   })
 
   it('cycles dark → system', () => {
-    mockTheme = 'dark'
-    render(<ThemeToggle />)
+    renderToggle('dark')
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch to system theme' }))
 
-    expect(mockSetTheme).toHaveBeenCalledWith('system')
+    expect(useLocalSettingsStore.getState().theme).toBe('system')
   })
 
   it('cycles system → light', () => {
-    mockTheme = 'system'
-    render(<ThemeToggle />)
+    renderToggle('system')
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch to light theme' }))
 
-    expect(mockSetTheme).toHaveBeenCalledWith('light')
+    expect(useLocalSettingsStore.getState().theme).toBe('light')
   })
 })

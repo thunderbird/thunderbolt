@@ -110,23 +110,25 @@ export const SkillForm = ({
         next.instruction !== initialInstruction
       : next.label.length > 0 || next.slug.length > 0 || next.description.length > 0 || next.instruction.length > 0
 
-  const handleLabelChange = (v: string) => {
-    setLabel(v)
-    const nextSlug = slugEdited ? slug : slugifySkillName(v)
+  const handleLabelChange = (value: string) => {
+    setLabel(value)
+    const nextSlug = slugEdited ? slug : slugifySkillName(value)
     if (!slugEdited) {
       setSlug(nextSlug)
       // Auto-generation changed the slug value → any stale uniqueness error
       // now refers to a slug we're no longer submitting.
       onNameChange?.()
     }
-    onDirtyChange?.(computeDirty({ label: v, slug: nextSlug, description, instruction }))
+    onDirtyChange?.(computeDirty({ label: value, slug: nextSlug, description, instruction }))
   }
   const handleSlugChange = (raw: string) => {
-    const v = raw.replace(/^\/+/, '')
-    // Clearing the slug hands control back to auto-generation from the Name.
-    const detached = v !== ''
-    const nextSlug = detached ? v : slugifySkillName(label)
-    setSlugEdited(detached)
+    const typedSlug = raw.replace(/^\/+/, '')
+    // Clearing the slug hands control back to auto-generation from the Name —
+    // create mode only. Edit mode stays detached so an existing skill's slug
+    // is never auto-rewritten (renames must not silently break `/tokens`).
+    const isDetached = mode === 'edit' || typedSlug !== ''
+    const nextSlug = isDetached ? typedSlug : slugifySkillName(label)
+    setSlugEdited(isDetached)
     setSlug(nextSlug)
     onDirtyChange?.(computeDirty({ label, slug: nextSlug, description, instruction }))
     // A "slug already exists" error from the parent applies to the *previous*
@@ -134,13 +136,13 @@ export const SkillForm = ({
     // message about a slug they're no longer trying to submit.
     onNameChange?.()
   }
-  const handleDescriptionChange = (v: string) => {
-    setDescription(v)
-    onDirtyChange?.(computeDirty({ label, slug, description: v, instruction }))
+  const handleDescriptionChange = (value: string) => {
+    setDescription(value)
+    onDirtyChange?.(computeDirty({ label, slug, description: value, instruction }))
   }
-  const handleInstructionChange = (v: string) => {
-    setInstruction(v)
-    onDirtyChange?.(computeDirty({ label, slug, description, instruction: v }))
+  const handleInstructionChange = (value: string) => {
+    setInstruction(value)
+    onDirtyChange?.(computeDirty({ label, slug, description, instruction: value }))
   }
 
   const [prevResetSignal, setPrevResetSignal] = useState(resetSignal)

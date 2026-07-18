@@ -2,18 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AnimatePresence, m } from 'framer-motion'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
 import { testAcpConnection } from '@/acp'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { DetailPanelSurface } from '@/components/detail-panel'
 import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli-install-card'
-import { SlideInPanel } from '@/components/slide-in-panel'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase } from '@/contexts'
@@ -38,16 +37,22 @@ export default function AgentsSettingsPage() {
   const { isMobile } = useIsMobile()
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  // Either an agent id or the 'cli' sentinel — the CLI row shares the same
-  // slide-in panel slot as the agent rows.
-  const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
-  const cliOpen = activeAgentId === 'cli'
+  // The CLI install card shares the slide-in panel slot with the agent rows,
+  // so the selection is a union rather than a bare agent id (a string
+  // sentinel could collide with a server-chosen agent id).
+  const [activePanel, setActivePanel] = useState<{ kind: 'agent'; id: string } | { kind: 'cli' } | null>(null)
+  const cliOpen = activePanel?.kind === 'cli'
 
   // Deriving from the live list means the panel follows sync: if the active
-  // agent is deleted on another device, `active` turns undefined and the
+  // agent is deleted on another device, `activeAgent` turns undefined and the
   // panel closes on its own.
-  const active = agents.find((a) => a.id === activeAgentId)
-  const panelOpen = active !== undefined || cliOpen
+  const activeAgent = activePanel?.kind === 'agent' ? agents.find((a) => a.id === activePanel.id) : undefined
+  const panelOpen = activeAgent !== undefined || cliOpen
+
+  const closePanel = () => setActivePanel(null)
+  const toggleAgentPanel = (id: string) =>
+    setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
+  const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
 
   const handleAdd = async (payload: AddCustomAgentPayload) => {
     if (!currentUserId) {
@@ -67,20 +72,20 @@ export default function AgentsSettingsPage() {
     })
   }
 
-  const detailPanel = active ? (
+  const detailPanel = activeAgent ? (
     <AgentDetail
       // Keyed by id so inline-edit drafts reset when switching agents.
-      key={active.id}
-      agent={active}
+      key={activeAgent.id}
+      agent={activeAgent}
       currentUserId={currentUserId}
-      onClose={() => setActiveAgentId(null)}
-      onRemoved={() => setActiveAgentId(null)}
-      onUpdate={(patch) => updateAgent(db, active.id, patch)}
-      onDelete={() => deleteAgent(db, active.id)}
+      onClose={closePanel}
+      onRemoved={closePanel}
+      onUpdate={(patch) => updateAgent(db, activeAgent.id, patch)}
+      onDelete={() => deleteAgent(db, activeAgent.id)}
       testAcpConnection={testAcpConnection}
     />
   ) : cliOpen ? (
-    <ThunderboltCliDetail onClose={() => setActiveAgentId(null)} />
+    <ThunderboltCliDetail onClose={closePanel} />
   ) : null
 
   return (
@@ -109,45 +114,18 @@ export default function AgentsSettingsPage() {
           <div className="flex flex-col gap-4">
             <AgentList
               agents={agents}
-              selectedId={active?.id ?? null}
-              onOpenAgent={(agent) => setActiveAgentId((current) => (current === agent.id ? null : agent.id))}
+              selectedId={activeAgent?.id ?? null}
+              onOpenAgent={(agent) => toggleAgentPanel(agent.id)}
             />
 
-            <ThunderboltCliRow
-              selected={cliOpen}
-              onOpen={() => setActiveAgentId((current) => (current === 'cli' ? null : 'cli'))}
-            />
+            <ThunderboltCliRow selected={cliOpen} onOpen={toggleCliPanel} />
           </div>
         </div>
       </div>
 
-      {/* ~50/50 split with the list: half the viewport minus half the sidebar —
-          the same surface card as the skills detail panel. */}
-      {!isMobile && (
-        <SlideInPanel open={panelOpen} width="clamp(400px, calc(50vw - 128px), 800px)">
-          <div className="h-full pb-4">
-            <div className="h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar shadow-glow">
-              {detailPanel}
-            </div>
-          </div>
-        </SlideInPanel>
-      )}
-      {isMobile && (
-        <AnimatePresence>
-          {panelOpen && (
-            <m.div
-              key="mobile-agent-panel"
-              className="absolute inset-0 z-10 flex bg-background"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 35, stiffness: 400, mass: 0.8 }}
-            >
-              {detailPanel}
-            </m.div>
-          )}
-        </AnimatePresence>
-      )}
+      <DetailPanelSurface open={panelOpen} isMobile={isMobile}>
+        {detailPanel}
+      </DetailPanelSurface>
 
       <AddCustomAgentDialog
         open={dialogOpen}

@@ -15,54 +15,11 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Dialog } from '@/components/ui/dialog'
 import { StatusCard } from '@/components/ui/status-card'
-import { getPlatform, isTauri } from '@/lib/platform'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
-import { isIrohTarget } from '@/lib/iroh-target'
+import { validateAgentUrl } from '@/components/settings/agents/validate-agent-url'
 import type { CustomAgentTransport } from '@/dal/agents'
-
-/** Maps a user-entered endpoint to the ACP transport flavor we support, or `null`
- *  when it is neither a `ws(s)://` URL nor an iroh NodeId/ticket. HTTP/HTTPS and
- *  other schemes are rejected. */
-export const inferTransport = (url: string): CustomAgentTransport | null => {
-  if (isIrohTarget(url)) {
-    return 'iroh'
-  }
-  try {
-    const u = new URL(url)
-    if (u.protocol === 'ws:' || u.protocol === 'wss:') {
-      return 'websocket'
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-/** True when running on iOS via Tauri — Apple's App Transport Security rejects
- *  cleartext (`ws://`) by default, so we surface a clear error upfront instead
- *  of letting the connection silently fail. */
-const defaultIsTauriIOS = (): boolean => isTauri() && getPlatform() === 'ios'
-
-/** Pure validation of `url` against the platform's transport rules. Returns
- *  the inferred transport on success, or a user-facing error string. Extracted
- *  so the test suite can exercise it without rendering the dialog. */
-export const validateAgentUrl = (
-  url: string,
-  isIos: () => boolean = defaultIsTauriIOS,
-): { transport: CustomAgentTransport } | { error: string } => {
-  const transport = inferTransport(url)
-  if (!transport) {
-    return { error: 'Enter a wss:// URL or an iroh ticket' }
-  }
-  // iroh dials QUIC over an encrypted relay (no cleartext) and its target isn't a
-  // URL, so the iOS ATS guard only applies to a `ws://` WebSocket endpoint.
-  if (transport === 'websocket' && isIos() && new URL(url).protocol === 'ws:') {
-    return { error: 'iOS requires a secure URL (wss://)' }
-  }
-  return { transport }
-}
 
 export type AddCustomAgentPayload = {
   name: string

@@ -14,12 +14,16 @@ import {
   Terminal,
   UserRound,
 } from 'lucide-react'
-import { type ReactNode, useId, useState } from 'react'
+import { type ReactNode, useState, useTransition } from 'react'
 import { useNavigate } from 'react-router'
+
+import dayjs from 'dayjs'
+import '@/lib/dayjs'
 
 import type { User } from '@shared/types/auth'
 
 import { LogoutModal } from '@/components/logout-modal'
+import { BrandGradientIcon } from '@/components/ui/brand-gradient-icon'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
@@ -83,36 +87,14 @@ const AccountMenuItemButton = ({ icon, label, onClick, to, onNavigate }: Account
 
 const iconSize = 'size-[var(--icon-size-default)]'
 
-/**
- * Lucide's Cloud outline drawn with the brand gold→pink gradient stroke.
- * CSS can't gradient-fill an SVG stroke, so this re-renders the same path
- * with an inline `<linearGradient>` whose stops read the theme tokens
- * (`--color-brand-2` → `--color-brand`), matching the switch ON track.
- */
-const GradientCloud = ({ className }: { className?: string }) => {
-  const gradientId = useId()
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className={className}
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="24" y2="0" gradientUnits="userSpaceOnUse">
-          <stop stopColor="var(--color-brand-2)" />
-          <stop offset="1" stopColor="var(--color-brand)" />
-        </linearGradient>
-      </defs>
-      {/* Path data mirrors lucide-react's Cloud so the glyph stays identical. */}
-      <path stroke={`url(#${gradientId})`} d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
-    </svg>
-  )
-}
+/** Lucide's Cloud outline drawn with the brand gradient stroke — the healthy
+ *  "sync connected" state. */
+const GradientCloud = ({ className }: { className?: string }) => (
+  <BrandGradientIcon className={className}>
+    {/* Path data mirrors lucide-react's Cloud so the glyph stays identical. */}
+    {(stroke) => <path stroke={stroke} d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />}
+  </BrandGradientIcon>
+)
 
 /**
  * Single cloud glyph carrying both auth and sync state:
@@ -146,8 +128,8 @@ const SyncStateIcon = ({
   return <GradientCloud className={cn(iconSize, 'shrink-0')} />
 }
 
-/** Human status line for the account menu's Cloud Sync section. */
-const syncStatusText = (
+/** Human status line for the account menu's Cloud Sync section. Exported for tests. */
+export const syncStatusText = (
   syncEnabled: boolean,
   connectionStatus: PowerSyncConnectionStatus,
   hasSynced: boolean,
@@ -163,16 +145,8 @@ const syncStatusText = (
     return 'Offline — changes will sync when back online.'
   }
   if (hasSynced && lastSyncedAt) {
-    const seconds = Math.floor((Date.now() - lastSyncedAt.getTime()) / 1000)
-    if (seconds < 60) {
-      return 'Just synced'
-    }
-    const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) {
-      return `Synced ${minutes}m ago`
-    }
-    const hours = Math.floor(minutes / 60)
-    return `Synced ${hours}h ago`
+    const secondsAgo = (Date.now() - lastSyncedAt.getTime()) / 1000
+    return secondsAgo < 60 ? 'Just synced' : `Synced ${dayjs(lastSyncedAt).fromNow()}`
   }
   return 'Connected'
 }
@@ -184,7 +158,7 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [isReconnecting, setIsReconnecting] = useState(false)
+  const [isReconnecting, startReconnect] = useTransition()
 
   const isDesktopCollapsed = !isMobile && state === 'collapsed'
 
@@ -225,13 +199,10 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
     setMenuOpen(false)
   }
 
-  const handleRetry = async () => {
-    setIsReconnecting(true)
-    try {
+  const handleRetry = () => {
+    startReconnect(async () => {
       await reconnectSync()
-    } finally {
-      setIsReconnecting(false)
-    }
+    })
   }
 
   const stateIcon = <SyncStateIcon loggedIn={!!user} syncEnabled={syncEnabled} connectionStatus={connectionStatus} />
@@ -251,38 +222,43 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
       menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
     )
 
-  const accountControl = isPending ? (
-    <div className={cn(pillClassName(true), 'cursor-default hover:bg-transparent')}>
-      <Loader2 className={cn(iconSize, 'shrink-0 animate-spin text-muted-foreground')} />
-      <span className="truncate text-muted-foreground">Loading...</span>
-    </div>
-  ) : !user ? (
-    <button type="button" className={pillClassName(true)} onClick={handleSignInClick}>
-      {stateIcon}
-      <span className="truncate">Sign In</span>
-    </button>
-  ) : (
-    <PopoverTrigger asChild>
-      <button
-        type="button"
-        aria-label="Account menu"
-        className={cn(pillClassName(accountLabel.length > 0), isMobile && menuOpen && 'relative z-50')}
-      >
-        {stateIcon}
-        {accountLabel.length > 0 && <span className="truncate">{accountLabel}</span>}
-      </button>
-    </PopoverTrigger>
-  )
+  const renderAccountControl = () => {
+    if (isPending) {
+      return (
+        <div className={cn(pillClassName(true), 'cursor-default hover:bg-transparent')}>
+          <Loader2 className={cn(iconSize, 'shrink-0 animate-spin text-muted-foreground')} />
+          <span className="truncate text-muted-foreground">Loading...</span>
+        </div>
+      )
+    }
+    if (!user) {
+      return (
+        <button type="button" className={pillClassName(true)} onClick={handleSignInClick}>
+          {stateIcon}
+          <span className="truncate">Sign In</span>
+        </button>
+      )
+    }
+    return (
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Account menu"
+          className={cn(pillClassName(accountLabel.length > 0), isMobile && menuOpen && 'relative z-50')}
+        >
+          {stateIcon}
+          {accountLabel.length > 0 && <span className="truncate">{accountLabel}</span>}
+        </button>
+      </PopoverTrigger>
+    )
+  }
 
   // Collapsed desktop rail: the theme toggle stacks above the account/sync
   // button so both stay reachable at icon-rail width.
+  const collapsedButtonClass =
+    'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent'
   const collapsedControl = !user ? (
-    <button
-      type="button"
-      aria-label="Sign in"
-      className="flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent"
-      onClick={handleSignInClick}
-    >
+    <button type="button" aria-label="Sign in" className={collapsedButtonClass} onClick={handleSignInClick}>
       {stateIcon}
     </button>
   ) : (
@@ -290,10 +266,7 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
       <button
         type="button"
         aria-label="Account menu"
-        className={cn(
-          'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent',
-          menuOpen && 'bg-sidebar-accent',
-        )}
+        className={cn(collapsedButtonClass, menuOpen && 'bg-sidebar-accent')}
       >
         {stateIcon}
       </button>
@@ -301,7 +274,9 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
   )
 
   const isConnecting = connectionStatus === 'connecting'
-  const showRetry = syncEnabled && !isConnecting && connectionStatus !== 'connected'
+  // Sync is on but not connected (and not mid-connect): show the Retry button
+  // and tint the status line as a warning.
+  const syncNeedsAttention = syncEnabled && !isConnecting && connectionStatus !== 'connected'
 
   return (
     <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
@@ -321,7 +296,7 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
           </div>
         ) : (
           <div className="flex w-full min-w-0 items-center gap-1">
-            <div className="min-w-0 flex-1">{accountControl}</div>
+            <div className="min-w-0 flex-1">{renderAccountControl()}</div>
             <div className="flex shrink-0 items-center gap-1">
               {/* Dev-only quick toggle; users switch themes in Preferences →
                   User Experience. */}
@@ -404,15 +379,10 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
               />
             </div>
             <div className="flex items-center justify-between gap-2">
-              <p
-                className={cn(
-                  'text-xs text-muted-foreground',
-                  syncEnabled && !isConnecting && connectionStatus !== 'connected' && 'text-warning',
-                )}
-              >
+              <p className={cn('text-xs text-muted-foreground', syncNeedsAttention && 'text-warning')}>
                 {syncStatusText(syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
               </p>
-              {showRetry && (
+              {syncNeedsAttention && (
                 <Button
                   variant="outline"
                   size="sm"

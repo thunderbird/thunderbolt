@@ -13,8 +13,9 @@ import { cn } from '@/lib/utils'
  * inner padding, and the thumb is sized (via CSS vars) to exactly fill what's
  * left — so the dot's size and its 2px gap to the border are identical for OFF,
  * ON, and DISABLED. Only COLOR changes between states:
- *  - OFF      → `bg-input` track with a `border-border` outline.
- *  - ON       → the brand magenta→gold gradient track with a light thumb
+ *  - OFF      → `bg-input` track (`bg-secondary` in dark mode) with a
+ *               `border-border` outline.
+ *  - ON       → the brand gold→pink gradient track with a light thumb
  *               (the iOS convention), echoing the logo's colors — reads
  *               unambiguously as "on" in both light and dark mode.
  *  - DISABLED → dimmed, keeps the outline.

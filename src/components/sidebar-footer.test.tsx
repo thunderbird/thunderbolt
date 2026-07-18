@@ -19,7 +19,7 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { SignInModalProvider } from '@/contexts'
 import type { AuthClient } from '@/contexts'
-import { SidebarFooter } from './sidebar-footer'
+import { SidebarFooter, syncStatusText } from './sidebar-footer'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -120,5 +120,28 @@ describe('SidebarFooter', () => {
       renderWithProviders(authClient)
       expect(screen.getByText('Loading...')).toBeInTheDocument()
     })
+  })
+})
+
+describe('syncStatusText', () => {
+  it('pitches sync when it is off', () => {
+    expect(syncStatusText(false, 'disconnected', false, null)).toBe('Keep your data synced across devices.')
+  })
+
+  it('reports connecting and offline states', () => {
+    expect(syncStatusText(true, 'connecting', false, null)).toBe('Connecting...')
+    expect(syncStatusText(true, 'disconnected', false, null)).toBe('Offline — changes will sync when back online.')
+  })
+
+  it('reports a fresh sync as "Just synced"', () => {
+    expect(syncStatusText(true, 'connected', true, new Date(Date.now() - 5_000))).toBe('Just synced')
+  })
+
+  it('reports an older sync as relative time', () => {
+    expect(syncStatusText(true, 'connected', true, new Date(Date.now() - 10 * 60_000))).toBe('Synced 10 minutes ago')
+  })
+
+  it('falls back to Connected before the first sync lands', () => {
+    expect(syncStatusText(true, 'connected', false, null)).toBe('Connected')
   })
 })

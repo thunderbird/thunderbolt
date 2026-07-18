@@ -62,7 +62,7 @@ describe('getSlashState', () => {
 
   it('does not treat a mid-word @ (email address) as a trigger', () => {
     // The token starts at "foo…", not at the @ — so no trigger.
-    expect(getSlashState('mail foo@bar.com', 16)).toBeNull()
+    expect(getSlashState('mail foo@example.com', 20)).toBeNull()
   })
 
   it('returns null when the would-be token does not start with /', () => {

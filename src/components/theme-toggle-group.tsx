@@ -13,6 +13,12 @@ import { trackEvent } from '@/lib/posthog'
  * (The sidebar footer's compact cycling icon lives in `theme-toggle.tsx`
  * and is dev-only.)
  */
+const themeOptions = [
+  { value: 'light', ariaLabel: 'Light mode', Icon: Sun, label: 'Light' },
+  { value: 'dark', ariaLabel: 'Dark mode', Icon: Moon, label: 'Dark' },
+  { value: 'system', ariaLabel: 'System theme', Icon: Monitor, label: 'System' },
+] as const
+
 export const ThemeToggleGroup = () => {
   const { theme, setTheme } = useTheme()
 
@@ -30,30 +36,17 @@ export const ThemeToggleGroup = () => {
       }}
       className="justify-start rounded-lg"
     >
-      <ToggleGroupItem
-        value="light"
-        aria-label="Light mode"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
-      >
-        <Sun className="h-4 w-4" />
-        Light
-      </ToggleGroupItem>
-      <ToggleGroupItem
-        value="dark"
-        aria-label="Dark mode"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
-      >
-        <Moon className="h-4 w-4" />
-        Dark
-      </ToggleGroupItem>
-      <ToggleGroupItem
-        value="system"
-        aria-label="System theme"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
-      >
-        <Monitor className="h-4 w-4" />
-        System
-      </ToggleGroupItem>
+      {themeOptions.map(({ value, ariaLabel, Icon, label }) => (
+        <ToggleGroupItem
+          key={value}
+          value={value}
+          aria-label={ariaLabel}
+          className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
+        >
+          <Icon className="h-4 w-4" />
+          {label}
+        </ToggleGroupItem>
+      ))}
     </ToggleGroup>
   )
 }

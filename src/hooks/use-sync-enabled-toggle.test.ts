@@ -9,7 +9,7 @@ const mockSetSyncEnabled = mock(() => Promise.resolve())
 const mockTrackEvent = mock(() => {})
 
 // Partial mock: spread the REAL module so every other export (incl. reconnectSync,
-// which powersync-status.test.tsx consumes for real) survives if this registration
+// which sidebar-footer.tsx consumes for real) survives if this registration
 // leaks across files under `--randomize`. Only `setSyncEnabled` is overridden with
 // the local spy this suite asserts on. See docs/development/testing.md §65.
 const realPowersync = await import('@/db/powersync/sync-state')

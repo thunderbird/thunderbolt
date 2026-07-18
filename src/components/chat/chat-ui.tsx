@@ -16,9 +16,8 @@ import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
-/** Returns a time-of-day greeting. */
-const getGreeting = () => {
-  const hour = new Date().getHours()
+/** Returns a time-of-day greeting for `hour` (0–23; defaults to the current local hour). */
+export const getGreeting = (hour: number = new Date().getHours()): string => {
   if (hour < 5) {
     return 'Up late?'
   }

@@ -11,8 +11,12 @@
  * (A `free` text-response mode existed briefly and was removed — typing an
  * answer belongs in the regular composer. Cached `free` entries from old
  * conversations still parse; see {@link formatAskResponsesNote}.)
+ *
+ * The array is the single source for the schema's `z.enum`, so the type and
+ * the wire validation can't drift.
  */
-export type AskMode = 'single' | 'multiple' | 'choice'
+export const askModes = ['single', 'multiple', 'choice'] as const
+export type AskMode = (typeof askModes)[number]
 
 export type AskOption = {
   id: string

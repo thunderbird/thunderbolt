@@ -25,5 +25,29 @@ export const titleCaseFromSlug = (slug: string): string =>
  */
 export const skillDisplayName = (skill: Pick<Skill, 'name' | 'label'>): string => {
   const label = skill.label?.trim()
-  return label && label.length > 0 ? label : titleCaseFromSlug(skill.name)
+  return label ? label : titleCaseFromSlug(skill.name)
+}
+
+/**
+ * Map from display name → slug for resolving composer `/Display Name` tokens
+ * back to their canonical slug at send time. Display names are not unique
+ * (labels are free text), so ambiguous names — two skills sharing one display
+ * name — are omitted entirely: an unresolvable token degrading to plain text
+ * beats silently sending the wrong skill's instructions.
+ */
+export const buildDisplayNameToSlug = (skills: ReadonlyArray<Pick<Skill, 'name' | 'label'>>): Map<string, string> => {
+  const bySlug = new Map<string, string>()
+  const ambiguous = new Set<string>()
+  for (const skill of skills) {
+    const displayName = skillDisplayName(skill)
+    if (bySlug.has(displayName)) {
+      ambiguous.add(displayName)
+      continue
+    }
+    bySlug.set(displayName, skill.name)
+  }
+  for (const displayName of ambiguous) {
+    bySlug.delete(displayName)
+  }
+  return bySlug
 }

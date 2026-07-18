@@ -5,14 +5,16 @@
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import dayjs from 'dayjs'
-import { Loader2, MoreVertical, Trash2, X } from 'lucide-react'
+import { Loader2, MoreVertical, Trash2 } from 'lucide-react'
 import { useState, type InputHTMLAttributes, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import '@/lib/dayjs'
-import { testAcpConnection as testAcpConnection_default } from '@/acp'
+import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { iconForAgent } from '@/components/agent-icon'
-import { validateAgentUrl } from '@/components/settings/agents/add-custom-agent-dialog'
+import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
+import { AgentIconTile } from '@/components/settings/agents/agent-list-row'
+import { validateAgentUrl } from '@/components/settings/agents/validate-agent-url'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -35,8 +37,9 @@ import type { Agent } from '@/types/acp'
 import { acpEndpointLabel, agentProvenanceLine } from './agent-provenance'
 
 /** On-demand probe result: the panel never polls on open — Status starts at
- *  `not_tested` and reflects the last explicit "Test connection" run. */
-type TestState = 'not_tested' | 'testing' | { reachable: boolean; at: string }
+ *  `idle` and reflects the last explicit "Test connection" run. `error` holds
+ *  the probe's user-facing failure reason (absent when reachable). */
+type TestState = 'idle' | 'testing' | { reachable: boolean; testedAt: string; error?: string }
 
 type AgentDetailProps = {
   agent: Agent
@@ -52,7 +55,17 @@ type AgentDetailProps = {
   /** Soft-delete the custom agent. */
   onDelete: () => Promise<void>
   /** Injectable probe for the on-demand Test (tests stub it). */
-  testAcpConnection?: typeof testAcpConnection_default
+  testAcpConnection?: typeof defaultTestAcpConnection
+}
+
+/** The three presentation flavors an agent can take in this panel. */
+type AgentFlavor = 'built-in' | 'system' | 'custom'
+
+const agentFlavor = (agent: Agent): AgentFlavor => {
+  if (agent.type === 'built-in') {
+    return 'built-in'
+  }
+  return agent.isSystem === 1 ? 'system' : 'custom'
 }
 
 /**
@@ -70,11 +83,11 @@ export const AgentDetail = ({
   onRemoved,
   onUpdate,
   onDelete,
-  testAcpConnection = testAcpConnection_default,
+  testAcpConnection = defaultTestAcpConnection,
 }: AgentDetailProps) => {
   const Icon = iconForAgent(agent)
-  const editable =
-    agent.type !== 'built-in' && agent.isSystem !== 1 && !!currentUserId && agent.userId === currentUserId
+  const flavor = agentFlavor(agent)
+  const editable = flavor === 'custom' && !!currentUserId && agent.userId === currentUserId
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const handleRemove = async () => {
@@ -83,58 +96,44 @@ export const AgentDetail = ({
     onRemoved()
   }
 
-  return (
-    <section className="flex h-full flex-1 flex-col overflow-hidden px-4 pb-5 text-foreground md:px-6">
-      {/* Same header anatomy as the skills detail so the two panels read as
-          one system: title block left, actions pinned top-right. */}
-      <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-4 md:h-16">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex aspect-square size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <Icon
-              className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-5.5' : 'size-5')}
-              aria-hidden="true"
-            />
-          </div>
-          <div className="flex min-w-0 flex-col justify-center leading-tight">
-            <h2 className="min-w-0 truncate text-xl leading-tight text-foreground">{agent.name}</h2>
-            <span className="truncate text-xs text-muted-foreground">{agentProvenanceLine(agent)}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-0.5 md:absolute md:-right-4 md:top-2">
-          {editable && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
-                  <MoreVertical />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-56">
-                <DropdownMenuItem onClick={() => setConfirmOpen(true)} className="cursor-pointer">
-                  <Trash2 />
-                  Remove agent
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            aria-label="Close details"
-            className={mutedIconButtonClass}
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-      </header>
+  const managementMenu = editable && (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
+          <MoreVertical />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        <DropdownMenuItem onClick={() => setConfirmOpen(true)} className="cursor-pointer">
+          <Trash2 />
+          Remove agent
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pt-4">
-        {agent.type === 'built-in' && <BuiltInBody />}
-        {agent.type !== 'built-in' && agent.isSystem === 1 && <SystemBody agent={agent} />}
-        {agent.type !== 'built-in' && agent.isSystem !== 1 && (
-          <CustomBody agent={agent} editable={editable} onUpdate={onUpdate} testAcpConnection={testAcpConnection} />
-        )}
-      </div>
+  return (
+    <DetailPanel
+      icon={
+        <AgentIconTile>
+          {/* The logo reads slightly smaller than the lucide glyphs at equal
+              box size, so it gets a half-step bump. */}
+          <Icon
+            className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-5.5' : 'size-5')}
+            aria-hidden="true"
+          />
+        </AgentIconTile>
+      }
+      title={agent.name}
+      subtitle={agentProvenanceLine(agent)}
+      actions={managementMenu}
+      onClose={onClose}
+    >
+      {flavor === 'built-in' && <BuiltInBody />}
+      {flavor === 'system' && <SystemBody agent={agent} />}
+      {flavor === 'custom' && (
+        <CustomBody agent={agent} editable={editable} onUpdate={onUpdate} testAcpConnection={testAcpConnection} />
+      )}
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
@@ -146,21 +145,15 @@ export const AgentDetail = ({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <Button variant="destructive" onClick={handleRemove}>
+            <Button variant="destructive" onClick={() => void handleRemove()}>
               Remove agent
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </section>
+    </DetailPanel>
   )
 }
-
-const SectionTitle = ({ children }: { children: string }) => (
-  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</h3>
-)
-
-const Divider = () => <div className="h-px shrink-0 bg-border/60" />
 
 const FieldLabel = ({ children }: { children: string }) => (
   <p className="text-sm font-medium text-muted-foreground">{children}</p>
@@ -180,17 +173,17 @@ const BuiltInBody = () => {
   return (
     <>
       <div className="flex shrink-0 flex-col gap-2">
-        <SectionTitle>About</SectionTitle>
+        <DetailSectionTitle>About</DetailSectionTitle>
         <p className="text-base leading-snug text-foreground">
           Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have
           enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on.
         </p>
       </div>
 
-      <Divider />
+      <DetailDivider />
 
       <div className="flex flex-col gap-4">
-        <SectionTitle>What it uses</SectionTitle>
+        <DetailSectionTitle>What it uses</DetailSectionTitle>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <FieldLabel>Skills</FieldLabel>
@@ -231,14 +224,14 @@ const SystemBody = ({ agent }: { agent: Agent }) => (
     {agent.description && (
       <>
         <div className="flex shrink-0 flex-col gap-2">
-          <SectionTitle>About</SectionTitle>
+          <DetailSectionTitle>About</DetailSectionTitle>
           <p className="whitespace-pre-wrap text-base leading-snug text-foreground">{agent.description}</p>
         </div>
-        <Divider />
+        <DetailDivider />
       </>
     )}
     <div className="flex flex-col gap-4">
-      <SectionTitle>Connection</SectionTitle>
+      <DetailSectionTitle>Connection</DetailSectionTitle>
       <div className="flex flex-col gap-1">
         <FieldLabel>Endpoint</FieldLabel>
         <p className="truncate text-base text-foreground">{acpEndpointLabel(agent)}</p>
@@ -261,7 +254,7 @@ const CustomBody = ({
   onUpdate: AgentDetailProps['onUpdate']
   testAcpConnection: NonNullable<AgentDetailProps['testAcpConnection']>
 }) => {
-  const [testResult, setTestResult] = useState<TestState>('not_tested')
+  const [testResult, setTestResult] = useState<TestState>('idle')
   const isWebSocket = agent.transport === 'websocket'
 
   const handleTest = async () => {
@@ -270,13 +263,14 @@ const CustomBody = ({
     }
     setTestResult('testing')
     const probe = await testAcpConnection({ url: agent.url })
-    setTestResult({ reachable: probe.success, at: new Date().toISOString() })
+    const testedAt = new Date().toISOString()
+    setTestResult(probe.success ? { reachable: true, testedAt } : { reachable: false, testedAt, error: probe.error })
   }
 
   return (
     <>
       <div className="flex flex-col gap-4">
-        <SectionTitle>Configuration</SectionTitle>
+        <DetailSectionTitle>Configuration</DetailSectionTitle>
         <EditableField
           id="agent-detail-name"
           label="Name"
@@ -294,12 +288,13 @@ const CustomBody = ({
             return 'error' in validation ? validation.error : null
           }}
           onSave={(url) => {
+            // `EditableField` only saves drafts that passed `validate`; re-run
+            // solely to re-infer the transport (ws vs iroh), the same rule the
+            // add dialog applies.
             const validation = validateAgentUrl(url)
             if ('error' in validation) {
-              return Promise.resolve()
+              throw new Error(`Endpoint saved with an invalid URL: ${validation.error}`)
             }
-            // Editing the endpoint re-infers the transport (ws vs iroh), the
-            // same rule the add dialog applies.
             return onUpdate({ url, transport: validation.transport })
           }}
           inputProps={{ autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
@@ -321,29 +316,34 @@ const CustomBody = ({
             </div>
             <Switch
               checked={agent.enabled === 1}
-              onCheckedChange={(next) => onUpdate({ enabled: next ? 1 : 0 })}
+              onCheckedChange={(next) => void onUpdate({ enabled: next ? 1 : 0 })}
               aria-label={agent.enabled === 1 ? `Disable ${agent.name}` : `Enable ${agent.name}`}
             />
           </div>
         )}
       </div>
 
-      <Divider />
+      <DetailDivider />
 
       <div className="flex flex-col gap-3">
-        <SectionTitle>Connection</SectionTitle>
+        <DetailSectionTitle>Connection</DetailSectionTitle>
         {isWebSocket ? (
-          <div className="flex items-center gap-3">
-            <TestStatus result={testResult} />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleTest}
-              disabled={testResult === 'testing'}
-              className="bg-card"
-            >
-              Test connection
-            </Button>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-3">
+              <TestStatus result={testResult} />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handleTest()}
+                disabled={testResult === 'testing'}
+                className="bg-card"
+              >
+                Test connection
+              </Button>
+            </div>
+            {typeof testResult === 'object' && testResult.error && (
+              <p className="text-sm text-muted-foreground">{testResult.error}</p>
+            )}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
@@ -365,7 +365,7 @@ const TestStatus = ({ result }: { result: TestState }) => {
       </span>
     )
   }
-  if (result === 'not_tested') {
+  if (result === 'idle') {
     return <span className="text-sm text-muted-foreground">Not tested</span>
   }
   return (
@@ -379,7 +379,7 @@ const TestStatus = ({ result }: { result: TestState }) => {
         className={cn('inline-block size-2 rounded-full', result.reachable ? 'bg-green-500' : 'bg-destructive')}
         aria-hidden="true"
       />
-      {result.reachable ? `Reachable ${dayjs(result.at).fromNow()}` : `Unreachable ${dayjs(result.at).fromNow()}`}
+      {`${result.reachable ? 'Reachable' : 'Unreachable'} ${dayjs(result.testedAt).fromNow()}`}
     </span>
   )
 }
@@ -422,10 +422,12 @@ const EditableField = ({
     setDraft(value)
   }
 
+  // Compare trimmed-to-trimmed: a stored value with stray whitespace must not
+  // read as permanently dirty (Discard could never clear it).
   const trimmed = draft.trim()
-  const dirty = trimmed !== value
-  const error = dirty && trimmed !== '' && validate ? validate(trimmed) : null
-  const canSave = dirty && (allowEmpty || trimmed !== '') && !error
+  const isDirty = trimmed !== value.trim()
+  const error = isDirty && trimmed !== '' && validate ? validate(trimmed) : null
+  const canSave = isDirty && (allowEmpty || trimmed !== '') && !error
 
   if (!editable) {
     return (
@@ -456,7 +458,7 @@ const EditableField = ({
         {...inputProps}
       />
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {dirty && (
+      {isDirty && (
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => setDraft(value)}>
             Discard

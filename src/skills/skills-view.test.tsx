@@ -84,7 +84,7 @@ describe('SkillsView state machine', () => {
         wrapper: Wrapper,
       })
 
-      const switchEl = await waitForElement(() => screen.queryByRole('switch', { name: /Disable \/meeting-notes/ }))
+      const switchEl = await waitForElement(() => screen.queryByRole('switch', { name: /Disable Meeting Notes/ }))
       fireEvent.click(switchEl)
       await flush()
       triggerChange(['skills'])
@@ -107,7 +107,7 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const switchEl = await waitForElement(() => screen.queryByRole('switch', { name: /Enable \/weekly-review/ }))
+      const switchEl = await waitForElement(() => screen.queryByRole('switch', { name: /Enable Weekly Review/ }))
       fireEvent.click(switchEl)
       await flush()
 
@@ -126,7 +126,7 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const switchA = await waitForElement(() => screen.queryByRole('switch', { name: /Disable \/a/ }))
+      const switchA = await waitForElement(() => screen.queryByRole('switch', { name: /Disable Skill A/ }))
       fireEvent.click(switchA)
       await flush()
 

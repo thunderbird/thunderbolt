@@ -76,7 +76,7 @@ export type SkillTokenMatch = {
   committed: boolean
   /** True for display-title tokens (`/Daily Brief`) — the chips the composer
    *  inserts. False for hand-typed slug tokens (`/daily-brief`). */
-  display: boolean
+  isDisplay: boolean
 }
 
 const isBoundary = (text: string, index: number): boolean => index >= text.length || /\s/.test(text[index] ?? '')
@@ -120,7 +120,7 @@ export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<st
         start: i,
         end,
         committed: end < text.length,
-        display: true,
+        isDisplay: true,
       })
       i = end
       continue
@@ -128,7 +128,7 @@ export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<st
     const slugMatch = /^[\w-]+/.exec(text.slice(i + 1))
     if (slugMatch && isBoundary(text, i + 1 + slugMatch[0].length)) {
       const end = i + 1 + slugMatch[0].length
-      tokens.push({ slug: slugMatch[0], start: i, end, committed: end < text.length, display: false })
+      tokens.push({ slug: slugMatch[0], start: i, end, committed: end < text.length, isDisplay: false })
       i = end
       continue
     }
@@ -137,12 +137,6 @@ export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<st
   return tokens
 }
 
-/**
- * Rewrite display tokens (`/Daily Brief`) in `text` to their canonical slug
- * form (`/daily-brief`). Run at send time so the composer can show human
- * titles while the model — and the stored message — only ever sees slugs.
- * Slug tokens and unrecognized text pass through untouched.
- */
 /**
  * Chip-style backspace: when `caret` sits inside or immediately after a
  * display-title token (`/Daily Brief`), return `text` with the whole token
@@ -156,13 +150,19 @@ export const deleteSkillTokenAt = (
   caret: number,
   displayNameToSlug: ReadonlyMap<string, string>,
 ): { text: string; caret: number } | null => {
-  const token = findSkillTokens(text, displayNameToSlug).find((t) => t.display && caret > t.start && caret <= t.end)
+  const token = findSkillTokens(text, displayNameToSlug).find((t) => t.isDisplay && caret > t.start && caret <= t.end)
   if (!token) {
     return null
   }
   return { text: text.slice(0, token.start) + text.slice(token.end), caret: token.start }
 }
 
+/**
+ * Rewrite display tokens (`/Daily Brief`) in `text` to their canonical slug
+ * form (`/daily-brief`). Run at send time so the composer can show human
+ * titles while the model — and the stored message — only ever sees slugs.
+ * Slug tokens and unrecognized text pass through untouched.
+ */
 export const normalizeSkillTokensToSlugs = (text: string, displayNameToSlug: ReadonlyMap<string, string>): string => {
   const tokens = findSkillTokens(text, displayNameToSlug)
   if (tokens.length === 0) {

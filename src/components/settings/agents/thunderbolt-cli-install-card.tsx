@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { arch } from '@tauri-apps/plugin-os'
-import { AlertTriangle, Check, ChevronRight, Download, ExternalLink, Loader2, Terminal, X } from 'lucide-react'
+import { AlertTriangle, Check, Download, ExternalLink, Loader2, Terminal } from 'lucide-react'
 import { useState, useTransition } from 'react'
+import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { CopyCommandRow } from '@/components/settings/copy-command-row'
-import { Button, mutedIconButtonClass } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import {
   type CliInstallArchitecture,
   type CliInstallPlatform,
@@ -17,7 +17,7 @@ import {
   installThunderboltCli,
 } from '@/lib/cli-install'
 import { getPlatform, isTauri } from '@/lib/platform'
-import { cn } from '@/lib/utils'
+import { AgentIconTile, AgentListRow } from './agent-list-row'
 
 /** Shell one-liner to build the CLI from source when no prebuilt binary applies. */
 const manualBuildCommand = 'cd cli && bun install && bun run build && ./install.sh'
@@ -42,7 +42,7 @@ type ThunderboltCliRowProps = {
   /** Test seam for the runtime CPU architecture; production reads Tauri's OS plugin. */
   architecture?: CliInstallArchitecture
   /** Test seam for the Tauri check; production reads `isTauri()`. */
-  tauri?: boolean
+  isTauriEnv?: boolean
 }
 
 /**
@@ -52,36 +52,32 @@ type ThunderboltCliRowProps = {
  * install action lives. Renders nothing on Tauri builds for OS/architecture
  * pairs with no published binary.
  */
-export const ThunderboltCliRow = ({ selected, onOpen, platform, architecture, tauri }: ThunderboltCliRowProps) => {
-  const isTauriEnv = tauri ?? isTauri()
+export const ThunderboltCliRow = ({
+  selected,
+  onOpen,
+  platform,
+  architecture,
+  isTauriEnv: isTauriEnvProp,
+}: ThunderboltCliRowProps) => {
+  const isTauriEnv = isTauriEnvProp ?? isTauri()
   const runtimeArchitecture = architecture ?? (isTauriEnv ? arch() : 'unknown')
 
-  if (isTauriEnv && !canInstallThunderboltCli(platform ?? getPlatform(), runtimeArchitecture, isTauriEnv)) {
+  // Hide the row only on a Tauri build with no published binary for this
+  // OS/architecture; web builds always show it (the detail links to the guide).
+  if (isTauriEnv && !canInstallThunderboltCli(platform ?? getPlatform(), runtimeArchitecture)) {
     return null
   }
 
   return (
-    <Card data-testid="agent-row-thunderbolt-cli" className="border border-border p-0">
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label="Open Thunderbolt CLI"
-        aria-pressed={selected}
-        className={cn(
-          'flex w-full cursor-pointer items-center gap-3 rounded-[inherit] px-4 py-3 text-left transition-colors',
-          selected ? 'bg-accent' : 'hover:bg-secondary/50',
-        )}
-      >
-        <div className="flex aspect-square size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-          <Terminal className="size-5 text-muted-foreground" aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-medium">Thunderbolt CLI</div>
-          <div className="truncate text-[length:var(--font-size-sm)] text-muted-foreground">{cliProvenanceLine}</div>
-        </div>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      </button>
-    </Card>
+    <AgentListRow
+      testId="agent-row-thunderbolt-cli"
+      selected={selected}
+      onOpen={onOpen}
+      ariaLabel="Open Thunderbolt CLI"
+      icon={<Terminal className="size-5 text-muted-foreground" aria-hidden="true" />}
+      title="Thunderbolt CLI"
+      subtitle={cliProvenanceLine}
+    />
   )
 }
 
@@ -90,7 +86,7 @@ type ThunderboltCliDetailProps = {
   /** Injectable installer (production omits; tests supply a fake). */
   install?: () => Promise<CliInstallResult>
   /** Test seam for the Tauri check; production reads `isTauri()`. */
-  tauri?: boolean
+  isTauriEnv?: boolean
 }
 
 /**
@@ -104,12 +100,12 @@ type ThunderboltCliDetailProps = {
 export const ThunderboltCliDetail = ({
   onClose,
   install = installThunderboltCli,
-  tauri,
+  isTauriEnv: isTauriEnvProp,
 }: ThunderboltCliDetailProps) => {
   const [state, setState] = useState<InstallState>({ status: 'idle' })
   const [isPending, startTransition] = useTransition()
 
-  const isTauriEnv = tauri ?? isTauri()
+  const isTauriEnv = isTauriEnvProp ?? isTauri()
 
   const handleInstall = () => {
     startTransition(async () => {
@@ -124,91 +120,75 @@ export const ThunderboltCliDetail = ({
   }
 
   return (
-    <section className="flex h-full flex-1 flex-col overflow-hidden px-4 pb-5 text-foreground md:px-6">
-      <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-4 md:h-16">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex aspect-square size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <Terminal className="size-5 text-muted-foreground" aria-hidden="true" />
-          </div>
-          <div className="flex min-w-0 flex-col justify-center leading-tight">
-            <h2 className="min-w-0 truncate text-xl leading-tight text-foreground">Thunderbolt CLI</h2>
-            <span className="truncate text-xs text-muted-foreground">{cliProvenanceLine}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-0.5 md:absolute md:-right-4 md:top-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            aria-label="Close details"
-            className={mutedIconButtonClass}
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pt-4">
-        <div className="flex shrink-0 flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">About</h3>
-          <p className="text-base leading-snug text-foreground">Use Thunderbolt from the command line.</p>
-        </div>
-
-        <div className="h-px shrink-0 bg-border/60" />
-
-        <div className="flex flex-col gap-4">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Install</h3>
-          {isTauriEnv ? (
-            <>
-              <Button variant="secondary" className="self-start" disabled={isPending} onClick={handleInstall}>
-                {isPending ? <Loader2 className="animate-spin" /> : <Download />}
-                {isPending ? 'Installing…' : 'Install CLI'}
-              </Button>
-
-              {state.status === 'success' && (
-                <div className="flex flex-col gap-3">
-                  <p className="flex items-center gap-2 text-[length:var(--font-size-sm)]">
-                    <Check className="size-4 shrink-0 text-green-600" aria-hidden="true" />
-                    Installed to <code className="font-mono">{state.result.path}</code>
-                  </p>
-                  {!state.result.onPath && state.result.pathHint && (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                        Add <code className="font-mono">~/.local/bin</code> to your PATH, then restart your shell:
-                      </p>
-                      <CopyCommandRow command={state.result.pathHint} label="Copy PATH command" />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {state.status === 'error' && (
-                <div className="flex flex-col gap-3">
-                  <p className="flex items-start gap-2 text-[length:var(--font-size-sm)] text-destructive">
-                    <AlertTriangle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
-                    {state.message}
-                  </p>
-                  {state.showManualBuild && (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                        Build it from source instead (requires Bun):
-                      </p>
-                      <CopyCommandRow command={manualBuildCommand} label="Copy build command" />
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <Button asChild variant="secondary" className="self-start">
-              <a href={cliInstallGuideUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLink />
-                View install guide
-              </a>
-            </Button>
-          )}
-        </div>
+    <DetailPanel
+      icon={
+        <AgentIconTile>
+          <Terminal className="size-5 text-muted-foreground" aria-hidden="true" />
+        </AgentIconTile>
+      }
+      title="Thunderbolt CLI"
+      subtitle={cliProvenanceLine}
+      onClose={onClose}
+    >
+      <div className="flex shrink-0 flex-col gap-2">
+        <DetailSectionTitle>About</DetailSectionTitle>
+        <p className="text-base leading-snug text-foreground">Use Thunderbolt from the command line.</p>
       </div>
-    </section>
+
+      <DetailDivider />
+
+      <div className="flex flex-col gap-4">
+        <DetailSectionTitle>Install</DetailSectionTitle>
+        {isTauriEnv ? (
+          <>
+            <Button variant="secondary" className="self-start" disabled={isPending} onClick={handleInstall}>
+              {isPending ? <Loader2 className="animate-spin" /> : <Download />}
+              {isPending ? 'Installing…' : 'Install CLI'}
+            </Button>
+
+            {state.status === 'success' && (
+              <div className="flex flex-col gap-3">
+                <p className="flex items-center gap-2 text-[length:var(--font-size-sm)]">
+                  <Check className="size-4 shrink-0 text-green-600" aria-hidden="true" />
+                  Installed to <code className="font-mono">{state.result.path}</code>
+                </p>
+                {!state.result.onPath && state.result.pathHint && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                      Add <code className="font-mono">~/.local/bin</code> to your PATH, then restart your shell:
+                    </p>
+                    <CopyCommandRow command={state.result.pathHint} label="Copy PATH command" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {state.status === 'error' && (
+              <div className="flex flex-col gap-3">
+                <p className="flex items-start gap-2 text-[length:var(--font-size-sm)] text-destructive">
+                  <AlertTriangle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+                  {state.message}
+                </p>
+                {state.showManualBuild && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                      Build it from source instead (requires Bun):
+                    </p>
+                    <CopyCommandRow command={manualBuildCommand} label="Copy build command" />
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <Button asChild variant="secondary" className="self-start">
+            <a href={cliInstallGuideUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink />
+              View install guide
+            </a>
+          </Button>
+        )}
+      </div>
+    </DetailPanel>
   )
 }

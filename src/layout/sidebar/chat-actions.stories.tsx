@@ -60,7 +60,7 @@ export const Default: Story = {
 export const WithActiveSearch: Story = {
   args: {
     isCollapsed: false,
-    showSearch: false,
+    showSearch: true,
     debouncedSearchQuery: 'test query',
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),

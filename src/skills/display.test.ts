@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { skillDisplayName, titleCaseFromSlug } from './display'
+import { buildDisplayNameToSlug, skillDisplayName, titleCaseFromSlug } from './display'
 
 describe('skillDisplayName', () => {
   it('returns the label when present', () => {
@@ -22,6 +22,35 @@ describe('skillDisplayName', () => {
 
   it('trims surrounding whitespace from the label', () => {
     expect(skillDisplayName({ name: 'daily-brief', label: '  Daily Brief  ' })).toBe('Daily Brief')
+  })
+})
+
+describe('buildDisplayNameToSlug', () => {
+  it('maps display names (label or title-cased slug) to slugs', () => {
+    const map = buildDisplayNameToSlug([
+      { name: 'daily-brief', label: 'Daily Brief' },
+      { name: 'triage', label: null },
+    ])
+    expect(map.get('Daily Brief')).toBe('daily-brief')
+    expect(map.get('Triage')).toBe('triage')
+  })
+
+  it('omits ambiguous display names entirely (never resolves to the wrong skill)', () => {
+    const map = buildDisplayNameToSlug([
+      { name: 'brief-a', label: 'Brief' },
+      { name: 'brief-b', label: 'Brief' },
+      { name: 'other', label: 'Other' },
+    ])
+    expect(map.has('Brief')).toBe(false)
+    expect(map.get('Other')).toBe('other')
+  })
+
+  it('treats a label colliding with another skill title-cased slug as ambiguous', () => {
+    const map = buildDisplayNameToSlug([
+      { name: 'daily-brief', label: null },
+      { name: 'brief-two', label: 'Daily Brief' },
+    ])
+    expect(map.has('Daily Brief')).toBe(false)
   })
 })
 

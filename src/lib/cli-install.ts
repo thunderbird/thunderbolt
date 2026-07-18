@@ -5,8 +5,7 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import type { Arch, Platform } from '@tauri-apps/plugin-os'
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+import { isRecord } from '@/lib/utils'
 
 export type CliInstallPlatform = Platform | 'web'
 export type CliInstallArchitecture = Arch | 'unknown'
@@ -52,17 +51,13 @@ export const installThunderboltCli = (invoke: InvokeFn = tauriInvoke): Promise<C
   invoke<CliInstallResult>('install_thunderbolt_cli')
 
 /**
- * Whether the one-click CLI install is offered for a Tauri OS/architecture pair
- * published by the CLI release pipeline. Mirrors Rust `resolve_target`.
+ * Whether the CLI release pipeline publishes a prebuilt binary for this
+ * OS/architecture pair. Mirrors Rust `resolve_target`. Callers gate on the
+ * Tauri runtime separately — this is a pure target lookup.
  */
-export const canInstallThunderboltCli = (
-  platform: CliInstallPlatform,
-  architecture: CliInstallArchitecture,
-  isTauriEnv: boolean,
-): boolean =>
-  isTauriEnv &&
-  ((platform === 'macos' && architecture === 'aarch64') ||
-    (platform === 'linux' && (architecture === 'x86_64' || architecture === 'aarch64')))
+export const canInstallThunderboltCli = (platform: CliInstallPlatform, architecture: CliInstallArchitecture): boolean =>
+  (platform === 'macos' && architecture === 'aarch64') ||
+  (platform === 'linux' && (architecture === 'x86_64' || architecture === 'aarch64'))
 
 /** Narrows an unknown rejection value to a typed {@link CliInstallError}. */
 export const isCliInstallError = (value: unknown): value is CliInstallError =>

@@ -11,7 +11,7 @@ export type Mode = 'detail' | 'create' | 'edit'
  * overlay; on desktop it's the right-hand slide-in panel. `'list'` means only
  * the list is visible.
  */
-export type PanelView = 'list' | 'panel'
+type PanelView = 'list' | 'panel'
 
 /**
  * "Leave the form" intent: `cancel` returns to detail of the current active
@@ -25,7 +25,7 @@ export type LeaveIntent =
   | { type: 'edit'; id: string }
   | { type: 'create' }
 
-export type PendingLeave = LeaveIntent | null
+type PendingLeave = LeaveIntent | null
 
 /** Captured at dialog-open time so a concurrent sync can't redirect the action. */
 export type PendingDependents = { action: DependentsAction; skill: Skill; dependents: Skill[] } | null

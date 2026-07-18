@@ -15,8 +15,8 @@ import { isMacDesktop } from '@/lib/platform'
  * already carry the clearance, and Windows/Linux never need any —
  * `WindowChrome` reserves a dedicated top strip for its custom controls.
  *
- * Consumers pad their header row by `pl-20` (80px, the same clearance the
- * main `Header` and the sidebar strips use) when this is true.
+ * Consumers pad their header row (e.g. `pl-24` in `src/content-view/header.tsx`
+ * — the lights end at ~x=68, plus breathing room) when this is true.
  */
 export const useMacWindowControlsClearance = (): boolean => {
   const { isMobile } = useIsMobile()

@@ -10,7 +10,6 @@ import { Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-r
 import { memo, useState, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
-import { useShallow } from 'zustand/react/shallow'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { AnimatePresence, m } from 'framer-motion'
@@ -36,20 +35,20 @@ const ChatItemActions = ({
   onRename,
   onDelete,
   deleteLabel,
-  deletePending,
+  isDeletePending,
 }: {
   Item: MenuItemComponent
   onRename: () => void
   onDelete: () => void
   deleteLabel: ReactNode
-  deletePending: boolean
+  isDeletePending: boolean
 }) => (
   <>
     <Item onClick={onRename} className="cursor-pointer">
       <Pencil className="size-4 mr-2" />
       Rename
     </Item>
-    <Item onClick={onDelete} disabled={deletePending} className="cursor-pointer">
+    <Item onClick={onDelete} disabled={isDeletePending} className="cursor-pointer">
       {deleteLabel}
     </Item>
   </>
@@ -68,15 +67,7 @@ export const ChatListItem = memo(
     onRename,
     useChat = useChat_default,
   }: ChatListItemComponentProps) => {
-    const { chatInstance } = useChatStore(
-      useShallow((state) => {
-        const session = state.sessions.get(thread.id)
-
-        return {
-          chatInstance: session?.chatInstance,
-        }
-      }),
-    )
+    const chatInstance = useChatStore((state) => state.sessions.get(thread.id)?.chatInstance)
 
     const { status } = useChat(
       chatInstance ? { chat: chatInstance, experimental_throttle: statusOnlyThrottleMs } : undefined,
@@ -195,7 +186,7 @@ export const ChatListItem = memo(
                   onRename={startRename}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
-                  deletePending={deleteChatMutation.isPending}
+                  isDeletePending={deleteChatMutation.isPending}
                 />
               </ContextMenuContent>
 
@@ -209,7 +200,7 @@ export const ChatListItem = memo(
                   onRename={startRename}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
-                  deletePending={deleteChatMutation.isPending}
+                  isDeletePending={deleteChatMutation.isPending}
                 />
               </DropdownMenuContent>
             </SidebarMenuItem>

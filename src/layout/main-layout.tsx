@@ -4,7 +4,7 @@
 
 import { DownloadAppBannerDesktop } from '@/components/download-app-banner-desktop'
 import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
-import { Header } from '@/components/ui/header'
+import { FloatingHeader } from '@/components/floating-header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { SidebarInset } from '@/components/ui/sidebar'
 import { ArtifactSidebarContent } from '@/content-view/artifact-sidebar-content'
@@ -92,23 +92,7 @@ export default function Page() {
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel>
           <div className="relative flex flex-col h-full">
-            {/* Top scrim: fades the page background from the very top of the
-                viewport down past the floating header, so content scrolling
-                beneath stays legible behind the header controls. Painted
-                background-on-background, it is invisible until content
-                actually scrolls under it. Holds full opacity through the top
-                40% (where the header buttons sit) before fading, so text
-                scrolling underneath can't bleed through the controls. */}
-            <div
-              className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-background via-background/60 to-transparent"
-              style={{ height: 'calc(var(--header-inset) + 1.75rem)' }}
-            />
-            {/* The header floats over the content instead of consuming layout
-                height — pages own the full viewport and pad by
-                --header-inset where needed. */}
-            <div className="absolute inset-x-0 top-0 z-30" style={{ paddingTop: 'var(--safe-area-top-padding)' }}>
-              <Header />
-            </div>
+            <FloatingHeader />
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />

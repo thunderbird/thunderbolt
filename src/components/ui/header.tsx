@@ -16,7 +16,7 @@ import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useNavigate, useLocation } from 'react-router'
+import { useNavigate, useLocation, useNavigationType } from 'react-router'
 import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
@@ -55,6 +55,18 @@ const HeaderAgentSelector = ({
   )
 }
 
+const headerIconButtonClass = 'size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground'
+
+/**
+ * Highest router history index reachable via Forward this session. Module
+ * scope (not state) because it must survive Header remounts: the browser
+ * gives no direct "can go forward" signal, so we track the furthest index
+ * react-router has visited. `window.history.length` is NOT usable here — it
+ * counts entries from before the router initialized (e.g. an OAuth redirect
+ * chain), which would enable Forward with no in-app forward entry.
+ */
+let maxReachableHistoryIndex = 0
+
 /**
  * Back/forward history arrows for the Tauri desktop app, where there's no
  * browser chrome to navigate with. Web is skipped (the browser has its own
@@ -66,20 +78,36 @@ const HistoryNavButtons = () => {
   const navigate = useNavigate()
   // Subscribe to location so the enabled states recompute after navigation.
   useLocation()
+  const navigationType = useNavigationType()
 
   const index = (window.history.state as { idx?: number } | null)?.idx ?? 0
+  // A PUSH discards any forward entries, so the current index becomes the
+  // ceiling; POP/REPLACE move within the existing stack and only ever raise it.
+  if (navigationType === 'PUSH' || index > maxReachableHistoryIndex) {
+    maxReachableHistoryIndex = index
+  }
   const canGoBack = index > 0
-  const canGoForward = index < window.history.length - 1
-
-  const buttonClass = 'size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground'
+  const canGoForward = index < maxReachableHistoryIndex
 
   return (
     <div className="flex items-center">
-      <Button variant="ghost" size="icon" className={buttonClass} disabled={!canGoBack} onClick={() => navigate(-1)}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={headerIconButtonClass}
+        disabled={!canGoBack}
+        onClick={() => void navigate(-1)}
+      >
         <ArrowLeft className="size-[var(--icon-size-default)]" />
         <span className="sr-only">Go back</span>
       </Button>
-      <Button variant="ghost" size="icon" className={buttonClass} disabled={!canGoForward} onClick={() => navigate(1)}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={headerIconButtonClass}
+        disabled={!canGoForward}
+        onClick={() => void navigate(1)}
+      >
         <ArrowRight className="size-[var(--icon-size-default)]" />
         <span className="sr-only">Go forward</span>
       </Button>
@@ -98,8 +126,8 @@ export const Header = () => {
   // the drag surface — including when the viewport is narrow enough to fall
   // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
   // buttons inline on the right (self-nulls on macOS/web).
-  const enableDragRegion = isTauriDesktop()
-  const dragProps = enableDragRegion ? { 'data-tauri-drag-region': true } : {}
+  const isDragRegionEnabled = isTauriDesktop()
+  const dragProps = isDragRegionEnabled ? { 'data-tauri-drag-region': true } : {}
   // The macOS traffic lights (ending at ~x=68) are wider than the collapsed
   // 48px icon rail, so nudge the header content right of the overhang with
   // some breathing room so the agent selector pill doesn't crowd the buttons.
@@ -170,12 +198,7 @@ export const Header = () => {
               content, so the toggle reads as a menu (burger) rather than a
               panel collapse. On macOS the button sits right of the traffic
               lights via the pl-20 above. */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground"
-            onClick={toggleSidebar}
-          >
+          <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>
             <Menu strokeWidth={1.5} className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Toggle Sidebar</span>
           </Button>
@@ -194,12 +217,7 @@ export const Header = () => {
 
         <div {...dragProps} className="flex flex-1 items-center gap-1 justify-end">
           {showNewChatButton && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground"
-              onClick={handleNewChat}
-            >
+            <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={handleNewChat}>
               <MessageCirclePlus className="size-[var(--icon-size-default)]" />
               <span className="sr-only">New Chat</span>
             </Button>
@@ -227,12 +245,7 @@ export const Header = () => {
     >
       <div {...dragProps} className={cn('flex items-center gap-2', needsTrafficLightClearance && 'ml-8')}>
         {showSidebarToggle && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground"
-            onClick={toggleSidebar}
-          >
+          <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>
             <PanelLeftRounded className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Expand Sidebar</span>
           </Button>

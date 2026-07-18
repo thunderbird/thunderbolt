@@ -70,19 +70,21 @@ const badgeStyles: Record<OptionStatus, string> = {
 
 type AskUiState = { selected: Set<string>; submitted: boolean }
 
-type AskUiAction = { type: 'toggleOption'; id: string; multiple: boolean } | { type: 'submit'; selected?: Set<string> }
+type AskUiAction =
+  | { type: 'OPTION_TOGGLED'; id: string; isMultiple: boolean }
+  | { type: 'SUBMITTED'; selected?: Set<string> }
 
 const askUiReducer = (state: AskUiState, action: AskUiAction): AskUiState => {
   switch (action.type) {
-    case 'toggleOption': {
-      if (!action.multiple) {
+    case 'OPTION_TOGGLED': {
+      if (!action.isMultiple) {
         return { ...state, selected: new Set([action.id]) }
       }
       const selected = new Set(state.selected)
       selected.has(action.id) ? selected.delete(action.id) : selected.add(action.id)
       return { ...state, selected }
     }
-    case 'submit':
+    case 'SUBMITTED':
       return { ...state, submitted: true, selected: action.selected ?? state.selected }
   }
 }
@@ -114,7 +116,7 @@ export const Ask = ({
       return
     }
     committedRef.current = true
-    dispatch({ type: 'submit', selected: ids })
+    dispatch({ type: 'SUBMITTED', selected: ids })
     onSubmit?.({
       selectedIds: [...ids],
       matched: evaluateAnswer({ prompt, mode, options }, ids),
@@ -130,7 +132,7 @@ export const Ask = ({
       commit(new Set([id]))
       return
     }
-    dispatch({ type: 'toggleOption', id, multiple: isMultiple })
+    dispatch({ type: 'OPTION_TOGGLED', id, isMultiple })
   }
 
   const label = isGraded ? (isMultiple ? 'Select all that apply' : 'Choose one') : 'Your call'

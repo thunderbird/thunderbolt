@@ -27,13 +27,16 @@ const syncNativeInterfaceStyle = (resolvedTheme: 'dark' | 'light') => {
  * webview's `prefers-color-scheme` — pinning it would make 'system' resolve to
  * whatever was last forced instead of the real OS appearance.
  */
-const syncMacWindowTheme = (theme: Theme) => {
+const syncMacWindowTheme = async (theme: Theme) => {
   if (!isMacDesktop()) {
     return
   }
-  import('@tauri-apps/api/window')
-    .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme === 'system' ? null : theme))
-    .catch(console.error)
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    await getCurrentWindow().setTheme(theme === 'system' ? null : theme)
+  } catch (error) {
+    console.error(error)
+  }
 }
 
 /**
@@ -52,18 +55,19 @@ const themeBackgroundColors = { dark: '#1b1e1f', light: '#f5f2ee' } as const
  * the luminance-normalizing materials (like Finder's sidebar) — it pulls the
  * blur toward light so the glass stays bright over any backdrop.
  */
-const syncMacWindowEffects = (resolvedTheme: 'dark' | 'light') => {
+const syncMacWindowEffects = async (resolvedTheme: 'dark' | 'light') => {
   if (!isMacDesktop()) {
     return
   }
-  import('@tauri-apps/api/window')
-    .then(({ getCurrentWindow, Effect, EffectState }) =>
-      getCurrentWindow().setEffects({
-        effects: [resolvedTheme === 'dark' ? Effect.HudWindow : Effect.Sheet],
-        state: EffectState.FollowsWindowActiveState,
-      }),
-    )
-    .catch(console.error)
+  try {
+    const { getCurrentWindow, Effect, EffectState } = await import('@tauri-apps/api/window')
+    await getCurrentWindow().setEffects({
+      effects: [resolvedTheme === 'dark' ? Effect.HudWindow : Effect.Sheet],
+      state: EffectState.FollowsWindowActiveState,
+    })
+  } catch (error) {
+    console.error(error)
+  }
 }
 
 /** Apply a resolved theme to the document: root class, background, meta tag, and native chrome. */
@@ -78,7 +82,7 @@ const applyResolvedTheme = (resolvedTheme: 'dark' | 'light') => {
 
   void setAndroidBarColor(resolvedTheme === 'dark' ? 'light' : 'dark')
   syncNativeInterfaceStyle(resolvedTheme)
-  syncMacWindowEffects(resolvedTheme)
+  void syncMacWindowEffects(resolvedTheme)
 }
 
 /**
@@ -122,7 +126,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }, [theme])
 
   useEffect(() => {
-    syncMacWindowTheme(theme)
+    void syncMacWindowTheme(theme)
     if (theme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
       applyResolvedTheme(systemTheme)

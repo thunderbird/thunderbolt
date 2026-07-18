@@ -19,11 +19,6 @@ import { skillDisplayName } from './display'
 
 export type DependentsAction = 'disable' | 'delete'
 
-const verbLower: Record<DependentsAction, string> = {
-  disable: 'disable',
-  delete: 'delete',
-}
-
 const verbLabel: Record<DependentsAction, string> = {
   disable: 'Disable',
   delete: 'Delete',
@@ -55,7 +50,7 @@ export const DependentsDialog = ({
         </AlertDialogTitle>
         <AlertDialogDescription>
           {dependents.length === 1 ? 'One skill references' : `${dependents.length} skills reference`} this. If you{' '}
-          {verbLower[action]} it, they may no longer resolve:
+          {action} it, they may no longer resolve:
         </AlertDialogDescription>
       </AlertDialogHeader>
       <ul className="flex flex-col gap-1.5">

@@ -6,12 +6,14 @@ import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } 
 
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
-import { skillDisplayName } from './display'
+import { buildDisplayNameToSlug, skillDisplayName } from './display'
 
 /**
  * A selectable slash suggestion: a user-authored skill or an external command
  * advertised by the connected ACP agent (`kind: 'command'`).
- * `label` is the display name; `name` is the slug that gets inserted.
+ * `label` is the display name, which is what selecting a skill inserts
+ * (`/Daily Brief`, normalized to the slug at send time); `name` is the slug.
+ * Agent commands insert their literal `name`.
  */
 export type SlashItem =
   | { kind: 'skill'; id: string; name: string; label: string; description: string; skill: Skill }
@@ -196,15 +198,27 @@ export const useSlashCommand = ({
     [slashState, value, setValue, inputRef],
   )
 
+  // Ambiguity guard for display-title insertion: two skills sharing a display
+  // name are omitted from this map, and their tokens fall back to the slug so
+  // send-time normalization can't resolve them to the wrong skill.
+  const displayNameToSlug = useMemo(() => buildDisplayNameToSlug(library), [library])
+  const skillToken = useCallback(
+    (skill: Pick<Skill, 'name' | 'label'>) => {
+      const displayName = skillDisplayName(skill)
+      return displayNameToSlug.has(displayName) ? displayName : skill.name
+    },
+    [displayNameToSlug],
+  )
+
   // Skills insert their display title (`/Daily Brief`) — the user never sees
   // the slug in chat; send-time normalization maps it back for the model.
   // Agent commands insert their literal name, which IS what the agent expects.
   const selectItem = useCallback(
-    (item: SlashItem) => insertToken(item.kind === 'skill' ? item.label : item.name),
-    [insertToken],
+    (item: SlashItem) => insertToken(item.kind === 'skill' ? skillToken(item.skill) : item.name),
+    [insertToken, skillToken],
   )
   /** Insert a skill's slash token. Convenience for the skill path (and tests). */
-  const selectSkill = useCallback((skill: Skill) => insertToken(skillDisplayName(skill)), [insertToken])
+  const selectSkill = useCallback((skill: Skill) => insertToken(skillToken(skill)), [insertToken, skillToken])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {

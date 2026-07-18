@@ -2,12 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ChevronRight } from 'lucide-react'
-
 import { iconForAgent } from '@/components/agent-icon'
-import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
+import { AgentListRow } from './agent-list-row'
 import { agentProvenanceLine } from './agent-provenance'
 
 type AgentRowProps = {
@@ -32,41 +30,29 @@ export const AgentRow = ({ agent, selected, onOpen }: AgentRowProps) => {
   const disabled = agent.enabled !== 1
 
   return (
-    <Card data-testid={`agent-row-${agent.id}`} className="border border-border p-0">
-      <button
-        type="button"
-        onClick={() => onOpen(agent)}
-        aria-label={`Open ${agent.name}`}
-        aria-pressed={selected}
-        className={cn(
-          'flex w-full cursor-pointer items-center gap-3 rounded-[inherit] px-4 py-3 text-left transition-colors',
-          selected ? 'bg-accent' : 'hover:bg-secondary/50',
-        )}
-      >
-        <div className="flex aspect-square size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-          {/* The logo reads slightly smaller than the lucide glyphs at equal
-              box size, so it gets a half-step bump. */}
-          <Icon
-            className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-5.5' : 'size-5')}
-            aria-hidden="true"
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className={cn('truncate text-base font-medium', disabled && 'text-muted-foreground')}>{agent.name}</div>
-          <div
-            className="truncate text-[length:var(--font-size-sm)] text-muted-foreground"
-            data-testid={`agent-provenance-${agent.id}`}
-          >
-            {agentProvenanceLine(agent)}
-            {disabled && ' · Disabled'}
-          </div>
-        </div>
-        <ChevronRight
-          className="size-4 shrink-0 text-muted-foreground"
+    <AgentListRow
+      testId={`agent-row-${agent.id}`}
+      selected={selected}
+      onOpen={() => onOpen(agent)}
+      ariaLabel={`Open ${agent.name}`}
+      isDimmed={disabled}
+      icon={
+        // The logo reads slightly smaller than the lucide glyphs at equal
+        // box size, so it gets a half-step bump.
+        <Icon
+          className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-5.5' : 'size-5')}
           aria-hidden="true"
-          data-testid={`agent-chevron-${agent.id}`}
         />
-      </button>
-    </Card>
+      }
+      title={agent.name}
+      subtitleTestId={`agent-provenance-${agent.id}`}
+      subtitle={
+        <>
+          {agentProvenanceLine(agent)}
+          {disabled && ' · Disabled'}
+        </>
+      }
+      chevronTestId={`agent-chevron-${agent.id}`}
+    />
   )
 }

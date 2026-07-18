@@ -42,7 +42,7 @@
   /* Brand accent — drawn from the logo's two color families: the bolt's
      golden yellow (#ffcc00) and its magenta shadow facets (#ce00cb). The
      solid token is the pink stop (used alone for icons/text); --color-brand-2
-     is the gold stop; --gradient-brand (in :root below) sweeps pink → gold
+     is the gold stop; --gradient-brand (in :root below) sweeps gold → pink
      for surfaces like the switch ON track. Both stops are darkened from the
      logo literals so they hold contrast on the warm off-white background.
      Dark mode brightens both (see .dark below). */
@@ -311,7 +311,7 @@
    --color-sidebar token: nested elements also paint bg-sidebar (nav-toggle
    thumb) and translucent layers would stack into visible bands. These rules
    are unlayered so they beat Tailwind's layered bg-sidebar utility. */
-/* Light glass leans creme rather than white: at low alpha the desktop's
+/* Light glass leans cream rather than white: at low alpha the desktop's
    whites/blacks/blues dominate, so the tint carries extra warmth/saturation
    (drawn from the theme's beige family) to keep the panel on-brand. */
 /* Light alpha can sit far lower than dark's: the light theme pairs with a
@@ -347,7 +347,7 @@
   --color-sidebar-border: rgb(255 255 255 / 10%);
 }
 /* Focused input border on light glass: the solid --color-border tier
-   (#e5dfd5) washes out against the bright creme blur, so use translucent ink
+   (#e5dfd5) washes out against the bright cream blur, so use translucent ink
    that reads on any backdrop. Dark glass keeps the default — #434546 already
    registers against the dark blur. */
 .mac-vibrancy:not(.dark) [data-sidebar='sidebar'] [data-slot='input']:focus-visible {

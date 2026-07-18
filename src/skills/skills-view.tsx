@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AnimatePresence, m } from 'framer-motion'
 import { useCallback, useReducer, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { SlideInPanel } from '@/components/slide-in-panel'
+import { DetailPanelSurface } from '@/components/detail-panel'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
@@ -83,7 +82,7 @@ export const SkillsView = () => {
   // No first-skill fallback: the detail panel only opens when the user
   // explicitly selects a skill (or a deep link does), matching the
   // slide-in-from-the-right behavior. `undefined` means "nothing selected".
-  const active = skills.find((s) => s.id === activeId)
+  const activeSkill = skills.find((s) => s.id === activeId)
 
   // Disabling a pinned skill auto-unpins it. Re-enabling does NOT auto-repin;
   // the user pins again deliberately from the chat composer.
@@ -204,11 +203,11 @@ export const SkillsView = () => {
         const created = await createSkill(values)
         trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
-      } else if (active) {
-        const renamed = values.name !== active.name
-        await updateSkill({ id: active.id, patch: values })
-        trackSkillEvent('skill_edited', active.id, { renamed })
-        dispatch({ type: 'SUBMIT_SUCCESS', activeId: active.id })
+      } else if (activeSkill) {
+        const renamed = values.name !== activeSkill.name
+        await updateSkill({ id: activeSkill.id, patch: values })
+        trackSkillEvent('skill_edited', activeSkill.id, { renamed })
+        dispatch({ type: 'SUBMIT_SUCCESS', activeId: activeSkill.id })
       }
     } catch (error) {
       if (error instanceof SkillNameTakenError || error instanceof SkillNameInvalidError) {
@@ -217,6 +216,17 @@ export const SkillsView = () => {
       }
       throw error
     }
+  }
+
+  // Wiring shared by the create and edit forms — one source so the two
+  // renders can't drift.
+  const sharedFormProps = {
+    onCancel: () => requestLeave({ type: 'cancel' }),
+    onSubmit: handleSubmit,
+    onDirtyChange: (dirty: boolean) => dispatch({ type: 'SET_DIRTY', dirty }),
+    onNameChange: () => dispatch({ type: 'CLEAR_NAME_ERROR' }),
+    resetSignal,
+    nameError,
   }
 
   const createForm = (
@@ -236,12 +246,7 @@ export const SkillsView = () => {
             }
           : undefined
       }
-      onCancel={() => requestLeave({ type: 'cancel' })}
-      onSubmit={handleSubmit}
-      onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
-      onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
-      resetSignal={resetSignal}
-      nameError={nameError}
+      {...sharedFormProps}
     />
   )
 
@@ -249,39 +254,34 @@ export const SkillsView = () => {
     if (mode === 'create') {
       return createForm
     }
-    if (!active) {
+    if (!activeSkill) {
       return null
     }
     if (mode === 'detail') {
       return (
         <SkillDetail
-          name={skillDisplayName(active)}
-          description={active.description}
-          instruction={active.instruction}
-          onEdit={() => onEdit(active.id)}
-          onDelete={() => onDelete(active.id)}
+          name={skillDisplayName(activeSkill)}
+          description={activeSkill.description}
+          instruction={activeSkill.instruction}
+          onEdit={() => onEdit(activeSkill.id)}
+          onDelete={() => onDelete(activeSkill.id)}
           onClose={() => dispatch({ type: 'BACK_TO_LIST' })}
         />
       )
     }
     return (
       <SkillForm
-        key={`edit:${active.id}`}
+        key={`edit:${activeSkill.id}`}
         mode="edit"
         initialValues={{
-          name: active.name,
+          name: activeSkill.name,
           // Legacy rows without a label get a Title Case suggestion so the
           // required Name field doesn't start empty.
-          label: active.label ?? titleCaseFromSlug(active.name),
-          description: active.description,
-          instruction: active.instruction,
+          label: skillDisplayName(activeSkill),
+          description: activeSkill.description,
+          instruction: activeSkill.instruction,
         }}
-        onCancel={() => requestLeave({ type: 'cancel' })}
-        onSubmit={handleSubmit}
-        onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
-        onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
-        resetSignal={resetSignal}
-        nameError={nameError}
+        {...sharedFormProps}
       />
     )
   }
@@ -294,7 +294,7 @@ export const SkillsView = () => {
       <div className="min-w-0 flex-1 overflow-hidden">
         <SkillsList
           skills={skills}
-          activeSkillId={panelOpen && mode === 'detail' && active ? active.id : null}
+          activeSkillId={panelOpen && mode === 'detail' && activeSkill ? activeSkill.id : null}
           isEnabled={isEnabled}
           onToggleEnabled={handleToggleEnabled}
           onCreate={onCreate}
@@ -303,38 +303,9 @@ export const SkillsView = () => {
           onDeleteSkill={onDelete}
         />
       </div>
-      {/* ~50/50 split with the list: half the viewport minus half the sidebar. */}
-      {!isMobile && (
-        <SlideInPanel open={panelOpen} width="clamp(400px, calc(50vw - 128px), 800px)">
-          {/* One continuous surface for the whole detail column, lifted off the
-              page by the app's soft glow shadow plus a faint border. bg-sidebar
-              (near-white in light mode) like the chat composer, so the surface
-              reads against the page in both themes. Bottom padding floats the
-              card off the window edge; the right edge stays flush and square —
-              only the left corners are rounded. */}
-          <div className="h-full pb-4">
-            <div className="h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar shadow-glow">
-              {panel}
-            </div>
-          </div>
-        </SlideInPanel>
-      )}
-      {isMobile && (
-        <AnimatePresence>
-          {panelOpen && (
-            <m.div
-              key="mobile-panel"
-              className="absolute inset-0 z-10 flex bg-background"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 35, stiffness: 400, mass: 0.8 }}
-            >
-              {panel}
-            </m.div>
-          )}
-        </AnimatePresence>
-      )}
+      <DetailPanelSurface open={panelOpen} isMobile={isMobile}>
+        {panel}
+      </DetailPanelSurface>
       {pendingDependents && (
         <DependentsDialog
           open

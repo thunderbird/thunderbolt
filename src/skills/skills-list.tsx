@@ -40,6 +40,7 @@ export const SkillsList = ({
 }) => {
   const [search, setSearch] = useState('')
 
+  const isLibraryEmpty = skills.length === 0
   const { enabledRows, disabledRows } = useMemo(() => {
     const query = search.trim().toLowerCase()
     const filtered =
@@ -125,7 +126,7 @@ export const SkillsList = ({
             </m.div>
           )}
 
-          {skills.length === 0 ? (
+          {isLibraryEmpty && (
             // The "I deleted everything" empty state — the list is the page's
             // main surface now, so the create CTA lives here.
             <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
@@ -139,12 +140,10 @@ export const SkillsList = ({
                 Create your first skill
               </Button>
             </div>
-          ) : (
-            enabledRows.length === 0 &&
-            disabledRows.length === 0 && (
-              // Search-empty state.
-              <p className="flex h-32 items-center justify-center text-sm text-muted-foreground">No matching skills.</p>
-            )
+          )}
+          {!isLibraryEmpty && enabledRows.length === 0 && disabledRows.length === 0 && (
+            // Search-empty state: the library has skills but none match.
+            <p className="flex h-32 items-center justify-center text-sm text-muted-foreground">No matching skills.</p>
           )}
         </div>
       </LayoutGroup>

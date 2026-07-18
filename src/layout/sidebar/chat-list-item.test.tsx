@@ -4,8 +4,8 @@
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
-import { type ReactNode } from 'react'
 import type { useChat as useChat_default } from '@ai-sdk/react'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -18,27 +18,6 @@ import '@/test-utils/framer-motion-mock'
 // `mock.module('@ai-sdk/react')` — module mocks are process-global and leak into
 // unrelated files under `--randomize` (see docs/development/testing.md).
 const useChatStub = (() => ({ status: 'ready' })) as unknown as typeof useChat_default
-
-// Mock Radix dropdown to render inline (avoids portal issues in tests)
-mock.module('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuItem: ({
-    children,
-    onClick,
-    ...props
-  }: {
-    children: ReactNode
-    onClick?: () => void
-    disabled?: boolean
-    className?: string
-  }) => (
-    <button onClick={onClick} {...props}>
-      {children}
-    </button>
-  ),
-}))
 
 const renderWithProviders = (props: ChatListItemProps) =>
   render(
@@ -63,9 +42,10 @@ const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps 
 })
 
 describe('ChatListItem', () => {
-  it('shows Rename and Delete options', () => {
+  it('shows Rename and Delete options in the right-click context menu', async () => {
     renderWithProviders(createProps())
-    expect(screen.getByText('Rename')).toBeInTheDocument()
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    expect(await waitForElement(() => screen.queryByText('Rename'))).toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
   })
 

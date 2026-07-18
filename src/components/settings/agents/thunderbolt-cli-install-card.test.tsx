@@ -23,10 +23,10 @@ afterEach(() => {
 const noop = () => {}
 
 const renderRow = (props: Partial<Parameters<typeof ThunderboltCliRow>[0]> = {}) =>
-  render(<ThunderboltCliRow onOpen={noop} platform="macos" architecture="aarch64" tauri={true} {...props} />)
+  render(<ThunderboltCliRow onOpen={noop} platform="macos" architecture="aarch64" isTauriEnv={true} {...props} />)
 
 const renderDetail = (props: Partial<Parameters<typeof ThunderboltCliDetail>[0]> = {}) =>
-  render(<ThunderboltCliDetail onClose={noop} tauri={true} {...props} />)
+  render(<ThunderboltCliDetail onClose={noop} isTauriEnv={true} {...props} />)
 
 const clickInstall = async () => {
   await act(async () => {
@@ -54,7 +54,7 @@ describe('ThunderboltCliRow', () => {
   })
 
   it('renders on web builds (install guide lives in the detail)', () => {
-    renderRow({ tauri: false })
+    renderRow({ isTauriEnv: false })
     expect(screen.getByRole('button', { name: 'Open Thunderbolt CLI' })).toBeInTheDocument()
   })
 
@@ -87,7 +87,7 @@ describe('ThunderboltCliDetail', () => {
   })
 
   it('renders the install guide on web instead of the one-click install action', () => {
-    renderDetail({ tauri: false })
+    renderDetail({ isTauriEnv: false })
 
     const guideLink = screen.getByRole('link', { name: /view install guide/i })
     expect(guideLink).toHaveAttribute(

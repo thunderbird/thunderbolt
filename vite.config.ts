@@ -102,7 +102,9 @@ export default defineConfig({
     // pointer-events. Bun nests a second copy under @radix-ui/react-menu;
     // with two instances, closing a dialog opened from a dropdown menu item
     // restores `pointer-events: none` and the whole app stops being
-    // clickable.
+    // clickable. The package.json direct dependency on
+    // @radix-ui/react-dismissable-layer exists solely to hoist one copy for
+    // this dedupe — it is load-bearing even though nothing imports it.
     dedupe: ['@powersync/common', '@powersync/react', 'react', '@radix-ui/react-dismissable-layer'],
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -4,7 +4,7 @@
 
 import { createParser } from '@/lib/create-parser'
 import { z } from 'zod'
-import type { AskCacheEntry } from './lib'
+import { askModes, type AskCacheEntry } from './lib'
 
 const optionShape = z.object({
   id: z.string().min(1),
@@ -32,7 +32,7 @@ export const schema = z.object({
   widget: z.literal('ask'),
   args: z.object({
     prompt: z.string().min(1),
-    mode: z.enum(['single', 'multiple', 'choice']),
+    mode: z.enum(askModes),
     options: optionsAttr,
     explanation: z.string().optional(),
   }),

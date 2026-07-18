@@ -11,7 +11,7 @@ import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
-import { skillDisplayName } from '@/skills/display'
+import { buildDisplayNameToSlug, skillDisplayName } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
 import { deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -183,7 +183,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Display-title → slug, for the whole library (disabled skills still
     // highlight as amber chips). The composer shows `/Daily Brief`; the model
     // and stored message get `/daily-brief` via send-time normalization.
-    const displayNameToSlug = useMemo(() => new Map(library.map((s) => [skillDisplayName(s), s.name])), [library])
+    const displayNameToSlug = useMemo(() => buildDisplayNameToSlug(library), [library])
     const enabledSlugs = useMemo(
       () => new Set(library.filter((s) => isEnabled(s.id)).map((s) => s.name)),
       [library, isEnabled],
@@ -287,9 +287,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // Read the latest input from a ref so deferred callers (e.g. the
         // `runSkill` microtask) don't operate on a stale closure value.
         // Insert the display title, not the slug — the user only ever sees
-        // titles in chat; send-time normalization restores the slug.
+        // titles in chat; send-time normalization restores the slug. When the
+        // display name is ambiguous (absent from the map), fall back to the
+        // slug so the token stays resolvable at send time.
         const skill = skillBySlug.get(slug)
-        const next = appendSlashToken(inputRef.current, skill ? skillDisplayName(skill) : slug)
+        const displayName = skill ? skillDisplayName(skill) : slug
+        const next = appendSlashToken(inputRef.current, displayNameToSlug.has(displayName) ? displayName : slug)
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -302,7 +305,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           ta?.setSelectionRange(next.length, next.length)
         })
       },
-      [setInput, setCursorPos, skillBySlug],
+      [setInput, setCursorPos, skillBySlug, displayNameToSlug],
     )
 
     const insertInstructionText = useCallback(
@@ -373,11 +376,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // — Skills v1 Open Q #5. Quotes are injected into the send (as `> …`
     // blockquotes) but aren't part of `currentInput`, so they'd otherwise be
     // invisible to the estimate.
+    // Display tokens (`/Daily Brief`) become slugs (`/daily-brief`) here — the
+    // model, the stored message, and the token estimate only ever see slugs.
+    // One memo feeds both the estimate and the send so they agree by
+    // construction.
+    const normalizedInput = useMemo(
+      () => normalizeSkillTokensToSlugs(input, displayNameToSlug),
+      [input, displayNameToSlug],
+    )
+
     const additionalInputTokens = useMemo(() => {
-      // Normalize display tokens to slugs first — the resolver (shared with
-      // the send path in ai/fetch.ts) only speaks slugs.
-      const normalized = normalizeSkillTokensToSlugs(input, displayNameToSlug)
-      const instructions = resolveSkillTokenInstructions(normalized, enabledInstructionBySlug)
+      // The resolver (shared with the send path in ai/fetch.ts) only speaks slugs.
+      const instructions = resolveSkillTokenInstructions(normalizedInput, enabledInstructionBySlug)
       let total = 0
       for (const instruction of instructions) {
         total += estimateTokensForText(instruction)
@@ -386,7 +396,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         total += estimateTokensForText(quote.data.text)
       }
       return total
-    }, [input, enabledInstructionBySlug, displayNameToSlug, quotes])
+    }, [normalizedInput, enabledInstructionBySlug, quotes])
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
       model: selectedModel,
@@ -470,9 +480,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const handleSubmit = async () => {
       try {
         // Prevent submitting while streaming, or with no text, attachments, or quotes.
-        // Display tokens (`/Daily Brief`) become slugs (`/daily-brief`) here —
-        // the model and the stored message only ever see slugs.
-        const textToSend = normalizeSkillTokensToSlugs(input, displayNameToSlug).trim()
+        const textToSend = normalizedInput.trim()
         if (isStreaming || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
@@ -618,15 +626,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         const ta = e.currentTarget
         const caretCollapsed = ta.selectionStart === ta.selectionEnd
         if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
-          const deleted = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
-          if (deleted) {
+          const deletion = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
+          if (deletion) {
             e.preventDefault()
-            setInput(deleted.text)
-            setCursorPos(deleted.caret)
+            setInput(deletion.text)
+            setCursorPos(deletion.caret)
             requestAnimationFrame(() => {
               const el = getTextarea()
               el?.focus()
-              el?.setSelectionRange(deleted.caret, deleted.caret)
+              el?.setSelectionRange(deletion.caret, deletion.caret)
             })
             return
           }

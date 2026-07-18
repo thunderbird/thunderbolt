@@ -118,7 +118,7 @@ describe('parseSkillTokens', () => {
 describe('findSkillTokens', () => {
   it('reports each token with start/end positions and bare slug', () => {
     expect(findSkillTokens('hi /meeting-notes there')).toEqual([
-      { slug: 'meeting-notes', start: 3, end: 17, committed: true, display: false },
+      { slug: 'meeting-notes', start: 3, end: 17, committed: true, isDisplay: false },
     ])
   })
 
@@ -133,7 +133,7 @@ describe('findSkillTokens', () => {
 
   it('flags a token at end-of-input as not committed (still typing)', () => {
     const tokens = findSkillTokens('hello /meeting')
-    expect(tokens).toEqual([{ slug: 'meeting', start: 6, end: 14, committed: false, display: false }])
+    expect(tokens).toEqual([{ slug: 'meeting', start: 6, end: 14, committed: false, isDisplay: false }])
   })
 
   it('flags a token followed by whitespace as committed', () => {
@@ -160,7 +160,7 @@ describe('display-title tokens', () => {
 
   it('matches a multi-word display token and maps it to its slug', () => {
     expect(findSkillTokens('run /Daily Brief now', titles)).toEqual([
-      { slug: 'daily-brief', start: 4, end: 16, committed: true, display: true },
+      { slug: 'daily-brief', start: 4, end: 16, committed: true, isDisplay: true },
     ])
   })
 
@@ -173,7 +173,7 @@ describe('display-title tokens', () => {
     // "Briefing" ≠ "Brief" — the char after the candidate must be whitespace/end.
     expect(findSkillTokens('/Daily Briefing now', titles)).toEqual([
       // Falls back to the single-word slug grammar: "/Daily".
-      { slug: 'Daily', start: 0, end: 6, committed: true, display: false },
+      { slug: 'Daily', start: 0, end: 6, committed: true, isDisplay: false },
     ])
   })
 

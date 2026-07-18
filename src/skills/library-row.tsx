@@ -78,7 +78,7 @@ export const LibraryRow = ({
               <Switch
                 checked={enabled}
                 onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
-                aria-label={enabled ? `Disable /${skill.name}` : `Enable /${skill.name}`}
+                aria-label={`${enabled ? 'Disable' : 'Enable'} ${skillDisplayName(skill)}`}
               />
             </span>
           </div>

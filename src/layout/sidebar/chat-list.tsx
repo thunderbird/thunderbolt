@@ -54,16 +54,21 @@ export const ChatList = ({
             />
           </div>
         )}
+        {/* overflow-hidden in BOTH states: while max-height animates, the input
+            would otherwise escape the shrinking/growing box and paint over the
+            first chat rows. Transition is scoped to the animated properties so
+            sidebar-width changes (rail collapse) don't ride along. */}
         <div
-          className={`transition-all duration-300 ease-in-out flex-shrink-0 ${
+          className={`overflow-hidden transition-[max-height,opacity,margin-top] duration-300 ease-in-out flex-shrink-0 ${
             showSearch && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery)
               ? 'max-h-12 opacity-100 mt-2'
-              : 'max-h-0 opacity-0 overflow-hidden'
+              : 'max-h-0 opacity-0'
           }`}
         >
           <SearchInput
             ref={searchInputRef}
             containerClassName="mb-1"
+            className="bg-sidebar-accent dark:bg-sidebar-accent border-transparent focus-visible:border-border"
             placeholder="Search chats..."
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}

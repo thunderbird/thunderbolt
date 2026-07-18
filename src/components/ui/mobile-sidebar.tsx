@@ -129,7 +129,9 @@ export const MobileSidebar = ({
         {/* Dim overlay — plain opacity fade (compositor-only). Intentionally NOT blurred:
             unlike the app's Radix sheet/dialog overlays (bg-black/50 backdrop-blur-md), this
             skips backdrop-filter because animating opacity on a blur layer forces a per-frame
-            re-blur of the scene behind it — the main source of close-animation jank on mobile. */}
+            re-blur of the scene behind it — the main source of close-animation jank on mobile.
+            Exception: the macOS desktop build restores the blur via a `.mac-vibrancy` rule in
+            index.css (desktop GPUs absorb the re-blur cost). */}
         <m.div
           data-slot="sidebar-overlay"
           className="fixed inset-0 z-50 bg-black/40"

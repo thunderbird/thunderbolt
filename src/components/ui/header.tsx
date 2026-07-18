@@ -10,7 +10,8 @@ import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, ArrowRight, Menu, MessageCirclePlus, PanelLeft } from 'lucide-react'
+import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
+import { ArrowLeft, ArrowRight, Menu, MessageCirclePlus } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
@@ -232,7 +233,7 @@ export const Header = () => {
             className="size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground"
             onClick={toggleSidebar}
           >
-            <PanelLeft className="size-[var(--icon-size-default)]" />
+            <PanelLeftRounded className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Expand Sidebar</span>
           </Button>
         )}

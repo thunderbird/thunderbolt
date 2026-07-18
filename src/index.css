@@ -287,6 +287,100 @@
   --color-sidebar-ring: #8a8a88;
 }
 
+/* macOS desktop app (Tauri) vibrancy — the window is transparent with a
+   native NSVisualEffectView blur behind it (src-tauri/src/lib.rs). The body
+   goes transparent and the sidebar surface goes translucent so the desktop
+   blur reads through the left sidebar; the main content pane stays opaque
+   via SidebarInset's bg-background. The class is applied to <html> before
+   first render (src/index.tsx) and only on the Tauri macOS build. */
+.mac-vibrancy body {
+  background-color: transparent;
+}
+/* The index.html boot script and theme-provider set an inline opaque
+   background-color on <html> (flash prevention / overscroll tinting).
+   Inline styles beat class rules, so !important is required — it's the one
+   supported way for a stylesheet to override an inline style. */
+.mac-vibrancy {
+  background-color: transparent !important;
+}
+/* Translucency is scoped to the sidebar's surface element rather than the
+   --color-sidebar token: nested elements also paint bg-sidebar (nav-toggle
+   thumb) and translucent layers would stack into visible bands. These rules
+   are unlayered so they beat Tailwind's layered bg-sidebar utility. */
+/* Light glass leans creme rather than white: at low alpha the desktop's
+   whites/blacks/blues dominate, so the tint carries extra warmth/saturation
+   (drawn from the theme's beige family) to keep the panel on-brand. */
+/* Light alpha can sit far lower than dark's: the light theme pairs with a
+   luminance-normalizing material (see syncMacWindowEffects) that keeps the
+   blur bright on its own, so the tint only needs to add warmth. */
+.mac-vibrancy [data-sidebar='sidebar'] {
+  background-color: rgb(246 238 225 / 52%);
+}
+.mac-vibrancy.dark [data-sidebar='sidebar'] {
+  background-color: rgb(40 42 43 / 78%);
+}
+/* Fills INSIDE the glass become translucent tints so the blur reads through
+   them instead of punching opaque holes in it:
+   - --color-sidebar-accent: active/hover pills (New Chat, chat list items)
+     and the nav-toggle track. Same perceived shade as the opaque originals
+     (#eeebe6 / #383a39) expressed as ink-over-glass.
+   - --color-sidebar: the nav-toggle thumb. The docked surface and the mobile
+     drawer don't ride this token (explicit rules above), so this only
+     affects nested bg-sidebar elements. Dark mode flips it from the theme's
+     dark ink to a white lift — ink stacked over the track + dark glass
+     compounds toward opaque black, while "lighter = raised" matches how
+     native macOS controls sit on glass.
+   - --color-sidebar-border: the toggle outline and separators; solid borders
+     read as hard opaque rings on glass. */
+.mac-vibrancy {
+  --color-sidebar: rgb(255 255 255 / 45%);
+  --color-sidebar-accent: rgb(38 33 32 / 8%);
+  --color-sidebar-border: rgb(38 33 32 / 6%);
+}
+.mac-vibrancy.dark {
+  --color-sidebar: rgb(255 255 255 / 12%);
+  --color-sidebar-accent: rgb(255 255 255 / 8%);
+  --color-sidebar-border: rgb(255 255 255 / 10%);
+}
+/* Focused input border on light glass: the solid --color-border tier
+   (#e5dfd5) washes out against the bright creme blur, so use translucent ink
+   that reads on any backdrop. Dark glass keeps the default — #434546 already
+   registers against the dark blur. */
+.mac-vibrancy:not(.dark) [data-sidebar='sidebar'] [data-slot='input']:focus-visible {
+  border-color: rgb(38 33 32 / 25%);
+}
+/* Collapsed icon rail: opaque. A sliver of glass reads as a rendering
+   artifact rather than a surface, and the rail is meant to blend with the
+   main header chrome (its strip paints bg-background). Background-color
+   transition matches the rail's 200ms width animation. */
+.mac-vibrancy [data-sidebar='sidebar'] {
+  transition: background-color 200ms linear;
+}
+.mac-vibrancy [data-collapsible='icon'] [data-sidebar='sidebar'] {
+  background-color: #fefdfb;
+}
+.mac-vibrancy.dark [data-collapsible='icon'] [data-sidebar='sidebar'] {
+  background-color: #282a2b;
+}
+/* Narrow-window drawer's dim overlay: blur the page behind it, matching the
+   app's other modal overlays (bg-black/50 backdrop-blur-md). The base
+   component skips backdrop-filter because animating opacity over a blur
+   layer re-blurs per frame and janks on phones (see mobile-sidebar.tsx);
+   mac-vibrancy only exists on the desktop build, where that cost is fine. */
+.mac-vibrancy [data-slot='sidebar-overlay'] {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+/* Narrow-window drawer: opaque. It slides OVER the app's content, which the
+   native window blur (behind the webview) can't reach, so translucency here
+   would just show the page through the surface rather than glass. */
+.mac-vibrancy [data-sidebar='sidebar'][data-mobile='true'] {
+  background-color: #fefdfb;
+}
+.mac-vibrancy.dark [data-sidebar='sidebar'][data-mobile='true'] {
+  background-color: #282a2b;
+}
+
 @keyframes accordion-down {
   from {
     height: 0;

@@ -18,6 +18,11 @@
         "minHeight": 600,
         "minWidth": 600,
         "visible": false,
+        "transparent": true,
+        "windowEffects": {
+          "effects": ["hudWindow"],
+          "state": "followsWindowActiveState"
+        },
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "trafficLightPosition": {
@@ -26,6 +31,7 @@
         }
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": {
         "default-src": "'self' tauri: asset:",

@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
-import { PanelLeft } from 'lucide-react'
+import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import type { ReactNode } from 'react'
 
 type SidebarHeaderProps = {
@@ -42,11 +42,11 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
 
   return (
     <>
+      {/* No bg on the strip — the sidebar surface behind it already paints
+          bg-sidebar; an own layer would stack visibly when the surface is
+          translucent (macOS vibrancy). */}
       {showChromeStrip && isExpanded && (
-        <div
-          data-tauri-drag-region
-          className="h-[var(--touch-height-xl)] bg-sidebar flex-shrink-0 flex items-center gap-2 px-2"
-        >
+        <div data-tauri-drag-region className="h-[var(--touch-height-xl)] flex-shrink-0 flex items-center gap-2 px-2">
           {/* Same spot as the collapsed state's toggle in the main Header (and
               the mobile-layout burger): just right of the macOS traffic
               lights, so the button doesn't jump when the sidebar toggles. The
@@ -60,7 +60,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
             )}
             onClick={onToggle}
           >
-            <PanelLeft className="size-[var(--icon-size-default)]" />
+            <PanelLeftRounded className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Collapse Sidebar</span>
           </Button>
           {navToggle && (
@@ -112,7 +112,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
                       tooltip="Toggle Sidebar"
                       className="cursor-pointer size-8 justify-center text-muted-foreground hover:text-foreground"
                     >
-                      <PanelLeft className="size-[var(--icon-size-default)]" />
+                      <PanelLeftRounded className="size-[var(--icon-size-default)]" />
                       <span className="sr-only">Toggle Sidebar</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

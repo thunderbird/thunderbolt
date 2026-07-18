@@ -30,12 +30,12 @@ describe('renderHighlightedSkillTokens', () => {
     expect(container.textContent).toContain('just a message')
   })
 
-  it('paints a committed enabled token as a steel-blue badge', () => {
+  it('paints a committed enabled token as a quiet beige-gray badge', () => {
     // Trailing space → committed.
     const { container } = renderTokens('use /meeting-notes please')
     const span = container.querySelector('.skill-token')
     expect(span?.textContent).toBe('/meeting-notes')
-    expect(span?.className).toContain('text-sky-800')
+    expect(span?.className).toContain('text-muted-foreground')
   })
 
   it('paints a committed disabled token as an amber badge', () => {
@@ -72,7 +72,7 @@ describe('renderHighlightedSkillTokens', () => {
     const badges = container.querySelectorAll('.skill-token')
     expect(badges).toHaveLength(3)
     const classes = [...badges].map((b) => b.className)
-    expect(classes.some((c) => c.includes('text-sky-800'))).toBe(true)
+    expect(classes.some((c) => c.includes('text-muted-foreground'))).toBe(true)
     expect(classes.some((c) => c.includes('text-amber-700'))).toBe(true)
     expect(classes.some((c) => c.includes('text-red-600'))).toBe(true)
   })

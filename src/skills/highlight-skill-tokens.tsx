@@ -33,7 +33,7 @@ export type SkillStatusClassifier = (slug: string) => { status: SkillTokenStatus
  * - Committed (followed by whitespace) → an inline pill badge (`.skill-token`,
  *   a paint-only background + box-shadow ring that cannot disturb the
  *   textarea's line metrics) showing only the name, tinted by status:
- *   - enabled → calm steel blue, the resting "this will resolve" state.
+ *   - enabled → a quiet beige-gray chip, the resting "this will resolve" state.
  *   - disabled → amber, the "needs attention" signal.
  *   - unknown → red, "no skill by this name."
  *
@@ -147,11 +147,12 @@ const colorClassFor = (committed: boolean, status: SkillTokenStatus): string => 
     return ''
   }
   // `.skill-token` draws the pill from currentColor, so each status only
-  // needs a text color. Enabled uses a desaturated steel blue — calmer than
-  // the old sky-500, reading as "chip" rather than "link". Disabled is
-  // amber (attention, distinct from the brand pink), unknown is red.
+  // needs a text color. Enabled uses the theme's warm beige-gray
+  // (muted-foreground) — the resting "this will resolve" state should read
+  // as a quiet chip in the theme's neutral palette, not an accent. Disabled
+  // is amber (attention), unknown is red.
   if (status === 'enabled') {
-    return 'skill-token text-sky-800/90 dark:text-sky-300/90'
+    return 'skill-token text-muted-foreground'
   }
   if (status === 'disabled') {
     return 'skill-token text-amber-700 dark:text-amber-400'

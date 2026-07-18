@@ -46,7 +46,8 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { http } from '@/lib/http'
-import { AlertTriangle, Check, Cpu, Loader2, Lock, MoreVertical, Plus, SquarePen, Trash2, X } from 'lucide-react'
+import { PrivateBadge } from '@/components/ui/private-badge'
+import { AlertTriangle, Check, Cpu, Loader2, MoreVertical, Plus, SquarePen, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -1163,18 +1164,6 @@ export default function ModelsPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <CardTitle className="text-lg font-medium flex flex-row items-center gap-2">
-                        {!!model.isConfidential && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Lock className="size-3.5" />
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom">
-                                <p>Encrypted</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
                         {needsApiKey(model) && (
                           <TooltipProvider>
                             <Tooltip>
@@ -1196,6 +1185,7 @@ export default function ModelsPage() {
                         >
                           {model.name}
                         </ModificationIndicator>
+                        {!!model.isConfidential && <PrivateBadge />}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {getProviderDisplay(model.provider)} - {model.model}

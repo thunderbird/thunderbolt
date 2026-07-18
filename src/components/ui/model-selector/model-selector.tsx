@@ -10,11 +10,13 @@ import {
   type SearchableMenuItem,
 } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { GradientLock } from '@/components/ui/gradient-lock'
+import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, ChevronDown, Lock, Plus } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Plus } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 export type ModelSelectorProps = {
@@ -61,7 +63,7 @@ const toMenuItem = (
   label: model.name,
   description: model.description || model.model,
   searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
-  icon: model.isConfidential === 1 ? <Lock className="size-3.5 text-green-600 dark:text-green-500" /> : undefined,
+  icon: model.isConfidential === 1 ? <PrivateBadge /> : undefined,
   disabled: isDisabled,
   data: { model, disabledByEncryption },
 })
@@ -150,7 +152,7 @@ export const ModelSelector = ({
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
         <AlertTriangle className="size-3.5 text-amber-500" />
       ) : selected?.data?.model.isConfidential === 1 ? (
-        <Lock className="size-3.5 text-muted-foreground" />
+        <GradientLock className="size-3.5" />
       ) : null}
       {/* Muted in both variants — trigger labels are chrome, not content. */}
       <span className="font-medium text-muted-foreground">{selected?.label ?? 'Select Model'}</span>
@@ -174,7 +176,13 @@ export const ModelSelector = ({
         )}
       >
         <span className="font-medium truncate">{item.label}</span>
-        {showMissingKeyHint ? <AlertTriangle className="size-3.5 text-amber-500 flex-shrink-0" /> : item.icon}
+        {/* ml-auto pushes the trailing indicator (missing-key warning or the
+            confidential "Private" badge) to the row's right edge. */}
+        {showMissingKeyHint ? (
+          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-amber-500" />
+        ) : item.icon ? (
+          <span className="ml-auto flex-shrink-0">{item.icon}</span>
+        ) : null}
       </div>
     )
 

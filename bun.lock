@@ -18,6 +18,7 @@
         "@earendil-works/pi-agent-core": "0.80.2",
         "@earendil-works/pi-ai": "0.80.2",
         "@earendil-works/pi-coding-agent": "0.80.2",
+        "@fontsource-variable/mozilla-headline": "^5.2.2",
         "@hookform/resolvers": "^5.2.1",
         "@icons-pack/react-simple-icons": "^13.13.0",
         "@journeyapps/wa-sqlite": "^1.7.0",
@@ -433,6 +434,8 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8", "", { "dependencies": { "@floating-ui/dom": "^1.7.6" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-cC52bHwM/n/CxS87FH0yWdngEZrjdtLW/qVruo68qg+prK7ZQ4YGdut2GyDVpoGeAYe/h899rVeOVm6Oi40k2A=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
+
+    "@fontsource-variable/mozilla-headline": ["@fontsource-variable/mozilla-headline@5.2.2", "", {}, "sha512-+aGnAB10c8Db7BTpsZNnwmX7O381tKPqSaWIbbEtiW6Z8/nrl0NpBmBDRYjKwVfOCSnJs77lhSgC3cIZU3/nyQ=="],
 
     "@freedomofpress/crypto-browser": ["@freedomofpress/crypto-browser@0.1.7", "", { "dependencies": { "@noble/curves": "^1.6.0" } }, "sha512-zjWmZDKdAu8g0Zq1IjBQ+sKQ/NpfzStBDFjy/qHUSMVEL4wNlNGtA7lhtw8v8asXa0yqF2QTYQ3rq6xCTQeADw=="],
 

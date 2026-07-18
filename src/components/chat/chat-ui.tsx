@@ -16,6 +16,24 @@ import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
+/** Returns a time-of-day greeting. */
+const getGreeting = () => {
+  const hour = new Date().getHours()
+  if (hour < 5) {
+    return 'Up late?'
+  }
+  const timeOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'
+  return `Good ${timeOfDay}`
+}
+
+const EmptyChatGreeting = () => {
+  return (
+    <div className="flex items-center gap-5">
+      <AppLogo size={72} className="opacity-60" />
+      <span className="font-heading text-3xl font-medium text-muted-foreground">{getGreeting()}</span>
+    </div>
+  )
+}
 
 export default function ChatUI() {
   const { chatInstance } = useCurrentChatSession()
@@ -121,6 +139,11 @@ export default function ChatUI() {
               duration: 0.25,
             }}
           >
+            {!hasMessages && !isMobile && (
+              <m.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-24">
+                <EmptyChatGreeting />
+              </m.div>
+            )}
             <div className="w-full max-w-[696px] min-w-[268px]">
               <PermissionDialogHost />
             </div>

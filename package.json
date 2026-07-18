@@ -70,6 +70,7 @@
     "@earendil-works/pi-agent-core": "0.80.2",
     "@earendil-works/pi-ai": "0.80.2",
     "@earendil-works/pi-coding-agent": "0.80.2",
+    "@fontsource-variable/mozilla-headline": "^5.2.2",
     "@hookform/resolvers": "^5.2.1",
     "@icons-pack/react-simple-icons": "^13.13.0",
     "@journeyapps/wa-sqlite": "^1.7.0",

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 @import 'tailwindcss';
+@import '@fontsource-variable/mozilla-headline';
 
 @plugin 'tailwindcss-animate';
 @plugin '@tailwindcss/typography';
@@ -10,6 +11,9 @@
 @variant dark (&:where(.dark, .dark *));
 
 @theme {
+  /* Mozilla brand font for display headings (e.g. the empty-chat greeting). */
+  --font-heading: 'Mozilla Headline Variable', ui-sans-serif, system-ui, sans-serif;
+
   /* No pure white/black anywhere — remap Tailwind's white/black utilities
      (bg-white, text-white, bg-black/40 overlays, etc.) to the theme's off-white
      and slate so nothing renders as #ffffff or #000000. */

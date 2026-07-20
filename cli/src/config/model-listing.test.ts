@@ -72,7 +72,9 @@ describe('listModels', () => {
     const result = await listModels({ provider: 'google', apiKey: 'gemini-key', fetchFn })
 
     expect(result).toEqual({ source: 'live', ids: ['gemini-live-chat'] })
-    expect(String(requests[0]?.input)).toBe('https://generativelanguage.googleapis.com/v1beta/models?key=gemini-key')
+    // The key must ride in the header, never the URL, so it can't land in proxy logs.
+    expect(String(requests[0]?.input)).toBe('https://generativelanguage.googleapis.com/v1beta/models')
+    expect(new Headers(requests[0]?.init?.headers).get('x-goog-api-key')).toBe('gemini-key')
     expect(new Headers(requests[0]?.init?.headers).has('Authorization')).toBe(false)
   })
 
@@ -204,6 +206,23 @@ describe('listModels', () => {
     expect(result.ids).toEqual(openAiCatalogIds)
   })
 
+  test('returns catalog models when the response body stalls past the timeout', async () => {
+    // Headers arrive instantly, but the body never resolves — the deadline must
+    // cover the read, or the wizard hangs forever on a stalled connection.
+    class StalledBodyResponse extends Response {
+      override readonly json = (): Promise<unknown> => new Promise<unknown>(() => {})
+    }
+    const result = await listModels({
+      provider: 'openai',
+      apiKey: 'key',
+      fetchFn: async () => new StalledBodyResponse(),
+      timeoutMs: 10,
+    })
+
+    expect(result.source).toBe('catalog')
+    expect(result.ids).toEqual(openAiCatalogIds)
+  })
+
   test('returns catalog models when fetch rejects with a network TypeError', async () => {
     const fetchFn: ModelListingFetch = async () => {
       throw new TypeError('Network request failed.')
@@ -264,11 +283,14 @@ describe('listModels', () => {
 
   test('propagates unexpected errors from model post-processing', async () => {
     const unexpectedError = new Error('Unexpected post-processing failure.')
-    const parsed = new Proxy<Record<string, unknown>>({}, {
-      get: () => {
-        throw unexpectedError
+    const parsed = new Proxy<Record<string, unknown>>(
+      {},
+      {
+        get: () => {
+          throw unexpectedError
+        },
       },
-    })
+    )
     class PostProcessingResponse extends Response {
       override readonly json = async (): Promise<unknown> => parsed
     }
@@ -292,11 +314,11 @@ describe('listModels', () => {
 
     expect(unauthorized.source).toBe('catalog')
     expect(unauthorized.ids).toEqual(openAiCatalogIds)
-    expect(unauthorized.authRejected).toBe(true)
+    expect(unauthorized.wasAuthRejected).toBe(true)
     expect(unauthorized.status).toBe(401)
     expect(forbidden.source).toBe('catalog')
     expect(forbidden.ids).toEqual(openAiCatalogIds)
-    expect(forbidden.authRejected).toBe(true)
+    expect(forbidden.wasAuthRejected).toBe(true)
     expect(forbidden.status).toBe(403)
   })
 

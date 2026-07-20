@@ -6,16 +6,17 @@
 
 import { builtinModels, builtinProviders } from '@earendil-works/pi-ai/providers/all'
 import type { ModelProvider } from '../agent/types.ts'
+import { isRecord } from '../lib/json.ts'
 
-const DEFAULT_TIMEOUT_MS = 3_000
-const MAX_LIVE_MODELS = 8
-const NON_CHAT_MODEL_PATTERN =
+const defaultTimeoutMs = 3_000
+const maxLiveModels = 8
+const nonChatModelPattern =
   /embed(?:ding)?|whisper|tts|speech|transcri|dall-?e|gpt-image|imagen|(?:^|[-_/])sora(?:[-_/]|$)|moderation|rerank/i
 
 export type ModelListingResult = {
   readonly source: 'live' | 'catalog'
   readonly ids: readonly string[]
-  readonly authRejected?: true
+  readonly wasAuthRejected?: true
   readonly status?: 401 | 403
 }
 
@@ -39,13 +40,11 @@ type ListingRequest = {
   readonly headers: Readonly<Record<string, string>>
 }
 
-/** Z.AI API reference has no model-list operation: https://docs.z.ai/llms.txt */
-const ZAI_FALLBACK_ONLY: ModelProvider = 'zai'
-
-/** Fireworks listing needs an account ID: https://docs.fireworks.ai/api-reference/list-models */
-const FIREWORKS_FALLBACK_ONLY: ModelProvider = 'fireworks'
-
-const FALLBACK_ONLY_PROVIDERS: ReadonlySet<ModelProvider> = new Set([ZAI_FALLBACK_ONLY, FIREWORKS_FALLBACK_ONLY])
+/** Providers served only from the Pi catalog because no usable live list route
+ *  exists: Z.AI's API reference has no model-list operation
+ *  (https://docs.z.ai/llms.txt), and Fireworks listing needs an account ID
+ *  (https://docs.fireworks.ai/api-reference/list-models). */
+const fallbackOnlyProviders: ReadonlySet<ModelProvider> = new Set(['zai', 'fireworks'])
 
 /** Reads numeric OpenAI or ISO Anthropic creation metadata. */
 const createdTimestamp = (candidate: Readonly<Record<string, unknown>>): number | undefined => {
@@ -55,22 +54,12 @@ const createdTimestamp = (candidate: Readonly<Record<string, unknown>>): number 
   return Number.isNaN(timestamp) ? undefined : timestamp
 }
 
-/** Narrows parsed JSON objects without weakening unknown input types. */
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 /** Reads OpenAI-compatible `{ data: [{ id, created? }] }` responses. */
 const parseOpenAiModels = (value: unknown): readonly ListedModel[] => {
   if (!isRecord(value) || !Array.isArray(value.data)) return []
   return value.data.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.id !== 'string') return []
-    const created = createdTimestamp(candidate)
-    return [
-      {
-        id: candidate.id,
-        ...(created === undefined ? {} : { created }),
-      },
-    ]
+    return [{ id: candidate.id, created: createdTimestamp(candidate) }]
   })
 }
 
@@ -90,8 +79,7 @@ const parseXaiModels = (value: unknown): readonly ListedModel[] => {
   if (!isRecord(value) || !Array.isArray(value.models)) return []
   return value.models.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.id !== 'string') return []
-    const created = createdTimestamp(candidate)
-    return [{ id: candidate.id, ...(created === undefined ? {} : { created }) }]
+    return [{ id: candidate.id, created: createdTimestamp(candidate) }]
   })
 }
 
@@ -101,8 +89,7 @@ const parseTogetherModels = (value: unknown): readonly ListedModel[] => {
   return value.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.id !== 'string' || typeof candidate.type !== 'string') return []
     if (!['chat', 'language', 'code'].includes(candidate.type)) return []
-    const created = createdTimestamp(candidate)
-    return [{ id: candidate.id, ...(created === undefined ? {} : { created }) }]
+    return [{ id: candidate.id, created: createdTimestamp(candidate) }]
   })
 }
 
@@ -114,32 +101,34 @@ const parseListedModels = (provider: ModelProvider, value: unknown): readonly Li
   return parseOpenAiModels(value)
 }
 
-/** Identifies fetch failures that should use catalog models. */
+/** Identifies fetch failures that should use catalog models. Per the fetch
+ *  spec, a network failure rejects with `TypeError` and an abort/timeout with
+ *  a `DOMException` — this is only ever applied around the fetch call and the
+ *  body read (never our own parsing), so a programming `TypeError` elsewhere
+ *  still surfaces loudly. */
 const isExpectedFetchError = (error: unknown): boolean => error instanceof DOMException || error instanceof TypeError
 
 /** Keeps model ids intended for chat rather than specialized media or ranking APIs. */
 const chatModels = (models: readonly ListedModel[]): readonly ListedModel[] =>
-  models.filter(({ id }) => !NON_CHAT_MODEL_PATTERN.test(id))
+  models.filter(({ id }) => !nonChatModelPattern.test(id))
 
 /** Sorts newest-first when creation metadata exists, preserving order otherwise. */
 const newestModelsFirst = (models: readonly ListedModel[]): readonly ListedModel[] => {
   if (!models.some(({ created }) => created !== undefined)) return models
-  return [...models].sort(
-    (left, right) => (right.created ?? Number.NEGATIVE_INFINITY) - (left.created ?? Number.NEGATIVE_INFINITY),
-  )
+  const rank = ({ created }: ListedModel): number => created ?? Number.NEGATIVE_INFINITY
+  // Explicit equal branch: two missing timestamps must compare 0, not NaN.
+  return [...models].sort((left, right) => (rank(left) === rank(right) ? 0 : rank(right) - rank(left)))
 }
 
-/** Returns current Pi catalog ids using setup wizard's existing three-item limit. */
+/** Returns current Pi catalog ids using setup wizard's existing three-item
+ *  limit. Reading the static Pi catalog for a built-in provider is trusted —
+ *  a failure here is a real catalog regression and should surface loudly. */
 const catalogIds = (provider: ModelProvider): readonly string[] => {
   if (provider === 'openai-compat') return []
-  try {
-    return builtinModels()
-      .getModels(provider)
-      .slice(0, 3)
-      .map(({ id }) => id)
-  } catch {
-    return []
-  }
+  return builtinModels()
+    .getModels(provider)
+    .slice(0, 3)
+    .map(({ id }) => id)
 }
 
 /** Resolves provider base URL from Pi descriptors, except caller-owned custom targets. */
@@ -156,10 +145,15 @@ const providerBaseUrl = (provider: ModelProvider, customBaseUrl?: string): strin
 /** Joins one endpoint path without duplicating a trailing slash. */
 const endpoint = (baseUrl: string, path: string): string => `${baseUrl.replace(/\/$/, '')}/${path}`
 
-/** Mistral listing route: https://docs.mistral.ai/api/endpoint/models */
+/** Mistral listing route: https://docs.mistral.ai/api/endpoint/models
+ *  Pi's inference base is the bare host (`https://api.mistral.ai`), so the
+ *  `/v1` listing prefix is appended. */
 const mistralListingBaseUrl = (baseUrl: string): string => endpoint(baseUrl, 'v1')
 
-/** MiniMax listing route: https://platform.minimax.io/docs/api-reference/models/openai/list-models */
+/** MiniMax listing route: https://platform.minimax.io/docs/api-reference/models/openai/list-models
+ *  Pi's inference base carries the Anthropic-compat path
+ *  (`https://api.minimaxi.com/anthropic`), which `new URL('/v1', …)`
+ *  deliberately *replaces* — unlike mistral's append above. */
 const minimaxListingBaseUrl = (baseUrl: string): string => new URL('/v1', baseUrl).toString()
 
 /** Adapts Pi inference bases to providers' OpenAI-compatible model-listing bases. */
@@ -176,12 +170,13 @@ const anthropicListingRequest = (apiKey: string): ListingRequest => ({
   headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
 })
 
-/** Gemini listing request: https://ai.google.dev/api/models#method:-models.list */
-const googleListingRequest = (apiKey: string): ListingRequest => {
-  const url = new URL(endpoint(providerBaseUrl('google'), 'models'))
-  url.searchParams.set('key', apiKey)
-  return { url: url.toString(), headers: {} }
-}
+/** Gemini listing request: https://ai.google.dev/api/models#method:-models.list
+ *  The key rides in the `x-goog-api-key` header, never the query string, so it
+ *  cannot land in proxy or access logs. */
+const googleListingRequest = (apiKey: string): ListingRequest => ({
+  url: endpoint(providerBaseUrl('google'), 'models'),
+  headers: { 'x-goog-api-key': apiKey },
+})
 
 /** xAI chat-model route: https://docs.x.ai/developers/rest-api-reference/inference/models#list-language-models */
 const xaiListingRequest = (apiKey: string): ListingRequest => ({
@@ -200,54 +195,80 @@ const listingRequest = (provider: ModelProvider, apiKey: string, baseUrl?: strin
   }
 }
 
+/** One abort signal and deadline shared by the listing fetch and its body read. */
+type RequestTimeout = {
+  readonly signal: AbortSignal
+  readonly expired: Promise<never>
+  readonly clear: () => void
+}
+
+/** Starts the request deadline: past `timeoutMs` the signal aborts and `expired`
+ *  rejects, covering fetches (or injected fetches) that ignore the signal. */
+const createRequestTimeout = (timeoutMs: number): RequestTimeout => {
+  const controller = new AbortController()
+  const timeout = Promise.withResolvers<never>()
+  const timer = setTimeout(() => {
+    controller.abort()
+    timeout.reject(new DOMException('Model listing timed out.', 'TimeoutError'))
+  }, timeoutMs)
+  return { signal: controller.signal, expired: timeout.promise, clear: () => clearTimeout(timer) }
+}
+
+/** Runs the listing fetch under the shared deadline, mapping expected network
+ *  failures (abort, timeout, connection errors) to `undefined`. */
+const fetchWithTimeout = async (
+  fetchFn: ModelListingFetch,
+  request: ListingRequest,
+  timeout: RequestTimeout,
+): Promise<Response | undefined> => {
+  try {
+    return await Promise.race([
+      fetchFn(request.url, { headers: request.headers, signal: timeout.signal }),
+      timeout.expired,
+    ])
+  } catch (error) {
+    if (isExpectedFetchError(error)) return undefined
+    throw error
+  }
+}
+
+/** Reads the JSON body under the same deadline as the fetch, mapping malformed
+ *  JSON and a stalled/aborted body read to `undefined`. */
+const parseJsonBody = async (response: Response, timeout: RequestTimeout): Promise<unknown> => {
+  try {
+    return await Promise.race([response.json() as Promise<unknown>, timeout.expired])
+  } catch (error) {
+    if (error instanceof SyntaxError || isExpectedFetchError(error)) return undefined
+    throw error
+  }
+}
+
 /** Lists live provider models, returning Pi catalog ids for expected provider failures. */
 export const listModels = async (options: ListModelsOptions): Promise<ModelListingResult> => {
   const fallback = (): ModelListingResult => ({ source: 'catalog', ids: catalogIds(options.provider) })
-  if (FALLBACK_ONLY_PROVIDERS.has(options.provider)) return fallback()
+  if (fallbackOnlyProviders.has(options.provider)) return fallback()
+
   const request = listingRequest(options.provider, options.apiKey, options.baseUrl)
-  const controller = new AbortController()
-  const timeout = Promise.withResolvers<never>()
-  const timeoutId = setTimeout(() => {
-    controller.abort()
-    timeout.reject(new DOMException('Model listing timed out.', 'TimeoutError'))
-  }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  const timeout = createRequestTimeout(options.timeoutMs ?? defaultTimeoutMs)
+  try {
+    const response = await fetchWithTimeout(options.fetchFn ?? globalThis.fetch, request, timeout)
+    if (!response) return fallback()
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        return { ...fallback(), wasAuthRejected: true, status: response.status }
+      }
+      return fallback()
+    }
 
-  const response = await (async (): Promise<Response | undefined> => {
-    try {
-      return await Promise.race([
-        (options.fetchFn ?? globalThis.fetch)(request.url, {
-          headers: request.headers,
-          signal: controller.signal,
-        }),
-        timeout.promise,
-      ])
-    } catch (error) {
-      if (isExpectedFetchError(error)) return undefined
-      throw error
-    } finally {
-      clearTimeout(timeoutId)
-    }
-  })()
-  if (!response) return fallback()
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      return { ...fallback(), authRejected: true, status: response.status }
-    }
-    return fallback()
+    const parsed = await parseJsonBody(response, timeout)
+    if (parsed === undefined) return fallback()
+
+    const listedModels = parseListedModels(options.provider, parsed)
+    const models = newestModelsFirst(chatModels(listedModels))
+    if (models.length === 0) return fallback()
+    return { source: 'live', ids: models.slice(0, maxLiveModels).map(({ id }) => id) }
+  } finally {
+    // Cleared only after the body settles, so the deadline covers fetch + read.
+    timeout.clear()
   }
-
-  const parsed = await (async (): Promise<unknown> => {
-    try {
-      return (await response.json()) as unknown
-    } catch (error) {
-      if (error instanceof SyntaxError) return undefined
-      throw error
-    }
-  })()
-  if (parsed === undefined) return fallback()
-
-  const listedModels = parseListedModels(options.provider, parsed)
-  const models = newestModelsFirst(chatModels(listedModels))
-  if (models.length === 0) return fallback()
-  return { source: 'live', ids: models.slice(0, MAX_LIVE_MODELS).map(({ id }) => id) }
 }

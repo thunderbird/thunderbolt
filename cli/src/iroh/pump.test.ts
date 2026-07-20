@@ -74,7 +74,7 @@ describe('writeToStdin', () => {
       flush: mock(async () => 0),
     } as unknown as FileSink
     await expect(writeToStdin(sink, Uint8Array.from([1]), 'bridge')).rejects.toBe(boom)
-    expect((sink.flush as ReturnType<typeof mock>)).not.toHaveBeenCalled()
+    expect(sink.flush as ReturnType<typeof mock>).not.toHaveBeenCalled()
     expect(stderr).toHaveBeenCalledTimes(1)
   })
 })
@@ -90,7 +90,7 @@ describe('forwardToSend', () => {
     } as unknown as SendStream
     await forwardToSend(streamOf([Uint8Array.from([1, 2]), Uint8Array.from([3])]), send)
     expect(written).toEqual([[1, 2], [3]])
-    expect((send.finish as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1)
+    expect(send.finish as ReturnType<typeof mock>).toHaveBeenCalledTimes(1)
   })
 
   it('skips zero-length chunks (never writes an empty frame)', async () => {
@@ -99,7 +99,7 @@ describe('forwardToSend', () => {
       finish: mock(async () => {}),
     } as unknown as SendStream
     await forwardToSend(streamOf([Uint8Array.from([]), Uint8Array.from([9])]), send)
-    expect((send.writeAll as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1)
+    expect(send.writeAll as ReturnType<typeof mock>).toHaveBeenCalledTimes(1)
     expect((send.writeAll as ReturnType<typeof mock>).mock.calls[0][0]).toEqual([9])
   })
 
@@ -115,7 +115,7 @@ describe('forwardToSend', () => {
       finish: mock(async () => {}),
     } as unknown as SendStream
     await expect(forwardToSend(source, send)).rejects.toBe(boom)
-    expect((send.finish as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1)
+    expect(send.finish as ReturnType<typeof mock>).toHaveBeenCalledTimes(1)
   })
 
   it('still finishes the send half when writeAll itself rejects (error-FIN on the write path)', async () => {
@@ -127,7 +127,7 @@ describe('forwardToSend', () => {
       finish: mock(async () => {}),
     } as unknown as SendStream
     await expect(forwardToSend(streamOf([Uint8Array.from([1])]), send)).rejects.toBe(boom)
-    expect((send.finish as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1)
+    expect(send.finish as ReturnType<typeof mock>).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -143,8 +143,8 @@ describe('forwardFromRecv', () => {
     })
     expect(received.map((c) => [...c])).toEqual([[1, 2, 3], [4]])
     // 3 reads: two data chunks + the terminating empty read.
-    expect((recv.read as ReturnType<typeof mock>)).toHaveBeenCalledTimes(3)
-    // Each read is bounded by READ_CHUNK_LIMIT (1 << 16).
+    expect(recv.read as ReturnType<typeof mock>).toHaveBeenCalledTimes(3)
+    // Each read is bounded by readChunkLimit (1 << 16).
     expect((recv.read as ReturnType<typeof mock>).mock.calls[0][0]).toBe(1 << 16)
   })
 
@@ -159,7 +159,7 @@ describe('forwardFromRecv', () => {
       }),
     ).rejects.toBe(boom)
     // The loop must not keep draining the recv stream after the sink failed.
-    expect((recv.read as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1)
+    expect(recv.read as ReturnType<typeof mock>).toHaveBeenCalledTimes(1)
   })
 
   it('applies backpressure: does not read again until the sink settles', async () => {
@@ -179,9 +179,9 @@ describe('forwardFromRecv', () => {
     // Drain all microtasks (macrotask flush), then assert we're parked on the sink.
     await new Promise<void>((r) => setTimeout(r, 0))
     expect(sinkCalls).toBe(1)
-    expect((recv.read as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1)
+    expect(recv.read as ReturnType<typeof mock>).toHaveBeenCalledTimes(1)
     releaseSink()
     await done
-    expect((recv.read as ReturnType<typeof mock>)).toHaveBeenCalledTimes(2)
+    expect(recv.read as ReturnType<typeof mock>).toHaveBeenCalledTimes(2)
   })
 })

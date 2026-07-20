@@ -27,7 +27,7 @@ export type HarnessBundle = {
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
 /** Built-in Pi providers exposed by thunderbolt. */
-export const BUILTIN_PROVIDERS = [
+export const builtinProviders = [
   'anthropic',
   'openai',
   'google',
@@ -45,13 +45,17 @@ export const BUILTIN_PROVIDERS = [
 ] as const
 
 /** Built-in Pi provider exposed by thunderbolt. */
-export type BuiltinProvider = (typeof BUILTIN_PROVIDERS)[number]
+export type BuiltinProvider = (typeof builtinProviders)[number]
 
 /** All model backends accepted by `--provider`. */
-export const MODEL_PROVIDERS = [...BUILTIN_PROVIDERS, 'openai-compat'] as const
+export const modelProviders = [...builtinProviders, 'openai-compat'] as const
 
 /** Model backend selected for a harness. */
-export type ModelProvider = (typeof MODEL_PROVIDERS)[number]
+export type ModelProvider = (typeof modelProviders)[number]
+
+/** Narrows an unknown value to a supported {@link ModelProvider}. */
+export const isProvider = (value: unknown): value is ModelProvider =>
+  typeof value === 'string' && (modelProviders as readonly string[]).includes(value)
 
 /** Wire protocol whose local stdio process the bridge exposes over the network.
  *  Drives only logging — the stdio↔transport pump is byte-identical for both. */

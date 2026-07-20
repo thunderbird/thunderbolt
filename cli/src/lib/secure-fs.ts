@@ -3,13 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Filesystem helpers shared by the iroh identity and allowlist stores.
+ * Filesystem helpers for security-sensitive CLI state: the iroh identity (the
+ * node's private key), the iroh allowlist (the authorization gate), and the
+ * saved provider config (which can hold an API key).
  *
- * Both files are security-sensitive — the identity *is* the node's private key,
- * and the allowlist *is* the authorization gate — so they are always written and
- * re-`chmod`ed to owner-only (`0600` files inside a `0700` dir). Enforcing the
- * mode on every read/write means a key restored from a lax backup or synced with
- * loose permissions self-heals on next use rather than silently staying exposed.
+ * Such files are always written and re-`chmod`ed to owner-only (`0600` files
+ * inside a `0700` dir). Enforcing the mode on every read/write means a key
+ * restored from a lax backup or synced with loose permissions self-heals on
+ * next use rather than silently staying exposed.
  *
  * A not-yet-created file is an expected first-run condition, not a failure — so
  * it maps to `null`; any other read error surfaces loudly.
@@ -18,9 +19,9 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 
 /** Owner-only file mode for the secret/allowlist files. */
-const FILE_MODE = 0o600
+const fileMode = 0o600
 /** Owner-only directory mode for the iroh state dir. */
-const DIR_MODE = 0o700
+const dirMode = 0o700
 
 /**
  * Read a UTF-8 file, returning `null` only when it does not exist. All other
@@ -39,13 +40,13 @@ export const readFileOrNull = async (path: string): Promise<string | null> => {
 
 /** Create (if needed) and lock down a directory to owner-only (`0700`). */
 export const ensureSecureDir = async (dir: string): Promise<void> => {
-  await mkdir(dir, { recursive: true, mode: DIR_MODE })
-  await chmod(dir, DIR_MODE)
+  await mkdir(dir, { recursive: true, mode: dirMode })
+  await chmod(dir, dirMode)
 }
 
 /** Force a file to owner-only (`0600`). Idempotent; safe to call on every load. */
 export const enforceSecureFile = async (path: string): Promise<void> => {
-  await chmod(path, FILE_MODE)
+  await chmod(path, fileMode)
 }
 
 /**
@@ -58,6 +59,6 @@ export const enforceSecureFile = async (path: string): Promise<void> => {
  */
 export const writeSecureFile = async (dir: string, path: string, contents: string): Promise<void> => {
   await ensureSecureDir(dir)
-  await writeFile(path, contents, { mode: FILE_MODE })
-  await chmod(path, FILE_MODE)
+  await writeFile(path, contents, { mode: fileMode })
+  await chmod(path, fileMode)
 }

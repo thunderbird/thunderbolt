@@ -4,20 +4,11 @@
 
 /** Resolves built-in Pi catalog models and custom OpenAI-compatible models. */
 
-import type {
-  Api,
-  Model,
-  Models,
-  MutableModels,
-  Provider,
-  ProviderStreams,
-} from '@earendil-works/pi-ai'
+import type { Api, Model, Models, MutableModels, Provider, ProviderStreams } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { buildOpenAiCompatModel } from './openai-compat-model.ts'
-import { BUILTIN_PROVIDER_ENV_VARS, DEFAULT_PROVIDER } from './defaults.ts'
+import { builtinProviderEnvVars, defaultProvider, hasProviderEnvKey } from './defaults.ts'
 import type { BuiltinProvider, ModelProvider } from './types.ts'
-
-export { BUILTIN_PROVIDER_ENV_VARS } from './defaults.ts'
 
 /** Inputs for {@link resolveModel}: model id plus provider routing. */
 export type ResolveModelOptions = {
@@ -37,7 +28,7 @@ export type ResolveModelDependencies = {
   readonly env: Readonly<Record<string, string | undefined>>
 }
 
-const DEFAULT_DEPENDENCIES: ResolveModelDependencies = { builtinModels, env: process.env }
+const defaultDependencies: ResolveModelDependencies = { builtinModels, env: process.env }
 
 /** Replaces selected provider streams with key-injecting delegates. */
 const applyApiKeyOverride = (models: MutableModels, providerId: BuiltinProvider, apiKey: string): void => {
@@ -45,8 +36,7 @@ const applyApiKeyOverride = (models: MutableModels, providerId: BuiltinProvider,
   if (!provider) throw new Error(`Pi catalog does not contain provider "${providerId}".`)
 
   const baseStream: ProviderStreams['stream'] = provider.stream
-  const stream: Provider['stream'] = (model, context, options) =>
-    baseStream(model, context, { ...options, apiKey })
+  const stream: Provider['stream'] = (model, context, options) => baseStream(model, context, { ...options, apiKey })
 
   models.setProvider({
     ...provider,
@@ -62,9 +52,8 @@ const resolveBuiltin = (
   apiKey: string | undefined,
   dependencies: ResolveModelDependencies,
 ): { models: Models; model: Model<Api> } => {
-  const envVars = BUILTIN_PROVIDER_ENV_VARS[provider]
-  const hasEnvKey = envVars.some((name) => Boolean(dependencies.env[name]))
-  if (!apiKey && !hasEnvKey) {
+  const envVars = builtinProviderEnvVars[provider]
+  if (!apiKey && !hasProviderEnvKey(provider, dependencies.env)) {
     throw new Error(
       `No API key configured for provider "${provider}". Set ${envVars.join(' or ')}, pass --api-key, or run ` +
         '`thunderbolt` in a terminal for guided setup.',
@@ -91,12 +80,12 @@ const resolveBuiltin = (
 const resolveOpenAiCompat = (opts: ResolveModelOptions): { models: Models; model: Model<Api> } => {
   if (!opts.apiKey) {
     throw new Error(
-      'The openai-compat provider requires an api key. Set THUNDERBOLT_OPENAI_COMPAT_KEY, pass --api-key, ' +
+      'The openai-compat provider requires an API key. Set THUNDERBOLT_OPENAI_COMPAT_KEY, pass --api-key, ' +
         'or run `thunderbolt` in a terminal for guided setup.',
     )
   }
   if (!opts.baseUrl) {
-    throw new Error('the openai-compat provider requires --base-url')
+    throw new Error('The openai-compat provider requires --base-url.')
   }
   return buildOpenAiCompatModel({ modelId: opts.model, baseUrl: opts.baseUrl, apiKey: opts.apiKey })
 }
@@ -108,9 +97,9 @@ const resolveOpenAiCompat = (opts: ResolveModelOptions): { models: Models; model
  */
 export const resolveModel = (
   opts: ResolveModelOptions,
-  dependencies: ResolveModelDependencies = DEFAULT_DEPENDENCIES,
+  dependencies: ResolveModelDependencies = defaultDependencies,
 ): { models: Models; model: Model<Api> } => {
-  const provider = opts.provider ?? DEFAULT_PROVIDER
+  const provider = opts.provider ?? defaultProvider
   if (provider === 'openai-compat') return resolveOpenAiCompat(opts)
   return resolveBuiltin(provider, opts.model, opts.apiKey, dependencies)
 }

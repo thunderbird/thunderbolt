@@ -12,7 +12,7 @@
  */
 
 import { irohDir, allowlistPath } from './paths.ts'
-import { readFileOrNull, writeSecureFile } from './storage.ts'
+import { readFileOrNull, writeSecureFile } from '../lib/secure-fs.ts'
 
 /**
  * The current allowlist as an ordered, de-duplicated list of NodeId strings.

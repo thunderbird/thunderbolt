@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import type { AssistantMessage, ToolResultMessage, UserMessage } from '@earendil-works/pi-ai'
 import { createSessionStore, defaultSessionsDir } from './session-store.ts'
 
-const CWD = '/workspace/project'
+const sessionCwd = '/workspace/project'
 
 const userMessage = (text: string): UserMessage => ({ role: 'user', content: text, timestamp: 0 })
 
@@ -27,7 +27,14 @@ const assistantText = (text: string): AssistantMessage => ({
   api: 'anthropic-messages',
   provider: 'anthropic',
   model: 'fake',
-  usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
   stopReason: 'stop',
   timestamp: 0,
 })
@@ -58,7 +65,7 @@ describe('createSessionStore', () => {
 
   test('a persisted session rehydrates full execution context on a fresh store', async () => {
     const writer = createSessionStore(dir)
-    const session = await writer.createSession('s1', CWD)
+    const session = await writer.createSession('s1', sessionCwd)
     await session.appendThinkingLevelChange('high')
     await session.appendMessage(userMessage('build it'))
     await session.appendMessage(assistantToolCall('t1', 'bash'))
@@ -66,7 +73,7 @@ describe('createSessionStore', () => {
     await session.appendMessage(assistantText('done'))
 
     // A brand-new store instance over the same dir = a fresh process resuming.
-    const resumed = await createSessionStore(dir).openSession('s1', CWD)
+    const resumed = await createSessionStore(dir).openSession('s1', sessionCwd)
     const context = await resumed.buildContext()
 
     expect(context.messages).toHaveLength(4)
@@ -80,7 +87,7 @@ describe('createSessionStore', () => {
   })
 
   test('an unknown id rejects so the client creates and transcript-seeds a new session', async () => {
-    await expect(createSessionStore(dir).openSession('never-persisted', CWD)).rejects.toThrow(
+    await expect(createSessionStore(dir).openSession('never-persisted', sessionCwd)).rejects.toThrow(
       "no on-disk session 'never-persisted'",
     )
   })
@@ -90,45 +97,51 @@ describe('createSessionStore', () => {
     const legacy = await writer.createSession('legacy-root', '/')
     await legacy.appendMessage(userMessage('preserve this through app reseed'))
 
-    await expect(createSessionStore(dir).openSession('legacy-root', CWD)).rejects.toThrow(
+    await expect(createSessionStore(dir).openSession('legacy-root', sessionCwd)).rejects.toThrow(
       "no on-disk session 'legacy-root' for workspace '/workspace/project'",
     )
   })
 
   test('resume drops a trailing dangling tool_use (killed mid-turn)', async () => {
     const writer = createSessionStore(dir)
-    const session = await writer.createSession('s2', CWD)
+    const session = await writer.createSession('s2', sessionCwd)
     await session.appendMessage(assistantText('earlier answer')) // last clean boundary
     await session.appendMessage(userMessage('do more'))
     await session.appendMessage(assistantToolCall('t9', 'bash')) // no tool_result → dangling
 
-    const resumed = await createSessionStore(dir).openSession('s2', CWD)
+    const resumed = await createSessionStore(dir).openSession('s2', sessionCwd)
     const context = await resumed.buildContext()
 
     expect(context.messages).toHaveLength(1)
-    expect(context.messages[0]).toMatchObject({ role: 'assistant', content: [{ type: 'text', text: 'earlier answer' }] })
+    expect(context.messages[0]).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'earlier answer' }],
+    })
   })
 
   test('resume drops a trailing bare user prompt (killed before the reply)', async () => {
     const writer = createSessionStore(dir)
-    const session = await writer.createSession('s3', CWD)
+    const session = await writer.createSession('s3', sessionCwd)
     await session.appendMessage(assistantText('earlier answer'))
     await session.appendMessage(userMessage('unanswered'))
 
-    const resumed = await createSessionStore(dir).openSession('s3', CWD)
+    const resumed = await createSessionStore(dir).openSession('s3', sessionCwd)
     const context = await resumed.buildContext()
 
     expect(context.messages).toHaveLength(1)
-    expect(context.messages[0]).toMatchObject({ role: 'assistant', content: [{ type: 'text', text: 'earlier answer' }] })
+    expect(context.messages[0]).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'earlier answer' }],
+    })
   })
 
   test('resume leaves a clean session untouched', async () => {
     const writer = createSessionStore(dir)
-    const session = await writer.createSession('s4', CWD)
+    const session = await writer.createSession('s4', sessionCwd)
     await session.appendMessage(userMessage('hi'))
     await session.appendMessage(assistantText('hello'))
 
-    const resumed = await createSessionStore(dir).openSession('s4', CWD)
+    const resumed = await createSessionStore(dir).openSession('s4', sessionCwd)
     expect((await resumed.buildContext()).messages).toHaveLength(2)
   })
 })

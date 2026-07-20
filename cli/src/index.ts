@@ -8,7 +8,7 @@
  * and turns uncaught failures into clean terminal errors at one boundary.
  */
 
-import { HELP_TEXT, VERSION, parseArgs } from './cli.ts'
+import { cliVersion, helpText, parseArgs } from './cli.ts'
 import { runAgent } from './agent/run.ts'
 import { runAcpServe } from './acp/serve.ts'
 import { runBridge } from './commands/bridge.ts'
@@ -40,10 +40,10 @@ try {
 
   switch (parsed.kind) {
     case 'help':
-      console.log(HELP_TEXT)
+      console.log(helpText)
       break
     case 'version':
-      console.log(VERSION)
+      console.log(cliVersion)
       break
     case 'error':
       process.stderr.write(parsed.message + '\n')

@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { enforceSecureFile, ensureSecureDir, readFileOrNull, writeSecureFile } from './storage.ts'
+import { enforceSecureFile, ensureSecureDir, readFileOrNull, writeSecureFile } from './secure-fs.ts'
 
 let dir: string
 

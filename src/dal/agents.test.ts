@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDb } from '@/db/database'
-import { agentsSystemTable, agentsTable } from '@/db/tables'
+import { agentsSystemTable, agentsTable, chatThreadsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { HttpError, type HttpClient, type ResponsePromise } from '@/lib/http'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
@@ -12,6 +12,7 @@ import type { AgentAdapter } from '@/types/acp'
 import type { AgentDiscoveryResponse } from '@shared/acp-types'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { composeAllAgents, createAgent, deleteAgent, getAgentSecrets, setAgentSecrets, updateAgent } from './agents'
+import { getChatThread } from './chat-threads'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import type { Agent } from '@/types/acp'
 
@@ -178,7 +179,31 @@ describe('agents DAL', () => {
       expect(cached.disconnectCount()).toBe(1)
     })
 
-    it('does NOT dispose the connection on a non-wire patch (rename only)', async () => {
+    it('clears ACP sessions from every thread using an agent whose wire identity changes', async () => {
+      await createAgent(getDb(), {
+        id: 'a-sessions',
+        name: 'Wired',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://old/ws',
+        userId: 'u1',
+      })
+      await getDb()
+        .insert(chatThreadsTable)
+        .values([
+          { id: 'thread-a1', agentId: 'a-sessions', acpSessionId: 'session-a1' },
+          { id: 'thread-a2', agentId: 'a-sessions', acpSessionId: 'session-a2' },
+          { id: 'thread-other', agentId: 'other-agent', acpSessionId: 'session-other' },
+        ])
+
+      await updateAgent(getDb(), 'a-sessions', { url: 'wss://new/ws' })
+
+      expect((await getChatThread(getDb(), 'thread-a1'))?.acpSessionId).toBeNull()
+      expect((await getChatThread(getDb(), 'thread-a2'))?.acpSessionId).toBeNull()
+      expect((await getChatThread(getDb(), 'thread-other'))?.acpSessionId).toBe('session-other')
+    })
+
+    it('preserves the connection and ACP sessions when submitted wire fields are unchanged', async () => {
       await createAgent(getDb(), {
         id: 'a-name',
         name: 'Before',
@@ -188,10 +213,18 @@ describe('agents DAL', () => {
         userId: 'u1',
       })
       const cached = await seedCachedAdapter('a-name')
+      await getDb()
+        .insert(chatThreadsTable)
+        .values({ id: 'thread-same-wire', agentId: 'a-name', acpSessionId: 'session-same-wire' })
 
-      await updateAgent(getDb(), 'a-name', { name: 'After' })
+      await updateAgent(getDb(), 'a-name', {
+        name: 'After',
+        transport: 'websocket',
+        url: 'wss://keep/ws',
+      })
 
       expect(cached.disconnectCount()).toBe(0)
+      expect((await getChatThread(getDb(), 'thread-same-wire'))?.acpSessionId).toBe('session-same-wire')
     })
   })
 

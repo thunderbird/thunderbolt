@@ -69,6 +69,7 @@ type ChatStoreActions = {
   allowAlwaysForAgent(agentId: string): void
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
+  applyAgentWireIdentityChange(agent: Agent): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
   setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
@@ -127,6 +128,29 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     nextSessions.set(session.id, session)
 
     set({ sessions: nextSessions })
+  },
+
+  applyAgentWireIdentityChange: (agent) => {
+    const nextSessions = new Map(get().sessions)
+    let changed = false
+
+    for (const [id, session] of nextSessions) {
+      const threadMatches = session.chatThread?.agentId === agent.id
+      const agentMatches = session.selectedAgent.id === agent.id
+      if (!threadMatches && !agentMatches) {
+        continue
+      }
+      changed = true
+      nextSessions.set(id, {
+        ...session,
+        chatThread: threadMatches ? { ...session.chatThread!, acpSessionId: null } : session.chatThread,
+        selectedAgent: agentMatches ? agent : session.selectedAgent,
+      })
+    }
+
+    if (changed) {
+      set({ sessions: nextSessions })
+    }
   },
 
   setCurrentSessionId: (id) => {

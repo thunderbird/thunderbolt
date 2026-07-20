@@ -403,6 +403,15 @@ describe('chat-store', () => {
       expect((await getChatThread(getDb(), chatThread.id))?.acpSessionId).toBe('current-session')
     })
 
+    it('refreshes active agent wire identity and clears matching in-memory ACP sessions', async () => {
+      await seedThreadSession('thread-wire-edit', customAgent, 'stale-session')
+
+      useChatStore.getState().applyAgentWireIdentityChange({ ...customAgent, url: 'wss://new.example.test/ws' })
+
+      expect(getCurrentSession()?.selectedAgent.url).toBe('wss://new.example.test/ws')
+      expect(getCurrentSession()?.chatThread?.acpSessionId).toBeNull()
+    })
+
     it('updates in-memory state and skips the DB write when no chat thread exists yet', async () => {
       // For brand-new chats (no `chat_threads` row yet) the selection is held
       // in memory until the first message is sent. Persistence happens inside

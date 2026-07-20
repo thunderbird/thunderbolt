@@ -18,6 +18,7 @@ import { useDatabase } from '@/contexts'
 import { useAuth } from '@/contexts'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { useChatStore } from '@/chats/chat-store'
 import type { Agent } from '@/types/acp'
 
 type AgentsSettingsPageProps = {
@@ -83,12 +84,15 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
     if (editingAgent) {
       // Only customs are editable; system / built-in rows never reach this
       // path (the row hides the Edit affordance).
-      await updateAgent(db, editingAgent.id, {
+      const wireIdentityChanged = await updateAgent(db, editingAgent.id, {
         name: payload.name,
         transport: payload.transport,
         url: payload.url,
         description: payload.description,
       })
+      if (wireIdentityChanged) {
+        useChatStore.getState().applyAgentWireIdentityChange({ ...editingAgent, ...payload })
+      }
       return
     }
     if (!currentUserId) {

@@ -86,6 +86,20 @@ export const updateChatThread = async (
   await db.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
 }
 
+/** Clears persisted ACP sessions for every thread routed to an agent. */
+export const clearAcpSessionIdsForAgent = async (db: AnyDrizzleDatabase, agentId: string): Promise<void> => {
+  await db
+    .update(chatThreadsTable)
+    .set({ acpSessionId: null })
+    .where(
+      and(
+        eq(chatThreadsTable.agentId, agentId),
+        isNotNull(chatThreadsTable.acpSessionId),
+        isNull(chatThreadsTable.deletedAt),
+      ),
+    )
+}
+
 /**
  * Gets a specific chat thread by ID or create a new one with the provided ID.
  *

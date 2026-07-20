@@ -7,7 +7,7 @@ import { Ask } from './display'
 import type { AskData } from './lib'
 
 const meta = {
-  title: 'widgets/ask',
+  title: 'Widgets/Ask',
   component: Ask,
   parameters: {
     layout: 'centered',

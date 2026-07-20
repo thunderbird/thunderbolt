@@ -72,7 +72,7 @@ type AskUiState = { selected: Set<string>; submitted: boolean }
 
 type AskUiAction =
   | { type: 'OPTION_TOGGLED'; id: string; isMultiple: boolean }
-  | { type: 'SUBMITTED'; selected?: Set<string> }
+  | { type: 'SUBMITTED'; selected: Set<string> }
 
 const askUiReducer = (state: AskUiState, action: AskUiAction): AskUiState => {
   switch (action.type) {
@@ -85,7 +85,7 @@ const askUiReducer = (state: AskUiState, action: AskUiAction): AskUiState => {
       return { ...state, selected }
     }
     case 'SUBMITTED':
-      return { ...state, submitted: true, selected: action.selected ?? state.selected }
+      return { ...state, submitted: true, selected: action.selected }
   }
 }
 

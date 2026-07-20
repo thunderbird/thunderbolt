@@ -32,8 +32,16 @@ export const schema = z.object({
   widget: z.literal('ask'),
   args: z.object({
     prompt: z.string().min(1),
-    mode: z.enum(askModes),
-    options: optionsAttr,
+    // `free` is legacy-only: removed from authoring (see lib.ts) but still
+    // accepted so historical messages keep rendering instead of failing
+    // validation and degrading to raw text.
+    mode: z.enum([...askModes, 'free']),
+    // Optional because legacy `free` widgets carry no options; the current
+    // modes still emit them and `optionsAttr` enforces min-2 when present. (A
+    // cross-field "non-free ⇒ options required" rule can't live here without
+    // wrapping args in `.refine()`, which would break `createParser`'s
+    // reliance on `args.shape`.)
+    options: optionsAttr.optional(),
     explanation: z.string().optional(),
   }),
 })

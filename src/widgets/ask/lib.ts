@@ -9,8 +9,9 @@
  * - `choice`   — no designated answer, an open prompt like "What do you want to do next?"
  *
  * (A `free` text-response mode existed briefly and was removed — typing an
- * answer belongs in the regular composer. Cached `free` entries from old
- * conversations still parse; see {@link formatAskResponsesNote}.)
+ * answer belongs in the regular composer. Historical `free` widgets still
+ * parse and render read-only (see `schema.ts` / `LegacyFreeAsk`), and cached
+ * `free` entries still report to the model; see {@link formatAskResponsesNote}.)
  *
  * The array is the single source for the schema's `z.enum`, so the type and
  * the wire validation can't drift.
@@ -65,7 +66,7 @@ export const askCachePrefix = 'ask'
  * base36-encoded. Deterministic across reloads since it's derived only from the
  * parsed widget args, so the restored cache key always matches.
  */
-const hashAskShape = (data: Pick<AskData, 'mode' | 'options'>): string => {
+const hashAskShape = (data: { mode: AskMode | 'free'; options: AskOption[] }): string => {
   const input = JSON.stringify({ mode: data.mode, options: data.options })
   let hash = 5381
   for (let i = 0; i < input.length; i++) {
@@ -80,7 +81,7 @@ const hashAskShape = (data: Pick<AskData, 'mode' | 'options'>): string => {
  * their options don't collide on `ask/<prompt>` and overwrite each other's
  * answer. (Two byte-identical widgets still share a key, which is harmless.)
  */
-export const askStorageKey = (data: Pick<AskData, 'prompt' | 'mode' | 'options'>): string =>
+export const askStorageKey = (data: { prompt: string; mode: AskMode | 'free'; options: AskOption[] }): string =>
   `${askCachePrefix}/${data.prompt}#${hashAskShape(data)}`
 
 /**

@@ -196,8 +196,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
+    const agentChanged = session.selectedAgent.id !== agent.id
+    const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
     const nextSessions = new Map(sessions)
-    const nextChatThread = session.chatThread ? { ...session.chatThread, agentId: agent.id } : session.chatThread
+    const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
     nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent })
 
     set({ sessions: nextSessions })
@@ -205,7 +207,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const db = getDb()
 
     if (session.chatThread) {
-      await updateChatThread(db, session.chatThread.id, { agentId: agent.id })
+      await updateChatThread(db, session.chatThread.id, threadPatch)
     }
 
     // Persist the global last-used agent so new chats default to it (mirrors

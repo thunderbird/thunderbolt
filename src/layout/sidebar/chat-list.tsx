@@ -79,9 +79,7 @@ export const ChatList = ({
             <>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={(e) => onSearchClick(e)} tooltip="Search chats" className="cursor-pointer">
-                  <Search
-                    className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-blue-500' : ''}`}
-                  />
+                  <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

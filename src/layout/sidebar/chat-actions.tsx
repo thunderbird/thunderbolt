@@ -35,7 +35,7 @@ export const ChatActions = ({
           debouncedSearchQuery && 'bg-primary/15 text-primary hover:bg-primary/25 hover:text-primary',
         )}
       >
-        <Search className={cn('size-4', debouncedSearchQuery && 'text-primary')} />
+        <Search className="size-4" />
       </SidebarMenuButton>
       <Tooltip>
         <TooltipTrigger asChild>

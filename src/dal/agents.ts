@@ -43,7 +43,7 @@ const customRowToAgent = (row: AgentCustomRow): Agent => ({
 })
 
 /** Lift a local-only system row into the unified `Agent` shape. */
-const systemRowToAgent = (row: AgentSystemRow): Agent => ({
+export const systemRowToAgent = (row: AgentSystemRow): Agent => ({
   id: row.id,
   name: row.name,
   type: row.type,

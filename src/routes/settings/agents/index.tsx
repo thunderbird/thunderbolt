@@ -13,7 +13,7 @@ import { DetailPanelSurface } from '@/components/detail-panel'
 import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
-import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli-install-card'
+import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase } from '@/contexts'
@@ -26,7 +26,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
  * discovery, and user-added custom remote ACP endpoints. Rows are read-only —
  * clicking one slides in a detail panel (same slide-in idiom as the skills
  * page) where all viewing and management happens. The only other affordance
- * is "+" → the Add Custom Agent dialog.
+ * is "+" → the Add custom agent dialog.
  */
 export default function AgentsSettingsPage() {
   const db = useDatabase()
@@ -106,7 +106,7 @@ export default function AgentsSettingsPage() {
                 variant="outline"
                 size="icon"
                 className="bg-card"
-                aria-label="Add Custom Agent"
+                aria-label="Add custom agent"
                 onClick={() => setDialogOpen(true)}
                 disabled={!currentUserId}
               >
@@ -126,7 +126,7 @@ export default function AgentsSettingsPage() {
               onOpenAgent={(agent) => toggleAgentPanel(agent.id)}
             />
 
-            <ThunderboltCliRow selected={cliOpen} onOpen={toggleCliPanel} />
+            <ThunderboltCliRow isSelected={cliOpen} onOpen={toggleCliPanel} />
           </div>
         </div>
       </div>

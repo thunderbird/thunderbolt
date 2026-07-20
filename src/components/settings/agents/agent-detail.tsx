@@ -6,7 +6,7 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import dayjs from 'dayjs'
 import { Loader2, MoreVertical, Trash2 } from 'lucide-react'
-import { useState, type InputHTMLAttributes, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 
 import '@/lib/dayjs'
@@ -14,7 +14,8 @@ import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { iconForAgent } from '@/components/agent-icon'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { AgentIconTile } from '@/components/settings/agents/agent-list-row'
-import { validateAgentUrl } from '@/components/settings/agents/validate-agent-url'
+import { EditableField, FieldLabel } from '@/components/settings/agents/editable-field'
+import { inferTransport, validateAgentUrl } from '@/components/settings/agents/validate-agent-url'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -26,7 +27,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { useDatabase } from '@/contexts'
 import { getAllMcpServers } from '@/dal'
@@ -35,11 +35,12 @@ import { cn } from '@/lib/utils'
 import { useLibrarySkills } from '@/skills/use-skills'
 import type { Agent } from '@/types/acp'
 import { acpEndpointLabel, agentProvenanceLine } from './agent-provenance'
+import type { TestAcpConnectionFn } from './add-custom-agent-dialog'
 
 /** On-demand probe result: the panel never polls on open — Status starts at
  *  `idle` and reflects the last explicit "Test connection" run. `error` holds
  *  the probe's user-facing failure reason (absent when reachable). */
-type TestState = 'idle' | 'testing' | { reachable: boolean; testedAt: string; error?: string }
+type TestState = 'idle' | 'testing' | { isReachable: boolean; testedAt: string; error?: string }
 
 type AgentDetailProps = {
   agent: Agent
@@ -54,8 +55,9 @@ type AgentDetailProps = {
   onUpdate: (patch: UpdateAgentPatch) => Promise<void>
   /** Soft-delete the custom agent. */
   onDelete: () => Promise<void>
-  /** Injectable probe for the on-demand Test (tests stub it). */
-  testAcpConnection?: typeof defaultTestAcpConnection
+  /** Injectable probe for the on-demand Test (tests stub it). Typed by the
+   *  narrow shape this panel consumes, so test fakes need no casts. */
+  testAcpConnection?: TestAcpConnectionFn
 }
 
 /** The three presentation flavors an agent can take in this panel. */
@@ -87,16 +89,25 @@ export const AgentDetail = ({
 }: AgentDetailProps) => {
   const Icon = iconForAgent(agent)
   const flavor = agentFlavor(agent)
-  const editable = flavor === 'custom' && !!currentUserId && agent.userId === currentUserId
+  const isEditable = flavor === 'custom' && !!currentUserId && agent.userId === currentUserId
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [removeError, setRemoveError] = useState<string | null>(null)
 
   const handleRemove = async () => {
+    setRemoveError(null)
+    try {
+      await onDelete()
+    } catch (error) {
+      // Keep the confirm dialog open so the failure is visible and retryable.
+      console.error('Failed to remove agent', error)
+      setRemoveError("Couldn't remove the agent. Please try again.")
+      return
+    }
     setConfirmOpen(false)
-    await onDelete()
     onRemoved()
   }
 
-  const managementMenu = editable && (
+  const managementMenu = isEditable && (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
@@ -132,10 +143,18 @@ export const AgentDetail = ({
       {flavor === 'built-in' && <BuiltInBody />}
       {flavor === 'system' && <SystemBody agent={agent} />}
       {flavor === 'custom' && (
-        <CustomBody agent={agent} editable={editable} onUpdate={onUpdate} testAcpConnection={testAcpConnection} />
+        <CustomBody agent={agent} isEditable={isEditable} onUpdate={onUpdate} testAcpConnection={testAcpConnection} />
       )}
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open)
+          if (!open) {
+            setRemoveError(null)
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {agent.name}?</AlertDialogTitle>
@@ -143,6 +162,11 @@ export const AgentDetail = ({
               This removes the connection from Thunderbolt only. Nothing on the remote server is changed.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {removeError && (
+            <p role="alert" className="text-sm text-destructive">
+              {removeError}
+            </p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <Button variant="destructive" onClick={() => void handleRemove()}>
@@ -154,10 +178,6 @@ export const AgentDetail = ({
     </DetailPanel>
   )
 }
-
-const FieldLabel = ({ children }: { children: string }) => (
-  <p className="text-sm font-medium text-muted-foreground">{children}</p>
-)
 
 /** Read-only info view for the built-in Thunderbolt agent: what it is, plus
  *  live links into the Library surfaces it draws on. */
@@ -245,17 +265,29 @@ const SystemBody = ({ agent }: { agent: Agent }) => (
  *  configuration plus an on-demand connection test. */
 const CustomBody = ({
   agent,
-  editable,
+  isEditable,
   onUpdate,
   testAcpConnection,
 }: {
   agent: Agent
-  editable: boolean
+  isEditable: boolean
   onUpdate: AgentDetailProps['onUpdate']
   testAcpConnection: NonNullable<AgentDetailProps['testAcpConnection']>
 }) => {
   const [testResult, setTestResult] = useState<TestState>('idle')
+  const [enabledError, setEnabledError] = useState<string | null>(null)
   const isWebSocket = agent.transport === 'websocket'
+
+  const handleEnabledChange = async (next: boolean) => {
+    setEnabledError(null)
+    try {
+      await onUpdate({ enabled: next ? 1 : 0 })
+    } catch (error) {
+      // The optimistic Switch reverts on the next render; say why.
+      console.error('Failed to update agent enabled state', error)
+      setEnabledError("Couldn't update. Please try again.")
+    }
+  }
 
   const handleTest = async () => {
     if (!agent.url) {
@@ -264,7 +296,9 @@ const CustomBody = ({
     setTestResult('testing')
     const probe = await testAcpConnection({ url: agent.url })
     const testedAt = new Date().toISOString()
-    setTestResult(probe.success ? { reachable: true, testedAt } : { reachable: false, testedAt, error: probe.error })
+    setTestResult(
+      probe.success ? { isReachable: true, testedAt } : { isReachable: false, testedAt, error: probe.error },
+    )
   }
 
   return (
@@ -275,27 +309,29 @@ const CustomBody = ({
           id="agent-detail-name"
           label="Name"
           value={agent.name}
-          editable={editable}
+          isEditable={isEditable}
           onSave={(name) => onUpdate({ name })}
         />
         <EditableField
           id="agent-detail-endpoint"
           label="Endpoint"
           value={agent.url ?? ''}
-          editable={editable}
+          isEditable={isEditable}
           validate={(url) => {
             const validation = validateAgentUrl(url)
             return 'error' in validation ? validation.error : null
           }}
           onSave={(url) => {
-            // `EditableField` only saves drafts that passed `validate`; re-run
-            // solely to re-infer the transport (ws vs iroh), the same rule the
-            // add dialog applies.
-            const validation = validateAgentUrl(url)
-            if ('error' in validation) {
-              throw new Error(`Endpoint saved with an invalid URL: ${validation.error}`)
+            // Re-infer the transport (ws vs iroh) for the validated draft —
+            // the same rule the add dialog applies. `validate` above already
+            // rejected anything without a transport, so this cannot be null;
+            // the guard exists for narrowing and fails loudly if the two
+            // validators ever drift.
+            const transport = inferTransport(url)
+            if (transport === null) {
+              throw new Error(`Endpoint URL has no supported transport: ${url}`)
             }
-            return onUpdate({ url, transport: validation.transport })
+            return onUpdate({ url, transport })
           }}
           inputProps={{ autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
         />
@@ -303,22 +339,29 @@ const CustomBody = ({
           id="agent-detail-description"
           label="Description"
           value={agent.description ?? ''}
-          editable={editable}
+          isEditable={isEditable}
           allowEmpty
           placeholder="Optional"
           onSave={(description) => onUpdate({ description: description === '' ? null : description })}
         />
-        {editable && (
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex flex-col">
-              <FieldLabel>Enabled</FieldLabel>
-              <p className="text-sm text-muted-foreground">Disabled agents stay out of the chat agent picker.</p>
+        {isEditable && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col">
+                <FieldLabel>Enabled</FieldLabel>
+                <p className="text-sm text-muted-foreground">Disabled agents stay out of the chat agent picker.</p>
+              </div>
+              <Switch
+                checked={agent.enabled === 1}
+                onCheckedChange={(next) => void handleEnabledChange(next)}
+                aria-label={agent.enabled === 1 ? `Disable ${agent.name}` : `Enable ${agent.name}`}
+              />
             </div>
-            <Switch
-              checked={agent.enabled === 1}
-              onCheckedChange={(next) => void onUpdate({ enabled: next ? 1 : 0 })}
-              aria-label={agent.enabled === 1 ? `Disable ${agent.name}` : `Enable ${agent.name}`}
-            />
+            {enabledError && (
+              <p role="alert" className="text-sm text-destructive">
+                {enabledError}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -372,102 +415,14 @@ const TestStatus = ({ result }: { result: TestState }) => {
     <span
       className={cn(
         'inline-flex items-center gap-1.5 text-sm font-medium',
-        result.reachable ? 'text-green-600 dark:text-green-500' : 'text-destructive',
+        result.isReachable ? 'text-green-600 dark:text-green-500' : 'text-destructive',
       )}
     >
       <span
-        className={cn('inline-block size-2 rounded-full', result.reachable ? 'bg-green-500' : 'bg-destructive')}
+        className={cn('inline-block size-2 rounded-full', result.isReachable ? 'bg-green-500' : 'bg-destructive')}
         aria-hidden="true"
       />
-      {`${result.reachable ? 'Reachable' : 'Unreachable'} ${dayjs(result.testedAt).fromNow()}`}
+      {`${result.isReachable ? 'Reachable' : 'Unreachable'} ${dayjs(result.testedAt).fromNow()}`}
     </span>
-  )
-}
-
-/**
- * An always-editable text field with a Save / Discard row that appears once
- * the draft differs from the stored value (the branch-design inline-edit
- * idiom). Read-only when `editable` is false — renders the value as text.
- */
-const EditableField = ({
-  id,
-  label,
-  value,
-  editable,
-  allowEmpty = false,
-  placeholder,
-  validate,
-  onSave,
-  inputProps,
-}: {
-  id: string
-  label: string
-  value: string
-  editable: boolean
-  /** Permit saving an empty draft (e.g. clearing the description). */
-  allowEmpty?: boolean
-  placeholder?: string
-  /** Returns a user-facing error for an invalid draft, or null when valid. */
-  validate?: (draft: string) => string | null
-  onSave: (draft: string) => Promise<void> | void
-  inputProps?: InputHTMLAttributes<HTMLInputElement>
-}): ReactNode => {
-  const [draft, setDraft] = useState(value)
-  // Re-seed the draft when the stored value changes underneath us (a save
-  // landing, or a sync from another device) — render-time state adjustment,
-  // no effect.
-  const [prevValue, setPrevValue] = useState(value)
-  if (prevValue !== value) {
-    setPrevValue(value)
-    setDraft(value)
-  }
-
-  // Compare trimmed-to-trimmed: a stored value with stray whitespace must not
-  // read as permanently dirty (Discard could never clear it).
-  const trimmed = draft.trim()
-  const isDirty = trimmed !== value.trim()
-  const error = isDirty && trimmed !== '' && validate ? validate(trimmed) : null
-  const canSave = isDirty && (allowEmpty || trimmed !== '') && !error
-
-  if (!editable) {
-    return (
-      <div className="flex flex-col gap-1">
-        <FieldLabel>{label}</FieldLabel>
-        <p className="truncate text-base text-foreground">{value || '—'}</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <label htmlFor={id} className="text-sm font-medium text-muted-foreground">
-        {label}
-      </label>
-      <Input
-        id={id}
-        value={draft}
-        placeholder={placeholder}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && canSave) {
-            void onSave(trimmed)
-          }
-        }}
-        aria-invalid={error ? true : undefined}
-        className="h-9"
-        {...inputProps}
-      />
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {isDirty && (
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setDraft(value)}>
-            Discard
-          </Button>
-          <Button size="sm" disabled={!canSave} onClick={() => void onSave(trimmed)}>
-            Save
-          </Button>
-        </div>
-      )}
-    </div>
   )
 }

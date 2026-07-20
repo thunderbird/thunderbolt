@@ -34,7 +34,7 @@ export const AgentList = ({ agents, selectedId, onOpenAgent }: AgentListProps) =
 
   const rows = (list: Agent[]) =>
     list.map((agent) => (
-      <AgentRow key={agent.id} agent={agent} selected={selectedId === agent.id} onOpen={onOpenAgent} />
+      <AgentRow key={agent.id} agent={agent} isSelected={selectedId === agent.id} onOpen={onOpenAgent} />
     ))
 
   // gap-4 between rows — same rhythm as the models page's card list.

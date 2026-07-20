@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import type { CliInstallError, CliInstallResult } from '@/lib/cli-install'
-import { ThunderboltCliDetail, ThunderboltCliRow } from './thunderbolt-cli-install-card'
+import { ThunderboltCliDetail, ThunderboltCliRow } from './thunderbolt-cli'
 
 const writeTextMock = mock(() => Promise.resolve())
 Object.defineProperty(navigator, 'clipboard', {
@@ -49,7 +49,7 @@ describe('ThunderboltCliRow', () => {
   })
 
   it('marks the row as selected while its panel is open', () => {
-    renderRow({ selected: true })
+    renderRow({ isSelected: true })
     expect(screen.getByRole('button', { name: 'Open Thunderbolt CLI' })).toHaveAttribute('aria-pressed', 'true')
   })
 

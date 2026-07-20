@@ -21,7 +21,7 @@ type AgentListRowProps = {
   subtitle: ReactNode
   /** Whether this row's detail panel is open — brightens the row like other
    *  selected list items across the app. */
-  selected?: boolean
+  isSelected?: boolean
   /** Opens the detail panel. The whole row is the tap target; management
    *  lives in the detail. */
   onOpen: () => void
@@ -42,7 +42,7 @@ export const AgentListRow = ({
   icon,
   title,
   subtitle,
-  selected,
+  isSelected,
   onOpen,
   ariaLabel,
   isDimmed = false,
@@ -55,10 +55,10 @@ export const AgentListRow = ({
       type="button"
       onClick={onOpen}
       aria-label={ariaLabel}
-      aria-pressed={selected}
+      aria-pressed={isSelected}
       className={cn(
         'flex w-full cursor-pointer items-center gap-3 rounded-[inherit] px-4 py-3 text-left transition-colors',
-        selected ? 'bg-accent' : 'hover:bg-secondary/50',
+        isSelected ? 'bg-accent' : 'hover:bg-secondary/50',
       )}
     >
       <AgentIconTile>{icon}</AgentIconTile>

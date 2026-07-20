@@ -158,7 +158,7 @@ describe('AgentDetail — custom agents', () => {
 describe('AgentDetail — connection test', () => {
   it('reports a reachable endpoint', async () => {
     const probe = mock(async () => ({ success: true as const, capabilities: {} }))
-    renderDetail(customAgent(), { testAcpConnection: probe as never })
+    renderDetail(customAgent(), { testAcpConnection: probe })
 
     expect(screen.getByText('Not tested')).toBeInTheDocument()
     await act(async () => {
@@ -171,7 +171,7 @@ describe('AgentDetail — connection test', () => {
 
   it('reports an unreachable endpoint with the probe error', async () => {
     const probe = mock(async () => ({ success: false as const, error: 'Connection timed out' }))
-    renderDetail(customAgent(), { testAcpConnection: probe as never })
+    renderDetail(customAgent(), { testAcpConnection: probe })
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))

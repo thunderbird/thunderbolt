@@ -6,9 +6,9 @@ import { test, expect } from '@playwright/test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 /**
- * E2E for the "Add Custom Agent" CRUD path on `/settings/agents`.
+ * E2E for the "Add custom agent" CRUD path on `/settings/agents`.
  *
- * Since #933, "Add Agent" is gated behind a successful "Test Connection": the
+ * Since #933, "Add agent" is gated behind a successful "Test connection": the
  * dialog opens a WebSocket to the entered URL and runs the ACP `initialize`
  * handshake. CI can't reach a real agent, so we mock the WebSocket (Playwright
  * `routeWebSocket`) and answer `initialize` with a minimal valid result — this
@@ -43,7 +43,7 @@ test.describe('ACP add custom agent', () => {
     await page.goto('/settings/agents')
     await expect(page.getByTestId('agent-list')).toBeVisible({ timeout: 10_000 })
 
-    await page.getByRole('button', { name: 'Add Custom Agent' }).click()
+    await page.getByRole('button', { name: 'Add custom agent' }).click()
 
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
@@ -54,10 +54,10 @@ test.describe('ACP add custom agent', () => {
 
     // Add Agent is gated behind a successful connection test (#933): run it and
     // wait for the success state before submitting.
-    await dialog.getByRole('button', { name: 'Test Connection' }).click()
+    await dialog.getByRole('button', { name: 'Test connection' }).click()
     await expect(dialog.getByText('Connection successful!')).toBeVisible({ timeout: 10_000 })
 
-    await page.getByRole('button', { name: 'Add Agent' }).click()
+    await page.getByRole('button', { name: 'Add agent' }).click()
 
     // Dialog dismisses on success — if validation rejected the URL the dialog
     // would stay open with an inline error.

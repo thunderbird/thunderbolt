@@ -12,7 +12,7 @@ type AgentRowProps = {
   agent: Agent
   /** Whether this row's detail panel is open — brightens the row like other
    *  selected list items across the app. */
-  selected?: boolean
+  isSelected?: boolean
   /** Opens the detail panel. The whole row is the tap target; there are no
    *  inline edit / toggle / delete affordances — management lives in the
    *  detail. */
@@ -25,14 +25,14 @@ type AgentRowProps = {
  * a disabled custom agent renders dimmed with a "Disabled" suffix so its
  * state stays visible without a switch on the row.
  */
-export const AgentRow = ({ agent, selected, onOpen }: AgentRowProps) => {
+export const AgentRow = ({ agent, isSelected, onOpen }: AgentRowProps) => {
   const Icon = iconForAgent(agent)
   const disabled = agent.enabled !== 1
 
   return (
     <AgentListRow
       testId={`agent-row-${agent.id}`}
-      selected={selected}
+      isSelected={isSelected}
       onOpen={() => onOpen(agent)}
       ariaLabel={`Open ${agent.name}`}
       isDimmed={disabled}

@@ -34,7 +34,7 @@ type InstallState =
 
 type ThunderboltCliRowProps = {
   /** Whether the CLI detail panel is open — brightens the row like the agent rows. */
-  selected?: boolean
+  isSelected?: boolean
   /** Opens the CLI detail panel. */
   onOpen: () => void
   /** Test seam for the runtime platform; production reads `getPlatform()`. */
@@ -53,7 +53,7 @@ type ThunderboltCliRowProps = {
  * pairs with no published binary.
  */
 export const ThunderboltCliRow = ({
-  selected,
+  isSelected,
   onOpen,
   platform,
   architecture,
@@ -71,7 +71,7 @@ export const ThunderboltCliRow = ({
   return (
     <AgentListRow
       testId="agent-row-thunderbolt-cli"
-      selected={selected}
+      isSelected={isSelected}
       onOpen={onOpen}
       ariaLabel="Open Thunderbolt CLI"
       icon={<Terminal className="size-5 text-muted-foreground" aria-hidden="true" />}

@@ -53,20 +53,23 @@ type AgentDialogState = {
   url: string
   description: string
   submitting: boolean
+  /** Save failed after the connection gate — shown next to the buttons. */
+  submitError: string | null
   isTestingConnection: boolean
   connectionStatus: 'idle' | 'success' | 'error'
   connectionError: string | null
 }
 
+/** User-meaningful dialog events; the reducer maps each to a state delta. */
 type AgentDialogAction =
-  | { type: 'SET_NAME'; value: string }
-  | { type: 'SET_URL'; value: string }
-  | { type: 'SET_DESCRIPTION'; value: string }
-  | { type: 'START_SUBMIT' }
-  | { type: 'END_SUBMIT' }
-  | { type: 'START_CONNECTION_TEST' }
-  | { type: 'CONNECTION_TEST_SUCCESS' }
-  | { type: 'CONNECTION_TEST_FAILURE'; error: string }
+  | { type: 'NAME_CHANGED'; value: string }
+  | { type: 'URL_CHANGED'; value: string }
+  | { type: 'DESCRIPTION_CHANGED'; value: string }
+  | { type: 'SUBMIT_STARTED' }
+  | { type: 'SUBMIT_FAILED'; message: string }
+  | { type: 'CONNECTION_TEST_STARTED' }
+  | { type: 'CONNECTION_TEST_SUCCEEDED' }
+  | { type: 'CONNECTION_TEST_FAILED'; error: string }
   | { type: 'RESET'; next: AgentDialogState }
 
 const emptyState: AgentDialogState = {
@@ -74,6 +77,7 @@ const emptyState: AgentDialogState = {
   url: '',
   description: '',
   submitting: false,
+  submitError: null,
   isTestingConnection: false,
   connectionStatus: 'idle',
   connectionError: null,
@@ -81,28 +85,26 @@ const emptyState: AgentDialogState = {
 
 const agentDialogReducer = (state: AgentDialogState, action: AgentDialogAction): AgentDialogState => {
   switch (action.type) {
-    case 'SET_NAME':
+    case 'NAME_CHANGED':
       return { ...state, name: action.value }
-    case 'SET_URL':
+    case 'URL_CHANGED':
       // Editing the URL invalidates any prior connection result — the user is
       // targeting a (potentially) different endpoint, so submit must be re-gated.
       return { ...state, url: action.value, connectionStatus: 'idle', connectionError: null }
-    case 'SET_DESCRIPTION':
+    case 'DESCRIPTION_CHANGED':
       return { ...state, description: action.value }
-    case 'START_SUBMIT':
-      return { ...state, submitting: true }
-    case 'END_SUBMIT':
-      return { ...state, submitting: false }
-    case 'START_CONNECTION_TEST':
+    case 'SUBMIT_STARTED':
+      return { ...state, submitting: true, submitError: null }
+    case 'SUBMIT_FAILED':
+      return { ...state, submitting: false, submitError: action.message }
+    case 'CONNECTION_TEST_STARTED':
       return { ...state, isTestingConnection: true, connectionStatus: 'idle', connectionError: null }
-    case 'CONNECTION_TEST_SUCCESS':
+    case 'CONNECTION_TEST_SUCCEEDED':
       return { ...state, isTestingConnection: false, connectionStatus: 'success' }
-    case 'CONNECTION_TEST_FAILURE':
+    case 'CONNECTION_TEST_FAILED':
       return { ...state, isTestingConnection: false, connectionStatus: 'error', connectionError: action.error }
     case 'RESET':
       return action.next
-    default:
-      return state
   }
 }
 
@@ -149,13 +151,13 @@ export const AddCustomAgentDialog = ({
   }
 
   const handleTestConnection = async () => {
-    dispatch({ type: 'START_CONNECTION_TEST' })
+    dispatch({ type: 'CONNECTION_TEST_STARTED' })
     const result = await testAcpConnection({ url: trimmedUrl })
     if (result.success) {
-      dispatch({ type: 'CONNECTION_TEST_SUCCESS' })
+      dispatch({ type: 'CONNECTION_TEST_SUCCEEDED' })
       return
     }
-    dispatch({ type: 'CONNECTION_TEST_FAILURE', error: result.error })
+    dispatch({ type: 'CONNECTION_TEST_FAILED', error: result.error })
   }
 
   const handleSubmit = async () => {
@@ -165,14 +167,21 @@ export const AddCustomAgentDialog = ({
     if (!canSubmit || 'error' in validation) {
       return
     }
-    dispatch({ type: 'START_SUBMIT' })
-    await onSubmit({
-      name: trimmedName,
-      url: trimmedUrl,
-      description: trimmedDescription.length > 0 ? trimmedDescription : null,
-      transport: validation.transport,
-    })
-    dispatch({ type: 'END_SUBMIT' })
+    dispatch({ type: 'SUBMIT_STARTED' })
+    try {
+      await onSubmit({
+        name: trimmedName,
+        url: trimmedUrl,
+        description: trimmedDescription.length > 0 ? trimmedDescription : null,
+        transport: validation.transport,
+      })
+    } catch (error) {
+      // Keep the dialog open with the form intact so the user can retry —
+      // and say why nothing happened.
+      console.error('Failed to add custom agent', error)
+      dispatch({ type: 'SUBMIT_FAILED', message: "Couldn't add the agent. Please try again." })
+      return
+    }
     dispatch({ type: 'RESET', next: emptyState })
     onOpenChange(false)
   }
@@ -181,7 +190,7 @@ export const AddCustomAgentDialog = ({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <ResponsiveModalContentComposable className="sm:max-w-[500px]">
         <ResponsiveModalHeader>
-          <ResponsiveModalTitle>Add Custom Agent</ResponsiveModalTitle>
+          <ResponsiveModalTitle>Add custom agent</ResponsiveModalTitle>
           <ResponsiveModalDescription>
             Connect a remote agent that speaks the Agent Client Protocol.
           </ResponsiveModalDescription>
@@ -193,7 +202,7 @@ export const AddCustomAgentDialog = ({
               id="agent-name"
               placeholder="My Agent"
               value={state.name}
-              onChange={(e) => dispatch({ type: 'SET_NAME', value: e.target.value })}
+              onChange={(e) => dispatch({ type: 'NAME_CHANGED', value: e.target.value })}
               autoComplete="off"
             />
           </div>
@@ -203,7 +212,7 @@ export const AddCustomAgentDialog = ({
               id="agent-url"
               placeholder="wss://example.com/ws or paste an iroh ticket"
               value={state.url}
-              onChange={(e) => dispatch({ type: 'SET_URL', value: e.target.value })}
+              onChange={(e) => dispatch({ type: 'URL_CHANGED', value: e.target.value })}
               autoComplete="off"
               autoCapitalize="none"
               autoCorrect="off"
@@ -221,7 +230,7 @@ export const AddCustomAgentDialog = ({
               id="agent-description"
               placeholder="Optional"
               value={state.description}
-              onChange={(e) => dispatch({ type: 'SET_DESCRIPTION', value: e.target.value })}
+              onChange={(e) => dispatch({ type: 'DESCRIPTION_CHANGED', value: e.target.value })}
               autoComplete="off"
             />
           </div>
@@ -236,10 +245,10 @@ export const AddCustomAgentDialog = ({
               {state.isTestingConnection ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Testing Agent...
+                  Testing agent…
                 </>
               ) : (
-                'Test Connection'
+                'Test connection'
               )}
             </Button>
           )}
@@ -273,12 +282,17 @@ export const AddCustomAgentDialog = ({
             </p>
           )}
         </div>
-        <div className="flex justify-end gap-3 pt-2">
+        <div className="flex items-center justify-end gap-3 pt-2">
+          {state.submitError && (
+            <p role="alert" className="min-w-0 flex-1 truncate text-[length:var(--font-size-sm)] text-destructive">
+              {state.submitError}
+            </p>
+          )}
           <Button variant="ghost" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
-            Add Agent
+            Add agent
           </Button>
         </div>
       </ResponsiveModalContentComposable>

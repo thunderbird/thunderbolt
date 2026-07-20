@@ -4,7 +4,7 @@
 
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { AddCustomAgentDialog, type AddCustomAgentPayload, type TestAcpConnectionFn } from './add-custom-agent-dialog'
 
 afterEach(() => {
@@ -80,6 +80,41 @@ describe('AddCustomAgentDialog', () => {
     })
     // Closes dialog on success.
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('keeps the dialog open with submit re-enabled when onSubmit rejects', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const onSubmit = mock(async () => {
+      throw new Error('insert failed')
+    })
+    const onOpenChange = mock(() => {})
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        isIos={notIos}
+        testAcpConnection={succeedingProbe}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'My Agent' } })
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /add agent/i }))
+    })
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    // The dialog stays open with the form intact so the user can retry.
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/name/i)).toHaveValue('My Agent')
+    expect(screen.getByRole('button', { name: /add agent/i })).not.toBeDisabled()
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it('shows the iOS rejection inline for ws:// at render time, keeps Add disabled, and does NOT call onSubmit', () => {

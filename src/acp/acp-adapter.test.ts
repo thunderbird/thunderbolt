@@ -525,6 +525,22 @@ describe('connectAcpAdapter — capability-aware continuity (resume / load / new
     })
   }
 
+  it('starts a new session without trying resume or load when no stored session id exists', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true, loadSession: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(adapter, promptInit('hi'), threadCtx('t-new'), releasePrompts)
+
+    expect(calls.resumeSession).toHaveLength(0)
+    expect(calls.loadSession).toHaveLength(0)
+    expect(calls.newSession).toHaveLength(1)
+  })
+
   it('tier 1: resume-capable agent with a stored id resumes it — no newSession, no re-persist, no replay', async () => {
     const { transport } = buildFakeTransport()
     const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true })

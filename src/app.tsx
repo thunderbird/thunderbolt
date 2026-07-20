@@ -64,6 +64,7 @@ import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useChatStore } from '@/chats/chat-store'
 import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
 import { markAppMounted } from '@/lib/init-timing'
 import { LazyMotion } from 'framer-motion'
@@ -119,7 +120,15 @@ const useBootstrapSystemAgents = () => {
     if (!isRealUser || !cloudUrl) {
       return
     }
-    void refreshSystemAgents(db, cloudUrl, httpClient)
+    void (async () => {
+      const result = await refreshSystemAgents(db, cloudUrl, httpClient)
+      if (!result.refreshed) {
+        return
+      }
+      for (const agent of result.wireIdentityChangedAgents) {
+        useChatStore.getState().applyAgentWireIdentityChange(agent)
+      }
+    })()
   }, [isRealUser, cloudUrl, db, httpClient])
 }
 

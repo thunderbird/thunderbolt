@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDb } from '@/db/database'
-import { agentsSystemTable, agentsTable } from '@/db/tables'
+import { agentsSystemTable, agentsTable, chatThreadsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { HttpError, type HttpClient, type ResponsePromise } from '@/lib/http'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
@@ -12,6 +12,7 @@ import type { AgentAdapter } from '@/types/acp'
 import type { AgentDiscoveryResponse } from '@shared/acp-types'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { composeAllAgents, createAgent, deleteAgent, getAgentSecrets, setAgentSecrets, updateAgent } from './agents'
+import { getChatThread } from './chat-threads'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import type { Agent } from '@/types/acp'
 
@@ -178,7 +179,31 @@ describe('agents DAL', () => {
       expect(cached.disconnectCount()).toBe(1)
     })
 
-    it('does NOT dispose the connection on a non-wire patch (rename only)', async () => {
+    it('clears ACP sessions from every thread using an agent whose wire identity changes', async () => {
+      await createAgent(getDb(), {
+        id: 'a-sessions',
+        name: 'Wired',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://old/ws',
+        userId: 'u1',
+      })
+      await getDb()
+        .insert(chatThreadsTable)
+        .values([
+          { id: 'thread-a1', agentId: 'a-sessions', acpSessionId: 'session-a1' },
+          { id: 'thread-a2', agentId: 'a-sessions', acpSessionId: 'session-a2' },
+          { id: 'thread-other', agentId: 'other-agent', acpSessionId: 'session-other' },
+        ])
+
+      await updateAgent(getDb(), 'a-sessions', { url: 'wss://new/ws' })
+
+      expect((await getChatThread(getDb(), 'thread-a1'))?.acpSessionId).toBeNull()
+      expect((await getChatThread(getDb(), 'thread-a2'))?.acpSessionId).toBeNull()
+      expect((await getChatThread(getDb(), 'thread-other'))?.acpSessionId).toBe('session-other')
+    })
+
+    it('preserves the connection and ACP sessions when submitted wire fields are unchanged', async () => {
       await createAgent(getDb(), {
         id: 'a-name',
         name: 'Before',
@@ -188,10 +213,18 @@ describe('agents DAL', () => {
         userId: 'u1',
       })
       const cached = await seedCachedAdapter('a-name')
+      await getDb()
+        .insert(chatThreadsTable)
+        .values({ id: 'thread-same-wire', agentId: 'a-name', acpSessionId: 'session-same-wire' })
 
-      await updateAgent(getDb(), 'a-name', { name: 'After' })
+      await updateAgent(getDb(), 'a-name', {
+        name: 'After',
+        transport: 'websocket',
+        url: 'wss://keep/ws',
+      })
 
       expect(cached.disconnectCount()).toBe(0)
+      expect((await getChatThread(getDb(), 'thread-same-wire'))?.acpSessionId).toBe('session-same-wire')
     })
   })
 
@@ -341,13 +374,107 @@ describe('agents DAL', () => {
       const client = makeHttpClient(async () => baseResponse)
 
       const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
-      expect(result).toEqual({ refreshed: true })
+      expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
 
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toHaveLength(1)
       expect(rows[0]?.id).toBe('haystack-rag')
       expect(rows[0]?.name).toBe('RAG Chat')
       expect(rows[0]?.fetchedAt).toBeTruthy()
+    })
+
+    it('invalidates only system-agent sessions whose discovered wire identity changed', async () => {
+      const fetchedAt = new Date().toISOString()
+      await getDb()
+        .insert(agentsSystemTable)
+        .values([
+          {
+            id: 'changed-agent',
+            name: 'Changed',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://old.example/ws',
+            fetchedAt,
+          },
+          {
+            id: 'unchanged-agent',
+            name: 'Unchanged',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://stable.example/ws',
+            fetchedAt,
+          },
+        ])
+      await getDb()
+        .insert(chatThreadsTable)
+        .values([
+          { id: 'thread-changed-system', agentId: 'changed-agent', acpSessionId: 'session-changed' },
+          { id: 'thread-unchanged-system', agentId: 'unchanged-agent', acpSessionId: 'session-unchanged' },
+        ])
+      const changedAdapter = await seedCachedAdapter('changed-agent')
+      const unchangedAdapter = await seedCachedAdapter('unchanged-agent')
+      const response: AgentDiscoveryResponse = {
+        version: '1',
+        agents: [
+          {
+            id: 'changed-agent',
+            name: 'Changed',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://new.example/ws',
+            description: null,
+            icon: null,
+            isSystem: 1,
+          },
+          {
+            id: 'unchanged-agent',
+            name: 'Unchanged',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://stable.example/ws',
+            description: null,
+            icon: null,
+            isSystem: 1,
+          },
+        ],
+        allowCustomAgents: true,
+      }
+
+      const result = await refreshSystemAgents(
+        getDb(),
+        'https://api.example',
+        makeHttpClient(async () => response),
+      )
+
+      expect(result).toEqual({
+        refreshed: true,
+        wireIdentityChangedAgents: [
+          {
+            id: 'changed-agent',
+            name: 'Changed',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://new.example/ws',
+            description: null,
+            icon: null,
+            isSystem: 1,
+            enabled: 1,
+            deletedAt: null,
+            userId: null,
+          },
+        ],
+      })
+      expect((await getChatThread(getDb(), 'thread-changed-system'))?.acpSessionId).toBeNull()
+      expect((await getChatThread(getDb(), 'thread-unchanged-system'))?.acpSessionId).toBe('session-unchanged')
+      expect(changedAdapter.disconnectCount()).toBe(1)
+      expect(unchangedAdapter.disconnectCount()).toBe(0)
+
+      const unchangedResult = await refreshSystemAgents(
+        getDb(),
+        'https://api.example',
+        makeHttpClient(async () => response),
+      )
+      expect(unchangedResult).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
     })
 
     it('removes local rows that disappear from the discovery response', async () => {
@@ -390,7 +517,7 @@ describe('agents DAL', () => {
       const client = makeHttpClient(async () => response)
 
       const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
-      expect(result).toEqual({ refreshed: true })
+      expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toEqual([])
     })

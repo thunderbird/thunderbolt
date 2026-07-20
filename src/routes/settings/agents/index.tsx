@@ -8,6 +8,7 @@ import { v7 as uuidv7 } from 'uuid'
 
 import { testAcpConnection } from '@/acp'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { useChatStore } from '@/chats/chat-store'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
@@ -80,7 +81,14 @@ export default function AgentsSettingsPage() {
       currentUserId={currentUserId}
       onClose={closePanel}
       onRemoved={closePanel}
-      onUpdate={(patch) => updateAgent(db, activeAgent.id, patch)}
+      onUpdate={async (patch) => {
+        const wireIdentityChanged = await updateAgent(db, activeAgent.id, patch)
+        if (wireIdentityChanged) {
+          // Refresh any live chat sessions pointed at this agent so their next
+          // send reconnects against the new endpoint (THU-695).
+          useChatStore.getState().applyAgentWireIdentityChange({ ...activeAgent, ...patch })
+        }
+      }}
       onDelete={() => deleteAgent(db, activeAgent.id)}
       testAcpConnection={testAcpConnection}
     />

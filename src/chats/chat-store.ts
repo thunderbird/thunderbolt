@@ -69,6 +69,7 @@ type ChatStoreActions = {
   allowAlwaysForAgent(agentId: string): void
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
+  applyAgentWireIdentityChange(agent: Agent): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
   setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
@@ -127,6 +128,29 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     nextSessions.set(session.id, session)
 
     set({ sessions: nextSessions })
+  },
+
+  applyAgentWireIdentityChange: (agent) => {
+    const nextSessions = new Map(get().sessions)
+    let changed = false
+
+    for (const [id, session] of nextSessions) {
+      const threadMatches = session.chatThread?.agentId === agent.id
+      const agentMatches = session.selectedAgent.id === agent.id
+      if (!threadMatches && !agentMatches) {
+        continue
+      }
+      changed = true
+      nextSessions.set(id, {
+        ...session,
+        chatThread: threadMatches ? { ...session.chatThread!, acpSessionId: null } : session.chatThread,
+        selectedAgent: agentMatches ? agent : session.selectedAgent,
+      })
+    }
+
+    if (changed) {
+      set({ sessions: nextSessions })
+    }
   },
 
   setCurrentSessionId: (id) => {
@@ -196,8 +220,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
+    const agentChanged = session.selectedAgent.id !== agent.id
+    const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
     const nextSessions = new Map(sessions)
-    const nextChatThread = session.chatThread ? { ...session.chatThread, agentId: agent.id } : session.chatThread
+    const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
     nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent })
 
     set({ sessions: nextSessions })
@@ -205,7 +231,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const db = getDb()
 
     if (session.chatThread) {
-      await updateChatThread(db, session.chatThread.id, { agentId: agent.id })
+      await updateChatThread(db, session.chatThread.id, threadPatch)
     }
 
     // Persist the global last-used agent so new chats default to it (mirrors

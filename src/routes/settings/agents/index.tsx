@@ -18,7 +18,7 @@ import { useDatabase } from '@/contexts'
 import { useAuth, useHttpClient } from '@/contexts'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
-import { enrollIrohBridge, type IrohBridge } from '@/lib/iroh-enrollment'
+import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 import type { Agent } from '@/types/acp'
 
 type AgentsSettingsPageProps = {
@@ -31,10 +31,9 @@ type AgentsSettingsPageProps = {
    *  dialog's pairing panel and used by the transparent same-account enrollment.
    *  Production omits and lazy-loads the wasm client. */
   loadAppNodeId?: () => Promise<string>
-  /** Test/DI override for the transparent same-account enrollment (D4) fired when an iroh
-   *  agent is added: self-enrolls this app's dialer NodeId AND registers the bridge itself
-   *  as a `device_type='bridge'` device. Production omits and binds the authenticated client. */
-  enrollIroh?: (bridge: IrohBridge) => Promise<void>
+  /** Test/DI override for app NodeId self-enrollment (D4) fired when an iroh agent is added.
+   *  Production omits and binds the authenticated client. */
+  enrollIroh?: () => Promise<void>
 }
 
 /**
@@ -53,11 +52,7 @@ export default function AgentsSettingsPage({ isStandalone, loadAppNodeId, enroll
   const currentUserId = session?.user?.id ?? null
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
-  // Transparent same-account enrollment (D4): self-enroll this app's dialer NodeId so a
-  // same-account bridge auto-allows it, and register the bridge itself as a device. Bound
-  // to the authenticated client here; tests inject the seam. `loadAppNodeId` (undefined in
-  // prod) falls through to the wasm reader.
-  const runEnroll = enrollIroh ?? ((bridge) => enrollIrohBridge(httpClient, bridge, loadAppNodeId))
+  const runEnroll = enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId))
 
   const [dialogOpen, setDialogOpen] = useState(false)
   // `null` ⇒ Add mode; an Agent ⇒ Edit mode. The dialog receives a `key`
@@ -104,32 +99,32 @@ export default function AgentsSettingsPage({ isStandalone, loadAppNodeId, enroll
         url: payload.url,
         description: payload.description,
       })
-    } else if (!currentUserId) {
+      return
+    }
+    if (!currentUserId) {
       // Anonymous sessions can't sync custom agents — the page hides the
       // dialog trigger in that case, but the guard keeps the write safe.
       return
-    } else {
-      await createAgent(db, {
-        id: uuidv7(),
-        name: payload.name,
-        type: 'remote-acp',
-        transport: payload.transport,
-        url: payload.url,
-        description: payload.description,
-        enabled: 1,
-        userId: currentUserId,
-      })
     }
-    if (payload.transport === 'iroh' && currentUserId) {
-      // Transparent enrollment (D4) so a same-account bridge auto-allows this app and the
-      // bridge shows up as a manageable device. Fire and forget: it must never block or gate
-      // the add (a first-time wasm load + POST can be slow), and on failure (Standalone / no
-      // account / offline) the user falls back to the manual `thunderbolt iroh allow`
-      // one-liner shown in the dialog.
-      void runEnroll({ target: payload.url, name: payload.name }).catch((error) => {
-        console.error('iroh transparent enrollment failed; using manual pairing fallback', error)
-      })
+    await createAgent(db, {
+      id: uuidv7(),
+      name: payload.name,
+      type: 'remote-acp',
+      transport: payload.transport,
+      url: payload.url,
+      description: payload.description,
+      enabled: 1,
+      userId: currentUserId,
+    })
+    if (payload.transport !== 'iroh') {
+      return
     }
+    // D4 self-enrolls this app's dialer NodeId; the bridge registers itself server-side.
+    // Fire and forget: enrollment must never block the add, and manual pairing remains the
+    // fallback for Standalone, unauthenticated, or offline use.
+    void runEnroll().catch((error) => {
+      console.error('iroh transparent enrollment failed; using manual pairing fallback', error)
+    })
   }
 
   const handleDialogOpenChange = (next: boolean) => {

@@ -357,7 +357,7 @@ describe('McpServersPage iroh add flow', () => {
     expect(created[0]?.name).toBe('Laptop Bridge')
   })
 
-  it('enrolls this app and registers the bridge (with its target + name) when adding an iroh bridge', async () => {
+  it('self-enrolls this app when adding an iroh bridge', async () => {
     const enrollIroh = mock(async () => {})
     await openIrohDialog({ enrollIroh })
 
@@ -366,11 +366,8 @@ describe('McpServersPage iroh add flow', () => {
       await getClock().runAllAsync()
     })
 
-    // The wiring hands the bridge's dialed target + name to the enrollment seam; the seam's
-    // two POSTs (self-enroll + device_type='bridge' registration) are covered in
-    // iroh-enrollment.test.ts.
     expect(enrollIroh).toHaveBeenCalledTimes(1)
-    expect(enrollIroh).toHaveBeenCalledWith({ target: irohTarget, name: 'Laptop Bridge' })
+    expect(enrollIroh).toHaveBeenCalledWith()
   })
 
   it('still creates the server and keeps the manual pairing panel when enrollment fails', async () => {
@@ -483,7 +480,8 @@ describe('McpServersPage Edit server', () => {
     const irohTarget = 'a'.repeat(52)
     await createMcpServer(db, { id, name: 'Old Bridge', type: 'iroh', url: irohTarget, enabled: 1 })
 
-    renderWithReactivity(<McpServersPage deps={{ loadAppNodeId: async () => 'b'.repeat(52) }} />, {
+    const enrollIroh = mock(async () => {})
+    renderWithReactivity(<McpServersPage deps={{ loadAppNodeId: async () => 'b'.repeat(52), enrollIroh }} />, {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: McpProviderWrapper,
     })
@@ -512,6 +510,7 @@ describe('McpServersPage Edit server', () => {
     expect(rows[0]?.name).toBe('New Bridge')
     expect(rows[0]?.type).toBe('iroh')
     expect(rows[0]?.url).toBe(irohTarget)
+    expect(enrollIroh).not.toHaveBeenCalled()
   })
 })
 

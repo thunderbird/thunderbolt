@@ -4,7 +4,7 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 
-import { enrollIrohBridge, selfEnrollIrohNodeId } from './iroh-enrollment'
+import { selfEnrollIrohNodeId } from './iroh-enrollment'
 
 /** A fake app client narrowed to `post` (DI over module mocking). `respond` receives the
  *  posted url so a single fake can resolve or reject per route. */
@@ -14,7 +14,7 @@ const fakeClient = (respond: (url: string) => Promise<unknown> = async () => new
 }
 
 describe('selfEnrollIrohNodeId', () => {
-  it('posts the app node id to the self-enroll route', async () => {
+  it('posts only the app node id to the self-enroll route', async () => {
     const { client, post } = fakeClient()
 
     await selfEnrollIrohNodeId(client, async () => 'node-abc')
@@ -50,57 +50,5 @@ describe('selfEnrollIrohNodeId', () => {
       }),
     ).rejects.toThrow('wasm unavailable')
     expect(post).not.toHaveBeenCalled()
-  })
-})
-
-describe('enrollIrohBridge', () => {
-  it('self-enrolls the app node id and registers the bridge, in that order', async () => {
-    const { client, post } = fakeClient()
-
-    await enrollIrohBridge(client, { target: 'bridge-node', name: 'Laptop Bridge' }, async () => 'app-node')
-
-    expect(post).toHaveBeenCalledTimes(2)
-    // Step 1: self-enroll this app's dialer NodeId (the write that grants auto-trust).
-    expect(post).toHaveBeenNthCalledWith(1, 'devices/me/node-id', { json: { nodeId: 'app-node' } })
-    // Step 2: register the bridge itself (server sets device_type='bridge').
-    expect(post).toHaveBeenNthCalledWith(2, 'devices/bridge', {
-      json: { nodeId: 'bridge-node', name: 'Laptop Bridge' },
-    })
-  })
-
-  it('trims the target before registering the bridge (the raw ticket the transport dials)', async () => {
-    const { client, post } = fakeClient()
-
-    await enrollIrohBridge(client, { target: '  bridge-node\n', name: 'Bridge' }, async () => 'app-node')
-
-    expect(post).toHaveBeenNthCalledWith(2, 'devices/bridge', { json: { nodeId: 'bridge-node', name: 'Bridge' } })
-  })
-
-  it('does not register the bridge when self-enroll fails', async () => {
-    const { client, post } = fakeClient(async (url) => {
-      if (url === 'devices/me/node-id') {
-        throw new Error('no account')
-      }
-      return new Response()
-    })
-
-    await expect(
-      enrollIrohBridge(client, { target: 'bridge-node', name: 'Bridge' }, async () => 'app-node'),
-    ).rejects.toThrow('no account')
-    expect(post).toHaveBeenCalledTimes(1)
-    expect(post).toHaveBeenCalledWith('devices/me/node-id', { json: { nodeId: 'app-node' } })
-  })
-
-  it('propagates a failed bridge registration so the caller falls back to manual pairing', async () => {
-    const { client } = fakeClient(async (url) => {
-      if (url === 'devices/bridge') {
-        throw new Error('bridge offline')
-      }
-      return new Response()
-    })
-
-    await expect(
-      enrollIrohBridge(client, { target: 'bridge-node', name: 'Bridge' }, async () => 'app-node'),
-    ).rejects.toThrow('bridge offline')
   })
 })

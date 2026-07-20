@@ -61,7 +61,7 @@ import { useMcpServerOAuth, type McpOAuthCallback, type OAuthCardState } from '@
 import { generateServerName, useAddServerForm } from '@/hooks/use-add-server-form'
 import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { enrollIrohBridge, type IrohBridge } from '@/lib/iroh-enrollment'
+import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 
 export { generateServerName }
 
@@ -113,10 +113,9 @@ export type McpServersPageDeps = {
    *  Production omits and lazy-loads the wasm client only when an iroh target is
    *  entered, keeping the wasm chunk off the entry bundle. */
   loadAppNodeId?: () => Promise<string>
-  /** Test/DI override for the transparent same-account enrollment (D4) fired when an iroh
-   *  bridge is added: self-enrolls this app's dialer NodeId AND registers the bridge itself
-   *  as a `device_type='bridge'` device. Production omits and binds the authenticated client. */
-  enrollIroh?: (bridge: IrohBridge) => Promise<void>
+  /** Test/DI override for app NodeId self-enrollment (D4) fired when an iroh bridge is added.
+   *  Production omits and binds the authenticated client. */
+  enrollIroh?: () => Promise<void>
 }
 
 type StatusTone = 'success' | 'warning' | 'destructive'
@@ -200,11 +199,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   const classifyAuth = deps.classifyMcpServerAuth ?? classifyMcpServerAuth
   const db = useDatabase()
   const httpClient = useHttpClient()
-  // Transparent same-account enrollment (D4): self-enroll this app's dialer NodeId so a
-  // same-account bridge auto-allows it, and register the bridge itself as a device. Bound
-  // to the authenticated client here; tests inject the seam. `deps.loadAppNodeId` (undefined
-  // in prod) falls through to the wasm reader inside the helper.
-  const runEnroll = deps.enrollIroh ?? ((bridge) => enrollIrohBridge(httpClient, bridge, deps.loadAppNodeId))
+  const runEnroll = deps.enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, deps.loadAppNodeId))
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   // Read provider connection state read-only for status display. Sync ownership
   // lives in the single global useMcpSync() in AppContent — running it here too
@@ -454,12 +449,10 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     const name = resolveServerName()
     await addServerMutation.mutateAsync({ id: uuidv7(), name, url })
     if (isIroh) {
-      // Transparent enrollment (D4) so a same-account bridge auto-allows this app and the
-      // bridge shows up as a manageable device. Fire and forget: it must never block or gate
-      // the add (a first-time wasm load + POST can be slow), and on failure (Standalone / no
-      // account / offline) the user falls back to the manual `thunderbolt iroh allow`
-      // one-liner shown in this dialog.
-      void runEnroll({ target: url, name }).catch((error) => {
+      // D4 self-enrolls this app's dialer NodeId; the bridge registers itself server-side.
+      // Fire and forget: enrollment must never block the add, and manual pairing remains the
+      // fallback for Standalone, unauthenticated, or offline use.
+      void runEnroll().catch((error) => {
         console.error('iroh transparent enrollment failed; using manual pairing fallback', error)
       })
     }

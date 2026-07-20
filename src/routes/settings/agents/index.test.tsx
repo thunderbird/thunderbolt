@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AuthClient } from '@/contexts'
-import { getAllAgents } from '@/dal'
+import { createAgent, getAllAgents } from '@/dal'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -126,11 +126,7 @@ describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () =
     localStorage.clear()
   })
 
-  // Renders the authed page, opens the Add dialog, and types a name + iroh ticket so the
-  // submit lands on the iroh transport. `loadAppNodeId` keeps the pairing panel off the
-  // wasm client; `enrollIroh` is the injected transparent-enrollment seam (self-enroll +
-  // bridge registration).
-  const openAddIrohAgent = async (enrollIroh: (bridge: { target: string; name: string }) => Promise<void>) => {
+  const renderIrohAgentsPage = (enrollIroh: () => Promise<void>) => {
     const authClient = createMockAuthClient({ session: authedSession })
     const TestProvider = createTestProvider({ authClient })
     const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -147,12 +143,19 @@ describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () =
       <AgentsSettingsPage isStandalone={offTauri} loadAppNodeId={async () => appNodeId} enrollIroh={enrollIroh} />,
       { wrapper: Wrapper },
     )
+  }
+
+  // Renders the authed page, opens the Add dialog, and types a name + iroh ticket so the
+  // submit lands on the iroh transport. `loadAppNodeId` keeps the pairing panel off the
+  // wasm client; `enrollIroh` is the injected app self-enrollment seam.
+  const openAddIrohAgent = async (enrollIroh: () => Promise<void>) => {
+    renderIrohAgentsPage(enrollIroh)
     fireEvent.click(screen.getByRole('button', { name: /add custom agent/i }))
     fireEvent.change(screen.getByPlaceholderText('My Agent'), { target: { value: 'Laptop Bridge' } })
     fireEvent.change(screen.getByPlaceholderText(/paste an iroh ticket/i), { target: { value: irohTarget } })
   }
 
-  it('enrolls this app and registers the bridge (with its target + name) when adding an iroh agent', async () => {
+  it('self-enrolls this app when adding an iroh agent', async () => {
     const enrollIroh = mock(async () => {})
     await openAddIrohAgent(enrollIroh)
 
@@ -161,11 +164,8 @@ describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () =
       await getClock().runAllAsync()
     })
 
-    // The wiring hands the bridge's dialed target + name to the enrollment seam; the seam's
-    // two POSTs (self-enroll + device_type='bridge' registration) are covered in
-    // iroh-enrollment.test.ts.
     expect(enrollIroh).toHaveBeenCalledTimes(1)
-    expect(enrollIroh).toHaveBeenCalledWith({ target: irohTarget, name: 'Laptop Bridge' })
+    expect(enrollIroh).toHaveBeenCalledWith()
     const created = await getAllAgents(getDb())
     expect(created.some((agent) => agent.url === irohTarget)).toBe(true)
   })
@@ -202,5 +202,36 @@ describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () =
     const created = await getAllAgents(getDb())
     expect(created.some((agent) => agent.url === irohTarget)).toBe(true)
     expect(screen.queryByPlaceholderText(/paste an iroh ticket/i)).not.toBeInTheDocument()
+  })
+
+  it('does not enroll when editing an iroh agent', async () => {
+    const db = getDb()
+    const agentId = 'existing-iroh-agent'
+    const enrollIroh = mock(async () => {})
+    await createAgent(db, {
+      id: agentId,
+      name: 'Existing Bridge',
+      type: 'remote-acp',
+      transport: 'iroh',
+      url: irohTarget,
+      description: null,
+      enabled: 1,
+      userId: authedSession.user.id,
+    })
+    renderIrohAgentsPage(enrollIroh)
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Existing Bridge' }))
+    fireEvent.change(screen.getByPlaceholderText('My Agent'), { target: { value: 'Renamed Bridge' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+      await getClock().runAllAsync()
+    })
+
+    expect(enrollIroh).not.toHaveBeenCalled()
+    const updated = (await getAllAgents(db)).find((agent) => agent.id === agentId)
+    expect(updated?.name).toBe('Renamed Bridge')
   })
 })

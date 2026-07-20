@@ -358,8 +358,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       // phase's job. verificationUri is derived from appUrl so self-hosters point their own
       // frontend without any hardcoded host.
       deviceAuthorization({
-        // Validated at runtime by the plugin's own time-string schema; the cast just
-        // narrows the env-derived string to Better Auth's TimeString literal type.
+        // Settings validation enforces the time-string format; casts only narrow the
+        // Zod-inferred string to Better Auth's template literal type.
         expiresIn: settings.deviceAuthExpiresIn as TimeString,
         interval: settings.deviceAuthInterval as TimeString,
         verificationUri: `${settings.appUrl}/device`,
@@ -369,8 +369,13 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       // account that created it — the escape hatch when the interactive device grant can't run.
       // The plugin's per-key rate limit defaults to 10 requests/day, which is unusable for
       // automation; disable it and rely on the account/IP-level limits already in this stack.
-      // A leaked PAT is mitigated by revoking the key (same posture as a compromised device).
-      apiKey({ enableSessionForAPIKeys: true, rateLimit: { enabled: false } }),
+      // A leaked PAT is mitigated by expiry and revoking the key (same posture as a
+      // compromised device). Installed plugin runtime interprets defaultExpiresIn as seconds.
+      apiKey({
+        enableSessionForAPIKeys: true,
+        keyExpiration: { defaultExpiresIn: settings.apiKeyDefaultExpiresInSeconds },
+        rateLimit: { enabled: false },
+      }),
       // Anonymous plugin is operator-gated: register only when AUTH_ALLOW_ANONYMOUS=true.
       // Otherwise /v1/api/auth/sign-in/anonymous returns 404 — defense-in-depth against
       // a malicious client bypassing the frontend `VITE_AUTH_ENABLE_ANONYMOUS` overlay.

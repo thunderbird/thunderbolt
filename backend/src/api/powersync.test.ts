@@ -61,6 +61,7 @@ const powersyncSettings: Settings = {
   betterAuthSecret,
   deviceAuthExpiresIn: '30m',
   deviceAuthInterval: '5s',
+  apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   e2eeEnabled: true,
   rateLimitEnabled: false,
   swaggerEnabled: false,

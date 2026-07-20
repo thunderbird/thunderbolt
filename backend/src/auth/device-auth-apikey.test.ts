@@ -126,6 +126,17 @@ describe('API key authentication', () => {
     expect(session?.user.email).toBe(harness.email)
   })
 
+  it('expires newly created api keys after the configured default lifetime', async () => {
+    const beforeCreation = Date.now()
+    const createRes = await postJson(harness.app, '/api-key/create', {}, authHeaders(harness.bearerToken))
+    expect(createRes.status).toBe(200)
+    const { expiresAt } = (await createRes.json()) as { expiresAt: string | null }
+
+    expect(expiresAt).not.toBeNull()
+    const expectedExpiry = beforeCreation + 90 * 24 * 60 * 60 * 1000
+    expect(Math.abs(new Date(expiresAt!).getTime() - expectedExpiry)).toBeLessThan(5_000)
+  })
+
   it('rejects an unknown api key', async () => {
     const res = await getSession(harness.app, { 'x-api-key': 'not-a-real-key' })
     expect(res.status).toBe(403)

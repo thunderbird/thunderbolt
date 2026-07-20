@@ -35,6 +35,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
   deviceAuthExpiresIn: '30m',
   deviceAuthInterval: '5s',
+  apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   logLevel: 'INFO' as const,
   port: 8000,
   appUrl: 'http://localhost:1420',

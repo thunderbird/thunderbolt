@@ -1085,22 +1085,15 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                         <p>{isEnabled ? 'Disable server' : 'Enable server'}</p>
                       </TooltipContent>
                     </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          aria-label="Edit server"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => handleEditClick(server)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Edit server</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <Button
+                      aria-label="Edit server"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => handleEditClick(server)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     <Popover
                       open={deleteConfirmOpen === server.id}
                       onOpenChange={(open) => setDeleteConfirmOpen(open ? server.id : null)}

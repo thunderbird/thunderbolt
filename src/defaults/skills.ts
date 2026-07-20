@@ -3,14 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { hashValues } from '@/lib/utils'
-import type { Skill } from '@/types'
+import type { Skill, SkillRow } from '@/types'
 
 /**
  * Hash of user-editable fields. Includes `deletedAt` so soft-deletes are
  * treated as a user configuration choice — a user who deletes a default does
  * NOT get it re-seeded on next app init.
+ *
+ * Accepts raw (nullable) rows as well as `Skill` so the hash-restamp data
+ * migration can stamp exactly what reconciliation will later recompute.
  */
-export const hashSkill = (skill: Skill): string =>
+export const hashSkill = (
+  skill: Pick<SkillRow, 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder' | 'deletedAt'>,
+): string =>
   hashValues([
     skill.name,
     skill.label,

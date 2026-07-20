@@ -4,6 +4,10 @@
 
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { useDatabase } from '@/contexts'
+import { deleteIntegrationCredentials } from '@/dal'
+import type { OAuthProvider } from '@/lib/auth'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '@/hooks/use-settings'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
@@ -18,11 +22,19 @@ import { cn } from '@/lib/utils'
 
 export const OnboardingDialog = () => {
   const { isMobile } = useIsMobile()
+  const db = useDatabase()
+  const queryClient = useQueryClient()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
   const [isOpen, setIsOpen] = useState(false)
   const { state, actions } = useOnboardingState()
+
+  // Owned here (the connected container) so the auth step stays presentational.
+  const handleProviderDisconnect = async (provider: OAuthProvider) => {
+    await deleteIntegrationCredentials(db, provider)
+    await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+  }
 
   useEffect(() => {
     if (import.meta.env.VITE_SKIP_ONBOARDING === 'true') {
@@ -118,6 +130,7 @@ export const OnboardingDialog = () => {
                 isProcessing={state.processingOAuth}
                 isConnected={state.isProviderConnected}
                 onConnectionChange={actions.setProviderConnected}
+                onDisconnect={handleProviderDisconnect}
               />
             )}
             {state.currentStep === 3 && (

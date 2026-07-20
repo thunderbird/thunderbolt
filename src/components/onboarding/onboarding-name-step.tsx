@@ -10,7 +10,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { User } from 'lucide-react'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
-import { useSettings } from '@/hooks/use-settings'
 import { IconCircle } from './icon-circle'
 
 const nameFormSchema = z.object({
@@ -33,11 +32,8 @@ type OnboardingNameStepProps = {
   onFormDirtyChange?: (isDirty: boolean) => void
 }
 
-export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNameStepProps) => {
+export const OnboardingNameStep = ({ state, actions, onFormDirtyChange }: OnboardingNameStepProps) => {
   const inputRef = useRef<HTMLInputElement>(null)
-  const { preferredName } = useSettings({
-    preferred_name: '',
-  })
   const [isInitialized, setIsInitialized] = useState(false)
 
   const form = useForm<NameFormData>({
@@ -45,6 +41,13 @@ export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNam
     defaultValues: {
       preferredName: '',
     },
+    // Prefill from the saved name the connected parent loads into onboarding
+    // state (useOnboardingState reads the preferred_name setting) — this
+    // component stays presentational with no settings/database dependency.
+    // RHF's `values` option syncs the external value in; `keepDirtyValues`
+    // ensures an in-progress edit is never clobbered by a late-arriving load.
+    values: state.nameValue.trim().length > 0 ? { preferredName: state.nameValue } : undefined,
+    resetOptions: { keepDirtyValues: true },
   })
 
   useEffect(() => {
@@ -52,12 +55,6 @@ export const OnboardingNameStep = ({ actions, onFormDirtyChange }: OnboardingNam
       inputRef.current.focus()
     }
   }, [])
-
-  useEffect(() => {
-    if (preferredName.value && !preferredName.isLoading && preferredName.value.trim().length > 0) {
-      form.setValue('preferredName', preferredName.value, { shouldDirty: false }) // Don't mark as dirty when loading saved value
-    }
-  }, [preferredName.value, preferredName.isLoading, form])
 
   useEffect(() => {
     if (!isInitialized) {

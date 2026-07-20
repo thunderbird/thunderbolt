@@ -5,12 +5,9 @@
 import { ConnectProviderButton } from '@/components/connect-provider-button'
 import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
-import { useDatabase } from '@/contexts'
-import { deleteIntegrationCredentials } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import type { UseOAuthConnectResult } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
-import { useQueryClient } from '@tanstack/react-query'
 import { Calendar, File, Mail } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -22,6 +19,9 @@ type OnboardingAuthStepProps = {
   isProcessing?: boolean
   isConnected?: boolean
   onConnectionChange: (connected: boolean) => void
+  /** Revoke the provider's stored credentials. Owned by the connected parent
+   *  (OnboardingDialog) so this step stays free of database access. */
+  onDisconnect?: (provider: OAuthProvider) => Promise<void>
   // Optional dependency injection for testing
   useOAuthConnectHook?: () => UseOAuthConnectResult
 }
@@ -31,12 +31,11 @@ export const OnboardingAuthStep = ({
   isProcessing = false,
   isConnected = false,
   onConnectionChange,
+  onDisconnect,
   useOAuthConnectHook,
 }: OnboardingAuthStepProps) => {
-  const db = useDatabase()
   const location = useLocation()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
   // Determine which provider to use for this step (first in list)
   const provider = providers[0]
@@ -85,8 +84,7 @@ export const OnboardingAuthStep = ({
 
   const handleDisconnect = async () => {
     try {
-      await deleteIntegrationCredentials(db, provider)
-      await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+      await onDisconnect?.(provider)
       onConnectionChange(false)
     } catch (error) {
       console.error('Failed to disconnect:', error)

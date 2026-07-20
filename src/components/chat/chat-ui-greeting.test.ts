@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { getGreeting } from './chat-ui'
+import { getGreeting } from './chat-ui-greeting'
 
 describe('getGreeting', () => {
   it('greets the night owl before 5am', () => {

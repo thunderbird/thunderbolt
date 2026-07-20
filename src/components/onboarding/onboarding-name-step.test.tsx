@@ -41,8 +41,10 @@ describe('OnboardingNameStep', () => {
     mockActions.skipStep.mockClear()
   })
 
-  const renderComponent = () => {
-    return render(<OnboardingNameStep state={{} as OnboardingState} actions={mockActions} />, {
+  const renderComponent = (state: Partial<OnboardingState> = {}) => {
+    // The component only reads `nameValue`; the cast narrows the rest of the
+    // fixture without fabricating unused fields.
+    return render(<OnboardingNameStep state={{ nameValue: '', ...state } as OnboardingState} actions={mockActions} />, {
       wrapper: createQueryTestWrapper(),
     })
   }
@@ -333,7 +335,7 @@ describe('OnboardingNameStep', () => {
 
       render(
         <OnboardingNameStep
-          state={{} as OnboardingState}
+          state={{ nameValue: '' } as OnboardingState}
           actions={mockActions}
           onFormDirtyChange={mockOnFormDirtyChange}
         />,

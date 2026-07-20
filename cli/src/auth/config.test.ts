@@ -9,7 +9,14 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { DEFAULT_CLOUD_URL, authBaseUrl, isSecureCloudUrl, resolveCloudUrl, resolvePatToken } from './config.ts'
+import {
+  DEFAULT_CLOUD_URL,
+  apiBaseUrl,
+  authBaseUrl,
+  isSecureCloudUrl,
+  resolveCloudUrl,
+  resolvePatToken,
+} from './config.ts'
 
 describe('resolveCloudUrl', () => {
   test('uses THUNDERBOLT_CLOUD_URL when set', () => {
@@ -33,6 +40,21 @@ describe('authBaseUrl', () => {
 
   test('appends the full path when the base lacks /v1', () => {
     expect(authBaseUrl('https://api.example.com')).toBe('https://api.example.com/v1/api/auth')
+  })
+})
+
+describe('apiBaseUrl', () => {
+  test('preserves a cloud URL ending in /v1', () => {
+    expect(apiBaseUrl('https://api.example.com/v1')).toBe('https://api.example.com/v1')
+  })
+
+  test('appends /v1 when the cloud URL lacks it', () => {
+    expect(apiBaseUrl('https://api.example.com')).toBe('https://api.example.com/v1')
+  })
+
+  test('removes trailing slashes before normalizing', () => {
+    expect(apiBaseUrl('https://api.example.com/v1///')).toBe('https://api.example.com/v1')
+    expect(apiBaseUrl('https://api.example.com///')).toBe('https://api.example.com/v1')
   })
 })
 

@@ -31,14 +31,21 @@ export const CLI_CLIENT_ID = 'thunderbolt-cli'
 export const resolveCloudUrl = (env: Env = process.env): string => env.THUNDERBOLT_CLOUD_URL || DEFAULT_CLOUD_URL
 
 /**
- * Derive the Better Auth base URL from a `…/v1` cloud URL. Strips a trailing
- * slash and a trailing `/v1`, then appends `/v1/api/auth` — reproducing exactly
- * how `src/contexts/auth-context.tsx` builds `baseURL` + `basePath`.
+ * Normalize a backend cloud URL to its `…/v1` API base. Accepts URLs with or
+ * without `/v1` and trailing slashes.
  *
- * @param cloudUrl - the `…/v1` cloud URL
+ * @param cloudUrl - backend cloud URL
  */
-export const authBaseUrl = (cloudUrl: string): string =>
-  `${cloudUrl.replace(/\/+$/, '').replace(/\/v1$/, '')}/v1/api/auth`
+export const apiBaseUrl = (cloudUrl: string): string =>
+  `${cloudUrl.replace(/\/+$/, '').replace(/\/v1$/, '')}/v1`
+
+/**
+ * Derive the Better Auth base URL from a cloud URL — reproducing exactly how
+ * `src/contexts/auth-context.tsx` builds `baseURL` + `basePath`.
+ *
+ * @param cloudUrl - backend cloud URL
+ */
+export const authBaseUrl = (cloudUrl: string): string => `${apiBaseUrl(cloudUrl)}/api/auth`
 
 /**
  * Resolve a personal access token / api key from the environment. When set, the

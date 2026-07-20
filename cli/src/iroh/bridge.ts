@@ -16,12 +16,18 @@
  */
 
 import type { Connection, Incoming } from '@number0/iroh'
+import { hostname } from 'node:os'
 import type { BridgeConfig } from '../agent/types.ts'
 import { isSecureCloudUrl } from '../auth/config.ts'
 import type { Clock } from '../auth/device-grant.ts'
 import { resolveBridgeCredential } from '../auth/token-store.ts'
 import { atProcCapacity, redactArgv, spawnAgent, type BridgeProc } from '../commands/bridge.ts'
-import { createAccountAllowlist, fetchAccountAllowlist, type AccountAllowlist } from './account-allowlist.ts'
+import {
+  createAccountAllowlist,
+  fetchAccountAllowlist,
+  registerBridgeWithBackend,
+  type AccountAllowlist,
+} from './account-allowlist.ts'
 import { isAllowed } from './allowlist.ts'
 import { bindServer } from './endpoint.ts'
 import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
@@ -425,12 +431,11 @@ type AccountTrust = { readonly accountAllowlist: AccountAllowlist; readonly stop
 /**
  * Wire same-account auto-trust (D2/D7/D8) when this bridge has a backend credential:
  * resolve it (env PAT via `x-api-key`, else the stored device-grant session bearer),
- * build the account allowlist over that credential, prime it with an initial refresh
- * before any connection is accepted, and start the 45s membership heartbeat. Returns
- * the live allowlist + a heartbeat stop, or `undefined` in Standalone / no-credential
- * mode where the bridge stays pure manual-file. Never throws: a failed prime leaves an
- * empty-but-live allowlist the heartbeat keeps retrying, and the manual file governs
- * meanwhile.
+ * self-register the bridge's bare NodeId, prime the account allowlist before any
+ * connection is accepted, and start the 45s membership heartbeat. Returns live
+ * account trust only when registration and priming both succeed. Never throws:
+ * credential, registration, and prime failures disable account trust for this run,
+ * while the manual allowlist remains active.
  *
  * Re-checks the credential's `cloudUrl` against the same secure-transport policy
  * `login` enforced (`isSecureCloudUrl`) before sending the credential: a tampered /
@@ -442,22 +447,31 @@ type AccountTrust = { readonly accountAllowlist: AccountAllowlist; readonly stop
  * @param openConnections - the live-session registry the heartbeat re-checks
  * @param selfNodeId - this bridge's own NodeId, for D8 self-revocation
  */
-const startAccountTrust = async (
+export const startAccountTrust = async (
   openConnections: Set<OpenConnection>,
   selfNodeId: string,
 ): Promise<AccountTrust | undefined> => {
-  const credential = await resolveBridgeCredential()
-  if (!credential) return undefined
-  if (!isSecureCloudUrl(credential.cloudUrl)) {
+  try {
+    const credential = await resolveBridgeCredential()
+    if (!credential) return undefined
+    if (!isSecureCloudUrl(credential.cloudUrl)) {
+      throw new Error(`cloud URL is not a secure transport (${credential.cloudUrl})`)
+    }
+    await registerBridgeWithBackend(credential, selfNodeId, hostname() || 'Bridge')
+    const initialNodeIds = await fetchAccountAllowlist(credential)
+    const accountAllowlist = createAccountAllowlist(
+      () => fetchAccountAllowlist(credential),
+      selfNodeId,
+      initialNodeIds,
+    )
+    const stop = startMembershipHeartbeat(accountAllowlist, openConnections)
+    return { accountAllowlist, stop }
+  } catch (err) {
     process.stderr.write(
-      `⚡ iroh bridge: cloud URL is not a secure transport (${credential.cloudUrl}); account auto-trust disabled, using manual allowlist only\n`,
+      `⚡ iroh bridge: account auto-trust disabled: ${err instanceof Error ? err.message : String(err)}; using manual allowlist only\n`,
     )
     return undefined
   }
-  const accountAllowlist = createAccountAllowlist(() => fetchAccountAllowlist(credential), selfNodeId)
-  await accountAllowlist.refresh()
-  const stop = startMembershipHeartbeat(accountAllowlist, openConnections)
-  return { accountAllowlist, stop }
 }
 
 /**
@@ -488,7 +502,8 @@ export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
       `   spawning per connection: ${redactArgv(config.command)}\n` +
       (accountTrust
         ? '   same-account auto-trust: on (backend allowlist, 45s heartbeat)\n'
-        : '   allow a peer with: thunderbolt iroh allow <their-node-id>\n'),
+        : '   same-account auto-trust: off (manual allowlist only)\n' +
+          '   allow a peer with: thunderbolt iroh allow <their-node-id>\n'),
   )
 
   const shutdown = (): void => {

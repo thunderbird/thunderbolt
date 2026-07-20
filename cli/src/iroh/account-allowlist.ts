@@ -15,6 +15,7 @@
  * the bridge falls back to the manual file — it must never surface an error there.
  */
 
+import { apiBaseUrl } from '../auth/config.ts'
 import type { BridgeCredential } from '../auth/token-store.ts'
 
 /** The subset of `fetch` this client uses; injected so the wire contract is
@@ -57,7 +58,7 @@ export const fetchAccountAllowlist = async (
   fetchFn: FetchFn = fetch,
   timeoutMs: number = ALLOWLIST_FETCH_TIMEOUT_MS,
 ): Promise<string[]> => {
-  const res = await fetchFn(`${credential.cloudUrl.replace(/\/+$/, '')}/devices/allowlist`, {
+  const res = await fetchFn(`${apiBaseUrl(credential.cloudUrl)}/devices/allowlist`, {
     headers: authHeader(credential),
     signal: AbortSignal.timeout(timeoutMs),
   })
@@ -66,6 +67,34 @@ export const fetchAccountAllowlist = async (
   }
   const body = (await res.json()) as AllowlistBody
   return body.nodeIds.map((row) => row.nodeId).filter((id): id is string => Boolean(id))
+}
+
+/**
+ * Register this bridge's bare NodeId with its account before fetching account
+ * trust. Throws a revoked-specific error on 403 and throws on every other failed
+ * response or network error so the bridge startup boundary can disable auto-trust.
+ *
+ * @param credential - bridge credential and backend URL
+ * @param nodeId - bridge's bare iroh NodeId
+ * @param name - account-visible bridge device name
+ * @param fetchFn - HTTP fetch (defaults to global `fetch`)
+ * @param timeoutMs - abort deadline (default {@link ALLOWLIST_FETCH_TIMEOUT_MS})
+ */
+export const registerBridgeWithBackend = async (
+  credential: BridgeCredential,
+  nodeId: string,
+  name: string,
+  fetchFn: FetchFn = fetch,
+  timeoutMs: number = ALLOWLIST_FETCH_TIMEOUT_MS,
+): Promise<void> => {
+  const res = await fetchFn(`${apiBaseUrl(credential.cloudUrl)}/devices/bridge`, {
+    method: 'POST',
+    headers: { ...authHeader(credential), 'content-type': 'application/json' },
+    body: JSON.stringify({ nodeId, name }),
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  if (res.status === 403) throw new Error('bridge revoked on the account')
+  if (!res.ok) throw new Error(`bridge registration failed (${res.status} ${res.statusText})`)
 }
 
 /** An in-memory account allowlist: membership check + a re-fetch that swaps the cache. */
@@ -88,9 +117,9 @@ export type AccountAllowlist = {
 }
 
 /**
- * Build an {@link AccountAllowlist} over an injected NodeId fetcher. Starts empty
- * (no peer auto-trusted until the first successful {@link AccountAllowlist.refresh}),
- * so a failed prime falls back safely to the manual file rather than trusting anyone.
+ * Build an {@link AccountAllowlist} over an injected NodeId fetcher. Starts from
+ * `initialNodeIds` when startup already fetched a successful prime, or empty so no
+ * peer is auto-trusted before the first successful {@link AccountAllowlist.refresh}.
  *
  * Self-revocation (D8): the bridge's own NodeId is one of the account's trusted
  * devices, so it normally appears in the fetched list. If a *populated* refresh omits
@@ -100,21 +129,23 @@ export type AccountAllowlist = {
  *
  * @param fetchNodeIds - fetches the account's trusted NodeIds (the network seam)
  * @param selfNodeId - this bridge's own NodeId, checked for self-revocation
+ * @param initialNodeIds - successfully fetched startup prime
  */
 export const createAccountAllowlist = (
   fetchNodeIds: () => Promise<string[]>,
   selfNodeId: string,
+  initialNodeIds: ReadonlyArray<string> = [],
 ): AccountAllowlist => {
   const self = selfNodeId.trim()
-  let trusted = new Set<string>()
+  const toTrustedSet = (ids: ReadonlyArray<string>): Set<string> => new Set(ids.map((id) => id.trim()).filter(Boolean))
+  let trusted = toTrustedSet(initialNodeIds)
   const isSelfRevoked = (): boolean => trusted.size > 0 && !trusted.has(self)
   return {
     has: (nodeId) => !isSelfRevoked() && trusted.has(nodeId.trim()),
     isSelfRevoked,
     refresh: async () => {
       try {
-        const ids = await fetchNodeIds()
-        trusted = new Set(ids.map((id) => id.trim()).filter(Boolean))
+        trusted = toTrustedSet(await fetchNodeIds())
       } catch (err) {
         process.stderr.write(
           `⚡ iroh bridge: account allowlist refresh failed, keeping last-known set: ${err instanceof Error ? err.message : String(err)}\n`,

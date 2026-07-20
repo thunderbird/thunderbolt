@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { Connection, Incoming } from '@number0/iroh'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BridgeConfig } from '../agent/types.ts'
@@ -33,6 +33,7 @@ import {
   isConnectionAllowed,
   type OpenConnection,
   remoteKey,
+  startAccountTrust,
   startMembershipHeartbeat,
 } from './bridge.ts'
 
@@ -551,5 +552,38 @@ describe('startMembershipHeartbeat — 45s cadence', () => {
     releaseOne() // wake the loop so it observes running=false and exits
     await flush()
     expect(refresh).toHaveBeenCalledTimes(2) // no tick after stop
+  })
+})
+
+describe('startAccountTrust — degradation boundary', () => {
+  const prevHome = process.env.THUNDERBOLT_HOME
+  const prevToken = process.env.THUNDERBOLT_TOKEN
+  let home: string
+  let stderr: ReturnType<typeof spyOn>
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'tb-account-trust-'))
+    process.env.THUNDERBOLT_HOME = home
+    delete process.env.THUNDERBOLT_TOKEN
+    stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+
+  afterEach(async () => {
+    stderr.mockRestore()
+    if (prevHome === undefined) delete process.env.THUNDERBOLT_HOME
+    else process.env.THUNDERBOLT_HOME = prevHome
+    if (prevToken === undefined) delete process.env.THUNDERBOLT_TOKEN
+    else process.env.THUNDERBOLT_TOKEN = prevToken
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('disables account auto-trust when stored auth JSON is corrupt', async () => {
+    await writeFile(join(home, 'auth.json'), '{"token":')
+
+    await expect(startAccountTrust(new Set(), 'self-node')).resolves.toBeUndefined()
+
+    expect(stderr).toHaveBeenCalledTimes(1)
+    expect(String(stderr.mock.calls[0][0])).toContain('account auto-trust disabled:')
+    expect(String(stderr.mock.calls[0][0])).toContain('using manual allowlist only')
   })
 })

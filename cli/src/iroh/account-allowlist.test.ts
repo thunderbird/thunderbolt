@@ -13,7 +13,12 @@
 
 import { describe, expect, it, mock, spyOn } from 'bun:test'
 import type { BridgeCredential } from '../auth/token-store.ts'
-import { createAccountAllowlist, fetchAccountAllowlist, type FetchFn } from './account-allowlist.ts'
+import {
+  createAccountAllowlist,
+  fetchAccountAllowlist,
+  registerBridgeWithBackend,
+  type FetchFn,
+} from './account-allowlist.ts'
 
 /** Build a bridge credential for the wire tests; defaults to a device-grant session. */
 const cred = (overrides: Partial<BridgeCredential> = {}): BridgeCredential => ({
@@ -60,14 +65,14 @@ describe('fetchAccountAllowlist — wire contract', () => {
     expect(seen.auth).toBeNull()
   })
 
-  it('strips a trailing slash from the cloud URL before appending the path', async () => {
+  it('normalizes a cloud URL without /v1 before appending the path', async () => {
     let seenUrl = ''
     const fetchFn: FetchFn = async (url) => {
       seenUrl = url
       return jsonResponse({ nodeIds: [] })
     }
 
-    await fetchAccountAllowlist(cred({ cloudUrl: 'https://api.test/v1/' }), fetchFn)
+    await fetchAccountAllowlist(cred({ cloudUrl: 'https://api.test/' }), fetchFn)
 
     expect(seenUrl).toBe('https://api.test/v1/devices/allowlist')
   })
@@ -95,6 +100,57 @@ describe('fetchAccountAllowlist — wire contract', () => {
   })
 })
 
+describe('registerBridgeWithBackend — wire contract', () => {
+  it('POSTs the bare NodeId and bridge name with the session bearer', async () => {
+    const seen: {
+      url: string
+      method: string | undefined
+      body: string | null | undefined
+      auth: string | null
+      signal: AbortSignal | null
+    } = { url: '', method: undefined, body: undefined, auth: null, signal: null }
+    const fetchFn: FetchFn = async (url, init) => {
+      seen.url = url
+      seen.method = init?.method
+      seen.body = typeof init?.body === 'string' ? init.body : undefined
+      seen.auth = new Headers(init?.headers).get('authorization')
+      seen.signal = init?.signal ?? null
+      return jsonResponse({ device: {} })
+    }
+
+    await registerBridgeWithBackend(cred(), 'bare-node-id', 'Workstation', fetchFn)
+
+    expect(seen.url).toBe('https://api.test/v1/devices/bridge')
+    expect(seen.method).toBe('POST')
+    expect(seen.body).toBe(JSON.stringify({ nodeId: 'bare-node-id', name: 'Workstation' }))
+    expect(seen.auth).toBe('Bearer signed.jwt')
+    expect(seen.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('reports a revoked bridge on 403 and uses x-api-key for a PAT', async () => {
+    const seen: { auth: string | null; apiKey: string | null } = { auth: null, apiKey: null }
+    const fetchFn: FetchFn = async (_url, init) => {
+      seen.auth = new Headers(init?.headers).get('authorization')
+      seen.apiKey = new Headers(init?.headers).get('x-api-key')
+      return jsonResponse({ error: 'revoked' }, 403)
+    }
+
+    await expect(
+      registerBridgeWithBackend(cred({ token: 'pat-xyz', kind: 'apiKey' }), 'bare-node-id', 'Bridge', fetchFn),
+    ).rejects.toThrow('bridge revoked on the account')
+    expect(seen.apiKey).toBe('pat-xyz')
+    expect(seen.auth).toBeNull()
+  })
+
+  it('surfaces network errors to the account-trust degradation boundary', async () => {
+    const fetchFn: FetchFn = async () => {
+      throw new Error('network down')
+    }
+
+    await expect(registerBridgeWithBackend(cred(), 'bare-node-id', 'Bridge', fetchFn)).rejects.toThrow('network down')
+  })
+})
+
 /** The bridge's own NodeId, included in the fetched list so cache tests aren't
  *  self-revoked (self-revocation is exercised in its own describe below). */
 const SELF = 'self-node'
@@ -103,6 +159,11 @@ describe('createAccountAllowlist — in-memory cache', () => {
   it('trusts no peer until the first successful refresh', () => {
     const allowlist = createAccountAllowlist(async () => [SELF, 'peer'], SELF)
     expect(allowlist.has('peer')).toBe(false)
+  })
+
+  it('starts from a successfully fetched startup prime', () => {
+    const allowlist = createAccountAllowlist(async () => [], SELF, [SELF, 'peer'])
+    expect(allowlist.has('peer')).toBe(true)
   })
 
   it('populates the cache on refresh and trims the queried id', async () => {

@@ -105,7 +105,16 @@ export default defineConfig({
     // clickable. The package.json direct dependency on
     // @radix-ui/react-dismissable-layer exists solely to hoist one copy for
     // this dedupe — it is load-bearing even though nothing imports it.
-    dedupe: ['@powersync/common', '@powersync/react', 'react', '@radix-ui/react-dismissable-layer'],
+    // react-dialog is deduped for the same reason: bun nests a stale copy
+    // under `cmdk`, and two dialog module instances would split the same
+    // module-scope layer bookkeeping.
+    dedupe: [
+      '@powersync/common',
+      '@powersync/react',
+      'react',
+      '@radix-ui/react-dismissable-layer',
+      '@radix-ui/react-dialog',
+    ],
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, './shared'),

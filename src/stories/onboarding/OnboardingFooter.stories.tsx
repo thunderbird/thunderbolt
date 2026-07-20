@@ -7,7 +7,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 
 const meta = {
-  title: 'components/onboarding/onboarding-action-buttons',
+  title: 'Onboarding/OnboardingActionButtons',
   component: OnboardingActionButtons,
   parameters: {
     layout: 'centered',

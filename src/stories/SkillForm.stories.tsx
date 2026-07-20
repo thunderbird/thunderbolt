@@ -7,7 +7,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 
 const meta = {
-  title: 'skills/skill-form',
+  title: 'Skills/SkillForm',
   component: SkillForm,
   parameters: {
     layout: 'fullscreen',
@@ -45,13 +45,13 @@ export const Edit: Story = {
 export const NameTaken: Story = {
   args: {
     mode: 'create',
-    nameError: 'A skill named "meeting-notes" already exists.',
+    slugError: 'A skill named "meeting-notes" already exists.',
   },
 }
 
 export const SpecViolationFromServer: Story = {
   args: {
     mode: 'create',
-    nameError: 'Name may only contain lowercase letters, numbers, and hyphens.',
+    slugError: 'Slug may only contain lowercase letters, numbers, and hyphens.',
   },
 }

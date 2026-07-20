@@ -8,7 +8,7 @@ import { LinkPreview } from './display'
 import { LinkPreviewSkeleton } from './widget'
 
 const meta = {
-  title: 'widgets/link-preview',
+  title: 'Widgets/LinkPreview',
   component: LinkPreview,
   parameters: {
     layout: 'centered',

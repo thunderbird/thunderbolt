@@ -5,14 +5,13 @@
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { LazyMotion, domMax } from 'framer-motion'
 import { useState } from 'react'
 import { BrowserRouter } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
 import type { SidebarSection } from './types'
 
 const meta = {
-  title: 'layout/sidebar/SidebarNavToggle',
+  title: 'Sidebar/SidebarNavToggle',
   component: SidebarNavToggle,
   parameters: {
     layout: 'padded',
@@ -26,15 +25,13 @@ const meta = {
   decorators: [
     (Story) => (
       <BrowserRouter>
-        <LazyMotion features={domMax}>
-          <SidebarProvider>
-            <TooltipProvider>
-              <div className="w-64 border rounded-lg p-2 bg-sidebar">
-                <Story />
-              </div>
-            </TooltipProvider>
-          </SidebarProvider>
-        </LazyMotion>
+        <SidebarProvider>
+          <TooltipProvider>
+            <div className="w-64 border rounded-lg p-2 bg-sidebar">
+              <Story />
+            </div>
+          </TooltipProvider>
+        </SidebarProvider>
       </BrowserRouter>
     ),
   ],

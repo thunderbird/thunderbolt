@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ChatActions } from './chat-actions'
 
 const meta = {
-  title: 'layout/sidebar/ChatActions',
+  title: 'Sidebar/ChatActions',
   component: ChatActions,
   parameters: {
     layout: 'padded',

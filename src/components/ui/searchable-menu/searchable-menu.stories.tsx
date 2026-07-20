@@ -12,7 +12,7 @@ import { SearchableMenu } from './searchable-menu'
 import type { SearchableMenuGroup, SearchableMenuItem } from './types'
 
 const meta = {
-  title: 'components/ui/SearchableMenu',
+  title: 'UI/SearchableMenu',
   component: SearchableMenu,
   parameters: {
     layout: 'centered',

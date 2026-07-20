@@ -42,7 +42,7 @@ const WeatherForecastWithToggle = ({
 }
 
 const meta = {
-  title: 'widgets/weather-forecast',
+  title: 'Widgets/WeatherForecast',
   component: WeatherForecastWithToggle,
   parameters: {
     layout: 'centered',

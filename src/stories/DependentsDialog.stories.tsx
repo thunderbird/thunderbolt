@@ -21,7 +21,7 @@ const dep = (id: string, name: string): Skill => ({
 })
 
 const meta = {
-  title: 'skills/dependents-dialog',
+  title: 'Skills/DependentsDialog',
   component: DependentsDialog,
   parameters: {
     layout: 'centered',

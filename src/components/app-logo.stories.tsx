@@ -2,26 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { OnboardingDialogWrapper } from './wrappers/OnboardingDialogWrapper'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
+import { AppLogo } from './app-logo'
+
 const meta = {
-  title: 'Onboarding/OnboardingDialog',
-  component: OnboardingDialogWrapper,
+  title: 'Components/AppLogo',
+  component: AppLogo,
   parameters: {
-    layout: 'fullscreen',
+    layout: 'centered',
   },
-  tags: ['autodocs'],
-  decorators: [
-    (Story) => (
-      <div className="min-h-screen bg-background">
-        <Story />
-      </div>
-    ),
-  ],
-} satisfies Meta<typeof OnboardingDialogWrapper>
+} satisfies Meta<typeof AppLogo>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
+
+export const Sizes: Story = {
+  render: () => (
+    <div className="flex items-end gap-4">
+      <AppLogo size={16} />
+      <AppLogo size={24} />
+      <AppLogo size={48} />
+      <AppLogo size={96} />
+    </div>
+  ),
+}

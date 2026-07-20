@@ -169,6 +169,7 @@
     "@storybook/addon-a11y": "^10.3.5",
     "@storybook/addon-docs": "^10.3.5",
     "@storybook/addon-onboarding": "^10.3.5",
+    "@storybook/addon-themes": "^10.5.0",
     "@storybook/addon-vitest": "^10.3.5",
     "@storybook/react-vite": "^10.3.5",
     "@tailwindcss/vite": "^4.2.4",

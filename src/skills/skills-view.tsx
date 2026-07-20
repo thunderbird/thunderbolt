@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useReducer, useRef } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useCallback, useReducer } from 'react'
 
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
+import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
@@ -41,59 +41,20 @@ export const SkillsView = () => {
     pendingLeave,
     pendingDelete,
     pendingDependents,
-    nameError,
+    slugError,
+    submitError,
     createInitialName,
   } = state
 
   // Deep-links from the chat composer. Broken-reference alerts send
   // `editSkill` (selects an existing, likely disabled skill so the user can
   // enable it) or `createSkill` (opens the create form pre-filled with the
-  // slug the user just typed); the pinned chips' "Edit skill" action sends
-  // `startEditSkill`, which lands straight in the edit form. Each consumes
-  // the router state once on mount and clears it so back/forward doesn't
-  // re-trigger. Mirrors the `runSkill` pattern in chat-prompt-input.
-  const navigate = useNavigate()
-  const location = useLocation()
-  const consumedEditSkillRef = useRef<string | null>(null)
-  const consumedStartEditSkillRef = useRef<string | null>(null)
-  const consumedCreateSkillRef = useRef<string | null>(null)
-  const navState = (location.state ?? null) as {
-    editSkill?: string
-    startEditSkill?: string
-    createSkill?: string
-  } | null
-  const editSkillNav = navState?.editSkill
-  const startEditSkillNav = navState?.startEditSkill
-  const createSkillNav = navState?.createSkill
-  if (!editSkillNav) {
-    consumedEditSkillRef.current = null
-  } else if (consumedEditSkillRef.current !== editSkillNav) {
-    consumedEditSkillRef.current = editSkillNav
-    queueMicrotask(() => {
-      dispatch({ type: 'SELECT_SKILL', id: editSkillNav })
-      navigate(location.pathname, { replace: true, state: {} })
-    })
-  }
-  if (!startEditSkillNav) {
-    consumedStartEditSkillRef.current = null
-  } else if (consumedStartEditSkillRef.current !== startEditSkillNav) {
-    consumedStartEditSkillRef.current = startEditSkillNav
-    queueMicrotask(() => {
-      dispatch({ type: 'START_EDIT', id: startEditSkillNav })
-      navigate(location.pathname, { replace: true, state: {} })
-    })
-  }
-  // `''` is a valid deep link (open a blank create form — e.g. the chat
-  // skills bar's "New skill" row), so only null/undefined mean "no link".
-  if (createSkillNav == null) {
-    consumedCreateSkillRef.current = null
-  } else if (consumedCreateSkillRef.current !== createSkillNav) {
-    consumedCreateSkillRef.current = createSkillNav
-    queueMicrotask(() => {
-      dispatch({ type: 'START_CREATE', initialName: createSkillNav || undefined })
-      navigate(location.pathname, { replace: true, state: {} })
-    })
-  }
+  // slug the user just typed — `''` opens a blank form); the pinned chips'
+  // "Edit skill" action sends `startEditSkill`, which lands straight in the
+  // edit form. Same consume-once pattern as `runSkill` in chat-prompt-input.
+  useConsumeNavState('editSkill', (id) => dispatch({ type: 'SELECT_SKILL', id }))
+  useConsumeNavState('startEditSkill', (id) => dispatch({ type: 'START_EDIT', id }))
+  useConsumeNavState('createSkill', (slug) => dispatch({ type: 'START_CREATE', initialName: slug || undefined }))
 
   // No first-skill fallback: the detail panel only opens when the user
   // explicitly selects a skill (or a deep link does), matching the
@@ -112,7 +73,7 @@ export const SkillsView = () => {
     [setEnabled, pinnedSet, togglePin],
   )
 
-  const handleToggleEnabled = useCallback(
+  const toggleEnabled = useCallback(
     async (id: string, next: boolean) => {
       if (!next) {
         const target = skills.find((s) => s.id === id)
@@ -127,6 +88,18 @@ export const SkillsView = () => {
       await setEnabled(id, next)
     },
     [setEnabled, disableSkill, skills],
+  )
+
+  // Fire-and-forget from the row's perspective, but a failed DB write must
+  // not vanish silently — surface it in the console instead of dropping the
+  // rejected promise on the floor.
+  const handleToggleEnabled = useCallback(
+    (id: string, next: boolean) => {
+      toggleEnabled(id, next).catch((error: unknown) => {
+        console.error('Failed to toggle skill enabled state', error)
+      })
+    },
+    [toggleEnabled],
   )
 
   const requestLeave = useCallback(
@@ -154,23 +127,12 @@ export const SkillsView = () => {
     }
   }
 
-  // Edit/create from a dirty form routes through the discard dialog like
-  // `onSelectSkill` — never a silent dead click.
-  const onEdit = (id: string) => {
-    if (mode === 'detail') {
-      dispatch({ type: 'START_EDIT', id })
-    } else {
-      requestLeave({ type: 'edit', id })
-    }
-  }
+  // Edit/create always route through `requestLeave`: from a clean state it
+  // performs the leave immediately (opening the form), and from a dirty form
+  // it parks the intent behind the discard dialog — never a silent dead click.
+  const onEdit = (id: string) => requestLeave({ type: 'edit', id })
 
-  const onCreate = () => {
-    if (mode === 'detail') {
-      dispatch({ type: 'START_CREATE' })
-    } else {
-      requestLeave({ type: 'create' })
-    }
-  }
+  const onCreate = () => requestLeave({ type: 'create' })
 
   const onDelete = (id: string) => {
     const target = skills.find((s) => s.id === id)
@@ -196,17 +158,18 @@ export const SkillsView = () => {
     [softDeleteSkill, trackSkillEvent],
   )
 
-  const confirmPendingDependents = async () => {
+  const confirmPendingDependents = () => {
     if (!pendingDependents) {
       return
     }
     const { action, skill } = pendingDependents
     dispatch({ type: 'CLOSE_DEPENDENTS' })
-    if (action === 'disable') {
-      await disableSkill(skill.id)
-    } else {
-      await removeSkill(skill.id)
-    }
+    // The dialog is already closed, so a failed write can't be shown there —
+    // but it must not vanish as a dropped rejection either.
+    const run = action === 'disable' ? disableSkill(skill.id) : removeSkill(skill.id)
+    run.catch((error: unknown) => {
+      console.error(`Failed to ${action} skill`, error)
+    })
   }
 
   const onJumpToDependent = (id: string) => {
@@ -227,10 +190,14 @@ export const SkillsView = () => {
       }
     } catch (error) {
       if (error instanceof SkillNameTakenError || error instanceof SkillNameInvalidError) {
-        dispatch({ type: 'SET_NAME_ERROR', message: error.message })
+        dispatch({ type: 'SET_SLUG_ERROR', message: error.message })
         return
       }
-      throw error
+      // Unexpected persistence failure: the form stays open with the user's
+      // input intact — tell them why nothing happened instead of failing
+      // silently as an unhandled rejection.
+      console.error('Failed to save skill', error)
+      dispatch({ type: 'SUBMIT_FAILED', message: "Couldn't save the skill. Please try again." })
     }
   }
 
@@ -240,9 +207,10 @@ export const SkillsView = () => {
     onCancel: () => requestLeave({ type: 'cancel' }),
     onSubmit: handleSubmit,
     onDirtyChange: (dirty: boolean) => dispatch({ type: 'SET_DIRTY', dirty }),
-    onNameChange: () => dispatch({ type: 'CLEAR_NAME_ERROR' }),
+    onSlugChange: () => dispatch({ type: 'CLEAR_SLUG_ERROR' }),
     resetSignal,
-    nameError,
+    slugError,
+    submitError,
   }
 
   const createForm = (
@@ -346,7 +314,11 @@ export const SkillsView = () => {
             }
           }}
           onConfirm={() => {
-            void removeSkill(pendingDelete.id)
+            // The dialog closes immediately; a failed delete still surfaces
+            // in the console rather than as a dropped rejection.
+            removeSkill(pendingDelete.id).catch((error: unknown) => {
+              console.error('Failed to delete skill', error)
+            })
             dispatch({ type: 'CLOSE_DELETE' })
           }}
           skillName={skillDisplayName(pendingDelete)}

@@ -16,7 +16,8 @@ import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useNavigate, useLocation, useNavigationType } from 'react-router'
+import { useNavigate, useLocation } from 'react-router'
+import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
 import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
@@ -58,16 +59,6 @@ const HeaderAgentSelector = ({
 const headerIconButtonClass = 'size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground'
 
 /**
- * Highest router history index reachable via Forward this session. Module
- * scope (not state) because it must survive Header remounts: the browser
- * gives no direct "can go forward" signal, so we track the furthest index
- * react-router has visited. `window.history.length` is NOT usable here — it
- * counts entries from before the router initialized (e.g. an OAuth redirect
- * chain), which would enable Forward with no in-app forward entry.
- */
-let maxReachableHistoryIndex = 0
-
-/**
  * Back/forward history arrows for the Tauri desktop app, where there's no
  * browser chrome to navigate with. Web is skipped (the browser has its own
  * buttons) and so are mobile-width layouts (no room in the 3-column header).
@@ -78,16 +69,10 @@ const HistoryNavButtons = () => {
   const navigate = useNavigate()
   // Subscribe to location so the enabled states recompute after navigation.
   useLocation()
-  const navigationType = useNavigationType()
+  const { index, ceiling } = useHistoryCeiling()
 
-  const index = (window.history.state as { idx?: number } | null)?.idx ?? 0
-  // A PUSH discards any forward entries, so the current index becomes the
-  // ceiling; POP/REPLACE move within the existing stack and only ever raise it.
-  if (navigationType === 'PUSH' || index > maxReachableHistoryIndex) {
-    maxReachableHistoryIndex = index
-  }
   const canGoBack = index > 0
-  const canGoForward = index < maxReachableHistoryIndex
+  const canGoForward = index < ceiling
 
   return (
     <div className="flex items-center">

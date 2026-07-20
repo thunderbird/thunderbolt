@@ -11,7 +11,7 @@ import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
-import { buildDisplayNameToSlug, skillDisplayName } from '@/skills/display'
+import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
 import { deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -287,12 +287,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // Read the latest input from a ref so deferred callers (e.g. the
         // `runSkill` microtask) don't operate on a stale closure value.
         // Insert the display title, not the slug — the user only ever sees
-        // titles in chat; send-time normalization restores the slug. When the
-        // display name is ambiguous (absent from the map), fall back to the
-        // slug so the token stays resolvable at send time.
+        // titles in chat; send-time normalization restores the slug.
+        // `tokenForSkill` falls back to the slug for ambiguous display names
+        // so the token stays resolvable at send time.
         const skill = skillBySlug.get(slug)
-        const displayName = skill ? skillDisplayName(skill) : slug
-        const next = appendSlashToken(inputRef.current, displayNameToSlug.has(displayName) ? displayName : slug)
+        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : slug)
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -333,12 +332,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [input, setInput, setCursorPos],
     )
 
-    // Run-in-chat router-state nav (Skills v1 §5). Read once during render
-    // and clear the state via `navigate(replace)` so back/forward doesn't
-    // re-trigger. Tracked via `consumedRunSkillRef` so React's StrictMode
-    // double-render doesn't insert the token twice. Once the state is
-    // cleared we reset the ref so the user can click "Run skill" on the
-    // same skill again.
+    // Run-in-chat router-state nav (Skills v1 §5). Same consume-once shape as
+    // `useConsumeNavState` (which skills-view uses) — kept inline here only
+    // because this component's router hooks are injectable for tests. Read
+    // once during render and clear the state via `navigate(replace)` so
+    // back/forward doesn't re-trigger; the ref guard keeps StrictMode's
+    // double-render from inserting the token twice.
     const consumedRunSkillRef = useRef<string | null>(null)
     const runSkill = (location.state as { runSkill?: string } | null)?.runSkill
     if (!runSkill) {
@@ -401,9 +400,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
       model: selectedModel,
       chatThreadId,
-      currentInput: input,
+      currentInput: normalizedInput,
       additionalInputTokens,
-      onOverflow: () => handleShowOverflowModal(selectedModel, input.trim().length, messages.length + 1),
+      onOverflow: () => handleShowOverflowModal(selectedModel, normalizedInput.trim().length, messages.length + 1),
     })
 
     // Store dropped/picked PDFs locally (IndexedDB) and add reference-only

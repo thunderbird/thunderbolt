@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * Confidential-model indicator: gradient lock + "Private" in one continuous
- * gold→pink sweep. The wrapper carries the gradient and clips it to the text
+ * amber→raspberry sweep. The wrapper carries the gradient and clips it to the text
  * (which sits on the right, so the glyphs sample the pink end), while the
  * lock's SVG gradient is stretched to the same total width (~52px = 89
  * viewBox units at the 14px icon size) so it samples only the gold lead-in.

@@ -40,14 +40,18 @@
   --color-accent: #eeebe6;
   --color-accent-foreground: #262120;
   /* Brand accent — drawn from the logo's two color families: the bolt's
-     golden yellow (#ffcc00) and its magenta shadow facets (#ce00cb). The
-     solid token is the pink stop (used alone for icons/text); --color-brand-2
-     is the gold stop; --gradient-brand (in :root below) sweeps gold → pink
-     for surfaces like the switch ON track. Both stops are darkened from the
-     logo literals so they hold contrast on the warm off-white background.
-     Dark mode brightens both (see .dark below). */
-  --color-brand: #db2777;
-  --color-brand-2: #f0a105;
+     golden yellow (#ffcc00, deepened to amber) and its magenta shadow facets
+     (#ce00cb, deepened and warmed to a rose-red raspberry so the sweep leans
+     flame rather than pink). The solid token is the raspberry stop (used
+     alone for icons/text); --color-brand-2 is the amber stop;
+     --gradient-brand (in :root below) sweeps amber → raspberry for surfaces
+     like the switch ON track. Both stops are pulled down until
+     --color-brand-foreground text holds WCAG AA (4.5:1) at every point along
+     the gradient ramp (amber 4.56, raspberry 5.13) — the lightness ceiling is
+     the amber stop, which loses AA almost immediately when brightened.
+     The same pair serves dark mode (see .dark below). */
+  --color-brand: #c12d6c;
+  --color-brand-2: #ab5e17;
   --color-brand-foreground: #faf8f5;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #262120;
@@ -111,12 +115,14 @@
   --elevation-medium: rgb(0 0 0 / 0.06);
   --elevation-strong: rgb(0 0 0 / 0.15);
 
-  /* Brand gradient — the logo's gold→magenta sweep. References the theme
-     tokens, so the .dark overrides above flow through automatically. Applied
-     via [background-image:var(--gradient-brand)] on "on" surfaces (switch ON
-     track); single-color call sites keep the solid --color-brand. Gold leads
+  /* Brand gradient — the logo's gold→magenta families as an amber→raspberry
+     sweep. References the theme tokens, so the .dark overrides above flow
+     through automatically. Applied via
+     [background-image:var(--gradient-brand)] on "on" surfaces (switch ON
+     track); single-color call sites keep the solid --color-brand. Amber leads
      (left) because the switch thumb parks on the RIGHT when checked — with
-     pink first, the thumb hid the gold end and the track read as plain red. */
+     raspberry first, the thumb hid the amber end and the track read as plain
+     red. */
   --gradient-brand: linear-gradient(90deg, var(--color-brand-2), var(--color-brand));
 }
 
@@ -249,13 +255,14 @@
   --color-muted-foreground: #a19a91;
   --color-accent: #383a39;
   --color-accent-foreground: #f2f1ee;
-  /* Brand stops dimmed a step from the light theme's full-brightness pair —
-     saturated full-luminance color glares against dark surfaces, so both
-     stops drop luminance to sit closer to the theme's contrast range.
-     Foreground stays light: text/icons on the gradient read as
-     light-on-color, matching every other filled control here. */
-  --color-brand: #c94b82;
-  --color-brand-2: #d9982f;
+  /* Same brand pair as light mode: the stops are mid-luminance, so they
+     neither glare against dark surfaces nor need dimming — and dimming (or
+     brightening) either stop would break the AA contrast the pair was tuned
+     for under --color-brand-foreground text. Foreground stays light:
+     text/icons on the gradient read as light-on-color, matching every other
+     filled control here. */
+  --color-brand: #c12d6c;
+  --color-brand-2: #ab5e17;
   --color-brand-foreground: #faf8f5;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #252220;

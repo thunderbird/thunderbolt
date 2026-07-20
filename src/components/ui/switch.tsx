@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
  * ON, and DISABLED. Only COLOR changes between states:
  *  - OFF      → `bg-input` track (`bg-secondary` in dark mode) with a
  *               `border-border` outline.
- *  - ON       → the brand gold→pink gradient track with a light thumb
+ *  - ON       → the brand amber→raspberry gradient track with a light thumb
  *               (the iOS convention), echoing the logo's colors — reads
  *               unambiguously as "on" in both light and dark mode.
  *  - DISABLED → dimmed, keeps the outline.

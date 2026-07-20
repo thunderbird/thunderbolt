@@ -5,7 +5,7 @@
 import { useId, type ReactNode } from 'react'
 
 /**
- * Scaffolding for a lucide-style outline icon drawn with the brand gold→pink
+ * Scaffolding for a lucide-style outline icon drawn with the brand amber→raspberry
  * gradient stroke. CSS can't gradient-fill an SVG stroke, so consumers
  * re-render the glyph's path data with an inline `<linearGradient>` whose
  * stops read the theme tokens (`--color-brand-2` → `--color-brand`), matching

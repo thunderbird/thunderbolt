@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Monitor, Moon, Sun } from 'lucide-react'
-
+import { isTheme, themeIcons } from '@/components/theme-icons'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useTheme } from '@/lib/theme-provider'
 import { trackEvent } from '@/lib/posthog'
@@ -14,9 +13,9 @@ import { trackEvent } from '@/lib/posthog'
  * and is dev-only.)
  */
 const themeOptions = [
-  { value: 'light', ariaLabel: 'Light mode', Icon: Sun, label: 'Light' },
-  { value: 'dark', ariaLabel: 'Dark mode', Icon: Moon, label: 'Dark' },
-  { value: 'system', ariaLabel: 'System theme', Icon: Monitor, label: 'System' },
+  { value: 'light', ariaLabel: 'Light mode', Icon: themeIcons.light, label: 'Light' },
+  { value: 'dark', ariaLabel: 'Dark mode', Icon: themeIcons.dark, label: 'Dark' },
+  { value: 'system', ariaLabel: 'System theme', Icon: themeIcons.system, label: 'System' },
 ] as const
 
 export const ThemeToggleGroup = () => {
@@ -28,10 +27,11 @@ export const ThemeToggleGroup = () => {
       variant="outline"
       value={theme}
       onValueChange={(value) => {
-        if (!value) {
+        // Radix reports '' when the active item is clicked again — ignore it.
+        if (!isTheme(value)) {
           return
         }
-        setTheme(value as 'light' | 'dark' | 'system')
+        setTheme(value)
         trackEvent('settings_theme_set', { theme: value })
       }}
       className="justify-start rounded-lg"

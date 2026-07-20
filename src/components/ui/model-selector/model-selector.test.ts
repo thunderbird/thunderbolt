@@ -28,6 +28,15 @@ const customModel = makeModel({ id: 'custom-1', name: 'Custom Model', isConfiden
 const confidentialChat = { isEncrypted: 1 } as ChatThread
 const standardChat = { isEncrypted: 0 } as ChatThread
 
+/** `.find()` a group by id, failing the test loudly when it's absent. */
+const groupById = (groups: ReturnType<typeof categorizeModels>, id: string) => {
+  const group = groups.find((g) => g.id === id)
+  if (!group) {
+    throw new Error(`expected a '${id}' group`)
+  }
+  return group
+}
+
 describe('categorizeModels', () => {
   test('no chat thread: all models are available in one group, no disabled sections', () => {
     const groups = categorizeModels([confidentialModel, standardModel, customModel], null)
@@ -41,36 +50,32 @@ describe('categorizeModels', () => {
   test('encrypted chat: standard models in disabled section', () => {
     const groups = categorizeModels([confidentialModel, standardModel], confidentialChat)
 
-    const available = groups.find((g) => g.id === 'available')
-    expect(available).toBeDefined()
-    expect(available!.items).toHaveLength(1)
-    expect(available!.items[0].id).toBe('conf-1')
-    expect(available!.items[0].disabled).toBe(false)
+    const available = groupById(groups, 'available')
+    expect(available.items).toHaveLength(1)
+    expect(available.items[0].id).toBe('conf-1')
+    expect(available.items[0].disabled).toBe(false)
 
-    const disabled = groups.find((g) => g.id === 'standard-disabled')
-    expect(disabled).toBeDefined()
-    expect(disabled!.label).toBe('Standard Models')
-    expect(disabled!.subtitle).toBe('Not available in confidential chats.')
-    expect(disabled!.items).toHaveLength(1)
-    expect(disabled!.items[0].id).toBe('std-1')
-    expect(disabled!.items[0].disabled).toBe(true)
+    const disabled = groupById(groups, 'standard-disabled')
+    expect(disabled.label).toBe('Standard Models')
+    expect(disabled.subtitle).toBe('Not available in confidential chats.')
+    expect(disabled.items).toHaveLength(1)
+    expect(disabled.items[0].id).toBe('std-1')
+    expect(disabled.items[0].disabled).toBe(true)
   })
 
   test('standard chat: encrypted models in disabled section', () => {
     const groups = categorizeModels([confidentialModel, standardModel], standardChat)
 
-    const available = groups.find((g) => g.id === 'available')
-    expect(available).toBeDefined()
-    expect(available!.items).toHaveLength(1)
-    expect(available!.items[0].id).toBe('std-1')
+    const available = groupById(groups, 'available')
+    expect(available.items).toHaveLength(1)
+    expect(available.items[0].id).toBe('std-1')
 
-    const disabled = groups.find((g) => g.id === 'confidential-disabled')
-    expect(disabled).toBeDefined()
-    expect(disabled!.label).toBe('Confidential Models')
-    expect(disabled!.subtitle).toBe('Available only in confidential chats.')
-    expect(disabled!.items).toHaveLength(1)
-    expect(disabled!.items[0].id).toBe('conf-1')
-    expect(disabled!.items[0].disabled).toBe(true)
+    const disabled = groupById(groups, 'confidential-disabled')
+    expect(disabled.label).toBe('Confidential Models')
+    expect(disabled.subtitle).toBe('Available only in confidential chats.')
+    expect(disabled.items).toHaveLength(1)
+    expect(disabled.items[0].id).toBe('conf-1')
+    expect(disabled.items[0].disabled).toBe(true)
   })
 
   test('custom models merge into the same group as built-in models', () => {
@@ -83,10 +88,9 @@ describe('categorizeModels', () => {
   test('disabled custom models go to the disabled section', () => {
     const groups = categorizeModels([confidentialModel, customModel], confidentialChat)
 
-    const disabled = groups.find((g) => g.id === 'standard-disabled')
-    expect(disabled).toBeDefined()
-    expect(disabled!.items).toHaveLength(1)
-    expect(disabled!.items[0].id).toBe('custom-1')
+    const disabled = groupById(groups, 'standard-disabled')
+    expect(disabled.items).toHaveLength(1)
+    expect(disabled.items[0].id).toBe('custom-1')
   })
 
   test('empty models returns empty groups', () => {

@@ -52,7 +52,10 @@ export const SignInEmailStep = ({
         </div>
       )}
 
-      {/* Feature cards — page variant only; the modal stays a simple sign-in form. */}
+      {/* Feature cards — page variant only; the modal stays a simple sign-in form.
+          #DCE875 is a one-off accent for these dark-mode feature icons (the
+          light-mode emerald/amber tones read as muddy on the dark card); it
+          intentionally isn't a theme token — nothing else uses it. */}
       {variant === 'page' && (
         <div className="flex flex-1 items-center">
           <div className="flex w-full flex-col gap-4 rounded-xl bg-secondary px-3 py-4 text-left">

@@ -155,7 +155,7 @@ export const ModelSelector = ({
         <GradientLock className="size-3.5" />
       ) : null}
       {/* Muted in both variants — trigger labels are chrome, not content. */}
-      <span className="font-medium text-muted-foreground">{selected?.label ?? 'Select Model'}</span>
+      <span className="font-medium text-muted-foreground">{selected?.label ?? 'Select model'}</span>
       <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>
   )

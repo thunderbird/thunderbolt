@@ -98,22 +98,24 @@ const GradientCloud = ({ className }: { className?: string }) => (
 
 /**
  * Single cloud glyph carrying both auth and sync state:
- * - logged out            → muted outline cloud (paired with a "Sign In" label)
+ * - logged out            → muted outline cloud (paired with a "Sign in" label)
  * - logged in, sync off   → muted CloudOff ("connected account, not syncing")
  * - syncing, connecting   → spinner
  * - syncing, offline      → amber CloudAlert ("will sync when back online")
  * - syncing, connected    → brand gradient cloud, the healthy steady state
+ *
+ * Exported for tests/reuse.
  */
-const SyncStateIcon = ({
-  loggedIn,
+export const SyncStateIcon = ({
+  isLoggedIn,
   syncEnabled,
   connectionStatus,
 }: {
-  loggedIn: boolean
+  isLoggedIn: boolean
   syncEnabled: boolean
   connectionStatus: PowerSyncConnectionStatus
 }) => {
-  if (!loggedIn) {
+  if (!isLoggedIn) {
     return <Cloud className={cn(iconSize, 'shrink-0 text-muted-foreground')} />
   }
   if (!syncEnabled) {
@@ -142,7 +144,7 @@ export const syncStatusText = (
     return 'Connecting...'
   }
   if (connectionStatus !== 'connected') {
-    return 'Offline — changes will sync when back online.'
+    return 'Offline. Changes will sync when back online.'
   }
   if (hasSynced && lastSyncedAt) {
     const secondsAgo = (Date.now() - lastSyncedAt.getTime()) / 1000
@@ -184,7 +186,12 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
   // Treat anonymous sessions as logged-out for the footer UI: anonymous users have a
   // synthetic email and no real account, so showing them as "logged in" is misleading.
   // The Sign In affordance (below) is the correct surface for them to upgrade.
-  const sessionUser = session?.user as User | undefined
+  // better-auth's inferred session-user shape carries plugin fields loosely
+  // (`isAnonymous: boolean | null | undefined`) and omits app-only columns
+  // like `isNew`, so it isn't assignable to the full shared `User`. The
+  // footer reads exactly these fields — declare that instead of casting, so
+  // a better-auth shape drift fails the type-check here.
+  const sessionUser: (Pick<User, 'name' | 'email'> & { isAnonymous?: boolean | null }) | undefined = session?.user
   const user = sessionUser?.isAnonymous ? null : sessionUser
 
   const displayName = user?.name ?? null
@@ -205,7 +212,7 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
     })
   }
 
-  const stateIcon = <SyncStateIcon loggedIn={!!user} syncEnabled={syncEnabled} connectionStatus={connectionStatus} />
+  const stateIcon = <SyncStateIcon isLoggedIn={!!user} syncEnabled={syncEnabled} connectionStatus={connectionStatus} />
 
   // Accounts without a name/email label collapse to an icon-only control; it
   // must be a perfect circle matching the theme toggle beside it.
@@ -235,7 +242,7 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
       return (
         <button type="button" className={pillClassName(true)} onClick={handleSignInClick}>
           {stateIcon}
-          <span className="truncate">Sign In</span>
+          <span className="truncate">Sign in</span>
         </button>
       )
     }

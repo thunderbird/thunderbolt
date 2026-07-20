@@ -727,7 +727,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
           }}
         >
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="bg-card" aria-label="Add server">
+            <Button variant="outline" size="icon" className="bg-card" aria-label="Add MCP server">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -846,7 +846,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                           variant="outline"
                           className="w-full"
                         >
-                          {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
+                          {isTestingConnection ? 'Testing connection…' : 'Test connection'}
                         </Button>
                       )}
 
@@ -947,7 +947,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 </Button>
               ) : (
                 <Button onClick={handleAddServer} disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success')}>
-                  Add Server
+                  Add server
                 </Button>
               )}
             </div>
@@ -1186,7 +1186,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               <h3 className="font-medium text-foreground mb-4">No MCP servers configured</h3>
               <Button onClick={form.openDialog}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Server
+                Add server
               </Button>
             </CardContent>
           </Card>

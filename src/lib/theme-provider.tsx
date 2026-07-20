@@ -40,12 +40,13 @@ const syncMacWindowTheme = async (theme: Theme) => {
 }
 
 /**
- * The `--color-background` values from src/index.css, mirrored onto the root
- * element and the `theme-color` meta tag so overscroll areas and browser
- * chrome match the page. Must stay in sync with index.css and the pre-paint
- * boot script in index.html.
+ * Read the theme's `--color-background` from CSS after the theme class has
+ * been applied, so index.css stays the single runtime source of truth for the
+ * page background (the pre-paint boot script in index.html is the one
+ * unavoidable duplicate — it runs before the stylesheet loads).
  */
-const themeBackgroundColors = { dark: '#1b1e1f', light: '#f5f2ee' } as const
+const readThemeBackgroundColor = (root: HTMLElement): string =>
+  getComputedStyle(root).getPropertyValue('--color-background').trim()
 
 /**
  * Pick the macOS vibrancy material per resolved theme. Dark uses HudWindow — a
@@ -76,7 +77,7 @@ const applyResolvedTheme = (resolvedTheme: 'dark' | 'light') => {
   root.classList.remove('light', 'dark')
   root.classList.add(resolvedTheme)
 
-  const bgColor = themeBackgroundColors[resolvedTheme]
+  const bgColor = readThemeBackgroundColor(root)
   root.style.backgroundColor = bgColor
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bgColor)
 
@@ -101,7 +102,7 @@ const persistThemeToNativeStore = async (theme: string) => {
   await store.set('theme', theme)
 }
 
-type Theme = 'dark' | 'light' | 'system'
+export type Theme = 'dark' | 'light' | 'system'
 
 type ThemeProviderState = {
   theme: Theme

@@ -2,19 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Monitor, Moon, Sun } from 'lucide-react'
-
+import { themeIcons } from '@/components/theme-icons'
 import { useTheme } from '@/lib/theme-provider'
 import { trackEvent } from '@/lib/posthog'
 
 const themeCycle = { light: 'dark', dark: 'system', system: 'light' } as const
 
-const themeIcons = { light: Sun, dark: Moon, system: Monitor } as const
-
 /**
  * Single-icon theme toggle that cycles light → dark → system on each click.
  * The icon reflects the current setting; the label announces the action the
- * click performs. Lives in the header next to the sync status indicator.
+ * click performs. Dev-only — rendered in the sidebar footer's collapsed rail
+ * and account row (the user-facing picker is `ThemeToggleGroup` on the
+ * Preferences page).
  */
 export const ThemeToggle = () => {
   const { theme, setTheme } = useTheme()

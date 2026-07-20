@@ -5,7 +5,7 @@
 import { type MouseEvent, useState } from 'react'
 import { buildDocumentSideviewId, type CitationSource, isDocumentCitation } from '@/types/citation'
 import { useOpenExternalLink } from '@/components/chat/markdown-utils'
-import { useContentView } from '@/content-view/context'
+import { useShowSideview } from '@/content-view/context'
 import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
 
@@ -33,7 +33,9 @@ const getBadgeColor = (siteName: string = '') => {
 export const SourceCard = ({ source, className, onSelect }: SourceCardProps) => {
   const [faviconError, setFaviconError] = useState(false)
   const openExternalLink = useOpenExternalLink()
-  const { showSideview } = useContentView()
+  // Optional on purpose: the sideview only exists inside the chat surface.
+  // Standalone renders (Storybook) stay presentational without the provider.
+  const showSideview = useShowSideview()
 
   const isDocument = isDocumentCitation(source)
   const displayTitle = source.title || source.url
@@ -48,7 +50,7 @@ export const SourceCard = ({ source, className, onSelect }: SourceCardProps) => 
   const handleClick = (e: MouseEvent<HTMLElement>) => {
     e.preventDefault()
     if (isDocument) {
-      showSideview('document', buildDocumentSideviewId(source.documentMeta))
+      showSideview?.('document', buildDocumentSideviewId(source.documentMeta))
     } else if (safeUrl !== '#') {
       openExternalLink(safeUrl)
     }

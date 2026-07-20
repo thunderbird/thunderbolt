@@ -97,7 +97,7 @@ const renderAddDialog = async (deps: McpServersPageDeps, { url, token }: { url: 
     tables: ['mcp_servers', 'mcp_secrets'],
     wrapper: McpProviderWrapper,
   })
-  const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add Server' }))
+  const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add MCP server' }))
   fireEvent.click(openButton)
   const urlInput = await waitForElement(() => screen.queryByPlaceholderText('http://localhost:8000/mcp/'))
   if (token) {
@@ -310,7 +310,7 @@ describe('McpServersPage iroh add flow', () => {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: McpProviderWrapper,
     })
-    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add Server' }))
+    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add MCP server' }))
     fireEvent.click(openButton)
     const urlInput = await waitForElement(() => screen.queryByPlaceholderText('http://localhost:8000/mcp/'))
     fireEvent.change(screen.getByPlaceholderText('Server name (used to prefix tools)'), {
@@ -325,7 +325,7 @@ describe('McpServersPage iroh add flow', () => {
     const panel = await waitForElement(() => screen.queryByTestId('iroh-pairing-panel'))
     await waitForElement(() => (panel.textContent?.includes(`thunderbolt iroh allow ${appNodeId}`) ? panel : null))
     // The http/sse-only controls are hidden for iroh.
-    expect(screen.queryByRole('button', { name: /Test Connection/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Test connection/ })).not.toBeInTheDocument()
     expect(screen.queryByPlaceholderText('Bearer token or API key')).not.toBeInTheDocument()
   })
 
@@ -334,7 +334,7 @@ describe('McpServersPage iroh add flow', () => {
     await openIrohDialog()
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add Server' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
       await getClock().runAllAsync()
     })
 
@@ -427,7 +427,7 @@ describe('McpServersPage Edit server', () => {
 
     // The iroh pairing panel (not the http/sse probe UI) is what edit surfaces.
     await waitForElement(() => screen.queryByTestId('iroh-pairing-panel'))
-    expect(screen.queryByRole('button', { name: /Test Connection/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Test connection/ })).not.toBeInTheDocument()
 
     const nameInput = screen.getByPlaceholderText('Server name (used to prefix tools)') as HTMLInputElement
     expect(nameInput.value).toBe('Old Bridge')
@@ -709,7 +709,7 @@ describe('McpServersPage add-dialog error labeling', () => {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: McpProviderWrapper,
     })
-    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add Server' }))
+    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add MCP server' }))
     fireEvent.click(openButton)
 
     // Advanced mode: paste a config with no servers, then import → error panel.

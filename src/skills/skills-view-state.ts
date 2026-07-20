@@ -42,7 +42,10 @@ export type SkillsViewState = {
   pendingLeave: PendingLeave
   pendingDelete: Skill | null
   pendingDependents: PendingDependents
-  nameError: string | null
+  /** Inline slug error (spec violation or uniqueness) shown under the slug field. */
+  slugError: string | null
+  /** Generic save-failure message shown near the form's submit button. */
+  submitError: string | null
   /**
    * Optional initial name for the create form — set when a "create it" deep
    * link arrives from the chat composer's broken-reference alert. `null`
@@ -60,7 +63,8 @@ export const initialSkillsViewState: SkillsViewState = {
   pendingLeave: null,
   pendingDelete: null,
   pendingDependents: null,
-  nameError: null,
+  slugError: null,
+  submitError: null,
   createInitialName: null,
 }
 
@@ -101,10 +105,13 @@ export type SkillsViewAction =
   | { type: 'SET_DIRTY'; dirty: boolean }
   /** Form submit succeeded — return to detail mode on the (possibly new) skill. */
   | { type: 'SUBMIT_SUCCESS'; activeId: string }
-  /** Inline name-error from the form's local validator or the DAL. */
-  | { type: 'SET_NAME_ERROR'; message: string }
-  /** User edited the name field — clear any stale uniqueness error. */
-  | { type: 'CLEAR_NAME_ERROR' }
+  /** Inline slug error from the form's local validator or the DAL. */
+  | { type: 'SET_SLUG_ERROR'; message: string }
+  /** User edited the slug — clear any stale uniqueness error. */
+  | { type: 'CLEAR_SLUG_ERROR' }
+  /** Form submit hit an unexpected persistence failure — keep the form open
+   *  with the user's input and show a generic message. */
+  | { type: 'SUBMIT_FAILED'; message: string }
   /** Mobile back button on the detail panel / desktop close (X) on the slide-in panel. */
   | { type: 'BACK_TO_LIST' }
 
@@ -117,7 +124,8 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return {
         ...state,
         mode: 'create',
-        nameError: null,
+        slugError: null,
+        submitError: null,
         panelView: 'panel',
         createInitialName: action.initialName ?? null,
         // Bump the reset signal so SkillForm remounts with the new initial
@@ -126,14 +134,14 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       }
 
     case 'START_EDIT':
-      return { ...state, mode: 'edit', activeId: action.id, nameError: null, panelView: 'panel' }
+      return { ...state, mode: 'edit', activeId: action.id, slugError: null, submitError: null, panelView: 'panel' }
 
     case 'PERFORM_LEAVE': {
       const { leave } = action
       const nextActiveId = leave.type === 'select' || leave.type === 'edit' ? leave.id : state.activeId
       // `edit`/`create` land in a fresh form on the target; `cancel`/`select`
       // land in detail.
-      const nextMode = leave.type === 'edit' ? 'edit' : leave.type === 'create' ? 'create' : 'detail'
+      const nextMode: Mode = leave.type === 'edit' || leave.type === 'create' ? leave.type : 'detail'
       // `edit`/`create` need the panel open — they can be triggered from a
       // list-row action while panelView is still 'list'. On mobile a `cancel`
       // drops the user back to the list. Driving this here (not in the form's
@@ -152,7 +160,8 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         mode: nextMode,
         resetSignal: state.resetSignal + 1,
         isDirty: false,
-        nameError: null,
+        slugError: null,
+        submitError: null,
         pendingLeave: null,
         panelView: nextPanelView,
         createInitialName: null,
@@ -172,14 +181,15 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
     case 'OPEN_DEPENDENTS':
       // Opening the dependents dialog from inside an edit session can later
       // trigger JUMP_TO_DEPENDENT, which starts a fresh edit on another skill.
-      // Reset `isDirty` and `nameError` now so the inherited edit-session state
+      // Reset `isDirty` and `slugError` now so the inherited edit-session state
       // doesn't bleed into the new form.
       return {
         ...state,
         activeId: action.payload.skill.id,
         pendingDependents: action.payload,
         isDirty: false,
-        nameError: null,
+        slugError: null,
+        submitError: null,
       }
 
     case 'CLOSE_DELETE':
@@ -190,7 +200,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
 
     case 'JUMP_TO_DEPENDENT':
       // Fresh edit session on a different skill: clear `isDirty` and
-      // `nameError` so a stale dirty flag from the prior form doesn't trigger
+      // the form errors so a stale dirty flag from the prior form doesn't trigger
       // a spurious discard-changes dialog on the new (untouched) form.
       // SkillForm remounts via its `key` change, so the values themselves are
       // already clean — this resets the parent's tracking state to match.
@@ -200,7 +210,8 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         mode: 'edit',
         pendingDependents: null,
         isDirty: false,
-        nameError: null,
+        slugError: null,
+        submitError: null,
         // The dependents dialog can be opened from a list-row action while
         // panelView is still 'list'; opening the panel here gives the edit
         // form a surface to render on (full-screen overlay on mobile, the
@@ -218,15 +229,19 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         mode: 'detail',
         isDirty: false,
         resetSignal: state.resetSignal + 1,
-        nameError: null,
+        slugError: null,
+        submitError: null,
         createInitialName: null,
       }
 
-    case 'SET_NAME_ERROR':
-      return { ...state, nameError: action.message }
+    case 'SET_SLUG_ERROR':
+      return { ...state, slugError: action.message, submitError: null }
 
-    case 'CLEAR_NAME_ERROR':
-      return state.nameError === null ? state : { ...state, nameError: null }
+    case 'CLEAR_SLUG_ERROR':
+      return state.slugError === null ? state : { ...state, slugError: null }
+
+    case 'SUBMIT_FAILED':
+      return { ...state, submitError: action.message }
 
     case 'BACK_TO_LIST':
       return { ...state, panelView: 'list' }

@@ -6,7 +6,7 @@ import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } 
 
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
-import { buildDisplayNameToSlug, skillDisplayName } from './display'
+import { buildDisplayNameToSlug, skillDisplayName, skillMatchesQuery, tokenForSkill } from './display'
 
 /**
  * A selectable slash suggestion: a user-authored skill or an external command
@@ -20,7 +20,7 @@ export type SlashItem =
   | { kind: 'command'; id: string; name: string; label: string; description: string }
 
 /** Position of the in-progress `/slug` (or `@slug`) token at the caret, or `null`. */
-export type SlashState = { tokenStart: number; query: string; trigger: '/' | '@' }
+export type SlashState = { tokenStart: number; query: string }
 
 /**
  * Detect whether the caret in `value` sits inside (or right after) a slash
@@ -48,7 +48,9 @@ export const getSlashState = (value: string, cursor: number): SlashState | null 
   if (!token.startsWith('/') && !token.startsWith('@')) {
     return null
   }
-  return { tokenStart, query: token.slice(1), trigger: token[0] as '/' | '@' }
+  // Which trigger opened the token is irrelevant downstream — selection
+  // replaces the whole token range, so `@` naturally becomes `/`.
+  return { tokenStart, query: token.slice(1) }
 }
 
 type SlashAction =
@@ -118,19 +120,22 @@ export const useSlashCommand = ({
   const slashState = useMemo(() => getSlashState(value, cursorPos), [value, cursorPos])
 
   // User skills first, then the agent's external commands; each alphabetical,
-  // both filtered by the in-progress query. Skills match on the slug prefix
-  // OR anywhere in the display name, so searching "brief" finds "Daily
-  // Brief" (/daily-brief).
+  // both filtered by the in-progress query. Skills match anywhere in the
+  // slug OR the display name, so searching "brief" finds "Daily Brief"
+  // (/daily-brief) — and "notes" finds a label-less /meeting-notes displayed
+  // as "Meeting Notes".
   const popupItems = useMemo<SlashItem[]>(() => {
     if (!slashState) {
       return []
     }
+    // `skillMatchesQuery` lowercases internally; the lowered copy is only for
+    // the agent-command comparisons below.
     const query = slashState.query.toLowerCase()
-    const matchesSlug = (name: string) => query === '' || name.toLowerCase().startsWith(query)
-    const matchesSkill = (s: Skill) => matchesSlug(s.name) || (s.label ?? '').toLowerCase().includes(query)
     const skillItems: SlashItem[] = library
-      .filter((s) => isEnabled(s.name) && matchesSkill(s))
-      .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)))
+      .filter((s) => isEnabled(s.name) && skillMatchesQuery(s, slashState.query))
+      // Slug tiebreak keeps ordering deterministic when two skills share a
+      // display name (labels are free text).
+      .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)) || a.name.localeCompare(b.name))
       .map((s) => ({
         kind: 'skill',
         id: s.id,
@@ -143,7 +148,7 @@ export const useSlashCommand = ({
     // menu doesn't show two identical `/foo` rows.
     const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
     const commandItems: SlashItem[] = [...agentCommands]
-      .filter((c) => matchesSlug(c.name) && !skillNames.has(c.name.toLowerCase()))
+      .filter((c) => c.name.toLowerCase().includes(query) && !skillNames.has(c.name.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((c) => ({
         kind: 'command',
@@ -198,15 +203,9 @@ export const useSlashCommand = ({
     [slashState, value, setValue, inputRef],
   )
 
-  // Ambiguity guard for display-title insertion: two skills sharing a display
-  // name are omitted from this map, and their tokens fall back to the slug so
-  // send-time normalization can't resolve them to the wrong skill.
   const displayNameToSlug = useMemo(() => buildDisplayNameToSlug(library), [library])
   const skillToken = useCallback(
-    (skill: Pick<Skill, 'name' | 'label'>) => {
-      const displayName = skillDisplayName(skill)
-      return displayNameToSlug.has(displayName) ? displayName : skill.name
-    },
+    (skill: Pick<Skill, 'name' | 'label'>) => tokenForSkill(skill, displayNameToSlug),
     [displayNameToSlug],
   )
 

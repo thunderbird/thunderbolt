@@ -75,8 +75,8 @@ export const validateSkillName = (slug: string): string | null => {
  * the name contains no usable characters — callers treat that as "nothing to
  * suggest yet".
  */
-export const slugifySkillName = (label: string): string =>
-  label
+export const slugifySkillName = (displayName: string): string =>
+  displayName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
@@ -164,9 +164,9 @@ export type CreateSkillInput = {
  * skill.
  */
 export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInput): Promise<Skill> => {
-  const nameError = validateSkillName(input.name)
-  if (nameError) {
-    throw new SkillNameInvalidError(nameError)
+  const slugError = validateSkillName(input.name)
+  if (slugError) {
+    throw new SkillNameInvalidError(slugError)
   }
   await assertNameAvailable(db, input.name)
   const row: Skill = {
@@ -194,9 +194,9 @@ export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'label' | 'descripti
  */
 export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
   if (patch.name !== undefined) {
-    const nameError = validateSkillName(patch.name)
-    if (nameError) {
-      throw new SkillNameInvalidError(nameError)
+    const slugError = validateSkillName(patch.name)
+    if (slugError) {
+      throw new SkillNameInvalidError(slugError)
     }
     await assertNameAvailable(db, patch.name, id)
   }

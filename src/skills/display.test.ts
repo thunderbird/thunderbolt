@@ -4,7 +4,13 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { buildDisplayNameToSlug, skillDisplayName, titleCaseFromSlug } from './display'
+import {
+  buildDisplayNameToSlug,
+  skillDisplayName,
+  skillMatchesQuery,
+  titleCaseFromSlug,
+  tokenForSkill,
+} from './display'
 
 describe('skillDisplayName', () => {
   it('returns the label when present', () => {
@@ -51,6 +57,50 @@ describe('buildDisplayNameToSlug', () => {
       { name: 'brief-two', label: 'Daily Brief' },
     ])
     expect(map.has('Daily Brief')).toBe(false)
+  })
+})
+
+describe('skillMatchesQuery', () => {
+  it('matches everything on an empty query', () => {
+    expect(skillMatchesQuery({ name: 'daily-brief', label: null }, '')).toBe(true)
+  })
+
+  it('matches a substring of the slug, case-insensitively', () => {
+    expect(skillMatchesQuery({ name: 'daily-brief', label: 'Standup' }, 'ly-br')).toBe(true)
+    expect(skillMatchesQuery({ name: 'daily-brief', label: 'Standup' }, 'DAILY')).toBe(true)
+  })
+
+  it('matches a substring of the label display name', () => {
+    expect(skillMatchesQuery({ name: 'daily-brief', label: 'Morning Standup' }, 'standup')).toBe(true)
+  })
+
+  it('matches the title-cased fallback display name for label-less legacy rows', () => {
+    // Displayed as "Meeting Notes" — typing "notes" must find it.
+    expect(skillMatchesQuery({ name: 'meeting-notes', label: null }, 'notes')).toBe(true)
+  })
+
+  it('returns false when the query appears in neither slug nor display name', () => {
+    expect(skillMatchesQuery({ name: 'daily-brief', label: 'Morning Standup' }, 'triage')).toBe(false)
+  })
+})
+
+describe('tokenForSkill', () => {
+  it('returns the display name when it is present in the map', () => {
+    const map = buildDisplayNameToSlug([{ name: 'daily-brief', label: 'Daily Brief' }])
+    expect(tokenForSkill({ name: 'daily-brief', label: 'Daily Brief' }, map)).toBe('Daily Brief')
+  })
+
+  it('returns the title-cased fallback name for label-less rows when unambiguous', () => {
+    const map = buildDisplayNameToSlug([{ name: 'meeting-notes', label: null }])
+    expect(tokenForSkill({ name: 'meeting-notes', label: null }, map)).toBe('Meeting Notes')
+  })
+
+  it('falls back to the slug when the display name is ambiguous (absent from the map)', () => {
+    const map = buildDisplayNameToSlug([
+      { name: 'brief-a', label: 'Brief' },
+      { name: 'brief-b', label: 'Brief' },
+    ])
+    expect(tokenForSkill({ name: 'brief-a', label: 'Brief' }, map)).toBe('brief-a')
   })
 })
 

@@ -49,8 +49,9 @@ export const DependentsDialog = ({
           {verbLabel[action]} {targetName}?
         </AlertDialogTitle>
         <AlertDialogDescription>
-          {dependents.length === 1 ? 'One skill references' : `${dependents.length} skills reference`} this. If you{' '}
-          {action} it, they may no longer resolve:
+          {dependents.length === 1
+            ? `One skill references this. If you ${action} it, that skill may no longer resolve:`
+            : `${dependents.length} skills reference this. If you ${action} it, they may no longer resolve:`}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <ul className="flex flex-col gap-1.5">

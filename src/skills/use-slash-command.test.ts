@@ -40,24 +40,24 @@ describe('getSlashState', () => {
   })
 
   it('detects a slash token at the start of the input', () => {
-    expect(getSlashState('/meet', 5)).toEqual({ tokenStart: 0, query: 'meet', trigger: '/' })
+    expect(getSlashState('/meet', 5)).toEqual({ tokenStart: 0, query: 'meet' })
   })
 
   it('detects a slash token after a space', () => {
-    expect(getSlashState('hello /meet', 11)).toEqual({ tokenStart: 6, query: 'meet', trigger: '/' })
+    expect(getSlashState('hello /meet', 11)).toEqual({ tokenStart: 6, query: 'meet' })
   })
 
   it('detects a slash token after a newline', () => {
-    expect(getSlashState('line one\n/meet', 14)).toEqual({ tokenStart: 9, query: 'meet', trigger: '/' })
+    expect(getSlashState('line one\n/meet', 14)).toEqual({ tokenStart: 9, query: 'meet' })
   })
 
   it('treats a lone slash with no query as a token (empty query opens the full popup)', () => {
-    expect(getSlashState('hello /', 7)).toEqual({ tokenStart: 6, query: '', trigger: '/' })
+    expect(getSlashState('hello /', 7)).toEqual({ tokenStart: 6, query: '' })
   })
 
   it('detects an @ token as an alternative trigger', () => {
-    expect(getSlashState('hello @mee', 10)).toEqual({ tokenStart: 6, query: 'mee', trigger: '@' })
-    expect(getSlashState('@', 1)).toEqual({ tokenStart: 0, query: '', trigger: '@' })
+    expect(getSlashState('hello @mee', 10)).toEqual({ tokenStart: 6, query: 'mee' })
+    expect(getSlashState('@', 1)).toEqual({ tokenStart: 0, query: '' })
   })
 
   it('does not treat a mid-word @ (email address) as a trigger', () => {
@@ -79,7 +79,7 @@ describe('getSlashState', () => {
     // value = "hi /meet later"; caret at index 7 (just after "mee"), so the
     // in-progress query is "mee" — the trailing "t later" is not yet typed
     // from the autocomplete state machine's perspective.
-    expect(getSlashState('hi /meet later', 7)).toEqual({ tokenStart: 3, query: 'mee', trigger: '/' })
+    expect(getSlashState('hi /meet later', 7)).toEqual({ tokenStart: 3, query: 'mee' })
   })
 })
 
@@ -216,6 +216,25 @@ describe('useSlashCommand label search', () => {
   it('exposes the display name as the item label', () => {
     const { hook } = setup('/daily', 6)
     expect(hook.result.current.popupItems[0]?.label).toBe('Daily Brief')
+  })
+
+  it('matches a label-less legacy skill by its title-cased display name', () => {
+    // /meeting-notes has label null and displays as "Meeting Notes" — typing
+    // "notes" must find it (regression: matching used the raw label column).
+    let value = '/notes'
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value,
+        setValue: (v: string) => {
+          value = v
+        },
+        inputRef,
+        library: [fakeSkill('meeting-notes'), fakeSkill('unrelated')],
+        isEnabled: () => true,
+      }),
+    )
+    act(() => hook.result.current.setCursorPos(6))
+    expect(hook.result.current.popupItems.map((i) => i.name)).toEqual(['meeting-notes'])
   })
 })
 

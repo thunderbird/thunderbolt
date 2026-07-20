@@ -71,8 +71,7 @@ export const renderHighlightedSkillTokens = (
   /** Push `text`, hiding a trailing menu-trigger `/` (start-of-input or
    *  after whitespace, at the very end of the value). */
   const pushPlainText = (parts: ReactNode[], text: string, endsValue: boolean) => {
-    const isTriggerSlash =
-      endsValue && text.endsWith('/') && (text.length === 1 || /\s/.test(text[text.length - 2] ?? ''))
+    const isTriggerSlash = endsValue && text.endsWith('/') && (text.length === 1 || /\s/.test(text[text.length - 2]))
     if (!isTriggerSlash) {
       parts.push(text)
       return

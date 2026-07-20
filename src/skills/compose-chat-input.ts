@@ -33,7 +33,7 @@ export const appendSlashToken = (value: string, name: string): string => {
   const trimmedRight = value.replace(/\s+$/, '')
   const boundaryChar = trimmedRight[trimmedRight.length - token.length - 1]
   const endsWithToken =
-    trimmedRight.endsWith(token) && (trimmedRight.length === token.length || /\s/.test(boundaryChar ?? ''))
+    trimmedRight.endsWith(token) && (trimmedRight.length === token.length || /\s/.test(boundaryChar))
   if (endsWithToken) {
     // Preserve the existing trailing space behaviour: if there was no space
     // after the token, add one so the caret lands clear of it.

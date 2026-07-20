@@ -29,6 +29,18 @@ export const skillDisplayName = (skill: Pick<Skill, 'name' | 'label'>): string =
 }
 
 /**
+ * Case-insensitive skill search shared by the slash popup, the pin popover,
+ * and the settings list: a skill matches when the query appears anywhere in
+ * its slug (`name`) or its display name ({@link skillDisplayName}, so
+ * label-less legacy rows are findable by their title-cased name too). An
+ * empty query matches every skill.
+ */
+export const skillMatchesQuery = (skill: Pick<Skill, 'name' | 'label'>, query: string): boolean => {
+  const lowered = query.toLowerCase()
+  return skill.name.toLowerCase().includes(lowered) || skillDisplayName(skill).toLowerCase().includes(lowered)
+}
+
+/**
  * Map from display name → slug for resolving composer `/Display Name` tokens
  * back to their canonical slug at send time. Display names are not unique
  * (labels are free text), so ambiguous names — two skills sharing one display
@@ -36,18 +48,34 @@ export const skillDisplayName = (skill: Pick<Skill, 'name' | 'label'>): string =
  * beats silently sending the wrong skill's instructions.
  */
 export const buildDisplayNameToSlug = (skills: ReadonlyArray<Pick<Skill, 'name' | 'label'>>): Map<string, string> => {
-  const bySlug = new Map<string, string>()
+  const slugByDisplayName = new Map<string, string>()
   const ambiguous = new Set<string>()
   for (const skill of skills) {
     const displayName = skillDisplayName(skill)
-    if (bySlug.has(displayName)) {
+    if (slugByDisplayName.has(displayName)) {
       ambiguous.add(displayName)
       continue
     }
-    bySlug.set(displayName, skill.name)
+    slugByDisplayName.set(displayName, skill.name)
   }
   for (const displayName of ambiguous) {
-    bySlug.delete(displayName)
+    slugByDisplayName.delete(displayName)
   }
-  return bySlug
+  return slugByDisplayName
+}
+
+/**
+ * The composer token to insert for a skill: its display name when that name
+ * unambiguously maps back to a single skill (i.e. it's present in
+ * `displayNameToSlug`), else the raw slug. Ambiguous display names are
+ * omitted from the map ({@link buildDisplayNameToSlug}), so falling back to
+ * the slug prevents inserting a token that send-time normalization would
+ * resolve to the wrong skill.
+ */
+export const tokenForSkill = (
+  skill: Pick<Skill, 'name' | 'label'>,
+  displayNameToSlug: ReadonlyMap<string, string>,
+): string => {
+  const displayName = skillDisplayName(skill)
+  return displayNameToSlug.has(displayName) ? displayName : skill.name
 }

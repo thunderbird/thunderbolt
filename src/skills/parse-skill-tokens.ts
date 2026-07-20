@@ -79,7 +79,7 @@ export type SkillTokenMatch = {
   isDisplay: boolean
 }
 
-const isBoundary = (text: string, index: number): boolean => index >= text.length || /\s/.test(text[index] ?? '')
+const isBoundary = (text: string, index: number): boolean => index >= text.length || /\s/.test(text[index])
 
 /**
  * Iterate over the raw slash tokens in `text` without resolving them.
@@ -100,28 +100,25 @@ const isBoundary = (text: string, index: number): boolean => index >= text.lengt
  * end of `text` — the user is likely still typing.
  */
 export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<string, string>): SkillTokenMatch[] => {
-  // Longest-first so "Daily Brief Extended" wins over "Daily Brief".
-  const names = displayNameToSlug
-    ? [...displayNameToSlug.keys()].filter((n) => n.length > 0).sort((a, b) => b.length - a.length)
+  // [name, slug] pairs, longest name first so "Daily Brief Extended" wins
+  // over "Daily Brief". Carrying the slug alongside the name avoids a
+  // second map lookup after a match.
+  const displayEntries = displayNameToSlug
+    ? [...displayNameToSlug.entries()].filter(([name]) => name.length > 0).sort(([a], [b]) => b.length - a.length)
     : []
   const tokens: SkillTokenMatch[] = []
   let i = 0
   while (i < text.length) {
-    const isTokenStart = text[i] === '/' && (i === 0 || /\s/.test(text[i - 1] ?? ''))
+    const isTokenStart = text[i] === '/' && (i === 0 || /\s/.test(text[i - 1]))
     if (!isTokenStart) {
       i++
       continue
     }
-    const name = names.find((n) => text.startsWith(n, i + 1) && isBoundary(text, i + 1 + n.length))
-    if (name) {
+    const entry = displayEntries.find(([name]) => text.startsWith(name, i + 1) && isBoundary(text, i + 1 + name.length))
+    if (entry) {
+      const [name, slug] = entry
       const end = i + 1 + name.length
-      tokens.push({
-        slug: displayNameToSlug?.get(name) ?? name,
-        start: i,
-        end,
-        committed: end < text.length,
-        isDisplay: true,
-      })
+      tokens.push({ slug, start: i, end, committed: end < text.length, isDisplay: true })
       i = end
       continue
     }

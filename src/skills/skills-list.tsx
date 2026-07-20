@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import type { Skill } from '@/types'
+import { skillMatchesQuery } from './display'
 import { LibraryRow, skillRowTransition } from './library-row'
 
 /**
@@ -42,11 +43,8 @@ export const SkillsList = ({
 
   const isLibraryEmpty = skills.length === 0
   const { enabledRows, disabledRows } = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    const filtered =
-      query === ''
-        ? skills
-        : skills.filter((s) => s.name.toLowerCase().includes(query) || (s.label ?? '').toLowerCase().includes(query))
+    const query = search.trim()
+    const filtered = skills.filter((s) => skillMatchesQuery(s, query))
     const enabled: Skill[] = []
     const disabled: Skill[] = []
     for (const s of filtered) {

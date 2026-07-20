@@ -4,10 +4,7 @@
 
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { createTestProvider } from '@/test-utils/test-provider'
 import { SuggestionChip } from './suggestion-chip'
-
-const TestProvider = createTestProvider()
 
 const meta = {
   title: 'Skills/SuggestionChip',
@@ -23,11 +20,9 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <TestProvider>
-        <div className="bg-background p-8">
-          <Story />
-        </div>
-      </TestProvider>
+      <div className="bg-background p-8">
+        <Story />
+      </div>
     ),
   ],
 } satisfies Meta<typeof SuggestionChip>
@@ -39,7 +34,7 @@ const noop = () => {}
 
 export const Default: Story = {
   args: {
-    label: 'daily-brief',
+    label: 'Daily Brief',
     onClick: noop,
     onAddInstruction: noop,
     onEdit: noop,
@@ -49,5 +44,5 @@ export const Default: Story = {
 }
 
 export const LongName: Story = {
-  args: { ...Default.args, label: 'long-skill-name-that-truncates' },
+  args: { ...Default.args, label: 'Long Skill Name That Truncates' },
 }

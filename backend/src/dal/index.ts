@@ -4,6 +4,7 @@
 
 // Devices
 export {
+  bridgeDeviceId,
   getDeviceById,
   upsertDevice,
   revokeDevice,

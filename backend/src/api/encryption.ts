@@ -5,6 +5,7 @@
 import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 
 import {
+  bridgeDeviceId,
   countActiveDevices,
   getDeviceById,
   linkSessionToDevice,
@@ -533,11 +534,32 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       async ({ body, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const name = body.name?.trim() || 'Bridge'
-        const [device] = await registerBridgeDevice(database, { userId, nodeId: body.nodeId, name })
-        if (!device) {
+        const result = await database.transaction(async (tx) => {
+          const txDb = tx as unknown as typeof database
+          const existingBridge = await getDeviceById(txDb, bridgeDeviceId(userId, body.nodeId))
+          if (!existingBridge) {
+            const activeCount = await countActiveDevices(txDb, userId)
+            if (activeCount >= maxDevicesPerUser) {
+              return { limitReached: true as const }
+            }
+          }
+
+          const [device] = await registerBridgeDevice(txDb, { userId, nodeId: body.nodeId, name })
+          if (!device) {
+            return { revoked: true as const }
+          }
+          return { device }
+        })
+
+        if ('limitReached' in result) {
+          set.status = 422
+          return { error: 'Device limit reached' }
+        }
+        if ('revoked' in result) {
           set.status = 403
           return { error: 'Device has been revoked' }
         }
+        const { device } = result
         return { id: device.id, nodeId: device.nodeId, deviceType: device.deviceType }
       },
       {

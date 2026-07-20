@@ -1774,6 +1774,41 @@ describe('Encryption API', () => {
       expect(rows[0].name).toBe('Bridge B')
     })
 
+    it('refuses a new bridge when the account is at the device cap', async () => {
+      await createUserAndSession(p('u-br-cap-new'), p('tok-br-cap-new'))
+      for (let i = 0; i < 10; i++) {
+        await insertDevice(p(`d-br-cap-new-${i}`), p('u-br-cap-new'), { trusted: true })
+      }
+
+      const response = await registerBridge(p('tok-br-cap-new'), { nodeId: bridgeNodeId })
+
+      expect(response.status).toBe(422)
+      expect(await response.json()).toEqual({ error: 'Device limit reached' })
+    })
+
+    it('allows re-registration of an existing bridge when the account is at the device cap', async () => {
+      await createUserAndSession(p('u-br-cap-existing'), p('tok-br-cap-existing'))
+      const first = await registerBridge(p('tok-br-cap-existing'), {
+        nodeId: bridgeNodeId,
+        name: 'Bridge A',
+      })
+      expect(first.status).toBe(200)
+      const firstId = ((await first.json()) as { id: string }).id
+      for (let i = 0; i < 9; i++) {
+        await insertDevice(p(`d-br-cap-existing-${i}`), p('u-br-cap-existing'), { trusted: true })
+      }
+
+      const response = await registerBridge(p('tok-br-cap-existing'), {
+        nodeId: bridgeNodeId,
+        name: 'Bridge B',
+      })
+
+      expect(response.status).toBe(200)
+      expect((await response.json()).id).toBe(firstId)
+      const [row] = await db.select().from(devicesTable).where(eq(devicesTable.id, firstId))
+      expect(row.name).toBe('Bridge B')
+    })
+
     it('refuses to resurrect a revoked bridge (same NodeId) — stays revoked', async () => {
       await createUserAndSession(p('u-br-rev'), p('tok-br-rev'))
 

@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { createTask, deleteTask, getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
 import { trackEvent } from '@/lib/posthog'
@@ -476,24 +475,16 @@ export default function TasksPage() {
               {!showEmptyState && (
                 <>
                   <PageSearch.Button tooltip="Search" />
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="rounded-lg"
-                          onClick={() => setIsAddingNew(true)}
-                          disabled={isAddingNew}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Add Task</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <Button
+                    aria-label="Add task"
+                    variant="outline"
+                    size="icon"
+                    className="rounded-lg"
+                    onClick={() => setIsAddingNew(true)}
+                    disabled={isAddingNew}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </>
               )}
             </PageHeader>

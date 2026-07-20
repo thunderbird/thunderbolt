@@ -221,6 +221,27 @@ describe('SkillsView state machine', () => {
       expect(nameInput.value).toBe('Meeting Notes')
     })
 
+    it('opens the edit form directly for the startEditSkill deep link', async () => {
+      // The chat skills bar's chip menu "Edit skill" navigates with
+      // `startEditSkill: <id>` — lands in the edit form, not the detail view.
+      const created = await createSkill(getDb(), {
+        name: 'daily-brief',
+        label: 'Daily Brief',
+        description: 'desc',
+        instruction: 'do stuff',
+      })
+
+      renderWithReactivity(<SkillsView />, {
+        tables: ['skills'],
+        wrapper: wrapperWithNavState({ startEditSkill: created.id }),
+      })
+
+      await waitForElement(() => screen.queryByText('Edit skill'))
+      const nameInput = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement
+      expect(nameInput.value).toBe('Daily Brief')
+      expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+    })
+
     it('surfaces SkillNameTakenError inline when submitting a duplicate name', async () => {
       await createSkill(getDb(), { name: 'meeting-notes', label: 'Meeting Notes', description: 'd', instruction: 'i' })
       await createSkill(getDb(), { name: 'other', label: 'Other', description: 'd', instruction: 'i' })

@@ -4,9 +4,10 @@
 
 import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import type { Skill } from '@/types'
 import { ChatSkillsBar } from './chat-skills-bar'
 
@@ -127,6 +128,33 @@ describe('ChatSkillsBar', () => {
     })
     const trigger = screen.getByLabelText('Add a skill') as HTMLButtonElement
     expect(trigger.disabled).toBe(true)
+  })
+
+  it('navigates to the skill\'s edit form when choosing "Edit skill" from a chip menu', async () => {
+    const a = { ...skill('a', 'daily-brief'), label: 'Daily Brief' }
+    const LocationProbe = () => {
+      const location = useLocation()
+      return <div data-testid="location">{`${location.pathname}|${JSON.stringify(location.state)}`}</div>
+    }
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <ChatSkillsBar
+            onAddToChat={() => undefined}
+            onAddInstruction={() => undefined}
+            usePinnedSkills={fakeUsePinnedSkills({ pinned: [a] })}
+            useLibrarySkills={fakeUseLibrarySkills([a])}
+            useEnabledSkills={fakeUseEnabledSkills(new Set(['a']))}
+          />
+          <LocationProbe />
+        </TooltipProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Daily Brief'))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Edit skill')))
+
+    expect(screen.getByTestId('location').textContent).toBe('/settings/skills|{"startEditSkill":"a"}')
   })
 
   // The chip's click → onAddToChat path is exercised end-to-end at the

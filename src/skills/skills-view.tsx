@@ -45,18 +45,25 @@ export const SkillsView = () => {
     createInitialName,
   } = state
 
-  // Deep-link from the chat composer's broken-reference alerts —
-  // `editSkill` selects an existing (disabled) skill so the user can enable
-  // it; `createSkill` opens the create form pre-filled with the slug the
-  // user just typed. Both consume the router state once on mount and clear
-  // it so back/forward doesn't re-trigger. Mirrors the `runSkill` pattern
-  // in chat-prompt-input.
+  // Deep-links from the chat composer. Broken-reference alerts send
+  // `editSkill` (selects an existing, likely disabled skill so the user can
+  // enable it) or `createSkill` (opens the create form pre-filled with the
+  // slug the user just typed); the pinned chips' "Edit skill" action sends
+  // `startEditSkill`, which lands straight in the edit form. Each consumes
+  // the router state once on mount and clears it so back/forward doesn't
+  // re-trigger. Mirrors the `runSkill` pattern in chat-prompt-input.
   const navigate = useNavigate()
   const location = useLocation()
   const consumedEditSkillRef = useRef<string | null>(null)
+  const consumedStartEditSkillRef = useRef<string | null>(null)
   const consumedCreateSkillRef = useRef<string | null>(null)
-  const navState = (location.state ?? null) as { editSkill?: string; createSkill?: string } | null
+  const navState = (location.state ?? null) as {
+    editSkill?: string
+    startEditSkill?: string
+    createSkill?: string
+  } | null
   const editSkillNav = navState?.editSkill
+  const startEditSkillNav = navState?.startEditSkill
   const createSkillNav = navState?.createSkill
   if (!editSkillNav) {
     consumedEditSkillRef.current = null
@@ -64,6 +71,15 @@ export const SkillsView = () => {
     consumedEditSkillRef.current = editSkillNav
     queueMicrotask(() => {
       dispatch({ type: 'SELECT_SKILL', id: editSkillNav })
+      navigate(location.pathname, { replace: true, state: {} })
+    })
+  }
+  if (!startEditSkillNav) {
+    consumedStartEditSkillRef.current = null
+  } else if (consumedStartEditSkillRef.current !== startEditSkillNav) {
+    consumedStartEditSkillRef.current = startEditSkillNav
+    queueMicrotask(() => {
+      dispatch({ type: 'START_EDIT', id: startEditSkillNav })
       navigate(location.pathname, { replace: true, state: {} })
     })
   }

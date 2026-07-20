@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { File, ListOrdered, Pin, Plus } from 'lucide-react'
+import { File, ListOrdered, Pin, Plus, SquarePen } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -24,13 +24,14 @@ export const chipSurfaceClass =
 /**
  * Pinned-skill chip shown above the chat input. Click → adds the slash
  * token to the input (does not auto-submit). Right-click / long-press on
- * mobile → context menu with add-to-chat / add-instructions / reorder /
- * unpin.
+ * mobile → context menu with add-to-chat / add-instructions / edit /
+ * reorder / unpin.
  */
 export const SuggestionChip = ({
   label,
   onClick,
   onAddInstruction,
+  onEdit,
   onReorder,
   onUnpin,
 }: {
@@ -39,6 +40,8 @@ export const SuggestionChip = ({
   label: string
   onClick: () => void
   onAddInstruction: () => void
+  /** Jump to the skill's edit form in `/settings/skills`. */
+  onEdit: () => void
   onReorder: () => void
   onUnpin: () => void
 }) => {
@@ -168,6 +171,16 @@ export const SuggestionChip = ({
         >
           <File />
           Add instructions to chat
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => {
+            setOpen(false)
+            onEdit()
+          }}
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
+        >
+          <SquarePen />
+          Edit skill
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {

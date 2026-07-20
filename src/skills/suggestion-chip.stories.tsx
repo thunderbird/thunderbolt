@@ -17,7 +17,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'Pinned-skill chip rendered above the chat input. Click inserts the `/slug` token; right-click / long-press opens the action menu (Add to chat · Add instructions to chat · Reorder · Unpin).',
+          'Pinned-skill chip rendered above the chat input. Click inserts the `/slug` token; right-click / long-press opens the action menu (Add to chat · Add instructions to chat · Edit skill · Reorder · Unpin).',
       },
     },
   },
@@ -42,6 +42,7 @@ export const Default: Story = {
     label: 'daily-brief',
     onClick: noop,
     onAddInstruction: noop,
+    onEdit: noop,
     onReorder: noop,
     onUnpin: noop,
   },

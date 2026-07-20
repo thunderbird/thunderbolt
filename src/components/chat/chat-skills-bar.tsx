@@ -149,6 +149,7 @@ export const ChatSkillsBar = ({
             label={skillDisplayName(skill)}
             onClick={() => onAddToChat(skill.name)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
+            onEdit={() => void navigate('/settings/skills', { state: { startEditSkill: skill.id } })}
             onReorder={() => setReorderMode(true)}
             onUnpin={async () => {
               // Telemetry only fires after the mutation settles, so a rejection

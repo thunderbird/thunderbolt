@@ -130,23 +130,16 @@ export const AgentRow = ({ agent, currentUserId, onToggle, onEdit, onDelete }: A
               </TooltipContent>
             </Tooltip>
             {showEdit && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="size-8 p-0"
-                    aria-label={`Edit ${agent.name}`}
-                    data-testid={`agent-edit-${agent.id}`}
-                    onClick={() => onEdit(agent)}
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Edit agent</p>
-                </TooltipContent>
-              </Tooltip>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-8 p-0"
+                aria-label={`Edit ${agent.name}`}
+                data-testid={`agent-edit-${agent.id}`}
+                onClick={() => onEdit(agent)}
+              >
+                <Pencil className="size-4" />
+              </Button>
             )}
             {showDelete && (
               <Popover open={deleteOpen} onOpenChange={setDeleteOpen}>

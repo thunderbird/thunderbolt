@@ -234,6 +234,8 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 | `FIREWORKS_API_KEY`                          | Fireworks API key.                                                                                              |
 | `THUNDERBOLT_OPENAI_COMPAT_KEY`              | Dedicated fallback key for arbitrary `openai-compat` URLs.                                                      |
 | `THUNDERBOLT_HOME`                           | CLI state root containing `config.json`, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
+| `THUNDERBOLT_CLOUD_URL`                      | Thunderbolt backend the CLI talks to (default: `http://localhost:8000/v1`). Point it at your cloud or self-hosted `…/v1` base before `thunderbolt login`; the URL is persisted alongside the credential, so later commands need no env. |
+| `THUNDERBOLT_TOKEN`                          | Personal access token for headless use (CI, scripts): skips interactive login and authenticates as `x-api-key`. Resolves the backend from `THUNDERBOLT_CLOUD_URL` on every run.  |
 | `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                    |
 | `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                  |
 | `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                             |

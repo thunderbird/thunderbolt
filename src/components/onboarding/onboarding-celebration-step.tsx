@@ -3,18 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
+import { OnboardingStepHeader } from './onboarding-step-header'
 
 export const OnboardingCelebrationStep = () => {
   return (
-    <div className="w-full h-full flex flex-col justify-center">
-      <div className="space-y-6">
-        <div className="space-y-4 text-center">
-          <GradientCircleCheck className="mx-auto h-12 w-12" />
-          <div className="space-y-2">
-            <p className="text-lg text-muted-foreground">You're all set! 🎉</p>
-          </div>
-        </div>
-      </div>
+    <div className="flex h-full w-full flex-col justify-center">
+      <OnboardingStepHeader icon={<GradientCircleCheck className="size-12" />} title="You're all set! 🎉" />
     </div>
   )
 }

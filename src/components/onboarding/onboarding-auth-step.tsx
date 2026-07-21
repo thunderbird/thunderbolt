@@ -11,8 +11,8 @@ import { type OAuthProvider } from '@/lib/auth'
 import { Calendar, File, Mail } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { IconCircle } from './icon-circle'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
+import { OnboardingStepHeader } from './onboarding-step-header'
 
 type OnboardingAuthStepProps = {
   providers?: OAuthProvider[]
@@ -92,22 +92,19 @@ export const OnboardingAuthStep = ({
   }
 
   return (
-    <div className="w-full flex flex-col">
-      <div className="text-center space-y-4">
-        <IconCircle>
-          <TopIcon className="w-8 h-8" />
-        </IconCircle>
-        <h2 className="text-2xl font-bold">Connect {providerName}</h2>
-        <p className="text-muted-foreground">
-          {isMicrosoft
+    <div className="flex w-full flex-1 flex-col justify-center">
+      <OnboardingStepHeader
+        icon={<TopIcon className="size-10" />}
+        title={`Connect ${providerName}`}
+        description={
+          isMicrosoft
             ? 'Your assistant can help you manage your email, calendar, and documents.'
-            : 'Your assistant can help you manage your email and calendar.'}
-        </p>
-      </div>
+            : 'Your assistant can help you manage your email and calendar.'
+        }
+      />
 
-      <div className="pt-5">
+      <div className="mt-10 rounded-xl bg-muted">
         <OnboardingFeatureCard
-          className="mb-4"
           icon={Calendar}
           title="Calendar"
           description={
@@ -117,7 +114,6 @@ export const OnboardingAuthStep = ({
           }
         />
         <OnboardingFeatureCard
-          className="mb-4"
           icon={Mail}
           title="Email"
           description={
@@ -132,7 +128,7 @@ export const OnboardingAuthStep = ({
           />
         )}
 
-        <div className="flex items-start rounded-lg pt-5">
+        <div className="px-4 pb-4 pt-2">
           <ConnectProviderButton
             provider={provider}
             isConnected={isConnected}
@@ -144,6 +140,7 @@ export const OnboardingAuthStep = ({
             setPreferredName={true}
             returnContext="onboarding"
             allowDisconnect={true}
+            variant="default"
             className="w-full"
             useOAuthConnectHook={useOAuthConnectHook}
           />

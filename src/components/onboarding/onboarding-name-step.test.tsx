@@ -228,9 +228,8 @@ describe('OnboardingNameStep', () => {
     it('should have proper layout structure', () => {
       renderComponent()
 
-      // Find the main container div
       const container = screen.getByText('What should we call you?').closest('div')?.parentElement
-      expect(container).toHaveClass('w-full', 'h-full', 'flex', 'flex-col', 'justify-center')
+      expect(container).toHaveClass('flex', 'w-full', 'flex-1', 'flex-col')
     })
 
     it('should have proper text hierarchy', () => {

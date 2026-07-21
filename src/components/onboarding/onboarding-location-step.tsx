@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { LocationSearchCombobox } from '../location-search-combobox'
-import { IconCircle } from './icon-circle'
+import { OnboardingStepHeader } from './onboarding-step-header'
 
 const locationFormSchema = z
   .object({
@@ -127,19 +127,15 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
   }
 
   return (
-    <div className="w-full h-full flex flex-col justify-center">
-      <div className="text-center space-y-4">
-        <IconCircle>
-          <MapPin className="w-8 h-8 text-primary" />
-        </IconCircle>
-        <h2 className="text-2xl font-bold">Where are you located?</h2>
-        <p className="text-muted-foreground">
-          This helps us personalize your experience with local settings and features.
-        </p>
-      </div>
+    <div className="flex w-full flex-1 flex-col justify-center">
+      <OnboardingStepHeader
+        icon={<MapPin className="size-10 text-primary" />}
+        title="Where are you located?"
+        description="This helps us personalize your experience with local settings and features."
+      />
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-5">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-10 space-y-6">
           <FormField
             control={form.control}
             name="locationName"

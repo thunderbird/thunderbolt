@@ -90,7 +90,7 @@ jobs:
 
       - name: Install git-cliff
         if: ${{ !inputs.nightly }}
-        uses: taiki-e/install-action@5ebac0d9522d786674368e47e92963ba13f2c376 # v2
+        uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
         with:
           tool: git-cliff
 

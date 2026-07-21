@@ -66,7 +66,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
           // segment's top/bottom so the compact segments (28px in the vertical
           // rail) stay comfortable to hit and mobile meets --min-touch-height.
           'relative flex cursor-pointer items-center justify-center rounded-xl outline-hidden ring-sidebar-ring transition-colors focus-visible:ring-2 after:absolute after:inset-x-0 after:-inset-y-1 after:content-[""]',
-          vertical ? 'size-8' : 'h-full w-[var(--touch-height-lg)]',
+          vertical ? 'size-8' : 'h-full aspect-square',
           isActive ? 'text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-sidebar-foreground',
         )}
       >
@@ -106,8 +106,10 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
       {/* Same height as the footer's New Chat / theme / account controls so
           the row reads as one line. Mobile is full-bleed so the thumb's
           diameter matches those controls exactly (44px); desktop keeps a 2px
-          inset for a more compact thumb in the header. */}
-      <div className="flex h-[var(--touch-height-default)] w-fit items-center md:p-0.5">
+          inset for a more compact thumb in the header. Square segments +
+          gap-0.5 mirror the ChatActions search/clear-all pair, so both icon
+          duos sit the same distance apart. */}
+      <div className="flex h-[var(--touch-height-default)] w-fit items-center gap-0.5 md:p-0.5">
         {sections.map(renderSegment)}
       </div>
     </nav>

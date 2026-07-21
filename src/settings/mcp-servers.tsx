@@ -712,7 +712,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
 
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
-      <PageHeader title="MCP servers">
+      <PageHeader title="MCP Servers">
         <Dialog
           open={form.isAddDialogOpen}
           onOpenChange={(open) => {

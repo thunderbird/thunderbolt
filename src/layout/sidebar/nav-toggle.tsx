@@ -30,9 +30,10 @@ type SidebarNavToggleProps = {
 }
 
 /**
- * Segmented pill toggle that switches the sidebar between the Chats and
- * Settings sections. Icon-only segments; the selected state is a raised
- * thumb that slides between segments (shared `layoutId`).
+ * Segmented toggle that switches the sidebar between the Chats and Settings
+ * sections. Icon-only segments on the bare sidebar surface; the selected
+ * state is a soft accent square (rounded-xl, matching the New Chat menu
+ * button) that slides between segments (shared `layoutId`).
  *
  * Purely presentational: the expanded sidebar centers the horizontal pill in
  * its header, while the collapsed desktop rail mounts a `vertical` instance
@@ -61,42 +62,51 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
         aria-current={isActive ? 'page' : undefined}
         onClick={() => handleSelect(id)}
         className={cn(
-          // The after: pseudo-element pads the hit area ~4px beyond the pill's
-          // top/bottom so mobile segments (34px visible) meet --min-touch-height.
-          'relative flex cursor-pointer items-center justify-center rounded-full outline-hidden ring-sidebar-ring transition-colors focus-visible:ring-2 after:absolute after:inset-x-0 after:-inset-y-1 after:content-[""]',
+          // The after: pseudo-element pads the hit area ~4px beyond the
+          // segment's top/bottom so the compact segments (28px in the vertical
+          // rail) stay comfortable to hit and mobile meets --min-touch-height.
+          'relative flex cursor-pointer items-center justify-center rounded-xl outline-hidden ring-sidebar-ring transition-colors focus-visible:ring-2 after:absolute after:inset-x-0 after:-inset-y-1 after:content-[""]',
           vertical ? 'size-7' : 'h-full w-[var(--touch-height-lg)]',
           isActive ? 'text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-sidebar-foreground',
         )}
       >
         {isActive && (
+          // No insets: the abspos thumb sits at its static position, which the
+          // button's flex centering resolves to dead center; h-full +
+          // aspect-square keeps it square in both orientations. rounded-xl
+          // matches the New Chat menu button's radius.
           <m.span
             layoutId="sidebar-nav-thumb"
             transition={reducedMotion ? { duration: 0 } : thumbSpring}
-            className="absolute inset-0 rounded-full border border-sidebar-border bg-sidebar shadow-sm dark:border-transparent"
+            className="absolute h-full aspect-square rounded-xl bg-sidebar-accent"
           />
         )}
-        <Icon className="relative size-[var(--icon-size-default)]" />
+        {/* z-10 keeps both icons above the sliding thumb: the thumb mounts
+            inside the newly-active segment, and when that segment is a later
+            DOM sibling it would otherwise paint over the other icon mid-slide. */}
+        <Icon className="relative z-10 size-[var(--icon-size-default)]" />
       </button>
     )
   }
 
   if (vertical) {
-    // Sized to the rail's 32px square buttons (28px segment + 1px padding +
-    // 1px border per side). -mt-2 cancels the group's top padding; mb-2 pads
-    // the space below to match the 16px above the pill (header row + gap).
+    // Sized to the rail's 32px square buttons (28px segment + 2px padding per
+    // side). -mt-2 cancels the group's top padding; mb-2 pads the space below
+    // to match the 16px above the pill (header row + gap).
     return (
       <nav aria-label="Sidebar sections" className="-mt-2 mb-2 flex justify-center">
-        <div className="flex w-fit flex-col items-center rounded-full border border-sidebar-border bg-sidebar-accent p-px dark:border-transparent">
-          {sections.map(renderSegment)}
-        </div>
+        <div className="flex w-fit flex-col items-center p-0.5">{sections.map(renderSegment)}</div>
       </nav>
     )
   }
 
   return (
     <nav aria-label="Sidebar sections">
-      {/* Same height as the footer's New Chat / theme / account controls so the row reads as one line. */}
-      <div className="flex h-[var(--touch-height-default)] w-fit items-center rounded-full border border-sidebar-border bg-sidebar-accent p-0.5 dark:border-transparent">
+      {/* Same height as the footer's New Chat / theme / account controls so
+          the row reads as one line. Mobile is full-bleed so the thumb's
+          diameter matches those controls exactly (44px); desktop keeps a 2px
+          inset for a more compact thumb in the header. */}
+      <div className="flex h-[var(--touch-height-default)] w-fit items-center md:p-0.5">
         {sections.map(renderSegment)}
       </div>
     </nav>

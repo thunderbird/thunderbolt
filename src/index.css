@@ -315,9 +315,9 @@
   background-color: transparent !important;
 }
 /* Translucency is scoped to the sidebar's surface element rather than the
-   --color-sidebar token: nested elements also paint bg-sidebar (nav-toggle
-   thumb) and translucent layers would stack into visible bands. These rules
-   are unlayered so they beat Tailwind's layered bg-sidebar utility. */
+   --color-sidebar token: other elements also paint bg-sidebar (e.g. the chat
+   composer) and translucent layers would stack into visible bands. These
+   rules are unlayered so they beat Tailwind's layered bg-sidebar utility. */
 /* Light glass leans cream rather than white: at low alpha the desktop's
    whites/blacks/blues dominate, so the tint carries extra warmth/saturation
    (drawn from the theme's beige family) to keep the panel on-brand. */
@@ -332,17 +332,16 @@
 }
 /* Fills INSIDE the glass become translucent tints so the blur reads through
    them instead of punching opaque holes in it:
-   - --color-sidebar-accent: active/hover pills (New Chat, chat list items)
-     and the nav-toggle track. Same perceived shade as the opaque originals
+   - --color-sidebar-accent: active/hover pills (New Chat, chat list items,
+     the nav-toggle thumb). Same perceived shade as the opaque originals
      (#eeebe6 / #383a39) expressed as ink-over-glass.
-   - --color-sidebar: the nav-toggle thumb. The docked surface and the mobile
-     drawer don't ride this token (explicit rules above), so this only
-     affects nested bg-sidebar elements. Dark mode flips it from the theme's
-     dark ink to a white lift — ink stacked over the track + dark glass
-     compounds toward opaque black, while "lighter = raised" matches how
+   - --color-sidebar: the docked surface and the mobile drawer don't ride
+     this token (explicit rules above), so this only affects other
+     bg-sidebar elements (e.g. the chat composer). Dark mode flips it from
+     the theme's dark ink to a white lift — "lighter = raised" matches how
      native macOS controls sit on glass.
-   - --color-sidebar-border: the toggle outline and separators; solid borders
-     read as hard opaque rings on glass. */
+   - --color-sidebar-border: separators; solid borders read as hard opaque
+     rings on glass. */
 .mac-vibrancy {
   --color-sidebar: rgb(255 255 255 / 45%);
   --color-sidebar-accent: rgb(38 33 32 / 8%);

@@ -34,6 +34,7 @@ import {
   type Api,
   type AnthropicEffort,
   type AnthropicOptions,
+  type Context,
   type Model,
   type Models,
   type ProviderStreams,
@@ -123,8 +124,12 @@ const mapThinkingLevelToEffort = (model: Model<typeof API>, level: ThinkingLevel
  * into the full `stream` call. Reuses Pi's exported helpers for the parts that
  * are exported; only the (unexported) effort mapping is reproduced above.
  */
-const toFullAnthropicOptions = (model: Model<typeof API>, options?: SimpleStreamOptions): AnthropicOptions => {
-  const base = buildBaseOptions(model, options, options?.apiKey)
+const toFullAnthropicOptions = (
+  model: Model<typeof API>,
+  context: Context,
+  options?: SimpleStreamOptions,
+): AnthropicOptions => {
+  const base = buildBaseOptions(model, context, options, options?.apiKey)
   if (!options?.reasoning) {
     return { ...base, thinkingEnabled: false }
   }
@@ -182,7 +187,7 @@ export const buildAnthropicModel = (opts: BuildAnthropicModelOptions): { models:
     stream: (model, context, options) => anthropicStream(requireAnthropic(model), context, { ...options, client }),
     streamSimple: (model, context, options) => {
       const narrowed = requireAnthropic(model)
-      return anthropicStream(narrowed, context, { ...toFullAnthropicOptions(narrowed, options), client })
+      return anthropicStream(narrowed, context, { ...toFullAnthropicOptions(narrowed, context, options), client })
     },
   }
 

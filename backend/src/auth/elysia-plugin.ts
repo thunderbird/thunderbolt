@@ -3,8 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType } from '@/db/client'
+import { APIError } from 'better-auth'
 import { Elysia, type AnyElysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
+
+/** Resolve a session while translating credential rejection into an unauthenticated result. */
+const resolveAuthSession = async (auth: Auth, headers: Headers) => {
+  try {
+    return await auth.api.getSession({ headers })
+  } catch (error) {
+    if (error instanceof APIError && (error.statusCode === 401 || error.statusCode === 403)) {
+      return null
+    }
+
+    throw error
+  }
+}
 
 /**
  * Reusable auth macro plugin. Use with `{ auth: true }` on routes
@@ -14,9 +28,9 @@ export const createAuthMacro = (auth: Auth) =>
   new Elysia({ name: 'auth-macro' }).macro({
     auth: {
       async resolve({ status, request: { headers } }) {
-        const session = await auth.api.getSession({ headers })
+        const session = await resolveAuthSession(auth, headers)
 
-        if (!session) {
+        if (!session?.user) {
           return status(401)
         }
 

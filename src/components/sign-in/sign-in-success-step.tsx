@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
-import { CheckCircle2 } from 'lucide-react'
+import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 
 type SignInSuccessStepProps = {
   displayName?: string
@@ -19,9 +19,7 @@ export const SignInSuccessStep = ({ displayName, onContinue, variant }: SignInSu
   return (
     <div className="flex w-full flex-col items-center text-center">
       {/* Success icon */}
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-        <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
-      </div>
+      <GradientCircleCheck className="h-12 w-12" />
 
       {/* Welcome message */}
       <h2 className="mt-4 text-xl font-semibold">{displayName ? `Welcome, ${displayName}!` : 'Welcome!'}</h2>

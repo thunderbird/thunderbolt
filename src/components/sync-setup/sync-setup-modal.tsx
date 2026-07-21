@@ -12,9 +12,10 @@ import { useHttpClient } from '@/contexts'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
+import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
-import { ArrowLeft, CheckCircle, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useRef } from 'react'
 
 type SyncSetupModalProps = {
@@ -335,9 +336,7 @@ const DeniedStep = ({ onRetry }: { onRetry: () => void }) => (
 const SetupCompleteStep = ({ onDone }: { onDone: () => void }) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">
-      <IconCircle>
-        <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
-      </IconCircle>
+      <GradientCircleCheck className="mx-auto h-12 w-12" />
       <h2 className="text-2xl font-bold">You&apos;re all set!</h2>
       <p className="text-muted-foreground">
         This device has been approved and sync is now enabled across your devices.

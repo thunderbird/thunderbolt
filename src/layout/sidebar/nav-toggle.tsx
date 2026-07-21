@@ -66,7 +66,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
           // segment's top/bottom so the compact segments (28px in the vertical
           // rail) stay comfortable to hit and mobile meets --min-touch-height.
           'relative flex cursor-pointer items-center justify-center rounded-xl outline-hidden ring-sidebar-ring transition-colors focus-visible:ring-2 after:absolute after:inset-x-0 after:-inset-y-1 after:content-[""]',
-          vertical ? 'size-7' : 'h-full w-[var(--touch-height-lg)]',
+          vertical ? 'size-8' : 'h-full w-[var(--touch-height-lg)]',
           isActive ? 'text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-sidebar-foreground',
         )}
       >
@@ -90,12 +90,13 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
   }
 
   if (vertical) {
-    // Sized to the rail's 32px square buttons (28px segment + 2px padding per
-    // side). -mt-2 cancels the group's top padding; mb-2 pads the space below
-    // to match the 16px above the pill (header row + gap).
+    // Segments match the rail's 32px square buttons (size-8) so the active
+    // thumb reads as the same control as the rail items below. -mt-2 cancels
+    // the group's top padding; mb-2 pads the space below to match the 16px
+    // above the pill (header row + gap).
     return (
       <nav aria-label="Sidebar sections" className="-mt-2 mb-2 flex justify-center">
-        <div className="flex w-fit flex-col items-center p-0.5">{sections.map(renderSegment)}</div>
+        <div className="flex w-fit flex-col items-center">{sections.map(renderSegment)}</div>
       </nav>
     )
   }

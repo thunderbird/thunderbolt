@@ -109,7 +109,6 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       onClick={onToggle}
-                      tooltip="Toggle Sidebar"
                       className="cursor-pointer size-8 justify-center text-muted-foreground"
                     >
                       <PanelLeftRounded className="size-[var(--icon-size-default)]" />

@@ -210,10 +210,10 @@ export type UpgradeDecision = { readonly ok: true } | { readonly ok: false; read
  * an allowlisted Thunderbolt app origin, and the `token` query param must equal
  * the per-run secret (constant-time compared).
  *
- * This closes the drive-by host-RCE vector. The bridge spawns the host coding
- * agent (bash) per connection, and WebSocket upgrades bypass CORS — so without
+ * This closes the drive-by host-access vector. The bridge spawns a host coding
+ * agent per connection, and WebSocket upgrades bypass CORS — so without
  * these checks any site the user visits while the bridge runs could connect to
- * `ws://127.0.0.1:<port>` and drive arbitrary host execution (the ACP permission
+ * `ws://127.0.0.1:<port>` and drive arbitrary workspace access (the ACP permission
  * gate is useless against a malicious client that auto-approves). A drive-by page
  * can neither guess the token nor forge an allowlisted `Origin`, so it never
  * reaches `srv.upgrade`.
@@ -247,7 +247,7 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
   const allowedOrigins = bridgeAllowedOrigins()
   // Cap concurrently-live agents: the upgrade gate authorizes *connections*, not
   // sessions, so an authorized client holding many sockets open would otherwise
-  // spawn unbounded bash processes. At the ceiling a new socket is refused.
+  // spawn unbounded agent processes. At the ceiling a new socket is refused.
   const activeProcs = new Set<BridgeProc>()
   const server = Bun.serve<BridgeSocketData>({
     // Loopback-only: this transport is unauthenticated, so it must not be
@@ -259,7 +259,7 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
     fetch(req, srv) {
       // Loopback alone is not a security boundary: WebSocket upgrades bypass CORS,
       // so any page the user visits can reach this port. Gate every upgrade on an
-      // allowlisted Origin + the unguessable per-run token before spawning bash.
+      // allowlisted Origin + the unguessable per-run token before spawning an agent.
       const decision = authorizeUpgrade(req, token, allowedOrigins)
       if (!decision.ok) return new Response(`thunderbolt bridge: ${decision.reason}\n`, { status: decision.status })
       if (srv.upgrade(req, { data: { proc: null } })) return undefined

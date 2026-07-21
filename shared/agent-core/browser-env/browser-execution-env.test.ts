@@ -131,4 +131,28 @@ describe('BrowserExecutionEnv filesystem jail', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.message).toContain('cwd escapes workspace')
   })
+
+  it('emits output produced before a command times out', async () => {
+    const timeoutEnv = new BrowserExecutionEnv({
+      cwd: JAIL,
+      createBash: () => ({
+        exec: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10))
+          return { stdout: 'partial\n', stderr: 'warning\n', exitCode: 124, env: {} }
+        },
+      }),
+    })
+    const stdout: string[] = []
+    const stderr: string[] = []
+    const result = await timeoutEnv.exec('ignored', {
+      timeout: 0.001,
+      onStdout: (chunk) => stdout.push(chunk),
+      onStderr: (chunk) => stderr.push(chunk),
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.code).toBe('timeout')
+    expect(stdout.join('')).toBe('partial\n')
+    expect(stderr.join('')).toBe('warning\n')
+  })
 })

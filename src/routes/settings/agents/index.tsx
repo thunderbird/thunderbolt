@@ -14,10 +14,10 @@ import { ThunderboltCliInstallCard } from '@/components/settings/agents/thunderb
 import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
 import { testAcpConnection } from '@/acp'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
-import { useDatabase } from '@/contexts'
-import { useAuth, useHttpClient } from '@/contexts'
+import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { useChatStore } from '@/chats/chat-store'
 import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 import type { Agent } from '@/types/acp'
 
@@ -93,12 +93,15 @@ export default function AgentsSettingsPage({ isStandalone, loadAppNodeId, enroll
     if (editingAgent) {
       // Only customs are editable; system / built-in rows never reach this
       // path (the row hides the Edit affordance).
-      await updateAgent(db, editingAgent.id, {
+      const wireIdentityChanged = await updateAgent(db, editingAgent.id, {
         name: payload.name,
         transport: payload.transport,
         url: payload.url,
         description: payload.description,
       })
+      if (wireIdentityChanged) {
+        useChatStore.getState().applyAgentWireIdentityChange({ ...editingAgent, ...payload })
+      }
       return
     }
     if (!currentUserId) {
@@ -119,9 +122,8 @@ export default function AgentsSettingsPage({ isStandalone, loadAppNodeId, enroll
     if (payload.transport !== 'iroh') {
       return
     }
-    // D4 self-enrolls this app's dialer NodeId; the bridge registers itself server-side.
-    // Fire and forget: enrollment must never block the add, and manual pairing remains the
-    // fallback for Standalone, unauthenticated, or offline use.
+    // D4 self-enrolls this app's dialer NodeId; bridge registers itself server-side.
+    // Fire and forget: enrollment must never block add; manual pairing remains fallback.
     void runEnroll().catch((error) => {
       console.error('iroh transparent enrollment failed; using manual pairing fallback', error)
     })

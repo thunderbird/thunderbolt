@@ -61,6 +61,18 @@ export const isMobile = (): boolean => {
   return currentPlatform === 'ios' || currentPlatform === 'android'
 }
 
+/** True on the Tauri macOS build. Web (including Safari/mac) returns false. */
+export const isMacDesktop = (): boolean => isTauri() && getPlatform() === 'macos'
+
+/** True on Tauri Windows or Linux desktop — the platforms that need custom window controls. */
+export const isFramelessControlsPlatform = (): boolean => {
+  if (!isTauri()) {
+    return false
+  }
+  const p = getPlatform()
+  return p === 'windows' || p === 'linux'
+}
+
 export type WebOsPlatform = 'macos' | 'windows' | 'linux' | 'ios' | 'android' | 'unknown'
 
 /**

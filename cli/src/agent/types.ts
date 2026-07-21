@@ -26,9 +26,32 @@ export type HarnessBundle = {
 /** Reasoning depth passed to the Pi harness (`thinkingLevel`). */
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
-/** Which model backend the harness talks to: Anthropic's built-in catalog, or
- *  any OpenAI-compatible endpoint at a custom base URL (e.g. Xiaomi MiMo). */
-export type ModelProvider = 'anthropic' | 'openai-compat'
+/** Built-in Pi providers exposed by thunderbolt. */
+export const BUILTIN_PROVIDERS = [
+  'anthropic',
+  'openai',
+  'google',
+  'xai',
+  'deepseek',
+  'zai',
+  'mistral',
+  'groq',
+  'openrouter',
+  'moonshotai',
+  'minimax',
+  'cerebras',
+  'together',
+  'fireworks',
+] as const
+
+/** Built-in Pi provider exposed by thunderbolt. */
+export type BuiltinProvider = (typeof BUILTIN_PROVIDERS)[number]
+
+/** All model backends accepted by `--provider`. */
+export const MODEL_PROVIDERS = [...BUILTIN_PROVIDERS, 'openai-compat'] as const
+
+/** Model backend selected for a harness. */
+export type ModelProvider = (typeof MODEL_PROVIDERS)[number]
 
 /** Wire protocol whose local stdio process the bridge exposes over the network.
  *  Drives only logging — the stdio↔transport pump is byte-identical for both. */
@@ -80,12 +103,13 @@ export type IrohAdminAction =
  * consumes exactly this; the run/serve configs extend it with their own fields.
  */
 export type HarnessConfig = {
-  /** Model id: an Anthropic catalog id (e.g. `claude-opus-4-8`) for the
-   *  `anthropic` provider, or the upstream id (e.g. `mimo-v2.5-pro`) for
+  /** Pi catalog model id for built-in providers, or upstream model id for
    *  `openai-compat`. */
   readonly model: string
   /** Working directory the agent's bash/fs tools are bound to. */
   readonly cwd: string
+  /** Trusted filesystem root for ACP path-tool confinement. Omitted by local CLI modes. */
+  readonly workspaceRoot?: string
   /** When true, auto-approve every tool call (no interactive gate). */
   readonly yolo: boolean
   /** Reasoning depth for the harness. */
@@ -94,9 +118,8 @@ export type HarnessConfig = {
   readonly provider?: ModelProvider
   /** OpenAI-compatible base URL — required when `provider` is `openai-compat`. */
   readonly baseUrl?: string
-  /** Bearer api key for `openai-compat` (flows in only via flag/env at runtime,
-   *  never persisted). Ignored by the `anthropic` provider, which reads
-   *  `ANTHROPIC_API_KEY` from the environment. */
+  /** Explicit provider api key. Built-in providers otherwise resolve their own
+   *  environment variable; openai-compat uses its dedicated CLI env fallback. */
   readonly apiKey?: string
   /** When true, the system prompt names the underlying model so an exposed ACP
    *  agent can self-identify. The standalone CLI leaves this off. */
@@ -105,8 +128,8 @@ export type HarnessConfig = {
 
 /**
  * Configuration for an `acp serve` invocation: run THIS coding agent as a stdio
- * ACP JSON-RPC server. `cwd` is the process default; each ACP `session/new`
- * supplies its own working directory, which overrides it per session.
+ * ACP JSON-RPC server. `cwd` is trusted launch directory and cannot be overridden
+ * by client session requests.
  */
 export type ServeConfig = HarnessConfig
 
@@ -124,10 +147,11 @@ export type RunConfig =
       readonly noTui: boolean
     })
 
-/** Result of parsing argv: a run, a bridge, a connect, an ACP server, an iroh
- *  admin action, a login, or a terminal info action. */
+/** Result of parsing argv: a run, config setup, bridge, connect, ACP server,
+ *  iroh admin action, login, or terminal info action. */
 export type ParsedArgs =
   | { readonly kind: 'run'; readonly config: RunConfig }
+  | { readonly kind: 'config' }
   | { readonly kind: 'bridge'; readonly config: BridgeConfig }
   | { readonly kind: 'connect'; readonly config: ConnectConfig }
   | { readonly kind: 'acp-serve'; readonly config: ServeConfig }

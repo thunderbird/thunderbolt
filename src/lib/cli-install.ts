@@ -3,7 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
+import type { Arch, Platform } from '@tauri-apps/plugin-os'
 import { isRecord } from '@/lib/agent-registry-filter'
+
+export type CliInstallPlatform = Platform | 'web'
+export type CliInstallArchitecture = Arch | 'unknown'
 
 /** A successful one-click install of the `thunderbolt` CLI, mirroring the Rust
  *  `CliInstallResult` (serialized camelCase). */
@@ -46,12 +50,17 @@ export const installThunderboltCli = (invoke: InvokeFn = tauriInvoke): Promise<C
   invoke<CliInstallResult>('install_thunderbolt_cli')
 
 /**
- * Whether the one-click CLI install is offered: a Tauri desktop build on a
- * platform the release pipeline targets (macOS or Linux). Hidden on web, mobile
- * and Windows — none has a prebuilt binary.
+ * Whether the one-click CLI install is offered for a Tauri OS/architecture pair
+ * published by the CLI release pipeline. Mirrors Rust `resolve_target`.
  */
-export const canInstallThunderboltCli = (platform: string, isTauriEnv: boolean): boolean =>
-  isTauriEnv && (platform === 'macos' || platform === 'linux')
+export const canInstallThunderboltCli = (
+  platform: CliInstallPlatform,
+  architecture: CliInstallArchitecture,
+  isTauriEnv: boolean,
+): boolean =>
+  isTauriEnv &&
+  ((platform === 'macos' && architecture === 'aarch64') ||
+    (platform === 'linux' && (architecture === 'x86_64' || architecture === 'aarch64')))
 
 /** Narrows an unknown rejection value to a typed {@link CliInstallError}. */
 export const isCliInstallError = (value: unknown): value is CliInstallError =>

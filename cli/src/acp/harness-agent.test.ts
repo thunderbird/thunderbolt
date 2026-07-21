@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import { realpath } from 'node:fs/promises'
 import {
   AgentSideConnection,
   ClientSideConnection,
@@ -37,10 +38,13 @@ const config: ServeConfig = { model: 'fake', cwd: process.cwd(), yolo: false, th
 /** A fake {@link SessionStore} backed by Pi's real in-memory repo (no disk, no
  *  mocks): each id maps to one session, and it records the new/resume calls so a
  *  test can assert the agent routed to the right one. */
-const fakeStore = (): SessionStore & { created: string[]; resumed: Array<{ id: string; cwd: string }> } => {
+const fakeStore = (): SessionStore & {
+  created: Array<{ id: string; cwd: string }>
+  resumed: Array<{ id: string; cwd: string }>
+} => {
   const repo = new InMemorySessionRepo()
   const byId = new Map<string, Promise<PiSession>>()
-  const created: string[] = []
+  const created: Array<{ id: string; cwd: string }> = []
   const resumed: Array<{ id: string; cwd: string }> = []
   const get = (id: string): Promise<PiSession> => {
     const existing = byId.get(id)
@@ -52,11 +56,11 @@ const fakeStore = (): SessionStore & { created: string[]; resumed: Array<{ id: s
   return {
     created,
     resumed,
-    createSession: (id) => {
-      created.push(id)
+    createSession: (id, cwd) => {
+      created.push({ id, cwd })
       return get(id)
     },
-    openOrCreate: (id, cwd) => {
+    openSession: (id, cwd) => {
       resumed.push({ id, cwd })
       return get(id)
     },
@@ -89,6 +93,7 @@ const assistantMessage = (stopReason: PiStopReason): AssistantMessage => ({
 const connectPair = (
   buildServeHarness: BuildServeHarness,
   store: SessionStore = fakeStore(),
+  permissionOptionId: 'allow-once' | 'allow-always' | 'reject-once' = 'allow-once',
 ): {
   client: ClientSideConnection
   updates: SessionNotification[]
@@ -109,7 +114,7 @@ const connectPair = (
     },
     requestPermission: async (params) => {
       permissions.push(params)
-      return { outcome: { outcome: 'selected', optionId: 'allow-once' } }
+      return { outcome: { outcome: 'selected', optionId: permissionOptionId } }
     },
   }
   const client = new ClientSideConnection(() => handler, clientStream)
@@ -188,13 +193,13 @@ describe('createHarnessAgent (ACP server)', () => {
     const threadId = '11111111-1111-4111-8111-111111111111'
     const { client, updates } = connectPair(capturingBuilder, store)
     await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
-    const response = await client.resumeSession({ sessionId: threadId, cwd: process.cwd(), mcpServers: [] })
+    const response = await client.resumeSession({ sessionId: threadId, cwd: '/', mcpServers: [] })
 
     // Resume returns an empty response and replays nothing to the client.
     expect(response).toEqual({})
     expect(updates).toHaveLength(0)
-    // It routed through the store by the client-supplied id + cwd...
-    expect(store.resumed).toEqual([{ id: threadId, cwd: process.cwd() }])
+    // It routed through the store by client-supplied id + server-owned cwd...
+    expect(store.resumed).toEqual([{ id: threadId, cwd: await realpath(config.cwd) }])
     // ...and handed that exact session to the harness builder.
     expect(injected).toHaveLength(1)
     expect((await injected[0].getMetadata()).id).toBe(threadId)
@@ -273,6 +278,62 @@ describe('createHarnessAgent (ACP server)', () => {
 
     const toolDone = updates.find((u) => u.update.sessionUpdate === 'tool_call_update')
     expect(toolDone?.update).toMatchObject({ toolCallId: 't1', status: 'completed' })
+  })
+
+  test('session/new ignores client cwd and binds store plus harness to trusted launch directory', async () => {
+    const store = fakeStore()
+    const harnessCwds: string[] = []
+    const capturingBuilder: BuildServeHarness = async (harnessConfig, session) => {
+      harnessCwds.push(harnessConfig.cwd)
+      return streamingBuilder(harnessConfig, session)
+    }
+    const { client } = connectPair(capturingBuilder, store)
+    await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+
+    await client.newSession({ cwd: '/', mcpServers: [] })
+
+    const trustedRoot = await realpath(config.cwd)
+    expect(store.created).toHaveLength(1)
+    expect(store.created[0]?.cwd).toBe(trustedRoot)
+    expect(harnessCwds).toEqual([trustedRoot])
+  })
+
+  test('read is auto-allowed only when real path stays inside trusted workspace', async () => {
+    const decisions: Array<ToolCallResult | undefined> = []
+    const readBuilder: BuildServeHarness = async () => {
+      let gate: ((event: ToolCallEvent) => Promise<ToolCallResult | undefined>) | null = null
+      return {
+        harness: {
+          subscribe: () => () => {},
+          registerToolCallGate: (handler) => {
+            gate = handler
+          },
+          prompt: async () => {
+            decisions.push(
+              await gate?.({ type: 'tool_call', toolCallId: 'inside', toolName: 'read', input: { path: 'package.json' } }),
+            )
+            decisions.push(
+              await gate?.({ type: 'tool_call', toolCallId: 'outside-1', toolName: 'read', input: { path: '/etc/passwd' } }),
+            )
+            decisions.push(
+              await gate?.({ type: 'tool_call', toolCallId: 'outside-2', toolName: 'read', input: { path: '/etc/passwd' } }),
+            )
+            return assistantMessage('stop')
+          },
+          waitForIdle: async () => {},
+          abort: async () => {},
+        },
+        dispose: async () => {},
+      }
+    }
+
+    const { client, permissions } = connectPair(readBuilder, fakeStore(), 'allow-always')
+    await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const { sessionId } = await client.newSession({ cwd: '/', mcpServers: [] })
+    await client.prompt({ sessionId, prompt: [{ type: 'text', text: 'read' }] })
+
+    expect(permissions.map((request) => request.toolCall.toolCallId)).toEqual(['outside-1', 'outside-2'])
+    expect(decisions).toEqual([undefined, undefined, undefined])
   })
 
   test('a denied permission blocks the tool and the model never sees it run', async () => {

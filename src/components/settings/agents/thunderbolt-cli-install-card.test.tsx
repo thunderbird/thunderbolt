@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 const renderCard = (props: Partial<Parameters<typeof ThunderboltCliInstallCard>[0]> = {}) =>
-  render(<ThunderboltCliInstallCard platform="macos" tauri={true} {...props} />)
+  render(<ThunderboltCliInstallCard platform="macos" architecture="aarch64" tauri={true} {...props} />)
 
 const clickInstall = async () => {
   await act(async () => {
@@ -36,15 +36,31 @@ describe('ThunderboltCliInstallCard', () => {
     expect(screen.getByRole('button', { name: /install cli/i })).toBeInTheDocument()
   })
 
-  it('renders nothing on web, mobile or Windows', () => {
-    const { container: web } = renderCard({ tauri: false })
-    expect(web).toBeEmptyDOMElement()
-    cleanup()
+  it('renders the install guide on web instead of the one-click install action', () => {
+    renderCard({ tauri: false })
+
+    const guideLink = screen.getByRole('link', { name: /view install guide/i })
+    expect(guideLink).toHaveAttribute(
+      'href',
+      'https://github.com/thunderbird/thunderbolt/blob/main/cli/README.md#install',
+    )
+    expect(guideLink).toHaveAttribute('target', '_blank')
+    expect(guideLink).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.getByText(/install the standalone/i)).toHaveTextContent('from your shell')
+    expect(screen.queryByRole('button', { name: /install cli/i })).not.toBeInTheDocument()
+  })
+
+  it('renders nothing on unsupported Tauri platforms', () => {
     const { container: windows } = renderCard({ platform: 'windows' })
     expect(windows).toBeEmptyDOMElement()
     cleanup()
     const { container: mobile } = renderCard({ platform: 'ios' })
     expect(mobile).toBeEmptyDOMElement()
+  })
+
+  it('renders nothing on Intel macOS because no binary is published', () => {
+    const { container } = renderCard({ architecture: 'x86_64' })
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('shows the installed path on success', async () => {

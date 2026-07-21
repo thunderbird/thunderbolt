@@ -31,4 +31,14 @@ describe('agentInstallMetadata', () => {
       }
     }
   })
+
+  it('gives every binary-only agent an authored run command', () => {
+    const binaryOnlyAgents = agentRegistrySnapshot.filter(
+      (entry) => entry.distribution.binary && !entry.distribution.npx && !entry.distribution.uvx,
+    )
+
+    for (const entry of binaryOnlyAgents) {
+      expect(agentInstallMetadata[entry.id]?.runCommand).toBeTruthy()
+    }
+  })
 })

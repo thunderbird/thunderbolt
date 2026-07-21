@@ -20,7 +20,6 @@ import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
 import { isIrohTarget } from '@/lib/iroh-target'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import type { Agent } from '@/types/acp'
 import type { CustomAgentTransport } from '@/dal/agents'
 
@@ -183,7 +182,6 @@ export const AddCustomAgentDialog = ({
   // the React `key` on agent id to remount when switching between editing
   // targets, so this initializer fires fresh each time.
   const [state, dispatch] = useReducer(agentDialogReducer, editingAgent ?? null, buildInitialState)
-  const { copy, isCopied } = useCopyToClipboard()
 
   const trimmedName = state.name.trim()
   const trimmedUrl = state.url.trim()
@@ -286,7 +284,7 @@ export const AddCustomAgentDialog = ({
               NodeId works only if the peer is discoverable).
             </p>
           </div>
-          {isIroh && <IrohPairingPanel appNodeId={appNodeId} copy={copy} isCopied={isCopied} />}
+          {isIroh && <IrohPairingPanel appNodeId={appNodeId} />}
           <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="agent-description">Description</Label>
             <Input

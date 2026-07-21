@@ -292,6 +292,7 @@ describe('connectAcpAdapter — handshake failure modes', () => {
     const response = await adapter.fetch(promptInit('hi'), threadCtx('t1'))
     expect(response.headers.get('content-type')).toBe('text/event-stream')
     expect(calls.newSession).toHaveLength(1)
+    expect(calls.newSession[0]?.cwd).toBe('.')
 
     let sse: string[] = []
     await act(async () => {
@@ -402,6 +403,7 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
 
     expect(calls.loadSession).toHaveLength(1)
     expect(calls.loadSession[0]?.sessionId).toBe('prior-sess')
+    expect(calls.loadSession[0]?.cwd).toBe('.')
     expect(calls.newSession).toHaveLength(0)
     // loadSession reuses the existing id — nothing fresh to persist.
     expect(persisted).toEqual([])
@@ -523,6 +525,22 @@ describe('connectAcpAdapter — capability-aware continuity (resume / load / new
     })
   }
 
+  it('starts a new session without trying resume or load when no stored session id exists', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true, loadSession: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(adapter, promptInit('hi'), threadCtx('t-new'), releasePrompts)
+
+    expect(calls.resumeSession).toHaveLength(0)
+    expect(calls.loadSession).toHaveLength(0)
+    expect(calls.newSession).toHaveLength(1)
+  })
+
   it('tier 1: resume-capable agent with a stored id resumes it — no newSession, no re-persist, no replay', async () => {
     const { transport } = buildFakeTransport()
     const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true })
@@ -547,6 +565,7 @@ describe('connectAcpAdapter — capability-aware continuity (resume / load / new
 
     expect(calls.resumeSession).toHaveLength(1)
     expect(calls.resumeSession[0]?.sessionId).toBe('stored-1')
+    expect(calls.resumeSession[0]?.cwd).toBe('.')
     expect(calls.newSession).toHaveLength(0)
     expect(persisted).toEqual([]) // reused id, nothing fresh to persist
     // No app-side replay: the live prompt carries only the current user text.
@@ -745,6 +764,37 @@ describe('connectAcpAdapter — capability-aware continuity (resume / load / new
     await drive(adapter, promptInit('first'), threadCtx('t-warm', { onAcpSessionId }), releasePrompts)
     expect(calls.newSession).toHaveLength(1) // reused the warmed session
     expect(persisted).toEqual(['sess-1']) // persisted only on the real send
+  })
+
+  it('retries fresh-session persistence and transcript seeding after persistence fails', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const init = conversationInit([
+      { role: 'user', text: 'earlier' },
+      { role: 'assistant', text: 'reply' },
+      { role: 'user', text: 'now' },
+    ])
+    const persistenceAttempts: string[] = []
+    const onAcpSessionId = async (sessionId: string): Promise<void> => {
+      persistenceAttempts.push(sessionId)
+      if (persistenceAttempts.length === 1) {
+        throw new Error('persistence failed')
+      }
+    }
+    const context = threadCtx('t-persist-retry', { onAcpSessionId })
+
+    await expect(adapter.fetch(init, context)).rejects.toThrow('persistence failed')
+    await drive(adapter, init, context, releasePrompts)
+
+    expect(calls.newSession).toHaveLength(1)
+    expect(persistenceAttempts).toEqual(['sess-1', 'sess-1'])
+    expect(calls.prompt).toHaveLength(1)
+    expect(sentPromptText(calls)).toContain('Conversation so far:')
   })
 })
 

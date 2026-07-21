@@ -1657,9 +1657,14 @@ describe('Encryption API', () => {
 
       const response = await getAllowlist(p('tok-al'))
       expect(response.status).toBe(200)
-      const rows = (await response.json()).nodeIds as Array<{ nodeId: string; deviceType: string }>
-      expect(rows.map((n) => n.nodeId).sort()).toEqual(['node-bridge', 'node-trusted'])
-      expect(rows.find((n) => n.nodeId === 'node-bridge')?.deviceType).toBe('bridge')
+      const body = await response.json()
+      const nodeIds = (body.nodeIds as Array<{ nodeId: string; deviceType: string }>).map((n) => n.nodeId).sort()
+      expect(nodeIds).toEqual(['node-bridge', 'node-trusted'])
+
+      const bridge = (body.nodeIds as Array<{ nodeId: string; deviceType: string }>).find(
+        (n) => n.nodeId === 'node-bridge',
+      )
+      expect(bridge?.deviceType).toBe('bridge')
     })
 
     it("excludes a denied device's node_id (trusted=false, approvalPending=false)", async () => {

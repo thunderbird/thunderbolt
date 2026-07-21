@@ -135,7 +135,7 @@ describe('AgentCatalogView', () => {
     expect(within(card).getByRole('button', { name: /set up/i })).toBeInTheDocument()
   })
 
-  it('opens the setup dialog with the run command when Set up is clicked', () => {
+  it('opens the setup dialog with the authored run command when Set up is clicked', () => {
     renderCatalog([entry({ id: 'goose', name: 'goose', distribution: { npx: { package: 'goose@1.2.3' } } })])
     const card = screen.getByTestId('agent-catalog-card-goose')
 
@@ -143,7 +143,7 @@ describe('AgentCatalogView', () => {
     fireEvent.click(within(card).getByRole('button', { name: /set up/i }))
 
     expect(screen.getByText(/run this command/i)).toBeInTheDocument()
-    expect(screen.getByText('npx -y goose@1.2.3')).toBeInTheDocument()
+    expect(screen.getByText('goose acp')).toBeInTheDocument()
   })
 
   it('keeps all cards visible for a whitespace-only query', () => {

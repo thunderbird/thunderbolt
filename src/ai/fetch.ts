@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createPrompt } from '@/ai/prompt'
+import { createPromptParts } from '@/ai/prompt'
 import {
   buildStepOverrides,
   extractTextFromMessages,
@@ -23,9 +23,11 @@ import { hydrateQuotesAsText } from '@/lib/quotes'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
+import { isLoopbackHost } from '@/lib/mcp-url-validation'
+import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
-import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -349,10 +351,25 @@ export const resolveOpenAiCompatConnection = (
       return modelConfig.apiKey
         ? { baseURL: 'https://api.openai.com/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
         : null
-    case 'custom':
-      return modelConfig.url
-        ? { baseURL: modelConfig.url, apiKey: modelConfig.apiKey ?? '', fetch: getProxyFetch() }
-        : null
+    case 'custom': {
+      if (!modelConfig.url) {
+        return null
+      }
+      // Canonicalise `/v1` and dispatch loopback vs proxy right here, so BOTH
+      // consumers of this connection (`createModel` legacy path and
+      // `resolvePiModel` built-in agent path) see the same `baseURL` + `fetch`
+      // and can't drift. Loopback Custom URLs (LM Studio at localhost:1234,
+      // Ollama, `127.x.x.x`, `[::1]`, `*.localhost`) skip the universal proxy
+      // so `localhost` means what the browser sees, not what the backend
+      // container sees. Everything else — RFC1918 LAN IPs, `host.docker.internal`,
+      // mDNS `.local`, public endpoints — stays on the proxy path (browser
+      // blocks non-loopback http from https origins as mixed content, and
+      // public Custom endpoints rely on the proxy for CORS bypass; THU-424).
+      const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
+      const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
+      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
+      return { baseURL, apiKey: modelConfig.apiKey ?? '', fetch: providerFetch }
+    }
     case 'openrouter':
       return modelConfig.apiKey
         ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
@@ -429,6 +446,11 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!conn) {
         throw new Error('No URL provided for custom provider')
       }
+      // `conn.baseURL` and `conn.fetch` already carry the `/v1` normalization
+      // and the loopback-vs-proxy dispatch (see resolveOpenAiCompatConnection).
+      // Both the legacy path here and the Pi path in `resolvePiModel` read
+      // through the same connection object, so their upstream URL + transport
+      // stay in lockstep by construction.
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
         baseURL: conn.baseURL,
@@ -523,6 +545,108 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
   }
 }
 
+export type PreparedAiRequestConfig = {
+  readonly model: Model
+  readonly profile: ModelProfile | null
+  readonly supportsTools: boolean
+  readonly sourceCollector: SourceMetadata[]
+  readonly toolset: Record<string, Tool>
+  readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
+  readonly stableSystemPrompt: string
+  readonly volatileSystemPrompt: string
+  readonly systemPrompt: string
+}
+
+export type PrepareAiRequestConfigOptions = {
+  readonly modelId: string
+  readonly modeSystemPrompt?: string
+  readonly modeName?: string
+  readonly mcpClients?: NamedMCPClient[]
+  readonly reconnectClient?: ReconnectClient
+  readonly httpClient: HttpClient
+}
+
+/** Load model/profile/settings and build one send's app + MCP tools and prompt. */
+export const prepareAiRequestConfig = async ({
+  modelId,
+  modeSystemPrompt,
+  modeName,
+  mcpClients = [],
+  reconnectClient = async () => null,
+  httpClient,
+}: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
+  const db = getDb()
+  const settings = await getSettings(db, {
+    preferred_name: '',
+    location_name: '',
+    location_lat: '',
+    location_lng: '',
+    distance_unit: 'imperial',
+    temperature_unit: 'f',
+    date_format: 'MM/DD/YYYY',
+    time_format: '12h',
+    currency: 'USD',
+    integrations_do_not_ask_again: false,
+    experimental_feature_tasks: false,
+    integrations_pro_is_enabled: false,
+  })
+  const integrationStatus = await getIntegrationStatus(db)
+  const model = await getModel(db, modelId)
+  if (!model) {
+    throw new Error('Model not found')
+  }
+  const profile = await getModelProfile(db, modelId)
+  const supportsTools = model.toolUsage !== 0
+  const sourceCollector: SourceMetadata[] = []
+  const toolCallCache: ToolCallCache = new Map()
+  const availableTools = supportsTools
+    ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
+    : []
+  const appToolset = createToolset(availableTools, toolCallCache)
+  const merged = supportsTools
+    ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
+    : { toolset: appToolset, summary: undefined, mcpTools: undefined }
+
+  const integrationStatuses = [
+    integrationStatus.googleConnected && !integrationStatus.googleEnabled ? 'GOOGLE_DISABLED' : null,
+    integrationStatus.microsoftConnected && !integrationStatus.microsoftEnabled ? 'MICROSOFT_DISABLED' : null,
+    settings.integrationsDoNotAskAgain ? 'PROMPTS_DISABLED' : null,
+  ].filter((status): status is string => status !== null)
+  const prompt = createPromptParts({
+    modelName: model.name,
+    profile,
+    modeName: modeName ?? null,
+    preferredName: settings.preferredName,
+    location: {
+      name: settings.locationName,
+      lat: settings.locationLat ? parseFloat(settings.locationLat) : undefined,
+      lng: settings.locationLng ? parseFloat(settings.locationLng) : undefined,
+    },
+    localization: {
+      distanceUnit: settings.distanceUnit,
+      temperatureUnit: settings.temperatureUnit,
+      dateFormat: settings.dateFormat,
+      timeFormat: settings.timeFormat,
+      currency: settings.currency,
+    },
+    integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
+    modeSystemPrompt,
+    mcpServersSummary: merged.summary,
+  })
+
+  return {
+    model,
+    profile,
+    supportsTools,
+    sourceCollector,
+    toolset: merged.toolset,
+    mcpToolsMetadata: merged.mcpTools,
+    stableSystemPrompt: prompt.stablePrompt,
+    volatileSystemPrompt: prompt.volatilePrompt,
+    systemPrompt: prompt.fullPrompt,
+  }
+}
+
 export const aiFetchStreamingResponse = async ({
   init,
   modelId,
@@ -543,94 +667,18 @@ export const aiFetchStreamingResponse = async ({
   // reach this function the user turn is already persisted.
 
   const db = getDb()
-
-  // Fetch all settings in a single query (returns camelCase by default)
-  const settings = await getSettings(db, {
-    preferred_name: '',
-    location_name: '',
-    location_lat: '',
-    location_lng: '',
-    distance_unit: 'imperial',
-    temperature_unit: 'f',
-    date_format: 'MM/DD/YYYY',
-    time_format: '12h',
-    currency: 'USD',
-    integrations_do_not_ask_again: false,
-    // Also fetch the tool-availability gates here so `getAvailableTools` can
-    // reuse them (via ToolAvailabilityContext) instead of re-reading settings.
-    experimental_feature_tasks: false,
-    integrations_pro_is_enabled: false,
-  })
-
-  const integrationStatus = await getIntegrationStatus(db)
-
-  const model = await getModel(db, modelId)
-
-  if (!model) {
-    throw new Error('Model not found')
-  }
-
-  const profile = await getModelProfile(db, modelId)
-
-  const supportsTools = model.toolUsage !== 0
-
-  const sourceCollector: SourceMetadata[] = []
-  // Dedupe identical read-only tool calls within this send (same lifetime as
-  // sourceCollector — one request, no cross-turn state).
-  const toolCallCache: ToolCallCache = new Map()
-
-  let toolset: Record<string, Tool> = {}
-  let mcpServersSummary: string | undefined
-  let mcpToolsMetadata: UIMessageMetadata['mcpTools']
-  if (supportsTools) {
-    const availableTools = await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
-    toolset = createToolset(availableTools, toolCallCache)
-
-    const merged = await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))
-    mcpServersSummary = merged.summary
-    mcpToolsMetadata = merged.mcpTools
-  } else {
+  const { model, profile, supportsTools, sourceCollector, toolset, mcpToolsMetadata, systemPrompt } =
+    await prepareAiRequestConfig({
+      modelId,
+      modeSystemPrompt,
+      modeName,
+      mcpClients,
+      reconnectClient,
+      httpClient,
+    })
+  if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
   }
-
-  // Compute integration status for the model (can return multiple statuses)
-  const computeIntegrationStatusLabel = (): string => {
-    const statuses: string[] = []
-
-    if (integrationStatus.googleConnected && !integrationStatus.googleEnabled) {
-      statuses.push('GOOGLE_DISABLED')
-    }
-    if (integrationStatus.microsoftConnected && !integrationStatus.microsoftEnabled) {
-      statuses.push('MICROSOFT_DISABLED')
-    }
-    if (settings.integrationsDoNotAskAgain) {
-      statuses.push('PROMPTS_DISABLED')
-    }
-
-    return statuses.length > 0 ? statuses.join(', ') : 'READY'
-  }
-
-  const systemPrompt = createPrompt({
-    modelName: model.name,
-    profile,
-    modeName: modeName ?? null,
-    preferredName: settings.preferredName,
-    location: {
-      name: settings.locationName,
-      lat: settings.locationLat ? parseFloat(settings.locationLat) : undefined,
-      lng: settings.locationLng ? parseFloat(settings.locationLng) : undefined,
-    },
-    localization: {
-      distanceUnit: settings.distanceUnit,
-      temperatureUnit: settings.temperatureUnit,
-      dateFormat: settings.dateFormat,
-      timeFormat: settings.timeFormat,
-      currency: settings.currency,
-    },
-    integrationStatus: computeIntegrationStatusLabel(),
-    modeSystemPrompt,
-    mcpServersSummary,
-  })
 
   const activeNudges = getNudgeMessagesFromProfile(profile, modeName)
 

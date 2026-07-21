@@ -34,6 +34,7 @@ interface Args {
 }
 
 const REPO_ROOT = join(import.meta.dir, '..')
+const VERSION_PACKAGE_PATHS = ['package.json', 'cli/package.json'] as const
 
 /**
  * Execute a shell command and return the output
@@ -195,14 +196,14 @@ const detectVersionType = (): 'major' | 'minor' | 'patch' => {
 }
 
 /**
- * Update package.json version
+ * Update a package version
  */
-const updatePackageJson = (version: string) => {
-  const path = join(REPO_ROOT, 'package.json')
+const updatePackageVersion = (version: string, relativePath: string) => {
+  const path = join(REPO_ROOT, relativePath)
   const pkg = JSON.parse(readFileSync(path, 'utf8'))
   pkg.version = version
   writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n')
-  console.log(`  ✓ package.json: ${version}`)
+  console.log(`  ✓ ${relativePath}: ${version}`)
 }
 
 /**
@@ -287,7 +288,7 @@ const updateTauriProperties = (version: string) => {
  */
 const updateVersionFiles = (version: string, platform: string) => {
   console.log('\n📝 Updating version files to', version)
-  updatePackageJson(version)
+  VERSION_PACKAGE_PATHS.forEach((path) => updatePackageVersion(version, path))
   updateCargoToml(version)
   updateCargoLock()
   updateTauriConf(version)
@@ -374,7 +375,7 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean) =>
   console.log('\n📦 Committing changes...')
 
   const filesToAdd = [
-    'package.json',
+    ...VERSION_PACKAGE_PATHS,
     'src-tauri/Cargo.toml',
     'src-tauri/Cargo.lock',
     'src-tauri/tauri.conf.json',
@@ -469,7 +470,7 @@ const main = () => {
     console.log('\n🧪 DRY RUN - No changes will be made')
     console.log(`\nWould update version from ${currentVersion} to ${newVersion}`)
     console.log('\nFiles that would be updated:')
-    console.log('  - package.json')
+    VERSION_PACKAGE_PATHS.forEach((path) => console.log(`  - ${path}`))
     console.log('  - src-tauri/Cargo.toml')
     console.log('  - src-tauri/tauri.conf.json')
     console.log('  - src-tauri/gen/android/app/tauri.properties (versionName)')

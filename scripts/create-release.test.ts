@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
+import { join } from 'path'
 
 // Store original process.argv and console methods
 const originalArgv = process.argv
@@ -100,6 +101,18 @@ describe('create-release.ts', () => {
   })
 
   describe('File Operations', () => {
+    it('includes the CLI package in a release version bump', () => {
+      const result = Bun.spawnSync({
+        cmd: ['bun', 'run', 'scripts/create-release.ts', '--version', '9.8.7', '--dry-run'],
+        cwd: join(import.meta.dir, '..'),
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout.toString()).toContain('  - cli/package.json')
+    })
+
     describe('package.json', () => {
       it('should read and parse package.json correctly', () => {
         const mockPackageJson = { name: 'test', version: '1.0.0' }

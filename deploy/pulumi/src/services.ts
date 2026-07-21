@@ -271,6 +271,9 @@ export const createServices = (args: ServiceArgs) => {
           // The PS_ prefix is mandatory: PowerSync's YAML loader rejects !env vars
           // that don't start with it.
           { name: 'PS_JWT_KEY_BASE64', value: args.secrets.powersyncJwtSecret.apply((s) => Buffer.from(s).toString('base64')) },
+          // Label paired with PS_JWT_KEY_BASE64. Must match the backend's
+          // POWERSYNC_JWT_KID so PowerSync can find the right key when validating.
+          { name: 'PS_JWT_KID', value: 'enterprise-powersync' },
         ],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('powersync'),

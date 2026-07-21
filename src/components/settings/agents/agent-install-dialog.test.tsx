@@ -5,7 +5,7 @@
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import type { AgentInstallMeta } from '@/defaults/agent-install-metadata'
+import { agentInstallMetadata, type AgentInstallMeta } from '@/defaults/agent-install-metadata'
 import type { RegistryEntry } from '@/types/registry'
 import { AgentInstallDialog } from './agent-install-dialog'
 
@@ -32,7 +32,7 @@ const entry = (overrides: Partial<RegistryEntry> = {}): RegistryEntry => ({
 })
 
 const renderDialog = (props: Partial<Parameters<typeof AgentInstallDialog>[0]> = {}) =>
-  render(<AgentInstallDialog entry={entry()} open={true} onOpenChange={() => {}} platform="macos" {...props} />)
+  render(<AgentInstallDialog entry={entry()} open={true} onOpenChange={() => {}} {...props} />)
 
 describe('AgentInstallDialog', () => {
   it('renders the derived run command', () => {
@@ -40,8 +40,10 @@ describe('AgentInstallDialog', () => {
     expect(screen.getByText('npx -y @google/gemini-cli@1.0.0 --acp')).toBeInTheDocument()
   })
 
-  it('resolves the binary command for the given platform', () => {
-    const binaryEntry = entry({
+  it('renders the authored amp-acp run command', () => {
+    const ampEntry = entry({
+      id: 'amp-acp',
+      name: 'Amp',
       distribution: {
         binary: {
           'darwin-aarch64': { cmd: './amp-acp' },
@@ -49,8 +51,34 @@ describe('AgentInstallDialog', () => {
         },
       },
     })
-    renderDialog({ entry: binaryEntry, platform: 'windows' })
-    expect(screen.getByText('amp-acp.exe')).toBeInTheDocument()
+    renderDialog({ entry: ampEntry, meta: agentInstallMetadata['amp-acp'] })
+    expect(screen.getByText('npx -y amp-acp')).toBeInTheDocument()
+  })
+
+  it('renders install and run sections when both commands are authored', () => {
+    const meta: AgentInstallMeta = {
+      installCommand: 'brew install example-agent',
+      runCommand: 'example-agent acp',
+    }
+    renderDialog({ meta })
+
+    expect(screen.getByText('Install')).toBeInTheDocument()
+    expect(screen.getByText('brew install example-agent')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /copy install command/i })).toBeInTheDocument()
+    expect(screen.getByText('Run this command')).toBeInTheDocument()
+    expect(screen.getByText('example-agent acp')).toBeInTheDocument()
+  })
+
+  it('renders no command row for a binary entry without authored metadata', () => {
+    const binaryEntry = entry({
+      distribution: { binary: { 'darwin-aarch64': { cmd: './future-agent' } } },
+    })
+    renderDialog({ entry: binaryEntry })
+
+    expect(screen.getByText('Set up Gemini CLI')).toBeInTheDocument()
+    expect(screen.queryByText('Run this command')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /copy run command/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/check the agent's website/i)).toBeInTheDocument()
   })
 
   it('renders authored env vars and the setup guide link when meta is present', () => {

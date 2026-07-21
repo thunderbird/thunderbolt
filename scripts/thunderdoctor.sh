@@ -112,7 +112,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
 fi
 
 check "ANDROID_HOME (for Android dev)" \
-  "[ -n \"$ANDROID_HOME\" ] && [ -d \"$ANDROID_HOME\" ] && echo \"$ANDROID_HOME\"" \
+  '[ -n "${ANDROID_HOME:-}" ] && [ -d "${ANDROID_HOME}" ] && echo "${ANDROID_HOME}"' \
   "install Android Studio (https://developer.android.com/studio), then: export ANDROID_HOME=\$HOME/Library/Android/sdk (macOS) or wherever the SDK landed"
 
 check "adb (Android Debug Bridge)" \

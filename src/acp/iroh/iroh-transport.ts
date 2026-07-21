@@ -19,6 +19,7 @@
  */
 
 import type { AnyMessage, Stream } from '@agentclientprotocol/sdk'
+import { irohAlpnFor } from '@shared/iroh'
 import type { AcpTransport } from '../types'
 import { createNdjsonDecoder, encodeNdjsonFrame } from './ndjson'
 import type { IrohClientLike, IrohClientLoader, IrohConnectionLike } from './types'
@@ -26,7 +27,7 @@ import type { IrohClientLike, IrohClientLoader, IrohConnectionLike } from './typ
 /** ALPN of the CLI ACP bridge (`cli/src/iroh/endpoint.ts`,
  *  `thunderbolt/${protocol}/0`). Must match byte-for-byte or the QUIC handshake
  *  is refused — an ACP client can't drive an MCP bridge. */
-export const acpIrohAlpn = 'thunderbolt/acp/0'
+export const acpIrohAlpn = irohAlpnFor('acp')
 
 /** localStorage key for the persisted client secret key (hex). Persisting it
  *  pins a stable NodeId, so the bridge operator allowlists this app once. */

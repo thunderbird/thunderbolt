@@ -9,7 +9,7 @@ import { useMutation } from '@tanstack/react-query'
 /**
  * Mutation that binds a device row to an iroh P2P endpoint identity (node_id).
  * Goes through the canary-gated backend route, which writes the value and lets it
- * sync back down via PowerSync (invalidating the `['devices']` query).
+ * sync back down to PowerSync's watched devices query.
  * Requires proof-of-CK-possession (canary secret) to prevent X-Device-ID spoofing.
  */
 export const useSetDeviceNodeId = () => {

@@ -376,7 +376,6 @@ describe('McpServersPage iroh add flow', () => {
       throw new Error('no account (standalone)')
     })
     await openIrohDialog({ enrollIroh })
-    // The manual `thunderbolt iroh allow` one-liner is present as the fallback path.
     expect(screen.getByTestId('iroh-pairing-panel')).toBeInTheDocument()
 
     await act(async () => {
@@ -384,7 +383,6 @@ describe('McpServersPage iroh add flow', () => {
       await getClock().runAllAsync()
     })
 
-    // The failed enrollment did not block the add — the server row was still created.
     const created = await getAllMcpServers(db)
     expect(created).toHaveLength(1)
     expect(created[0]?.type).toBe('iroh')
@@ -392,7 +390,6 @@ describe('McpServersPage iroh add flow', () => {
 
   it('does not block the add on a slow (never-resolving) enrollment', async () => {
     const db = getDb()
-    // Enrollment that never settles — a fire-and-forget add must still complete and close.
     const enrollIroh = mock(() => new Promise<void>(() => {}))
     await openIrohDialog({ enrollIroh })
 
@@ -401,8 +398,6 @@ describe('McpServersPage iroh add flow', () => {
       await getClock().runAllAsync()
     })
 
-    // Row created and the dialog closed (form reset) despite the hung enrollment, so a
-    // second submit can't mint a duplicate row.
     const created = await getAllMcpServers(db)
     expect(created).toHaveLength(1)
     expect(screen.queryByText('Add MCP Server')).not.toBeInTheDocument()

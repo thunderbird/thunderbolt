@@ -3,11 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getSettings } from '@/dal'
-import { createChatThread, getChatThread } from '@/dal/chat-threads'
+import { getChatThread } from '@/dal/chat-threads'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { chatThreadsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
-import type { Mode } from '@/types'
+import type { Agent } from '@/types/acp'
+import type { ChatThread, Mode } from '@/types'
 import {
   createMockAutomationRun,
   createMockChatInstanceWithValidation,
@@ -19,7 +21,7 @@ import {
 } from '@/test-utils/chat-store-mocks'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { useChatStore } from './chat-store'
+import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 describe('chat-store', () => {
   beforeAll(async () => {
@@ -343,6 +345,24 @@ describe('chat-store', () => {
       userId: 'u1',
     }
 
+    /** Seeds a persisted thread and matching hydrated chat session. */
+    const seedThreadSession = async (id: string, agent: Agent, acpSessionId: string): Promise<ChatThread> => {
+      const model = createMockModel()
+      const chatThread = createMockChatThread({ id, agentId: agent.id, acpSessionId })
+      await getDb().insert(chatThreadsTable).values({ id, title: 'x', agentId: agent.id, acpSessionId })
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread,
+        id,
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+      useChatStore.getState().updateSession(id, { selectedAgent: agent })
+      return chatThread
+    }
+
     it('updates the in-memory session selectedAgent', async () => {
       const model = createMockModel()
       hydrateStore({
@@ -361,30 +381,35 @@ describe('chat-store', () => {
       expect(session?.selectedAgent.id).toBe(customAgent.id)
     })
 
-    it('persists agentId on the chat_threads row when a thread exists', async () => {
-      const model = createMockModel()
-      const chatThread = createMockChatThread({ id: 'thread-persist' })
-
-      await createChatThread(
-        getDb(),
-        { id: chatThread.id, title: 'x', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
-        model,
-      )
-
-      hydrateStore({
-        chatInstance: createMockChatInstanceWithValidation(),
-        chatThread,
-        id: chatThread.id,
-        mcpClients: [],
-        models: [model],
-        selectedModel: model,
-        triggerData: null,
-      })
+    it('switches the thread agent and clears its ACP session in memory and storage', async () => {
+      const chatThread = await seedThreadSession('thread-persist', builtInAgent, 'session-from-previous-agent')
 
       await useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)
 
+      const session = getCurrentSession()
       const stored = await getChatThread(getDb(), chatThread.id)
+      expect(session?.chatThread?.agentId).toBe(customAgent.id)
+      expect(session?.chatThread?.acpSessionId).toBeNull()
       expect(stored?.agentId).toBe(customAgent.id)
+      expect(stored?.acpSessionId).toBeNull()
+    })
+
+    it('preserves the ACP session when selecting the current agent', async () => {
+      const chatThread = await seedThreadSession('thread-same-agent', customAgent, 'current-session')
+
+      await useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)
+
+      expect(getCurrentSession()?.chatThread?.acpSessionId).toBe('current-session')
+      expect((await getChatThread(getDb(), chatThread.id))?.acpSessionId).toBe('current-session')
+    })
+
+    it('refreshes active agent wire identity and clears matching in-memory ACP sessions', async () => {
+      await seedThreadSession('thread-wire-edit', customAgent, 'stale-session')
+
+      useChatStore.getState().applyAgentWireIdentityChange({ ...customAgent, url: 'wss://new.example.test/ws' })
+
+      expect(getCurrentSession()?.selectedAgent.url).toBe('wss://new.example.test/ws')
+      expect(getCurrentSession()?.chatThread?.acpSessionId).toBeNull()
     })
 
     it('updates in-memory state and skips the DB write when no chat thread exists yet', async () => {
@@ -434,6 +459,50 @@ describe('chat-store', () => {
 
     it('throws when the session is missing', async () => {
       await expect(useChatStore.getState().setSelectedAgent('nope', customAgent)).rejects.toThrow('No session found')
+    })
+  })
+
+  describe('session permission allowances', () => {
+    afterEach(() => {
+      useChatStore.setState({ alwaysAllowedAgentIds: new Set(), alwaysAllowedAgentToolKeys: new Set() })
+    })
+
+    it('limits an action-kind allowance to the matching kind and agent', () => {
+      const { allowAlwaysForTool, isAlwaysAllowed } = useChatStore.getState()
+
+      allowAlwaysForTool('agent-a', 'read')
+
+      expect(isAlwaysAllowed('agent-a', 'read')).toBe(true)
+      expect(isAlwaysAllowed('agent-a', 'edit')).toBe(false)
+      expect(isAlwaysAllowed('agent-b', 'read')).toBe(false)
+    })
+
+    it('allows every tool for an allowed agent without affecting other agents', () => {
+      const { allowAlwaysForAgent, isAlwaysAllowed } = useChatStore.getState()
+
+      allowAlwaysForAgent('agent-wholesale')
+
+      expect(isAlwaysAllowed('agent-wholesale', 'read')).toBe(true)
+      expect(isAlwaysAllowed('agent-wholesale', 'edit')).toBe(true)
+      expect(isAlwaysAllowed('agent-other', 'read')).toBe(false)
+    })
+  })
+
+  describe('permission request helpers', () => {
+    it('derives a tool key from kind regardless of the argument-bearing title', () => {
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/passwd', kind: 'read' } } as never)).toBe('read')
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/shadow', kind: 'read' } } as never)).toBe('read')
+      expect(deriveToolKey({ toolCall: { title: 'Read /etc/passwd', kind: 'execute' } } as never)).toBe('execute')
+      expect(deriveToolKey({ toolCall: {} } as never)).toBe('unknown')
+    })
+
+    it('prefers allow-once, falls back to allow-always, and rejects non-allow options', () => {
+      const allowAlways = { optionId: 'always', name: 'Always', kind: 'allow_always' } as const
+      const allowOnce = { optionId: 'once', name: 'Once', kind: 'allow_once' } as const
+
+      expect(findAllowOption([allowAlways, allowOnce])).toBe(allowOnce)
+      expect(findAllowOption([allowAlways])).toBe(allowAlways)
+      expect(findAllowOption([{ optionId: 'reject', name: 'Reject', kind: 'reject_once' }])).toBeUndefined()
     })
   })
 })

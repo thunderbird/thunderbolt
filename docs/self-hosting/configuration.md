@@ -58,7 +58,7 @@ User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not 
 | `POWERSYNC_JWT_KID`              | —        |                  | Key ID for PowerSync to pick among multiple secrets during rotation          |
 | `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`   |                  | PowerSync JWT lifetime                                                       |
 
-The JWT secret must match the `secret` in `powersync-service/config/config.yaml` (local dev) or in the PowerSync Cloud dashboard (production).
+The JWT secret must match the `k` value the PowerSync service loads at runtime. For self-hosted deploys, `deploy/config/powersync-config.yaml` reads it from the `PS_JWT_KEY_BASE64` env var (base64 of the raw secret); `POWERSYNC_JWT_KID` on the backend must match `PS_JWT_KID` set on the PowerSync service. For local dev, both values are baked into `powersync-service/config/config.yaml`.
 
 ## CORS
 

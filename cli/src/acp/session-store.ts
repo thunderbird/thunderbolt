@@ -21,23 +21,24 @@
  * every append during a turn, so it must not be torn down with them).
  */
 
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { JsonlSessionRepo } from '@earendil-works/pi-agent-core'
 import type { Session } from '@earendil-works/pi-agent-core'
 import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
+import { thunderboltHomeDir } from '../paths.ts'
 
-/** Opens/creates the disk-backed Pi session for a given ACP `sessionId`. */
+/** Creates and resumes disk-backed Pi sessions for ACP session ids. */
 export type SessionStore = {
   /** Mint a fresh on-disk session log under `id` for `session/new`. */
   createSession: (id: string, cwd: string) => Promise<Session>
-  /** Resume by `id` for `session/resume`: open the existing log (trimming any
-   *  incomplete trailing turn) or, if none exists, create a fresh one. */
-  openOrCreate: (id: string, cwd: string) => Promise<Session>
+  /** Resume by `id` for `session/resume`: open existing log and trim any
+   *  incomplete trailing turn. Reject missing logs so client can create and
+   *  transcript-seed a genuinely new session. */
+  openSession: (id: string, cwd: string) => Promise<Session>
 }
 
 /** Default on-disk root for persisted ACP sessions on the bridge machine. */
-export const defaultSessionsDir = (): string => join(homedir(), '.thunderbolt', 'acp', 'sessions')
+export const defaultSessionsDir = (): string => join(thunderboltHomeDir(), 'acp', 'sessions')
 
 /**
  * Trim a trailing incomplete turn from a just-opened session so the next prompt
@@ -99,16 +100,12 @@ export const createSessionStore = (sessionsDir: string): SessionStore => {
 
   return {
     createSession: (id, cwd) => repo.create({ id, cwd }),
-    openOrCreate: async (id, cwd) => {
+    openSession: async (id, cwd) => {
       // `open` needs the full timestamped metadata, which only `list` yields —
       // the path can't be reconstructed from the id alone.
       const existing = (await repo.list({ cwd })).find((meta) => meta.id === id)
       if (!existing) {
-        // Unknown id: a thread whose `acp_session_id` predates disk persistence,
-        // or a cache-clear. Self-heal by minting a fresh log under the same id;
-        // the visible transcript is unaffected (it renders from PowerSync).
-        process.stderr.write(`⚡ acp serve: no on-disk session '${id}', creating fresh\n`)
-        return repo.create({ id, cwd })
+        throw new Error(`no on-disk session '${id}' for workspace '${cwd}'`)
       }
       const session = await repo.open(existing)
       await sanitizeResumedTail(session)

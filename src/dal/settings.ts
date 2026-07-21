@@ -7,6 +7,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { isInsertConflictError } from '../lib/sqlite-errors'
 import { settingsTable } from '../db/tables'
 import { hashSetting } from '../defaults/settings'
+import type { VersionMarkerKey } from '../lib/reconcile-defaults'
 import { serializeValue } from '../lib/serialization'
 import { camelCased, hashValues } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Setting } from '@/types'
@@ -213,6 +214,58 @@ export const hasSetting = async (db: AnyDrizzleDatabase, key: string): Promise<b
     .where(eq(settingsTable.key, key))
     .get()
   return (result?.count ?? 0) > 0
+}
+
+/**
+ * Whether every marker key in `targets` exists in `settingsTable` AND
+ * holds a stored version at or above the target the caller supplied.
+ * Used by the init pipeline (THU-677) to gate the returning-boot fast
+ * path: the fast path skips `waitForInitialSync` and passes
+ * `initialSyncCompleted: false` to reconcile, which collapses the
+ * version gate to a no-op for populated tables. That is only safe
+ * when there's no reconcile work pending — i.e. every marker already
+ * matches whatever reconcile would pick this boot.
+ *
+ * Callers supply `targets` so the DAL doesn't have to know which
+ * versions are relevant to this boot: the hook passes bundled versions
+ * for modes/tasks/skills/settings and the picked models version from
+ * `pickModelsDefaults(useConfigStore.getState().config.defaults?.models)`
+ * — that's `max(bundle, OTA)`, which is exactly the version reconcile
+ * will compare against.
+ *
+ * Missing marker, one behind the target, or non-numeric → returns false
+ * → init takes the fresh-await path, sync settles, reconcile runs with
+ * `initialSyncCompleted: true`, and the marker advances (either
+ * because reconcile mutated rows OR because it verified content is
+ * already at target — see `reconcileDefaultsForTable`'s
+ * `everyBundleRowAtTarget` result). Next boot the check returns true
+ * and the fast path fires.
+ *
+ * Caveat: the models path additionally gates marker advance on
+ * `droppedOtaModelIds.length === 0`, so an OTA payload that ships new
+ * model ids this build's bundle can't fully render will not advance
+ * the models marker on this device even after a fresh-await pass —
+ * that's a deliberate carve-out (see the guard comment in
+ * `src/lib/reconcile-defaults.ts`) and means the fast path won't
+ * activate until a later client build ships matching profiles.
+ *
+ * A marker at or above its target (peer at a newer version) is safe
+ * to skip on — reconcile would no-op via `rawCanOverwrite=false`
+ * regardless.
+ */
+export const hasCurrentDefaultsVersions = async (
+  db: AnyDrizzleDatabase,
+  targets: Record<VersionMarkerKey, number>,
+): Promise<boolean> => {
+  const rows = await db
+    .select({ key: settingsTable.key, value: settingsTable.value })
+    .from(settingsTable)
+    .where(sql`${settingsTable.key} LIKE 'defaults_version.%'`)
+  const stored = new Map(rows.map((r) => [r.key, r.value == null ? null : Number(r.value)]))
+  return Object.entries(targets).every(([key, target]) => {
+    const v = stored.get(key)
+    return typeof v === 'number' && Number.isFinite(v) && v >= target
+  })
 }
 
 /**

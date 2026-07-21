@@ -240,7 +240,7 @@ const buildWriteTool = (cwd: string): AgentTool<typeof writeSchema> => {
       await operations.mkdir(dirname(absolutePath))
       throwIfAborted(signal)
       await operations.writeFile(absolutePath, content)
-      return textResult(`Successfully wrote ${content.length} bytes to ${path}`)
+      return textResult(`Successfully wrote ${Buffer.byteLength(content, 'utf-8')} bytes to ${path}`)
     },
   }
 }

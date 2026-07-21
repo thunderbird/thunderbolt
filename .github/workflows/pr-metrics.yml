@@ -15,6 +15,10 @@ concurrency:
 jobs:
   metrics:
     runs-on: ubuntu-latest
+    # 20min cap matches ci.yml `typescript` job — bounds the whole run (coverage
+    # test, size-limit build, Render preview wait, Lighthouse) so a hang can't
+    # burn GitHub's 6h default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -71,7 +75,9 @@ jobs:
       - name: Run tests with coverage
         id: coverage
         run: |
-          bun test --cwd=src --timeout 5000 --coverage 2>&1 | tee /tmp/coverage.txt || true
+          # No per-test timeout in CI (large value ≈ disabled — bun `--timeout 0` hangs async tests):
+          # the job-level 20min cap is the real ceiling. Local `test` keeps the 5s timeout.
+          bun test --cwd=src --timeout 3600000 --coverage 2>&1 | tee /tmp/coverage.txt || true
           TOTAL=$(grep -E "All files" /tmp/coverage.txt | grep -oE '[0-9]+\.[0-9]+' | head -1)
           echo "total=${TOTAL:-N/A}" >> $GITHUB_OUTPUT
         continue-on-error: true

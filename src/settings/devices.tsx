@@ -172,7 +172,7 @@ export default function DevicesSettingsPage() {
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       {isBridge ? (
-                        <Waypoints className="size-[var(--icon-size-default)] shrink-0 text-muted-foreground" />
+                        <Waypoints className="size-5 shrink-0 text-muted-foreground" />
                       ) : (
                         <Smartphone className="size-5 shrink-0 text-muted-foreground" />
                       )}
@@ -180,7 +180,7 @@ export default function DevicesSettingsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium truncate">{device.name}</span>
                           {isBridge && (
-                            <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[length:var(--font-size-xs)] text-muted-foreground">
+                            <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
                               Bridge
                             </span>
                           )}
@@ -195,7 +195,7 @@ export default function DevicesSettingsPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+                        <p className="text-sm text-muted-foreground">
                           {isBridge
                             ? 'Accepts connections from your devices'
                             : `Last seen: ${formatLastSeen(device.lastSeen)}`}

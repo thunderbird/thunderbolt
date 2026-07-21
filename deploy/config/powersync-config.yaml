@@ -30,7 +30,6 @@ sync_rules:
         data:
           - SELECT * FROM powersync.chat_messages WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.tasks WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.mcp_servers WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.prompts WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.skills WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.triggers WHERE user_id = bucket.user_id
@@ -42,15 +41,14 @@ client_auth:
   jwks:
     keys:
       - kty: oct
-        # Base64 of POWERSYNC_JWT_SECRET. Sourced from PS_JWT_KEY_BASE64 at runtime so
-        # the value can rotate per environment without rebuilding the image. The PS_
-        # prefix is mandatory — PowerSync's YAML loader rejects !env substitutions for
-        # variables that don't start with it (security guardrail).
-        # Local default: base64("enterprise-thunderbolt-powersync-jwt-default-secret").
-        # Preview stacks (Pulumi) inject base64 of the per-stack random JWT secret.
+        # Both k (secret) and kid (label) are env-driven so the same image can serve
+        # multiple environments without a rebuild. Must match the values the backend
+        # signs with: k = base64(POWERSYNC_JWT_SECRET), kid = POWERSYNC_JWT_KID.
+        # The PS_ prefix is mandatory — PowerSync's YAML loader rejects !env
+        # substitutions for variables that don't start with it (security guardrail).
         # Backend validates the underlying secret is >=32 chars when decoded.
         k: !env PS_JWT_KEY_BASE64
         alg: HS256
-        kid: enterprise-powersync
+        kid: !env PS_JWT_KID
   telemetry:
     disable_telemetry_sharing: true

@@ -223,10 +223,9 @@ jobs:
 
   # The iroh ACP client (P2P/QUIC crypto core) ships as a prebuilt wasm artifact at
   # src/acp/iroh/pkg so the web app imports it without a wasm toolchain in CI. The
-  # committed binary embeds ~750 absolute ~/.cargo build paths, so it is byte-for-byte
-  # reproducible only on the machine that built it — a Linux/macOS CI rebuild can never
-  # match hash-for-hash (see the crate README's provenance note). CI therefore enforces
-  # provenance two ways, neither needing a wasm toolchain:
+  # build remaps absolute cargo/repo paths for local reproducibility; cross-platform
+  # Linux/macOS reproducibility remains unproven. CI therefore enforces provenance
+  # two ways without rebuilding or needing a wasm toolchain:
   #   1. Staleness gate — a change to the crate source MUST ship a regenerated pkg/ in
   #      the same PR, so editing the crate can't silently leave the committed wasm stale
   #      (the `rust` job host-compiles the crate but never touches the binary).
@@ -252,7 +251,12 @@ jobs:
 
       - name: Verify committed wasm artifacts match checksums manifest
         if: needs.detect-changes.outputs.wasm-artifact == 'true'
-        run: cd src/acp/iroh/pkg && shasum -a 256 -c CHECKSUMS.txt
+        run: |
+          cd src/acp/iroh/pkg
+          diff -u \
+            <(awk '{ print $2 }' CHECKSUMS.txt | sort) \
+            <(find . -maxdepth 1 -type f ! -name CHECKSUMS.txt -exec basename {} \; | sort)
+          shasum -a 256 -c CHECKSUMS.txt
 
   rust:
     needs: detect-changes

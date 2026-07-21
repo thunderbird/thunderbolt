@@ -63,10 +63,9 @@ const protocolVersion = 1
  *  the handshake — never the prompt/streaming phase, which is legitimately long
  *  and is torn down via the transport instead. */
 const defaultHandshakeTimeoutMs = 30_000
-/** ACP requires `cwd` on session/new + session/load. Browser/web agents have
- *  no real filesystem; we send a placeholder. The Haystack managed adapter
- *  and most remote agents ignore the field. */
-const sessionCwd = '/'
+/** ACP requires `cwd` on session/new + session/load. Browser clients cannot
+ *  know a remote agent's absolute path, so use its launch-relative directory. */
+const sessionCwd = '.'
 const clientName = 'thunderbolt'
 const clientVersion = '0.2.0'
 
@@ -450,12 +449,15 @@ export const connectAcpAdapter = async (
   // resolution is in flight is impossible — we store the in-flight promise so
   // concurrent sends on the same thread dedupe to one resume/load/new call.
   const sessionByThread = new Map<string, Promise<string>>()
-  // Threads whose current session was freshly minted via `session/new`. Drained
-  // exactly once by the first real `fetch` (via `Set.delete`) to BOTH persist
-  // the id and seed the prior transcript — deferring both out of resolution so a
-  // warm-then-reload before any prompt never persists an empty session id, and
-  // a resume/load-capable agent never resumes an empty session it thinks is warm.
-  const freshPending = new Set<string>()
+  // Threads whose current session was freshly minted via `session/new`. Consumed
+  // after the first real `fetch` persists the id; failed persistence restores the
+  // marker. Deferring this out of resolution means warm-then-reload before any
+  // prompt never persists an empty session id.
+  type FreshSessionState = {
+    readonly sessionId: string
+    readonly persistence?: Promise<void>
+  }
+  const freshPending = new Map<string, FreshSessionState>()
 
   const guardHandshake = <T>(step: Promise<T>): Promise<T> =>
     withHandshakeGuard(step, transport.closed, handshakeTimeoutMs)
@@ -477,7 +479,7 @@ export const connectAcpAdapter = async (
     const resolveNew = async (): Promise<string> => {
       const newSession = await guardHandshake(connection.newSession({ cwd: sessionCwd, mcpServers: [] }))
       // Defer persistence + transcript seeding to the first real send.
-      freshPending.add(context.threadId)
+      freshPending.set(context.threadId, { sessionId: newSession.sessionId })
       return newSession.sessionId
     }
     // Try a stored-session restore, swallowing a runtime rejection (session
@@ -516,19 +518,44 @@ export const connectAcpAdapter = async (
     return resolve
   }
 
+  /** Persist and consume one freshly minted session marker. A failed write
+   *  restores the marker so the next send retries instead of silently losing
+   *  both durable session continuity and first-send transcript replay. */
+  const consumeFreshSession = async (context: AgentAdapterContext, sessionId: string): Promise<boolean> => {
+    const pending = freshPending.get(context.threadId)
+    if (!pending || pending.sessionId !== sessionId) {
+      return false
+    }
+    if (pending.persistence) {
+      await pending.persistence
+      return false
+    }
+
+    const persistence = context.onAcpSessionId(sessionId)
+    freshPending.set(context.threadId, { sessionId, persistence })
+    try {
+      await persistence
+      if (freshPending.get(context.threadId)?.persistence === persistence) {
+        freshPending.delete(context.threadId)
+      }
+      return true
+    } catch (error) {
+      if (freshPending.get(context.threadId)?.persistence === persistence) {
+        freshPending.set(context.threadId, { sessionId })
+      }
+      throw error
+    }
+  }
+
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     const sessionId = await resolveThreadSession(context)
 
     // First real send of a freshly-minted session: persist the id we actually
-    // used, and (tier-3 only) seed the prior transcript as context. `Set.delete`
-    // returns true iff the entry existed and removes it synchronously — a
-    // race-free consume-once, and keyed on "fresh session's first prompt" (not
-    // "we prepended a transcript") so a brand-new thread's second prompt never
-    // re-injects its first exchange.
-    const isFirstSendOfFreshSession = freshPending.delete(context.threadId)
-    if (isFirstSendOfFreshSession) {
-      await context.onAcpSessionId(sessionId)
-    }
+    // used, and (tier-3 only) seed the prior transcript as context. The marker
+    // is keyed on "fresh session's first prompt" (not "we prepended a
+    // transcript") so a brand-new thread's second prompt never re-injects its
+    // first exchange. Consumption happens only after persistence succeeds.
+    const isFirstSendOfFreshSession = await consumeFreshSession(context, sessionId)
     const priorTranscript = isFirstSendOfFreshSession ? extractPriorTranscript(init) : undefined
     const prompt = await buildPromptBlocks(
       init,

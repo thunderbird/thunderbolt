@@ -6,21 +6,23 @@ import { describe, expect, it } from 'bun:test'
 import { canInstallThunderboltCli, describeCliInstallError, isCliInstallError } from './cli-install'
 
 describe('canInstallThunderboltCli', () => {
-  it('offers the install only on Tauri desktop macOS/Linux', () => {
-    expect(canInstallThunderboltCli('macos', true)).toBe(true)
-    expect(canInstallThunderboltCli('linux', true)).toBe(true)
+  it('offers the install for every published OS and architecture pair', () => {
+    expect(canInstallThunderboltCli('macos', 'aarch64', true)).toBe(true)
+    expect(canInstallThunderboltCli('linux', 'x86_64', true)).toBe(true)
+    expect(canInstallThunderboltCli('linux', 'aarch64', true)).toBe(true)
   })
 
-  it('hides the install on web, mobile and Windows', () => {
-    expect(canInstallThunderboltCli('windows', true)).toBe(false)
-    expect(canInstallThunderboltCli('ios', true)).toBe(false)
-    expect(canInstallThunderboltCli('android', true)).toBe(false)
-    expect(canInstallThunderboltCli('web', true)).toBe(false)
+  it('hides the install for unpublished OS and architecture pairs', () => {
+    expect(canInstallThunderboltCli('macos', 'x86_64', true)).toBe(false)
+    expect(canInstallThunderboltCli('windows', 'x86_64', true)).toBe(false)
+    expect(canInstallThunderboltCli('ios', 'aarch64', true)).toBe(false)
+    expect(canInstallThunderboltCli('android', 'aarch64', true)).toBe(false)
+    expect(canInstallThunderboltCli('web', 'unknown', true)).toBe(false)
   })
 
   it('hides the install outside Tauri even on a desktop OS', () => {
-    expect(canInstallThunderboltCli('macos', false)).toBe(false)
-    expect(canInstallThunderboltCli('linux', false)).toBe(false)
+    expect(canInstallThunderboltCli('macos', 'aarch64', false)).toBe(false)
+    expect(canInstallThunderboltCli('linux', 'x86_64', false)).toBe(false)
   })
 })
 

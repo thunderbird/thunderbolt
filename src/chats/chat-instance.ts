@@ -8,6 +8,7 @@ import type { AcpCommand, SessionSideEffect } from '@/acp/translators/acp-to-ai-
 import { useAgentCommandsStore } from '@/acp/agent-commands-store'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
+import { isBuiltInAgent } from '@/defaults/agents'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
 import { getErrorRetryable, isContentRejectionError, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
@@ -19,7 +20,7 @@ import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
-import { useChatStore } from './chat-store'
+import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 export const maxRetries = 3
 
@@ -30,17 +31,25 @@ export const maxRetries = 3
 const getRetryDelay = (attempt: number) => 2000 * attempt * (0.5 + Math.random())
 
 /** Bridge an ACP `requestPermission` call to the chat-store dialog flow.
- *  Generates a request id, stashes the resolver on the session's
- *  `pendingPermission` slot, and returns the promise the adapter awaits. The
- *  store's `resolvePendingPermission` action completes it from the dialog. */
+ *  Auto-approves remembered allowances; otherwise stashes the request until
+ *  the dialog resolves it. */
 const requestPermissionViaStore = (
   sessionId: string,
+  agentId: string,
   request: RequestPermissionRequest,
-): Promise<RequestPermissionResponse> =>
-  new Promise<RequestPermissionResponse>((resolve) => {
+): Promise<RequestPermissionResponse> => {
+  const toolKey = deriveToolKey(request)
+  const allowOption = findAllowOption(request.options)
+
+  if (allowOption && useChatStore.getState().isAlwaysAllowed(agentId, toolKey)) {
+    return Promise.resolve({ outcome: { outcome: 'selected', optionId: allowOption.optionId } })
+  }
+
+  return new Promise<RequestPermissionResponse>((resolve) => {
     const requestId = uuidv7()
-    useChatStore.getState().setPendingPermission(sessionId, { requestId, request, resolve })
+    useChatStore.getState().setPendingPermission(sessionId, { agentId, requestId, request, resolve })
   })
+}
 
 /** Forward translator side effects to the chat store + analytics. The server
  *  is the source of truth for ACP-side mode and config option state, so a
@@ -82,6 +91,10 @@ export type CreateChatInstanceDeps = {
   getAllSkills?: typeof defaultGetAllSkills
 }
 
+export type AgentRoutingState = {
+  regenerationRevision?: number
+}
+
 /**
  * Build the `customFetch` the AI SDK's transport invokes for every
  * `chat.sendMessage(...)`. Each send routes to the GLOBAL per-agent adapter
@@ -108,6 +121,7 @@ export const createAgentRoutingFetch = (
   httpClient: HttpClient,
   getProxyFetch: () => FetchFn,
   deps: CreateChatInstanceDeps = {},
+  routingState: AgentRoutingState = {},
 ) => {
   const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
@@ -204,8 +218,13 @@ export const createAgentRoutingFetch = (
 
       // Built-in re-resolves skill instructions itself (ai/fetch.ts); for ACP
       // agents we resolve here and fold them into the prompt via the adapter.
-      const skillInstructions =
-        selectedAgent.type === 'built-in' ? undefined : await resolveAcpSkillInstructions(requestBody.messages)
+      const skillInstructions = isBuiltInAgent(selectedAgent)
+        ? undefined
+        : await resolveAcpSkillInstructions(requestBody.messages)
+      // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
+      const requestPermission = isBuiltInAgent(selectedAgent)
+        ? undefined
+        : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
 
       return adapter.fetch(init, {
         threadId: id,
@@ -218,9 +237,10 @@ export const createAgentRoutingFetch = (
         reconnectClient,
         httpClient,
         getProxyFetch,
+        regenerationRevision: routingState.regenerationRevision ?? 0,
         skillInstructions,
         onAcpSessionId: persistAcpSessionId,
-        requestPermission: (request) => requestPermissionViaStore(id, request),
+        requestPermission,
         onSessionSideEffect: applySessionSideEffect,
       })
     },
@@ -238,7 +258,8 @@ export const createChatInstance = (
   getProxyFetch: () => FetchFn,
   deps: CreateChatInstanceDeps = {},
 ) => {
-  const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps)
+  const routingState: AgentRoutingState = { regenerationRevision: 0 }
+  const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
 
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
@@ -346,7 +367,7 @@ export const createChatInstance = (
             useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
             return
           }
-          originalRegenerate().catch((err) => {
+          regenerateResponse().catch((err) => {
             console.error('Auto-retry failed:', err)
             // Don't set retriesExhausted here - let onFinish handle retry logic.
             // When originalRegenerate() fails, onFinish will be called again and will
@@ -371,6 +392,13 @@ export const createChatInstance = (
 
   const originalRegenerate = instance.regenerate.bind(instance)
 
+  /** Mark and start one response regeneration so persistent agents rebuild from
+   *  the request transcript while ordinary sends keep their live session. */
+  const regenerateResponse = (): Promise<void> => {
+    routingState.regenerationRevision = (routingState.regenerationRevision ?? 0) + 1
+    return originalRegenerate()
+  }
+
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {
     if (retryTimeout) {
@@ -380,7 +408,7 @@ export const createChatInstance = (
     retryCount = 0
     lastError = null
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
-    return originalRegenerate()
+    return regenerateResponse()
   }
 
   const originalSendMessage = instance.sendMessage.bind(instance)

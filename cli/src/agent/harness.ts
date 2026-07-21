@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Assembles the Pi `AgentHarness` — the spine that lets the CLI actually talk
- * to Claude. It binds a Node execution environment (real bash + filesystem) to
- * the working directory, opens an in-memory session, resolves the model, and
- * registers the four coding tools (bash/read/write/edit).
+ * Assembles the Pi `AgentHarness` — the spine that lets the CLI talk to the
+ * selected model provider. It binds a Node execution environment (real bash +
+ * filesystem) to the working directory, opens an in-memory session, resolves
+ * the model, and registers coding tools. Workspace-root harnesses omit bash
+ * because arbitrary shell commands cannot be confined to that workspace.
  */
 
 import { AgentHarness, InMemorySessionRepo } from '@earendil-works/pi-agent-core'
@@ -16,6 +17,7 @@ import { createBashTool, createEditTool, createReadTool, createWriteTool } from 
 import { resolveModel } from './model.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 import type { HarnessBundle, HarnessConfig } from './types.ts'
+import { createWorkspaceTools } from './workspace-jail.ts'
 
 /**
  * Builds a ready-to-run harness for a single CLI invocation, paired with a
@@ -43,12 +45,9 @@ export const buildHarness = async (config: HarnessConfig, session?: Session): Pr
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
   })
-  const tools = [
-    createBashTool(config.cwd),
-    createReadTool(config.cwd),
-    createWriteTool(config.cwd),
-    createEditTool(config.cwd),
-  ]
+  const tools = config.workspaceRoot
+    ? createWorkspaceTools(config.workspaceRoot)
+    : [createBashTool(config.cwd), createReadTool(config.cwd), createWriteTool(config.cwd), createEditTool(config.cwd)]
 
   const harness = new AgentHarness({
     env,
@@ -58,7 +57,11 @@ export const buildHarness = async (config: HarnessConfig, session?: Session): Pr
     tools,
     activeToolNames: tools.map((tool) => tool.name),
     thinkingLevel: config.thinking,
-    systemPrompt: buildSystemPrompt({ cwd: config.cwd, modelId: config.announceModel ? config.model : undefined }),
+    systemPrompt: buildSystemPrompt({
+      cwd: config.cwd,
+      modelId: config.announceModel ? config.model : undefined,
+      bashEnabled: tools.some((tool) => tool.name === 'bash'),
+    }),
   })
 
   return {

@@ -113,6 +113,15 @@ type PiTranslator = {
   finish: (errorText?: string) => void
 }
 
+export type PiStreamMetadata = {
+  /** Metadata emitted once when the assistant message starts. */
+  readonly initial?: Record<string, unknown>
+  /** Metadata for one invoked tool, such as MCP ownership. */
+  readonly toolCall?: (toolName: string) => Record<string, unknown> | undefined
+  /** Latest metadata snapshot after tool work/turn settlement. */
+  readonly settled?: () => Record<string, unknown> | undefined
+}
+
 /**
  * Builds a stateful translator that writes AI SDK chunks into `emit`. Splitting
  * state from sinking lets the stream wrapper enqueue into a controller while a
@@ -121,8 +130,9 @@ type PiTranslator = {
  * @param emit - sink invoked once per produced chunk
  * @returns the translator's `handle`/`finish` surface
  */
-const createPiTranslator = (emit: (chunk: AiSdkChunk) => void): PiTranslator => {
+const createPiTranslator = (emit: (chunk: AiSdkChunk) => void, metadata: PiStreamMetadata): PiTranslator => {
   let started = false
+  let initialMetadataEmitted = false
   let stepOpen = false
   let finished = false
   let reasoning: ReasoningPart | null = null
@@ -132,6 +142,20 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void): PiTranslator => 
   let reasoningOrdinal = 0
   let textOrdinal = 0
   const toolStartTimes = new Map<string, number>()
+
+  const emitMetadata = (messageMetadata: Record<string, unknown> | undefined): void => {
+    if (messageMetadata && Object.keys(messageMetadata).length > 0) {
+      emit({ type: 'message-metadata', messageMetadata })
+    }
+  }
+
+  const emitInitialMetadata = (): void => {
+    if (initialMetadataEmitted) {
+      return
+    }
+    emitMetadata(metadata.initial)
+    initialMetadataEmitted = true
+  }
 
   const emitDuration = (key: string, elapsedMs: number): void => {
     emit({ type: 'message-metadata', messageMetadata: { reasoningTime: { [key]: elapsedMs } } })
@@ -202,7 +226,9 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void): PiTranslator => 
       emit({ type: 'start' })
       started = true
     }
+    emitInitialMetadata()
     closeOpenParts()
+    emitMetadata(metadata.settled?.())
     if (errorText !== undefined) {
       emit({ type: 'error', errorText })
     }
@@ -221,6 +247,7 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void): PiTranslator => 
           emit({ type: 'start' })
           started = true
         }
+        emitInitialMetadata()
         return
       }
       case 'turn_start': {
@@ -252,6 +279,7 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void): PiTranslator => 
           input,
           title: event.toolName,
         })
+        emitMetadata(metadata.toolCall?.(event.toolName))
         return
       }
       case 'tool_execution_end': {
@@ -269,6 +297,7 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void): PiTranslator => 
       }
       case 'turn_end': {
         closeOpenParts()
+        emitMetadata(metadata.settled?.())
         const { message } = event
         if ('stopReason' in message && message.stopReason === 'error') {
           emit({ type: 'error', errorText: message.errorMessage ?? 'the request failed' })
@@ -321,6 +350,7 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void): PiTranslator => 
 export const piHarnessToUiMessageStream = (
   harness: AgentHarness,
   runPrompt: () => Promise<unknown>,
+  metadata: PiStreamMetadata = {},
 ): ReadableStream<Uint8Array> => {
   let unsubscribe: (() => void) | null = null
   let closed = false
@@ -331,7 +361,7 @@ export const piHarnessToUiMessageStream = (
         if (!closed) {
           controller.enqueue(encodeChunk(chunk))
         }
-      })
+      }, metadata)
       unsubscribe = harness.subscribe((event) => translator.handle(event))
 
       const finalize = (errorText?: string): void => {

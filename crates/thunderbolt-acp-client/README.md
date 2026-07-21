@@ -20,8 +20,8 @@ Because the artifact is prebuilt, it is verified three ways:
   in the same PR, the job fails — so editing the crate can't silently leave the
   committed wasm stale. No toolchain needed.
 - **Tamper-evidence (CI):** `src/acp/iroh/pkg/CHECKSUMS.txt` lists the sha256 of each
-  committed file. The `wasm-artifact` CI job runs `shasum -a 256 -c CHECKSUMS.txt`
-  and fails if any committed artifact drifts from the manifest. No toolchain needed.
+  committed artifact. The `wasm-artifact` CI job verifies both exact file-set equality
+  and every digest, so changed, missing, or unlisted files fail. No toolchain needed.
 - **Reproducibility (local, pinned toolchain):** `./build.sh --verify` rebuilds into a
   throwaway dir and fails if the result drifts from `CHECKSUMS.txt`. Two clean builds on
   the pinned toolchain are bit-identical (see "Determinism test"). CI still verifies the
@@ -57,13 +57,10 @@ at `/opt/homebrew/opt/llvm`.
 
 ## Determinism test
 
-Two clean builds (`cargo clean` between) on the pinned toolchain produce a
-bit-identical `thunderbolt_acp_client_bg.wasm` (and identical `.js`/`.d.ts`):
-
-```
-0265ecaa38125fbe56a0bd52021db77f1a4f1593bf653607c989062841ae5005  (build 1)
-0265ecaa38125fbe56a0bd52021db77f1a4f1593bf653607c989062841ae5005  (build 2)
-```
+Two clean builds (`cargo clean` between) on the pinned toolchain produce identical
+artifacts. Current authoritative hashes live in the committed
+[`CHECKSUMS.txt`](../../src/acp/iroh/pkg/CHECKSUMS.txt); `./build.sh --verify` rebuilds
+and compares against that manifest so this README cannot carry stale duplicate hashes.
 
 wasm-opt is deterministic here, so it is **not** a source of drift. The build no longer
 embeds absolute builder paths: `build.sh` passes `--remap-path-prefix` to rewrite

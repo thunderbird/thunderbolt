@@ -93,6 +93,8 @@ services:
       # Default value below = base64("enterprise-thunderbolt-powersync-jwt-default-secret"),
       # which matches the default backend POWERSYNC_JWT_SECRET.
       PS_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
+      # Label paired with the JWT secret. Must match the backend's POWERSYNC_JWT_KID.
+      PS_JWT_KID: enterprise-powersync
     volumes:
       - ./config/powersync-config.yaml:/config/config.yaml
     ports:

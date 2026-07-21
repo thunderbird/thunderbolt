@@ -30,6 +30,7 @@ import {
 } from './account-allowlist.ts'
 import { isAllowed } from './allowlist.ts'
 import { bindServer } from './endpoint.ts'
+import { killProcessWhenConnectionCloses } from './lifecycle.ts'
 import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
 
 /** QUIC application close code for a connection we actively reject (allowlist
@@ -396,20 +397,12 @@ export const handleConnection = async (
     return
   }
   activeProcs.add(proc)
-  // Register this live session so the heartbeat can re-check its peer's membership
-  // (D7) and tear it down on revocation.
-  const open: OpenConnection = { remoteId, connection }
-  opts.openConnections?.add(open)
   void proc.exited.then(() => activeProcs.delete(proc))
-  // A dropped connection (peer disconnect OR a heartbeat teardown) kills the agent
-  // and prunes the session from the registry. The reverse (agent exit) is signalled
+  // A dropped connection kills the agent. The reverse (agent exit) is signalled
   // by finishing the send stream below — never by an active connection close —
   // so the final JSON-RPC response can't be truncated mid-flight; the client
   // tears the connection down once it has drained that stream.
-  void connection.closed().then(() => {
-    proc.kill()
-    opts.openConnections?.delete(open)
-  })
+  killProcessWhenConnectionCloses(connection, proc)
   process.stdout.write(`⚡ iroh bridge: accepted ${remoteId} → spawned ${redactArgv(config.command)}\n`)
 
   // `.finally` (not `.then`) so the agent always gets stdin EOF, even if the

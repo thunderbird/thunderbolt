@@ -8,6 +8,10 @@ import { agentsSystemTable } from '../tables'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { nowIso } from '@/lib/utils'
 import type { AgentDiscoveryResponse } from '@shared/acp-types'
+import { clearAcpSessionIdsForAgent } from '@/dal/chat-threads'
+import { systemRowToAgent } from '@/dal/agents'
+import { disposeAdapter } from '@/acp/adapter-cache'
+import type { Agent } from '@/types/acp'
 
 /** Result envelope for `refreshSystemAgents`.
  *  - `refreshed: true`  → backend returned 200, local table was upserted.
@@ -15,7 +19,7 @@ import type { AgentDiscoveryResponse } from '@shared/acp-types'
  *    rows are preserved unless `reason === 'unauthenticated'`, in which case
  *    the table was cleared (the user can no longer see system agents). */
 export type RefreshSystemAgentsResult =
-  | { refreshed: true }
+  | { refreshed: true; wireIdentityChangedAgents: Agent[] }
   | { refreshed: false; reason: 'unauthenticated' | 'network' }
 
 /**
@@ -57,6 +61,7 @@ export const refreshSystemAgents = async (
   // response is typed wider (`remote-acp | managed-acp`); `remote-acp` entries
   // belong in the synced `agents` table via user opt-in and are skipped here.
   const incoming = payload.data.agents.filter((a) => a.type === 'managed-acp')
+  const wireIdentityChangedAgentsById = new Map<string, Agent>()
 
   await db.transaction(async (tx) => {
     const existing = await tx.select({ id: agentsSystemTable.id }).from(agentsSystemTable).all()
@@ -81,14 +86,22 @@ export const refreshSystemAgents = async (
         fetchedAt,
       }
       if (row) {
+        const wireIdentityChanged = row.url !== agent.url || row.transport !== agent.transport
         await tx.update(agentsSystemTable).set(values).where(eq(agentsSystemTable.id, agent.id))
+        if (wireIdentityChanged) {
+          await clearAcpSessionIdsForAgent(tx, agent.id)
+          wireIdentityChangedAgentsById.set(agent.id, systemRowToAgent(values))
+        }
       } else {
         await tx.insert(agentsSystemTable).values(values)
       }
     }
   })
 
-  return { refreshed: true }
+  const wireIdentityChangedAgents = [...wireIdentityChangedAgentsById.values()]
+  await Promise.all(wireIdentityChangedAgents.map((agent) => disposeAdapter(agent.id)))
+
+  return { refreshed: true, wireIdentityChangedAgents }
 }
 
 type DiscoveryFetch = { kind: 'ok'; data: AgentDiscoveryResponse } | { kind: 'unauthenticated' } | { kind: 'error' }

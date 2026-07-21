@@ -6,6 +6,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 import { isDesktop, isTauri } from './platform'
 
 // Lazy load Tauri modules only when needed
+let tauriApp: any = null
 let tauriCore: any = null
 let tauriMenu: any = null
 let tauriTray: any = null
@@ -15,6 +16,7 @@ let tauriProcess: any = null
 const loadTauriModules = async () => {
   if (isTauri() && !tauriCore) {
     try {
+      tauriApp = await import('@tauri-apps/api/app')
       tauriCore = await import('@tauri-apps/api/core')
       tauriMenu = await import('@tauri-apps/api/menu')
       tauriTray = await import('@tauri-apps/api/tray')
@@ -182,7 +184,10 @@ export class TrayManager {
         })
 
         this.tray = await tauriTray.TrayIcon.new({
-          title: 'Thunderbolt',
+          icon: await tauriApp?.defaultWindowIcon(),
+          // macOS template mode: alpha-only render that inverts with the menu
+          // bar. No-op on Windows/Linux (they show the icon as-is).
+          iconAsTemplate: true,
           tooltip: 'Thunderbolt',
           menu,
         })

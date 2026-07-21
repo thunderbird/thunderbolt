@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:app:allow-default-window-icon",
     "opener:default",
     "os:default",
     "deep-link:default",
@@ -16,6 +17,9 @@
     "core:window:allow-set-skip-taskbar",
     "core:window:allow-create",
     "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
     "core:webview:allow-create-webview-window",
     "core:webview:allow-create-webview",
     "core:webview:allow-webview-size",

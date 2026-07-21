@@ -32,8 +32,8 @@ Before reviewing, read the relevant architecture docs (don't rely on memory):
 - For every new `backend/drizzle/*.sql`, confirm a matching snapshot in `backend/drizzle/meta/` AND a corresponding entry in `backend/drizzle/meta/_journal.json`. A missing journal entry means the migration never runs. This is easy to miss when cherry-picking migration files across branches.
 
 **3. Sync-rule & schema parity**
-- The table/columns must agree across: backend Drizzle schema, frontend Drizzle schema (PR 2), `shared/powersync-tables.ts`, and the `config.yaml` sync rule. Flag any column present in one but missing in another.
-- Remind the reviewer (note) that the PowerSync Cloud **dashboard rules must be updated manually** after PR 1's migration — code alone is not enough.
+- The table/columns must agree across: backend Drizzle schema, frontend Drizzle schema (PR 2), `shared/powersync-tables.ts`, and **all three** sync-rule configs (`powersync-service/config/config.yaml`, `deploy/config/powersync-config.yaml`, `deploy/k8s/templates/configmaps.yaml`). Flag any column or table present in one but missing in another.
+- Remind the reviewer (note) that after PR 1 merges, the new `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image must be rolled onto the Render `powersync` service before PR 2 merges — CI rebuilds the image automatically, but the Render service does not auto-deploy.
 
 **4. Encryption**
 - If the table carries sensitive data, verify encrypted-column configuration matches `docs/architecture/e2e-encryption.md`. Flag plaintext storage of data that should be E2E-encrypted.

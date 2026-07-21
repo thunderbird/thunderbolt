@@ -39,6 +39,7 @@ import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToD
 import { defaultModels } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
+import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -469,6 +470,15 @@ const EditModelModal = ({
   </Dialog>
 )
 
+/** Tooltip copy for model row edit/remove actions. Exported for unit tests. */
+export const modelEditTooltip = (isSystemModel: boolean): string =>
+  isSystemModel ? "Built-in models can't be edited" : 'Edit model'
+
+export const modelRemoveTooltip = (isSystemModel: boolean): string =>
+  isSystemModel ? "Built-in models can't be removed" : 'Remove model'
+
+export const modelAddTooltip = (): string => 'Add model'
+
 export default function ModelsPage() {
   const db = useDatabase()
   const [state, dispatch] = useReducer(modelReducer, initialState)
@@ -614,9 +624,7 @@ export default function ModelsPage() {
           break
         case 'custom':
           if (url) {
-            // Ensure URL ends with /v1 if not already
-            const baseUrl = url.endsWith('/v1') ? url : url.endsWith('/') ? `${url}v1` : `${url}/v1`
-            endpoint = `${baseUrl}/models`
+            endpoint = `${normalizeOpenAiBaseUrl(url)}/models`
             if (apiKey) {
               headers = { Authorization: `Bearer ${apiKey}` }
             }
@@ -937,11 +945,18 @@ export default function ModelsPage() {
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
-              <Plus />
-            </Button>
-          </DialogTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="icon" className="rounded-lg" aria-label={modelAddTooltip()}>
+                  <Plus />
+                </Button>
+              </DialogTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>{modelAddTooltip()}</p>
+            </TooltipContent>
+          </Tooltip>
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
@@ -1243,20 +1258,40 @@ export default function ModelsPage() {
                     </TooltipProvider>
 
                     <ButtonGroup size="icon">
-                      <ButtonGroupItem
-                        variant="outline"
-                        onClick={() => setEditingModel(model)}
-                        disabled={isSystemModel}
-                      >
-                        <Pen className="h-3 w-3" />
-                      </ButtonGroupItem>
-                      <ButtonGroupItem
-                        variant="outline"
-                        onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
-                        disabled={isSystemModel}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </ButtonGroupItem>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            <ButtonGroupItem
+                              variant="outline"
+                              onClick={() => setEditingModel(model)}
+                              disabled={isSystemModel}
+                              aria-label={modelEditTooltip(isSystemModel)}
+                            >
+                              <Pen className="h-3 w-3" />
+                            </ButtonGroupItem>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>{modelEditTooltip(isSystemModel)}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            <ButtonGroupItem
+                              variant="outline"
+                              onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
+                              disabled={isSystemModel}
+                              aria-label={modelRemoveTooltip(isSystemModel)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </ButtonGroupItem>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>{modelRemoveTooltip(isSystemModel)}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </ButtonGroup>
                   </div>
                 </div>

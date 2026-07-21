@@ -10,7 +10,7 @@
 //! topology of dialing a `thunderbolt acp --transport iroh` CLI bridge from the
 //! browser — no hole-punching, no direct path.
 //!
-//! Surface (consumed by `src/acp/transports/iroh.ts`):
+//! Surface (consumed by `src/acp/iroh/iroh-transport.ts`):
 //!   * [`IrohClient::create`] — bind ONE long-lived endpoint (optionally pinned
 //!     to a persisted secret key so the bridge operator allowlists a stable
 //!     NodeId once, and optionally pointed at a self-hosted relay instead of the

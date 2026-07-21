@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { validateMcpServerUrl } from './mcp-url-validation'
+import { isLoopbackHost, validateMcpServerUrl } from './mcp-url-validation'
 
 describe('validateMcpServerUrl', () => {
   it('accepts https for a public host', () => {
@@ -68,5 +68,51 @@ describe('validateMcpServerUrl', () => {
   it('rejects an unparseable garbage string', () => {
     expect(validateMcpServerUrl('not a url').ok).toBe(false)
     expect(validateMcpServerUrl('').ok).toBe(false)
+  })
+})
+
+describe('isLoopbackHost', () => {
+  it.each([
+    'localhost',
+    'LOCALHOST', // case-insensitive
+    'api.localhost',
+    'foo.bar.localhost',
+    '127.0.0.1',
+    '127.1.2.3', // any address in 127.0.0.0/8
+    '127.255.255.255',
+    '::1',
+    '[::1]', // bracketed IPv6 accepted
+  ])('classifies %s as loopback', (host) => {
+    expect(isLoopbackHost(host)).toBe(true)
+  })
+
+  it.each([
+    // Public hosts
+    'example.com',
+    'api.openai.com',
+    // RFC1918 — intentionally NOT loopback. Browsers block http→https mixed-content
+    // for these anyway, and public Custom endpoints still need the proxy for CORS.
+    '10.0.0.1',
+    '192.168.1.42',
+    '172.16.0.1',
+    // IPv6 ULA — intentionally NOT loopback (same reason)
+    'fd00::1',
+    'fc00::1',
+    // host.docker.internal — intentionally NOT loopback. Browsers block it as
+    // mixed content on HTTPS; on http docker-compose it's easier to just use
+    // `localhost:PORT` (browser is on the host).
+    'host.docker.internal',
+    // mDNS `.local` names — intentionally NOT loopback (rare, keep on proxy).
+    'mymac.local',
+    // Attacker-crafted domains that look local via naive substring matching
+    'localhost.evil.com',
+    '127.0.0.1.evil.com',
+    '10.evil.com',
+    'evil-localhost',
+    // Almost-loopback IPv4 outside 127/8
+    '128.0.0.1',
+    '126.255.255.255',
+  ])('classifies %s as NOT loopback', (host) => {
+    expect(isLoopbackHost(host)).toBe(false)
   })
 })

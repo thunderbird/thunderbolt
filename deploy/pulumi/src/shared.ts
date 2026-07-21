@@ -492,6 +492,9 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
             name: 'POWERSYNC_JWT_KEY_BASE64',
             value: args.powersyncJwtSecret.apply((s) => Buffer.from(s).toString('base64')),
           },
+          // Label paired with the JWT secret. Must match the backend's
+          // POWERSYNC_JWT_KID so PowerSync can find the right key when validating.
+          { name: 'PS_JWT_KID', value: 'enterprise-powersync' },
         ],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('powersync'),

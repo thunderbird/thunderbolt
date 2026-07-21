@@ -42,30 +42,48 @@ jobs:
         if: inputs.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y webkit2gtk-4.1 libappindicator3-dev
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            squashfs-tools
+          # No libfuse2 needed: Tauri spawns linuxdeploy with
+          # APPIMAGE_EXTRACT_AND_RUN=1 (see crates/tauri-bundler/.../linuxdeploy.rs),
+          # so the AppImage self-extracts instead of self-mounting via FUSE.
+          # Kept in sync with desktop-release.yml.
+
+      - name: Set up pinned linuxdeploy
+        if: inputs.platform == 'linux'
+        uses: ./.github/actions/setup-linuxdeploy
 
       - name: Build
         run: |
           bun install --frozen-lockfile
 
+          # Test builds do not ship to the auto-updater, so skip updater-artifact
+          # signing. Otherwise Tauri requires TAURI_SIGNING_PRIVATE_KEY (which
+          # only desktop-release.yml wires up) and the whole job fails after the
+          # installers are already built.
+          NO_UPDATER='{"bundle":{"createUpdaterArtifacts":false}}'
+
           case "$INPUT_PLATFORM" in
             "linux")
-              bun tauri build
+              bun tauri build --config "$NO_UPDATER"
               ;;
             "windows-x64")
-              bun tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc
+              bun tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc --config "$NO_UPDATER"
               ;;
             "windows-arm")
               rustup target add aarch64-pc-windows-msvc
-              bun tauri build --bundles msi,nsis --target aarch64-pc-windows-msvc
+              bun tauri build --bundles msi,nsis --target aarch64-pc-windows-msvc --config "$NO_UPDATER"
               ;;
             "macos-silicon")
-              bun tauri build --bundles app,dmg --target aarch64-apple-darwin
+              bun tauri build --bundles app,dmg --target aarch64-apple-darwin --config "$NO_UPDATER"
               ;;
             "macos-intel")
               rustup target add x86_64-apple-darwin
               rm -rf src-tauri/target/x86_64-apple-darwin
-              bun tauri build --bundles app,dmg --target x86_64-apple-darwin
+              bun tauri build --bundles app,dmg --target x86_64-apple-darwin --config "$NO_UPDATER"
               ;;
           esac
         shell: bash
@@ -86,6 +104,22 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.platform }}-build
+          # actions/upload-artifact does not expand brace patterns, so list
+          # each extension on its own line. `target/**/bundle/**` matches both
+          # native builds (`target/release/bundle/…`, used by the Linux job)
+          # and cross-compiled builds (`target/<triple>/release/bundle/…`, used
+          # by Windows/macOS jobs) — the previous `target/*/release/bundle/**`
+          # glob missed the native Linux path entirely.
           path: |
-            src-tauri/target/*/release/bundle/**/*.{deb,AppImage,rpm,msi,exe,dmg,app.tar.gz}
+            src-tauri/target/**/bundle/**/*.deb
+            src-tauri/target/**/bundle/**/*.AppImage
+            src-tauri/target/**/bundle/**/*.rpm
+            src-tauri/target/**/bundle/**/*.msi
+            src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/**/bundle/**/*.app.tar.gz
+          # Fail loudly if the glob matches nothing — default `warn` lets a
+          # broken glob leave the job green with no uploaded artifacts, which
+          # burned us earlier when native-Linux paths didn't match.
+          if-no-files-found: error
           retention-days: 7

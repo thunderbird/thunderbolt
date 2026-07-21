@@ -21,7 +21,13 @@
  * appended and made active alongside the coding tools.
  */
 
-import { AgentHarness, InMemorySessionRepo, type AgentTool, type ThinkingLevel } from '@earendil-works/pi-agent-core'
+import {
+  AgentHarness,
+  InMemorySessionRepo,
+  type AgentHarnessOptions,
+  type AgentTool,
+  type ThinkingLevel,
+} from '@earendil-works/pi-agent-core'
 import { buildAnthropicModel, type AgentFetch } from './anthropic-model.ts'
 import { buildOpenAiCompatModel } from './openai-compat-model.ts'
 import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
@@ -95,7 +101,7 @@ export type BuildAppHarnessOptions = {
   /** The model to run, tagged by Pi engine family. */
   readonly model: PiModelDescriptor
   /** System prompt sent with each model request. */
-  readonly systemPrompt: string
+  readonly systemPrompt: AgentHarnessOptions['systemPrompt']
   /** Reasoning depth for the harness. */
   readonly thinkingLevel: ThinkingLevel
   /** Chat thread this harness serves. Its tools are bound to the thread's

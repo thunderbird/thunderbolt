@@ -22,13 +22,14 @@
 
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+import { irohAlpnFor } from '@shared/iroh'
 import { dialIrohBridge } from '@/acp/iroh/iroh-transport'
 import { createNdjsonDecoder, encodeNdjsonFrame } from '@/acp/iroh/ndjson'
 import type { IrohClientLoader, IrohConnectionLike } from '@/acp/iroh/types'
 
 /** ALPN of the CLI MCP bridge (`cli/src/iroh/endpoint.ts`, `thunderbolt/mcp/0`).
  *  Must match byte-for-byte or the QUIC handshake is refused. */
-export const mcpIrohAlpn = 'thunderbolt/mcp/0'
+export const mcpIrohAlpn = irohAlpnFor('mcp')
 
 export type McpIrohTransportOptions = {
   /** EndpointTicket or bare NodeId printed by the CLI MCP bridge. */

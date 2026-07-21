@@ -23,4 +23,13 @@ describe('buildSystemPrompt', () => {
   test('always interpolates the working directory', () => {
     expect(buildSystemPrompt({ cwd: '/home/me/project' })).toContain('Working directory: /home/me/project')
   })
+
+  test('describes bash only when shell execution is enabled', () => {
+    expect(buildSystemPrompt({ cwd: '/work' })).toContain('- bash')
+
+    const jailedPrompt = buildSystemPrompt({ cwd: '/work', bashEnabled: false })
+    expect(jailedPrompt).toContain('three filesystem tools')
+    expect(jailedPrompt).not.toContain('- bash')
+    expect(jailedPrompt).not.toContain('Prefer bash')
+  })
 })

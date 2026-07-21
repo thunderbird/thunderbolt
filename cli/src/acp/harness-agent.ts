@@ -9,9 +9,9 @@
  * `Agent` interface on top of {@link buildHarness}, so the iroh/wss bridge can
  * expose OUR coding agent to a remote ACP client (the bridge otherwise only
  * proxies external stdio ACP agents). Each `session/new` builds its own harness
- * bound to the requested cwd; harness run events stream back as ACP
- * `session/update` notifications via {@link createHarnessToAcpTranslator}, and
- * tool-permission requests round-trip to the client over `session/request_permission`.
+ * bound to server's trusted launch directory; harness run events stream back as
+ * ACP `session/update` notifications via {@link createHarnessToAcpTranslator},
+ * and tool-permission requests round-trip to client.
  *
  * Sessions persist to disk on the bridge machine (via {@link SessionStore}), so a
  * reconnect can rebuild the agent's execution context with `session/resume`
@@ -22,6 +22,7 @@
  * below remains the per-connection registry, now hydrated from disk on resume.
  */
 
+import { realpath } from 'node:fs/promises'
 import { PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
 import type {
   Agent,
@@ -43,9 +44,11 @@ import type {
 } from '@agentclientprotocol/sdk'
 import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
+import { isReadOnlyAgentTool, resolveToolPermission } from '../../../shared/agent-tool-permissions.ts'
 import { VERSION } from '../cli.ts'
 import { buildHarness } from '../agent/harness.ts'
 import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
+import { isExistingPathInWorkspace } from '../agent/workspace-jail.ts'
 import { createHarnessToAcpTranslator, toAcpStopReason, toToolKind } from './harness-to-acp.ts'
 import type { SessionStore } from './session-store.ts'
 
@@ -111,10 +114,6 @@ type Session = {
  *  id would escape the sessions root and overwrite an arbitrary `.jsonl`. */
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Tools that run unguarded — pure reads with no side effects. Mirrors the
- *  interactive CLI's gate (`agent/permissions.ts`). */
-const READ_ONLY_TOOLS = new Set(['read'])
-
 /** The permission choices offered to the ACP client for a gated tool call.
  *  `allow-always` allows that tool for the rest of the session; the others are
  *  one-shot. Mirrors the interactive gate's allow-once/allow-session/deny. */
@@ -147,33 +146,40 @@ const toToolCallResult = (
   toolName: string,
   sessionAllowed: Set<string>,
 ): ToolCallResult | undefined => {
-  if (outcome.outcome === 'cancelled') return { block: true, reason: 'permission request cancelled' }
-  if (outcome.optionId === 'allow-always') {
-    sessionAllowed.add(toolName)
+  const decision = resolveToolPermission(outcome, PERMISSION_OPTIONS)
+  if (decision === 'allow-always') {
+    if (toolName !== 'read') sessionAllowed.add(toolName)
     return undefined
   }
-  if (outcome.optionId === 'allow-once') return undefined
+  if (decision === 'allow-once') return undefined
+  if (outcome.outcome === 'cancelled') return { block: true, reason: 'permission request cancelled' }
   return { block: true, reason: `user rejected ${toolName}` }
 }
 
 /**
- * Register the tool-permission gate on a session's harness. In `yolo` mode no
- * hook is attached and every tool runs unguarded; otherwise read-only tools and
- * session-allowed tools pass through, and any other tool round-trips to the ACP
- * client via `session/request_permission` before it runs.
+ * Register tool-permission gate. Reads auto-run only when their real path is
+ * inside workspace, including in `yolo` mode. Outside reads always prompt;
+ * mutating tools prompt unless `yolo` or session-allowed.
  */
 const attachAcpPermissionGate = (
   harness: ServeHarness,
   conn: AgentSideConnection,
   sessionId: SessionId,
   yolo: boolean,
+  workspaceRoot: string,
 ): void => {
-  if (yolo) return
-
   const sessionAllowed = new Set<string>()
 
   harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
-    if (READ_ONLY_TOOLS.has(toolName) || sessionAllowed.has(toolName)) return undefined
+    if (isReadOnlyAgentTool(toolName)) {
+      const path =
+        typeof input === 'object' && input !== null && 'path' in input && typeof input.path === 'string'
+          ? input.path
+          : undefined
+      if (path && (await isExistingPathInWorkspace(workspaceRoot, path))) return undefined
+    } else if (yolo || sessionAllowed.has(toolName)) {
+      return undefined
+    }
 
     const { outcome } = await conn.requestPermission({
       sessionId,
@@ -187,8 +193,8 @@ const attachAcpPermissionGate = (
 /**
  * Build the ACP {@link Agent} that fronts the built-in Pi harness for one
  * connection. All sessions for the connection share `config` (model, thinking,
- * yolo) and the connection's lifetime; each session gets its own harness bound
- * to the cwd from `session/new`. Sessions are disposed when the connection closes.
+ * yolo) and connection lifetime; each session gets its own harness bound to
+ * server-owned workspace root. Sessions dispose when connection closes.
  *
  * @param conn - the agent-side ACP connection (used to push updates + ask permission)
  * @param config - the resolved serve configuration
@@ -202,6 +208,7 @@ export const createHarnessAgent = (
   buildServeHarness: BuildServeHarness = defaultBuildServeHarness,
 ): Agent => {
   const sessions = new Map<SessionId, Session>()
+  const trustedWorkspace = realpath(config.cwd)
 
   // Release every session's execution environment when the connection ends, so
   // a dropped client never leaks the harness's temp dirs / shell. Deferred a
@@ -252,10 +259,11 @@ export const createHarnessAgent = (
     authMethods: [],
   })
 
-  /** Per-session harness config: connection-wide settings + the request's cwd. */
-  const harnessConfigFor = (cwd: string): HarnessConfig => ({
+  /** Per-session harness config rooted at server-owned launch directory. */
+  const harnessConfigFor = (workspaceRoot: string): HarnessConfig => ({
     model: config.model,
-    cwd,
+    cwd: workspaceRoot,
+    workspaceRoot,
     yolo: config.yolo,
     thinking: config.thinking,
     provider: config.provider,
@@ -267,8 +275,13 @@ export const createHarnessAgent = (
   /** Build the harness on `session`, wire its run events + permission gate to the
    *  ACP connection, and register it live. Shared by new and resume — the only
    *  difference between them is which {@link PiSession} is handed in. */
-  const activate = async (sessionId: SessionId, cwd: string, session: PiSession, phase: string): Promise<void> => {
-    const { harness, dispose } = await buildServeHarness(harnessConfigFor(cwd), session)
+  const activate = async (
+    sessionId: SessionId,
+    workspaceRoot: string,
+    session: PiSession,
+    phase: string,
+  ): Promise<void> => {
+    const { harness, dispose } = await buildServeHarness(harnessConfigFor(workspaceRoot), session)
 
     // If the client vanished while the harness was being built, the cleanup
     // microtask already ran against a map without this session — dispose now so
@@ -287,7 +300,7 @@ export const createHarnessAgent = (
       void conn.sessionUpdate({ sessionId, update }).catch(() => {})
     })
     const unsubscribe = harness.subscribe((event) => translator.handle(event))
-    attachAcpPermissionGate(harness, conn, sessionId, config.yolo)
+    attachAcpPermissionGate(harness, conn, sessionId, config.yolo, workspaceRoot)
 
     // Re-activating a live id (e.g. a repeated session/resume on one connection)
     // replaces the entry — tear down the prior harness + subscription first so it
@@ -300,27 +313,29 @@ export const createHarnessAgent = (
     }
   }
 
-  const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
+  const newSession = async (_params: NewSessionRequest): Promise<NewSessionResponse> => {
     const sessionId = crypto.randomUUID()
-    const session = await store.createSession(sessionId, params.cwd)
-    await activate(sessionId, params.cwd, session, 'session/new')
+    const workspaceRoot = await trustedWorkspace
+    const session = await store.createSession(sessionId, workspaceRoot)
+    await activate(sessionId, workspaceRoot, session, 'session/new')
     return { sessionId }
   }
 
   // Resume a prior thread on a fresh process: rehydrate the agent's execution
   // context from the on-disk log keyed by the client-supplied sessionId. No
   // history is replayed to the client (the app already rendered it from
-  // PowerSync); we only re-seed the harness. An unknown-but-well-formed id
-  // self-heals to a fresh session inside the store (migration / cache-clear); a
-  // malformed id is rejected up front (see the guard below).
+  // PowerSync); we only re-seed the harness. Malformed ids reject at wire
+  // boundary; missing logs reject so client creates new session and reseeds
+  // transcript instead of accepting an empty resume.
   const resumeSession = async (params: ResumeSessionRequest): Promise<ResumeSessionResponse> => {
     // Reject a crafted id at the wire boundary before it reaches the on-disk path
     // builder — a `..` segment would let the write escape the sessions root.
     if (!SESSION_ID_PATTERN.test(params.sessionId)) {
       throw RequestError.invalidParams(undefined, `invalid session id '${params.sessionId}'`)
     }
-    const session = await store.openOrCreate(params.sessionId, params.cwd)
-    await activate(params.sessionId, params.cwd, session, 'session/resume')
+    const workspaceRoot = await trustedWorkspace
+    const session = await store.openSession(params.sessionId, workspaceRoot)
+    await activate(params.sessionId, workspaceRoot, session, 'session/resume')
     return {}
   }
 

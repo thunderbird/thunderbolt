@@ -3,30 +3,35 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Unit tests for the `runAgent` pre-flight guard: the anthropic provider (the
- * default) refuses to start without `ANTHROPIC_API_KEY`, and the guard keys off
- * the *resolved* provider (undefined → anthropic) so it fires before any harness
- * is built. Only this fail-fast branch is unit-tested; the success path drives a
- * live model and belongs to integration coverage.
+ * Unit tests for provider-aware model preflight plus TUI mode selection. Success
+ * paths drive live providers and belong to integration coverage.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { runAgent, shouldUseTui } from './run.ts'
 import type { RunConfig } from './types.ts'
 
-const KEY = 'ANTHROPIC_API_KEY'
-let saved: string | undefined
+const KEYS = ['ANTHROPIC_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'] as const
+const saved: Partial<Record<(typeof KEYS)[number], string>> = {}
 
 beforeEach(() => {
-  saved = process.env[KEY]
-  delete process.env[KEY]
+  for (const key of KEYS) {
+    const value = process.env[key]
+    if (value !== undefined) saved[key] = value
+    delete process.env[key]
+  }
 })
 
 afterEach(() => {
-  if (saved === undefined) delete process.env[KEY]
-  else process.env[KEY] = saved
+  for (const key of KEYS) {
+    const value = saved[key]
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+    delete saved[key]
+  }
 })
 
+/** Builds a one-shot run configuration with targeted overrides. */
 const oneshot = (overrides: Partial<RunConfig> = {}): RunConfig =>
   ({
     model: 'claude-opus-4-8',
@@ -38,6 +43,7 @@ const oneshot = (overrides: Partial<RunConfig> = {}): RunConfig =>
     ...overrides,
   }) as RunConfig
 
+/** Builds a REPL run configuration with targeted overrides. */
 const repl = (overrides: Partial<RunConfig> = {}): RunConfig =>
   ({
     model: 'claude-opus-4-8',
@@ -49,23 +55,19 @@ const repl = (overrides: Partial<RunConfig> = {}): RunConfig =>
     ...overrides,
   }) as RunConfig
 
-describe('runAgent — ANTHROPIC_API_KEY guard', () => {
+describe('runAgent — provider credential preflight', () => {
   test('throws a friendly error for the explicit anthropic provider with no key', async () => {
     await expect(runAgent(oneshot({ provider: 'anthropic' }))).rejects.toThrow(/ANTHROPIC_API_KEY/)
   })
 
   test('the default (unset) provider also requires the key', async () => {
-    // provider omitted → `?? 'anthropic'` → same guard fires.
-    await expect(runAgent(oneshot({ provider: undefined }))).rejects.toThrow(/set ANTHROPIC_API_KEY/)
+    await expect(runAgent(oneshot({ provider: undefined }))).rejects.toThrow(/ANTHROPIC_API_KEY/)
   })
 
-  test('openai-compat skips the anthropic guard — it fails on its own missing config instead', async () => {
-    // The inverse branch: with no ANTHROPIC_API_KEY set, an anthropic run throws the
-    // key error, but openai-compat must get past the guard and fail downstream in
-    // model resolution (missing --base-url) — proving the provider condition matters.
+  test('openai-compat reports its dedicated key and guided setup when credentials are missing', async () => {
     await expect(
       runAgent(oneshot({ provider: 'openai-compat', baseUrl: undefined, apiKey: undefined })),
-    ).rejects.toThrow(/base-url/)
+    ).rejects.toThrow(/THUNDERBOLT_OPENAI_COMPAT_KEY.*guided setup/)
   })
 })
 

@@ -31,7 +31,7 @@ type AgentsSettingsPageProps = {
    *  dialog's pairing panel and used by the transparent same-account enrollment.
    *  Production omits and lazy-loads the wasm client. */
   loadAppNodeId?: () => Promise<string>
-  /** Test/DI override for app NodeId self-enrollment (D4) fired when an iroh agent is added.
+  /** Test/DI override for app NodeId self-enrollment, fired when an iroh agent is added.
    *  Production omits and binds the authenticated client. */
   enrollIroh?: () => Promise<void>
 }
@@ -122,7 +122,7 @@ export default function AgentsSettingsPage({ isStandalone, loadAppNodeId, enroll
     if (payload.transport !== 'iroh') {
       return
     }
-    // D4 self-enrolls this app's dialer NodeId; bridge registers itself server-side.
+    // App enrolls its own dialer NodeId; bridge registers itself server-side.
     // Fire and forget: enrollment must never block add; manual pairing remains fallback.
     void runEnroll().catch((error) => {
       console.error('iroh transparent enrollment failed; using manual pairing fallback', error)

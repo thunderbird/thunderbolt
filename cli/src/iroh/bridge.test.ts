@@ -485,7 +485,7 @@ const fakeOpen = (remoteId: string): { open: OpenConnection; close: ReturnType<t
   return { open: { remoteId, connection: { close } as unknown as OpenConnection['connection'] }, close }
 }
 
-describe('account trust gate + heartbeat (D6/D7)', () => {
+describe('account trust gate + heartbeat', () => {
   let home: string
   const prevHome = process.env.THUNDERBOLT_HOME
   let stderr: ReturnType<typeof spyOn>
@@ -502,7 +502,7 @@ describe('account trust gate + heartbeat (D6/D7)', () => {
     await rm(home, { recursive: true, force: true })
   })
 
-  describe('isConnectionAllowed — the D6 gate (account allowlist OR manual file)', () => {
+  describe('isConnectionAllowed — trust gate (account allowlist OR manual file)', () => {
     it('admits a peer in the account allowlist even when the manual file is empty (auto-trust)', async () => {
       expect(await isConnectionAllowed('acct-peer', fakeAllowlist(new Set(['acct-peer'])))).toBe(true)
     })
@@ -523,21 +523,21 @@ describe('account trust gate + heartbeat (D6/D7)', () => {
       expect(await isConnectionAllowed('stranger', undefined)).toBe(false)
     })
 
-    it('self-revoked bridge (D8): rejects an account peer at the gate, auto-trust off', async () => {
+    it('self-revoked bridge rejects an account peer at the gate when auto-trust is off', async () => {
       // The allowlist still lists the peer, but this bridge is self-revoked → has() is
       // false → the gate falls through to the (empty) manual file and denies.
       const revoked = fakeAllowlist(new Set(['acct-peer']), async () => {}, () => true)
       expect(await isConnectionAllowed('acct-peer', revoked)).toBe(false)
     })
 
-    it('self-revoked bridge (D8): a manual-file peer is still admitted (manual trust persists)', async () => {
+    it('self-revoked bridge still admits a manual-file peer because manual trust persists', async () => {
       await add('manual-peer')
       const revoked = fakeAllowlist(new Set(['manual-peer']), async () => {}, () => true)
       expect(await isConnectionAllowed('manual-peer', revoked)).toBe(true)
     })
   })
 
-  describe('heartbeatTick — D7 live-connection revocation', () => {
+  describe('heartbeatTick — live-connection revocation', () => {
     it('refreshes the allowlist, tears down a now-revoked peer, and leaves a still-valid one', async () => {
       const refresh = mock(async () => {})
       const allowlist = fakeAllowlist(new Set(['still-valid']), refresh)
@@ -562,7 +562,7 @@ describe('account trust gate + heartbeat (D6/D7)', () => {
       expect(manual.close).not.toHaveBeenCalled()
     })
 
-    it('self-revoked bridge (D8): tears down ALL account-auto-trusted sessions and logs once', async () => {
+    it('self-revoked bridge tears down all account-auto-trusted sessions and logs once', async () => {
       const refresh = mock(async () => {})
       // Non-empty account set, but this bridge is self-revoked → has() trusts nobody,
       // so every same-account session is torn down within the interval.
@@ -579,7 +579,7 @@ describe('account trust gate + heartbeat (D6/D7)', () => {
       expect(logged).toBe(true)
     })
 
-    it('self-revoked bridge (D8): a manual-file peer survives the teardown (D9)', async () => {
+    it('self-revoked bridge preserves a manual-file peer during teardown', async () => {
       await add('manual-peer')
       const allowlist = fakeAllowlist(new Set(['manual-peer']), async () => {}, () => true)
       const manual = fakeOpen('manual-peer')

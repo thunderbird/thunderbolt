@@ -154,7 +154,7 @@ export const getTrustedNodeIds = async (database: typeof DbType, userId: string)
     )
 
 /**
- * Register (or idempotently re-register) a BRIDGE device on the caller's account (D4 step 2).
+ * Register (or idempotently re-register) a BRIDGE device on the caller's account.
  * A bridge is a device with `device_type='bridge'`, keyed by its server NodeId. The user
  * deliberately added their own ACP/MCP bridge, so it is inserted trusted and non-revoked.
  * `device_type` is set here on the server — clients can never set it (it's deny-listed from

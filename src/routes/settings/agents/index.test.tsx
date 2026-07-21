@@ -104,7 +104,7 @@ describe('AgentsSettingsPage — hidden state guard', () => {
   })
 })
 
-describe('AgentsSettingsPage — transparent same-account enrollment (D4)', () => {
+describe('AgentsSettingsPage — transparent same-account enrollment', () => {
   const irohTarget = 'a'.repeat(52)
   const appNodeId = 'b'.repeat(52)
 

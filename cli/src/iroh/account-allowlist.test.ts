@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Tests for the account-scoped allowlist (D2/D8): the credential-fetched, in-memory
+ * Tests for the account-scoped allowlist: the credential-fetched, in-memory
  * cache of the account's trusted NodeIds. Covers the wire contract (URL, auth header
  * per credential kind, body parsing), the cache swap on refresh, the soft-fail on a
  * transient fetch error (keep last-known-good, never throw), and self-revocation
@@ -218,7 +218,7 @@ describe('createAccountAllowlist — in-memory cache', () => {
   })
 })
 
-describe('createAccountAllowlist — self-revocation (D8)', () => {
+describe('createAccountAllowlist — self-revocation', () => {
   it('trusts no account peer once this bridge is dropped from a populated allowlist', async () => {
     // The populated list omits SELF → the account revoked this bridge.
     const allowlist = createAccountAllowlist(async () => ['peer-a', 'peer-b'], SELF)

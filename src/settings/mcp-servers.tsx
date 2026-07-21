@@ -112,7 +112,7 @@ export type McpServersPageDeps = {
    *  Production omits and lazy-loads the wasm client only when an iroh target is
    *  entered, keeping the wasm chunk off the entry bundle. */
   loadAppNodeId?: () => Promise<string>
-  /** Test/DI override for app NodeId self-enrollment (D4) fired when an iroh bridge is added.
+  /** Test/DI override for app NodeId self-enrollment, fired when an iroh bridge is added.
    *  Production omits and binds the authenticated client. */
   enrollIroh?: () => Promise<void>
 }
@@ -447,7 +447,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     const name = resolveServerName()
     await addServerMutation.mutateAsync({ id: uuidv7(), name, url })
     if (isIroh) {
-      // D4 self-enrolls this app's dialer NodeId; the bridge registers itself server-side.
+      // App enrolls its own dialer NodeId; bridge registers itself server-side.
       // Fire and forget: enrollment must never block the add, and manual pairing remains the
       // fallback for Standalone, unauthenticated, or offline use.
       void runEnroll().catch((error) => {

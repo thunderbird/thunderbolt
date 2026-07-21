@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Account-scoped allowlist for the iroh bridge (design decision D2): the trusted,
+ * Account-scoped allowlist for the iroh bridge: the trusted,
  * non-revoked NodeIds of the account this CLI logged in to. A logged-in bridge
  * fetches this over REST with its stored bearer, caches it in memory, and refreshes
  * it on the 45s membership heartbeat — so same-account peers are auto-trusted at the
@@ -109,8 +109,8 @@ export type AccountAllowlist = {
    *  and is logged, never thrown — the manual file still governs regardless. */
   readonly refresh: () => Promise<void>
   /** Whether this bridge's own NodeId has dropped out of a *populated* account
-   *  allowlist — i.e. the account revoked this device (D8: revoking nulls its
-   *  node_id, so it disappears from the list). An empty set is "unknown" (unprimed /
+   *  allowlist — i.e. the account revoked this device, nulling its node_id and
+   *  removing it from the list. An empty set is "unknown" (unprimed /
    *  fetch failed), never a revocation, so a transient outage can't disable
    *  auto-trust. While true, {@link has} trusts nobody. */
   readonly isSelfRevoked: () => boolean
@@ -121,7 +121,7 @@ export type AccountAllowlist = {
  * `initialNodeIds` when startup already fetched a successful prime, or empty so no
  * peer is auto-trusted before the first successful {@link AccountAllowlist.refresh}.
  *
- * Self-revocation (D8): the bridge's own NodeId is one of the account's trusted
+ * Self-revocation: the bridge's own NodeId is one of the account's trusted
  * devices, so it normally appears in the fetched list. If a *populated* refresh omits
  * it, the account has revoked this bridge — {@link AccountAllowlist.has} then trusts
  * nobody, so both the connection gate and the heartbeat re-check drop every

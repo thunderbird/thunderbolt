@@ -13,7 +13,7 @@ type EnrollClient = Pick<HttpClient, 'post'>
 /**
  * Self-enroll THIS app's iroh dialer NodeId into the account's device allowlist when an
  * iroh ACP agent or MCP bridge is added, so a same-account bridge auto-allows it without
- * the user running `thunderbolt iroh allow <node-id>` (design decision D4).
+ * the user running `thunderbolt iroh allow <node-id>`.
  *
  * Writes the caller's OWN `node_id` via the lightweight self-enroll route
  * (`POST /devices/me/node-id`, no canary): proof-of-possession happens at the iroh QUIC

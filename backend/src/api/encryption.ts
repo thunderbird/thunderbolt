@@ -469,9 +469,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
     // node_id you can't dial as grants nothing. The caller is pinned to the session's server-set
     // deviceId (from linkSessionToDevice), so it can only write the device its session is bound
     // to — not an arbitrary target the way the canary-gated POST /devices/:deviceId/node-id can.
-    // The trust boundary is the account (same-account is auto-trusted by design, D1); a live
-    // same-account session is trusted to declare its own node_id, and a rogue one is mitigated by
-    // revoke + the bridge's heartbeat re-check (D7/D8), not by intra-account isolation here.
+    // The trust boundary is the account: a live same-account session may declare its own node_id.
+    // Device revocation plus the bridge's heartbeat re-check mitigate a rogue session rather than
+    // intra-account isolation here.
     .post(
       '/devices/me/node-id',
       async ({ body, request, set, user: sessionUser, session }) => {
@@ -505,7 +505,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         }),
       },
     )
-    // Account allowlist: the trusted, non-revoked node_ids of the caller's account (D2). The
+    // Account allowlist: the trusted, non-revoked node_ids of the caller's account. The
     // bridge fetches this with a bearer, caches it, and auto-allows same-account iroh peers.
     // Scoped to the caller's user_id — never leaks another account's rows.
     .get(
@@ -517,7 +517,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       },
       { auth: true },
     )
-    // Register a BRIDGE device on the caller's account (D4 step 2). Adding an ACP/MCP bridge in the
+    // Register a BRIDGE device on the caller's account. Adding an ACP/MCP bridge in the
     // app registers it here as a device with server-set `device_type='bridge'` (clients can't set
     // device_type — it's deny-listed from PowerSync upload, so a bridge MUST be created via this
     // route, not raw sync). Inserted trusted + non-revoked because the user deliberately added

@@ -224,7 +224,7 @@ const acceptBidiStream = async (connection: Connection, timeoutMs: number): Prom
   }
 }
 
-/** Cadence of the membership heartbeat (D7): refresh the account allowlist and
+/** Cadence of the membership heartbeat: refresh the account allowlist and
  *  re-check every open connection against it. 45s is the revocation-propagation SLA
  *  — a revoked device's live session is torn down within one interval. */
 export const HEARTBEAT_INTERVAL_MS = 45_000
@@ -258,7 +258,7 @@ export type HandleConnectionOptions = {
 }
 
 /**
- * The bridge trust gate (D6): a peer is admitted if its authenticated NodeId is in
+ * The bridge trust gate: a peer is admitted if its authenticated NodeId is in
  * the cached same-account allowlist (auto-trust) OR the manual `iroh allow` file
  * (Standalone / cross-account / CI). The account allowlist is checked first and
  * short-circuits, so the manual file is only read when auto-trust doesn't cover the
@@ -274,18 +274,18 @@ export const isConnectionAllowed = async (
 ): Promise<boolean> => (accountAllowlist?.has(remoteId) ?? false) || isAllowed(remoteId)
 
 /**
- * One heartbeat cycle (D7): refresh the cached account allowlist, then tear down
+ * One heartbeat cycle: refresh the cached account allowlist, then tear down
  * every open connection whose peer is no longer allowed (account-revoked AND absent
  * from the manual file). A still-allowed peer is untouched — the heartbeat is a
  * no-op for legit sessions. Closing the connection triggers the same lifecycle the
  * peer's own disconnect would (agent killed, registry pruned) via the hooks wired in
  * {@link handleConnection}. Exported so a single tick is unit-testable directly.
  *
- * Self-revocation (D8): if the refreshed allowlist no longer lists this bridge's own
+ * Self-revocation: if the refreshed allowlist no longer lists this bridge's own
  * NodeId, the account has revoked *this device*. The allowlist then reports every
  * account peer as untrusted, so the per-connection sweep below tears down all
- * same-account sessions (manual-file peers survive, per D9); we log it once per tick
- * so the compromise-response ("revoke the device") is observable in the bridge logs.
+ * same-account sessions. Manual-file peers survive because manual trust persists; one
+ * log entry per tick makes the revocation visible in the bridge logs.
  *
  * Each peer's re-check is isolated: a thrown manual-file read or a `close()` that
  * throws (the NAPI binding can) is logged and skipped, never aborting the sweep or
@@ -430,7 +430,7 @@ export const handleConnection = async (
 type AccountTrust = { readonly accountAllowlist: AccountAllowlist; readonly stop: () => void }
 
 /**
- * Wire same-account auto-trust (D2/D7/D8) when this bridge has a backend credential:
+ * Wire same-account auto-trust when this bridge has a backend credential:
  * resolve it (env PAT via `x-api-key`, else the stored device-grant session bearer),
  * self-register the bridge's bare NodeId, prime the account allowlist before any
  * connection is accepted, and start the 45s membership heartbeat. Returns live
@@ -442,11 +442,11 @@ type AccountTrust = { readonly accountAllowlist: AccountAllowlist; readonly stop
  * `login` enforced (`isSecureCloudUrl`) before sending the credential: a tampered /
  * cleartext non-loopback URL disables account trust rather than leaking it.
  *
- * The bridge's own `selfNodeId` is threaded into the allowlist so a refresh that no
- * longer lists it (the account revoked this device, D8) disables account auto-trust.
+ * The bridge's own `selfNodeId` is threaded into the allowlist. If a refresh no longer
+ * lists it, the account revoked this device, so account auto-trust is disabled.
  *
  * @param openConnections - the live-session registry the heartbeat re-checks
- * @param selfNodeId - this bridge's own NodeId, for D8 self-revocation
+ * @param selfNodeId - this bridge's own NodeId, used to detect self-revocation
  */
 export const startAccountTrust = async (
   openConnections: Set<OpenConnection>,

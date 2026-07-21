@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { session as sessionTable, user } from '@/db/schema'
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
-import { eq } from 'drizzle-orm'
 
 const authBase = 'http://localhost/v1/api/auth'
 const clientId = 'thunderbolt-cli'
@@ -74,7 +72,7 @@ describe('Device Authorization Grant (RFC 8628)', () => {
     expect(((await pendingRes.json()) as { error: string }).error).toBe('authorization_pending')
   })
 
-  it('exchanges an approved code for a bearer that authenticates as the approving account', async () => {
+  it('exposes an approved device credential that authenticates protected routes as the approving account', async () => {
     const { device_code: deviceCode, user_code: userCode } = await requestDeviceCode()
 
     const approveRes = await postJson(harness.app, '/device/approve', { userCode }, authHeaders(harness.bearerToken))
@@ -86,14 +84,30 @@ describe('Device Authorization Grant (RFC 8628)', () => {
     expect(granted.token_type).toBe('Bearer')
     expect(granted.access_token).toBeTruthy()
 
-    // The grant minted a real session row bound to the approving account.
-    const [owner] = await harness.db.select({ id: user.id }).from(user).where(eq(user.email, harness.email)).limit(1)
-    const [grantedSession] = await harness.db
-      .select({ userId: sessionTable.userId })
-      .from(sessionTable)
-      .where(eq(sessionTable.token, granted.access_token))
-      .limit(1)
-    expect(grantedSession?.userId).toBe(owner.id)
+    const bearerToken = tokenRes.headers.get('set-auth-token')
+    expect(bearerToken).toBeTruthy()
+    expect(bearerToken).not.toBe(granted.access_token)
+    expect(tokenRes.headers.get('set-cookie')).toBeNull()
+    expect(tokenRes.headers.get('access-control-expose-headers')?.toLowerCase()).toContain('set-auth-token')
+
+    const rawTokenRes = await harness.app.handle(
+      new Request('http://localhost/v1/devices/allowlist', { headers: authHeaders(granted.access_token) }),
+    )
+    expect(rawTokenRes.status).toBe(401)
+
+    if (!bearerToken) {
+      throw new Error('approved device response did not expose a bearer token')
+    }
+
+    const sessionRes = await getSession(harness.app, authHeaders(bearerToken))
+    expect(sessionRes.status).toBe(200)
+    const session = (await sessionRes.json()) as { user: { email: string } } | null
+    expect(session?.user.email).toBe(harness.email)
+
+    const allowlistRes = await harness.app.handle(
+      new Request('http://localhost/v1/devices/allowlist', { headers: authHeaders(bearerToken) }),
+    )
+    expect(allowlistRes.status).toBe(200)
   })
 
   it('rejects device approval from an unauthenticated caller', async () => {

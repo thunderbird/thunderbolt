@@ -9,10 +9,10 @@
  * transport, while this module's wire contract is covered directly in
  * `http-transport.test.ts` with an injected `fetchFn`.
  *
- * On approval the token endpoint mints a session and (because this stack runs the
- * bearer plugin with `requireSignature`) exposes the *signed* bearer via the
- * `set-auth-token` response header — the raw `access_token` body value is a bare,
- * unsignable session token and is deliberately not used.
+ * On approval the token endpoint mints a session and its endpoint-scoped backend
+ * hook exposes the *signed* bearer via the `set-auth-token` response header. This
+ * matches the session-cookie credential shape required by the bearer plugin; the
+ * raw `access_token` body value is a bare session token and is deliberately not used.
  */
 
 import { CLI_CLIENT_ID } from './config.ts'

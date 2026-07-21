@@ -20,6 +20,7 @@ import { getSettings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
+import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
 import { apiKey } from '@better-auth/api-key'
@@ -44,6 +45,8 @@ export type AuthEmailDeps = {
 }
 
 const otpSignInPath = '/sign-in/email-otp'
+const deviceTokenPath = '/device/token'
+const authTokenHeader = 'set-auth-token'
 
 /**
  * Create a Better Auth instance with the provided database
@@ -260,6 +263,28 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
       }),
       after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === deviceTokenPath) {
+          const sessionToken = ctx.context.newSession?.session.token
+          if (!sessionToken) {
+            return
+          }
+
+          // Device authorization creates a session without setting its cookie, so the bearer
+          // plugin cannot expose the signed cookie value through its normal after-hook.
+          const signedToken = `${sessionToken}.${await makeSignature(sessionToken, ctx.context.secret)}`
+          const exposedHeaders = ctx.context.responseHeaders?.get('access-control-expose-headers') ?? ''
+          const headersSet = new Set(
+            exposedHeaders
+              .split(',')
+              .map((header) => header.trim())
+              .filter(Boolean),
+          )
+          headersSet.add(authTokenHeader)
+          ctx.setHeader(authTokenHeader, signedToken)
+          ctx.setHeader('Access-Control-Expose-Headers', Array.from(headersSet).join(', '))
+          return
+        }
+
         if (ctx.path !== otpSignInPath) {
           return
         }

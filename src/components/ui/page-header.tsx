@@ -15,15 +15,18 @@ type PageHeaderProps = {
  * @example
  * ```tsx
  * <PageHeader title="Models">
- *   <Button size="icon" className="rounded-lg">
+ *   <Button size="icon" className="bg-card">
  *     <Plus />
  *   </Button>
  * </PageHeader>
  * ```
  */
 export const PageHeader = ({ title, children }: PageHeaderProps) => (
-  <div className="flex items-center justify-between mt-4">
-    <h1 className="text-4xl font-bold tracking-tight text-primary">{title}</h1>
+  <div className="flex min-h-[var(--touch-height-xl)] items-center justify-between">
+    <h1 className="text-2xl font-bold tracking-tight text-primary">{title}</h1>
+    {/* pr-2 pulls the actions in so icon buttons center-align with list rows'
+        trailing controls (rows carry their own horizontal inset) and sit at
+        the same x across settings pages. */}
     <div className="flex items-center gap-2 pr-2">{children}</div>
   </div>
 )

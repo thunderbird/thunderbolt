@@ -14,6 +14,18 @@ import { flushSync } from 'react-dom'
 import type { SearchableMenuGroup, SearchableMenuItem, SearchableMenuProps } from './types'
 import { findItemById, flattenItems, isGroupedItems } from './types'
 
+/** Row shell for custom `renderItem` implementations — same geometry as the
+ *  menu's default row (full-width, `--touch-height-sm`, `px-3`, `rounded-lg`)
+ *  so custom rows sit flush with it. Callers append hover/selected tints. */
+export const searchableMenuRowClass =
+  'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]'
+
+/** Flush, full-width footer action (e.g. "Add models"). Negative margins
+ *  cancel the footer slot's px-2 py-2 so the hover fill runs edge to edge;
+ *  the popover clips the rounded bottom corners. */
+export const searchableMenuFooterActionClass =
+  '-m-2 flex h-[var(--touch-height-default)] w-[calc(100%_+_1rem)] cursor-pointer items-center justify-start gap-2 px-4 text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+
 type ItemButtonProps<T> = {
   item: SearchableMenuItem<T>
   isSelected: boolean
@@ -73,7 +85,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }
           {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
         </div>
       )}
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-0.5">
         {group.items.map((item) => (
           <ItemButton
             key={item.id}
@@ -211,59 +223,61 @@ export const SearchableMenu = <T,>({
         side={side}
         sideOffset={5}
         collisionPadding={isMobile ? edgeSpacing.mobile : edgeSpacing.desktop}
-        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
+        className={cn('p-0 rounded-xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col gap-2 bg-background">
-          {searchable && (
-            <div className="px-2 pt-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  placeholder={searchPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 rounded-lg"
-                  autoFocus={false}
-                />
-              </div>
-            </div>
-          )}
-
-          <div
-            className="overflow-y-auto"
-            style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
-          >
-            <div className={cn('flex flex-col gap-4 px-2', !searchable && 'pt-2', !footer && 'pb-2')}>
-              {isGroupedItems(filteredItems) ? (
-                filteredItems.map((group) => (
-                  <GroupSection
-                    key={group.id}
-                    group={group}
-                    value={value}
-                    onSelect={handleSelect}
-                    renderItem={renderItem}
-                    hideLabel={filteredItems.length === 1}
+        <div className="flex flex-col">
+          <div className="flex flex-col gap-2">
+            {searchable && (
+              <div className="px-1 pt-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder={searchPlaceholder}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 rounded-lg"
+                    autoFocus={false}
                   />
-                ))
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
-                    <ItemButton
-                      key={item.id}
-                      item={item}
-                      isSelected={value === item.id}
-                      onClick={() => handleSelect(item.id, item)}
-                      renderItem={renderItem}
-                    />
-                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {flatFiltered.length === 0 && (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
-              )}
+            <div
+              className="overflow-y-auto"
+              style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
+            >
+              <div className={cn('flex flex-col gap-4 px-1 pb-1', !searchable && 'pt-1')}>
+                {isGroupedItems(filteredItems) ? (
+                  filteredItems.map((group) => (
+                    <GroupSection
+                      key={group.id}
+                      group={group}
+                      value={value}
+                      onSelect={handleSelect}
+                      renderItem={renderItem}
+                      hideLabel={filteredItems.length === 1}
+                    />
+                  ))
+                ) : (
+                  <div className="flex flex-col gap-0.5">
+                    {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
+                      <ItemButton
+                        key={item.id}
+                        item={item}
+                        isSelected={value === item.id}
+                        onClick={() => handleSelect(item.id, item)}
+                        renderItem={renderItem}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {flatFiltered.length === 0 && (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+                )}
+              </div>
             </div>
           </div>
 

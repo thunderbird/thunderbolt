@@ -16,6 +16,16 @@ import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
+import { getGreeting } from './chat-ui-greeting'
+
+const EmptyChatGreeting = () => {
+  return (
+    <div className="flex items-center gap-5">
+      <AppLogo size={72} className="opacity-60" />
+      <span className="font-heading text-3xl font-medium text-muted-foreground">{getGreeting()}</span>
+    </div>
+  )
+}
 
 export default function ChatUI() {
   const { chatInstance } = useCurrentChatSession()
@@ -64,7 +74,6 @@ export default function ChatUI() {
         <AnimatePresence mode="wait">
           {hasMessages ? (
             <div key="messages" className="relative flex-1 min-h-0">
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b from-background via-background/50 to-transparent" />
               <m.div
                 ref={scrollContainerRef}
                 {...scrollHandlers}
@@ -73,8 +82,10 @@ export default function ChatUI() {
                 exit={{ opacity: 0 }}
                 className="h-full overflow-y-auto hide-scrollbar"
               >
-                {/* Scroll captures the full width; the content stays centered. */}
-                <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-4 pb-0 md:px-4">
+                {/* Scroll captures the full width; the content stays centered.
+                    Top padding clears the floating header (the layout's scrim
+                    keeps scrolled messages legible behind it). */}
+                <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-[calc(var(--header-inset)+1rem)] pb-0 md:px-4">
                   <ChatMessages />
                   <div ref={scrollTargetRef} className="shrink-0 !mt-0 h-2 md:h-3" />
                 </div>
@@ -93,7 +104,7 @@ export default function ChatUI() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <AppLogo size={64} className="opacity-60" />
+              <AppLogo size={88} className="opacity-60" />
             </m.div>
           ) : null}
         </AnimatePresence>
@@ -120,6 +131,11 @@ export default function ChatUI() {
               duration: 0.25,
             }}
           >
+            {!hasMessages && !isMobile && (
+              <m.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-24">
+                <EmptyChatGreeting />
+              </m.div>
+            )}
             <div className="w-full max-w-[696px] min-w-[268px]">
               <PermissionDialogHost />
             </div>

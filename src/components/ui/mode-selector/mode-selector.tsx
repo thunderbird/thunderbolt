@@ -2,7 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import {
+  SearchableMenu,
+  searchableMenuRowClass,
+  type SearchableMenuGroup,
+  type SearchableMenuItem,
+} from '@/components/ui/searchable-menu'
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
 import { Globe, MessageCircle, Microscope } from 'lucide-react'
@@ -53,7 +58,11 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-sm)] border border-border',
+        // The shared iconMap renders icons at --icon-size-default (for the
+        // dropdown items); the trigger's descendant override shrinks its copy
+        // to --icon-size-sm so it sits proportionally with the sm label and
+        // matches the model selector's chevron.
+        'flex items-center rounded-[var(--radius-control)] cursor-pointer transition-colors text-[length:var(--font-size-sm)] [&_svg]:size-[var(--icon-size-sm)]',
         iconOnly ? 'size-[var(--touch-height-control)] justify-center' : 'gap-1.5 px-2 h-[var(--touch-height-control)]',
         isOpen ? 'bg-accent' : 'hover:bg-accent/50',
       )}
@@ -67,14 +76,9 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     const isDefault = item.data?.mode.isDefault === 1
 
     return (
-      <div
-        className={cn(
-          'w-full flex items-center gap-2 px-3 py-3 md:py-2 rounded-lg transition-colors text-left cursor-pointer',
-          isSelected ? 'bg-accent' : 'hover:bg-accent/50',
-        )}
-      >
+      <div className={cn(searchableMenuRowClass, isSelected ? 'bg-accent' : 'hover:bg-accent/50')}>
         {item.icon}
-        <span>{item.label}</span>
+        <span className="font-medium">{item.label}</span>
         {isDefault && <span className="text-muted-foreground text-[length:var(--font-size-sm)]">Default</span>}
       </div>
     )
@@ -88,7 +92,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
       searchable={false}
       blurBackdrop
       side={isMobile ? 'top' : 'bottom'}
-      align="start"
+      align="end"
       trigger={renderTrigger}
       renderItem={renderItem}
       width={280}

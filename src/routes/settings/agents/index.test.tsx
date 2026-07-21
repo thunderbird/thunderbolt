@@ -7,10 +7,10 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import type { ReactNode } from 'react'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter } from 'react-router'
 import AgentsSettingsPage from './index'
 
 const anonSession = {
@@ -21,27 +21,20 @@ const authedSession = {
   user: { id: 'user-1', email: 'a@b.com', name: 'Alice', isAnonymous: false },
 }
 
-const settingsIndexMarker = 'settings-index-marker'
-
-const renderPage = (authClient: AuthClient, isStandalone: () => boolean) => {
+const renderPage = (authClient: AuthClient) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
-      <MemoryRouter initialEntries={['/settings/agents']}>
-        <Routes>
-          <Route path="/settings/agents" element={children} />
-          <Route path="/settings" element={<div data-testid={settingsIndexMarker} />} />
-        </Routes>
-      </MemoryRouter>
+      <MemoryRouter initialEntries={['/settings/agents']}>{children}</MemoryRouter>
     </TestProvider>
   )
-  return render(<AgentsSettingsPage isStandalone={isStandalone} />, { wrapper: Wrapper })
+  return render(<AgentsSettingsPage />, { wrapper: Wrapper })
 }
 
-const onTauri = () => true
-const offTauri = () => false
-
-describe('AgentsSettingsPage — hidden state guard', () => {
+// The page is available to everyone: the built-in agent is local-first and
+// custom ACP agents (including iroh targets, which bypass the proxy entirely)
+// work without a real account, so there is no auth-based gating.
+describe('AgentsSettingsPage — availability', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -60,43 +53,35 @@ describe('AgentsSettingsPage — hidden state guard', () => {
     localStorage.clear()
   })
 
-  it('redirects to /settings for anonymous users when the proxy is effectively on (web)', () => {
+  it('renders for anonymous users', () => {
     const authClient = createMockAuthClient({ session: anonSession })
-    renderPage(authClient, offTauri)
+    renderPage(authClient)
 
-    expect(screen.getByTestId(settingsIndexMarker)).toBeInTheDocument()
-    expect(screen.queryByText('Agents')).not.toBeInTheDocument()
-  })
-
-  it('redirects for anonymous users on Tauri Connected (proxy_enabled=true)', () => {
-    localStorage.setItem('proxy_enabled', 'true')
-    const authClient = createMockAuthClient({ session: anonSession })
-    renderPage(authClient, onTauri)
-
-    expect(screen.getByTestId(settingsIndexMarker)).toBeInTheDocument()
-  })
-
-  it('renders the page for anonymous users on Tauri Standalone (proxy off)', () => {
-    const authClient = createMockAuthClient({ session: anonSession })
-    renderPage(authClient, onTauri)
-
-    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
   })
 
-  it('renders the page for authenticated users behind the proxy (web)', () => {
+  it('renders for authenticated users', () => {
     const authClient = createMockAuthClient({ session: authedSession })
-    renderPage(authClient, offTauri)
+    renderPage(authClient)
 
-    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
   })
 
-  it('renders the page for authenticated users on Tauri Standalone', () => {
+  it('opens the detail panel when a row is clicked and closes it again', () => {
     const authClient = createMockAuthClient({ session: authedSession })
-    renderPage(authClient, onTauri)
+    renderPage(authClient)
 
-    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    // Nothing selected — the built-in detail heading only exists in the panel.
+    expect(screen.queryByRole('button', { name: 'Close details' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Thunderbolt' }))
+
+    expect(screen.getByRole('heading', { name: 'Thunderbolt' })).toBeInTheDocument()
+    expect(screen.getByText(/built into the app — always here/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
+    expect(screen.queryByRole('button', { name: 'Close details' })).not.toBeInTheDocument()
   })
 })

@@ -4,13 +4,13 @@
 
 import { cn } from '@/lib/utils'
 import logoSrc from '@/assets/logo.svg'
+import type { ComponentPropsWithoutRef } from 'react'
 
-type AppLogoProps = {
+type AppLogoProps = Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'width' | 'height'> & {
   size?: number
-  className?: string
 }
 
-export const AppLogo = ({ size = 16, className }: AppLogoProps) => {
+export const AppLogo = ({ size = 16, className, ...props }: AppLogoProps) => {
   return (
     <img
       src={logoSrc}
@@ -19,6 +19,7 @@ export const AppLogo = ({ size = 16, className }: AppLogoProps) => {
       alt="Thunderbolt"
       draggable={false}
       className={cn('shrink-0', className)}
+      {...props}
     />
   )
 }

@@ -12,9 +12,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
+import { RailDivider } from './rail-divider'
 import type { ChatListProps } from './types'
 
 export const ChatList = ({
@@ -38,29 +40,35 @@ export const ChatList = ({
 }: ChatListProps) => {
   return (
     <>
-      <SidebarGroup className="flex-1 flex flex-col min-h-0">
+      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0', isCollapsed && 'pt-0')}>
         {!isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
           <div className="flex items-center justify-between flex-shrink-0">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
             <ChatActions
               isCollapsed={isCollapsed}
               debouncedSearchQuery={debouncedSearchQuery}
+              showSearch={showSearch}
               deleteAllChatsMutation={deleteAllChatsMutation}
               deleteAllChatsDialogRef={deleteAllChatsDialogRef}
               onSearchClick={onSearchClick}
             />
           </div>
         )}
+        {/* overflow-hidden in BOTH states: while max-height animates, the input
+            would otherwise escape the shrinking/growing box and paint over the
+            first chat rows. Transition is scoped to the animated properties so
+            sidebar-width changes (rail collapse) don't ride along. */}
         <div
-          className={`transition-all duration-300 ease-in-out flex-shrink-0 ${
+          className={`overflow-hidden transition-[max-height,opacity,margin-top] duration-300 ease-in-out flex-shrink-0 ${
             showSearch && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery)
               ? 'max-h-12 opacity-100 mt-2'
-              : 'max-h-0 opacity-0 overflow-hidden'
+              : 'max-h-0 opacity-0'
           }`}
         >
           <SearchInput
             ref={searchInputRef}
             containerClassName="mb-1"
+            className="bg-sidebar-accent dark:bg-sidebar-accent border-transparent focus-visible:border-border"
             placeholder="Search chats..."
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}
@@ -71,9 +79,7 @@ export const ChatList = ({
             <>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={(e) => onSearchClick(e)} tooltip="Search chats" className="cursor-pointer">
-                  <Search
-                    className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-blue-500' : ''}`}
-                  />
+                  <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -90,6 +96,10 @@ export const ChatList = ({
                   )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
+              <li aria-hidden>
+                <RailDivider className="my-1.5" />
+              </li>
             </>
           )}
           {chatThreads.map((thread) => (

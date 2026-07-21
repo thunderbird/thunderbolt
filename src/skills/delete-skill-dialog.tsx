@@ -22,12 +22,13 @@ export const DeleteSkillDialog = ({
   open: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
+  /** Human display name of the skill being deleted. */
   skillName: string
 }) => (
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Delete /{skillName}?</AlertDialogTitle>
+        <AlertDialogTitle>Delete {skillName}?</AlertDialogTitle>
         <AlertDialogDescription>
           This will permanently delete the skill. Other skills that reference it may no longer resolve.
         </AlertDialogDescription>

@@ -15,7 +15,7 @@ import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { Model } from '@/types'
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { createElement, type ReactNode, type RefObject } from 'react'
+import { createElement, createRef, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
 import { getClock } from '@/testing-library'
@@ -172,7 +172,7 @@ describe('ChatPromptInput', () => {
   describe('ref methods', () => {
     it('should expose focus method that focuses textarea', () => {
       const { mockUseChat } = setupStore()
-      const ref = { current: null } as unknown as RefObject<ChatPromptInputRef>
+      const ref = createRef<ChatPromptInputRef>()
 
       render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
@@ -194,7 +194,7 @@ describe('ChatPromptInput', () => {
 
     it('should expose setInput method that updates textarea value', () => {
       const { mockUseChat } = setupStore()
-      const ref = { current: null } as unknown as RefObject<ChatPromptInputRef>
+      const ref = createRef<ChatPromptInputRef>()
 
       render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
@@ -227,6 +227,99 @@ describe('ChatPromptInput', () => {
 
       // On mobile, Enter should NOT be prevented (it creates a newline naturally)
       expect(preventDefaultSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('backspace atomic chip deletion', () => {
+    const chipSkill = {
+      id: 'skill-1',
+      name: 'daily-brief',
+      label: 'Daily Brief',
+      description: '',
+      instruction: 'You are a daily brief assistant.',
+      enabled: 1,
+      pinnedOrder: null,
+      deletedAt: null,
+      defaultHash: null,
+      userId: null,
+    }
+
+    // Typed against the real hooks (no casts) so a signature change here is a
+    // compile error, not a silently-drifting fake.
+    const fakeUseLibrarySkills: typeof import('@/skills/use-skills').useLibrarySkills = () => ({
+      skills: [chipSkill],
+      isLoading: false,
+      createSkill: async () => chipSkill,
+      updateSkill: async () => undefined,
+      softDeleteSkill: async () => undefined,
+    })
+
+    const fakeUseEnabledSkills: typeof import('@/skills/use-skills').useEnabledSkills = () => ({
+      isEnabled: () => true,
+      setEnabled: async () => undefined,
+    })
+
+    // 'run /Daily Brief now' — the display token spans [4, 16).
+    const tokenText = 'run /Daily Brief now'
+
+    /** Render with the chip skill in the library, seed the input, place the caret. */
+    const setupWithToken = (caret: number) => {
+      const { mockUseChat } = setupStore()
+      const ref = createRef<ChatPromptInputRef>()
+      render(
+        <ChatPromptInput
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLibrarySkills={fakeUseLibrarySkills}
+          useEnabledSkills={fakeUseEnabledSkills}
+        />,
+        { wrapper: TestWrapper },
+      )
+      act(() => {
+        ref.current?.setInput(tokenText)
+      })
+      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      textarea.setSelectionRange(caret, caret)
+      return textarea
+    }
+
+    const pressBackspace = (textarea: HTMLTextAreaElement, modifiers: KeyboardEventInit = {}) => {
+      const event = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true, ...modifiers })
+      act(() => {
+        textarea.dispatchEvent(event)
+      })
+      return event
+    }
+
+    it('deletes the whole display token on Backspace with a collapsed caret right after it', () => {
+      const textarea = setupWithToken(16)
+      const event = pressBackspace(textarea)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(textarea.value).toBe('run  now')
+    })
+
+    it('does not delete atomically when Backspace carries a modifier', () => {
+      for (const modifiers of [{ metaKey: true }, { ctrlKey: true }, { altKey: true }]) {
+        cleanup()
+        resetStore()
+        const textarea = setupWithToken(16)
+        const event = pressBackspace(textarea, modifiers)
+
+        // The default (word/line) deletion proceeds — our handler stays out.
+        expect(event.defaultPrevented).toBe(false)
+        expect(textarea.value).toBe(tokenText)
+      }
+    })
+
+    it('leaves plain Backspace mid-word alone (no token touched)', () => {
+      // Caret inside the trailing "now", clear of the token span.
+      const textarea = setupWithToken(19)
+      const event = pressBackspace(textarea)
+
+      expect(event.defaultPrevented).toBe(false)
+      expect(textarea.value).toBe(tokenText)
     })
   })
 

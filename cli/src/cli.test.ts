@@ -12,15 +12,15 @@
 import { describe, expect, test } from 'bun:test'
 import packageJson from '../package.json' with { type: 'json' }
 import rootPackageJson from '../../package.json' with { type: 'json' }
-import { parseArgs, VERSION } from './cli.ts'
+import { parseArgs, cliVersion } from './cli.ts'
 import type { ParseArgsDependencies } from './cli.ts'
-import { BUILTIN_PROVIDERS } from './agent/types.ts'
+import { builtinProviders } from './agent/types.ts'
 import type { CliConfig } from './config/config.ts'
 
-const ENV_KEY = 'THUNDERBOLT_OPENAI_COMPAT_KEY'
+const openaiCompatKeyEnvVar = 'THUNDERBOLT_OPENAI_COMPAT_KEY'
 
-test('VERSION and the CLI package match the released app version', () => {
-  expect(VERSION).toBe(packageJson.version)
+test('cliVersion and the CLI package match the released app version', () => {
+  expect(cliVersion).toBe(packageJson.version)
   expect(packageJson.version).toBe(rootPackageJson.version)
 })
 
@@ -34,33 +34,37 @@ const runConfig = (argv: string[], dependencies?: ParseArgsDependencies) => {
 describe('parseArgs — resolveApiKey precedence (security)', () => {
   test('--api-key flag wins over the env var', () => {
     const config = runConfig(
-      ['--provider', 'openai-compat', '--base-url', 'https://h/v1', '--api-key', 'flag-key', 'hi'],
-      { env: { [ENV_KEY]: 'env-key' } },
+      ['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', '--api-key', 'flag-key', 'hi'],
+      { env: { [openaiCompatKeyEnvVar]: 'env-key' } },
     )
     expect(config.apiKey).toBe('flag-key')
   })
 
   test('falls back to the env var when no flag is given', () => {
-    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', 'hi'], {
-      env: { [ENV_KEY]: 'env-key' },
+    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', 'hi'], {
+      env: { [openaiCompatKeyEnvVar]: 'env-key' },
     })
     expect(config.apiKey).toBe('env-key')
   })
 
   test('is undefined when neither flag nor env is set', () => {
-    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', 'hi'], { env: {} })
+    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', 'hi'], {
+      env: {},
+    })
     expect(config.apiKey).toBeUndefined()
   })
 
   test('does not auto-forward a standard OPENAI_API_KEY (dedicated var only)', () => {
-    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', 'hi'], {
+    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', 'hi'], {
       env: { OPENAI_API_KEY: 'sk-real-openai' },
     })
     expect(config.apiKey).toBeUndefined()
   })
 
   test('does not forward the openai-compat env key to a built-in provider', () => {
-    expect(runConfig(['--provider', 'openai', 'hi'], { env: { [ENV_KEY]: 'custom-host-key' } }).apiKey).toBeUndefined()
+    expect(
+      runConfig(['--provider', 'openai', 'hi'], { env: { [openaiCompatKeyEnvVar]: 'custom-host-key' } }).apiKey,
+    ).toBeUndefined()
   })
 
   test('the api key never leaks into the prompt positionals', () => {
@@ -101,16 +105,27 @@ describe('parseArgs — flag validation', () => {
   })
 
   test('accepts a valid provider/thinking and threads them into the config', () => {
-    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', '--thinking', 'high', 'go'])
+    const config = runConfig(
+      ['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', '--thinking', 'high', 'go'],
+      { env: {}, config: null },
+    )
     expect(config.provider).toBe('openai-compat')
     expect(config.thinking).toBe('high')
     expect(config.baseUrl).toBe('https://h/v1')
   })
 
   test('accepts every curated built-in provider', () => {
-    for (const provider of BUILTIN_PROVIDERS) {
-      expect(runConfig(['--provider', provider]).provider).toBe(provider)
+    for (const provider of builtinProviders) {
+      expect(runConfig(['--provider', provider], { env: {}, config: null }).provider).toBe(provider)
     }
+  })
+
+  test('openai-compat with no --model and no saved model is a clear error', () => {
+    const parsed = parseArgs(['--provider', 'openai-compat', '--base-url', 'https://h/v1', 'hi'], {
+      env: {},
+      config: null,
+    })
+    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining('--model is required') })
   })
 
   test('the -m alias sets the model just like --model', () => {
@@ -119,8 +134,12 @@ describe('parseArgs — flag validation', () => {
 })
 
 describe('parseArgs — defaults', () => {
+  // Hermetic: pin env/config so a developer's real ~/.thunderbolt/config.json
+  // or provider env vars never leak into these assertions.
+  const hermetic = { env: {}, config: null } as const
+
   test('an empty argv yields the documented default config', () => {
-    const config = runConfig([])
+    const config = runConfig([], hermetic)
     expect(config.mode).toBe('repl')
     expect(config.model).toBe('claude-opus-4-8')
     expect(config.provider).toBe('anthropic')
@@ -130,6 +149,8 @@ describe('parseArgs — defaults', () => {
   })
 
   test('uses provider-specific default models when --model is omitted', () => {
+    // Intentionally restated inline (not imported from defaults.ts) so a
+    // default-model change fails here and forces a deliberate double-check.
     const expected = {
       anthropic: 'claude-opus-4-8',
       openai: 'gpt-5.6-sol',
@@ -147,13 +168,13 @@ describe('parseArgs — defaults', () => {
       fireworks: 'accounts/fireworks/models/kimi-k2p7-code',
     } as const
 
-    for (const provider of BUILTIN_PROVIDERS) {
-      expect(runConfig(['--provider', provider]).model).toBe(expected[provider])
+    for (const provider of builtinProviders) {
+      expect(runConfig(['--provider', provider], hermetic).model).toBe(expected[provider])
     }
   })
 
   test('an explicit --model wins over the provider default', () => {
-    expect(runConfig(['--provider', 'google', '--model', 'gemini-custom']).model).toBe('gemini-custom')
+    expect(runConfig(['--provider', 'google', '--model', 'gemini-custom'], hermetic).model).toBe('gemini-custom')
   })
 })
 
@@ -374,8 +395,8 @@ describe('parseArgs — bridge subcommands (acp / mcp)', () => {
 describe('parseArgs — acp serve', () => {
   test('resolves the same flag set as a run, including api-key precedence', () => {
     const parsed = parseArgs(
-      ['acp', 'serve', '--provider', 'openai-compat', '--base-url', 'https://h/v1', '--api-key', 'flag-key'],
-      { env: { [ENV_KEY]: 'env-key' } },
+      ['acp', 'serve', '--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', '--api-key', 'flag-key'],
+      { env: { [openaiCompatKeyEnvVar]: 'env-key' } },
     )
     if (parsed.kind !== 'acp-serve') throw new Error(`expected acp-serve, got ${parsed.kind}`)
     expect(parsed.config.apiKey).toBe('flag-key')

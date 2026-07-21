@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ChatActions } from './chat-actions'
 
 const meta = {
-  title: 'layout/sidebar/ChatActions',
+  title: 'Sidebar/ChatActions',
   component: ChatActions,
   parameters: {
     layout: 'padded',
@@ -37,6 +37,7 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   args: {
     isCollapsed: false,
+    showSearch: false,
     debouncedSearchQuery: '',
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),
@@ -59,6 +60,7 @@ export const Default: Story = {
 export const WithActiveSearch: Story = {
   args: {
     isCollapsed: false,
+    showSearch: true,
     debouncedSearchQuery: 'test query',
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),
@@ -81,6 +83,7 @@ export const WithActiveSearch: Story = {
 export const DeletingAllChats: Story = {
   args: {
     isCollapsed: false,
+    showSearch: false,
     debouncedSearchQuery: '',
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),
@@ -103,6 +106,7 @@ export const DeletingAllChats: Story = {
 export const Collapsed: Story = {
   args: {
     isCollapsed: true,
+    showSearch: false,
     debouncedSearchQuery: '',
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),

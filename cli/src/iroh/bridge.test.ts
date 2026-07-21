@@ -18,11 +18,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BridgeConfig } from '../agent/types.ts'
-import { MAX_ACTIVE_PROCS, redactArgv, type BridgeProc } from '../commands/bridge.ts'
+import { maxActiveProcs, redactArgv, type BridgeProc } from '../commands/bridge.ts'
 import { add } from './allowlist.ts'
 import {
   admitConnection,
-  CLOSE_REFUSED,
+  closeRefused,
   createHandshakeGuard,
   createRateLimiter,
   handleConnection,
@@ -123,7 +123,7 @@ describe('handshake — timeout & guard release', () => {
     const result = await handshake(incoming, { release }, 50)
     expect(result).toBe(connection)
     expect(release).toHaveBeenCalledTimes(1)
-    expect((connection.close as ReturnType<typeof mock>)).not.toHaveBeenCalled()
+    expect(connection.close as ReturnType<typeof mock>).not.toHaveBeenCalled()
   })
 
   it('releases the guard exactly once and propagates when the handshake fails before the deadline', async () => {
@@ -154,8 +154,8 @@ describe('handshake — timeout & guard release', () => {
     // The handshake settles *after* the deadline -> the orphan must be closed.
     resolveConn(lateConn)
     await flush()
-    expect((lateConn.close as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1)
-    expect((lateConn.close as ReturnType<typeof mock>).mock.calls[0][0]).toBe(CLOSE_REFUSED)
+    expect(lateConn.close as ReturnType<typeof mock>).toHaveBeenCalledTimes(1)
+    expect((lateConn.close as ReturnType<typeof mock>).mock.calls[0][0]).toBe(closeRefused)
     expect((lateConn.close as ReturnType<typeof mock>).mock.calls[0][1]).toEqual(bytesOf('handshake timed out'))
   })
 })
@@ -180,9 +180,14 @@ describe('handleConnection — the allowlist gate', () => {
     await rm(home, { recursive: true, force: true })
   })
 
-  const config: BridgeConfig = { protocol: 'acp', transport: 'iroh', port: 0, command: ['__nonexistent_binary_xyzzy__'] }
+  const config: BridgeConfig = {
+    protocol: 'acp',
+    transport: 'iroh',
+    port: 0,
+    command: ['__nonexistent_binary_xyzzy__'],
+  }
 
-  it('refuses a non-allowlisted peer: closes with CLOSE_REFUSED, never opens a stream or spawns', async () => {
+  it('refuses a non-allowlisted peer: closes with closeRefused, never opens a stream or spawns', async () => {
     const acceptBi = mock(async () => ({ recv: {}, send: {} }))
     const connection = {
       remoteId: () => ({ toString: () => 'unknown-peer' }),
@@ -198,11 +203,11 @@ describe('handleConnection — the allowlist gate', () => {
     expect(activeProcs.size).toBe(0)
     const close = connection.close as ReturnType<typeof mock>
     expect(close).toHaveBeenCalledTimes(1)
-    expect(close.mock.calls[0][0]).toBe(CLOSE_REFUSED)
+    expect(close.mock.calls[0][0]).toBe(closeRefused)
     expect(close.mock.calls[0][1]).toEqual(bytesOf('not allowlisted'))
   })
 
-  it('closes an allowlisted-but-idle peer with CLOSE_REFUSED once the accept deadline passes', async () => {
+  it('closes an allowlisted-but-idle peer with closeRefused once the accept deadline passes', async () => {
     await add('idle-peer')
     const acceptBi = mock(() => new Promise<never>(() => {})) // client never opens the stream
     const connection = {
@@ -219,7 +224,7 @@ describe('handleConnection — the allowlist gate', () => {
     expect(activeProcs.size).toBe(0) // nothing spawned for an idle peer
     const close = connection.close as ReturnType<typeof mock>
     expect(close).toHaveBeenCalledTimes(1)
-    expect(close.mock.calls[0][0]).toBe(CLOSE_REFUSED)
+    expect(close.mock.calls[0][0]).toBe(closeRefused)
     expect(close.mock.calls[0][1]).toEqual(bytesOf('idle: no data stream opened'))
   })
 
@@ -237,19 +242,19 @@ describe('handleConnection — the allowlist gate', () => {
 
     await handleConnection(incoming, config, activeProcs, { release: () => {} })
 
-    expect((connection.acceptBi as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1)
+    expect(connection.acceptBi as ReturnType<typeof mock>).toHaveBeenCalledTimes(1)
     expect(closed).not.toHaveBeenCalled() // no proc to bind a kill to
     expect(activeProcs.size).toBe(0)
     const close = connection.close as ReturnType<typeof mock>
     expect(close).toHaveBeenCalledTimes(1)
-    expect(close.mock.calls[0][0]).toBe(CLOSE_REFUSED)
+    expect(close.mock.calls[0][0]).toBe(closeRefused)
     expect(close.mock.calls[0][1]).toEqual(bytesOf("failed to spawn '__nonexistent_binary_xyzzy__'"))
   })
 
   it('refuses an allowlisted peer at the active-proc cap: closes with "bridge at capacity", no spawn', async () => {
     await add('busy-peer')
     // Fill the registry to the ceiling so the next connection is over-capacity.
-    const activeProcs = new Set<BridgeProc>(Array.from({ length: MAX_ACTIVE_PROCS }, () => ({}) as BridgeProc))
+    const activeProcs = new Set<BridgeProc>(Array.from({ length: maxActiveProcs }, () => ({}) as BridgeProc))
     const closed = mock(() => new Promise<void>(() => {}))
     const connection = {
       remoteId: () => ({ toString: () => 'busy-peer' }),
@@ -261,12 +266,12 @@ describe('handleConnection — the allowlist gate', () => {
 
     await handleConnection(incoming, config, activeProcs, { release: () => {} })
 
-    expect((connection.acceptBi as ReturnType<typeof mock>)).toHaveBeenCalledTimes(1) // peer opened its stream
+    expect(connection.acceptBi as ReturnType<typeof mock>).toHaveBeenCalledTimes(1) // peer opened its stream
     expect(closed).not.toHaveBeenCalled() // nothing spawned, so no kill bound
-    expect(activeProcs.size).toBe(MAX_ACTIVE_PROCS) // unchanged: refused, not spawned
+    expect(activeProcs.size).toBe(maxActiveProcs) // unchanged: refused, not spawned
     const close = connection.close as ReturnType<typeof mock>
     expect(close).toHaveBeenCalledTimes(1)
-    expect(close.mock.calls[0][0]).toBe(CLOSE_REFUSED)
+    expect(close.mock.calls[0][0]).toBe(closeRefused)
     expect(close.mock.calls[0][1]).toEqual(bytesOf('bridge at capacity'))
   })
 })
@@ -368,7 +373,13 @@ describe('admitConnection — pre-handshake DoS gates', () => {
 
   it('drops a connection with ignore() when the handshake guard is at capacity', async () => {
     const { incoming, ignore, accept } = fakeIncoming()
-    await admitConnection(incoming, config, new Set(), { allow: () => true }, { tryAcquire: () => false, release: () => {} })
+    await admitConnection(
+      incoming,
+      config,
+      new Set(),
+      { allow: () => true },
+      { tryAcquire: () => false, release: () => {} },
+    )
     expect(ignore).toHaveBeenCalledTimes(1)
     expect(accept).not.toHaveBeenCalled() // dropped before the handshake
   })

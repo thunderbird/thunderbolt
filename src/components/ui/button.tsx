@@ -14,11 +14,21 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground shadow-xs hover:bg-primary/90',
+        // Primary action — brand gradient (same amber→raspberry sweep as the
+        // switch ON track). bg-brand is the fallback under the image; hover
+        // dims via brightness since the background is an image, not a color.
+        default:
+          'bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95',
         destructive:
           'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
+        // Dark fill uses card (#282a2b) rather than input — input is the dark
+        // inset-well tone for form fields; buttons are raised surfaces. The
+        // border keeps the default --color-border token in BOTH modes (no
+        // dark:border-card override): dialogs/cards paint bg-card, and a
+        // card-colored border vanishes there, leaving an unintentional-looking
+        // shadow-only edge.
         outline:
-          'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50',
+          'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-card/30 dark:hover:bg-card/50',
         secondary: 'bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80',
         ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
         link: 'text-primary underline-offset-4 hover:underline',
@@ -40,6 +50,12 @@ const buttonVariants = cva(
     },
   },
 )
+
+/** Compact 32px muted icon action (panel-header close/X, kebab menus). Pair
+ *  with `variant="ghost" size="icon"`. The svg rule bumps icons to 20px unless
+ *  the icon carries its own explicit `size-*` class. */
+export const mutedIconButtonClass =
+  "size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground [&_svg:not([class*='size-'])]:size-5"
 
 const Button = ({
   className,

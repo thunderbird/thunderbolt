@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router'
  * remote-acp agents own their own model selection upstream, so it is hidden for
  * them (mirroring {@link ChatModePicker}).
  *
- * Uses the `bordered` ModelSelector variant so it visually pairs with the
+ * Uses the `composer` ModelSelector variant so it visually pairs with the
  * ModeSelector sitting beside it, and mirrors its open direction (down on
  * desktop, up on mobile) so the two dropdowns stay consistent.
  */
@@ -34,14 +34,14 @@ export const ChatModelPicker = () => {
 
   return (
     <ModelSelector
-      variant="bordered"
+      variant="composer"
       models={models}
       selectedModel={selectedModel ?? null}
       chatThread={chatThread ?? null}
       onModelChange={handleModelChange}
       onAddModels={() => navigate('/settings/models')}
       side={isMobile ? 'top' : 'bottom'}
-      align="start"
+      align="end"
     />
   )
 }

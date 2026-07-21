@@ -15,13 +15,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import type { Skill } from '@/types'
+import { skillDisplayName } from './display'
 
 export type DependentsAction = 'disable' | 'delete'
-
-const verbLower: Record<DependentsAction, string> = {
-  disable: 'disable',
-  delete: 'delete',
-}
 
 const verbLabel: Record<DependentsAction, string> = {
   disable: 'Disable',
@@ -40,6 +36,7 @@ export const DependentsDialog = ({
   open: boolean
   onOpenChange: (open: boolean) => void
   action: DependentsAction
+  /** Human display name of the skill being disabled/deleted. */
   targetName: string
   dependents: Skill[]
   onConfirm: () => void
@@ -49,11 +46,12 @@ export const DependentsDialog = ({
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>
-          {verbLabel[action]} /{targetName}?
+          {verbLabel[action]} {targetName}?
         </AlertDialogTitle>
         <AlertDialogDescription>
-          {dependents.length === 1 ? 'One skill references' : `${dependents.length} skills reference`} this. If you{' '}
-          {verbLower[action]} it, they may no longer resolve:
+          {dependents.length === 1
+            ? `One skill references this. If you ${action} it, that skill may no longer resolve:`
+            : `${dependents.length} skills reference this. If you ${action} it, they may no longer resolve:`}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <ul className="flex flex-col gap-1.5">
@@ -62,10 +60,10 @@ export const DependentsDialog = ({
             <button
               type="button"
               onClick={() => onJumpToDependent(dep.id)}
-              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
+              className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
             >
-              <span>/{dep.name}</span>
-              <ArrowRight size={14} className="text-muted-foreground" />
+              <span className="min-w-0 truncate">{skillDisplayName(dep)}</span>
+              <ArrowRight size={14} className="shrink-0 text-muted-foreground" />
             </button>
           </li>
         ))}

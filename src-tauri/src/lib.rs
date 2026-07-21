@@ -61,6 +61,13 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         builder = builder.plugin(tauri_plugin_devtools::init());
     }
 
+    // macOS window vibrancy is configured declaratively in tauri.conf.json
+    // (`windowEffects: hudWindow` + `transparent` + `macOSPrivateApi`); the
+    // frontend keeps the main content pane opaque and paints the left sidebar
+    // translucent so only it reads as glass (see `.mac-vibrancy` in
+    // src/index.css). `followsWindowActiveState` flattens the blur while the
+    // window is inactive, matching native macOS apps.
+
     // Frameless main window on Windows/Linux. macOS keeps `titleBarStyle: Overlay`
     // from tauri.conf.json to preserve native traffic lights; setting
     // `decorations: false` in the JSON would override Overlay and remove them,

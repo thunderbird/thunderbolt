@@ -14,6 +14,7 @@ import {
 const skill = (id: string, name: string): Skill => ({
   id,
   name,
+  label: null,
   description: 'd',
   instruction: 'i',
   enabled: 1,
@@ -32,16 +33,16 @@ describe('skillsViewReducer', () => {
     it('sets active and slides the panel in on mobile', () => {
       const next = skillsViewReducer(initialSkillsViewState, { type: 'SELECT_SKILL', id: 'a' })
       expect(next.activeId).toBe('a')
-      expect(next.mobileView).toBe('panel')
+      expect(next.panelView).toBe('panel')
     })
   })
 
   describe('START_CREATE / START_EDIT', () => {
-    it('enters create mode and clears any prior name error', () => {
-      const next = run([{ type: 'SET_NAME_ERROR', message: 'old' }, { type: 'START_CREATE' }])
+    it('enters create mode and clears any prior slug error', () => {
+      const next = run([{ type: 'SET_SLUG_ERROR', message: 'old' }, { type: 'START_CREATE' }])
       expect(next.mode).toBe('create')
-      expect(next.nameError).toBeNull()
-      expect(next.mobileView).toBe('panel')
+      expect(next.slugError).toBeNull()
+      expect(next.panelView).toBe('panel')
     })
 
     it('enters edit mode for a specific id', () => {
@@ -90,7 +91,7 @@ describe('skillsViewReducer', () => {
         mode: 'edit',
         activeId: 'a',
         isDirty: true,
-        nameError: 'stale',
+        slugError: 'stale',
         resetSignal: 3,
       }
       const next = skillsViewReducer(editing, {
@@ -100,9 +101,65 @@ describe('skillsViewReducer', () => {
       })
       expect(next.mode).toBe('detail')
       expect(next.isDirty).toBe(false)
-      expect(next.nameError).toBeNull()
+      expect(next.slugError).toBeNull()
       expect(next.resetSignal).toBe(4)
       expect(next.pendingLeave).toBeNull()
+    })
+
+    it('on desktop cancel, keeps the panel open (it shows the detail view)', () => {
+      const editing: SkillsViewState = {
+        ...initialSkillsViewState,
+        mode: 'edit',
+        activeId: 'a',
+        panelView: 'panel',
+      }
+      const next = skillsViewReducer(editing, {
+        type: 'PERFORM_LEAVE',
+        leave: { type: 'cancel' },
+        isMobile: false,
+      })
+      expect(next.panelView).toBe('panel')
+    })
+
+    it('an edit intent lands in a fresh edit form on the target skill', () => {
+      const creating: SkillsViewState = {
+        ...initialSkillsViewState,
+        mode: 'create',
+        isDirty: true,
+        panelView: 'list',
+        resetSignal: 1,
+      }
+      const next = skillsViewReducer(creating, {
+        type: 'PERFORM_LEAVE',
+        leave: { type: 'edit', id: 'b' },
+        isMobile: false,
+      })
+      expect(next.mode).toBe('edit')
+      expect(next.activeId).toBe('b')
+      expect(next.panelView).toBe('panel')
+      expect(next.isDirty).toBe(false)
+      expect(next.resetSignal).toBe(2)
+    })
+
+    it('a create intent lands in a blank create form', () => {
+      const editing: SkillsViewState = {
+        ...initialSkillsViewState,
+        mode: 'edit',
+        activeId: 'a',
+        isDirty: true,
+        createInitialName: 'stale',
+        panelView: 'panel',
+      }
+      const next = skillsViewReducer(editing, {
+        type: 'PERFORM_LEAVE',
+        leave: { type: 'create' },
+        isMobile: false,
+      })
+      expect(next.mode).toBe('create')
+      // The prior edit target stays active — SUBMIT_SUCCESS overwrites it.
+      expect(next.activeId).toBe('a')
+      expect(next.createInitialName).toBeNull()
+      expect(next.panelView).toBe('panel')
     })
 
     it('clears createInitialName so the next START_CREATE starts blank again', () => {
@@ -120,14 +177,14 @@ describe('skillsViewReducer', () => {
         ...initialSkillsViewState,
         mode: 'edit',
         activeId: 'a',
-        mobileView: 'panel',
+        panelView: 'panel',
       }
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
         leave: { type: 'cancel' },
         isMobile: true,
       })
-      expect(next.mobileView).toBe('list')
+      expect(next.panelView).toBe('list')
     })
 
     it('on mobile select, stays on the panel (the user is jumping skills, not leaving)', () => {
@@ -135,7 +192,7 @@ describe('skillsViewReducer', () => {
         ...initialSkillsViewState,
         mode: 'edit',
         activeId: 'a',
-        mobileView: 'panel',
+        panelView: 'panel',
       }
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
@@ -143,7 +200,7 @@ describe('skillsViewReducer', () => {
         isMobile: true,
       })
       expect(next.activeId).toBe('b')
-      expect(next.mobileView).toBe('panel')
+      expect(next.panelView).toBe('panel')
     })
   })
 
@@ -181,20 +238,22 @@ describe('skillsViewReducer', () => {
         ...initialSkillsViewState,
         pendingDependents: { action: 'disable', skill: skill('a', 'foo'), dependents: [skill('b', 'bar')] },
       }
-      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b', isMobile: false })
+      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b' })
       expect(next.mode).toBe('edit')
       expect(next.activeId).toBe('b')
       expect(next.pendingDependents).toBeNull()
     })
 
-    it('on mobile jump-to-dependent, also slides the panel in so the edit form is visible', () => {
+    it('opens the panel so the edit form is visible even when jumping from a list-row action', () => {
+      // The dependents dialog can open from the list (panelView 'list') on
+      // both mobile and desktop — the jump must reveal the edit surface.
       const open: SkillsViewState = {
         ...initialSkillsViewState,
-        mobileView: 'list',
+        panelView: 'list',
         pendingDependents: { action: 'delete', skill: skill('a', 'foo'), dependents: [skill('b', 'bar')] },
       }
-      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b', isMobile: true })
-      expect(next.mobileView).toBe('panel')
+      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b' })
+      expect(next.panelView).toBe('panel')
     })
   })
 
@@ -210,14 +269,14 @@ describe('skillsViewReducer', () => {
         mode: 'edit',
         activeId: 'a',
         isDirty: true,
-        nameError: 'taken',
+        slugError: 'taken',
         resetSignal: 1,
       }
       const next = skillsViewReducer(editing, { type: 'SUBMIT_SUCCESS', activeId: 'new-id' })
       expect(next.mode).toBe('detail')
       expect(next.activeId).toBe('new-id')
       expect(next.isDirty).toBe(false)
-      expect(next.nameError).toBeNull()
+      expect(next.slugError).toBeNull()
       expect(next.resetSignal).toBe(2)
     })
 
@@ -233,19 +292,42 @@ describe('skillsViewReducer', () => {
   })
 
   describe('error states', () => {
-    it('SET_NAME_ERROR stores the message', () => {
-      const next = skillsViewReducer(initialSkillsViewState, { type: 'SET_NAME_ERROR', message: 'bad name' })
-      expect(next.nameError).toBe('bad name')
+    it('SET_SLUG_ERROR stores the message', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'SET_SLUG_ERROR', message: 'bad name' })
+      expect(next.slugError).toBe('bad name')
     })
 
-    it('CLEAR_NAME_ERROR drops a stale name error', () => {
-      const withName = skillsViewReducer(initialSkillsViewState, { type: 'SET_NAME_ERROR', message: 'taken' })
-      const cleared = skillsViewReducer(withName, { type: 'CLEAR_NAME_ERROR' })
-      expect(cleared.nameError).toBeNull()
+    it('SET_SLUG_ERROR replaces a stale generic submit error', () => {
+      const failed = skillsViewReducer(initialSkillsViewState, { type: 'SUBMIT_FAILED', message: 'save failed' })
+      const next = skillsViewReducer(failed, { type: 'SET_SLUG_ERROR', message: 'taken' })
+      expect(next.slugError).toBe('taken')
+      expect(next.submitError).toBeNull()
     })
 
-    it('CLEAR_NAME_ERROR is a no-op (same reference) when there is no error', () => {
-      const next = skillsViewReducer(initialSkillsViewState, { type: 'CLEAR_NAME_ERROR' })
+    it('SUBMIT_FAILED stores the generic message and keeps the form state intact', () => {
+      const editing: SkillsViewState = { ...initialSkillsViewState, mode: 'edit', activeId: 'a', isDirty: true }
+      const next = skillsViewReducer(editing, { type: 'SUBMIT_FAILED', message: 'save failed' })
+      expect(next.submitError).toBe('save failed')
+      expect(next.mode).toBe('edit')
+      expect(next.isDirty).toBe(true)
+    })
+
+    it('SUBMIT_SUCCESS and PERFORM_LEAVE clear a stale submit error', () => {
+      const failed = skillsViewReducer(initialSkillsViewState, { type: 'SUBMIT_FAILED', message: 'save failed' })
+      expect(skillsViewReducer(failed, { type: 'SUBMIT_SUCCESS', activeId: 'a' }).submitError).toBeNull()
+      expect(
+        skillsViewReducer(failed, { type: 'PERFORM_LEAVE', leave: { type: 'cancel' }, isMobile: false }).submitError,
+      ).toBeNull()
+    })
+
+    it('CLEAR_SLUG_ERROR drops a stale slug error', () => {
+      const withName = skillsViewReducer(initialSkillsViewState, { type: 'SET_SLUG_ERROR', message: 'taken' })
+      const cleared = skillsViewReducer(withName, { type: 'CLEAR_SLUG_ERROR' })
+      expect(cleared.slugError).toBeNull()
+    })
+
+    it('CLEAR_SLUG_ERROR is a no-op (same reference) when there is no error', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'CLEAR_SLUG_ERROR' })
       // Reference equality keeps unrelated subscribers from re-rendering on
       // every keystroke once the error is already gone.
       expect(next).toBe(initialSkillsViewState)
@@ -254,9 +336,9 @@ describe('skillsViewReducer', () => {
 
   describe('BACK_TO_LIST', () => {
     it('slides the panel back to the list on mobile', () => {
-      const panel: SkillsViewState = { ...initialSkillsViewState, mobileView: 'panel' }
+      const panel: SkillsViewState = { ...initialSkillsViewState, panelView: 'panel' }
       const next = skillsViewReducer(panel, { type: 'BACK_TO_LIST' })
-      expect(next.mobileView).toBe('list')
+      expect(next.panelView).toBe('list')
     })
   })
 })

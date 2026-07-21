@@ -12,7 +12,19 @@ import type { FC } from 'react'
  * @example
  *   <StatusIndicator status="online" />
  */
-export type StatusState = 'online' | 'offline' | 'connected' | 'disconnected' | 'connecting' | 'error' | 'neutral'
+/** Every visualisable state, in display order — the type derives from this
+ *  array so stories/docs that enumerate states can't silently miss one. */
+export const statusStates = [
+  'online',
+  'offline',
+  'connected',
+  'disconnected',
+  'connecting',
+  'error',
+  'neutral',
+] as const
+
+export type StatusState = (typeof statusStates)[number]
 
 export type StatusIndicatorProps = {
   /**

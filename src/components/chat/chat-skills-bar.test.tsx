@@ -3,16 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import type { Skill } from '@/types'
 import { ChatSkillsBar } from './chat-skills-bar'
 
 const skill = (id: string, name: string): Skill => ({
   id,
   name,
+  label: null,
   description: `desc for ${name}`,
   instruction: `instruction for ${name}`,
   enabled: 1,
@@ -73,41 +75,47 @@ describe('ChatSkillsBar', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders one chip per pinned skill plus the "Pin a skill" trigger', () => {
-    const a = skill('a', 'daily-brief')
+  it('renders one chip per pinned skill plus the "Add a skill" trigger', () => {
+    // Chips show the display name (label) when present; label-less legacy
+    // rows fall back to a title-cased slug — no leading slash either way.
+    const a = { ...skill('a', 'daily-brief'), label: 'Daily Brief' }
     const b = skill('b', 'important-emails')
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [a, b] }),
       useLibrarySkills: fakeUseLibrarySkills([a, b]),
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a', 'b'])),
     })
-    expect(screen.getByText('/daily-brief')).toBeTruthy()
-    expect(screen.getByText('/important-emails')).toBeTruthy()
-    expect(screen.getByLabelText('Pin a skill')).toBeTruthy()
+    expect(screen.getByText('Daily Brief')).toBeTruthy()
+    expect(screen.getByText('Important Emails')).toBeTruthy()
+    expect(screen.getByLabelText('Add a skill')).toBeTruthy()
   })
 
-  it('renders the "+ Pin a skill" trigger even when nothing is pinned, so long as the library has pin candidates', () => {
+  it('renders the "+ Add a skill" trigger even when nothing is pinned, so long as the library has pin candidates', () => {
     const a = skill('a', 'daily-brief')
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [] }),
       useLibrarySkills: fakeUseLibrarySkills([a]),
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
     })
-    expect(screen.getByLabelText('Pin a skill')).toBeTruthy()
+    expect(screen.getByLabelText('Add a skill')).toBeTruthy()
   })
 
-  it('disables the "+ Pin a skill" trigger when every enabled skill is already pinned', () => {
+  it('keeps the "+ Add a skill" trigger clickable when every enabled skill is already pinned (popover still offers New skill)', () => {
     const a = skill('a', 'daily-brief')
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
       useLibrarySkills: fakeUseLibrarySkills([a]),
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
     })
-    const trigger = screen.getByLabelText('Pin a skill') as HTMLButtonElement
-    expect(trigger.disabled).toBe(true)
+    const trigger = screen.getByLabelText('Add a skill') as HTMLButtonElement
+    expect(trigger.disabled).toBe(false)
+
+    fireEvent.click(trigger)
+    expect(screen.getByText('All skills are pinned')).toBeTruthy()
+    expect(screen.getByText('New skill')).toBeTruthy()
   })
 
-  it('disables the "+ Pin a skill" trigger when the pin cap is reached (even with unpinned candidates available)', () => {
+  it('disables the "+ Add a skill" trigger when the pin cap is reached (even with unpinned candidates available)', () => {
     // 10 pinned + 1 unpinned candidate → cap reached. Without this guard the
     // popover would show the candidate but clicking would silently fail
     // because the DAL throws PinLimitExceededError on the 11th pin.
@@ -118,8 +126,35 @@ describe('ChatSkillsBar', () => {
       useLibrarySkills: fakeUseLibrarySkills([...pinnedSkills, candidate]),
       useEnabledSkills: fakeUseEnabledSkills(new Set([...pinnedSkills.map((s) => s.id), 'c'])),
     })
-    const trigger = screen.getByLabelText('Pin a skill') as HTMLButtonElement
+    const trigger = screen.getByLabelText('Add a skill') as HTMLButtonElement
     expect(trigger.disabled).toBe(true)
+  })
+
+  it('navigates to the skill\'s edit form when choosing "Edit skill" from a chip menu', async () => {
+    const a = { ...skill('a', 'daily-brief'), label: 'Daily Brief' }
+    const LocationProbe = () => {
+      const location = useLocation()
+      return <div data-testid="location">{`${location.pathname}|${JSON.stringify(location.state)}`}</div>
+    }
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <ChatSkillsBar
+            onAddToChat={() => undefined}
+            onAddInstruction={() => undefined}
+            usePinnedSkills={fakeUsePinnedSkills({ pinned: [a] })}
+            useLibrarySkills={fakeUseLibrarySkills([a])}
+            useEnabledSkills={fakeUseEnabledSkills(new Set(['a']))}
+          />
+          <LocationProbe />
+        </TooltipProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Daily Brief'))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Edit skill')))
+
+    expect(screen.getByTestId('location').textContent).toBe('/settings/skills|{"startEditSkill":"a"}')
   })
 
   // The chip's click → onAddToChat path is exercised end-to-end at the

@@ -7,7 +7,7 @@
  * theme, and skips color when NO_COLOR is set or stdout isn't a TTY.
  */
 
-import { VERSION } from './cli.ts'
+import { cliVersion } from './cli.ts'
 
 /** Whether to emit ANSI color: only on an interactive TTY without NO_COLOR. */
 const useColor = (): boolean => !process.env.NO_COLOR && process.stdout.isTTY === true
@@ -26,7 +26,7 @@ export const bannerText = (): string => {
   const reset = color ? '\x1b[0m' : ''
 
   return (
-    `${bold}${yellow}⚡ thunderbolt${reset} ${dim}v${VERSION}${reset}\n` +
+    `${bold}${yellow}⚡ thunderbolt${reset} ${dim}v${cliVersion}${reset}\n` +
     `${dim}type a task, or 'exit' to quit${reset}`
   )
 }

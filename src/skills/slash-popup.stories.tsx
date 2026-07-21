@@ -4,12 +4,10 @@
 
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { createTestProvider } from '@/test-utils/test-provider'
 import type { Skill } from '@/types'
+import { titleCaseFromSlug } from './display'
 import { SlashPopup } from './slash-popup'
 import type { SlashItem } from './use-slash-command'
-
-const TestProvider = createTestProvider()
 
 const meta = {
   title: 'Skills/SlashPopup',
@@ -25,12 +23,10 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <TestProvider>
-        <div className="relative h-[420px] w-[640px] bg-background p-6">
-          <div className="absolute bottom-6 left-6 right-6 h-12 rounded-lg border border-border bg-card" />
-          <Story />
-        </div>
-      </TestProvider>
+      <div className="relative h-[420px] w-[640px] bg-background p-6">
+        <div className="absolute bottom-6 left-6 right-6 h-12 rounded-lg border border-border bg-card" />
+        <Story />
+      </div>
     ),
   ],
 } satisfies Meta<typeof SlashPopup>
@@ -42,10 +38,12 @@ const skillItem = (id: string, name: string, description: string): SlashItem => 
   kind: 'skill',
   id,
   name,
+  label: titleCaseFromSlug(name),
   description,
   skill: {
     id,
     name,
+    label: titleCaseFromSlug(name),
     description,
     instruction: '',
     enabled: 1,
@@ -64,6 +62,7 @@ const sampleItems: SlashItem[] = [
     kind: 'command',
     id: 'command:research_codebase',
     name: 'research_codebase',
+    label: 'research_codebase',
     description: 'Have the agent explore and summarize the codebase.',
   },
 ]

@@ -48,11 +48,11 @@ export const SlashPopup = ({
     <div
       role="listbox"
       aria-label="Slash commands"
-      // `rounded-2xl` to match the ModeSelector + chip dropdown across the
-      // chat screen. The row highlight below uses `rounded-xl` (one notch
-      // tighter) so the bg-accent fill sits concentrically inside the
-      // `p-1` padding — outer 16px radius minus 4px padding = 12px inner.
-      className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-2xl border border-border bg-card p-1 shadow-lg"
+      // `rounded-xl` (container tier) to match the ModeSelector + chip dropdown
+      // across the chat screen. The row highlight below uses `rounded-lg` (one
+      // notch tighter) so the bg-accent fill sits concentrically inside the
+      // `p-1` padding — outer 12px radius minus 4px padding = 8px inner.
+      className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-xl border border-border bg-card p-1 shadow-lg"
     >
       <ul ref={listRef} className="max-h-64 overflow-y-auto">
         {items.map((item, idx) => (
@@ -66,12 +66,14 @@ export const SlashPopup = ({
                 onSelect(item)
               }}
               onMouseEnter={() => onHover(idx)}
-              className={`flex w-full cursor-pointer flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left transition-colors ${
+              className={`flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
                 idx === highlightedIdx ? 'bg-accent' : 'hover:bg-accent'
               }`}
             >
               <span className="flex items-center gap-1.5">
-                <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{item.name}</span>
+                <span className="truncate text-[length:var(--font-size-body)] text-foreground">
+                  {item.kind === 'command' ? `/${item.name}` : item.label}
+                </span>
                 {item.kind === 'command' && (
                   <span className="max-w-[10rem] shrink-0 truncate rounded-sm border border-border px-1 py-px text-[length:var(--font-size-xs)] text-muted-foreground">
                     {agentName}

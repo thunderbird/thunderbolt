@@ -14,13 +14,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
-import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { needsApiKey } from '@/components/ui/model-selector/model-selector'
 import { Dialog, DialogTrigger } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
@@ -47,7 +46,8 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { http } from '@/lib/http'
-import { AlertTriangle, Check, Cpu, Loader2, Lock, Pen, Plus, Trash2, X } from 'lucide-react'
+import { PrivateBadge } from '@/components/ui/private-badge'
+import { AlertTriangle, Check, Cpu, Loader2, MoreVertical, Plus, SquarePen, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -253,7 +253,6 @@ const formSchema = z
     customModel: z.string().optional(),
     url: z.string().optional(),
     apiKey: z.string().optional(),
-    toolUsage: z.boolean(),
   })
   .refine(
     (data) => {
@@ -470,14 +469,8 @@ const EditModelModal = ({
   </Dialog>
 )
 
-/** Tooltip copy for model row edit/remove actions. Exported for unit tests. */
-export const modelEditTooltip = (isSystemModel: boolean): string =>
-  isSystemModel ? "Built-in models can't be edited" : 'Edit model'
-
-export const modelRemoveTooltip = (isSystemModel: boolean): string =>
-  isSystemModel ? "Built-in models can't be removed" : 'Remove model'
-
-export const modelAddTooltip = (): string => 'Add model'
+/** Copy shown in the actions menu for built-in models. Exported for unit tests. */
+export const systemModelMenuMessage = "Built-in models can't be edited or removed"
 
 export default function ModelsPage() {
   const db = useDatabase()
@@ -506,7 +499,10 @@ export default function ModelsPage() {
         url: values.url || null,
         isSystem: 0,
         enabled: 1,
-        toolUsage: values.toolUsage ? 1 : 0,
+        // Tool use is always on for user-added models; the form no longer
+        // exposes a toggle (the compatibility warning below the model picker
+        // still flags models that may not support it).
+        toolUsage: 1,
         contextWindow: null,
       })
     },
@@ -569,7 +565,6 @@ export default function ModelsPage() {
       customModel: '',
       url: '',
       apiKey: '',
-      toolUsage: true,
     },
   })
 
@@ -821,10 +816,6 @@ export default function ModelsPage() {
         const generatedName = generateModelName(modelId)
         form.setValue('name', generatedName)
       }
-
-      // Set tool usage based on model support
-      const supportsTools = (model as any)?.supports_tools === true
-      form.setValue('toolUsage', supportsTools, { shouldDirty: false })
     }
   }
 
@@ -849,7 +840,6 @@ export default function ModelsPage() {
         shouldDirty: false,
       })
       form.setValue('apiKey', '', { shouldValidate: false, shouldDirty: false })
-      form.setValue('toolUsage', true, { shouldValidate: false, shouldDirty: false })
 
       // Fetch models if we have the necessary credentials
       if (['thunderbolt', 'tinfoil', 'anthropic'].includes(currentProvider)) {
@@ -945,18 +935,11 @@ export default function ModelsPage() {
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="icon" className="rounded-lg" aria-label={modelAddTooltip()}>
-                  <Plus />
-                </Button>
-              </DialogTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>{modelAddTooltip()}</p>
-            </TooltipContent>
-          </Tooltip>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="icon" className="bg-card" aria-label="Add model">
+              <Plus />
+            </Button>
+          </DialogTrigger>
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
@@ -1108,36 +1091,19 @@ export default function ModelsPage() {
 
                 {/* Display Name - Only show when model is selected */}
                 {(watchedModel || selectedModelId === 'custom') && (
-                  <>
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Display Name</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="toolUsage"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <div className="flex items-center gap-3">
-                              <Checkbox checked={field.value} onCheckedChange={field.onChange} id="toolUsage" />
-                              <FormLabel htmlFor="toolUsage">Enable tool use</FormLabel>
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Display Name</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
 
                 {/* Warning when model lacks tool support */}
@@ -1192,24 +1158,12 @@ export default function ModelsPage() {
             <Card key={model.id} className="border border-border">
               <CardHeader className="py-0">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="flex items-center gap-6 min-w-0 flex-1">
                     <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0">
                       {getModelInitial(model)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <CardTitle className="text-lg font-medium flex flex-row items-center gap-2">
-                        {!!model.isConfidential && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Lock className="size-3.5" />
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom">
-                                <p>Encrypted</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
                         {needsApiKey(model) && (
                           <TooltipProvider>
                             <Tooltip>
@@ -1231,89 +1185,58 @@ export default function ModelsPage() {
                         >
                           {model.name}
                         </ModificationIndicator>
+                        {!!model.isConfidential && <PrivateBadge />}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {getProviderDisplay(model.provider)} - {model.model}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div>
-                            <Switch
-                              checked={isEnabled}
-                              onCheckedChange={(checked) =>
-                                toggleModelMutation.mutate({ id: model.id, enabled: checked })
-                              }
-                              className="cursor-pointer"
-                            />
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
+                          <MoreVertical />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-56">
+                        {isSystemModel ? (
+                          <div className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+                            {systemModelMenuMessage}
                           </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p>{isEnabled ? 'Disable model' : 'Enable model'}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    <ButtonGroup size="icon">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex">
-                            <ButtonGroupItem
-                              variant="outline"
-                              onClick={() => setEditingModel(model)}
-                              disabled={isSystemModel}
-                              aria-label={modelEditTooltip(isSystemModel)}
-                            >
-                              <Pen className="h-3 w-3" />
-                            </ButtonGroupItem>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p>{modelEditTooltip(isSystemModel)}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex">
-                            <ButtonGroupItem
-                              variant="outline"
+                        ) : (
+                          <>
+                            <DropdownMenuItem onClick={() => setEditingModel(model)} className="cursor-pointer">
+                              <SquarePen />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
-                              disabled={isSystemModel}
-                              aria-label={modelRemoveTooltip(isSystemModel)}
+                              className="cursor-pointer"
                             >
-                              <Trash2 className="h-3 w-3" />
-                            </ButtonGroupItem>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p>{modelRemoveTooltip(isSystemModel)}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </ButtonGroup>
+                              <Trash2 />
+                              Delete
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Switch
+                      checked={isEnabled}
+                      onCheckedChange={(checked) => toggleModelMutation.mutate({ id: model.id, enabled: checked })}
+                      className="cursor-pointer"
+                      aria-label={isEnabled ? 'Disable model' : 'Enable model'}
+                    />
                   </div>
                 </div>
               </CardHeader>
-              {isEnabled && (
+              {isEnabled && model.url && (
                 <CardContent className="pt-0 border-t">
                   <div className="space-y-3 pt-4">
-                    {model.provider !== 'thunderbolt' && model.apiKey && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">API Key</span>
-                        <span className="text-sm font-mono">{'•'.repeat(8)}</span>
-                      </div>
-                    )}
-                    {model.url && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">URL</span>
-                        <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
-                      </div>
-                    )}
-                    {model.provider === 'thunderbolt' && (
-                      <div className="text-sm text-muted-foreground">Uses Thunderbolt cloud service</div>
-                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">URL</span>
+                      <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
+                    </div>
                   </div>
                 </CardContent>
               )}
@@ -1365,7 +1288,7 @@ export default function ModelsPage() {
                 }
               }}
               disabled={deleteModelMutation.isPending}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
             >
               {deleteModelMutation.isPending ? 'Removing...' : 'Remove'}
             </AlertDialogAction>

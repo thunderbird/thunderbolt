@@ -3,112 +3,64 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+
+import { ThemeProvider } from '@/lib/theme-provider'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { ThemeToggle } from './theme-toggle'
 
-// Mock useTheme hook
-const mockSetTheme = mock()
-let mockTheme = 'system'
-
-mock.module('@/lib/theme-provider', () => ({
-  useTheme: () => ({
-    theme: mockTheme,
-    setTheme: mockSetTheme,
-  }),
-}))
+// Rendered under the REAL ThemeProvider — mocking `@/lib/theme-provider` with
+// `mock.module` is process-global and breaks sibling suites (the group picker
+// test) under `--randomize`. Theme state is driven through the settings store.
+const renderToggle = (theme: 'light' | 'dark' | 'system') => {
+  useLocalSettingsStore.getState().setLocalSetting('theme', theme)
+  return render(
+    <ThemeProvider>
+      <ThemeToggle />
+    </ThemeProvider>,
+  )
+}
 
 describe('ThemeToggle', () => {
   beforeEach(() => {
-    mockTheme = 'system'
-    mockSetTheme.mockClear()
+    useLocalSettingsStore.getState().setLocalSetting('theme', 'system')
   })
 
   afterEach(() => {
-    mockSetTheme.mockClear()
+    cleanup()
+    // Don't leak a persisted theme into other suites.
+    useLocalSettingsStore.getState().setLocalSetting('theme', 'system')
+    document.documentElement.classList.remove('light', 'dark')
   })
 
-  describe('rendering', () => {
-    it('renders all theme options', () => {
-      render(<ThemeToggle />)
+  it('labels the button with the action it performs', () => {
+    renderToggle('dark')
 
-      expect(screen.getByRole('radio', { name: 'Light mode' })).toBeInTheDocument()
-      expect(screen.getByRole('radio', { name: 'Dark mode' })).toBeInTheDocument()
-      expect(screen.getByRole('radio', { name: 'System theme' })).toBeInTheDocument()
-    })
-
-    it('displays theme labels', () => {
-      render(<ThemeToggle />)
-
-      expect(screen.getByText('Light')).toBeInTheDocument()
-      expect(screen.getByText('Dark')).toBeInTheDocument()
-      expect(screen.getByText('System')).toBeInTheDocument()
-    })
+    expect(screen.getByRole('button', { name: 'Switch to system theme' })).toBeInTheDocument()
   })
 
-  describe('theme selection', () => {
-    it('calls setTheme when selecting light theme', () => {
-      render(<ThemeToggle />)
+  it('cycles light → dark', () => {
+    renderToggle('light')
 
-      fireEvent.click(screen.getByRole('radio', { name: 'Light mode' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to dark theme' }))
 
-      expect(mockSetTheme).toHaveBeenCalledWith('light')
-    })
-
-    it('calls setTheme when selecting dark theme', () => {
-      render(<ThemeToggle />)
-
-      fireEvent.click(screen.getByRole('radio', { name: 'Dark mode' }))
-
-      expect(mockSetTheme).toHaveBeenCalledWith('dark')
-    })
-
-    it('calls setTheme when selecting system theme', () => {
-      mockTheme = 'light'
-      render(<ThemeToggle />)
-
-      fireEvent.click(screen.getByRole('radio', { name: 'System theme' }))
-
-      expect(mockSetTheme).toHaveBeenCalledWith('system')
-    })
+    expect(useLocalSettingsStore.getState().theme).toBe('dark')
   })
 
-  describe('deselection prevention', () => {
-    /**
-     * This test verifies the fix for a bug where rapidly clicking themes would crash the app.
-     *
-     * Root cause: Radix UI's ToggleGroup with type="single" allows deselection - clicking
-     * the currently active item emits an empty string "" to onValueChange. This empty string
-     * would flow through to theme-provider.tsx where root.classList.add("") throws a
-     * DOMException because classList doesn't accept empty tokens.
-     *
-     * The fix adds a guard: if (!value) return
-     */
-    it('does not call setTheme when clicking the already-selected theme (deselection attempt)', () => {
-      mockTheme = 'dark'
-      render(<ThemeToggle />)
+  it('cycles dark → system', () => {
+    renderToggle('dark')
 
-      // Click the already-selected "dark" option - this triggers Radix's deselection
-      // which calls onValueChange with an empty string
-      fireEvent.click(screen.getByRole('radio', { name: 'Dark mode' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to system theme' }))
 
-      // setTheme should NOT be called because the guard prevents empty values
-      expect(mockSetTheme).not.toHaveBeenCalled()
-    })
+    expect(useLocalSettingsStore.getState().theme).toBe('system')
+  })
 
-    it('does not call setTheme with empty string on rapid clicking', () => {
-      mockTheme = 'light'
-      render(<ThemeToggle />)
+  it('cycles system → light', () => {
+    renderToggle('system')
 
-      // Simulate rapid clicking that could trigger deselection
-      const lightButton = screen.getByRole('radio', { name: 'Light mode' })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to light theme' }))
 
-      fireEvent.click(lightButton)
-      fireEvent.click(lightButton)
-      fireEvent.click(lightButton)
-
-      // None of these clicks should have called setTheme since light is already selected
-      expect(mockSetTheme).not.toHaveBeenCalled()
-    })
+    expect(useLocalSettingsStore.getState().theme).toBe('light')
   })
 })

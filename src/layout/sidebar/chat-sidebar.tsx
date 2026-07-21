@@ -10,16 +10,20 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
-  SidebarSeparator,
+  SidebarMenuButton,
+  SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
+import { cn } from '@/lib/utils'
+import { CheckSquare, MessageCirclePlus } from 'lucide-react'
 import type { MouseEvent, RefObject } from 'react'
 import { useLocation } from 'react-router'
 import { ChatList } from './chat-list'
-import { NavigationMenu } from './navigation-menu'
+import { SidebarNavToggle } from './nav-toggle'
+import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
-import type { ChatThread } from './types'
+import type { ChatThread, SidebarSection } from './types'
 
 type ChatSidebarContentProps = {
   isMobile: boolean
@@ -36,12 +40,14 @@ type ChatSidebarContentProps = {
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   threadIdRef: RefObject<string | null>
   showTasks: boolean
+  activeSection: SidebarSection
+  onSectionChange: (section: SidebarSection) => void
   onCreateNewChat: () => void
+  onTasksClick: () => void
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: (e?: MouseEvent) => void
   onSearchQueryChange: (value: string) => void
-  onSettingsClick: () => void
 }
 
 export const ChatSidebarContent = ({
@@ -59,35 +65,60 @@ export const ChatSidebarContent = ({
   deleteChatDialogRef,
   threadIdRef,
   showTasks,
+  activeSection,
+  onSectionChange,
   onCreateNewChat,
+  onTasksClick,
   onChatClick,
   onRename,
   onSearchClick,
   onSearchQueryChange,
-  onSettingsClick,
 }: ChatSidebarContentProps) => {
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
 
   return (
     <SidebarContent className="flex flex-col h-full overflow-hidden">
-      <SidebarHeader onToggle={toggleSidebar} />
+      <SidebarHeader
+        onToggle={toggleSidebar}
+        navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
+      />
 
-      <SidebarGroup className="flex-shrink-0">
-        <SidebarGroupContent>
+      {/* Collapsed: pb-0 so SidebarContent's gap-2 alone spaces the divider
+          below; pt-2 gives the nav toggle the same 8px above as the rail's
+          p-2 leaves on its sides. */}
+      <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pt-2 pb-0')}>
+        <SidebarGroupContent className="flex flex-col gap-2">
+          {isCollapsed && <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />}
           <SidebarMenu>
-            <NavigationMenu
-              isMobile={isMobile}
-              currentPath={location.pathname}
-              showTasks={showTasks}
-              onCreateNewChat={onCreateNewChat}
-              onSettingsClick={onSettingsClick}
-            />
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={onCreateNewChat}
+                tooltip="New Chat"
+                className="cursor-pointer"
+                isActive={location.pathname === '/chats/new'}
+              >
+                <MessageCirclePlus className="size-[var(--icon-size-default)]" />
+                <span>New Chat</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {showTasks && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={onTasksClick}
+                  tooltip="Tasks"
+                  className="cursor-pointer"
+                  isActive={location.pathname.startsWith('/tasks')}
+                >
+                  <CheckSquare className="size-[var(--icon-size-default)]" />
+                  <span>Tasks</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
-
-      <SidebarSeparator className="m-0 flex-shrink-0" />
+      {isCollapsed && chatThreads.length > 0 && <RailDivider />}
 
       <ChatList
         chatThreads={chatThreads}
@@ -109,7 +140,10 @@ export const ChatSidebarContent = ({
         onSearchQueryChange={onSearchQueryChange}
       />
 
-      <SidebarFooter className="flex-shrink-0" />
+      <SidebarFooter
+        className="flex-shrink-0"
+        navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
+      />
     </SidebarContent>
   )
 }

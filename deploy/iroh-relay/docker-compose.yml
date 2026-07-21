@@ -17,5 +17,7 @@ services:
     container_name: thunderbolt-iroh-relay
     command: ['--dev']
     ports:
-      - '3340:3340'
+      # Loopback-only: this is a plain-HTTP dev relay — binding 0.0.0.0 would
+      # expose an unauthenticated relay to the LAN.
+      - '127.0.0.1:3340:3340'
     restart: unless-stopped

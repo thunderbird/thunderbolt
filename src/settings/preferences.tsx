@@ -16,18 +16,18 @@ import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { clearLocalData } from '@/lib/cleanup'
+import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
-import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
 import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
+import { ThemeToggleGroup } from '@/components/theme-toggle-group'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
-import { ThemeToggle } from '@/components/theme-toggle'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -147,6 +147,17 @@ export default function PreferencesSettingsPage() {
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
+  const runningInTauri = isTauri()
+  const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
+  const effectiveProxyEnabled = computeEffectiveProxyEnabled(
+    () => runningInTauri,
+    () => proxyEnabledStr,
+  )
+  const proxyDisabled = !runningInTauri || !isAuthenticated
+  const proxyTooltipReason = !runningInTauri
+    ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
+    : 'Sign in to enable cloud proxy.'
+  const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
 
   const { fetchCountryUnits } = useCountryUnits()
 
@@ -155,24 +166,6 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHogClient()
   const telemetryAvailable = useTelemetryAvailable()
-
-  // Network: `proxy_enabled` is device-local (localStorage) because it controls
-  // request transport (privacy on Tauri vs. CORS bypass on Web), not a synced
-  // user preference. Web ignores the stored value — browser CORS forces the
-  // proxy path — so the toggle is UI-disabled with an explanatory tooltip.
-  const onTauri = isTauri()
-  const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
-  const effectiveProxyEnabled = computeEffectiveProxyEnabled(
-    () => onTauri,
-    () => proxyEnabledStr,
-  )
-  const proxyDisabled = !onTauri || !isAuthenticated
-  const tooltipReason = !onTauri
-    ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
-    : 'Sign in to enable cloud proxy.'
-  // When the toggle is auth-disabled, render it as OFF so the UI honestly reflects
-  // that the user can't use the proxy until they sign in.
-  const proxyChecked = proxyDisabled && onTauri ? false : effectiveProxyEnabled
 
   const httpClient = useHttpClient()
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
@@ -521,7 +514,7 @@ export default function PreferencesSettingsPage() {
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Theme</label>
-            <ThemeToggle />
+            <ThemeToggleGroup />
           </div>
 
           <div className="h-px bg-border -mx-6" />
@@ -778,42 +771,6 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Network">
-        <div className="flex flex-row items-center gap-4">
-          <div className="flex-1">
-            <label className="text-sm font-medium">Use Cloud Proxy</label>
-            <p className="text-sm text-muted-foreground">
-              When enabled, requests are routed through Thunderbolt's cloud proxy.
-            </p>
-          </div>
-          {proxyDisabled ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0} aria-label={tooltipReason}>
-                  <Switch
-                    checked={proxyChecked}
-                    disabled
-                    aria-label="Use Cloud Proxy"
-                    className="pointer-events-none"
-                  />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                <p>{tooltipReason}</p>
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <Switch
-              checked={proxyChecked}
-              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
-              aria-label="Use Cloud Proxy"
-            />
-          )}
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
       <SectionCard title="Help Thunderbolt Improve">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
@@ -878,6 +835,42 @@ export default function PreferencesSettingsPage() {
               aria-label="Anonymous Usage Data"
             />
           </div>
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Network">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">Use Cloud Proxy</label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, requests are routed through Thunderbolt's cloud proxy.
+            </p>
+          </div>
+          {proxyDisabled ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} aria-label={proxyTooltipReason}>
+                  <Switch
+                    checked={proxyChecked}
+                    disabled
+                    aria-label="Use Cloud Proxy"
+                    className="pointer-events-none"
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>{proxyTooltipReason}</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Switch
+              checked={proxyChecked}
+              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+              aria-label="Use Cloud Proxy"
+            />
+          )}
         </div>
       </SectionCard>
 
@@ -1000,10 +993,7 @@ export default function PreferencesSettingsPage() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleResetDatabase}
-                        className="bg-destructive text-white hover:bg-destructive/90"
-                      >
+                      <AlertDialogAction onClick={handleResetDatabase} variant="destructive">
                         Reset Database
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -1029,7 +1019,9 @@ export default function PreferencesSettingsPage() {
                 )}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="destructive" disabled={isDeletingAccount}>
+                    {/* Secondary on the page; the red danger styling lives on the
+                        confirm button inside the dialog. */}
+                    <Button variant="secondary" disabled={isDeletingAccount}>
                       {isDeletingAccount ? 'Deleting...' : 'Delete My Account'}
                     </Button>
                   </AlertDialogTrigger>
@@ -1043,10 +1035,7 @@ export default function PreferencesSettingsPage() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleDeleteAccount}
-                        className="bg-destructive text-white hover:bg-destructive/90"
-                      >
+                      <AlertDialogAction onClick={handleDeleteAccount} variant="destructive">
                         Delete account
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -1087,7 +1076,7 @@ export default function PreferencesSettingsPage() {
           {pendingImport?.accountMismatch && (
             <p className="text-sm text-destructive font-medium" role="alert">
               ⚠ This export was made by a different account ({pendingImport.sourceEmail}). Importing it here will mix
-              that data into your account — confirm only if you intend to.
+              that data into your account. Confirm only if you intend to.
             </p>
           )}
           {importError && (
@@ -1101,7 +1090,7 @@ export default function PreferencesSettingsPage() {
               onClick={handleConfirmImport}
               disabled={isImporting}
               aria-busy={isImporting}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
             >
               {isImporting ? 'Importing...' : 'Import'}
             </AlertDialogAction>

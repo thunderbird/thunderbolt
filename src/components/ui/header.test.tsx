@@ -44,9 +44,8 @@ const desktopWidth = 1024
 
 /** Forces `useIsMobile` (a `matchMedia` reader) to report mobile so `Header`
  *  renders its mobile layout, which centers the agent selector this suite
- *  asserts on. The wrapper still provides the desktop-only `PowerSyncStatus`
- *  tree (see `TestWrapper`) so the test passes in either layout — `useIsMobile`
- *  is global and a sibling suite may `mock.module` it to report desktop. */
+ *  asserts on — `useIsMobile` is global and a sibling suite may `mock.module`
+ *  it to report desktop. */
 const forceMobileViewport = () => window.happyDOM?.setViewport({ width: 375 })
 
 /** A custom (synced) agent the thread is pinned to. */
@@ -67,8 +66,8 @@ const customAgent: Agent = {
 /** Wraps the component in everything `Header` touches: a router (it reads
  *  `location.pathname`), the sidebar context (`useSidebar`), the DAL/query
  *  providers so `useAllAgents` can run against the test database, and the
- *  sign-in modal context that the desktop layout's `PowerSyncStatus` requires —
- *  so the suite is robust whether `Header` renders its mobile or desktop branch. */
+ *  sign-in modal context — so the suite is robust whether `Header` renders its
+ *  mobile or desktop branch. */
 const TestWrapper = ({ children }: { children: ReactNode }) => {
   const Provider = createTestProvider()
   return (

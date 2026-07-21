@@ -45,4 +45,20 @@ describe('appendSlashToken', () => {
     // The last token is `/foo`, the new token is `/bar` — append.
     expect(appendSlashToken('/foo', 'bar')).toBe('/foo /bar ')
   })
+
+  it('handles multi-word display titles as a single token', () => {
+    expect(appendSlashToken('', 'Daily Brief')).toBe('/Daily Brief ')
+    expect(appendSlashToken('hi there', 'Daily Brief')).toBe('hi there /Daily Brief ')
+  })
+
+  it('is a no-op when the input already ends with the multi-word display token', () => {
+    expect(appendSlashToken('/Daily Brief ', 'Daily Brief')).toBe('/Daily Brief ')
+    expect(appendSlashToken('hi /Daily Brief', 'Daily Brief')).toBe('hi /Daily Brief ')
+  })
+
+  it('requires a token boundary — a mid-word slash suffix is not the token', () => {
+    // "prefix/name" ends with "/name" but the `/` is glued to "prefix", so
+    // this is prose containing a path, not an existing token — append.
+    expect(appendSlashToken('prefix/name', 'name')).toBe('prefix/name /name ')
+  })
 })

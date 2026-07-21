@@ -12,9 +12,10 @@ import { useHttpClient } from '@/contexts'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
+import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
-import { ArrowLeft, CheckCircle, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useRef } from 'react'
 
 type SyncSetupModalProps = {
@@ -208,7 +209,7 @@ const IntroStep = ({ onContinue, isLoading }: { onContinue: () => void; isLoadin
       </IconCircle>
       <h2 className="text-2xl font-bold">Set up sync</h2>
       <p className="text-muted-foreground">
-        Keep your data in sync across all your devices. Everything is encrypted end-to-end — only your devices can read
+        Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read
         your data.
       </p>
     </div>
@@ -283,8 +284,8 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
         a recovery key to keep safe.
       </p>
       <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
-        Please store your recovery key somewhere safe — you&apos;ll need it to access your data if you ever lose all
-        your devices.
+        Please store your recovery key somewhere safe. You&apos;ll need it to access your data if you ever lose all your
+        devices.
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
@@ -335,9 +336,7 @@ const DeniedStep = ({ onRetry }: { onRetry: () => void }) => (
 const SetupCompleteStep = ({ onDone }: { onDone: () => void }) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">
-      <IconCircle>
-        <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
-      </IconCircle>
+      <GradientCircleCheck className="mx-auto h-12 w-12" />
       <h2 className="text-2xl font-bold">You&apos;re all set!</h2>
       <p className="text-muted-foreground">
         This device has been approved and sync is now enabled across your devices.

@@ -2,16 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { GradientLock } from '@/components/ui/gradient-lock'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { Lock, Star, Zap } from 'lucide-react'
+import { Star, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { SearchableMenu } from './searchable-menu'
 import type { SearchableMenuGroup, SearchableMenuItem } from './types'
 
 const meta = {
-  title: 'components/ui/SearchableMenu',
+  title: 'UI/SearchableMenu',
   component: SearchableMenu,
   parameters: {
     layout: 'centered',
@@ -47,7 +48,7 @@ const itemsWithIcons: SearchableMenuItem[] = [
     id: 'secure',
     label: 'Secure Model',
     description: 'End-to-end encrypted',
-    icon: <Lock className="size-4 text-green-500" />,
+    icon: <GradientLock className="size-4" />,
   },
   {
     id: 'premium',
@@ -262,7 +263,7 @@ const itemsWithDisabledReasons: SearchableMenuItem<DisabledItemData>[] = [
     id: 'encrypted',
     label: 'Encrypted Model',
     description: 'End-to-end encrypted',
-    icon: <Lock className="size-4 text-green-500" />,
+    icon: <GradientLock className="size-4" />,
     disabled: true,
     data: { disabledReason: 'This model is only available in encrypted chats' },
   },

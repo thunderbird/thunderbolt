@@ -49,34 +49,6 @@ describe('Ask — display', () => {
     expect(document.body.textContent ?? '').not.toMatch(/not quite|incorrect/i)
   })
 
-  it('free mode: captures typed text and shows a sample answer', () => {
-    const onSubmit = mock((_: AskSubmission) => {})
-    render(
-      <Ask
-        prompt="Summarize this thread in your own words."
-        mode="free"
-        options={[]}
-        explanation="A concise recap of the key points."
-        onSubmit={onSubmit}
-      />,
-    )
-
-    const textarea = screen.getByPlaceholderText('Type your answer…')
-    fireEvent.change(textarea, { target: { value: 'The team agreed to ship Friday.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
-
-    expect(onSubmit.mock.calls[0][0]).toMatchObject({ text: 'The team agreed to ship Friday.', matched: null })
-    expect(document.body.textContent ?? '').toContain('Sample answer')
-  })
-
-  it('free mode: Submit is disabled until text is entered', () => {
-    render(<Ask prompt="Q" mode="free" options={[]} />)
-    const submit = screen.getByRole('button', { name: 'Submit' }) as HTMLButtonElement
-    expect(submit.disabled).toBe(true)
-    fireEvent.change(screen.getByPlaceholderText('Type your answer…'), { target: { value: 'x' } })
-    expect(submit.disabled).toBe(false)
-  })
-
   it('choice mode: commits immediately on selection with no designated answer', () => {
     const onSubmit = mock((_: AskSubmission) => {})
     render(
@@ -104,18 +76,6 @@ describe('Ask — display', () => {
     const option = screen.getByText('Draft a reply')
     fireEvent.click(option)
     fireEvent.click(option)
-
-    expect(onSubmit).toHaveBeenCalledTimes(1)
-  })
-
-  it('free mode: rapid double-click on Submit commits only once', () => {
-    const onSubmit = mock((_: AskSubmission) => {})
-    render(<Ask prompt="Q" mode="free" options={[]} onSubmit={onSubmit} />)
-
-    fireEvent.change(screen.getByPlaceholderText('Type your answer…'), { target: { value: 'answer' } })
-    const submit = screen.getByRole('button', { name: 'Submit' })
-    fireEvent.click(submit)
-    fireEvent.click(submit)
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })

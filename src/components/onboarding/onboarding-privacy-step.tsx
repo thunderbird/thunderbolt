@@ -7,8 +7,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { Database, EyeOff, ServerOff } from 'lucide-react'
-import { IconCircle } from './icon-circle'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
+import { OnboardingStepHeader } from './onboarding-step-header'
 
 type OnboardingPrivacyStepProps = {
   state: OnboardingState
@@ -26,46 +26,42 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
   }
 
   return (
-    <div className="w-full flex flex-col">
-      <div className="text-center space-y-4">
-        <IconCircle>
-          <AppLogo size={32} />
-        </IconCircle>
-        <h2 className="text-2xl font-bold">
-          Welcome to <b>Thunderbolt</b>!
-        </h2>
-        <p className="text-sm text-muted-foreground">Your privacy-first AI assistant</p>
+    <div className="w-full flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col justify-center">
+        <OnboardingStepHeader
+          icon={<AppLogo size={72} />}
+          title="Welcome to Thunderbolt!"
+          description="Your private AI assistant"
+        />
+
+        <div className="mt-10 rounded-xl bg-muted">
+          <OnboardingFeatureCard
+            icon={ServerOff}
+            title="Zero Logs"
+            description="We don't keep logs of your conversations."
+          />
+
+          <OnboardingFeatureCard
+            icon={EyeOff}
+            title="Zero Training"
+            description="We don't train models on your data."
+          />
+
+          <OnboardingFeatureCard
+            icon={Database}
+            title="Local Storage"
+            description="Data is stored securely on your device."
+          />
+        </div>
       </div>
 
-      <div className="pt-5">
-        <OnboardingFeatureCard
-          className="mb-4"
-          icon={ServerOff}
-          title="Zero Logs"
-          description="We don't keep logs of your conversations."
-        />
-
-        <OnboardingFeatureCard
-          className="mb-4"
-          icon={EyeOff}
-          title="Zero Training"
-          description="We don't train models on your data."
-        />
-
-        <OnboardingFeatureCard
-          icon={Database}
-          title="Local Storage"
-          description="Data is stored securely on your device."
-        />
-      </div>
-
-      <div className="pt-5">
-        <div className="flex items-start gap-3 pl-1">
+      <div>
+        <div className="flex items-center gap-3 pl-1">
           <Checkbox
             id="terms-agreement"
             checked={state.privacyAgreed}
             onCheckedChange={(checked) => handleAgreementChange(checked === true)}
-            className="mt-1.5 scale-130 cursor-pointer"
+            className="scale-130 cursor-pointer"
           />
           <label htmlFor="terms-agreement" className="text-base text-muted-foreground leading-relaxed cursor-pointer">
             I agree to the{' '}

@@ -155,7 +155,7 @@ jobs:
           fi
 
       - name: Install Rust stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           toolchain: stable
           cache: false
@@ -180,7 +180,7 @@ jobs:
           rustup target add x86_64-apple-ios
 
       - name: Select Xcode 26.2
-        uses: mobiledevops/xcode-select-version-action@a58204ef24b6e61857940e51c0e11b0368065b94 # v1
+        uses: mobiledevops/xcode-select-version-action@7b50160de7c8bd6a8c4ee2c2e6b5ee0983886c0b # v1
         with:
           xcode-select-version: '26.2'
 
@@ -196,7 +196,7 @@ jobs:
           echo "✅ Metal Toolchain removed"
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@97ecb7b512899eb71ab1bf2310a624c6f1589ac6 # v1
+        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1
         with:
           ruby-version: '3.0'
           bundler-cache: true

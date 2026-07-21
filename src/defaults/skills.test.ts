@@ -23,8 +23,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 1,
-  hash: '0:01996330-0000-7000-8000-000000000001:wy8tfw|1:01996330-0000-7000-8000-000000000002:75efa',
+  version: 2,
+  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd',
 }
 
 describe('defaultSkills version snapshot', () => {

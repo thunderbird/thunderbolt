@@ -8,13 +8,30 @@ import { getMessage, updateMessageCache } from '@/dal/chat-messages'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Ask, type AskSubmission } from './display'
-import { type AskCacheEntry, type AskData, type AskOption, askStorageKey, turnTextForAnswer } from './lib'
+import { type AskCacheEntry, type AskData, type AskMode, type AskOption, askStorageKey, turnTextForAnswer } from './lib'
 
-type AskWidgetProps = Omit<AskData, 'options'> & {
-  /** Absent for `free` (text-response) prompts; defaults to an empty list. */
+type AskWidgetProps = Omit<AskData, 'mode' | 'options'> & {
+  /** `free` appears only in messages persisted before the mode was removed. */
+  mode: AskMode | 'free'
+  /** Absent on legacy `free` widgets; defaults to an empty list. */
   options?: AskOption[]
   messageId: string
 }
+
+/**
+ * Read-only rendering of a legacy `free` (typed-answer) ask. The mode was
+ * removed from authoring, but historical messages still carry the markup —
+ * show the question and, when the user answered before the removal, their
+ * recorded answer.
+ */
+const LegacyFreeAsk = ({ prompt, savedText }: { prompt: string; savedText: string | null }) => (
+  <div className="my-4 w-full rounded-2xl border border-border bg-card px-4 py-3">
+    <p className="text-[length:var(--font-size-body)]">{prompt}</p>
+    {savedText !== null && (
+      <p className="mt-2 text-[length:var(--font-size-sm)] text-muted-foreground">Answered: “{savedText}”</p>
+    )}
+  </div>
+)
 
 /**
  * Connects the presentational {@link Ask} to the message cache: restores a
@@ -39,20 +56,37 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
     gcTime: Infinity,
   })
 
-  const handleSubmit = async ({ selectedIds, matched, text }: AskSubmission) => {
-    // `free` mode carries a typed answer; option modes map ids back to their texts.
-    const chosen = text !== undefined ? [text] : selectedIds.map((id) => options.find((o) => o.id === id)?.text ?? id)
-    const entry: AskCacheEntry = { prompt, mode, selectedIds, chosen, matched, text }
-    // Persist first so the response is recorded (and restores on reload)
-    // regardless of what follows.
-    await updateMessageCache(db, messageId, storageKey, entry)
+  // Wait for the cached response before seeding the (lazy) initial state, so a
+  // restored prompt doesn't briefly flash as unanswered.
+  if (isPending) {
+    return <div className="my-4 h-40 w-full animate-pulse rounded-2xl border border-border bg-card" />
+  }
+
+  if (mode === 'free') {
+    return <LegacyFreeAsk prompt={prompt} savedText={saved?.text ?? saved?.chosen[0] ?? null} />
+  }
+
+  const handleSubmit = async ({ selectedIds, matched }: AskSubmission) => {
+    const chosen = selectedIds.map((id) => options.find((o) => o.id === id)?.text ?? id)
+    const entry: AskCacheEntry = { prompt, mode, selectedIds, chosen, matched }
+    try {
+      // Persist first so the response is recorded (and restores on reload)
+      // regardless of what follows.
+      await updateMessageCache(db, messageId, storageKey, entry)
+    } catch (error) {
+      // The Ask is invoked fire-and-forget from a click handler, so a
+      // rejection here would otherwise vanish unhandled while the UI already
+      // shows "submitted" — log it; the in-session query cache below still
+      // keeps the answer visible until reload.
+      console.error('Ask widget failed to persist the answer', error)
+    }
     // Keep the (infinitely-cached) query in sync so an unmount/remount in the
     // same session restores the answer instead of re-reading the stale `null`.
     queryClient.setQueryData(queryKey, entry)
 
-    // For `choice`/`free`, dispatch the answer as a normal user turn so the model
-    // acts on / replies to it; graded modes return null (see `turnTextForAnswer`).
-    const turnText = turnTextForAnswer(mode, chosen, text)
+    // For `choice`, dispatch the pick as a normal user turn so the model acts
+    // on it; graded modes return null (see `turnTextForAnswer`).
+    const turnText = turnTextForAnswer(mode, chosen)
     if (turnText) {
       try {
         await chatInstance.sendMessage({ text: turnText })
@@ -64,12 +98,6 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
     }
   }
 
-  // Wait for the cached response before seeding the (lazy) initial state, so a
-  // restored prompt doesn't briefly flash as unanswered.
-  if (isPending) {
-    return <div className="my-4 h-40 w-full animate-pulse rounded-2xl border border-border bg-card" />
-  }
-
   return (
     <Ask
       prompt={prompt}
@@ -77,7 +105,6 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
       options={options}
       explanation={explanation}
       initialSelectedIds={saved?.selectedIds}
-      initialText={saved?.text}
       initialSubmitted={saved !== null}
       onSubmit={handleSubmit}
     />

@@ -63,7 +63,7 @@ type ModificationIndicatorProps = {
 /**
  * Reusable component that shows an underline indicator on text
  * - Transparent underline when unmodified (maintains consistent text position)
- * - Blue underline when modified with reset popover on click
+ * - Brand-gradient underline when modified with reset popover on click
  * Used across automations, settings, and other default-based content
  */
 export const ModificationIndicator = ({
@@ -125,9 +125,19 @@ export const ModificationIndicator = ({
     <Popover open={isPopoverOpen} onOpenChange={handlePopoverChange}>
       <PopoverTrigger asChild>
         <Component className={className} aria-label={ariaLabel} htmlFor={undefined}>
+          {/* A border can't take a gradient, so the modified underline is a
+              bottom-anchored 2px background strip painted through the (still
+              transparent) border — [background-origin:border-box] pushes it
+              into the border area so it sits exactly where the border-b-2
+              would. Hover thickens the strip for feedback since there's no
+              hover color to swap to. */}
           <span
             id={id}
-            className={cn(underlineClasses, 'border-blue-500 hover:border-blue-600 transition-colors cursor-pointer')}
+            className={cn(
+              underlineClasses,
+              'cursor-pointer border-transparent bg-bottom bg-no-repeat transition-[background-size]',
+              '[background-image:var(--gradient-brand)] [background-origin:border-box] [background-size:100%_2px] hover:[background-size:100%_3px]',
+            )}
           >
             {children}
           </span>
@@ -142,7 +152,7 @@ export const ModificationIndicator = ({
           {/* Footer */}
           <div className="p-3 pt-2">
             {!showConfirmation ? (
-              <Button size="sm" variant="outline" onClick={handleResetClick} className="w-full">
+              <Button size="sm" onClick={handleResetClick} className="w-full">
                 Reset to Default
               </Button>
             ) : (

@@ -97,7 +97,24 @@ export default defineConfig({
     },
   ],
   resolve: {
-    dedupe: ['@powersync/common', '@powersync/react', 'react'],
+    // react-dismissable-layer must be a single module instance: it tracks
+    // open layers in module-scope state to know when to restore the body's
+    // pointer-events. Bun nests a second copy under @radix-ui/react-menu;
+    // with two instances, closing a dialog opened from a dropdown menu item
+    // restores `pointer-events: none` and the whole app stops being
+    // clickable. The package.json direct dependency on
+    // @radix-ui/react-dismissable-layer exists solely to hoist one copy for
+    // this dedupe — it is load-bearing even though nothing imports it.
+    // react-dialog is deduped for the same reason: bun nests a stale copy
+    // under `cmdk`, and two dialog module instances would split the same
+    // module-scope layer bookkeeping.
+    dedupe: [
+      '@powersync/common',
+      '@powersync/react',
+      'react',
+      '@radix-ui/react-dismissable-layer',
+      '@radix-ui/react-dialog',
+    ],
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, './shared'),
@@ -152,7 +169,15 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // Bind an explicit loopback address rather than `false`. Vite maps `false`
+    // to the hostname string "localhost", which Node resolves to a SINGLE,
+    // nondeterministic address family (127.0.0.1 or ::1) per listen() call. A
+    // `.env` change restarts the dev server, which re-resolves "localhost" and
+    // can FLIP families — leaving nothing bound on the address the browser (or
+    // an OrbStack/VM port-forward) is actually connecting to, so localhost:1420
+    // goes dead until the process is killed. Pinning 127.0.0.1 keeps the bind
+    // deterministic and loopback-only across restarts.
+    host: host || '127.0.0.1',
     hmr: host
       ? {
           protocol: 'ws',

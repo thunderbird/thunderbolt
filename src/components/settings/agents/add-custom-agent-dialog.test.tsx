@@ -4,110 +4,11 @@
 
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
-import type { Agent } from '@/types/acp'
-import {
-  AddCustomAgentDialog,
-  inferTransport,
-  validateAgentUrl,
-  type AddCustomAgentPayload,
-  type TestAcpConnectionFn,
-} from './add-custom-agent-dialog'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { AddCustomAgentDialog, type AddCustomAgentPayload, type TestAcpConnectionFn } from './add-custom-agent-dialog'
 
 afterEach(() => {
   cleanup()
-})
-
-describe('inferTransport', () => {
-  it('returns websocket for wss:// URLs', () => {
-    expect(inferTransport('wss://example.com/ws')).toBe('websocket')
-  })
-
-  it('returns websocket for ws:// URLs', () => {
-    expect(inferTransport('ws://example.com/ws')).toBe('websocket')
-  })
-
-  it('returns null for http:// URLs (unsupported)', () => {
-    expect(inferTransport('http://example.com/acp')).toBeNull()
-  })
-
-  it('returns null for https:// URLs (unsupported)', () => {
-    expect(inferTransport('https://example.com/acp')).toBeNull()
-  })
-
-  it('returns null for unsupported schemes', () => {
-    expect(inferTransport('ftp://example.com/acp')).toBeNull()
-  })
-
-  it('returns null for malformed URLs', () => {
-    expect(inferTransport('not a url')).toBeNull()
-    expect(inferTransport('')).toBeNull()
-  })
-
-  it('returns iroh for a bare 52-char base32 NodeId', () => {
-    expect(inferTransport('a'.repeat(52))).toBe('iroh')
-  })
-
-  it('returns iroh for a longer node-prefixed EndpointTicket', () => {
-    expect(inferTransport('node' + 'b'.repeat(120))).toBe('iroh')
-  })
-
-  it('returns null for a base32 token shorter than a NodeId', () => {
-    expect(inferTransport('abcdef234567')).toBeNull()
-  })
-
-  it('returns null for an uppercased NodeId (iroh emits lowercase base32)', () => {
-    expect(inferTransport('A'.repeat(52))).toBeNull()
-  })
-
-  it('returns null for an out-of-alphabet base32 token (0/1/8/9 are excluded)', () => {
-    expect(inferTransport('a'.repeat(51) + '0')).toBeNull()
-  })
-})
-
-describe('validateAgentUrl', () => {
-  const notIos = () => false
-  const isIos = () => true
-
-  it('accepts wss:// on non-iOS platforms', () => {
-    expect(validateAgentUrl('wss://example.com', notIos)).toEqual({ transport: 'websocket' })
-  })
-
-  it('accepts ws:// on non-iOS platforms (LAN/dev use)', () => {
-    expect(validateAgentUrl('ws://localhost:8080/ws', notIos)).toEqual({ transport: 'websocket' })
-  })
-
-  it('rejects http:// with a clear "WebSocket only" message', () => {
-    const result = validateAgentUrl('http://example.com/acp', notIos)
-    expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
-  })
-
-  it('rejects https:// with a clear "WebSocket only" message', () => {
-    const result = validateAgentUrl('https://example.com/acp', notIos)
-    expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
-  })
-
-  it('rejects unsupported schemes with a user-facing message', () => {
-    const result = validateAgentUrl('ftp://example.com', notIos)
-    expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
-  })
-
-  it('rejects ws:// on Tauri iOS (ATS forbids cleartext)', () => {
-    const result = validateAgentUrl('ws://example.com', isIos)
-    expect('error' in result && result.error).toMatch(/iOS.*secure/i)
-  })
-
-  it('still accepts wss:// on Tauri iOS', () => {
-    expect(validateAgentUrl('wss://example.com', isIos)).toEqual({ transport: 'websocket' })
-  })
-
-  it('accepts a bare iroh NodeId as the iroh transport', () => {
-    expect(validateAgentUrl('a'.repeat(52), notIos)).toEqual({ transport: 'iroh' })
-  })
-
-  it('accepts an iroh target on iOS (QUIC over an encrypted relay — no ATS concern)', () => {
-    expect(validateAgentUrl('a'.repeat(52), isIos)).toEqual({ transport: 'iroh' })
-  })
 })
 
 describe('AddCustomAgentDialog', () => {
@@ -179,6 +80,41 @@ describe('AddCustomAgentDialog', () => {
     })
     // Closes dialog on success.
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('keeps the dialog open with submit re-enabled when onSubmit rejects', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const onSubmit = mock(async () => {
+      throw new Error('insert failed')
+    })
+    const onOpenChange = mock(() => {})
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        isIos={notIos}
+        testAcpConnection={succeedingProbe}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'My Agent' } })
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /add agent/i }))
+    })
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    // The dialog stays open with the form intact so the user can retry.
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/name/i)).toHaveValue('My Agent')
+    expect(screen.getByRole('button', { name: /add agent/i })).not.toBeDisabled()
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it('shows the iOS rejection inline for ws:// at render time, keeps Add disabled, and does NOT call onSubmit', () => {
@@ -322,119 +258,6 @@ describe('AddCustomAgentDialog — connection status', () => {
 
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://other.com/ws' } })
     expect(screen.queryByText(/connection successful/i)).not.toBeInTheDocument()
-  })
-})
-
-describe('AddCustomAgentDialog — edit mode', () => {
-  const notIos = () => false
-
-  const existingAgent: Agent = {
-    id: 'custom-1',
-    name: 'Existing Agent',
-    type: 'remote-acp',
-    transport: 'websocket',
-    url: 'wss://existing.example/ws',
-    description: 'Existing description',
-    icon: null,
-    isSystem: 0,
-    enabled: 1,
-    deletedAt: null,
-    userId: 'user-42',
-  }
-
-  it('renders the Edit title and Save Changes button when editingAgent is set', () => {
-    const onSubmit = mock(async () => {})
-    render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={() => {}}
-        onSubmit={onSubmit}
-        editingAgent={existingAgent}
-        isIos={notIos}
-        testAcpConnection={async () => ({ success: true })}
-      />,
-    )
-
-    expect(screen.getByText(/edit custom agent/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument()
-    // Add Agent label must not appear in edit mode.
-    expect(screen.queryByRole('button', { name: /^add agent$/i })).not.toBeInTheDocument()
-  })
-
-  it('seeds the form with the existing agent values', () => {
-    render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={() => {}}
-        onSubmit={async () => {}}
-        editingAgent={existingAgent}
-        isIos={notIos}
-        testAcpConnection={async () => ({ success: true })}
-      />,
-    )
-
-    expect(screen.getByLabelText(/name/i)).toHaveValue('Existing Agent')
-    expect(screen.getByLabelText(/url/i)).toHaveValue('wss://existing.example/ws')
-    expect(screen.getByLabelText(/description/i)).toHaveValue('Existing description')
-  })
-
-  it('keeps Save Changes gated until the seeded URL is re-tested', async () => {
-    render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={() => {}}
-        onSubmit={async () => {}}
-        editingAgent={existingAgent}
-        isIos={notIos}
-        testAcpConnection={async () => ({ success: true })}
-      />,
-    )
-
-    const save = screen.getByRole('button', { name: /save changes/i })
-    // Form is prefilled but connection has not been re-verified yet.
-    expect(save).toBeDisabled()
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
-    })
-
-    expect(save).not.toBeDisabled()
-  })
-
-  it('invokes onSubmit with the edited values after a successful test', async () => {
-    const onSubmit = mock(async (_: AddCustomAgentPayload) => {})
-    const onOpenChange = mock(() => {})
-    render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        onSubmit={onSubmit}
-        editingAgent={existingAgent}
-        isIos={notIos}
-        testAcpConnection={async () => ({ success: true })}
-      />,
-    )
-
-    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Renamed Agent' } })
-    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://new.example/ws' } })
-    fireEvent.change(screen.getByLabelText(/description/i), { target: { value: '' } })
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
-    })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
-    })
-
-    expect(onSubmit).toHaveBeenCalledTimes(1)
-    expect(onSubmit).toHaveBeenCalledWith({
-      name: 'Renamed Agent',
-      url: 'wss://new.example/ws',
-      // Empty description is normalized to null, matching the create path.
-      description: null,
-      transport: 'websocket',
-    })
-    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
 

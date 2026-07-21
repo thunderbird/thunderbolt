@@ -142,6 +142,7 @@ export {
   setPinned as setSkillPinned,
   SkillNameInvalidError,
   SkillNameTakenError,
+  slugifySkillName,
   softDeleteSkill,
   updateSkill,
   validateSkillName,

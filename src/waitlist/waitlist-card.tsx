@@ -22,7 +22,7 @@ export const WaitlistCard = ({ children }: WaitlistCardProps) => {
         // Mobile styles (default)
         'inset-0 w-full h-full border-0 rounded-none px-4 py-8 justify-start overflow-y-auto',
         // Desktop styles (md breakpoint = 768px)
-        'md:h-[600px] md:w-[430px] md:min-h-0 md:rounded-[16px] md:border md:border-border md:p-8 md:justify-center md:overflow-clip',
+        'md:h-[600px] md:w-[430px] md:min-h-0 md:rounded-xl md:border md:border-border md:p-8 md:justify-center md:overflow-clip',
       )}
     >
       {children}

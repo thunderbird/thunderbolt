@@ -2,61 +2,65 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Info } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { Info, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { validateSkillName } from '@/dal'
+import { cn } from '@/lib/utils'
+import { useSkillFormState, type SkillFormMode, type SkillFormValues } from './use-skill-form-state'
 
-export type SkillFormMode = 'create' | 'edit'
-
-export type SkillFormValues = {
-  name: string
-  description: string
-  instruction: string
-}
+export type { SkillFormMode, SkillFormValues }
 
 /**
- * Plain-text create/edit form. Slash-token autocomplete and in-editor
- * highlighting land in THU-535 alongside the chat-side slash UX — keeping the
- * editor and chat input on a single shared component.
+ * Plain-text create/edit form. The user types a free-text Name; the slug
+ * auto-generates from it until the user edits the slug directly (clearing the
+ * slug hands control back to auto-generation). Edit mode never auto-rewrites
+ * the slug — renaming an existing skill must not silently break `/tokens`
+ * already used in chats.
  */
 export const SkillForm = ({
   onCancel,
   onSubmit,
   onDirtyChange,
-  onNameChange,
+  onSlugChange,
   resetSignal,
   mode = 'create',
   initialValues,
-  nameError,
+  slugError,
+  submitError,
 }: {
   onCancel: () => void
-  onSubmit: (values: SkillFormValues) => void
+  /** May be async; the parent owns failure handling (it reports errors back
+   *  via `slugError`/`submitError` and never lets the promise reject). */
+  onSubmit: (values: SkillFormValues) => void | Promise<void>
   onDirtyChange?: (dirty: boolean) => void
-  /** Fires whenever the user edits the name. Used to clear stale parent-side
-   *  uniqueness errors so they don't persist past the edit that invalidates them. */
-  onNameChange?: () => void
+  /** Fires whenever the user edits the slug (directly or via auto-generation).
+   *  Used to clear stale parent-side uniqueness errors so they don't persist
+   *  past the edit that invalidates them. */
+  onSlugChange?: () => void
   /** Increment to force the form to reset back to {@link initialValues}. */
   resetSignal?: number
   mode?: SkillFormMode
   initialValues?: SkillFormValues
-  /** Inline name-uniqueness error from the DAL pre-check. */
-  nameError?: string | null
+  /** Inline slug-uniqueness error from the DAL pre-check. */
+  slugError?: string | null
+  /** Generic save-failure message shown next to the submit button. */
+  submitError?: string | null
 }) => {
-  // Strip a leading `/` defensively — names are stored bare per the
-  // AgentSkills spec, but legacy rows from before THU-534 landed may still
-  // carry the prefix and we don't want the editor to show `//foo`.
-  const initialName = (initialValues?.name ?? '').replace(/^\/+/, '')
-  const initialDescription = initialValues?.description ?? ''
-  const initialInstruction = initialValues?.instruction ?? ''
-
-  const [name, setName] = useState(initialName)
-  const [description, setDescription] = useState(initialDescription)
-  const [instruction, setInstruction] = useState(initialInstruction)
+  const {
+    label,
+    slug,
+    description,
+    instruction,
+    handleLabelChange,
+    handleSlugChange,
+    handleDescriptionChange,
+    handleInstructionChange,
+  } = useSkillFormState({ mode, initialValues, resetSignal, onDirtyChange, onSlugChange })
 
   // Auto-focus the name input on mount for `create` mode — the user just
   // clicked "+", they're about to type a name. Edit mode skips this so we
@@ -71,98 +75,95 @@ export const SkillForm = ({
 
   // Surface AgentSkills-spec violations inline as soon as the user has typed
   // something, but don't shout at an empty initial state. Validate against the
-  // trimmed value — `handleSubmit` submits the trimmed name, so the two must
-  // agree (otherwise " meeting-notes " reads as invalid even though it isn't).
-  const trimmedName = name.trim()
-  const localNameError = trimmedName === '' ? null : validateSkillName(trimmedName)
-  // Block submission while a server-side name error (e.g. SkillNameTakenError) is
-  // still showing — `handleNameChange` clears it as soon as the user edits the
-  // name, so the button re-enables on the next keystroke.
+  // trimmed value — `handleSubmit` submits the trimmed slug, so the two must
+  // agree.
+  const trimmedSlug = slug.trim()
+  const localSlugError = trimmedSlug === '' ? null : validateSkillName(trimmedSlug)
+  // Block submission while a server-side slug error (e.g. SkillNameTakenError)
+  // is still showing — slug edits clear it, so the button re-enables on the
+  // next keystroke.
   const canSubmit =
-    trimmedName !== '' &&
+    label.trim() !== '' &&
+    trimmedSlug !== '' &&
     description.trim() !== '' &&
     instruction.trim() !== '' &&
-    localNameError === null &&
-    !nameError
-
-  // Compute dirty against a hypothetical next-state so each onChange handler
-  // can report it before React has applied the setState. Avoids the
-  // useEffect-notifying-parent anti-pattern.
-  const computeDirty = (next: { name: string; description: string; instruction: string }) =>
-    mode === 'edit'
-      ? next.name !== initialName || next.description !== initialDescription || next.instruction !== initialInstruction
-      : next.name.length > 0 || next.description.length > 0 || next.instruction.length > 0
-
-  const handleNameChange = (raw: string) => {
-    const v = raw.replace(/^\/+/, '')
-    setName(v)
-    onDirtyChange?.(computeDirty({ name: v, description, instruction }))
-    // A "name already exists" error from the parent applies to the *previous*
-    // value; clear it as soon as the user edits so they don't see a stale
-    // message about a name they're no longer trying to submit.
-    onNameChange?.()
-  }
-  const handleDescriptionChange = (v: string) => {
-    setDescription(v)
-    onDirtyChange?.(computeDirty({ name, description: v, instruction }))
-  }
-  const handleInstructionChange = (v: string) => {
-    setInstruction(v)
-    onDirtyChange?.(computeDirty({ name, description, instruction: v }))
-  }
-
-  const [prevResetSignal, setPrevResetSignal] = useState(resetSignal)
-  if (resetSignal !== undefined && prevResetSignal !== resetSignal) {
-    setPrevResetSignal(resetSignal)
-    setName(initialName)
-    setDescription(initialDescription)
-    setInstruction(initialInstruction)
-    // Parent already knows it triggered the reset; it sets its own isDirty
-    // back to false in the same handler, so no notification needed here.
-  }
+    localSlugError === null &&
+    !slugError
 
   const handleSubmit = () => {
     if (!canSubmit) {
       return
     }
-    onSubmit({
-      name: name.trim(),
+    void onSubmit({
+      name: trimmedSlug,
+      label: label.trim(),
       description: description.trim(),
       instruction: instruction.trim(),
     })
   }
 
   return (
-    <section className="flex h-full flex-1 flex-col bg-background text-foreground">
+    // No background of its own: inherits the desktop slide-in surface card
+    // or the mobile overlay's background.
+    <section className="relative flex h-full flex-1 flex-col text-foreground">
+      {/* Same corner placement as the detail panel's close button (8px from
+          top and right); behaves exactly like Cancel, including the
+          unsaved-changes guard. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onCancel}
+        aria-label="Close"
+        className={cn('absolute right-2 top-2', mutedIconButtonClass)}
+      >
+        <X className="size-4" />
+      </Button>
       <div className="flex min-h-0 flex-1 flex-col gap-5 px-6 py-5">
-        <h2 className="text-xl text-foreground">{mode === 'edit' ? 'Edit Skill' : 'Create Skill'}</h2>
+        <h2 className="text-xl text-foreground">{mode === 'edit' ? 'Edit skill' : 'Create skill'}</h2>
 
         <div className="flex flex-col gap-2">
-          <label htmlFor="skill-name" className="text-base text-foreground">
-            Skill name
+          <label htmlFor="skill-label" className="text-base text-foreground">
+            Name
           </label>
-          <div className="relative">
-            {/* Stripe-style fixed `/` prefix. Sits inside the input visually
-                but is not part of the value — the user can't select, delete,
-                or edit it. Stored names are bare slugs per the AgentSkills
-                spec; the slash is the chat trigger added at display time. */}
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 select-none text-muted-foreground"
-            >
-              /
-            </span>
-            <Input
-              id="skill-name"
-              ref={nameInputRef}
-              placeholder="daily-brief"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              className="h-9 pl-7"
-              aria-invalid={localNameError || nameError ? true : undefined}
-            />
+          <Input
+            id="skill-label"
+            ref={nameInputRef}
+            placeholder="Daily Brief"
+            value={label}
+            onChange={(e) => handleLabelChange(e.target.value)}
+            className="h-9"
+          />
+          {/* De-emphasized slug row: most users never touch it — it fills
+              itself in from the Name. Ghost styling (no border until
+              hover/focus) keeps it from competing with the real fields. */}
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="skill-slug" className="shrink-0 text-xs text-muted-foreground">
+              Slug
+            </label>
+            <div className="relative min-w-0 flex-1">
+              {/* Fixed `/` prefix — part of the chat trigger, not the stored
+                  value. */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 select-none text-xs text-muted-foreground/70"
+              >
+                /
+              </span>
+              <Input
+                id="skill-slug"
+                placeholder="daily-brief"
+                value={slug}
+                onChange={(e) => handleSlugChange(e.target.value)}
+                aria-invalid={localSlugError || slugError ? true : undefined}
+                className={cn(
+                  'h-7 rounded-md border-transparent bg-transparent pl-4 pr-2 !text-xs text-muted-foreground shadow-none',
+                  'hover:border-border focus-visible:border-border-strong focus-visible:text-foreground',
+                  'dark:bg-transparent dark:hover:bg-transparent',
+                )}
+              />
+            </div>
           </div>
-          {(localNameError || nameError) && <p className="text-sm text-destructive">{localNameError ?? nameError}</p>}
+          {(localSlugError || slugError) && <p className="text-sm text-destructive">{localSlugError ?? slugError}</p>}
         </div>
 
         <div className="flex flex-col gap-2">
@@ -207,7 +208,14 @@ export const SkillForm = ({
       </div>
 
       <footer className="flex items-center justify-end gap-2 px-6 py-4">
-        <Button variant="outline" size="lg" onClick={onCancel} className="text-sm">
+        {submitError && (
+          <p role="alert" className="min-w-0 flex-1 truncate text-sm text-destructive">
+            {submitError}
+          </p>
+        )}
+        {/* The outline variant's dark hover (bg-input/50) is invisible on the
+            sidebar-surface card; use the accent hover so it reads. */}
+        <Button variant="outline" size="lg" onClick={onCancel} className="text-sm dark:hover:bg-accent">
           Cancel
         </Button>
         <Button variant="default" size="lg" disabled={!canSubmit} className="text-sm" onClick={handleSubmit}>

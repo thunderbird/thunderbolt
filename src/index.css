@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 @import 'tailwindcss';
+@import '@fontsource-variable/mozilla-headline';
 
 @plugin 'tailwindcss-animate';
 @plugin '@tailwindcss/typography';
@@ -10,45 +11,125 @@
 @variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-popover: oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-primary: #191919;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f7f7f8;
-  --color-secondary-foreground: #000000;
-  --color-tertiary: #808080;
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  /* Mozilla brand font for display headings (e.g. the empty-chat greeting). */
+  --font-heading: 'Mozilla Headline Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /* No pure white/black anywhere — remap Tailwind's white/black utilities
+     (bg-white, text-white, bg-black/40 overlays, etc.) to the theme's off-white
+     and slate so nothing renders as #ffffff or #000000. */
+  --color-white: #faf8f5;
+  --color-black: #1c1e20;
+
+  --color-background: #f5f2ee;
+  --color-foreground: #262120;
+  --color-card: #faf8f5;
+  --color-card-foreground: #262120;
+  --color-popover: #faf8f5;
+  --color-popover-foreground: #262120;
+  --color-primary: #393530;
+  --color-primary-foreground: #faf8f5;
+  --color-secondary: #f0ede6;
+  --color-secondary-foreground: #262120;
+  --color-muted: #f0ede6;
+  --color-muted-foreground: #7f7870;
+  /* Hover/selected tint. Deliberately low-saturation: at these near-white
+     lightness levels a yellow-warm beige reads as a color change rather than
+     a shading change, which makes hovers feel louder than they are. Keep it
+     darker than --color-background so hovered pills never blend into the
+     page. */
+  --color-accent: #eeebe6;
+  --color-accent-foreground: #262120;
+  /* Brand accent — drawn from the logo's two color families: the bolt's
+     golden yellow (#ffcc00, deepened to amber) and its magenta shadow facets
+     (#ce00cb, deepened and warmed to a rose-red raspberry so the sweep leans
+     flame rather than pink). The solid token is the raspberry stop (used
+     alone for icons/text); --color-brand-2 is the amber stop;
+     --gradient-brand (in :root below) sweeps amber → raspberry for surfaces
+     like the switch ON track. Both stops are pulled down until
+     --color-brand-foreground text holds WCAG AA (4.5:1) at every point along
+     the gradient ramp (amber 4.56, raspberry 5.13) — the lightness ceiling is
+     the amber stop, which loses AA almost immediately when brightened.
+     The same pair serves dark mode (see .dark below). */
+  --color-brand: #c12d6c;
+  --color-brand-2: #ab5e17;
+  --color-brand-foreground: #faf8f5;
+  --color-destructive: #ff5f5f;
+  --color-destructive-foreground: #262120;
   --color-success: oklch(0.627 0.17 149.214);
   --color-success-foreground: oklch(0.985 0 0);
   --color-warning: oklch(0.769 0.171 70.67);
   --color-warning-foreground: oklch(0.205 0 0);
-  --color-border: oklch(0.922 0 0);
-  --color-input: oklch(0.922 0 0);
-  --color-ring: oklch(0.708 0 0);
+  --color-border: #e5dfd5;
+  /* Darker sibling of --color-border for focused-input borders — same warm
+     hue, stepped-down lightness, so focus reads as "border, but firmer"
+     instead of a black outline. */
+  --color-border-strong: #bfb4a3;
+  --color-input: #e5dfd5;
+  --color-ring: #393530;
   --color-chart-1: oklch(0.646 0.222 41.116);
   --color-chart-2: oklch(0.6 0.118 184.704);
   --color-chart-3: oklch(0.398 0.07 227.392);
   --color-chart-4: oklch(0.828 0.189 84.429);
   --color-chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
-  --color-sidebar: oklch(0.985 0 0);
-  --color-sidebar-foreground: oklch(0.145 0 0);
-  --color-sidebar-primary: oklch(0.205 0 0);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.97 0 0);
-  --color-sidebar-accent-foreground: oklch(0.205 0 0);
-  --color-sidebar-border: oklch(0.922 0 0);
-  --color-sidebar-ring: oklch(0.708 0 0);
-  --color-card-border: #dee8df;
+  --color-sidebar: #fefdfb;
+  /* A step softer than --color-foreground so sidebar labels/icons read as
+     chrome, not content. */
+  --color-sidebar-foreground: #47413c;
+  --color-sidebar-primary: #393530;
+  --color-sidebar-primary-foreground: #faf8f5;
+  --color-sidebar-accent: #eeebe6;
+  --color-sidebar-accent-foreground: #262120;
+  --color-sidebar-border: #eee9e1;
+  --color-sidebar-ring: #393530;
+
+  /* Softer elevation — same geometry as Tailwind's defaults, but the color
+     is routed through --elevation-faint / --elevation-medium /
+     --elevation-strong (defined in :root and .dark below) instead of a
+     literal. Tailwind v4 inlines these token values into the shadow-*
+     utilities at build time, so a var() indirection is the only way dark
+     mode can swap the color; a .dark { --shadow-lg: ... } override would
+     never be read. Applies uniformly to every shadow-* utility. */
+  --shadow-2xs: 0 1px var(--elevation-faint);
+  --shadow-xs: 0 1px 2px 0 var(--elevation-faint);
+  --shadow-sm: 0 1px 3px 0 var(--elevation-medium), 0 1px 2px -1px var(--elevation-medium);
+  --shadow-md: 0 4px 6px -1px var(--elevation-medium), 0 2px 4px -2px var(--elevation-medium);
+  --shadow-lg: 0 10px 15px -3px var(--elevation-medium), 0 4px 6px -4px var(--elevation-medium);
+  --shadow-xl: 0 20px 25px -5px var(--elevation-medium), 0 8px 10px -6px var(--elevation-medium);
+  --shadow-2xl: 0 25px 50px -12px var(--elevation-strong);
+
+  /* Warm soft glow used to lift key light-mode surfaces (chat composer, the
+     skills slide-in panel, pinned-skill chips) off the page. Same color at
+     two blur radii; call sites that shouldn't glow in dark mode pair these
+     with dark:shadow-none. */
+  --shadow-glow: 0 0 32px rgb(38 33 32 / 0.06);
+  --shadow-glow-sm: 0 0 16px rgb(38 33 32 / 0.06);
+}
+
+/* Shadow colors for the three elevation intensities above. Light mode runs
+   at roughly two-thirds of Tailwind's default opacity so surfaces read as
+   gently lifted rather than floating; dark mode raises opacity because a 6%
+   black shadow is invisible on #1b1e1f. */
+:root {
+  --elevation-faint: rgb(0 0 0 / 0.03);
+  --elevation-medium: rgb(0 0 0 / 0.06);
+  --elevation-strong: rgb(0 0 0 / 0.15);
+
+  /* Brand gradient — the logo's gold→magenta families as an amber→raspberry
+     sweep. References the theme tokens, so the .dark overrides above flow
+     through automatically. Applied via
+     [background-image:var(--gradient-brand)] on "on" surfaces (switch ON
+     track); single-color call sites keep the solid --color-brand. Amber leads
+     (left) because the switch thumb parks on the RIGHT when checked — with
+     raspberry first, the thumb hid the amber end and the track read as plain
+     red. */
+  --gradient-brand: linear-gradient(90deg, var(--color-brand-2), var(--color-brand));
+}
+
+.dark {
+  --elevation-faint: rgb(0 0 0 / 0.1);
+  --elevation-medium: rgb(0 0 0 / 0.18);
+  --elevation-strong: rgb(0 0 0 / 0.35);
 }
 
 /* ===========================
@@ -71,21 +152,55 @@
   --font-size-sm: 0.875rem; /* 14px mobile */
   --font-size-xs: 0.75rem; /* 12px mobile */
 
-  /* Border radius - overrides Tailwind's default --radius-* theme values */
+  /* Border radius - overrides Tailwind's default --radius-* theme values.
+   *
+   * CONCENTRIC RADIUS SCALE — pick the tier by nesting depth, not by taste:
+   *   rounded-md   inner    — elements nested inside a rounded parent
+   *                           (menu/list items, chips-in-a-card, thumbnails,
+   *                           skeletons, small toolbar controls)
+   *   rounded-lg   default  — standalone atoms (buttons, inputs, textareas,
+   *                           select triggers, badges, standalone chips/rows)
+   *   rounded-xl   container — surfaces that wrap other content (cards, alerts,
+   *                           popovers, dropdown/select/menu panels, hover-cards)
+   *   rounded-2xl  hero      — blocking modals/dialogs/sheets and chat message
+   *                           bubbles (their own bubble language)
+   *   rounded-3xl  marquee   — the chat composer only: the app's signature
+   *                           surface, one step softer than everything else
+   *   rounded-full pills/avatars/dots · rounded-none flush edges
+   *
+   * Corners step DOWN as you nest (outer radius − padding ≈ inner radius), so a
+   * xl panel with p-1 holds md/lg items. Never hardcode px (`rounded-[12px]`) —
+   * it defeats the responsive mobile→desktop step-down below. */
   --radius-sm: 0.25rem; /* 4px mobile */
   --radius-md: 0.5rem; /* 8px mobile */
   --radius-lg: 0.75rem; /* 12px mobile */
   --radius-xl: 1rem; /* 16px mobile */
   --radius-2xl: 1.25rem; /* 20px mobile */
+  --radius-3xl: 1.5rem; /* 24px mobile */
+
+  /* Composer footer controls (+ / mode / model / submit): halfway between the
+     lg and xl tiers — lg read too square against the composer's 3xl shell, xl
+     too round for such small controls. Use as rounded-[var(--radius-control)].
+     Derived, so it inherits the responsive step-down automatically. */
+  --radius-control: calc((var(--radius-lg) + var(--radius-xl)) / 2);
 
   /* Minimum sizes */
   --min-touch-height: 2.5rem; /* 40px mobile */
 
+  /* The floating app header overlays the content area (main/settings layouts
+     position it absolutely so pages scroll beneath it). Pages whose content
+     starts at the top of the scroll area pad by this inset so nothing renders
+     hidden under the header at rest. */
+  --header-inset: calc(var(--safe-area-top-padding, 0px) + var(--touch-height-xl));
+
   /* Switch component specific */
   --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
   --switch-track-width: 2.75rem; /* 44px mobile */
-  --switch-thumb-size: 1.25rem; /* 20px mobile */
-  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
+  /* Track = 1px border + 2px inner padding; thumb fills exactly what's left so the
+   *  2px gap to the border is identical on every side and in every state. Whole-px
+   *  values only, so the dot never shifts size as it slides. */
+  --switch-thumb-size: 1.125rem; /* 18px mobile (24 - 2*border - 2*pad) */
+  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 20px */
 }
 
 @media (min-width: 768px) {
@@ -112,55 +227,168 @@
     --radius-lg: 0.5rem; /* 8px desktop */
     --radius-xl: 0.75rem; /* 12px desktop */
     --radius-2xl: 1rem; /* 16px desktop */
+    --radius-3xl: 1.25rem; /* 20px desktop */
 
     /* Minimum sizes */
     --min-touch-height: 0; /* No min on desktop */
 
     /* Switch component specific */
-    --switch-track-height: 1.15rem; /* desktop */
-    --switch-track-width: 2rem; /* desktop */
-    --switch-thumb-size: 1rem; /* desktop */
-    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 2px);
+    --switch-track-height: 1.25rem; /* 20px desktop - whole-px so the thumb is round */
+    --switch-track-width: 2rem; /* 32px desktop */
+    --switch-thumb-size: 0.875rem; /* 14px desktop (20 - 2*border - 2*pad) */
+    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 12px */
   }
 }
 
 .dark {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.145 0 0);
-  --color-card-foreground: oklch(0.985 0 0);
-  --color-popover: oklch(0.145 0 0);
-  --color-popover-foreground: oklch(0.985 0 0);
-  --color-primary: oklch(0.985 0 0);
-  --color-primary-foreground: oklch(0.205 0 0);
-  --color-secondary: oklch(0.269 0 0);
-  --color-secondary-foreground: oklch(0.985 0 0);
-  --color-muted: oklch(0.269 0 0);
-  --color-muted-foreground: oklch(0.708 0 0);
-  --color-accent: oklch(0.269 0 0);
-  --color-accent-foreground: oklch(0.985 0 0);
-  --color-destructive: oklch(0.396 0.141 25.723);
-  --color-destructive-foreground: oklch(0.637 0.237 25.331);
+  --color-background: #1b1e1f;
+  --color-foreground: #f2f1ee;
+  --color-card: #282a2b;
+  --color-card-foreground: #f2f1ee;
+  --color-popover: #282a2b;
+  --color-popover-foreground: #f2f1ee;
+  --color-primary: #f6f3ed;
+  --color-primary-foreground: #252220;
+  --color-secondary: #313334;
+  --color-secondary-foreground: #f2f1ee;
+  --color-muted: #313334;
+  --color-muted-foreground: #a19a91;
+  --color-accent: #383a39;
+  --color-accent-foreground: #f2f1ee;
+  /* Same brand pair as light mode: the stops are mid-luminance, so they
+     neither glare against dark surfaces nor need dimming — and dimming (or
+     brightening) either stop would break the AA contrast the pair was tuned
+     for under --color-brand-foreground text. Foreground stays light:
+     text/icons on the gradient read as light-on-color, matching every other
+     filled control here. */
+  --color-brand: #c12d6c;
+  --color-brand-2: #ab5e17;
+  --color-brand-foreground: #faf8f5;
+  --color-destructive: #ff5f5f;
+  --color-destructive-foreground: #252220;
   --color-success: oklch(0.696 0.17 162.48);
   --color-success-foreground: oklch(0.985 0 0);
   --color-warning: oklch(0.828 0.189 84.429);
   --color-warning-foreground: oklch(0.205 0 0);
-  --color-border: oklch(0.269 0 0);
-  --color-input: oklch(0.269 0 0);
-  --color-ring: oklch(0.439 0 0);
+  --color-border: #434546;
+  /* Lighter than --color-border (dark mode inverts: "stronger" = lighter). */
+  --color-border-strong: #8a8a88;
+  /* Translucent white so field fills (dark:bg-input on Input/Textarea/Select)
+     lift slightly off WHATEVER surface they sit on — page (#1b1e1f), cards,
+     modals, and slide-in panels (#282a2b) all get the same gentle one-step
+     raise instead of a fixed grey that matches one surface and clashes with
+     another. */
+  --color-input: rgb(255 255 255 / 7%);
+  /* Focus outlines — lighter than --color-border so rings stand out in dark mode. */
+  --color-ring: #8a8a88;
   --color-chart-1: oklch(0.488 0.243 264.376);
   --color-chart-2: oklch(0.696 0.17 162.48);
   --color-chart-3: oklch(0.769 0.188 70.08);
   --color-chart-4: oklch(0.627 0.265 303.9);
   --color-chart-5: oklch(0.645 0.246 16.439);
-  --color-sidebar: oklch(0.205 0 0);
-  --color-sidebar-foreground: oklch(0.985 0 0);
-  --color-sidebar-primary: oklch(0.488 0.243 264.376);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.269 0 0);
-  --color-sidebar-accent-foreground: oklch(0.985 0 0);
-  --color-sidebar-border: oklch(0.269 0 0);
-  --color-sidebar-ring: oklch(0.439 0 0);
+  --color-sidebar: #282a2b;
+  /* A step dimmer than --color-foreground so sidebar labels/icons read as
+     chrome, not content. */
+  --color-sidebar-foreground: #d5d2cc;
+  --color-sidebar-primary: #f6f3ed;
+  --color-sidebar-primary-foreground: #252220;
+  --color-sidebar-accent: #383a39;
+  --color-sidebar-accent-foreground: #f2f1ee;
+  --color-sidebar-border: #434546;
+  --color-sidebar-ring: #8a8a88;
+}
+
+/* macOS desktop app (Tauri) vibrancy — the window is transparent with a
+   native NSVisualEffectView blur behind it (src-tauri/src/lib.rs). The body
+   goes transparent and the sidebar surface goes translucent so the desktop
+   blur reads through the left sidebar; the main content pane stays opaque
+   via SidebarInset's bg-background. The class is applied to <html> before
+   first render (src/index.tsx) and only on the Tauri macOS build. */
+.mac-vibrancy body {
+  background-color: transparent;
+}
+/* The index.html boot script and theme-provider set an inline opaque
+   background-color on <html> (flash prevention / overscroll tinting).
+   Inline styles beat class rules, so !important is required — it's the one
+   supported way for a stylesheet to override an inline style. */
+.mac-vibrancy {
+  background-color: transparent !important;
+}
+/* Translucency is scoped to the sidebar's surface element rather than the
+   --color-sidebar token: other elements also paint bg-sidebar (e.g. the chat
+   composer) and translucent layers would stack into visible bands. These
+   rules are unlayered so they beat Tailwind's layered bg-sidebar utility. */
+/* Light glass leans cream rather than white: at low alpha the desktop's
+   whites/blacks/blues dominate, so the tint carries extra warmth/saturation
+   (drawn from the theme's beige family) to keep the panel on-brand. */
+/* Light alpha can sit far lower than dark's: the light theme pairs with a
+   luminance-normalizing material (see syncMacWindowEffects) that keeps the
+   blur bright on its own, so the tint only needs to add warmth. */
+.mac-vibrancy [data-sidebar='sidebar'] {
+  background-color: rgb(246 238 225 / 52%);
+}
+.mac-vibrancy.dark [data-sidebar='sidebar'] {
+  background-color: rgb(40 42 43 / 78%);
+}
+/* Fills INSIDE the glass become translucent tints so the blur reads through
+   them instead of punching opaque holes in it:
+   - --color-sidebar-accent: active/hover pills (New Chat, chat list items,
+     the nav-toggle thumb). Same perceived shade as the opaque originals
+     (#eeebe6 / #383a39) expressed as ink-over-glass.
+   - --color-sidebar: the docked surface and the mobile drawer don't ride
+     this token (explicit rules above), so this only affects other
+     bg-sidebar elements (e.g. the chat composer). Dark mode flips it from
+     the theme's dark ink to a white lift — "lighter = raised" matches how
+     native macOS controls sit on glass.
+   - --color-sidebar-border: separators; solid borders read as hard opaque
+     rings on glass. */
+.mac-vibrancy {
+  --color-sidebar: rgb(255 255 255 / 45%);
+  --color-sidebar-accent: rgb(38 33 32 / 8%);
+  --color-sidebar-border: rgb(38 33 32 / 6%);
+}
+.mac-vibrancy.dark {
+  --color-sidebar: rgb(255 255 255 / 12%);
+  --color-sidebar-accent: rgb(255 255 255 / 8%);
+  --color-sidebar-border: rgb(255 255 255 / 10%);
+}
+/* Focused input border on light glass: the solid --color-border tier
+   (#e5dfd5) washes out against the bright cream blur, so use translucent ink
+   that reads on any backdrop. Dark glass keeps the default — #434546 already
+   registers against the dark blur. */
+.mac-vibrancy:not(.dark) [data-sidebar='sidebar'] [data-slot='input']:focus-visible {
+  border-color: rgb(38 33 32 / 25%);
+}
+/* Collapsed icon rail: opaque. A sliver of glass reads as a rendering
+   artifact rather than a surface, and the rail is meant to blend with the
+   main header chrome (its strip paints bg-background). Background-color
+   transition matches the rail's 200ms width animation. */
+.mac-vibrancy [data-sidebar='sidebar'] {
+  transition: background-color 200ms linear;
+}
+.mac-vibrancy [data-collapsible='icon'] [data-sidebar='sidebar'] {
+  background-color: #fefdfb;
+}
+.mac-vibrancy.dark [data-collapsible='icon'] [data-sidebar='sidebar'] {
+  background-color: #282a2b;
+}
+/* Narrow-window drawer's dim overlay: blur the page behind it, matching the
+   app's other modal overlays (bg-black/50 backdrop-blur-md). The base
+   component skips backdrop-filter because animating opacity over a blur
+   layer re-blurs per frame and janks on phones (see mobile-sidebar.tsx);
+   mac-vibrancy only exists on the desktop build, where that cost is fine. */
+.mac-vibrancy [data-slot='sidebar-overlay'] {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+/* Narrow-window drawer: opaque. It slides OVER the app's content, which the
+   native window blur (behind the webview) can't reach, so translucency here
+   would just show the page through the surface rather than glass. */
+.mac-vibrancy [data-sidebar='sidebar'][data-mobile='true'] {
+  background-color: #fefdfb;
+}
+.mac-vibrancy.dark [data-sidebar='sidebar'][data-mobile='true'] {
+  background-color: #282a2b;
 }
 
 @keyframes accordion-down {
@@ -207,6 +435,29 @@
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* Inline badge for committed /skill tokens in the chat composer overlay.
+   The overlay must mirror the textarea's text metrics exactly, so the pill
+   is drawn with paint-only spacing that never affects line height or
+   character positions: vertical padding on a non-replaced inline element
+   doesn't grow the line box, and the horizontal padding is cancelled by a
+   negative margin. (No box-shadow ring — its spread bleeds sideways too,
+   which made back-to-back chips overlap across the single space between
+   them.) Asymmetric horizontal padding on purpose: the chip's leading `/`
+   is rendered invisibly (kept for caret alignment) and already acts as
+   left padding, so only the right side needs the extra 3px.
+   The tint derives from currentColor so each token state (enabled /
+   disabled / unknown) recolors the pill with its own text color class.
+   Translucent so the textarea's caret stays visible through the badge. */
+.skill-token {
+  --skill-token-bg: color-mix(in oklab, currentColor 11%, transparent);
+  border-radius: 0.45em;
+  background-color: var(--skill-token-bg);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 2px 3px 2px 0;
+  margin-inline: 0 -3px;
 }
 
 @layer base {

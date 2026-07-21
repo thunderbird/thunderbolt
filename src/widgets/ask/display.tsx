@@ -5,7 +5,6 @@
 import { Check, Lightbulb, Sparkles, X } from 'lucide-react'
 import { useReducer, useRef } from 'react'
 
-import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { evaluateAnswer, optionLetter, type AskData, type AskOption } from './lib'
@@ -14,15 +13,11 @@ export type AskSubmission = {
   selectedIds: string[]
   /** Whether the selection matched the designated answer; `null` when there is none. */
   matched: boolean | null
-  /** The free-text answer, for `free` mode. */
-  text?: string
 }
 
 type AskProps = AskData & {
   /** Restores a previously-submitted response (from the message cache). */
   initialSelectedIds?: string[]
-  /** Restores a previously-submitted `free` response's text (from the message cache). */
-  initialText?: string
   initialSubmitted?: boolean
   /** Fired once when the user commits a response, for persistence. */
   onSubmit?: (submission: AskSubmission) => void
@@ -73,30 +68,24 @@ const badgeStyles: Record<OptionStatus, string> = {
   missed: 'border-emerald-500 text-emerald-600 dark:text-emerald-400',
 }
 
-type AskUiState = { selected: Set<string>; text: string; submitted: boolean }
+type AskUiState = { selected: Set<string>; submitted: boolean }
 
 type AskUiAction =
-  | { type: 'toggleOption'; id: string; multiple: boolean }
-  | { type: 'setText'; text: string }
-  | { type: 'submit'; selected?: Set<string> }
+  | { type: 'OPTION_TOGGLED'; id: string; isMultiple: boolean }
+  | { type: 'SUBMITTED'; selected: Set<string> }
 
-/** Consolidates the chip's interaction state (selection, free-text, submitted)
- *  into one reducer per the 3+-useState rule. The one-time side effect (firing
- *  `onSubmit`) stays in the handlers, guarded by `committedRef` — see there. */
 const askUiReducer = (state: AskUiState, action: AskUiAction): AskUiState => {
   switch (action.type) {
-    case 'toggleOption': {
-      if (!action.multiple) {
+    case 'OPTION_TOGGLED': {
+      if (!action.isMultiple) {
         return { ...state, selected: new Set([action.id]) }
       }
       const selected = new Set(state.selected)
       selected.has(action.id) ? selected.delete(action.id) : selected.add(action.id)
       return { ...state, selected }
     }
-    case 'setText':
-      return { ...state, text: action.text }
-    case 'submit':
-      return { ...state, submitted: true, selected: action.selected ?? state.selected }
+    case 'SUBMITTED':
+      return { ...state, submitted: true, selected: action.selected }
   }
 }
 
@@ -106,13 +95,11 @@ export const Ask = ({
   options,
   explanation,
   initialSelectedIds,
-  initialText,
   initialSubmitted,
   onSubmit,
 }: AskProps) => {
   const [state, dispatch] = useReducer(askUiReducer, undefined, () => ({
     selected: new Set(initialSelectedIds),
-    text: initialText ?? '',
     submitted: initialSubmitted ?? false,
   }))
   // Synchronous re-entry guard for the `onSubmit` side effect: `state.submitted`
@@ -121,7 +108,6 @@ export const Ask = ({
   // This is a side-effect latch, not UI state, so it lives outside the reducer.
   const committedRef = useRef(initialSubmitted ?? false)
 
-  const isFree = mode === 'free'
   const isGraded = mode === 'single' || mode === 'multiple'
   const isMultiple = mode === 'multiple'
 
@@ -130,21 +116,11 @@ export const Ask = ({
       return
     }
     committedRef.current = true
-    dispatch({ type: 'submit', selected: ids })
+    dispatch({ type: 'SUBMITTED', selected: ids })
     onSubmit?.({
       selectedIds: [...ids],
       matched: evaluateAnswer({ prompt, mode, options }, ids),
     })
-  }
-
-  const commitFree = () => {
-    const answer = state.text.trim()
-    if (committedRef.current || answer.length === 0) {
-      return
-    }
-    committedRef.current = true
-    dispatch({ type: 'submit' })
-    onSubmit?.({ selectedIds: [], matched: null, text: answer })
   }
 
   const toggleOption = (id: string) => {
@@ -156,10 +132,10 @@ export const Ask = ({
       commit(new Set([id]))
       return
     }
-    dispatch({ type: 'toggleOption', id, multiple: isMultiple })
+    dispatch({ type: 'OPTION_TOGGLED', id, isMultiple })
   }
 
-  const label = isFree ? 'Your answer' : isGraded ? (isMultiple ? 'Select all that apply' : 'Choose one') : 'Your call'
+  const label = isGraded ? (isMultiple ? 'Select all that apply' : 'Choose one') : 'Your call'
 
   return (
     <div className="my-4 w-full">
@@ -173,82 +149,49 @@ export const Ask = ({
             <p className="text-[length:var(--font-size-body)] font-medium leading-snug text-foreground">{prompt}</p>
           </div>
 
-          {isFree ? (
-            <div className="flex flex-col gap-3">
-              <AutosizeTextarea
-                value={state.text}
-                onChange={(event) => dispatch({ type: 'setText', text: event.target.value })}
-                disabled={state.submitted}
-                minHeight={72}
-                maxHeight={240}
-                placeholder="Type your answer…"
-                className="rounded-xl text-[length:var(--font-size-sm)] leading-snug disabled:opacity-80"
-              />
-              {!state.submitted && (
-                <Button
-                  size="default"
-                  disabled={state.text.trim().length === 0}
-                  onClick={commitFree}
-                  className="w-full md:w-auto md:self-end"
-                >
-                  Submit
-                </Button>
-              )}
-              {state.submitted && (
-                <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 p-3 text-[length:var(--font-size-sm)]">
-                  <Lightbulb className="mt-0.5 size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" />
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium">{explanation ? 'Sample answer' : 'Response recorded'}</span>
-                    {explanation && <span className="text-foreground/80">{explanation}</span>}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {options.map((option, index) => {
-                const isSelected = state.selected.has(option.id)
-                const status = getOptionStatus({ option, isSelected, submitted: state.submitted, isGraded })
-                const showCorrect = status === 'correct' || status === 'missed'
-                const showIncorrect = status === 'incorrect'
+          <div className="flex flex-col gap-2">
+            {options.map((option, index) => {
+              const isSelected = state.selected.has(option.id)
+              const status = getOptionStatus({ option, isSelected, submitted: state.submitted, isGraded })
+              const showCorrect = status === 'correct' || status === 'missed'
+              const showIncorrect = status === 'incorrect'
 
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    disabled={state.submitted}
-                    onClick={() => toggleOption(option.id)}
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  disabled={state.submitted}
+                  onClick={() => toggleOption(option.id)}
+                  className={cn(
+                    'group flex w-full items-center gap-3 rounded-xl border px-3.5 text-left transition-all',
+                    'min-h-[var(--touch-height-lg)] py-2.5',
+                    'disabled:cursor-default focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                    !state.submitted && 'cursor-pointer active:scale-[0.99]',
+                    statusStyles[status],
+                  )}
+                >
+                  <span
                     className={cn(
-                      'group flex w-full items-center gap-3 rounded-xl border px-3.5 text-left transition-all',
-                      'min-h-[var(--touch-height-lg)] py-2.5',
-                      'disabled:cursor-default focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                      !state.submitted && 'cursor-pointer active:scale-[0.99]',
-                      statusStyles[status],
+                      'flex size-6 shrink-0 items-center justify-center border text-[length:var(--font-size-xs)] font-semibold transition-colors',
+                      isMultiple ? 'rounded-md' : 'rounded-full',
+                      badgeStyles[status],
                     )}
                   >
-                    <span
-                      className={cn(
-                        'flex size-6 shrink-0 items-center justify-center border text-[length:var(--font-size-xs)] font-semibold transition-colors',
-                        isMultiple ? 'rounded-md' : 'rounded-full',
-                        badgeStyles[status],
-                      )}
-                    >
-                      {showCorrect ? (
-                        <Check className="size-3.5" strokeWidth={3} />
-                      ) : showIncorrect ? (
-                        <X className="size-3.5" strokeWidth={3} />
-                      ) : (
-                        optionLetter(index)
-                      )}
-                    </span>
-                    <span className="flex-1 text-[length:var(--font-size-sm)] leading-snug text-foreground">
-                      {option.text}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+                    {showCorrect ? (
+                      <Check className="size-3.5" strokeWidth={3} />
+                    ) : showIncorrect ? (
+                      <X className="size-3.5" strokeWidth={3} />
+                    ) : (
+                      optionLetter(index)
+                    )}
+                  </span>
+                  <span className="flex-1 text-[length:var(--font-size-sm)] leading-snug text-foreground">
+                    {option.text}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
 
           {isGraded && !state.submitted && (
             <Button
@@ -274,7 +217,7 @@ export const Ask = ({
           {state.submitted && mode === 'choice' && (
             <div className="flex items-center gap-2 text-[length:var(--font-size-sm)] text-muted-foreground">
               <Lightbulb className="size-[var(--icon-size-sm)] shrink-0" />
-              <span>Got it — working on that next.</span>
+              <span>Got it, working on that next.</span>
             </div>
           )}
         </div>

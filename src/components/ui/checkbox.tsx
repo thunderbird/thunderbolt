@@ -27,7 +27,14 @@ const Checkbox = forwardRef<
     <CheckboxPrimitive.Root
       ref={ref}
       className={cn(
-        'peer size-[var(--icon-size-default)] shrink-0 rounded-[4px] border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground cursor-pointer',
+        // border-border-strong (not border-primary): the near-black primary
+        // outline read as stray ink against the theme's warm hairlines. The
+        // checked fill mirrors the Switch ON track — the app's other boolean
+        // control — instead of a solid near-black primary block.
+        // bg-origin-border spans the gradient across the transparent border so
+        // no fallback ring shows at the edges (same trick as the Switch).
+        'peer size-[var(--icon-size-default)] shrink-0 rounded-md border border-border-strong ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer',
+        'data-[state=checked]:border-transparent data-[state=checked]:bg-brand data-[state=checked]:bg-origin-border data-[state=checked]:[background-image:var(--gradient-brand)] data-[state=checked]:text-brand-foreground',
         className,
       )}
       onCheckedChange={handleCheckedChange}

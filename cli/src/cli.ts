@@ -461,15 +461,15 @@ const parseIrohAdminArgs = (rest: string[]): ParsedArgs => {
  *   fully-resolved {@link RunConfig}, or a `bridge` with a {@link BridgeConfig}
  */
 export const parseArgs = (argv: string[], injected: ParseArgsDependencies = {}): ParsedArgs => {
-  const dependencies = resolveDependencies(injected)
   const subcommand = argv[0]
+  if (subcommand === 'login') return parseLoginArgs(argv.slice(1))
+  const dependencies = resolveDependencies(injected)
   if (subcommand === 'config') {
     const argument = argv[1]
     if (argument === undefined) return { kind: 'config' }
     if (argument === '--help' || argument === '-h') return { kind: 'help' }
     return { kind: 'error', message: `thunderbolt config: unexpected argument '${argument}'` }
   }
-  if (subcommand === 'login') return parseLoginArgs(argv.slice(1))
   if (subcommand === 'iroh') return parseIrohAdminArgs(argv.slice(1))
   if (subcommand === 'acp' || subcommand === 'mcp') {
     if (subcommand === 'acp' && argv[1] === 'serve') return parseServeArgs(argv.slice(2), dependencies)

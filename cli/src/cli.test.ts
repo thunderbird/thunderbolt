@@ -9,7 +9,7 @@
  * the value-validating flags, and the bridge/serve/connect subcommand routing.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import packageJson from '../package.json' with { type: 'json' }
 import rootPackageJson from '../../package.json' with { type: 'json' }
 import { parseArgs, VERSION } from './cli.ts'
@@ -454,5 +454,16 @@ describe('parseArgs — login', () => {
       kind: 'error',
       message: expect.stringContaining("unexpected argument 'extra'"),
     })
+  })
+
+  test('login does not resolve the current working directory', () => {
+    const cwd = spyOn(process, 'cwd').mockImplementation(() => {
+      throw new Error('cwd is unavailable')
+    })
+    try {
+      expect(parseArgs(['login'])).toEqual({ kind: 'login' })
+    } finally {
+      cwd.mockRestore()
+    }
   })
 })

@@ -36,7 +36,7 @@ const configure = async (requiredProvider?: ModelProvider): Promise<CliConfig> =
 
 try {
   const argv = Bun.argv.slice(2)
-  const storedConfig = await loadConfig()
+  const storedConfig = argv[0] === 'login' ? null : await loadConfig()
   const parsed = parseArgs(argv, { config: storedConfig })
 
   switch (parsed.kind) {

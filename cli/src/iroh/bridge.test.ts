@@ -381,6 +381,91 @@ describe('admitConnection — pre-handshake DoS gates', () => {
   })
 })
 
+describe('admitConnection — live session tracking', () => {
+  const protocols = ['acp', 'mcp'] as const
+  const prevHome = process.env.THUNDERBOLT_HOME
+  let home: string
+  let stdout: ReturnType<typeof spyOn>
+  let stderr: ReturnType<typeof spyOn>
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'tb-live-session-'))
+    process.env.THUNDERBOLT_HOME = home
+    stdout = spyOn(process.stdout, 'write').mockImplementation(() => true)
+    stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+
+  afterEach(async () => {
+    stdout.mockRestore()
+    stderr.mockRestore()
+    if (prevHome === undefined) delete process.env.THUNDERBOLT_HOME
+    else process.env.THUNDERBOLT_HOME = prevHome
+    await rm(home, { recursive: true, force: true })
+  })
+
+  for (const protocol of protocols) {
+    it(`tracks an accepted ${protocol.toUpperCase()} session until heartbeat revocation closes it`, async () => {
+      const remoteId = `${protocol}-peer`
+      const trusted = new Set([remoteId])
+      const accountAllowlist = fakeAllowlist(trusted)
+      const openConnections = new Set<OpenConnection>()
+      const activeProcs = new Set<BridgeProc>()
+      const config: BridgeConfig = {
+        protocol,
+        transport: 'iroh',
+        port: 0,
+        command: [process.execPath, '-e', 'setInterval(() => {}, 1_000)'],
+      }
+      const closed = Promise.withResolvers<void>()
+      const recvRead = Promise.withResolvers<number[]>()
+      const read = mock(async () => recvRead.promise)
+      const close = mock(() => {
+        recvRead.resolve([])
+        closed.resolve()
+      })
+      const connection = {
+        remoteId: () => ({ toString: () => remoteId }),
+        acceptBi: async () => ({
+          recv: { read },
+          send: { writeAll: async () => {}, finish: async () => {} },
+        }),
+        closed: () => closed.promise,
+        close,
+      } as unknown as Connection
+      const incoming = {
+        remoteAddr: async () => ({ kind: 'relay', endpointId: remoteId }),
+        accept: async () => ({ connect: async () => connection }),
+        ignore: async () => {},
+      } as unknown as Incoming
+
+      const handling = admitConnection(
+        incoming,
+        config,
+        activeProcs,
+        { allow: () => true },
+        { tryAcquire: () => true, release: () => {} },
+        { accountAllowlist, openConnections },
+      )
+      try {
+        await flush()
+
+        expect([...openConnections]).toEqual([{ remoteId, connection }])
+
+        trusted.clear()
+        await heartbeatTick(accountAllowlist, openConnections)
+        await handling
+
+        expect(close).toHaveBeenCalledTimes(1)
+        expect(openConnections.size).toBe(0)
+      } finally {
+        recvRead.resolve([])
+        closed.resolve()
+        await handling
+      }
+    })
+  }
+})
+
 /** A stub {@link AccountAllowlist} over a fixed trusted set, with an injectable
  *  refresh and self-revocation flag. Mirrors production: when self-revoked, `has`
  *  trusts nobody so the gate and heartbeat drop every account peer. */

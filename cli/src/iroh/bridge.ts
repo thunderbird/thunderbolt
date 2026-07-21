@@ -397,11 +397,19 @@ export const handleConnection = async (
     return
   }
   activeProcs.add(proc)
+  const openConnections = opts.openConnections
+  if (openConnections) {
+    const open: OpenConnection = { remoteId, connection }
+    openConnections.add(open)
+    const removeOpenConnection = (): boolean => openConnections.delete(open)
+    void connection.closed().then(removeOpenConnection, removeOpenConnection)
+  }
   void proc.exited.then(() => activeProcs.delete(proc))
-  // A dropped connection kills the agent. The reverse (agent exit) is signalled
-  // by finishing the send stream below — never by an active connection close —
-  // so the final JSON-RPC response can't be truncated mid-flight; the client
-  // tears the connection down once it has drained that stream.
+  // A dropped connection kills the agent and removes the heartbeat registry entry.
+  // The reverse (agent exit) is signalled by finishing the send stream below —
+  // never by an active connection close — so the final JSON-RPC response can't be
+  // truncated mid-flight; the client tears the connection down once it has drained
+  // that stream.
   killProcessWhenConnectionCloses(connection, proc)
   process.stdout.write(`⚡ iroh bridge: accepted ${remoteId} → spawned ${redactArgv(config.command)}\n`)
 

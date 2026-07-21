@@ -8,6 +8,7 @@ import { ImportFormatError, exportUserData, importUserData, summarizeExportEnvel
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useCountryUnits } from '@/hooks/use-country-units'
+import { useLocalStorage } from '@/hooks/use-local-storage'
 import type { LocationData } from '@/hooks/use-location-search'
 import { useSettings } from '@/hooks/use-settings'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -16,6 +17,8 @@ import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { clearLocalData } from '@/lib/cleanup'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
+import { isTauri } from '@/lib/platform'
+import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
 import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
@@ -45,6 +48,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePostHogClient } from '@/lib/posthog'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
@@ -143,6 +147,17 @@ export default function PreferencesSettingsPage() {
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
+  const runningInTauri = isTauri()
+  const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
+  const effectiveProxyEnabled = computeEffectiveProxyEnabled(
+    () => runningInTauri,
+    () => proxyEnabledStr,
+  )
+  const proxyDisabled = !runningInTauri || !isAuthenticated
+  const proxyTooltipReason = !runningInTauri
+    ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
+    : 'Sign in to enable cloud proxy.'
+  const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
 
   const { fetchCountryUnits } = useCountryUnits()
 
@@ -820,6 +835,42 @@ export default function PreferencesSettingsPage() {
               aria-label="Anonymous Usage Data"
             />
           </div>
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Network">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">Use Cloud Proxy</label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, requests are routed through Thunderbolt's cloud proxy.
+            </p>
+          </div>
+          {proxyDisabled ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} aria-label={proxyTooltipReason}>
+                  <Switch
+                    checked={proxyChecked}
+                    disabled
+                    aria-label="Use Cloud Proxy"
+                    className="pointer-events-none"
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>{proxyTooltipReason}</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Switch
+              checked={proxyChecked}
+              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+              aria-label="Use Cloud Proxy"
+            />
+          )}
         </div>
       </SectionCard>
 

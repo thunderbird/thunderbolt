@@ -70,6 +70,17 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     expect(screen.getByText('Sync This Device With Cloud')).toBeInTheDocument()
   })
 
+  it('shows the cloud proxy setting in Network immediately above Data', () => {
+    const authClient = createMockAuthClient({ session: authedSession })
+    renderPage(authClient)
+
+    const sectionTitles = screen.getAllByRole('heading').map((heading) => heading.textContent)
+    const networkIndex = sectionTitles.indexOf('Network')
+
+    expect(screen.getByRole('switch', { name: 'Use Cloud Proxy' })).toBeInTheDocument()
+    expect(sectionTitles[networkIndex + 1]).toBe('Data')
+  })
+
   it('shows Delete All Local Data for anonymous users (R-23)', () => {
     const authClient = createMockAuthClient({ session: anonSession })
     renderPage(authClient)

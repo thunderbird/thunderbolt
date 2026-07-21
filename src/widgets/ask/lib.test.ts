@@ -48,10 +48,6 @@ describe('evaluateAnswer', () => {
   test('choice: no designated answer', () => {
     expect(evaluateAnswer({ ...singleAsk, mode: 'choice' }, new Set(['a']))).toBeNull()
   })
-
-  test('free: no designated answer', () => {
-    expect(evaluateAnswer({ prompt: 'Explain photosynthesis', mode: 'free', options: [] }, new Set())).toBeNull()
-  })
 })
 
 describe('optionLetter', () => {
@@ -138,7 +134,7 @@ describe('formatAskResponsesNote', () => {
     expect(note).toContain('"What next?" — chose "Draft a reply"')
   })
 
-  test('reports free-text answers verbatim', () => {
+  test('reports legacy free-text answers verbatim', () => {
     const note = formatAskResponsesNote([
       {
         prompt: 'Define photosynthesis',
@@ -152,7 +148,7 @@ describe('formatAskResponsesNote', () => {
     expect(note).toContain('"Define photosynthesis" — answered "Plants making food from light"')
   })
 
-  test('free-text with no answer shows (no response)', () => {
+  test('legacy free-text with no answer shows (no response)', () => {
     const note = formatAskResponsesNote([
       { prompt: 'Define X', mode: 'free', selectedIds: [], chosen: [], matched: null },
     ])
@@ -165,10 +161,6 @@ describe('turnTextForAnswer', () => {
     expect(turnTextForAnswer('choice', ['Draft a reply'])).toBe('Draft a reply')
   })
 
-  test('free dispatches the typed text (takes precedence over chosen)', () => {
-    expect(turnTextForAnswer('free', ['ignored'], 'In my own words…')).toBe('In my own words…')
-  })
-
   test('graded modes never dispatch a turn (no quiz loop)', () => {
     expect(turnTextForAnswer('single', ['Paris'])).toBeNull()
     expect(turnTextForAnswer('multiple', ['OpenPGP', 'S/MIME'])).toBeNull()
@@ -176,6 +168,6 @@ describe('turnTextForAnswer', () => {
 
   test('empty / whitespace-only answers dispatch nothing', () => {
     expect(turnTextForAnswer('choice', [])).toBeNull()
-    expect(turnTextForAnswer('free', [], '   ')).toBeNull()
+    expect(turnTextForAnswer('choice', ['   '])).toBeNull()
   })
 })

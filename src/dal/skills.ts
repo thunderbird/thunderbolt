@@ -39,33 +39,49 @@ export class PinLimitExceededError extends Error {
 const maxSkillNameLength = 64
 
 /**
- * Validate a skill name against the [AgentSkills spec](https://agentskills.io/specification#name-field):
+ * Validate a skill slug against the [AgentSkills spec](https://agentskills.io/specification#name-field):
  * 1–64 chars; lowercase a–z, 0–9, hyphens only; no leading/trailing hyphen;
  * no consecutive hyphens.
  *
- * Names are stored as bare slugs (no leading `/`). The slash is a chat
- * trigger added at display + parse time only, not part of the data.
+ * Slugs are stored in the `name` column as bare slugs (no leading `/`). The
+ * slash is a chat trigger added at display + parse time only, not part of the
+ * data.
  *
  * @returns A human-readable error string when invalid, or `null` when valid.
  */
 export const validateSkillName = (slug: string): string | null => {
   if (slug.length === 0) {
-    return 'Name is required.'
+    return 'Slug is required.'
   }
   if (slug.length > maxSkillNameLength) {
-    return `Name must be ${maxSkillNameLength} characters or fewer.`
+    return `Slug must be ${maxSkillNameLength} characters or fewer.`
   }
   if (!/^[a-z0-9-]+$/.test(slug)) {
-    return 'Name may only contain lowercase letters, numbers, and hyphens.'
+    return 'Slug may only contain lowercase letters, numbers, and hyphens.'
   }
   if (slug.startsWith('-') || slug.endsWith('-')) {
-    return 'Name cannot start or end with a hyphen.'
+    return 'Slug cannot start or end with a hyphen.'
   }
   if (slug.includes('--')) {
-    return 'Name cannot contain consecutive hyphens.'
+    return 'Slug cannot contain consecutive hyphens.'
   }
   return null
 }
+
+/**
+ * Derive a spec-valid slug from a free-text display name: lowercase, spaces
+ * and invalid characters become hyphens, consecutive hyphens collapse, edge
+ * hyphens are trimmed, and the result caps at 64 characters. Returns '' when
+ * the name contains no usable characters — callers treat that as "nothing to
+ * suggest yet".
+ */
+export const slugifySkillName = (displayName: string): string =>
+  displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, maxSkillNameLength)
+    .replace(/-+$/, '')
 
 /**
  * Drizzle query for all non-deleted skills, ordered by name.
@@ -134,7 +150,10 @@ const countPinned = async (db: AnyDrizzleDatabase, excludeId?: string): Promise<
 }
 
 export type CreateSkillInput = {
+  /** Slug — stored in the `name` column, used as the `/token`. */
   name: string
+  /** Human display name shown across the UI. */
+  label: string
   description: string
   instruction: string
 }
@@ -145,14 +164,15 @@ export type CreateSkillInput = {
  * skill.
  */
 export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInput): Promise<Skill> => {
-  const nameError = validateSkillName(input.name)
-  if (nameError) {
-    throw new SkillNameInvalidError(nameError)
+  const slugError = validateSkillName(input.name)
+  if (slugError) {
+    throw new SkillNameInvalidError(slugError)
   }
   await assertNameAvailable(db, input.name)
   const row: Skill = {
     id: uuidv7(),
     name: input.name,
+    label: input.label,
     description: input.description,
     instruction: input.instruction,
     enabled: 1,
@@ -165,7 +185,7 @@ export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInpu
   return row
 }
 
-export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'description' | 'instruction'>>
+export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'label' | 'description' | 'instruction'>>
 
 /**
  * Patch an existing skill. Throws {@link SkillNameInvalidError} if `name` fails
@@ -174,9 +194,9 @@ export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'description' | 'ins
  */
 export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
   if (patch.name !== undefined) {
-    const nameError = validateSkillName(patch.name)
-    if (nameError) {
-      throw new SkillNameInvalidError(nameError)
+    const slugError = validateSkillName(patch.name)
+    if (slugError) {
+      throw new SkillNameInvalidError(slugError)
     }
     await assertNameAvailable(db, patch.name, id)
   }
@@ -184,14 +204,16 @@ export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: Upd
 }
 
 /**
- * Soft-delete a skill: set `deleted_at` and wipe user content (`name`, `description`, `instruction`).
- * The tombstone (`id`, `user_id`, `deleted_at`) remains so PowerSync propagates the delete to other devices.
+ * Soft-delete a skill: set `deleted_at` and wipe user content (`name`, `label`,
+ * `description`, `instruction`). The tombstone (`id`, `user_id`, `deleted_at`)
+ * remains so PowerSync propagates the delete to other devices.
  */
 export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   await db
     .update(skillsTable)
     .set({
       name: null,
+      label: null,
       description: null,
       instruction: null,
       pinnedOrder: null,

@@ -2,53 +2,39 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Monitor, Moon, Sun } from 'lucide-react'
-
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { themeIcons } from '@/components/theme-icons'
 import { useTheme } from '@/lib/theme-provider'
 import { trackEvent } from '@/lib/posthog'
 
+const themeCycle = { light: 'dark', dark: 'system', system: 'light' } as const
+
+/**
+ * Single-icon theme toggle that cycles light → dark → system on each click.
+ * The icon reflects the current setting; the label announces the action the
+ * click performs. Dev-only — rendered in the sidebar footer's collapsed rail
+ * and account row (the user-facing picker is `ThemeToggleGroup` on the
+ * Preferences page).
+ */
 export const ThemeToggle = () => {
   const { theme, setTheme } = useTheme()
+  const next = themeCycle[theme]
+  const Icon = themeIcons[theme]
+  const label = `Switch to ${next} theme`
+
+  const handleClick = () => {
+    setTheme(next)
+    trackEvent('settings_theme_set', { theme: next })
+  }
 
   return (
-    <ToggleGroup
-      type="single"
-      variant="outline"
-      value={theme}
-      onValueChange={(value) => {
-        if (!value) {
-          return
-        }
-        setTheme(value as 'light' | 'dark' | 'system')
-        trackEvent('settings_theme_set', { theme: value })
-      }}
-      className="justify-start rounded-lg"
+    <button
+      type="button"
+      onClick={handleClick}
+      className="flex items-center justify-center size-[var(--touch-height-default)] rounded-full transition-colors hover:bg-secondary/50 cursor-pointer select-none outline-none"
+      aria-label={label}
+      title={label}
     >
-      <ToggleGroupItem
-        value="light"
-        aria-label="Light mode"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
-      >
-        <Sun className="h-4 w-4" />
-        Light
-      </ToggleGroupItem>
-      <ToggleGroupItem
-        value="dark"
-        aria-label="Dark mode"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
-      >
-        <Moon className="h-4 w-4" />
-        Dark
-      </ToggleGroupItem>
-      <ToggleGroupItem
-        value="system"
-        aria-label="System theme"
-        className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
-      >
-        <Monitor className="h-4 w-4" />
-        System
-      </ToggleGroupItem>
-    </ToggleGroup>
+      <Icon className="size-[var(--icon-size-default)] text-muted-foreground" />
+    </button>
   )
 }

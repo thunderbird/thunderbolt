@@ -18,17 +18,25 @@ import {
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, test } from 'bun:test'
 import { resolveModel } from './model.ts'
-import { BUILTIN_PROVIDERS } from './types.ts'
+import { builtinProviders } from './types.ts'
+import type { BuiltinProvider } from './types.ts'
 
-/** Pull a real catalog id from Pi's wired provider rather than hard-coding one,
- *  so this stays green across catalog churn. */
-const KNOWN_ANTHROPIC = builtinModels().getModels('anthropic')[0]!.id
+/** First catalog model for a provider — read from Pi's wired catalog rather
+ *  than hard-coded, so tests stay green across catalog churn. Throws loudly
+ *  if the catalog ever ships empty for a curated provider. */
+const firstCatalogModel = (provider: BuiltinProvider) => {
+  const model = builtinModels().getModels(provider)[0]
+  if (!model) throw new Error(`Pi catalog has no models for ${provider}`)
+  return model
+}
 
-const EMPTY_ENV: Readonly<Record<string, string | undefined>> = {}
+const knownAnthropicId = firstCatalogModel('anthropic').id
+
+const emptyEnv: Readonly<Record<string, string | undefined>> = {}
 
 /** Builds a one-model OpenAI catalog whose stream options are observable. */
 const capturingBuiltinModels = () => {
-  const model = builtinModels().getModels('openai')[0]!
+  const model = firstCatalogModel('openai')
   const calls: { readonly fn: 'stream' | 'streamSimple'; readonly options: Record<string, unknown> }[] = []
   /** Creates an already-ended stream so Pi's lazy delegate can drain it. */
   const inertStream = () => {
@@ -36,15 +44,15 @@ const capturingBuiltinModels = () => {
     stream.end()
     return stream
   }
-  const streams = {
-    stream: ((_model, _context, options) => {
+  const streams: ProviderStreams = {
+    stream: (_model, _context, options) => {
       calls.push({ fn: 'stream', options: { ...options } })
       return inertStream()
-    }) as ProviderStreams['stream'],
-    streamSimple: ((_model, _context, options) => {
+    },
+    streamSimple: (_model, _context, options) => {
       calls.push({ fn: 'streamSimple', options: { ...options } })
       return inertStream()
-    }) as ProviderStreams['streamSimple'],
+    },
   }
   const models = createModels({
     authContext: {
@@ -71,7 +79,7 @@ describe('resolveModel — openai-compat branch', () => {
   test('throws when the api key is missing even with a base URL', () => {
     expect(() =>
       resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: 'http://localhost:11434/v1' }),
-    ).toThrow(/requires an api key/)
+    ).toThrow(/requires an API key/)
   })
 
   test('missing custom key error points non-TTY users to guided setup', () => {
@@ -95,7 +103,7 @@ describe('resolveModel — openai-compat branch', () => {
   test('rejects an empty-string api key', () => {
     expect(() =>
       resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: 'http://localhost:11434/v1', apiKey: '' }),
-    ).toThrow(/requires an api key/)
+    ).toThrow(/requires an API key/)
   })
 
   test('resolves a synthetic model carrying the upstream id and base URL', () => {
@@ -125,14 +133,14 @@ describe('resolveModel — openai-compat branch', () => {
 
 describe('resolveModel — built-in providers', () => {
   test('defaults to anthropic when no provider is given and resolves a known id', () => {
-    const { model } = resolveModel({ model: KNOWN_ANTHROPIC, apiKey: 'explicit-key' })
-    expect(model.id).toBe(KNOWN_ANTHROPIC)
+    const { model } = resolveModel({ model: knownAnthropicId, apiKey: 'explicit-key' })
+    expect(model.id).toBe(knownAnthropicId)
     expect(model.provider).toBe('anthropic')
   })
 
   test('resolves catalog models for every curated provider', () => {
-    for (const provider of BUILTIN_PROVIDERS) {
-      const modelId = builtinModels().getModels(provider)[0]!.id
+    for (const provider of builtinProviders) {
+      const modelId = firstCatalogModel(provider).id
       expect(resolveModel({ model: modelId, provider, apiKey: 'explicit-key' }).model.provider).toBe(provider)
     }
   })
@@ -149,25 +157,19 @@ describe('resolveModel — built-in providers', () => {
 
   test('missing-key error names provider env variable and --api-key', () => {
     expect(() =>
-      resolveModel(
-        { model: builtinModels().getModels('google')[0]!.id, provider: 'google' },
-        { builtinModels, env: EMPTY_ENV },
-      ),
+      resolveModel({ model: firstCatalogModel('google').id, provider: 'google' }, { builtinModels, env: emptyEnv }),
     ).toThrow(/GEMINI_API_KEY.*--api-key|--api-key.*GEMINI_API_KEY/)
   })
 
   test('missing built-in key error points non-TTY users to guided setup', () => {
     expect(() =>
-      resolveModel(
-        { model: builtinModels().getModels('google')[0]!.id, provider: 'google' },
-        { builtinModels, env: EMPTY_ENV },
-      ),
+      resolveModel({ model: firstCatalogModel('google').id, provider: 'google' }, { builtinModels, env: emptyEnv }),
     ).toThrow(/GEMINI_API_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/)
   })
 
   test('missing built-in credentials stay actionable when the model id is also invalid', () => {
     expect(() =>
-      resolveModel({ model: 'not-a-google-model', provider: 'google' }, { builtinModels, env: EMPTY_ENV }),
+      resolveModel({ model: 'not-a-google-model', provider: 'google' }, { builtinModels, env: emptyEnv }),
     ).toThrow(/GEMINI_API_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/)
   })
 
@@ -178,10 +180,11 @@ describe('resolveModel — built-in providers', () => {
       { builtinModels: () => capture.models, env: { OPENAI_API_KEY: 'env-key' } },
     )
 
-    for await (const _event of models.streamSimple(model, {} as Context)) {
+    const emptyContext: Context = { messages: [] }
+    for await (const _event of models.streamSimple(model, emptyContext)) {
       // Inert test stream emits no events.
     }
-    for await (const _event of models.stream(model, {} as Context)) {
+    for await (const _event of models.stream(model, emptyContext)) {
       // Inert test stream emits no events.
     }
 
@@ -192,7 +195,7 @@ describe('resolveModel — built-in providers', () => {
   })
 
   test('explicit key does not become model descriptor data', () => {
-    const { model } = resolveModel({ model: KNOWN_ANTHROPIC, provider: 'anthropic', apiKey: 'super-secret' })
+    const { model } = resolveModel({ model: knownAnthropicId, provider: 'anthropic', apiKey: 'super-secret' })
     expect(JSON.stringify(model)).not.toContain('super-secret')
   })
 

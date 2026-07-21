@@ -2,14 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Button } from '@/components/ui/button'
-import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import {
+  SearchableMenu,
+  searchableMenuFooterActionClass,
+  searchableMenuRowClass,
+  type SearchableMenuItem,
+} from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
-import { ChevronDown, Globe, Plus, Server, Zap } from 'lucide-react'
-import { useMemo, useState, type ComponentType } from 'react'
+import { iconForAgent } from '@/components/agent-icon'
+import { ChevronDown, Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 export type AgentSelectorProps = {
   selectedAgent: Agent
@@ -25,32 +30,31 @@ type AgentItemData = {
   agent: Agent
 }
 
-/** Visual icon for each agent flavor. Mirrors `agent-row.tsx` so list + selector
- *  stay perceptually consistent across Settings and the chat header. */
-const iconForAgent = (agent: Agent): ComponentType<{ className?: string }> => {
-  if (agent.type === 'built-in') {
-    return Zap
-  }
-  if (agent.isSystem === 1) {
-    return Server
-  }
-  return Globe
-}
-
 const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   const Icon = iconForAgent(agent)
   return {
     id: agent.id,
     label: agent.name,
-    description: agent.description ?? undefined,
-    icon: <Icon className="size-3.5 text-muted-foreground" />,
+    // The logo reads slightly smaller than the lucide glyphs at equal box
+    // size, so it gets a half-step bump.
+    icon: <Icon className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-4' : 'size-3.5')} />,
     data: { agent },
   }
 }
 
-/** Bucket agents by flavor for the dropdown. Order mirrors `composeAllAgents`:
- *  Built-in → System → Custom. Empty buckets are dropped so the menu stays tight. */
-export const categorizeAgents = (agents: Agent[]): SearchableMenuGroup<AgentItemData>[] => {
+/** Compact item renderer — label-only rows (no descriptions) at
+ *  `--font-size-body` (16px mobile / 14px desktop) so the menu stays tight. */
+const renderAgentItem = (item: SearchableMenuItem<AgentItemData>, isSelected: boolean) => (
+  <div className={cn(searchableMenuRowClass, isSelected ? 'bg-accent' : 'hover:bg-accent/50')}>
+    {item.icon && <span className="flex-shrink-0">{item.icon}</span>}
+    <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+  </div>
+)
+
+/** Flatten agents into one unlabeled list. Order mirrors `composeAllAgents`:
+ *  Built-in → System → Custom — no section headers, the flavors just read as
+ *  one continuous menu. */
+export const buildAgentItems = (agents: Agent[]): SearchableMenuItem<AgentItemData>[] => {
   const builtIn: SearchableMenuItem<AgentItemData>[] = []
   const system: SearchableMenuItem<AgentItemData>[] = []
   const custom: SearchableMenuItem<AgentItemData>[] = []
@@ -66,17 +70,7 @@ export const categorizeAgents = (agents: Agent[]): SearchableMenuGroup<AgentItem
     }
   }
 
-  const groups: SearchableMenuGroup<AgentItemData>[] = []
-  if (builtIn.length > 0) {
-    groups.push({ id: 'built-in', label: 'Built-in', items: builtIn })
-  }
-  if (system.length > 0) {
-    groups.push({ id: 'system', label: 'System', items: system })
-  }
-  if (custom.length > 0) {
-    groups.push({ id: 'custom', label: 'Custom', items: custom })
-  }
-  return groups
+  return [...builtIn, ...system, ...custom]
 }
 
 export const AgentSelector = ({
@@ -88,7 +82,7 @@ export const AgentSelector = ({
   side,
   align,
 }: AgentSelectorProps) => {
-  const groupedItems = useMemo(() => categorizeAgents(agents), [agents])
+  const items = useMemo(() => buildAgentItems(agents), [agents])
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
 
@@ -102,7 +96,8 @@ export const AgentSelector = ({
   }
 
   const renderTrigger = (selected: SearchableMenuItem<AgentItemData> | undefined, isOpen: boolean) => {
-    const Icon = iconForAgent(selected?.data?.agent ?? selectedAgent)
+    const triggerAgent = selected?.data?.agent ?? selectedAgent
+    const Icon = iconForAgent(triggerAgent)
     const triggerInner = (
       <div
         data-testid="agent-selector-trigger"
@@ -110,11 +105,18 @@ export const AgentSelector = ({
         className={cn(
           'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full transition-colors text-[length:var(--font-size-body)] max-w-[50vw] md:max-w-none',
           disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-          !disabled && isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+          // Light secondary is nearly the same shade as the page background,
+          // so at 50% the hover reads as invisible — use full accent there
+          // (same hover as the header's ghost buttons). Dark keeps the
+          // subtler half-secondary.
+          !disabled && isOpen ? 'bg-secondary' : 'hover:bg-accent dark:hover:bg-secondary/50',
         )}
       >
-        <Icon className="size-3.5 text-muted-foreground shrink-0" />
-        <span className="font-medium truncate">{selected?.label ?? selectedAgent.name}</span>
+        <Icon
+          className={cn('text-muted-foreground shrink-0', triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5')}
+        />
+        {/* Muted like the mode/model picker labels — chrome, not content. */}
+        <span className="font-medium truncate text-muted-foreground">{selected?.label ?? selectedAgent.name}</span>
         <ChevronDown
           className={cn(
             'size-3.5 text-muted-foreground transition-transform shrink-0',
@@ -139,22 +141,22 @@ export const AgentSelector = ({
   }
 
   const footer = onAddAgent ? (
-    <Button
-      variant="ghost"
+    <button
+      type="button"
       onClick={() => {
         setOpen(false)
         onAddAgent()
       }}
-      className="w-full justify-start gap-2 text-muted-foreground"
+      className={searchableMenuFooterActionClass}
     >
       <Plus className="size-4" />
-      Add Agent
-    </Button>
+      Add agent
+    </button>
   ) : undefined
 
   return (
     <SearchableMenu
-      items={groupedItems}
+      items={items}
       value={selectedAgent.id}
       onValueChange={handleAgentChange}
       searchable={agents.length > 10}
@@ -162,6 +164,7 @@ export const AgentSelector = ({
       emptyMessage="No agents found"
       blurBackdrop
       trigger={renderTrigger}
+      renderItem={renderAgentItem}
       footer={footer}
       width={320}
       maxHeight={340}

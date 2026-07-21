@@ -21,6 +21,8 @@ describe('StepIndicators', () => {
 
       const indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
       expect(indicators).toHaveLength(1)
+      expect((indicators[0] as HTMLElement).style.backgroundPosition).toBe('50% center')
+      expect((indicators[0] as HTMLElement).style.backgroundSize).toBe('100% 100%')
     })
 
     it('should render multiple step indicators', () => {
@@ -36,19 +38,20 @@ describe('StepIndicators', () => {
       render(<StepIndicators currentStep={1} totalSteps={5} />)
 
       const indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
-      expect(indicators[0]).toHaveClass('bg-primary')
+      expect(indicators[0]).toHaveClass('bg-brand')
       expect(indicators[1]).toHaveClass('bg-muted')
       expect(indicators[2]).toHaveClass('bg-muted')
       expect(indicators[3]).toHaveClass('bg-muted')
       expect(indicators[4]).toHaveClass('bg-muted')
+      expect((indicators[1] as HTMLElement).style.backgroundImage).toBe('')
     })
 
     it('should highlight first two steps when currentStep is 2', () => {
       render(<StepIndicators currentStep={2} totalSteps={5} />)
 
       const indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
-      expect(indicators[0]).toHaveClass('bg-primary')
-      expect(indicators[1]).toHaveClass('bg-primary')
+      expect(indicators[0]).toHaveClass('bg-brand')
+      expect(indicators[1]).toHaveClass('bg-brand')
       expect(indicators[2]).toHaveClass('bg-muted')
       expect(indicators[3]).toHaveClass('bg-muted')
       expect(indicators[4]).toHaveClass('bg-muted')
@@ -59,7 +62,7 @@ describe('StepIndicators', () => {
 
       const indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
       indicators.forEach((indicator) => {
-        expect(indicator).toHaveClass('bg-primary')
+        expect(indicator).toHaveClass('bg-brand')
       })
     })
 
@@ -68,7 +71,7 @@ describe('StepIndicators', () => {
 
       const indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
       indicators.forEach((indicator) => {
-        expect(indicator).toHaveClass('bg-primary')
+        expect(indicator).toHaveClass('bg-brand')
       })
     })
 
@@ -100,6 +103,19 @@ describe('StepIndicators', () => {
         expect(indicator).toHaveClass('rounded-full')
       })
     })
+
+    it('should continue one gradient across the indicators', () => {
+      render(<StepIndicators currentStep={5} totalSteps={5} />)
+
+      const indicators = document.querySelectorAll<HTMLElement>('.h-2.w-2.rounded-full')
+      expect(indicators[0].style.backgroundPosition).toBe('0% center')
+      expect(indicators[2].style.backgroundPosition).toBe('50% center')
+      expect(indicators[4].style.backgroundPosition).toBe('100% center')
+      indicators.forEach((indicator) => {
+        expect(indicator.style.backgroundImage).toBe('var(--gradient-brand)')
+        expect(indicator.style.backgroundSize).toBe('900% 100%')
+      })
+    })
   })
 
   describe('Edge cases', () => {
@@ -128,7 +144,7 @@ describe('StepIndicators', () => {
 
       // First 5 should be highlighted
       for (let i = 0; i < 5; i++) {
-        expect(indicators[i]).toHaveClass('bg-primary')
+        expect(indicators[i]).toHaveClass('bg-brand')
       }
 
       // Rest should be muted
@@ -144,7 +160,7 @@ describe('StepIndicators', () => {
 
       // Step 1
       let indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
-      expect(indicators[0]).toHaveClass('bg-primary')
+      expect(indicators[0]).toHaveClass('bg-brand')
       expect(indicators[1]).toHaveClass('bg-muted')
       expect(indicators[2]).toHaveClass('bg-muted')
       expect(indicators[3]).toHaveClass('bg-muted')
@@ -152,26 +168,26 @@ describe('StepIndicators', () => {
       // Step 2
       rerender(<StepIndicators currentStep={2} totalSteps={4} />)
       indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
-      expect(indicators[0]).toHaveClass('bg-primary')
-      expect(indicators[1]).toHaveClass('bg-primary')
+      expect(indicators[0]).toHaveClass('bg-brand')
+      expect(indicators[1]).toHaveClass('bg-brand')
       expect(indicators[2]).toHaveClass('bg-muted')
       expect(indicators[3]).toHaveClass('bg-muted')
 
       // Step 3
       rerender(<StepIndicators currentStep={3} totalSteps={4} />)
       indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
-      expect(indicators[0]).toHaveClass('bg-primary')
-      expect(indicators[1]).toHaveClass('bg-primary')
-      expect(indicators[2]).toHaveClass('bg-primary')
+      expect(indicators[0]).toHaveClass('bg-brand')
+      expect(indicators[1]).toHaveClass('bg-brand')
+      expect(indicators[2]).toHaveClass('bg-brand')
       expect(indicators[3]).toHaveClass('bg-muted')
 
       // Step 4 (final)
       rerender(<StepIndicators currentStep={4} totalSteps={4} />)
       indicators = document.querySelectorAll('.h-2.w-2.rounded-full')
-      expect(indicators[0]).toHaveClass('bg-primary')
-      expect(indicators[1]).toHaveClass('bg-primary')
-      expect(indicators[2]).toHaveClass('bg-primary')
-      expect(indicators[3]).toHaveClass('bg-primary')
+      expect(indicators[0]).toHaveClass('bg-brand')
+      expect(indicators[1]).toHaveClass('bg-brand')
+      expect(indicators[2]).toHaveClass('bg-brand')
+      expect(indicators[3]).toHaveClass('bg-brand')
     })
   })
 

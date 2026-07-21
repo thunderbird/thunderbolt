@@ -4,7 +4,7 @@
 
 import { DownloadAppBannerDesktop } from '@/components/download-app-banner-desktop'
 import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
-import { Header } from '@/components/ui/header'
+import { FloatingHeader } from '@/components/floating-header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { SidebarInset } from '@/components/ui/sidebar'
 import { ArtifactSidebarContent } from '@/content-view/artifact-sidebar-content'
@@ -91,13 +91,8 @@ export default function Page() {
     <SidebarInset className="h-full flex flex-col">
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel>
-          <div
-            className="flex flex-col h-full"
-            style={{
-              paddingTop: 'var(--safe-area-top-padding)',
-            }}
-          >
-            <Header />
+          <div className="relative flex flex-col h-full">
+            <FloatingHeader />
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />

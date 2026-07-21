@@ -2,21 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AnimatePresence, m } from 'framer-motion'
-import { Plus } from 'lucide-react'
-import { useCallback, useReducer, useRef } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useCallback, useReducer } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { DetailPanelSurface } from '@/components/detail-panel'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
+import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
+import { skillDisplayName, titleCaseFromSlug } from './display'
 import { findDependents } from './find-dependents'
 import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
-import { initialSkillsViewState, skillsViewReducer } from './skills-view-state'
+import { initialSkillsViewState, skillsViewReducer, type LeaveIntent } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { useSkillTelemetry } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
@@ -36,53 +35,31 @@ export const SkillsView = () => {
   const {
     mode,
     activeId,
-    mobileView,
+    panelView,
     isDirty,
     resetSignal,
     pendingLeave,
     pendingDelete,
     pendingDependents,
-    nameError,
+    slugError,
+    submitError,
     createInitialName,
   } = state
 
-  // Deep-link from the chat composer's broken-reference alerts —
-  // `editSkill` selects an existing (disabled) skill so the user can enable
-  // it; `createSkill` opens the create form pre-filled with the slug the
-  // user just typed. Both consume the router state once on mount and clear
-  // it so back/forward doesn't re-trigger. Mirrors the `runSkill` pattern
-  // in chat-prompt-input.
-  const navigate = useNavigate()
-  const location = useLocation()
-  const consumedEditSkillRef = useRef<string | null>(null)
-  const consumedCreateSkillRef = useRef<string | null>(null)
-  const navState = (location.state ?? null) as { editSkill?: string; createSkill?: string } | null
-  const editSkillNav = navState?.editSkill
-  const createSkillNav = navState?.createSkill
-  if (!editSkillNav) {
-    consumedEditSkillRef.current = null
-  } else if (consumedEditSkillRef.current !== editSkillNav) {
-    consumedEditSkillRef.current = editSkillNav
-    queueMicrotask(() => {
-      dispatch({ type: 'SELECT_SKILL', id: editSkillNav })
-      navigate(location.pathname, { replace: true, state: {} })
-    })
-  }
-  if (!createSkillNav) {
-    consumedCreateSkillRef.current = null
-  } else if (consumedCreateSkillRef.current !== createSkillNav) {
-    consumedCreateSkillRef.current = createSkillNav
-    queueMicrotask(() => {
-      dispatch({ type: 'START_CREATE', initialName: createSkillNav })
-      navigate(location.pathname, { replace: true, state: {} })
-    })
-  }
+  // Deep-links from the chat composer. Broken-reference alerts send
+  // `editSkill` (selects an existing, likely disabled skill so the user can
+  // enable it) or `createSkill` (opens the create form pre-filled with the
+  // slug the user just typed — `''` opens a blank form); the pinned chips'
+  // "Edit skill" action sends `startEditSkill`, which lands straight in the
+  // edit form. Same consume-once pattern as `runSkill` in chat-prompt-input.
+  useConsumeNavState('editSkill', (id) => dispatch({ type: 'SELECT_SKILL', id }))
+  useConsumeNavState('startEditSkill', (id) => dispatch({ type: 'START_EDIT', id }))
+  useConsumeNavState('createSkill', (slug) => dispatch({ type: 'START_CREATE', initialName: slug || undefined }))
 
-  // `.at(0)` returns `Skill | undefined` honestly — `[0]` would be typed as
-  // `Skill` even on an empty array (no `noUncheckedIndexedAccess` in tsconfig),
-  // and a `| undefined` annotation wouldn't widen the rhs. Forcing undefined
-  // into the type means TS catches every unguarded `active.*` access.
-  const active = skills.find((s) => s.id === activeId) ?? skills.at(0)
+  // No first-skill fallback: the detail panel only opens when the user
+  // explicitly selects a skill (or a deep link does), matching the
+  // slide-in-from-the-right behavior. `undefined` means "nothing selected".
+  const activeSkill = skills.find((s) => s.id === activeId)
 
   // Disabling a pinned skill auto-unpins it. Re-enabling does NOT auto-repin;
   // the user pins again deliberately from the chat composer.
@@ -96,7 +73,7 @@ export const SkillsView = () => {
     [setEnabled, pinnedSet, togglePin],
   )
 
-  const handleToggleEnabled = useCallback(
+  const toggleEnabled = useCallback(
     async (id: string, next: boolean) => {
       if (!next) {
         const target = skills.find((s) => s.id === id)
@@ -113,8 +90,20 @@ export const SkillsView = () => {
     [setEnabled, disableSkill, skills],
   )
 
+  // Fire-and-forget from the row's perspective, but a failed DB write must
+  // not vanish silently — surface it in the console instead of dropping the
+  // rejected promise on the floor.
+  const handleToggleEnabled = useCallback(
+    (id: string, next: boolean) => {
+      toggleEnabled(id, next).catch((error: unknown) => {
+        console.error('Failed to toggle skill enabled state', error)
+      })
+    },
+    [toggleEnabled],
+  )
+
   const requestLeave = useCallback(
-    (leave: { type: 'cancel' } | { type: 'select'; id: string }) => {
+    (leave: LeaveIntent) => {
       if ((mode === 'create' || mode === 'edit') && isDirty) {
         dispatch({ type: 'REQUEST_LEAVE', leave })
       } else {
@@ -138,9 +127,12 @@ export const SkillsView = () => {
     }
   }
 
-  const onEdit = (id: string) => {
-    dispatch({ type: 'START_EDIT', id })
-  }
+  // Edit/create always route through `requestLeave`: from a clean state it
+  // performs the leave immediately (opening the form), and from a dirty form
+  // it parks the intent behind the discard dialog — never a silent dead click.
+  const onEdit = (id: string) => requestLeave({ type: 'edit', id })
+
+  const onCreate = () => requestLeave({ type: 'create' })
 
   const onDelete = (id: string) => {
     const target = skills.find((s) => s.id === id)
@@ -166,21 +158,22 @@ export const SkillsView = () => {
     [softDeleteSkill, trackSkillEvent],
   )
 
-  const confirmPendingDependents = async () => {
+  const confirmPendingDependents = () => {
     if (!pendingDependents) {
       return
     }
     const { action, skill } = pendingDependents
     dispatch({ type: 'CLOSE_DEPENDENTS' })
-    if (action === 'disable') {
-      await disableSkill(skill.id)
-    } else {
-      await removeSkill(skill.id)
-    }
+    // The dialog is already closed, so a failed write can't be shown there —
+    // but it must not vanish as a dropped rejection either.
+    const run = action === 'disable' ? disableSkill(skill.id) : removeSkill(skill.id)
+    run.catch((error: unknown) => {
+      console.error(`Failed to ${action} skill`, error)
+    })
   }
 
   const onJumpToDependent = (id: string) => {
-    dispatch({ type: 'JUMP_TO_DEPENDENT', id, isMobile })
+    dispatch({ type: 'JUMP_TO_DEPENDENT', id })
   }
 
   const handleSubmit = async (values: SkillFormValues) => {
@@ -189,39 +182,36 @@ export const SkillsView = () => {
         const created = await createSkill(values)
         trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
-      } else if (active) {
-        const renamed = values.name !== active.name
-        await updateSkill({ id: active.id, patch: values })
-        trackSkillEvent('skill_edited', active.id, { renamed })
-        dispatch({ type: 'SUBMIT_SUCCESS', activeId: active.id })
+      } else if (activeSkill) {
+        const renamed = values.name !== activeSkill.name
+        await updateSkill({ id: activeSkill.id, patch: values })
+        trackSkillEvent('skill_edited', activeSkill.id, { renamed })
+        dispatch({ type: 'SUBMIT_SUCCESS', activeId: activeSkill.id })
       }
     } catch (error) {
       if (error instanceof SkillNameTakenError || error instanceof SkillNameInvalidError) {
-        dispatch({ type: 'SET_NAME_ERROR', message: error.message })
+        dispatch({ type: 'SET_SLUG_ERROR', message: error.message })
         return
       }
-      throw error
+      // Unexpected persistence failure: the form stays open with the user's
+      // input intact — tell them why nothing happened instead of failing
+      // silently as an unhandled rejection.
+      console.error('Failed to save skill', error)
+      dispatch({ type: 'SUBMIT_FAILED', message: "Couldn't save the skill. Please try again." })
     }
   }
 
-  // Empty-state panel — the "I deleted everything" path. `active` falls back
-  // to `skills.at(0)` (see below), so when the library has rows the panel
-  // always renders a skill detail; this empty state only fires when
-  // `skills.length === 0`. Stays inside the master/detail layout so the
-  // list (and its + button) keep their normal position.
-  const emptyPanel = (
-    <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
-      <h2 className="text-xl">No skills yet</h2>
-      <p className="max-w-md text-sm text-muted-foreground">
-        Skills are reusable instruction templates you summon in chat with{' '}
-        <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
-      </p>
-      <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
-        <Plus />
-        Create your first skill
-      </Button>
-    </section>
-  )
+  // Wiring shared by the create and edit forms — one source so the two
+  // renders can't drift.
+  const sharedFormProps = {
+    onCancel: () => requestLeave({ type: 'cancel' }),
+    onSubmit: handleSubmit,
+    onDirtyChange: (dirty: boolean) => dispatch({ type: 'SET_DIRTY', dirty }),
+    onSlugChange: () => dispatch({ type: 'CLEAR_SLUG_ERROR' }),
+    resetSignal,
+    slugError,
+    submitError,
+  }
 
   const createForm = (
     <SkillForm
@@ -229,84 +219,77 @@ export const SkillsView = () => {
       // user clicks "Create it" for a different slug back-to-back.
       key={createInitialName ? `create:${createInitialName}` : 'create'}
       mode="create"
-      initialValues={createInitialName ? { name: createInitialName, description: '', instruction: '' } : undefined}
-      onCancel={() => requestLeave({ type: 'cancel' })}
-      onSubmit={handleSubmit}
-      onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
-      onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
-      resetSignal={resetSignal}
-      nameError={nameError}
+      initialValues={
+        createInitialName
+          ? {
+              name: createInitialName,
+              // Suggest a Title Case name from the slug the user typed in chat.
+              label: titleCaseFromSlug(createInitialName),
+              description: '',
+              instruction: '',
+            }
+          : undefined
+      }
+      {...sharedFormProps}
     />
   )
 
-  const panel =
-    mode === 'create' ? (
-      createForm
-    ) : !active ? (
-      emptyPanel
-    ) : mode === 'detail' ? (
-      <SkillDetail
-        name={active.name}
-        description={active.description}
-        instruction={active.instruction}
-        enabled={isEnabled(active.id)}
-        onToggleEnabled={(next) => handleToggleEnabled(active.id, next)}
-        onEdit={() => onEdit(active.id)}
-        onDelete={() => onDelete(active.id)}
-        onBack={isMobile ? () => dispatch({ type: 'BACK_TO_LIST' }) : undefined}
-      />
-    ) : (
+  const renderPanel = () => {
+    if (mode === 'create') {
+      return createForm
+    }
+    if (!activeSkill) {
+      return null
+    }
+    if (mode === 'detail') {
+      return (
+        <SkillDetail
+          name={skillDisplayName(activeSkill)}
+          description={activeSkill.description}
+          instruction={activeSkill.instruction}
+          onEdit={() => onEdit(activeSkill.id)}
+          onDelete={() => onDelete(activeSkill.id)}
+          onClose={() => dispatch({ type: 'BACK_TO_LIST' })}
+        />
+      )
+    }
+    return (
       <SkillForm
-        key={`edit:${active.id}`}
+        key={`edit:${activeSkill.id}`}
         mode="edit"
         initialValues={{
-          name: active.name,
-          description: active.description,
-          instruction: active.instruction,
+          name: activeSkill.name,
+          // Legacy rows without a label get a Title Case suggestion so the
+          // required Name field doesn't start empty.
+          label: skillDisplayName(activeSkill),
+          description: activeSkill.description,
+          instruction: activeSkill.instruction,
         }}
-        onCancel={() => requestLeave({ type: 'cancel' })}
-        onSubmit={handleSubmit}
-        onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
-        onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
-        resetSignal={resetSignal}
-        nameError={nameError}
+        {...sharedFormProps}
       />
     )
+  }
+
+  const panel = renderPanel()
+  const panelOpen = panelView === 'panel' && panel !== null
 
   return (
     <div className="relative flex h-full">
-      <SkillsList
-        skills={skills}
-        activeSkillId={mode === 'detail' && active ? active.id : null}
-        isEnabled={isEnabled}
-        onToggleEnabled={handleToggleEnabled}
-        onCreate={() => {
-          if ((mode === 'create' || mode === 'edit') && isDirty) {
-            return
-          }
-          dispatch({ type: 'START_CREATE' })
-        }}
-        onSelectSkill={onSelectSkill}
-        onEdit={onEdit}
-        onDelete={onDelete}
-      />
-      {!isMobile && panel}
-      {isMobile && (
-        <AnimatePresence>
-          {mobileView === 'panel' && (
-            <m.div
-              key="mobile-panel"
-              className="absolute inset-0 z-10 flex bg-background"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 35, stiffness: 400, mass: 0.8 }}
-            >
-              {panel}
-            </m.div>
-          )}
-        </AnimatePresence>
-      )}
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <SkillsList
+          skills={skills}
+          activeSkillId={panelOpen && mode === 'detail' && activeSkill ? activeSkill.id : null}
+          isEnabled={isEnabled}
+          onToggleEnabled={handleToggleEnabled}
+          onCreate={onCreate}
+          onSelectSkill={onSelectSkill}
+          onEditSkill={onEdit}
+          onDeleteSkill={onDelete}
+        />
+      </div>
+      <DetailPanelSurface open={panelOpen} isMobile={isMobile}>
+        {panel}
+      </DetailPanelSurface>
       {pendingDependents && (
         <DependentsDialog
           open
@@ -316,7 +299,7 @@ export const SkillsView = () => {
             }
           }}
           action={pendingDependents.action}
-          targetName={pendingDependents.skill.name}
+          targetName={skillDisplayName(pendingDependents.skill)}
           dependents={pendingDependents.dependents}
           onConfirm={confirmPendingDependents}
           onJumpToDependent={onJumpToDependent}
@@ -331,10 +314,14 @@ export const SkillsView = () => {
             }
           }}
           onConfirm={() => {
-            void removeSkill(pendingDelete.id)
+            // The dialog closes immediately; a failed delete still surfaces
+            // in the console rather than as a dropped rejection.
+            removeSkill(pendingDelete.id).catch((error: unknown) => {
+              console.error('Failed to delete skill', error)
+            })
             dispatch({ type: 'CLOSE_DELETE' })
           }}
-          skillName={pendingDelete.name}
+          skillName={skillDisplayName(pendingDelete)}
         />
       )}
       <DiscardCreateDialog

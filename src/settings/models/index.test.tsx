@@ -8,10 +8,10 @@ import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
-import { act, cleanup, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import ModelsPage, { modelAddTooltip, modelEditTooltip, modelRemoveTooltip } from './index'
+import ModelsPage, { systemModelMenuMessage } from './index'
 
 describe('ModelsPage reactivity', () => {
   beforeAll(async () => {
@@ -68,18 +68,70 @@ describe('ModelsPage reactivity', () => {
   })
 })
 
-describe('model action tooltips', () => {
-  it('explains why built-in models cannot be edited or removed', () => {
-    expect(modelEditTooltip(true)).toBe("Built-in models can't be edited")
-    expect(modelRemoveTooltip(true)).toBe("Built-in models can't be removed")
+describe('model card action menu', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
   })
 
-  it('uses action labels for user-added models', () => {
-    expect(modelEditTooltip(false)).toBe('Edit model')
-    expect(modelRemoveTooltip(false)).toBe('Remove model')
+  afterAll(async () => {
+    await teardownTestDatabase()
   })
 
-  it('labels the add model control', () => {
-    expect(modelAddTooltip()).toBe('Add model')
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  /** Radix dropdown triggers open on pointerdown, not click. */
+  const openMenuForModel = async (modelName: string) => {
+    const card = screen.getByText(modelName).closest('[data-slot="card"]') as HTMLElement
+    await act(async () => {
+      fireEvent.pointerDown(within(card).getByLabelText('More'), { button: 0 })
+    })
+  }
+
+  it('offers Edit and Delete for user-added models', async () => {
+    const db = getDb()
+    await createModel(db, {
+      id: uuidv7(),
+      provider: 'openai',
+      name: 'User Model',
+      model: 'gpt-4',
+      isSystem: 0,
+      enabled: 1,
+    })
+
+    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    await waitForElement(() => screen.queryByText('User Model'))
+
+    await openMenuForModel('User Model')
+
+    expect(await screen.findByText('Edit')).toBeInTheDocument()
+    expect(screen.getByText('Delete')).toBeInTheDocument()
+    expect(screen.queryByText(systemModelMenuMessage)).not.toBeInTheDocument()
+  })
+
+  it('explains instead of offering Edit/Delete for built-in models', async () => {
+    const db = getDb()
+    await createModel(db, {
+      id: uuidv7(),
+      provider: 'thunderbolt',
+      name: 'Built-in Model',
+      model: 'built-in',
+      isSystem: 1,
+      enabled: 1,
+    })
+
+    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    await waitForElement(() => screen.queryByText('Built-in Model'))
+
+    await openMenuForModel('Built-in Model')
+
+    expect(await screen.findByText(systemModelMenuMessage)).toBeInTheDocument()
+    expect(screen.queryByText('Edit')).not.toBeInTheDocument()
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument()
   })
 })

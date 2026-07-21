@@ -11,7 +11,6 @@ import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatTh
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
-import { isDesktop, isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -19,6 +18,7 @@ import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
+import { useSidebarSection } from './use-sidebar-section'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 /**
@@ -33,12 +33,8 @@ export default function Sidebar() {
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
-  const lastChatPathRef = useRef<string | null>(null)
 
   const { chatThreadId: currentChatThreadId } = useParams()
-
-  // Simple route check: any /settings/* path triggers the settings sidebar variant on mobile
-  const isSettingsRoute = location.pathname.startsWith('/settings')
 
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
@@ -46,15 +42,12 @@ export default function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const [showSearch, setShowSearch] = useState(false)
+  const { activeSection, setActiveSection } = useSidebarSection(location.pathname)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
   })
-
-  if (location.pathname.startsWith('/chats/')) {
-    lastChatPathRef.current = location.pathname
-  }
 
   useEffect(() => {
     if (showSearch && searchInputRef.current && !isCollapsed) {
@@ -64,7 +57,7 @@ export default function Sidebar() {
     }
   }, [showSearch, isCollapsed])
 
-  const { data, isPending } = useQuery({
+  const { data } = useQuery({
     queryKey: ['chatThreads'],
     query: toCompilableQuery(getAllChatThreads(db)),
     placeholderData: (previousData) => previousData,
@@ -119,10 +112,10 @@ export default function Sidebar() {
     },
   })
 
-  const createNewChat = async (closeAfter: boolean = true) => {
+  const createNewChat = () => {
     trackEvent('chat_new_clicked')
     navigate(`/chats/new`)
-    if (closeAfter && isMobile) {
+    if (isMobile) {
       setOpenMobile(false)
     }
   }
@@ -138,31 +131,10 @@ export default function Sidebar() {
     [navigate, isMobile, setOpenMobile],
   )
 
-  const handleSettingsNavigation = (path: string) => {
+  const handleNavigate = (path: string) => {
     navigate(path)
     if (isMobile) {
       setOpenMobile(false)
-    }
-  }
-
-  const showSettingsMenu = () => {
-    if (!isSettingsRoute) {
-      navigate('/settings/preferences')
-    }
-  }
-
-  const goToMainMenu = async () => {
-    // Only wait if query is pending and we have no fallback
-    if (isPending && !lastChatPathRef.current) {
-      return
-    }
-
-    if (lastChatPathRef.current) {
-      navigate(lastChatPathRef.current)
-    } else if (data && data.length > 0) {
-      navigate(`/chats/${data[0].id}`)
-    } else {
-      await createNewChat(false)
     }
   }
 
@@ -183,17 +155,15 @@ export default function Sidebar() {
     }
   }
 
-  // Tauri desktop fully hides the sidebar on collapse instead of the shadcn
-  // 48px icon rail — the main Header shows a re-open toggle in that state.
-  // Web desktop keeps the icon rail (established shadcn behavior).
-  const isTauriDesktop = isTauri() && isDesktop()
-  const collapsible = isMobile || isTauriDesktop ? 'offcanvas' : 'icon'
-
   return (
-    <SidebarRoot collapsible={collapsible}>
+    <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <TooltipProvider>
-        {isSettingsRoute ? (
-          <SettingsSidebarContent onBackClick={goToMainMenu} onSettingsNavigate={handleSettingsNavigation} />
+        {activeSection === 'settings' ? (
+          <SettingsSidebarContent
+            isCollapsed={isCollapsed}
+            onSectionChange={setActiveSection}
+            onSettingsNavigate={handleNavigate}
+          />
         ) : (
           <ChatSidebarContent
             isMobile={isMobile}
@@ -210,12 +180,14 @@ export default function Sidebar() {
             deleteChatDialogRef={deleteChatDialogRef}
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
-            onCreateNewChat={() => createNewChat()}
+            activeSection={activeSection}
+            onSectionChange={setActiveSection}
+            onCreateNewChat={createNewChat}
+            onTasksClick={() => handleNavigate('/tasks')}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={handleSearchClick}
             onSearchQueryChange={setSearchQuery}
-            onSettingsClick={showSettingsMenu}
           />
         )}
       </TooltipProvider>

@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { findSkillTokens, parseSkillTokens, type SkillResolver } from './parse-skill-tokens'
+import {
+  deleteSkillTokenAt,
+  findSkillTokens,
+  normalizeSkillTokensToSlugs,
+  parseSkillTokens,
+  type SkillResolver,
+} from './parse-skill-tokens'
 
 const library: Record<string, string> = {
   'meeting-notes': 'You are a meeting-notes summarizer.',
@@ -112,7 +118,7 @@ describe('parseSkillTokens', () => {
 describe('findSkillTokens', () => {
   it('reports each token with start/end positions and bare slug', () => {
     expect(findSkillTokens('hi /meeting-notes there')).toEqual([
-      { slug: 'meeting-notes', start: 3, end: 17, committed: true },
+      { slug: 'meeting-notes', start: 3, end: 17, committed: true, isDisplay: false },
     ])
   })
 
@@ -127,7 +133,7 @@ describe('findSkillTokens', () => {
 
   it('flags a token at end-of-input as not committed (still typing)', () => {
     const tokens = findSkillTokens('hello /meeting')
-    expect(tokens).toEqual([{ slug: 'meeting', start: 6, end: 14, committed: false }])
+    expect(tokens).toEqual([{ slug: 'meeting', start: 6, end: 14, committed: false, isDisplay: false }])
   })
 
   it('flags a token followed by whitespace as committed', () => {
@@ -143,5 +149,90 @@ describe('findSkillTokens', () => {
   it('marks earlier tokens committed when only the last one is in-progress', () => {
     const tokens = findSkillTokens('/a then /b')
     expect(tokens.map((t) => t.committed)).toEqual([true, false])
+  })
+})
+
+describe('display-title tokens', () => {
+  const titles = new Map([
+    ['Daily Brief', 'daily-brief'],
+    ['Daily Brief Extended', 'daily-brief-extended'],
+  ])
+
+  it('matches a multi-word display token and maps it to its slug', () => {
+    expect(findSkillTokens('run /Daily Brief now', titles)).toEqual([
+      { slug: 'daily-brief', start: 4, end: 16, committed: true, isDisplay: true },
+    ])
+  })
+
+  it('prefers the longest matching title', () => {
+    const tokens = findSkillTokens('/Daily Brief Extended please', titles)
+    expect(tokens[0]?.slug).toBe('daily-brief-extended')
+  })
+
+  it('requires a boundary after the title (no partial-word match)', () => {
+    // "Briefing" ≠ "Brief" — the char after the candidate must be whitespace/end.
+    expect(findSkillTokens('/Daily Briefing now', titles)).toEqual([
+      // Falls back to the single-word slug grammar: "/Daily".
+      { slug: 'Daily', start: 0, end: 6, committed: true, isDisplay: false },
+    ])
+  })
+
+  it('still matches plain slug tokens alongside display tokens', () => {
+    const tokens = findSkillTokens('/daily-brief and /Daily Brief', titles)
+    expect(tokens.map((t) => t.slug)).toEqual(['daily-brief', 'daily-brief'])
+  })
+
+  it('does not match display tokens mid-word (URLs/paths)', () => {
+    expect(findSkillTokens('see docs/Daily Brief', titles)).toEqual([])
+  })
+})
+
+describe('deleteSkillTokenAt', () => {
+  const titles = new Map([['Daily Brief', 'daily-brief']])
+  const text = 'run /Daily Brief now' // token spans [4, 16)
+
+  it('deletes the whole display token when the caret is at its end', () => {
+    expect(deleteSkillTokenAt(text, 16, titles)).toEqual({ text: 'run  now', caret: 4 })
+  })
+
+  it('deletes the whole display token when the caret is inside it', () => {
+    expect(deleteSkillTokenAt(text, 10, titles)).toEqual({ text: 'run  now', caret: 4 })
+  })
+
+  it('returns null when the caret is just before the token (backspace eats the preceding char)', () => {
+    expect(deleteSkillTokenAt(text, 4, titles)).toBeNull()
+  })
+
+  it('returns null when the caret is past the token (e.g. after the trailing space)', () => {
+    expect(deleteSkillTokenAt(text, 17, titles)).toBeNull()
+  })
+
+  it('leaves hand-typed slug tokens alone (letter-by-letter editing)', () => {
+    expect(deleteSkillTokenAt('run /daily-brief now', 16, titles)).toBeNull()
+  })
+
+  it('returns null in plain text', () => {
+    expect(deleteSkillTokenAt('no tokens here', 5, titles)).toBeNull()
+  })
+})
+
+describe('normalizeSkillTokensToSlugs', () => {
+  const titles = new Map([['Daily Brief', 'daily-brief']])
+
+  it('rewrites display tokens to slug form', () => {
+    expect(normalizeSkillTokensToSlugs('run /Daily Brief now', titles)).toBe('run /daily-brief now')
+  })
+
+  it('leaves slug tokens and plain text untouched', () => {
+    expect(normalizeSkillTokensToSlugs('run /daily-brief now', titles)).toBe('run /daily-brief now')
+    expect(normalizeSkillTokensToSlugs('no tokens here', titles)).toBe('no tokens here')
+  })
+
+  it('rewrites every occurrence', () => {
+    expect(normalizeSkillTokensToSlugs('/Daily Brief then /Daily Brief', titles)).toBe('/daily-brief then /daily-brief')
+  })
+
+  it('leaves unknown tokens as typed', () => {
+    expect(normalizeSkillTokensToSlugs('try /Unknown Thing', titles)).toBe('try /Unknown Thing')
   })
 })

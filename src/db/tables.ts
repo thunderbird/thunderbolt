@@ -172,7 +172,10 @@ export const skillsTable = sqliteTable(
   'skills',
   {
     id: text('id').primaryKey(),
+    /** Slash-token slug (`/code-review`) — lowercase, hyphenated, unique per user. */
     name: text('name'),
+    /** Human display name ("Code Review"). Older rows may be null — display falls back to `name`. */
+    label: text('label'),
     description: text('description'),
     instruction: text('instruction'),
     enabled: integer('enabled').default(1),

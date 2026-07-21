@@ -145,6 +145,7 @@ export const skillsTable = powersyncSchema.table(
   {
     id: text('id').notNull(),
     name: text('name'),
+    label: text('label'),
     description: text('description'),
     instruction: text('instruction'),
     enabled: integer('enabled').default(1),

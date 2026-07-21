@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { challengeTokenHeader } from '@/lib/constants'
 import { useAuth } from '@/contexts'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
@@ -130,9 +131,7 @@ export const MagicLinkVerify = () => {
         {state.status === 'success' && (
           <>
             <DialogHeader>
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
-              </div>
+              <GradientCircleCheck className="mx-auto mb-4 h-12 w-12" />
               <DialogTitle className="text-center text-xl">
                 {displayName ? `Welcome, ${displayName}` : 'Welcome!'}
               </DialogTitle>

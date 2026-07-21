@@ -39,6 +39,8 @@ type PromptInputProps = {
   isStreaming?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
+  /** Rendered in the footer's right cluster, just before the submit button. */
+  footerEndElements?: ReactNode
   // Model selection props - optional, only used in automation modal
   chatThread?: ChatThread | null
   models?: Model[]
@@ -90,6 +92,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       isStreaming = false,
       onStop,
       footerStartElements,
+      footerEndElements,
       chatThread = null,
       models,
       selectedModel,
@@ -149,7 +152,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           type="button"
           variant="default"
           aria-label="Stop generating"
-          className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
+          className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
           onClick={onStop}
         >
           <Square className="size-[var(--icon-size-default)]" />
@@ -159,7 +162,13 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           type="submit"
           variant="default"
           aria-label="Send message"
-          className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
+          className={cn(
+            'size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0',
+            // Not submittable → an inert low-contrast grey instead of the
+            // default washed-out (opacity-50) brand gradient; the gradient
+            // appearing is the "you can send now" signal.
+            'disabled:opacity-100 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:[background-image:none]',
+          )}
           disabled={isLoading || !submittable}
         >
           <ArrowUp className="size-[var(--icon-size-default)]" />
@@ -202,6 +211,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           <div className="flex items-center gap-2">{footerStartElements}</div>
 
           <div className="flex gap-2 items-center">
+            {footerEndElements}
             {showModelSelect && (
               <ModelSelector
                 chatThread={chatThread}

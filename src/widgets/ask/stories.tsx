@@ -7,7 +7,7 @@ import { Ask } from './display'
 import type { AskData } from './lib'
 
 const meta = {
-  title: 'widgets/ask',
+  title: 'Widgets/Ask',
   component: Ask,
   parameters: {
     layout: 'centered',
@@ -60,13 +60,6 @@ const noDesignatedAnswer: AskData = {
   ],
 }
 
-const freeResponse: AskData = {
-  mode: 'free',
-  prompt: 'In your own words, why is end-to-end encryption important for email?',
-  explanation: 'Only the sender and intended recipient can read the message — not the mail server or any intermediary.',
-  options: [],
-}
-
 /** One designated answer — radio-style, revealed on submit. */
 export const SingleAnswer: Story = { args: singleAnswer }
 
@@ -75,6 +68,3 @@ export const MultipleAnswers: Story = { args: multipleAnswers }
 
 /** No designated answer — an open prompt where the choice itself is the action. */
 export const NoDesignatedAnswer: Story = { args: noDesignatedAnswer }
-
-/** Open free-text response — the user types an answer; an optional sample answer is shown after. */
-export const FreeResponse: Story = { args: freeResponse }

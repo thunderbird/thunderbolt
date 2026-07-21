@@ -63,7 +63,7 @@ describe('OnboardingCelebrationStep', () => {
       renderComponent()
 
       const message = screen.getByText("You're all set! 🎉")
-      expect(message).toHaveClass('text-lg', 'text-muted-foreground')
+      expect(message).toHaveClass('text-2xl')
     })
   })
 
@@ -92,7 +92,7 @@ describe('OnboardingCelebrationStep', () => {
 
       const message = screen.getByText("You're all set! 🎉")
       expect(message).toBeInTheDocument()
-      expect(message.tagName).toBe('P')
+      expect(message.tagName).toBe('H2')
     })
 
     it('should maintain accessibility with proper contrast', () => {

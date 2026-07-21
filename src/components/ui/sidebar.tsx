@@ -276,7 +276,7 @@ const Sidebar = forwardRef<
           // Adjust the padding for floating and inset variants.
           variant === 'floating' || variant === 'inset'
             ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
-            : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l',
+            : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)',
           //* set duration to 0 for all elements when dragging
           'group-data-[dragging=true]:duration-0! group-data-[dragging=true]_*:!duration-0',
           className,
@@ -468,7 +468,10 @@ const SidebarGroupLabel = forwardRef<HTMLDivElement, ComponentProps<'div'> & { a
         data-sidebar="group-label"
         className={cn(
           'duration-200 flex h-[var(--touch-height-sm)] shrink-0 items-center rounded-lg px-2 text-xs font-medium text-sidebar-foreground/70 outline-hidden ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-[var(--icon-size-default)] [&>svg]:shrink-0',
-          'group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0',
+          // pointer-events-none: while collapsed the label is invisible but its
+          // -mt-8 slides it over the previous group's last button — without
+          // this it silently blocks hover/clicks on that button's lower half.
+          'group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 group-data-[collapsible=icon]:pointer-events-none',
           className,
         )}
         {...props}
@@ -506,7 +509,7 @@ const SidebarGroupContent = forwardRef<HTMLDivElement, ComponentProps<'div'>>(({
 SidebarGroupContent.displayName = 'SidebarGroupContent'
 
 const SidebarMenu = forwardRef<HTMLUListElement, ComponentProps<'ul'>>(({ className, ...props }, ref) => (
-  <ul ref={ref} data-sidebar="menu" className={cn('flex w-full min-w-0 flex-col gap-1', className)} {...props} />
+  <ul ref={ref} data-sidebar="menu" className={cn('flex w-full min-w-0 flex-col gap-0.5', className)} {...props} />
 ))
 SidebarMenu.displayName = 'SidebarMenu'
 
@@ -516,7 +519,9 @@ const SidebarMenuItem = forwardRef<HTMLLIElement, ComponentProps<'li'>>(({ class
 SidebarMenuItem.displayName = 'SidebarMenuItem'
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button flex w-full items-center gap-3 overflow-hidden rounded-lg p-2 text-left text-[length:var(--font-size-body)] outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-9 md:group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-[var(--icon-size-default)] [&>svg]:shrink-0',
+  // rounded-xl (not the lg atom tier): softened one step to echo the
+  // composer's marquee radius, per design review.
+  'peer/menu-button flex w-full items-center gap-3 overflow-hidden rounded-xl p-2 text-left text-[length:var(--font-size-body)] outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-9 md:group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-[var(--icon-size-default)] [&>svg]:shrink-0',
   {
     variants: {
       variant: {

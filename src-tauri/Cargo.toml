@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.109"
+version = "0.1.110"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -34,7 +34,8 @@ tauri-build = { version = "2.6.0", features = [] }
 tauri = { version = "2.11.2", features = [
     "tray-icon",
     "devtools",
-    "unstable",  # Required for webview
+    "unstable",            # Required for webview
+    "macos-private-api",   # Required for the transparent window + sidebar vibrancy
 ] }
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-os = "2.3.2"

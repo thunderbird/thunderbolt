@@ -2,14 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Button } from '@/components/ui/button'
-import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import {
+  SearchableMenu,
+  searchableMenuFooterActionClass,
+  searchableMenuRowClass,
+  type SearchableMenuGroup,
+  type SearchableMenuItem,
+} from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { GradientLock } from '@/components/ui/gradient-lock'
+import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, ChevronDown, Lock, Plus } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Plus } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 export type ModelSelectorProps = {
@@ -21,9 +28,9 @@ export type ModelSelectorProps = {
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
   /** Trigger appearance. `pill` (default) is the rounded standalone style used
-   *  in modals; `bordered` matches the chat composer's ModeSelector (squared,
-   *  bordered, taller) so the two composer controls read as a pair. */
-  variant?: 'pill' | 'bordered'
+   *  in modals; `composer` matches the chat composer's ModeSelector (squared,
+   *  borderless, hover-accent) so the two composer controls read as a pair. */
+  variant?: 'pill' | 'composer'
 }
 
 type ModelItemData = {
@@ -56,7 +63,7 @@ const toMenuItem = (
   label: model.name,
   description: model.description || model.model,
   searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
-  icon: model.isConfidential === 1 ? <Lock className="size-3.5 text-green-600 dark:text-green-500" /> : undefined,
+  icon: model.isConfidential === 1 ? <PrivateBadge /> : undefined,
   disabled: isDisabled,
   data: { model, disabledByEncryption },
 })
@@ -65,8 +72,9 @@ export const categorizeModels = (
   models: Model[],
   chatThread: ModelSelectorProps['chatThread'],
 ): SearchableMenuGroup<ModelItemData>[] => {
-  const provided: SearchableMenuItem<ModelItemData>[] = []
-  const custom: SearchableMenuItem<ModelItemData>[] = []
+  // Custom and built-in models share one group — the selector only splits by
+  // confidentiality (available vs the greyed-out opposite-mode section below).
+  const available: SearchableMenuItem<ModelItemData>[] = []
   const disabledConfidential: SearchableMenuItem<ModelItemData>[] = []
   const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
 
@@ -81,20 +89,15 @@ export const categorizeModels = (
       } else {
         disabledStandard.push(item)
       }
-    } else if (model.isSystem) {
-      provided.push(item)
     } else {
-      custom.push(item)
+      available.push(item)
     }
   }
 
   const groups: SearchableMenuGroup<ModelItemData>[] = []
 
-  if (provided.length > 0) {
-    groups.push({ id: 'provided', items: provided })
-  }
-  if (custom.length > 0) {
-    groups.push({ id: 'custom', label: 'Custom Models', items: custom })
+  if (available.length > 0) {
+    groups.push({ id: 'available', items: available })
   }
   // A chat is locked to its confidentiality mode, so the opposite-mode models
   // are shown greyed out with a header explaining why. Only one of these
@@ -135,9 +138,9 @@ export const ModelSelector = ({
     <div
       className={cn(
         'flex items-center cursor-pointer transition-colors',
-        variant === 'bordered'
+        variant === 'composer'
           ? cn(
-              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-lg border border-border text-[length:var(--font-size-sm)]',
+              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)]',
               isOpen ? 'bg-accent' : 'hover:bg-accent/50',
             )
           : cn(
@@ -149,11 +152,10 @@ export const ModelSelector = ({
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
         <AlertTriangle className="size-3.5 text-amber-500" />
       ) : selected?.data?.model.isConfidential === 1 ? (
-        <Lock className="size-3.5 text-muted-foreground" />
+        <GradientLock className="size-3.5" />
       ) : null}
-      <span className={cn('font-medium', variant === 'bordered' && 'text-muted-foreground')}>
-        {selected?.label ?? 'Select Model'}
-      </span>
+      {/* Muted in both variants — trigger labels are chrome, not content. */}
+      <span className="font-medium text-muted-foreground">{selected?.label ?? 'Select model'}</span>
       <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>
   )
@@ -167,19 +169,20 @@ export const ModelSelector = ({
     const content = (
       <div
         className={cn(
-          'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+          searchableMenuRowClass,
           'hover:bg-accent/50',
           isSelected && 'bg-accent',
           item.disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium truncate">{item.label}</span>
-            {showMissingKeyHint ? <AlertTriangle className="size-3.5 text-amber-500 flex-shrink-0" /> : item.icon}
-          </div>
-          <span className="text-sm text-muted-foreground truncate">{item.description}</span>
-        </div>
+        <span className="font-medium truncate">{item.label}</span>
+        {/* ml-auto pushes the trailing indicator (missing-key warning or the
+            confidential "Private" badge) to the row's right edge. */}
+        {showMissingKeyHint ? (
+          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-amber-500" />
+        ) : item.icon ? (
+          <span className="ml-auto flex-shrink-0">{item.icon}</span>
+        ) : null}
       </div>
     )
 
@@ -198,10 +201,10 @@ export const ModelSelector = ({
   }
 
   const footer = onAddModels ? (
-    <Button variant="ghost" onClick={onAddModels} className="w-full justify-start gap-2 text-muted-foreground">
+    <button type="button" onClick={onAddModels} className={searchableMenuFooterActionClass}>
       <Plus className="size-4" />
-      Add Models
-    </Button>
+      Add models
+    </button>
   ) : undefined
 
   const { triggerSelection } = useHaptics()

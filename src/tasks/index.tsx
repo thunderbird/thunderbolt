@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { createTask, deleteTask, getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
 import { trackEvent } from '@/lib/posthog'
@@ -469,36 +468,31 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-6 p-4 w-full max-w-[1200px] mx-auto">
+      {/* pt clears the floating header; scrolled rows pass beneath it. */}
+      <div className="flex-1 overflow-y-auto pt-[var(--header-inset)]">
+        <div className="flex flex-col gap-6 px-8 py-4 md:px-12 w-full max-w-[1200px] mx-auto">
           <PageSearch onSearch={handleSearch}>
             <PageHeader title="Tasks">
               {!showEmptyState && (
                 <>
-                  <PageSearch.Button tooltip="Search" />
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="rounded-lg"
-                          onClick={() => setIsAddingNew(true)}
-                          disabled={isAddingNew}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Add Task</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <PageSearch.Button />
+                  {/* mr-2 lines the button's center up with the task rows'
+                      checkbox column (row px-3 + checkbox p-1 + 20px icon). */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Add task"
+                    className="mr-2 bg-card"
+                    onClick={() => setIsAddingNew(true)}
+                    disabled={isAddingNew}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </>
               )}
             </PageHeader>
 
-            <PageSearch.Input placeholder="Search tasks..." onSearch={handleSearch} />
+            <PageSearch.Input placeholder="Search tasks..." onSearch={handleSearch} wrapperClassName="pr-2" />
           </PageSearch>
 
           {showEmptyState ? (
@@ -520,9 +514,9 @@ export default function TasksPage() {
                 <div className="space-y-2">
                   {[...Array(5)].map((_, i) => (
                     <div key={i} className="flex items-center gap-3 p-3">
-                      <Skeleton className="h-5 w-5 rounded" />
+                      <Skeleton className="h-5 w-5 rounded-md" />
                       <Skeleton className="h-5 flex-1" />
-                      <Skeleton className="h-5 w-5 rounded" />
+                      <Skeleton className="h-5 w-5 rounded-md" />
                     </div>
                   ))}
                 </div>

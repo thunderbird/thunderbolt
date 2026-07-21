@@ -19,7 +19,7 @@
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { enforceSecureFile, readFileOrNull, writeSecureFile } from '../iroh/storage.ts'
+import { enforceSecureFile, readFileOrNull, writeSecureFile } from '../lib/secure-fs.ts'
 import { resolveCloudUrl, resolvePatToken } from './config.ts'
 
 /** Root for all thunderbolt CLI state; `THUNDERBOLT_HOME` overrides the default. */

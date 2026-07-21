@@ -41,8 +41,10 @@ describe('OnboardingNameStep', () => {
     mockActions.skipStep.mockClear()
   })
 
-  const renderComponent = () => {
-    return render(<OnboardingNameStep state={{} as OnboardingState} actions={mockActions} />, {
+  const renderComponent = (state: Partial<OnboardingState> = {}) => {
+    // The component only reads `nameValue`; the cast narrows the rest of the
+    // fixture without fabricating unused fields.
+    return render(<OnboardingNameStep state={{ nameValue: '', ...state } as OnboardingState} actions={mockActions} />, {
       wrapper: createQueryTestWrapper(),
     })
   }
@@ -226,9 +228,8 @@ describe('OnboardingNameStep', () => {
     it('should have proper layout structure', () => {
       renderComponent()
 
-      // Find the main container div
       const container = screen.getByText('What should we call you?').closest('div')?.parentElement
-      expect(container).toHaveClass('w-full', 'h-full', 'flex', 'flex-col', 'justify-center')
+      expect(container).toHaveClass('flex', 'w-full', 'flex-1', 'flex-col')
     })
 
     it('should have proper text hierarchy', () => {
@@ -333,7 +334,7 @@ describe('OnboardingNameStep', () => {
 
       render(
         <OnboardingNameStep
-          state={{} as OnboardingState}
+          state={{ nameValue: '' } as OnboardingState}
           actions={mockActions}
           onFormDirtyChange={mockOnFormDirtyChange}
         />,

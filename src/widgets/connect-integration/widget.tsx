@@ -376,6 +376,7 @@ export const ConnectIntegrationWidget = memo(
               <Button
                 onClick={handleConnect}
                 disabled={isConnecting || !state.selectedProvider}
+                variant="secondary"
                 className="w-full"
                 size="lg"
               >

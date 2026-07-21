@@ -4,16 +4,17 @@
 
 import type { AuthClient } from '@/contexts'
 import { createAgent, getAllAgents } from '@/dal'
-import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { ReactNode } from 'react'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter } from 'react-router'
 import AgentsSettingsPage from './index'
 
 const anonSession = {
@@ -24,27 +25,22 @@ const authedSession = {
   user: { id: 'user-1', email: 'a@b.com', name: 'Alice', isAnonymous: false },
 }
 
-const settingsIndexMarker = 'settings-index-marker'
+type PageProps = Parameters<typeof AgentsSettingsPage>[0]
 
-const renderPage = (authClient: AuthClient, isStandalone: () => boolean) => {
+const renderPage = (authClient: AuthClient, props: PageProps = {}) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
-      <MemoryRouter initialEntries={['/settings/agents']}>
-        <Routes>
-          <Route path="/settings/agents" element={children} />
-          <Route path="/settings" element={<div data-testid={settingsIndexMarker} />} />
-        </Routes>
-      </MemoryRouter>
+      <MemoryRouter initialEntries={['/settings/agents']}>{children}</MemoryRouter>
     </TestProvider>
   )
-  return render(<AgentsSettingsPage isStandalone={isStandalone} />, { wrapper: Wrapper })
+  return render(<AgentsSettingsPage {...props} />, { wrapper: Wrapper })
 }
 
-const onTauri = () => true
-const offTauri = () => false
-
-describe('AgentsSettingsPage — hidden state guard', () => {
+// The page is available to everyone: the built-in agent is local-first and
+// custom ACP agents (including iroh targets, which bypass the proxy entirely)
+// work without a real account, so there is no auth-based gating.
+describe('AgentsSettingsPage — availability', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -63,44 +59,36 @@ describe('AgentsSettingsPage — hidden state guard', () => {
     localStorage.clear()
   })
 
-  it('redirects to /settings for anonymous users when the proxy is effectively on (web)', () => {
+  it('renders for anonymous users', () => {
     const authClient = createMockAuthClient({ session: anonSession })
-    renderPage(authClient, offTauri)
+    renderPage(authClient)
 
-    expect(screen.getByTestId(settingsIndexMarker)).toBeInTheDocument()
-    expect(screen.queryByText('Agents')).not.toBeInTheDocument()
-  })
-
-  it('redirects for anonymous users on Tauri Connected (proxy_enabled=true)', () => {
-    localStorage.setItem('proxy_enabled', 'true')
-    const authClient = createMockAuthClient({ session: anonSession })
-    renderPage(authClient, onTauri)
-
-    expect(screen.getByTestId(settingsIndexMarker)).toBeInTheDocument()
-  })
-
-  it('renders the page for anonymous users on Tauri Standalone (proxy off)', () => {
-    const authClient = createMockAuthClient({ session: anonSession })
-    renderPage(authClient, onTauri)
-
-    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
   })
 
-  it('renders the page for authenticated users behind the proxy (web)', () => {
+  it('renders for authenticated users', () => {
     const authClient = createMockAuthClient({ session: authedSession })
-    renderPage(authClient, offTauri)
+    renderPage(authClient)
 
-    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
   })
 
-  it('renders the page for authenticated users on Tauri Standalone', () => {
+  it('opens the detail panel when a row is clicked and closes it again', () => {
     const authClient = createMockAuthClient({ session: authedSession })
-    renderPage(authClient, onTauri)
+    renderPage(authClient)
 
-    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    // Nothing selected — the built-in detail heading only exists in the panel.
+    expect(screen.queryByRole('button', { name: 'Close details' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Thunderbolt' }))
+
+    expect(screen.getByRole('heading', { name: 'Thunderbolt' })).toBeInTheDocument()
+    expect(screen.getByText(/built into the app — always here/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
+    expect(screen.queryByRole('button', { name: 'Close details' })).not.toBeInTheDocument()
   })
 })
 
@@ -126,90 +114,62 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
     localStorage.clear()
   })
 
-  const renderIrohAgentsPage = (enrollIroh: () => Promise<void>) => {
+  /** Opens Add custom agent and enters a valid iroh target. */
+  const openAddIrohAgent = (enrollIroh: () => Promise<void>) => {
     const authClient = createMockAuthClient({ session: authedSession })
-    const TestProvider = createTestProvider({ authClient })
-    const Wrapper = ({ children }: { children: ReactNode }) => (
-      <TestProvider>
-        <MemoryRouter initialEntries={['/settings/agents']}>
-          <Routes>
-            <Route path="/settings/agents" element={children} />
-            <Route path="/settings" element={<div data-testid={settingsIndexMarker} />} />
-          </Routes>
-        </MemoryRouter>
-      </TestProvider>
-    )
-    render(
-      <AgentsSettingsPage isStandalone={offTauri} loadAppNodeId={async () => appNodeId} enrollIroh={enrollIroh} />,
-      { wrapper: Wrapper },
-    )
-  }
-
-  // Renders the authed page, opens the Add dialog, and types a name + iroh ticket so the
-  // submit lands on the iroh transport. `loadAppNodeId` keeps the pairing panel off the
-  // wasm client; `enrollIroh` is the injected app self-enrollment seam.
-  const openAddIrohAgent = async (enrollIroh: () => Promise<void>) => {
-    renderIrohAgentsPage(enrollIroh)
+    renderPage(authClient, { loadAppNodeId: async () => appNodeId, enrollIroh })
     fireEvent.click(screen.getByRole('button', { name: /add custom agent/i }))
     fireEvent.change(screen.getByPlaceholderText('My Agent'), { target: { value: 'Laptop Bridge' } })
     fireEvent.change(screen.getByPlaceholderText(/paste an iroh ticket/i), { target: { value: irohTarget } })
   }
 
-  it('self-enrolls this app when adding an iroh agent', async () => {
+  it('self-enrolls this app exactly once when adding an iroh agent', async () => {
     const enrollIroh = mock(async () => {})
-    await openAddIrohAgent(enrollIroh)
+    openAddIrohAgent(enrollIroh)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add agent' }))
       await getClock().runAllAsync()
     })
 
     expect(enrollIroh).toHaveBeenCalledTimes(1)
     expect(enrollIroh).toHaveBeenCalledWith()
-    const created = await getAllAgents(getDb())
-    expect(created.some((agent) => agent.url === irohTarget)).toBe(true)
+    expect((await getAllAgents(getDb())).some((agent) => agent.url === irohTarget)).toBe(true)
   })
 
-  it('still creates the agent and keeps the manual pairing panel when enrollment fails', async () => {
+  it('still creates the agent when enrollment fails', async () => {
     const enrollIroh = mock(async () => {
       throw new Error('no account (standalone)')
     })
-    await openAddIrohAgent(enrollIroh)
-    // The manual `thunderbolt iroh allow` one-liner is present as the fallback path.
+    openAddIrohAgent(enrollIroh)
     expect(screen.getByTestId('iroh-pairing-panel')).toBeInTheDocument()
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add agent' }))
       await getClock().runAllAsync()
     })
 
-    // The failed enrollment did not block the add — the agent row was still created.
-    const created = await getAllAgents(getDb())
-    expect(created.some((agent) => agent.url === irohTarget)).toBe(true)
+    expect((await getAllAgents(getDb())).some((agent) => agent.url === irohTarget)).toBe(true)
   })
 
-  it('does not block the add on a slow (never-resolving) enrollment', async () => {
-    // Enrollment that never settles — a fire-and-forget add must still complete and close.
+  it('does not block the add on a never-resolving enrollment', async () => {
     const enrollIroh = mock(() => new Promise<void>(() => {}))
-    await openAddIrohAgent(enrollIroh)
+    openAddIrohAgent(enrollIroh)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add agent' }))
       await getClock().runAllAsync()
     })
 
-    // Row created and the dialog closed despite the hung enrollment.
-    const created = await getAllAgents(getDb())
-    expect(created.some((agent) => agent.url === irohTarget)).toBe(true)
+    expect((await getAllAgents(getDb())).some((agent) => agent.url === irohTarget)).toBe(true)
     expect(screen.queryByPlaceholderText(/paste an iroh ticket/i)).not.toBeInTheDocument()
   })
 
   it('does not enroll when editing an iroh agent', async () => {
     const db = getDb()
-    const agentId = 'existing-iroh-agent'
     const enrollIroh = mock(async () => {})
     await createAgent(db, {
-      id: agentId,
+      id: 'existing-iroh-agent',
       name: 'Existing Bridge',
       type: 'remote-acp',
       transport: 'iroh',
@@ -218,20 +178,18 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
       enabled: 1,
       userId: authedSession.user.id,
     })
-    renderIrohAgentsPage(enrollIroh)
+    const authClient = createMockAuthClient({ session: authedSession })
+    renderPage(authClient, { loadAppNodeId: async () => appNodeId, enrollIroh })
 
+    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Open Existing Bridge' }))
+    fireEvent.click(openButton)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed Bridge' } })
     await act(async () => {
-      await getClock().runAllAsync()
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Existing Bridge' }))
-    fireEvent.change(screen.getByPlaceholderText('My Agent'), { target: { value: 'Renamed Bridge' } })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
       await getClock().runAllAsync()
     })
 
     expect(enrollIroh).not.toHaveBeenCalled()
-    const updated = (await getAllAgents(db)).find((agent) => agent.id === agentId)
-    expect(updated?.name).toBe('Renamed Bridge')
+    expect((await getAllAgents(db)).find((agent) => agent.id === 'existing-iroh-agent')?.name).toBe('Renamed Bridge')
   })
 })

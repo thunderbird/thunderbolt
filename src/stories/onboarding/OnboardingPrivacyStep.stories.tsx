@@ -6,7 +6,7 @@ import { OnboardingPrivacyStepWrapper } from './wrappers/OnboardingPrivacyStepWr
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 const meta = {
-  title: 'components/onboarding/onboarding-privacy-step',
+  title: 'Onboarding/OnboardingPrivacyStep',
   component: OnboardingPrivacyStepWrapper,
   parameters: {
     layout: 'centered',

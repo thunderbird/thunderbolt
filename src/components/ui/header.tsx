@@ -8,18 +8,19 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isDesktop, isMacDesktop, isTauri } from '@/lib/platform'
+import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
-import { Menu, MessageCirclePlus, PanelLeft } from 'lucide-react'
+import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
+import { ArrowLeft, ArrowRight, Menu, MessageCirclePlus } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
+import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
 import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
-import { PowerSyncStatus } from '@/components/powersync-status'
 
 /** Subscribes to the active chat instance's status to disable the agent
  *  selector while a reply is streaming. Pulled into its own component so
@@ -55,6 +56,50 @@ const HeaderAgentSelector = ({
   )
 }
 
+const headerIconButtonClass = 'size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground'
+
+/**
+ * Back/forward history arrows for the Tauri desktop app, where there's no
+ * browser chrome to navigate with. Web is skipped (the browser has its own
+ * buttons) and so are mobile-width layouts (no room in the 3-column header).
+ * Enabled state derives from react-router's history index (`history.state.idx`),
+ * re-read on every location change.
+ */
+const HistoryNavButtons = () => {
+  const navigate = useNavigate()
+  // Subscribe to location so the enabled states recompute after navigation.
+  useLocation()
+  const { index, ceiling } = useHistoryCeiling()
+
+  const canGoBack = index > 0
+  const canGoForward = index < ceiling
+
+  return (
+    <div className="flex items-center">
+      <Button
+        variant="ghost"
+        size="icon"
+        className={headerIconButtonClass}
+        disabled={!canGoBack}
+        onClick={() => void navigate(-1)}
+      >
+        <ArrowLeft className="size-[var(--icon-size-default)]" />
+        <span className="sr-only">Go back</span>
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={headerIconButtonClass}
+        disabled={!canGoForward}
+        onClick={() => void navigate(1)}
+      >
+        <ArrowRight className="size-[var(--icon-size-default)]" />
+        <span className="sr-only">Go forward</span>
+      </Button>
+    </div>
+  )
+}
+
 /**
  * Reusable page header component with sidebar trigger and agent selector. Model
  * selection lives in the chat composer (next to the mode picker), not here.
@@ -66,12 +111,12 @@ export const Header = () => {
   // the drag surface — including when the viewport is narrow enough to fall
   // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
   // buttons inline on the right (self-nulls on macOS/web).
-  const enableDragRegion = isTauri() && isDesktop()
-  const dragProps = enableDragRegion ? { 'data-tauri-drag-region': true } : {}
-  // Tauri desktop fully hides the sidebar on collapse (see layout/sidebar/
-  // index.tsx) — surface a re-open toggle in the header in that state so it
-  // stays discoverable.
-  const showReopenSidebarButton = isTauri() && isDesktop() && !isMobile && sidebarState === 'collapsed'
+  const isDragRegionEnabled = isTauriDesktop()
+  const dragProps = isDragRegionEnabled ? { 'data-tauri-drag-region': true } : {}
+  // The macOS traffic lights (ending at ~x=68) are wider than the collapsed
+  // 48px icon rail, so nudge the header content right of the overhang with
+  // some breathing room so the agent selector pill doesn't crowd the buttons.
+  const needsTrafficLightClearance = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
   const navigate = useNavigate()
   const location = useLocation()
   const allAgents = useAllAgents()
@@ -127,42 +172,37 @@ export const Header = () => {
   // Mobile: 3-column layout. Center holds the agent selector.
   if (isMobile) {
     const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
-    // A Tauri desktop window resized narrow enough to trigger this branch has
-    // the sidebar collapsed into offcanvas and needs a way back — use the same
-    // PanelLeft icon the sidebar uses to toggle itself. On macOS the toggle
-    // has to clear the OS traffic lights sitting at the top-left of the window.
-    const isTauriDesktopNarrow = isTauri() && isDesktop()
-    const ToggleIcon = isTauriDesktopNarrow ? PanelLeft : Menu
 
     return (
       <header
         {...dragProps}
-        className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
+        className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
       >
-        <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'ml-20')}>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-[var(--touch-height-sm)] cursor-pointer"
-            onClick={toggleSidebar}
-          >
-            <ToggleIcon className="size-[var(--icon-size-default)]" />
+        <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'pl-20')}>
+          {/* In the mobile layout the sidebar opens as an overlay on top of the
+              content, so the toggle reads as a menu (burger) rather than a
+              panel collapse. On macOS the button sits right of the traffic
+              lights via the pl-20 above. */}
+          <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>
+            <Menu strokeWidth={1.5} className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Toggle Sidebar</span>
           </Button>
         </div>
 
-        <div {...dragProps} className="flex shrink-0 items-center justify-center gap-2 min-w-0">
+        {/* Absolutely centered so the macOS traffic-light clearance on the
+            left column can't push it off-center — flex sizing counts that
+            padding as part of the column's outer width, so symmetric flex-1
+            columns alone don't keep the middle truly centered. */}
+        <div
+          {...dragProps}
+          className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2"
+        >
           {agentSelector}
         </div>
 
         <div {...dragProps} className="flex flex-1 items-center gap-1 justify-end">
           {showNewChatButton && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-[var(--touch-height-sm)] cursor-pointer"
-              onClick={handleNewChat}
-            >
+            <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={handleNewChat}>
               <MessageCirclePlus className="size-[var(--icon-size-default)]" />
               <span className="sr-only">New Chat</span>
             </Button>
@@ -172,31 +212,31 @@ export const Header = () => {
     )
   }
 
-  // Desktop: Agent selector left-aligned, PowerSync status right.
+  // Desktop: a single left-aligned group — optional expand toggle, history
+  // arrows (Tauri app only), then the agent selector (fully left on web,
+  // right of the arrows in the app). Theme and sync/account controls live in
+  // the sidebar footer, so the right side stays empty (it remains a drag
+  // surface on the Tauri desktop app).
+  // On the Tauri desktop app the expand toggle lives here while the sidebar is
+  // collapsed to a rail — just right of the macOS traffic lights, the same
+  // spot the collapse toggle occupies in the expanded sidebar's strip. On web
+  // the toggle stays inside the sidebar itself.
+  const showSidebarToggle = isTauriDesktop() && sidebarState === 'collapsed'
+
   return (
     <header
       {...dragProps}
-      className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
+      className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
-      <div
-        {...dragProps}
-        className={cn('flex items-center gap-2', showReopenSidebarButton && isMacDesktop() && 'ml-20')}
-      >
-        {showReopenSidebarButton && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-[var(--touch-height-sm)] cursor-pointer"
-            onClick={toggleSidebar}
-          >
-            <PanelLeft className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Open Sidebar</span>
+      <div {...dragProps} className={cn('flex items-center gap-2', needsTrafficLightClearance && 'ml-8')}>
+        {showSidebarToggle && (
+          <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>
+            <PanelLeftRounded className="size-[var(--icon-size-default)]" />
+            <span className="sr-only">Expand Sidebar</span>
           </Button>
         )}
+        {isTauriDesktop() && <HistoryNavButtons />}
         {agentSelector}
-      </div>
-      <div {...dragProps} className="flex items-center gap-2">
-        <PowerSyncStatus />
       </div>
     </header>
   )

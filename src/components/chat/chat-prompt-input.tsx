@@ -11,7 +11,9 @@ import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
+import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
+import { deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
@@ -27,9 +29,10 @@ import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
+import { AlertCircle, Loader2, Paperclip, Plus, X } from 'lucide-react'
 import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
@@ -177,6 +180,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const { isEnabled } = useEnabledSkills()
     const trackSkillEvent = useSkillTelemetry()
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
+    // Display-title → slug, for the whole library (disabled skills still
+    // highlight as amber chips). The composer shows `/Daily Brief`; the model
+    // and stored message get `/daily-brief` via send-time normalization.
+    const displayNameToSlug = useMemo(() => buildDisplayNameToSlug(library), [library])
     const enabledSlugs = useMemo(
       () => new Set(library.filter((s) => isEnabled(s.id)).map((s) => s.name)),
       [library, isEnabled],
@@ -279,7 +286,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (slug: string) => {
         // Read the latest input from a ref so deferred callers (e.g. the
         // `runSkill` microtask) don't operate on a stale closure value.
-        const next = appendSlashToken(inputRef.current, slug)
+        // Insert the display title, not the slug — the user only ever sees
+        // titles in chat; send-time normalization restores the slug.
+        // `tokenForSkill` falls back to the slug for ambiguous display names
+        // so the token stays resolvable at send time.
+        const skill = skillBySlug.get(slug)
+        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : slug)
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -292,7 +304,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           ta?.setSelectionRange(next.length, next.length)
         })
       },
-      [setInput, setCursorPos],
+      [setInput, setCursorPos, skillBySlug, displayNameToSlug],
     )
 
     const insertInstructionText = useCallback(
@@ -320,12 +332,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [input, setInput, setCursorPos],
     )
 
-    // Run-in-chat router-state nav (Skills v1 §5). Read once during render
-    // and clear the state via `navigate(replace)` so back/forward doesn't
-    // re-trigger. Tracked via `consumedRunSkillRef` so React's StrictMode
-    // double-render doesn't insert the token twice. Once the state is
-    // cleared we reset the ref so the user can click "Run skill" on the
-    // same skill again.
+    // Run-in-chat router-state nav (Skills v1 §5). Same consume-once shape as
+    // `useConsumeNavState` (which skills-view uses) — kept inline here only
+    // because this component's router hooks are injectable for tests. Read
+    // once during render and clear the state via `navigate(replace)` so
+    // back/forward doesn't re-trigger; the ref guard keeps StrictMode's
+    // double-render from inserting the token twice.
     const consumedRunSkillRef = useRef<string | null>(null)
     const runSkill = (location.state as { runSkill?: string } | null)?.runSkill
     if (!runSkill) {
@@ -363,8 +375,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // — Skills v1 Open Q #5. Quotes are injected into the send (as `> …`
     // blockquotes) but aren't part of `currentInput`, so they'd otherwise be
     // invisible to the estimate.
+    // Display tokens (`/Daily Brief`) become slugs (`/daily-brief`) here — the
+    // model, the stored message, and the token estimate only ever see slugs.
+    // One memo feeds both the estimate and the send so they agree by
+    // construction.
+    const normalizedInput = useMemo(
+      () => normalizeSkillTokensToSlugs(input, displayNameToSlug),
+      [input, displayNameToSlug],
+    )
+
     const additionalInputTokens = useMemo(() => {
-      const instructions = resolveSkillTokenInstructions(input, enabledInstructionBySlug)
+      // The resolver (shared with the send path in ai/fetch.ts) only speaks slugs.
+      const instructions = resolveSkillTokenInstructions(normalizedInput, enabledInstructionBySlug)
       let total = 0
       for (const instruction of instructions) {
         total += estimateTokensForText(instruction)
@@ -373,14 +395,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         total += estimateTokensForText(quote.data.text)
       }
       return total
-    }, [input, enabledInstructionBySlug, quotes])
+    }, [normalizedInput, enabledInstructionBySlug, quotes])
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
       model: selectedModel,
       chatThreadId,
-      currentInput: input,
+      currentInput: normalizedInput,
       additionalInputTokens,
-      onOverflow: () => handleShowOverflowModal(selectedModel, input.trim().length, messages.length + 1),
+      onOverflow: () => handleShowOverflowModal(selectedModel, normalizedInput.trim().length, messages.length + 1),
     })
 
     // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
@@ -456,8 +478,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const handleSubmit = async () => {
       try {
-        // Prevent submitting while streaming, or with no text, attachments, or quotes
-        const textToSend = input.trim()
+        // Prevent submitting while streaming, or with no text, attachments, or quotes.
+        const textToSend = normalizedInput.trim()
         if (isStreaming || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
@@ -527,15 +549,27 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          aria-label="Attach a file"
-          title="Attach a file"
-          className="flex size-[var(--touch-height-sm)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <Paperclip className="size-[var(--icon-size-default)]" />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Add to chat"
+              title="Add to chat"
+              // `hover:bg-accent/50` / open `bg-accent` match the mode and
+              // model picker triggers sitting in the same footer row.
+              className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+            >
+              <Plus className="size-[var(--icon-size-sm)]" />
+            </button>
+          </DropdownMenuTrigger>
+          {/* Opens downward on desktop, matching the mode/model selectors. */}
+          <DropdownMenuContent side={isMobile ? 'top' : 'bottom'} align="start" className="min-w-44">
+            <DropdownMenuItem onSelect={() => fileInputRef.current?.click()} className="cursor-pointer">
+              <Paperclip className="size-[var(--icon-size-sm)]" />
+              Upload file
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {isConnecting ? (
           <div
             role="status"
@@ -555,17 +589,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               Failed to connect to {selectedAgent.name}
             </span>
           </div>
-        ) : (
-          <>
-            <ChatModePicker iconOnly={isMobile} />
-            <ChatModelPicker />
-          </>
-        )}
+        ) : null}
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
         )}
       </div>
     )
+
+    // Mode/model pickers sit in the footer's right cluster, next to the send
+    // button; the connecting / connection-error status replaces them on the
+    // left, so the right side only renders them in the healthy state.
+    const footerEndElements =
+      !isConnecting && !isConnectionError ? (
+        <>
+          <ChatModePicker iconOnly={isMobile} />
+          <ChatModelPicker />
+        </>
+      ) : undefined
 
     const handleAddChipFromBar = useCallback(
       (slug: string) => {
@@ -576,6 +616,31 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         }
       },
       [addSkillChip, skillBySlug, trackSkillEvent],
+    )
+
+    // Backspace treats a display-title chip (`/Daily Brief`) as atomic: one
+    // press removes the whole token instead of eating it a letter at a time.
+    const handleTextareaKeyDown = useCallback(
+      (e: Parameters<typeof handleSlashKeyDown>[0]) => {
+        const ta = e.currentTarget
+        const caretCollapsed = ta.selectionStart === ta.selectionEnd
+        if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
+          const deletion = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
+          if (deletion) {
+            e.preventDefault()
+            setInput(deletion.text)
+            setCursorPos(deletion.caret)
+            requestAnimationFrame(() => {
+              const el = getTextarea()
+              el?.focus()
+              el?.setSelectionRange(deletion.caret, deletion.caret)
+            })
+            return
+          }
+        }
+        handleSlashKeyDown(e)
+      },
+      [displayNameToSlug, setInput, setCursorPos, handleSlashKeyDown],
     )
 
     const handleSelectFromSlashPopup = useCallback(
@@ -603,7 +668,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     return (
       <>
         <div
-          className="relative flex w-full flex-col rounded-2xl"
+          className="relative flex w-full flex-col rounded-3xl"
           onDragOver={(e) => {
             e.preventDefault()
             setIsDragging(true)
@@ -616,7 +681,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           }}
         >
           {isDragging && (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
               <span className="text-[length:var(--font-size-sm)] font-medium text-muted-foreground">
                 Drop file to attach
               </span>
@@ -726,9 +791,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onStop={stop}
             autoFocus={!isMobile}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border bg-card p-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
+            className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
-            renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}
+            footerEndElements={footerEndElements}
+            renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill, displayNameToSlug)}
             popoverSlot={
               popupOpen ? (
                 <SlashPopup
@@ -740,7 +806,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                 />
               ) : null
             }
-            onTextareaKeyDown={handleSlashKeyDown}
+            onTextareaKeyDown={handleTextareaKeyDown}
             onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
             onTextareaPaste={handlePaste}
           />

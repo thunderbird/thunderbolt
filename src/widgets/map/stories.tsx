@@ -45,7 +45,7 @@ const mixedGeometries = JSON.stringify({
 })
 
 const meta = {
-  title: 'widgets/map',
+  title: 'Widgets/Map',
   component: MapWidget,
   parameters: { layout: 'padded' },
   decorators: [

@@ -4,10 +4,12 @@
 
 import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
+import { GradientMail } from '@/components/ui/gradient-mail'
+import { GradientTriangleAlert } from '@/components/ui/gradient-triangle-alert'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { otpLength } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { AlertTriangle, Check, Loader2, Mail } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 
 type SignInOtpStepProps = {
   email: string
@@ -97,7 +99,7 @@ export const SignInOtpStep = ({
             type="button"
             onClick={() => onOtpComplete(otp)}
             disabled={isVerifying || otp.length !== otpLength}
-            className="h-[46px] w-full rounded-[12px] bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
+            className="h-[46px] w-full rounded-lg bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
             {isVerifying ? (
               <>
@@ -117,15 +119,7 @@ export const SignInOtpStep = ({
   return (
     <div className="flex w-full flex-col items-center">
       {/* Icon */}
-      {isLocalhost ? (
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
-          <AlertTriangle className="h-8 w-8 text-yellow-600 dark:text-yellow-400" />
-        </div>
-      ) : (
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-          <Mail className="h-8 w-8 text-primary" />
-        </div>
-      )}
+      {isLocalhost ? <GradientTriangleAlert className="h-12 w-12" /> : <GradientMail className="h-12 w-12" />}
 
       {/* Headline */}
       <div className="mt-4 text-center">
@@ -133,8 +127,9 @@ export const SignInOtpStep = ({
         <p className="mt-2 text-sm text-muted-foreground">
           {isLocalhost ? (
             <>
-              You appear to be using a <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">localhost</code>{' '}
-              backend. Check your backend server logs for the code or magic link.
+              You appear to be using a{' '}
+              <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">localhost</code> backend. Check your
+              backend server logs for the code or magic link.
             </>
           ) : (
             <>

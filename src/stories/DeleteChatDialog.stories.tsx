@@ -11,7 +11,7 @@ import { fn } from 'storybook/test'
 
 // More on how to set up stories at: https://storybook.js.org/docs/writing-stories#default-export
 const meta = {
-  title: 'components/delete-chat-dialog',
+  title: 'Components/DeleteChatDialog',
   component: DeleteChatDialog,
   parameters: {
     layout: 'centered',

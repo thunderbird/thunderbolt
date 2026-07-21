@@ -36,32 +36,32 @@ import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
 /** QUIC application close code for a connection we actively reject (allowlist
  *  miss or spawn failure). Normal end-of-session is signalled by finishing the
  *  stream and letting the client close, never by an active server-side close. */
-export const CLOSE_REFUSED = 1n
+export const closeRefused = 1n
 
 /** Encode a human-readable connection-close reason as the byte array iroh wants. */
 export const reasonBytes = (reason: string): number[] => Array.from(Buffer.from(reason, 'utf8'))
 
 /** Per-remote handshake budget: how many connections one peer may open within
- *  {@link RATE_WINDOW_MS} before we drop the excess *before* the TLS handshake.
+ *  {@link rateWindowMs} before we drop the excess *before* the TLS handshake.
  *  Generous enough that no legitimate client reconnecting hits it. */
-const RATE_MAX = 10
-/** Sliding window for {@link RATE_MAX}. */
-const RATE_WINDOW_MS = 10_000
+const rateMax = 10
+/** Sliding window for {@link rateMax}. */
+const rateWindowMs = 10_000
 /** Hard ceiling on distinct rate-limit keys. The map evicts least-recently-seen
  *  keys past this, so a flood of fresh (rotating) identities can't grow it. */
-const RATE_MAX_KEYS = 4096
+const rateMaxKeys = 4096
 /** Max TLS handshakes allowed to run at once. This is the real CPU backstop: the
  *  per-remote budget is defeated by an attacker who mints a fresh EndpointId per
  *  connection, but a global cap bounds concurrent handshake cost regardless of
  *  identity. Generous enough that legitimate concurrent clients never hit it. */
-const MAX_CONCURRENT_HANDSHAKES = 16
+const maxConcurrentHandshakes = 16
 /** Hard ceiling on a single QUIC/TLS handshake. A peer that grabs a guard slot
  *  then stalls accept()/connect() would otherwise pin that slot forever; with
- *  {@link MAX_CONCURRENT_HANDSHAKES} such stalls every slot is held and legit
+ *  {@link maxConcurrentHandshakes} such stalls every slot is held and legit
  *  clients are locked out at the guard. Past this deadline we abandon the
  *  handshake, releasing the slot. Generous enough that no real relay-routed
  *  handshake hits it. */
-const HANDSHAKE_TIMEOUT_MS = 10_000
+const defaultHandshakeTimeoutMs = 10_000
 /** Hard ceiling on how long an allowlisted peer may take to open its bidi data
  *  stream after the handshake. The handshake guard slot is already released by
  *  this point, so this is not a handshake-DoS — but an allowlisted-but-idle peer
@@ -69,13 +69,13 @@ const HANDSHAKE_TIMEOUT_MS = 10_000
  *  (QUIC's idle timeout is defeated by keepalives). Past this deadline we close
  *  the connection so it can't be held open for free. Generous enough that a real
  *  client opening its stream right after connecting never hits it. */
-const ACCEPT_TIMEOUT_MS = 10_000
+const defaultAcceptTimeoutMs = 10_000
 
 /**
  * A lightweight per-key sliding-window rate limiter. `allow(key)` records the
  * call and returns whether the key is still within budget. A key's own stale
  * timestamps are pruned on each check; the backing map is hard-capped at
- * {@link RATE_MAX_KEYS} via least-recently-seen (insertion-order) eviction, so it
+ * {@link rateMaxKeys} via least-recently-seen (insertion-order) eviction, so it
  * stays bounded even under a flood of fresh keys that never go stale in-window.
  *
  * @param max - calls allowed per window
@@ -89,7 +89,7 @@ export const createRateLimiter = (
   max: number,
   windowMs: number,
   clock: () => number = Date.now,
-  maxKeys: number = RATE_MAX_KEYS,
+  maxKeys: number = rateMaxKeys,
 ): { allow: (key: string) => boolean } => {
   const hits = new Map<string, number[]>()
 
@@ -150,7 +150,7 @@ export const remoteKey = async (incoming: Incoming): Promise<string> => {
  * timeout) so the slot covers only the bounded handshake window, never the whole
  * session and never an indefinite stall.
  *
- * The handshake races a {@link HANDSHAKE_TIMEOUT_MS} deadline: a peer that takes a
+ * The handshake races a {@link defaultHandshakeTimeoutMs} deadline: a peer that takes a
  * guard slot then stalls accept()/connect() can't pin the slot — past the deadline
  * we abandon the wait and free the slot. The underlying handshake may still settle
  * afterwards; if it resolves late we close the orphaned connection so it can't leak.
@@ -158,7 +158,7 @@ export const remoteKey = async (incoming: Incoming): Promise<string> => {
 export const handshake = async (
   incoming: Incoming,
   guard: { release: () => void },
-  timeoutMs: number = HANDSHAKE_TIMEOUT_MS,
+  timeoutMs: number = defaultHandshakeTimeoutMs,
 ): Promise<Connection> => {
   let timedOut = false
   const connecting = (async () => (await incoming.accept()).connect())()
@@ -172,7 +172,7 @@ export const handshake = async (
   // it's bounded, not an unbounded leak — and the guard slot is already freed below.
   void connecting
     .then((connection) => {
-      if (timedOut) connection.close(CLOSE_REFUSED, reasonBytes('handshake timed out'))
+      if (timedOut) connection.close(closeRefused, reasonBytes('handshake timed out'))
     })
     .catch(() => undefined)
 
@@ -201,7 +201,7 @@ type BiStream = Awaited<ReturnType<Connection['acceptBi']>>
  * allowlisted-but-idle peer that never opens the stream would otherwise leave us
  * awaiting `acceptBi()` forever and pin the {@link Connection} (QUIC's idle timeout
  * is defeated by keepalives). Past the deadline we close the connection
- * ({@link CLOSE_REFUSED}) and resolve `null`. The discarded `acceptBi` promise is
+ * ({@link closeRefused}) and resolve `null`. The discarded `acceptBi` promise is
  * pre-`.catch`'d so a late rejection (the close tears the stream down) can't leak
  * as an unhandled rejection.
  */
@@ -212,7 +212,7 @@ const acceptBidiStream = async (connection: Connection, timeoutMs: number): Prom
   let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<null>((resolve) => {
     timer = setTimeout(() => {
-      connection.close(CLOSE_REFUSED, reasonBytes('idle: no data stream opened'))
+      connection.close(closeRefused, reasonBytes('idle: no data stream opened'))
       resolve(null)
     }, timeoutMs)
   })
@@ -227,7 +227,7 @@ const acceptBidiStream = async (connection: Connection, timeoutMs: number): Prom
 /** Cadence of the membership heartbeat: refresh the account allowlist and
  *  re-check every open connection against it. 45s is the revocation-propagation SLA
  *  — a revoked device's live session is torn down within one interval. */
-export const HEARTBEAT_INTERVAL_MS = 45_000
+export const heartbeatIntervalMs = 45_000
 
 /** Background time seam for the heartbeat: like the login poll's `systemClock`, but
  *  its sleep timer is `unref`'d so a pending heartbeat sleep never keeps the process
@@ -268,10 +268,8 @@ export type HandleConnectionOptions = {
  * @param remoteId - the handshake-authenticated peer NodeId
  * @param accountAllowlist - the cached account allowlist, or `undefined` (Standalone)
  */
-export const isConnectionAllowed = async (
-  remoteId: string,
-  accountAllowlist?: AccountAllowlist,
-): Promise<boolean> => (accountAllowlist?.has(remoteId) ?? false) || isAllowed(remoteId)
+export const isConnectionAllowed = async (remoteId: string, accountAllowlist?: AccountAllowlist): Promise<boolean> =>
+  (accountAllowlist?.has(remoteId) ?? false) || isAllowed(remoteId)
 
 /**
  * One heartbeat cycle: refresh the cached account allowlist, then tear down
@@ -308,7 +306,7 @@ export const heartbeatTick = async (
     try {
       if (await isConnectionAllowed(open.remoteId, accountAllowlist)) continue
       process.stderr.write(`⚡ iroh bridge: ${open.remoteId} revoked mid-session — closing\n`)
-      open.connection.close(CLOSE_REFUSED, reasonBytes('membership revoked'))
+      open.connection.close(closeRefused, reasonBytes('membership revoked'))
     } catch (err) {
       process.stderr.write(
         `⚡ iroh bridge: heartbeat re-check failed for ${open.remoteId}: ${err instanceof Error ? err.message : String(err)}\n`,
@@ -318,7 +316,7 @@ export const heartbeatTick = async (
 }
 
 /**
- * Run the membership heartbeat on {@link HEARTBEAT_INTERVAL_MS} cadence until
+ * Run the membership heartbeat on {@link heartbeatIntervalMs} cadence until
  * stopped, sleeping via the injected {@link Clock} so tests drive it without real
  * timers. Each cycle {@link heartbeatTick}s; refresh + per-connection re-checks are
  * error-isolated, so the loop never dies. Returns a stop function that ends the loop
@@ -328,13 +326,13 @@ export const heartbeatTick = async (
  * @param accountAllowlist - the allowlist refreshed each cycle
  * @param openConnections - the live sessions re-checked each cycle
  * @param clock - injected time seam (real: {@link backgroundClock})
- * @param intervalMs - cycle cadence (default {@link HEARTBEAT_INTERVAL_MS})
+ * @param intervalMs - cycle cadence (default {@link heartbeatIntervalMs})
  */
 export const startMembershipHeartbeat = (
   accountAllowlist: AccountAllowlist,
   openConnections: Set<OpenConnection>,
   clock: Clock = backgroundClock,
-  intervalMs: number = HEARTBEAT_INTERVAL_MS,
+  intervalMs: number = heartbeatIntervalMs,
 ): (() => void) => {
   let running = true
   void (async () => {
@@ -367,7 +365,7 @@ export const handleConnection = async (
 
   if (!(await isConnectionAllowed(remoteId, opts.accountAllowlist))) {
     process.stderr.write(`⚡ iroh bridge: refused ${remoteId} (not allowlisted)\n`)
-    connection.close(CLOSE_REFUSED, reasonBytes('not allowlisted'))
+    connection.close(closeRefused, reasonBytes('not allowlisted'))
     return
   }
 
@@ -376,7 +374,7 @@ export const handleConnection = async (
   // runs before its data plane exists. The wait is bounded: a peer that completes
   // the handshake (and passes the allowlist) but never opens the stream is closed
   // rather than left to pin the connection forever.
-  const bi = await acceptBidiStream(connection, opts.acceptTimeoutMs ?? ACCEPT_TIMEOUT_MS)
+  const bi = await acceptBidiStream(connection, opts.acceptTimeoutMs ?? defaultAcceptTimeoutMs)
   if (!bi) {
     process.stderr.write(`⚡ iroh bridge: closed ${remoteId} (idle: no data stream)\n`)
     return
@@ -387,13 +385,13 @@ export const handleConnection = async (
   // would otherwise spawn unbounded agents. At the ceiling we refuse rather than spawn.
   if (atProcCapacity(activeProcs)) {
     process.stderr.write(`⚡ iroh bridge: refused ${remoteId} (at capacity, ${activeProcs.size} live agents)\n`)
-    connection.close(CLOSE_REFUSED, reasonBytes('bridge at capacity'))
+    connection.close(closeRefused, reasonBytes('bridge at capacity'))
     return
   }
 
   const proc = spawnAgent(config.command)
   if (!proc) {
-    connection.close(CLOSE_REFUSED, reasonBytes(`failed to spawn '${config.command[0]}'`))
+    connection.close(closeRefused, reasonBytes(`failed to spawn '${config.command[0]}'`))
     return
   }
   activeProcs.add(proc)
@@ -460,11 +458,7 @@ export const startAccountTrust = async (
     }
     await registerBridgeWithBackend(credential, selfNodeId, hostname() || 'Bridge')
     const initialNodeIds = await fetchAccountAllowlist(credential)
-    const accountAllowlist = createAccountAllowlist(
-      () => fetchAccountAllowlist(credential),
-      selfNodeId,
-      initialNodeIds,
-    )
+    const accountAllowlist = createAccountAllowlist(() => fetchAccountAllowlist(credential), selfNodeId, initialNodeIds)
     const stop = startMembershipHeartbeat(accountAllowlist, openConnections)
     return { accountAllowlist, stop }
   } catch (err) {
@@ -492,8 +486,8 @@ export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
   // TLS handshakes. Two layers drop the excess pre-handshake: a per-remote budget
   // (fairness against a fixed peer) and a global concurrent-handshake cap (the CPU
   // backstop that holds even against an attacker rotating EndpointIds).
-  const handshakeBudget = createRateLimiter(RATE_MAX, RATE_WINDOW_MS)
-  const handshakeGuard = createHandshakeGuard(MAX_CONCURRENT_HANDSHAKES)
+  const handshakeBudget = createRateLimiter(rateMax, rateWindowMs)
+  const handshakeGuard = createHandshakeGuard(maxConcurrentHandshakes)
   const accountTrust = await startAccountTrust(openConnections, nodeId)
 
   process.stdout.write(

@@ -107,7 +107,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
     return (
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>{badge}</PopoverTrigger>
-        <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
+        <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-xl p-0">
           <SourceList sources={sources} onSelect={close} />
         </PopoverContent>
       </Popover>

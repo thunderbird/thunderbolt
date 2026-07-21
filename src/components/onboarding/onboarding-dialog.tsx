@@ -4,6 +4,10 @@
 
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { useDatabase } from '@/contexts'
+import { deleteIntegrationCredentials } from '@/dal'
+import type { OAuthProvider } from '@/lib/auth'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '@/hooks/use-settings'
 import { useOnboardingState } from '@/hooks/use-onboarding-state'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
@@ -18,11 +22,19 @@ import { cn } from '@/lib/utils'
 
 export const OnboardingDialog = () => {
   const { isMobile } = useIsMobile()
+  const db = useDatabase()
+  const queryClient = useQueryClient()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
   const [isOpen, setIsOpen] = useState(false)
   const { state, actions } = useOnboardingState()
+
+  // Owned here (the connected container) so the auth step stays presentational.
+  const handleProviderDisconnect = async (provider: OAuthProvider) => {
+    await deleteIntegrationCredentials(db, provider)
+    await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+  }
 
   useEffect(() => {
     if (import.meta.env.VITE_SKIP_ONBOARDING === 'true') {
@@ -109,15 +121,15 @@ export const OnboardingDialog = () => {
         >
           <div className="flex items-center justify-center px-4 relative w-full pb-2">
             <StepIndicators currentStep={state.currentStep} totalSteps={5} />
-            <div className="absolute -bottom-5.5 w-full h-6 bg-gradient-to-b from-background to-transparent" />
           </div>
-          <div className="flex flex-1 flex-col px-6 overflow-scroll py-4">
+          <div className="flex flex-1 flex-col overflow-scroll px-6 pb-4 pt-6">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
             {state.currentStep === 2 && (
               <OnboardingAuthStep
                 isProcessing={state.processingOAuth}
                 isConnected={state.isProviderConnected}
                 onConnectionChange={actions.setProviderConnected}
+                onDisconnect={handleProviderDisconnect}
               />
             )}
             {state.currentStep === 3 && (
@@ -129,7 +141,6 @@ export const OnboardingDialog = () => {
             {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>
           <div className="flex w-full px-5 pt-2 relative">
-            <div className="absolute -top-5.5 w-full h-6 bg-gradient-to-b from-transparent to-background" />
             <OnboardingActionButtons
               onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
               onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}

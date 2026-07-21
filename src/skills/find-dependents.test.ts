@@ -7,6 +7,7 @@ import type { Skill } from '@/types'
 import { findDependents } from './find-dependents'
 
 const skill = (overrides: Partial<Skill> & { id: string; name: string }): Skill => ({
+  label: null,
   description: '',
   instruction: '',
   enabled: 1,

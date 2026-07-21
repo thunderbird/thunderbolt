@@ -12,11 +12,11 @@ import type { AgentHarness, AgentMessage } from '@earendil-works/pi-agent-core'
 import { cyan, dim, gray, green, red, symbols } from './theme.ts'
 
 /** Max length of a tool-call argument summary before it's ellipsized. */
-const ARGS_MAX = 100
+const argsMax = 100
 /** Max length of a tool-result preview before it's ellipsized. */
-const PREVIEW_MAX = 160
+const previewMax = 160
 /** Lines of a tool result shown as a preview. */
-const PREVIEW_LINES = 2
+const previewLines = 2
 
 /**
  * Matches whole ANSI escape sequences: CSI (`ESC[…`), OSC (`ESC]…` up to a BEL
@@ -27,13 +27,13 @@ const PREVIEW_LINES = 2
  * the next `ESC`/BEL instead of rescanning to the end — keeping the pass linear
  * on hostile input like a long run of bare `ESC]`.
  */
-const ESCAPE_SEQUENCE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]?/g
+const escapeSequencePattern = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]?/g
 /**
  * Matches lone C0/C1 control bytes (and DEL) that survive escape-sequence
  * removal, deliberately sparing tab (`\x09`) and newline (`\x0a`) — the only
  * whitespace the renderer lays out on.
  */
-const CONTROL_CHAR = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g
+const controlCharPattern = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g
 
 /**
  * Neutralizes terminal control sequences in untrusted text (tool output,
@@ -47,7 +47,7 @@ const CONTROL_CHAR = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g
  * @returns the text with escape sequences and stray control bytes removed
  */
 export const sanitizeTerminalText = (text: string): string =>
-  text.replace(ESCAPE_SEQUENCE, '').replace(CONTROL_CHAR, '')
+  text.replace(escapeSequencePattern, '').replace(controlCharPattern, '')
 
 /**
  * Sanitizes untrusted text for an approval summary and keeps it on one visible
@@ -104,7 +104,7 @@ const previewResult = (result: unknown): string => {
       .map((block) => block.text)
       .join(''),
   ).trim()
-  return truncate(text.split('\n').slice(0, PREVIEW_LINES).join('\n'), PREVIEW_MAX)
+  return truncate(text.split('\n').slice(0, previewLines).join('\n'), previewMax)
 }
 
 /**
@@ -118,7 +118,7 @@ const previewResult = (result: unknown): string => {
  */
 export const formatToolStart = (toolName: string, args: unknown): string => {
   const header = `${symbols.tool} ${cyan(toolName)}`
-  const summary = truncate(summarizeArgs(args), ARGS_MAX)
+  const summary = truncate(summarizeArgs(args), argsMax)
   return summary ? `${header} ${gray(summary)}` : header
 }
 

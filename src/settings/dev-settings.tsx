@@ -54,7 +54,16 @@ export default function DevSettingsPage() {
             <Input
               type="url"
               value={cloudUrl}
-              onChange={(e) => setLocalSetting('cloudUrl', e.target.value || initialLocalSettings.cloudUrl)}
+              onChange={(e) => setLocalSetting('cloudUrl', e.target.value)}
+              // Consumers (http client, PowerSync, ACP transports) can't work
+              // with a blank base URL, but snapping back mid-edit would make
+              // the field impossible to clear and retype — so restore the
+              // default only when the field is left empty.
+              onBlur={(e) => {
+                if (e.target.value.trim() === '') {
+                  resetSetting('cloudUrl')
+                }
+              }}
               placeholder="http://localhost:8000"
             />
             <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>

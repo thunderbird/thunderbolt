@@ -183,7 +183,7 @@ const testResultPanels: Record<
     tone: 'destructive',
     icon: <X className="h-4 w-4" />,
     title: 'Token rejected',
-    body: 'The server rejected the credential — check your bearer token or API key.',
+    body: 'The server rejected the credential. Check your bearer token or API key.',
   },
   error: {
     tone: 'destructive',
@@ -444,14 +444,13 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
       return
     }
     const url = isIroh ? newServerUrl.trim() : newServerUrl
-    const name = resolveServerName()
-    await addServerMutation.mutateAsync({ id: uuidv7(), name, url })
+    await addServerMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), url })
     if (isIroh) {
       // App enrolls its own dialer NodeId; bridge registers itself server-side.
       // Fire and forget: enrollment must never block the add, and manual pairing remains the
       // fallback for Standalone, unauthenticated, or offline use.
       void runEnroll().catch((error) => {
-        console.error('iroh transparent enrollment failed; using manual pairing fallback', error)
+        console.warn('iroh transparent enrollment failed; using manual pairing fallback', error)
       })
     }
     form.resetAddDialog()
@@ -742,7 +741,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
           }}
         >
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
+            <Button variant="outline" size="icon" className="bg-card" aria-label="Add MCP server">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -771,10 +770,16 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                   clearDialogError()
                   setMode(value)
                 }}
-                className="w-full flex-shrink-0"
+                className="w-full flex-shrink-0 rounded-lg"
               >
-                <ToggleGroupItem value="simple">Simple</ToggleGroupItem>
-                <ToggleGroupItem value="advanced">Advanced (JSON)</ToggleGroupItem>
+                {/* rounded-lg to match the Input fields below (same treatment
+                    as the preferences ThemeToggleGroup). */}
+                <ToggleGroupItem value="simple" className="first:rounded-l-lg last:rounded-r-lg">
+                  Simple
+                </ToggleGroupItem>
+                <ToggleGroupItem value="advanced" className="first:rounded-l-lg last:rounded-r-lg">
+                  Advanced (JSON)
+                </ToggleGroupItem>
               </ToggleGroup>
             )}
 
@@ -855,7 +860,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                           variant="outline"
                           className="w-full"
                         >
-                          {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
+                          {isTestingConnection ? 'Testing connection…' : 'Test connection'}
                         </Button>
                       )}
 
@@ -956,7 +961,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 </Button>
               ) : (
                 <Button onClick={handleAddServer} disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success')}>
-                  Add Server
+                  Add server
                 </Button>
               )}
             </div>
@@ -1080,7 +1085,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                          <p>Authorized — re-run the OAuth flow if access was revoked</p>
+                          <p>Authorized. Re-run the OAuth flow if access was revoked.</p>
                         </TooltipContent>
                       </Tooltip>
                     )}
@@ -1192,13 +1197,10 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
           <Card className="border-dashed border-2 border-muted-foreground/25">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <Server className="size-10 text-muted-foreground mb-4" />
-              <h3 className="font-medium text-foreground mb-1">No MCP servers configured</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Get started by adding your first MCP server connection.
-              </p>
-              <Button onClick={form.openDialog} variant="outline">
+              <h3 className="font-medium text-foreground mb-4">No MCP servers configured</h3>
+              <Button onClick={form.openDialog}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Server
+                Add server
               </Button>
             </CardContent>
           </Card>

@@ -6,7 +6,7 @@
 
 import { createInterface } from 'node:readline/promises'
 import { Writable } from 'node:stream'
-import { BUILTIN_PROVIDER_ENV_VARS, DEFAULT_MODELS, DEFAULT_PROVIDER } from '../agent/defaults.ts'
+import { defaultModels, defaultProvider, hasProviderEnvKey } from '../agent/defaults.ts'
 import type { BuiltinProvider, ModelProvider, RunConfig } from '../agent/types.ts'
 import { configPath } from '../paths.ts'
 import { saveConfig } from './config.ts'
@@ -24,29 +24,38 @@ type CompatChoice = {
   readonly kind: 'compat'
   readonly label: string
   readonly baseUrl?: string
-  readonly local: boolean
+  readonly isLocal: boolean
 }
 
 type ProviderChoice = BuiltinChoice | CompatChoice
 
-const PROVIDER_CHOICES: readonly ProviderChoice[] = [
-  { kind: 'builtin', label: 'Anthropic', provider: 'anthropic' },
-  { kind: 'builtin', label: 'OpenAI', provider: 'openai' },
-  { kind: 'builtin', label: 'Google (Gemini)', provider: 'google' },
-  { kind: 'builtin', label: 'xAI (Grok)', provider: 'xai' },
-  { kind: 'builtin', label: 'DeepSeek', provider: 'deepseek' },
-  { kind: 'builtin', label: 'Z.AI', provider: 'zai' },
-  { kind: 'builtin', label: 'Moonshot (Kimi)', provider: 'moonshotai' },
-  { kind: 'builtin', label: 'Mistral', provider: 'mistral' },
-  { kind: 'builtin', label: 'Groq', provider: 'groq' },
-  { kind: 'builtin', label: 'Cerebras', provider: 'cerebras' },
-  { kind: 'builtin', label: 'OpenRouter', provider: 'openrouter' },
-  { kind: 'builtin', label: 'Together', provider: 'together' },
-  { kind: 'builtin', label: 'Fireworks', provider: 'fireworks' },
-  { kind: 'builtin', label: 'MiniMax', provider: 'minimax' },
-  { kind: 'compat', label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', local: true },
-  { kind: 'compat', label: 'LM Studio (local)', baseUrl: 'http://localhost:1234/v1', local: true },
-  { kind: 'compat', label: 'Custom OpenAI-compatible endpoint', local: false },
+/** Menu labels in curated display order. Keyed by `BuiltinProvider` so adding
+ *  a provider to `builtinProviders` is a compile error here until it gets a
+ *  label — the menu row then falls out automatically. */
+const builtinProviderLabels: Readonly<Record<BuiltinProvider, string>> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  google: 'Google (Gemini)',
+  xai: 'xAI (Grok)',
+  deepseek: 'DeepSeek',
+  zai: 'Z.AI',
+  moonshotai: 'Moonshot (Kimi)',
+  mistral: 'Mistral',
+  groq: 'Groq',
+  cerebras: 'Cerebras',
+  openrouter: 'OpenRouter',
+  together: 'Together',
+  fireworks: 'Fireworks',
+  minimax: 'MiniMax',
+}
+
+const providerChoices: readonly ProviderChoice[] = [
+  ...(Object.keys(builtinProviderLabels) as readonly BuiltinProvider[]).map(
+    (provider): BuiltinChoice => ({ kind: 'builtin', label: builtinProviderLabels[provider], provider }),
+  ),
+  { kind: 'compat', label: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', isLocal: true },
+  { kind: 'compat', label: 'LM Studio (local)', baseUrl: 'http://localhost:1234/v1', isLocal: true },
+  { kind: 'compat', label: 'Custom OpenAI-compatible endpoint', isLocal: false },
 ]
 
 /** Interactive operations consumed by setup; tests provide scripted answers. */
@@ -75,15 +84,10 @@ export type SetupWizardRuntime = {
 }
 
 /** Reports whether selected provider has an explicit/config key or supported env credential. */
-export const hasUsableCredentials = (
+const hasUsableCredentials = (
   config: Pick<RunConfig, 'provider' | 'apiKey'>,
   env: Readonly<Record<string, string | undefined>>,
-): boolean => {
-  if (config.apiKey) return true
-  const provider = config.provider ?? DEFAULT_PROVIDER
-  if (provider === 'openai-compat') return Boolean(env.THUNDERBOLT_OPENAI_COMPAT_KEY)
-  return BUILTIN_PROVIDER_ENV_VARS[provider].some((name) => Boolean(env[name]))
-}
+): boolean => Boolean(config.apiKey) || hasProviderEnvKey(config.provider ?? defaultProvider, env)
 
 /** Selects guided setup only for credential-less runs owning stdin and stdout TTYs. */
 export const shouldRunSetupWizard = (config: RunConfig, runtime: SetupWizardRuntime): boolean =>
@@ -106,15 +110,16 @@ const choiceProvider = (choice: ProviderChoice): ModelProvider =>
 /** Prints ordered provider menu and reads a valid provider-compatible choice. */
 const chooseProvider = async (io: SetupWizardIO, requiredProvider?: ModelProvider): Promise<ProviderChoice> => {
   io.write('Choose a model provider:\n')
-  PROVIDER_CHOICES.forEach((choice, index) => io.write(`  ${index + 1}. ${choice.label}\n`))
+  providerChoices.forEach((choice, index) => io.write(`  ${index + 1}. ${choice.label}\n`))
 
   while (true) {
-    const answer = await io.readLine(`Provider [1-${PROVIDER_CHOICES.length}]: `)
+    const answer = await io.readLine(`Provider [1-${providerChoices.length}]: `)
     if (answer === null) throw new Error('Setup cancelled.')
-    const index = Number(answer.trim()) - 1
-    const choice = PROVIDER_CHOICES[index]
-    if (!Number.isInteger(index) || choice === undefined) {
-      io.write(`Enter a number from 1 to ${PROVIDER_CHOICES.length}.\n`)
+    // Digits-only so `0x2`/`2e0` don't coerce into a menu choice.
+    const text = answer.trim()
+    const choice = /^\d+$/.test(text) ? providerChoices[Number(text) - 1] : undefined
+    if (choice === undefined) {
+      io.write(`Enter a number from 1 to ${providerChoices.length}.\n`)
       continue
     }
     if (requiredProvider === undefined || choiceProvider(choice) === requiredProvider) return choice
@@ -123,19 +128,51 @@ const chooseProvider = async (io: SetupWizardIO, requiredProvider?: ModelProvide
 }
 
 /** Reads a hidden key, allowing local servers to use a non-empty placeholder. */
-const readApiKey = async (io: SetupWizardIO, local: boolean): Promise<string> => {
+const readApiKey = async (io: SetupWizardIO, isLocal: boolean): Promise<string> => {
   while (true) {
-    const answer = await io.readSecret(local ? 'API key [local]: ' : 'API key: ')
+    const answer = await io.readSecret(isLocal ? 'API key [local]: ' : 'API key: ')
     if (answer === null) throw new Error('Setup cancelled.')
     if (answer.trim() !== '') return answer.trim()
-    if (local) return 'local'
+    if (isLocal) return 'local'
     io.write('API key required.\n')
   }
 }
 
 /** Builds unique default-first model suggestions from live or Pi catalog ids. */
-const modelChoices = (provider: BuiltinProvider, ids: readonly string[]): readonly string[] =>
-  [...new Set([DEFAULT_MODELS[provider], ...ids])]
+const modelChoices = (provider: BuiltinProvider, ids: readonly string[]): readonly string[] => [
+  ...new Set([defaultModels[provider], ...ids]),
+]
+
+/** Resolves a non-empty menu answer: a listed choice for an in-range number,
+ *  the answer itself as a free-form model id when non-numeric, or `null` for an
+ *  out-of-range number so callers re-prompt instead of persisting a digit. */
+const resolveModelAnswer = (answer: string, choices: readonly string[]): string | null => {
+  if (!/^\d+$/.test(answer)) return answer
+  return choices[Number(answer) - 1] ?? null
+}
+
+/** Prompts until the answer resolves to a listed number or a free-form model
+ *  id. An empty answer returns `defaultId` when one exists, else re-prompts. */
+const promptModelChoice = async (
+  io: SetupWizardIO,
+  prompt: string,
+  choices: readonly string[],
+  defaultId: string | null,
+): Promise<string> => {
+  while (true) {
+    const answer = await io.readLine(prompt)
+    if (answer === null) throw new Error('Setup cancelled.')
+    const text = answer.trim()
+    if (text === '') {
+      if (defaultId !== null) return defaultId
+      io.write('Value required.\n')
+      continue
+    }
+    const resolved = resolveModelAnswer(text, choices)
+    if (resolved !== null) return resolved
+    io.write(`Enter a number from 1 to ${choices.length}, or a model id.\n`)
+  }
+}
 
 /** Reads a built-in model, accepting Enter for default, number, or free-form id. */
 const chooseBuiltinModel = async (
@@ -146,32 +183,22 @@ const chooseBuiltinModel = async (
   const choices = modelChoices(provider, listing.ids)
   io.write(listing.source === 'catalog' ? 'Available models (offline list):\n' : 'Available models:\n')
   choices.forEach((model, index) => io.write(`  ${index + 1}. ${model}${index === 0 ? ' (default)' : ''}\n`))
-  const answer = await io.readLine(`Model [${DEFAULT_MODELS[provider]}]: `)
-  if (answer === null) throw new Error('Setup cancelled.')
-  if (answer.trim() === '') return DEFAULT_MODELS[provider]
-  const numbered = choices[Number(answer.trim()) - 1]
-  return numbered ?? answer.trim()
+  return promptModelChoice(io, `Model [${defaultModels[provider]}]: `, choices, defaultModels[provider])
 }
 
 /** Reads a numbered or free-form model id for a custom compatible endpoint. */
 const chooseCompatModel = async (io: SetupWizardIO, listing: ModelListingResult): Promise<string> => {
   if (listing.source === 'catalog') {
-    io.write('Available models (offline list):\n')
+    // The Pi catalog has no ids for a custom endpoint, so there is no list to
+    // show — say so instead of printing an empty header.
+    io.write('Could not fetch a live model list from this endpoint.\n')
     return readRequiredLine(io, 'Model id: ')
   }
 
   const choices = [...new Set(listing.ids)]
   io.write('Available models:\n')
   choices.forEach((model, index) => io.write(`  ${index + 1}. ${model}\n`))
-  while (true) {
-    const answer = await io.readLine('Model id or number: ')
-    if (answer === null) throw new Error('Setup cancelled.')
-    if (answer.trim() === '') {
-      io.write('Value required.\n')
-      continue
-    }
-    return choices[Number(answer.trim()) - 1] ?? answer.trim()
-  }
+  return promptModelChoice(io, 'Model id or number: ', choices, null)
 }
 
 type ApiKeyAndListing = {
@@ -179,31 +206,35 @@ type ApiKeyAndListing = {
   readonly listing: ModelListingResult
 }
 
+type KeyRetryOptions = {
+  readonly provider: ModelProvider
+  readonly initialApiKey: string
+  readonly baseUrl?: string
+  readonly isLocal: boolean
+  readonly dependencies: SetupWizardDependencies
+}
+
 /** Lists models and allows one key correction after provider authentication rejection. */
-const listModelsWithKeyRetry = async (
-  io: SetupWizardIO,
-  provider: ModelProvider,
-  apiKey: string,
-  baseUrl: string | undefined,
-  local: boolean,
-  dependencies: SetupWizardDependencies,
-): Promise<ApiKeyAndListing> => {
+const listModelsWithKeyRetry = async (io: SetupWizardIO, options: KeyRetryOptions): Promise<ApiKeyAndListing> => {
   const listForKey = (key: string) =>
     listModels({
-      provider,
+      provider: options.provider,
       apiKey: key,
-      ...(baseUrl === undefined ? {} : { baseUrl }),
-      ...(dependencies.fetchFn === undefined ? {} : { fetchFn: dependencies.fetchFn }),
-      ...(dependencies.modelListingTimeoutMs === undefined ? {} : { timeoutMs: dependencies.modelListingTimeoutMs }),
+      baseUrl: options.baseUrl,
+      fetchFn: options.dependencies.fetchFn,
+      timeoutMs: options.dependencies.modelListingTimeoutMs,
     })
-  const firstListing = await listForKey(apiKey)
-  if (!firstListing.authRejected) return { apiKey, listing: firstListing }
+  const firstListing = await listForKey(options.initialApiKey)
+  if (!firstListing.wasAuthRejected) return { apiKey: options.initialApiKey, listing: firstListing }
 
-  io.write(`provider rejected this API key (${firstListing.status}) — check it.\n`)
-  const retriedApiKey = await readApiKey(io, local)
+  io.write(`Provider rejected this API key (${firstListing.status}) — check it.\n`)
+  const retriedApiKey = await readApiKey(io, options.isLocal)
   const secondListing = await listForKey(retriedApiKey)
-  if (secondListing.authRejected) {
-    io.write(`provider rejected this API key (${secondListing.status}) — check it.\n`)
+  if (secondListing.wasAuthRejected) {
+    // Persisted anyway so setup completes; be explicit that the key is bad.
+    io.write(
+      `Provider rejected this API key too (${secondListing.status}) — saving it anyway; run \`thunderbolt config\` to fix it.\n`,
+    )
   }
   return { apiKey: retriedApiKey, listing: secondListing }
 }
@@ -225,16 +256,15 @@ export const runSetupWizard = async (
 ): Promise<CliConfig> => {
   const choice = await chooseProvider(io, dependencies.requiredProvider)
   const resolved = await resolveChoice(choice, io)
-  const local = choice.kind === 'compat' && choice.local
-  const initialApiKey = await readApiKey(io, local)
-  const { apiKey, listing } = await listModelsWithKeyRetry(
-    io,
-    resolved.provider,
+  const isLocal = choice.kind === 'compat' && choice.isLocal
+  const initialApiKey = await readApiKey(io, isLocal)
+  const { apiKey, listing } = await listModelsWithKeyRetry(io, {
+    provider: resolved.provider,
     initialApiKey,
-    resolved.baseUrl,
-    local,
+    baseUrl: resolved.baseUrl,
+    isLocal,
     dependencies,
-  )
+  })
   const model =
     choice.kind === 'builtin'
       ? await chooseBuiltinModel(io, choice.provider, listing)
@@ -243,7 +273,7 @@ export const runSetupWizard = async (
     provider: resolved.provider,
     model,
     apiKey,
-    ...(resolved.baseUrl === undefined ? {} : { baseUrl: resolved.baseUrl }),
+    baseUrl: resolved.baseUrl,
   }
   const path = dependencies.path ?? configPath()
   await (dependencies.save ?? saveConfig)(config, path)
@@ -268,19 +298,19 @@ export const createSetupWizardIO = (
   rl.on('close', () => eof.abort())
 
   /** Reads one readline answer and maps only expected stream closure to EOF. */
-  const question = async (prompt: string, secret: boolean): Promise<string | null> => {
-    if (secret) {
+  const question = async (prompt: string, isSecret: boolean): Promise<string | null> => {
+    if (isSecret) {
       output.write(prompt)
       state.muted = true
     }
     try {
-      const answer = await rl.question(secret ? '' : prompt, { signal: eof.signal })
+      const answer = await rl.question(isSecret ? '' : prompt, { signal: eof.signal })
       return answer.trim()
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return null
       throw error
     } finally {
-      if (secret) {
+      if (isSecret) {
         state.muted = false
         output.write('\n')
       }

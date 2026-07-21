@@ -1,5 +1,5 @@
 {
-  "id": "a6a3e956-f2ba-4baa-8397-5d9c7a123e09",
+  "id": "7a835f28-f245-49e2-bea7-28118b3f1733",
   "prevId": "d89abf7b-a292-429d-85bc-33095d917080",
   "version": "7",
   "dialect": "postgresql",
@@ -980,13 +980,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "device_type": {
-          "name": "device_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'normal'"
-        },
         "node_id": {
           "name": "node_id",
           "type": "text",
@@ -1688,6 +1681,12 @@
         },
         "name": {
           "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "label": {
+          "name": "label",
           "type": "text",
           "primaryKey": false,
           "notNull": false

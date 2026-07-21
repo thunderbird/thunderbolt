@@ -27,11 +27,13 @@ cert_mode = "LetsEncrypt"
 contact = "ops@thunderbolt.example"      # <- ACME contact email
 cert_dir = "/certs"
 
-# Without this section the relay is open like the n0 public relays. A shared
-# token gates it to our own clients: the CLI/app would append `?token=…` to the
-# relay URL. Start open for the pilot; lock down before announcing the URL.
-# [access]
-# shared_token = ["<long-random-token>"]   # or env IROH_RELAY_ACCESS_TOKEN
+# A shared token gates the relay to our own clients: the CLI/app append
+# `?token=…` to the relay URL. Secure by default — replace the placeholder
+# with a real random token (or set env IROH_RELAY_ACCESS_TOKEN). To run an
+# open pilot relay like the n0 public ones, comment this section out — but
+# lock it down before announcing the URL.
+[access]
+shared_token = ["<long-random-token>"]
 
 # Per-client receive-rate limiting — sane flood protection for a public host.
 [limits.client.rx]

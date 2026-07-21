@@ -29,7 +29,7 @@ const WeatherForecastWithToggle = ({
         <label className="text-sm font-medium">Time of Day:</label>
         <button
           onClick={() => setDayTime(!dayTime)}
-          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
             dayTime ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
@@ -42,7 +42,7 @@ const WeatherForecastWithToggle = ({
 }
 
 const meta = {
-  title: 'widgets/weather-forecast',
+  title: 'Widgets/WeatherForecast',
   component: WeatherForecastWithToggle,
   parameters: {
     layout: 'centered',

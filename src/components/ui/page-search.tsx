@@ -6,7 +6,6 @@ import { createContext, useContext, useRef, useState, type ChangeEvent, type Rea
 import { Search } from 'lucide-react'
 import { Button } from './button'
 import { SearchInput, type SearchInputProps } from './search-input'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
 import { cn } from '@/lib/utils'
 
 type PageSearchContextValue = {
@@ -38,7 +37,7 @@ type PageSearchProps = {
  *
  * Usage:
  *   <PageSearch onSearch={handleSearch}>
- *     <PageSearch.Button tooltip="Search" />
+ *     <PageSearch.Button />
  *     <PageSearch.Input placeholder="Search..." />
  *   </PageSearch>
  */
@@ -63,35 +62,35 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
   )
 }
 
-type PageSearchButtonProps = {
-  tooltip?: string
-}
-
-const PageSearchButton = ({ tooltip = 'Search' }: PageSearchButtonProps) => {
-  const { toggle } = usePageSearchContext()
+const PageSearchButton = () => {
+  const { open, toggle } = usePageSearchContext()
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" className="rounded-lg" onClick={toggle}>
-            <Search className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Search"
+      className={cn('rounded-lg hover:bg-accent', open && 'bg-accent')}
+      onClick={toggle}
+    >
+      <Search className="h-4 w-4" />
+    </Button>
   )
 }
 
 type PageSearchInputProps = Omit<SearchInputProps, 'onChange' | 'value' | 'debouncedOnChange'> & {
   delay?: number
   onSearch: (value: string) => void
+  wrapperClassName?: string
 }
 
-const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: PageSearchInputProps) => {
+const PageSearchInput = ({
+  delay,
+  onSearch,
+  placeholder,
+  wrapperClassName,
+  ...searchInputProps
+}: PageSearchInputProps) => {
   const { open, inputRef, searchValue, setSearchValue } = usePageSearchContext()
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -101,8 +100,9 @@ const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: 
   return (
     <div
       className={cn(
-        'transition-all duration-300 ease-in-out flex-shrink-0 pr-2',
+        'transition-all duration-300 ease-in-out flex-shrink-0',
         open ? 'max-h-14 opacity-100' : 'max-h-0 opacity-0 overflow-hidden',
+        wrapperClassName,
       )}
     >
       <SearchInput

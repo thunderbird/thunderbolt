@@ -10,6 +10,7 @@ import { fn } from 'storybook/test'
 const dep = (id: string, name: string): Skill => ({
   id,
   name,
+  label: null,
   description: 'desc',
   instruction: 'inst',
   enabled: 1,
@@ -20,7 +21,7 @@ const dep = (id: string, name: string): Skill => ({
 })
 
 const meta = {
-  title: 'skills/dependents-dialog',
+  title: 'Skills/DependentsDialog',
   component: DependentsDialog,
   parameters: {
     layout: 'centered',

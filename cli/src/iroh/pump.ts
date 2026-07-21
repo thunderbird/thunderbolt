@@ -16,7 +16,7 @@ import type { FileSink } from 'bun'
 import type { RecvStream, SendStream } from '@number0/iroh'
 
 /** Max bytes pulled per `recv.read`; a comfortably large ceiling for JSON-RPC. */
-const READ_CHUNK_LIMIT = 1 << 16
+const readChunkLimit = 1 << 16
 
 /**
  * Write a chunk into a subprocess's stdin {@link FileSink} and await its flush,
@@ -82,7 +82,7 @@ export const forwardFromRecv = async (
   sink: (chunk: Uint8Array) => void | Promise<void>,
 ): Promise<void> => {
   while (true) {
-    const chunk = await recv.read(READ_CHUNK_LIMIT)
+    const chunk = await recv.read(readChunkLimit)
     if (chunk.length === 0) break
     await sink(Uint8Array.from(chunk))
   }

@@ -3,15 +3,28 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { hashValues } from '@/lib/utils'
-import type { Skill } from '@/types'
+import type { Skill, SkillRow } from '@/types'
 
 /**
  * Hash of user-editable fields. Includes `deletedAt` so soft-deletes are
  * treated as a user configuration choice — a user who deletes a default does
  * NOT get it re-seeded on next app init.
+ *
+ * Accepts raw (nullable) rows as well as `Skill` so the hash-restamp data
+ * migration can stamp exactly what reconciliation will later recompute.
  */
-export const hashSkill = (skill: Skill): string =>
-  hashValues([skill.name, skill.description, skill.instruction, skill.enabled, skill.pinnedOrder, skill.deletedAt])
+export const hashSkill = (
+  skill: Pick<SkillRow, 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder' | 'deletedAt'>,
+): string =>
+  hashValues([
+    skill.name,
+    skill.label,
+    skill.description,
+    skill.instruction,
+    skill.enabled,
+    skill.pinnedOrder,
+    skill.deletedAt,
+  ])
 
 const dailyBriefInstruction = `Create a daily brief with the following sections. Do not ask the user for any missing information — just skip sections for which you are missing information or tools.
 
@@ -63,6 +76,7 @@ const importantEmailsInstruction = `Review the user's inbox and summarize the 5 
 export const defaultSkillDailyBrief: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
   name: 'daily-brief',
+  label: 'Daily Brief',
   description:
     'Use this skill when the user asks for a daily brief, a morning rundown, or a summary of weather, news, inbox, and calendar.',
   instruction: dailyBriefInstruction,
@@ -76,6 +90,7 @@ export const defaultSkillDailyBrief: Skill = {
 export const defaultSkillImportantEmails: Skill = {
   id: '01996330-0000-7000-8000-000000000002',
   name: 'important-emails',
+  label: 'Important Emails',
   description:
     'Use this skill when the user wants to triage their inbox, see what needs attention, or surface the most important emails of the day.',
   instruction: importantEmailsInstruction,
@@ -99,4 +114,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [defaultSkillDailyBrief, defa
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 1
+export const defaultSkillsVersion = 2

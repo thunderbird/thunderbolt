@@ -42,10 +42,15 @@ import type {
   ResumeSessionResponse,
   SessionId,
 } from '@agentclientprotocol/sdk'
-import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type {
+  AgentHarnessEvent,
+  Session as PiSession,
+  ToolCallEvent,
+  ToolCallResult,
+} from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { isReadOnlyAgentTool, resolveToolPermission } from '../../../shared/agent-tool-permissions.ts'
-import { VERSION } from '../cli.ts'
+import { cliVersion } from '../cli.ts'
 import { buildHarness } from '../agent/harness.ts'
 import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
 import { isExistingPathInWorkspace } from '../agent/workspace-jail.ts'
@@ -112,12 +117,12 @@ type Session = {
  *  guard exists because the resumed id is client-supplied (ACP `z.string()`) and
  *  flows into the on-disk path builder, which `path.join`s it — a crafted `..`
  *  id would escape the sessions root and overwrite an arbitrary `.jsonl`. */
-const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** The permission choices offered to the ACP client for a gated tool call.
  *  `allow-always` allows that tool for the rest of the session; the others are
  *  one-shot. Mirrors the interactive gate's allow-once/allow-session/deny. */
-const PERMISSION_OPTIONS: PermissionOption[] = [
+const permissionOptions: PermissionOption[] = [
   { optionId: 'allow-once', name: 'Allow', kind: 'allow_once' },
   { optionId: 'allow-always', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
@@ -146,7 +151,7 @@ const toToolCallResult = (
   toolName: string,
   sessionAllowed: Set<string>,
 ): ToolCallResult | undefined => {
-  const decision = resolveToolPermission(outcome, PERMISSION_OPTIONS)
+  const decision = resolveToolPermission(outcome, permissionOptions)
   if (decision === 'allow-always') {
     if (toolName !== 'read') sessionAllowed.add(toolName)
     return undefined
@@ -183,7 +188,7 @@ const attachAcpPermissionGate = (
 
     const { outcome } = await conn.requestPermission({
       sessionId,
-      options: PERMISSION_OPTIONS,
+      options: permissionOptions,
       toolCall: { toolCallId, title: toolName, kind: toToolKind(toolName), rawInput: input, status: 'pending' },
     })
     return toToolCallResult(outcome, toolName, sessionAllowed)
@@ -233,7 +238,9 @@ export const createHarnessAgent = (
         }
       })
       .catch((err) => {
-        process.stderr.write(`⚡ acp serve: connection cleanup error: ${err instanceof Error ? err.message : String(err)}\n`)
+        process.stderr.write(
+          `⚡ acp serve: connection cleanup error: ${err instanceof Error ? err.message : String(err)}\n`,
+        )
       })
   })
 
@@ -248,7 +255,7 @@ export const createHarnessAgent = (
     // the only version we could honestly negotiate. A client that can't speak it
     // disconnects (per ACP initialization).
     protocolVersion: PROTOCOL_VERSION,
-    agentInfo: { name: 'thunderbolt', version: VERSION },
+    agentInfo: { name: 'thunderbolt', version: cliVersion },
     agentCapabilities: {
       // We do not replay history (the app renders from PowerSync), so we
       // advertise `resume` — no-replay context restore — not `loadSession`.
@@ -330,7 +337,7 @@ export const createHarnessAgent = (
   const resumeSession = async (params: ResumeSessionRequest): Promise<ResumeSessionResponse> => {
     // Reject a crafted id at the wire boundary before it reaches the on-disk path
     // builder — a `..` segment would let the write escape the sessions root.
-    if (!SESSION_ID_PATTERN.test(params.sessionId)) {
+    if (!sessionIdPattern.test(params.sessionId)) {
       throw RequestError.invalidParams(undefined, `invalid session id '${params.sessionId}'`)
     }
     const workspaceRoot = await trustedWorkspace

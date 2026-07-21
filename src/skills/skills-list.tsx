@@ -3,14 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { LayoutGroup, m } from 'framer-motion'
-import { Menu, Plus, Search } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { useSidebar } from '@/components/ui/sidebar'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageSearch } from '@/components/ui/page-search'
 import type { Skill } from '@/types'
+import { skillMatchesQuery } from './display'
 import { LibraryRow, skillRowTransition } from './library-row'
 
 /**
@@ -27,8 +27,8 @@ export const SkillsList = ({
   onToggleEnabled,
   onCreate,
   onSelectSkill,
-  onEdit,
-  onDelete,
+  onEditSkill,
+  onDeleteSkill,
 }: {
   skills: Skill[]
   activeSkillId: string | null
@@ -36,16 +36,15 @@ export const SkillsList = ({
   onToggleEnabled: (id: string, next: boolean) => void
   onCreate: () => void
   onSelectSkill: (id: string) => void
-  onEdit: (id: string) => void
-  onDelete: (id: string) => void
+  onEditSkill: (id: string) => void
+  onDeleteSkill: (id: string) => void
 }) => {
   const [search, setSearch] = useState('')
-  const { isMobile } = useIsMobile()
-  const { toggleSidebar } = useSidebar()
 
+  const isLibraryEmpty = skills.length === 0
   const { enabledRows, disabledRows } = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    const filtered = query === '' ? skills : skills.filter((s) => s.name.toLowerCase().includes(query))
+    const query = search.trim()
+    const filtered = skills.filter((s) => skillMatchesQuery(s, query))
     const enabled: Skill[] = []
     const disabled: Skill[] = []
     for (const s of filtered) {
@@ -54,51 +53,25 @@ export const SkillsList = ({
     return { enabledRows: enabled, disabledRows: disabled }
   }, [skills, search, isEnabled])
 
+  // The shared settings Header (burger on mobile, drag region on Tauri)
+  // always renders above this page, so the header row here starts at the
+  // same `p-4` offset as the other settings pages.
   return (
-    <section className="flex h-full w-full flex-col gap-3 border-r border-sidebar-border bg-background px-4 pb-4 md:px-5 text-foreground md:w-[378px] md:shrink-0">
-      {/* Title row matches the sidebar's Thunderbolt header height so the
-          "Skills" heading sits at the same y-position as the app logo. */}
-      <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {isMobile && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleSidebar}
-              aria-label="Open menu"
-              className="size-8 -ml-1 rounded-md text-muted-foreground hover:text-foreground"
-            >
-              <Menu strokeWidth={1.5} />
-            </Button>
-          )}
-          {!isMobile && <h1 className="text-xl leading-tight text-foreground">Skills</h1>}
-        </div>
-        {isMobile && (
-          <h1 className="absolute left-1/2 -translate-x-1/2 text-xl leading-tight text-foreground pointer-events-none">
-            Skills
-          </h1>
-        )}
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="Create skill"
-          className="size-8 rounded-md"
-          onClick={onCreate}
-        >
-          <Plus />
-        </Button>
-      </header>
+    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background p-4 md:px-5 text-foreground">
+      <PageSearch onSearch={setSearch}>
+        <PageHeader title="Skills">
+          <PageSearch.Button />
+          <Button variant="outline" size="icon" aria-label="Create skill" className="bg-card" onClick={onCreate}>
+            <Plus />
+          </Button>
+        </PageHeader>
 
-      <div className="relative">
-        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="text"
+        <PageSearch.Input
           placeholder="Search skills"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="h-9 rounded-lg border-border pl-9 text-sm placeholder:text-muted-foreground"
+          onSearch={setSearch}
+          className="h-9 rounded-lg border-border bg-card text-sm placeholder:text-muted-foreground"
         />
-      </div>
+      </PageSearch>
 
       {/* LayoutGroup links the Enabled and Disabled <ul>s so a row's
           `layoutId` carries through when toggling enabled state — the row
@@ -124,8 +97,8 @@ export const SkillsList = ({
                   isActive={skill.id === activeSkillId}
                   onSelect={onSelectSkill}
                   onToggleEnabled={onToggleEnabled}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
+                  onEdit={onEditSkill}
+                  onDelete={onDeleteSkill}
                 />
               ))}
             </m.ul>
@@ -143,17 +116,31 @@ export const SkillsList = ({
                     isActive={skill.id === activeSkillId}
                     onSelect={onSelectSkill}
                     onToggleEnabled={onToggleEnabled}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
+                    onEdit={onEditSkill}
+                    onDelete={onDeleteSkill}
                   />
                 ))}
               </m.ul>
             </m.div>
           )}
 
-          {enabledRows.length === 0 && disabledRows.length === 0 && (
-            // Search-empty state. The user-deleted-everything empty state lives
-            // a level up in SkillsView.
+          {isLibraryEmpty && (
+            // The "I deleted everything" empty state — the list is the page's
+            // main surface now, so the create CTA lives here.
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+              <h2 className="text-xl">No skills yet</h2>
+              <p className="max-w-md text-sm text-muted-foreground">
+                Skills are reusable instruction templates you summon in chat with{' '}
+                <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
+              </p>
+              <Button size="sm" onClick={onCreate}>
+                <Plus />
+                Create your first skill
+              </Button>
+            </div>
+          )}
+          {!isLibraryEmpty && enabledRows.length === 0 && disabledRows.length === 0 && (
+            // Search-empty state: the library has skills but none match.
             <p className="flex h-32 items-center justify-center text-sm text-muted-foreground">No matching skills.</p>
           )}
         </div>

@@ -48,7 +48,7 @@ tokio = "1.52.3"
 # verify the checksum before install. rustls (no OpenSSL) matches the rest of the
 # app's TLS stack; all three are already transitive deps so no new versions land.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 tauri-plugin-devtools = "2.0.1"
 tauri-plugin-http = "2.5.9"

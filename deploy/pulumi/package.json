@@ -15,6 +15,6 @@
     "@pulumi/random": "^4.19.2"
   },
   "devDependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }

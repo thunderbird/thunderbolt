@@ -127,19 +127,29 @@ describe('registerBridgeWithBackend — wire contract', () => {
     expect(seen.signal).toBeInstanceOf(AbortSignal)
   })
 
-  it('reports a revoked bridge on 403 and uses x-api-key for a PAT', async () => {
+  it('reports a revoked bridge on 409 and uses x-api-key for a PAT', async () => {
     const seen: { auth: string | null; apiKey: string | null } = { auth: null, apiKey: null }
     const fetchFn: FetchFn = async (_url, init) => {
       seen.auth = new Headers(init?.headers).get('authorization')
       seen.apiKey = new Headers(init?.headers).get('x-api-key')
-      return jsonResponse({ error: 'revoked' }, 403)
+      return jsonResponse({ error: 'Bridge device revoked' }, 409)
     }
 
     await expect(
       registerBridgeWithBackend(cred({ token: 'pat-xyz', kind: 'apiKey' }), 'bare-node-id', 'Bridge', fetchFn),
-    ).rejects.toThrow('bridge revoked on the account')
+    ).rejects.toThrow(
+      'this device was revoked on your account — remove it in Settings → Devices to pair again (manual allowlist still works)',
+    )
     expect(seen.apiKey).toBe('pat-xyz')
     expect(seen.auth).toBeNull()
+  })
+
+  it('preserves the legacy 403 registration error', async () => {
+    const fetchFn: FetchFn = async () => jsonResponse({ error: 'forbidden' }, 403)
+
+    await expect(registerBridgeWithBackend(cred(), 'bare-node-id', 'Bridge', fetchFn)).rejects.toThrow(
+      'bridge revoked on the account',
+    )
   })
 
   it('surfaces network errors to the account-trust degradation boundary', async () => {

@@ -11,6 +11,7 @@ import {
   linkSessionToDevice,
   registerDevice,
   registerBridgeDevice,
+  deleteRevokedBridgeDevice,
   denyDevice,
   markDeviceTrusted,
   setDeviceNodeId,
@@ -20,6 +21,7 @@ import {
   upsertEnvelope,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
+  revokeDeviceSessions,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
@@ -526,9 +528,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
     // never write another user's row. node_id here is the bridge's SERVER NodeId; it surfaces in
     // getTrustedNodeIds (the account allowlist), which is intentional and harmless — no peer can
     // dial as the bridge's key without its ed25519 private key, so listing it grants nothing.
-    // A revoked bridge is not re-addable with the same NodeId (registerBridgeDevice returns no
-    // row) — mirroring how a revoked normal device is refused re-registration; bring the bridge
-    // back by re-keying it (a fresh NodeId).
+    // A revoked bridge is not silently re-added with the same NodeId. Registration reports the
+    // tombstone so the caller can remove it explicitly before pairing again.
     .post(
       '/devices/bridge',
       async ({ body, set, user: sessionUser }) => {
@@ -546,7 +547,11 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
           const [device] = await registerBridgeDevice(txDb, { userId, nodeId: body.nodeId, name })
           if (!device) {
-            return { revoked: true as const }
+            const tombstone = await getDeviceById(txDb, bridgeDeviceId(userId, body.nodeId))
+            if (tombstone?.userId === userId && tombstone.revokedAt != null) {
+              return { revoked: true as const }
+            }
+            throw new Error('Bridge device registration returned no device')
           }
           return { device }
         })
@@ -556,8 +561,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'Device limit reached' }
         }
         if ('revoked' in result) {
-          set.status = 403
-          return { error: 'Device has been revoked' }
+          set.status = 409
+          return { error: 'Bridge device revoked' }
         }
         const { device } = result
         return { id: device.id, nodeId: device.nodeId, deviceType: device.deviceType }
@@ -569,6 +574,37 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           name: t.Optional(t.String({ maxLength: 100 })),
         }),
       },
+    )
+    .delete(
+      '/devices/:deviceId',
+      async ({ params, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const result = await database.transaction(async (tx) => {
+          const txDb = tx as unknown as typeof database
+          const device = await getDeviceById(txDb, params.deviceId)
+          if (!device || device.userId !== userId) {
+            return { notFound: true as const }
+          }
+          if (device.deviceType !== 'bridge' || device.revokedAt == null) {
+            return { notRemovable: true as const }
+          }
+
+          await revokeDeviceSessions(txDb, params.deviceId, userId)
+          const deleted = await deleteRevokedBridgeDevice(txDb, params.deviceId, userId)
+          return deleted.length > 0 ? { success: true as const } : { notFound: true as const }
+        })
+
+        if ('notFound' in result) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+        if ('notRemovable' in result) {
+          set.status = 409
+          return { error: 'Only revoked bridge devices can be removed' }
+        }
+        return { success: true }
+      },
+      { auth: true },
     )
     .post(
       '/devices/me/cancel-pending',

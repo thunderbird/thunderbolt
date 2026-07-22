@@ -22,6 +22,7 @@ export const getDeviceById = async (database: typeof DbType, deviceId: string) =
       approvalPending: devicesTable.approvalPending,
       publicKey: devicesTable.publicKey,
       revokedAt: devicesTable.revokedAt,
+      deviceType: devicesTable.deviceType,
     })
     .from(devicesTable)
     .where(eq(devicesTable.id, deviceId))
@@ -190,6 +191,21 @@ export const registerBridgeDevice = async (
     })
     .returning()
 }
+
+/** Permanently remove a revoked bridge owned by `userId`.
+ * Guards all eligibility conditions in the DELETE so callers cannot remove active or normal devices. */
+export const deleteRevokedBridgeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
+  database
+    .delete(devicesTable)
+    .where(
+      and(
+        eq(devicesTable.id, deviceId),
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.deviceType, 'bridge'),
+        isNotNull(devicesTable.revokedAt),
+      ),
+    )
+    .returning()
 
 /**
  * Register a device with a public key for encryption.

@@ -6,6 +6,7 @@ import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
+import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
@@ -1822,8 +1823,8 @@ describe('Encryption API', () => {
       await db.update(devicesTable).set({ revokedAt: now, trusted: false }).where(eq(devicesTable.id, bridgeId))
 
       const response = await registerBridge(p('tok-br-rev'), { nodeId: bridgeNodeId })
-      expect(response.status).toBe(403)
-      expect((await response.json()).error).toBe('Device has been revoked')
+      expect(response.status).toBe(409)
+      expect(await response.json()).toEqual({ error: 'Bridge device revoked' })
 
       // The row must remain revoked and untrusted — revocation is not undone by a re-add.
       const [row] = await db.select().from(devicesTable).where(eq(devicesTable.id, bridgeId))
@@ -1864,5 +1865,206 @@ describe('Encryption API', () => {
         .where(eq(devicesTable.userId, p('u-br-spoof')))
       expect(row.deviceType).toBe('bridge')
     })
+  })
+})
+
+const fullAppCounterKey = Symbol.for('encryption-full-app-test-runId')
+;(globalThis as Record<symbol, number>)[fullAppCounterKey] ??= 0
+
+describe('Bridge device lifecycle API through full app', () => {
+  let fullApp: Awaited<ReturnType<typeof createApp>>
+  let fullAppDb: Awaited<ReturnType<typeof createTestDb>>['db']
+  let fullAppCleanup: () => Promise<void>
+  /** Prefix persistent PGlite rows with a unique ID for randomized and repeated runs. */
+  let testId: (id: string) => string
+
+  const fullAppBaseUrl = `${baseUrl}/v1`
+  const fullAppNow = new Date()
+  const fullAppExpiresAt = new Date(fullAppNow.getTime() + 60 * 60 * 1000)
+
+  /** Create an authenticated user session for full-app requests. */
+  const createFullAppUserAndSession = async (label: string) => {
+    const userId = testId(`user-${label}`)
+    const token = testId(`token-${label}`)
+    await fullAppDb.insert(userTable).values({
+      id: userId,
+      name: label,
+      email: `${userId}@test.com`,
+      emailVerified: true,
+      createdAt: fullAppNow,
+      updatedAt: fullAppNow,
+    })
+    await fullAppDb.insert(sessionTable).values({
+      id: testId(`session-${label}`),
+      token,
+      userId,
+      expiresAt: fullAppExpiresAt,
+      createdAt: fullAppNow,
+      updatedAt: fullAppNow,
+    })
+    return { userId, token }
+  }
+
+  /** Register a bridge through the production app route. */
+  const registerFullAppBridge = (token: string, nodeId: string, name = 'Test Bridge') =>
+    fullApp.handle(
+      new Request(`${fullAppBaseUrl}/devices/bridge`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${signToken(token)}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ nodeId, name }),
+      }),
+    )
+
+  /** Revoke a device through the production account route. */
+  const revokeFullAppDevice = (token: string, deviceId: string) =>
+    fullApp.handle(
+      new Request(`${fullAppBaseUrl}/account/devices/${deviceId}/revoke`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${signToken(token)}`,
+          'content-type': 'application/json',
+          'x-device-id': testId('caller-device'),
+        },
+        body: '{}',
+      }),
+    )
+
+  /** Remove a device through the production encryption route. */
+  const removeFullAppDevice = (token: string, deviceId: string) =>
+    fullApp.handle(
+      new Request(`${fullAppBaseUrl}/devices/${deviceId}`, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${signToken(token)}` },
+      }),
+    )
+
+  /** Insert a normal device for removal-eligibility and cap tests. */
+  const insertFullAppNormalDevice = async (id: string, userId: string, revoked = false) => {
+    await fullAppDb.insert(devicesTable).values({
+      id,
+      userId,
+      name: id,
+      trusted: !revoked,
+      approvalPending: false,
+      lastSeen: fullAppNow,
+      createdAt: fullAppNow,
+      ...(revoked ? { revokedAt: fullAppNow } : {}),
+    })
+  }
+
+  beforeEach(async () => {
+    const runId = ++(globalThis as Record<symbol, number>)[fullAppCounterKey]
+    testId = (id: string) => `${runId}-${id}`
+    const testEnv = await createTestDb()
+    fullAppDb = testEnv.db
+    fullAppCleanup = testEnv.cleanup
+    fullApp = await createApp({ database: fullAppDb, auth: createAuth(fullAppDb) })
+  })
+
+  afterEach(async () => {
+    await fullAppCleanup()
+  })
+
+  it('returns 409 when the same NodeId re-registers after revocation', async () => {
+    const { token } = await createFullAppUserAndSession('revoked-register')
+    const nodeId = testId('revoked-node')
+    const registered = await registerFullAppBridge(token, nodeId)
+    const bridgeId = ((await registered.json()) as { id: string }).id
+    expect((await revokeFullAppDevice(token, bridgeId)).status).toBe(204)
+
+    const response = await registerFullAppBridge(token, nodeId)
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({ error: 'Bridge device revoked' })
+  })
+
+  it('removes a revoked bridge and its bound sessions, then permits re-registration', async () => {
+    const { userId, token } = await createFullAppUserAndSession('remove-revoked')
+    const nodeId = testId('removed-node')
+    const registered = await registerFullAppBridge(token, nodeId)
+    const bridgeId = ((await registered.json()) as { id: string }).id
+    await fullAppDb
+      .update(devicesTable)
+      .set({ revokedAt: fullAppNow, trusted: false })
+      .where(eq(devicesTable.id, bridgeId))
+    await fullAppDb.insert(sessionTable).values({
+      id: testId('bridge-session'),
+      token: testId('bridge-session-token'),
+      userId,
+      deviceId: bridgeId,
+      expiresAt: fullAppExpiresAt,
+      createdAt: fullAppNow,
+      updatedAt: fullAppNow,
+    })
+
+    const response = await removeFullAppDevice(token, bridgeId)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true })
+    expect(await fullAppDb.select().from(devicesTable).where(eq(devicesTable.id, bridgeId))).toHaveLength(0)
+    expect(await fullAppDb.select().from(sessionTable).where(eq(sessionTable.deviceId, bridgeId))).toHaveLength(0)
+    expect((await registerFullAppBridge(token, nodeId)).status).toBe(200)
+  })
+
+  it('returns 409 for a non-revoked bridge', async () => {
+    const { token } = await createFullAppUserAndSession('active-bridge')
+    const registered = await registerFullAppBridge(token, testId('active-node'))
+    const bridgeId = ((await registered.json()) as { id: string }).id
+
+    const response = await removeFullAppDevice(token, bridgeId)
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({ error: 'Only revoked bridge devices can be removed' })
+  })
+
+  it('returns 409 for normal devices whether active or revoked', async () => {
+    const { userId, token } = await createFullAppUserAndSession('normal-devices')
+    const activeId = testId('normal-active')
+    const revokedId = testId('normal-revoked')
+    await insertFullAppNormalDevice(activeId, userId)
+    await insertFullAppNormalDevice(revokedId, userId, true)
+
+    for (const deviceId of [activeId, revokedId]) {
+      const response = await removeFullAppDevice(token, deviceId)
+      expect(response.status).toBe(409)
+      expect(await response.json()).toEqual({ error: 'Only revoked bridge devices can be removed' })
+    }
+  })
+
+  it("returns 404 for another user's revoked bridge", async () => {
+    const owner = await createFullAppUserAndSession('bridge-owner')
+    const caller = await createFullAppUserAndSession('other-caller')
+    const registered = await registerFullAppBridge(owner.token, testId('other-user-node'))
+    const bridgeId = ((await registered.json()) as { id: string }).id
+    await fullAppDb
+      .update(devicesTable)
+      .set({ revokedAt: fullAppNow, trusted: false })
+      .where(eq(devicesTable.id, bridgeId))
+
+    const response = await removeFullAppDevice(caller.token, bridgeId)
+
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({ error: 'Device not found' })
+  })
+
+  it('preserves device-cap rejection and active bridge re-registration exemption', async () => {
+    const capped = await createFullAppUserAndSession('capped-new')
+    for (let index = 0; index < 10; index++) {
+      await insertFullAppNormalDevice(testId(`capped-device-${index}`), capped.userId)
+    }
+    const atCap = await registerFullAppBridge(capped.token, testId('new-node-at-cap'))
+    expect(atCap.status).toBe(422)
+    expect(await atCap.json()).toEqual({ error: 'Device limit reached' })
+
+    const exempt = await createFullAppUserAndSession('capped-existing')
+    const nodeId = testId('existing-node-at-cap')
+    const first = await registerFullAppBridge(exempt.token, nodeId, 'Original')
+    const bridgeId = ((await first.json()) as { id: string }).id
+    for (let index = 0; index < 9; index++) {
+      await insertFullAppNormalDevice(testId(`exempt-device-${index}`), exempt.userId)
+    }
+    const repeated = await registerFullAppBridge(exempt.token, nodeId, 'Updated')
+    expect(repeated.status).toBe(200)
+    expect(((await repeated.json()) as { id: string }).id).toBe(bridgeId)
   })
 })

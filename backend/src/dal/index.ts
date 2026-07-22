@@ -12,6 +12,7 @@ export {
   markDeviceTrusted,
   registerDevice,
   registerBridgeDevice,
+  deleteRevokedBridgeDevice,
   setDeviceNodeId,
   getTrustedNodeIds,
   countActiveDevices,

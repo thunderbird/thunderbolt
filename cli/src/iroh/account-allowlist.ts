@@ -33,6 +33,16 @@ type AllowlistBody = { readonly nodeIds: ReadonlyArray<{ readonly nodeId: string
  *  backend can neither block startup nor wedge the revocation loop. */
 export const ALLOWLIST_FETCH_TIMEOUT_MS = 10_000
 
+/** Registration failure requiring explicit tombstone removal before this persisted identity can pair again. */
+export class BridgeDeviceRevokedError extends Error {
+  constructor() {
+    super(
+      'this device was revoked on your account — remove it in Settings → Devices to pair again (manual allowlist still works)',
+    )
+    this.name = 'BridgeDeviceRevokedError'
+  }
+}
+
 /** Build the auth header for the allowlist fetch from the credential's wire scheme:
  *  a device-grant session authenticates via `Authorization: Bearer`, while a Better
  *  Auth api key / PAT authenticates via `x-api-key` (the apiKey plugin reads ONLY
@@ -71,8 +81,9 @@ export const fetchAccountAllowlist = async (
 
 /**
  * Register this bridge's bare NodeId with its account before fetching account
- * trust. Throws a revoked-specific error on 403 and throws on every other failed
- * response or network error so the bridge startup boundary can disable auto-trust.
+ * trust. Throws an actionable revoked error on 409, preserves the legacy 403 error,
+ * and throws on every other failed response or network error so the bridge startup
+ * boundary can disable auto-trust.
  *
  * @param credential - bridge credential and backend URL
  * @param nodeId - bridge's bare iroh NodeId
@@ -93,6 +104,7 @@ export const registerBridgeWithBackend = async (
     body: JSON.stringify({ nodeId, name }),
     signal: AbortSignal.timeout(timeoutMs),
   })
+  if (res.status === 409) throw new BridgeDeviceRevokedError()
   if (res.status === 403) throw new Error('bridge revoked on the account')
   if (!res.ok) throw new Error(`bridge registration failed (${res.status} ${res.statusText})`)
 }

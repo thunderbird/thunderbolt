@@ -23,10 +23,12 @@ import type { Clock } from '../auth/device-grant.ts'
 import { resolveBridgeCredential } from '../auth/token-store.ts'
 import { atProcCapacity, redactArgv, spawnAgent, type BridgeProc } from '../commands/bridge.ts'
 import {
+  BridgeDeviceRevokedError,
   createAccountAllowlist,
   fetchAccountAllowlist,
   registerBridgeWithBackend,
   type AccountAllowlist,
+  type FetchFn,
 } from './account-allowlist.ts'
 import { isAllowed } from './allowlist.ts'
 import { bindServer } from './endpoint.ts'
@@ -427,6 +429,13 @@ export const handleConnection = async (
  *  stop for its heartbeat. Absent when the CLI isn't logged in (Standalone). */
 type AccountTrust = { readonly accountAllowlist: AccountAllowlist; readonly stop: () => void }
 
+/** Format the startup banner's account-trust status from the initialized trust state. */
+export const accountTrustBanner = (enabled: boolean): string =>
+  enabled
+    ? '   same-account auto-trust: on (backend allowlist, 45s heartbeat)\n'
+    : '   same-account auto-trust: off (manual allowlist only)\n' +
+      '   allow a peer with: thunderbolt iroh allow <their-node-id>\n'
+
 /**
  * Wire same-account auto-trust when this bridge has a backend credential:
  * resolve it (env PAT via `x-api-key`, else the stored device-grant session bearer),
@@ -445,10 +454,12 @@ type AccountTrust = { readonly accountAllowlist: AccountAllowlist; readonly stop
  *
  * @param openConnections - the live-session registry the heartbeat re-checks
  * @param selfNodeId - this bridge's own NodeId, used to detect self-revocation
+ * @param fetchFn - HTTP fetch dependency used for registration and allowlist priming
  */
 export const startAccountTrust = async (
   openConnections: Set<OpenConnection>,
   selfNodeId: string,
+  fetchFn: FetchFn = fetch,
 ): Promise<AccountTrust | undefined> => {
   try {
     const credential = await resolveBridgeCredential()
@@ -456,12 +467,20 @@ export const startAccountTrust = async (
     if (!isSecureCloudUrl(credential.cloudUrl)) {
       throw new Error(`cloud URL is not a secure transport (${credential.cloudUrl})`)
     }
-    await registerBridgeWithBackend(credential, selfNodeId, hostname() || 'Bridge')
-    const initialNodeIds = await fetchAccountAllowlist(credential)
-    const accountAllowlist = createAccountAllowlist(() => fetchAccountAllowlist(credential), selfNodeId, initialNodeIds)
+    await registerBridgeWithBackend(credential, selfNodeId, hostname() || 'Bridge', fetchFn)
+    const initialNodeIds = await fetchAccountAllowlist(credential, fetchFn)
+    const accountAllowlist = createAccountAllowlist(
+      () => fetchAccountAllowlist(credential, fetchFn),
+      selfNodeId,
+      initialNodeIds,
+    )
     const stop = startMembershipHeartbeat(accountAllowlist, openConnections)
     return { accountAllowlist, stop }
   } catch (err) {
+    if (err instanceof BridgeDeviceRevokedError) {
+      process.stderr.write(`⚡ iroh bridge: ${err.message}\n`)
+      return undefined
+    }
     process.stderr.write(
       `⚡ iroh bridge: account auto-trust disabled: ${err instanceof Error ? err.message : String(err)}; using manual allowlist only\n`,
     )
@@ -495,10 +514,7 @@ export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
       `   node id: ${nodeId}\n` +
       `   ticket:  ${ticket}\n` +
       `   spawning per connection: ${redactArgv(config.command)}\n` +
-      (accountTrust
-        ? '   same-account auto-trust: on (backend allowlist, 45s heartbeat)\n'
-        : '   same-account auto-trust: off (manual allowlist only)\n' +
-          '   allow a peer with: thunderbolt iroh allow <their-node-id>\n'),
+      accountTrustBanner(accountTrust !== undefined),
   )
 
   const shutdown = (): void => {

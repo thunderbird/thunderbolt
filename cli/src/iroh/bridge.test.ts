@@ -18,11 +18,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BridgeConfig } from '../agent/types.ts'
-import type { AccountAllowlist } from './account-allowlist.ts'
+import type { AccountAllowlist, FetchFn } from './account-allowlist.ts'
 import { maxActiveProcs, redactArgv, type BridgeProc } from '../commands/bridge.ts'
 import { add } from './allowlist.ts'
 import {
   admitConnection,
+  accountTrustBanner,
   closeRefused,
   createHandshakeGuard,
   createRateLimiter,
@@ -695,5 +696,28 @@ describe('startAccountTrust — degradation boundary', () => {
     expect(stderr).toHaveBeenCalledTimes(1)
     expect(String(stderr.mock.calls[0][0])).toContain('account auto-trust disabled:')
     expect(String(stderr.mock.calls[0][0])).toContain('using manual allowlist only')
+  })
+
+  it('reports revoked registration, disables auto-trust, and keeps the manual allowlist active', async () => {
+    await writeFile(join(home, 'auth.json'), JSON.stringify({ token: 'session-token', cloudUrl: 'https://api.test/v1' }))
+    await add('manual-peer')
+    const fetchFn: FetchFn = async () =>
+      new Response(JSON.stringify({ error: 'Bridge device revoked' }), {
+        status: 409,
+        headers: { 'content-type': 'application/json' },
+      })
+
+    const accountTrust = await startAccountTrust(new Set(), 'self-node', fetchFn)
+
+    expect(accountTrust).toBeUndefined()
+    expect(stderr).toHaveBeenCalledTimes(1)
+    expect(String(stderr.mock.calls[0][0])).toBe(
+      '⚡ iroh bridge: this device was revoked on your account — remove it in Settings → Devices to pair again (manual allowlist still works)\n',
+    )
+    expect(accountTrustBanner(accountTrust !== undefined)).toBe(
+      '   same-account auto-trust: off (manual allowlist only)\n' +
+        '   allow a peer with: thunderbolt iroh allow <their-node-id>\n',
+    )
+    expect(await isConnectionAllowed('manual-peer', accountTrust?.accountAllowlist)).toBe(true)
   })
 })

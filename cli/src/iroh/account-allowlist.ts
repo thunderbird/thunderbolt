@@ -31,7 +31,7 @@ type AllowlistBody = { readonly nodeIds: ReadonlyArray<{ readonly nodeId: string
 /** Hard ceiling on the allowlist fetch. Bounds both the startup prime (which the
  *  bridge awaits before accepting any peer) and every heartbeat refresh, so a hung
  *  backend can neither block startup nor wedge the revocation loop. */
-export const ALLOWLIST_FETCH_TIMEOUT_MS = 10_000
+export const allowlistFetchTimeoutMs = 10_000
 
 /** Registration failure requiring explicit tombstone removal before this persisted identity can pair again. */
 export class BridgeDeviceRevokedError extends Error {
@@ -60,13 +60,13 @@ const authHeader = (credential: BridgeCredential): Record<string, string> =>
  *
  * @param credential - the bridge credential (token + backend + wire scheme)
  * @param fetchFn - HTTP fetch (defaults to the global `fetch`)
- * @param timeoutMs - abort deadline (default {@link ALLOWLIST_FETCH_TIMEOUT_MS})
+ * @param timeoutMs - abort deadline (default {@link allowlistFetchTimeoutMs})
  * @returns the account's trusted NodeId strings
  */
 export const fetchAccountAllowlist = async (
   credential: BridgeCredential,
   fetchFn: FetchFn = fetch,
-  timeoutMs: number = ALLOWLIST_FETCH_TIMEOUT_MS,
+  timeoutMs: number = allowlistFetchTimeoutMs,
 ): Promise<string[]> => {
   const res = await fetchFn(`${apiBaseUrl(credential.cloudUrl)}/devices/allowlist`, {
     headers: authHeader(credential),
@@ -89,14 +89,14 @@ export const fetchAccountAllowlist = async (
  * @param nodeId - bridge's bare iroh NodeId
  * @param name - account-visible bridge device name
  * @param fetchFn - HTTP fetch (defaults to global `fetch`)
- * @param timeoutMs - abort deadline (default {@link ALLOWLIST_FETCH_TIMEOUT_MS})
+ * @param timeoutMs - abort deadline (default {@link allowlistFetchTimeoutMs})
  */
 export const registerBridgeWithBackend = async (
   credential: BridgeCredential,
   nodeId: string,
   name: string,
   fetchFn: FetchFn = fetch,
-  timeoutMs: number = ALLOWLIST_FETCH_TIMEOUT_MS,
+  timeoutMs: number = allowlistFetchTimeoutMs,
 ): Promise<void> => {
   const res = await fetchFn(`${apiBaseUrl(credential.cloudUrl)}/devices/bridge`, {
     method: 'POST',

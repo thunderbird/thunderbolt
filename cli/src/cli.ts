@@ -22,7 +22,7 @@ import type {
   ThinkingLevel,
 } from './agent/types.ts'
 import type { CliConfig } from './config/config.ts'
-import { DEFAULT_CLOUD_URL } from './auth/config.ts'
+import { defaultCloudUrl } from './auth/config.ts'
 
 /** Released version of the CLI, surfaced by `--version` and the banner. */
 export const cliVersion = packageJson.version
@@ -103,7 +103,7 @@ IROH TRANSPORT (P2P, end-to-end encrypted)
 LOGIN (device authorization grant)
   thunderbolt login    open the printed link (or scan the QR) and approve in the
                        app to bind this CLI to your account. Set THUNDERBOLT_CLOUD_URL
-                       to point at a self-hosted backend (default ${DEFAULT_CLOUD_URL}),
+                       to point at a self-hosted backend (default ${defaultCloudUrl}),
                        or THUNDERBOLT_TOKEN to a PAT to skip the interactive flow (CI).
 
 EXAMPLES

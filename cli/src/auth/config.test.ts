@@ -10,7 +10,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import {
-  DEFAULT_CLOUD_URL,
+  defaultCloudUrl,
   apiBaseUrl,
   authBaseUrl,
   isSecureCloudUrl,
@@ -24,8 +24,8 @@ describe('resolveCloudUrl', () => {
   })
 
   test('falls back to the localhost default when unset or empty', () => {
-    expect(resolveCloudUrl({})).toBe(DEFAULT_CLOUD_URL)
-    expect(resolveCloudUrl({ THUNDERBOLT_CLOUD_URL: '' })).toBe(DEFAULT_CLOUD_URL)
+    expect(resolveCloudUrl({})).toBe(defaultCloudUrl)
+    expect(resolveCloudUrl({ THUNDERBOLT_CLOUD_URL: '' })).toBe(defaultCloudUrl)
   })
 })
 

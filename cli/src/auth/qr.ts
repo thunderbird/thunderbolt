@@ -18,7 +18,7 @@ export type QrEnv = {
 }
 
 /** Minimum terminal width to attempt a (small-mode) QR; below this, link-only. */
-const MIN_QR_COLUMNS = 80
+const minQrColumns = 80
 
 /**
  * Decide whether a terminal QR should be rendered: only on an interactive TTY
@@ -27,7 +27,7 @@ const MIN_QR_COLUMNS = 80
  *
  * @param env - the terminal's TTY flag and column count
  */
-export const shouldRenderQr = (env: QrEnv): boolean => env.isTty && env.columns >= MIN_QR_COLUMNS
+export const shouldRenderQr = (env: QrEnv): boolean => env.isTty && env.columns >= minQrColumns
 
 /**
  * Render a compact QR of `text` to `print`. Callers gate this behind

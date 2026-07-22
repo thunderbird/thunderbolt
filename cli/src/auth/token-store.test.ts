@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DEFAULT_CLOUD_URL } from './config.ts'
+import { defaultCloudUrl } from './config.ts'
 import { loadAuthConfig, resolveBridgeCredential, storeAuthConfig } from './token-store.ts'
 
 let home: string
@@ -83,7 +83,7 @@ describe('resolveBridgeCredential — env PAT vs stored login', () => {
 
     expect(await resolveBridgeCredential()).toEqual({
       token: 'pat-xyz',
-      cloudUrl: DEFAULT_CLOUD_URL,
+      cloudUrl: defaultCloudUrl,
       kind: 'apiKey',
     })
   })

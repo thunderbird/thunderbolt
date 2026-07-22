@@ -15,11 +15,11 @@
  * raw `access_token` body value is a bare session token and is deliberately not used.
  */
 
-import { CLI_CLIENT_ID } from './config.ts'
+import { cliClientId } from './config.ts'
 import type { DeviceCodeResponse, DeviceGrantTransport, TokenPollResult } from './device-grant.ts'
 
 /** RFC 8628 grant type for the token exchange. */
-const DEVICE_CODE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
+const deviceCodeGrantType = 'urn:ietf:params:oauth:grant-type:device_code'
 
 /** Raw `/device/code` 200 body (snake_case on the wire, RFC 8628 §3.2). */
 type DeviceCodeBody = {
@@ -60,7 +60,7 @@ export const createHttpTransport = (authBaseUrl: string, fetchFn: FetchFn = fetc
     const res = await fetchFn(`${authBaseUrl}/device/code`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ client_id: CLI_CLIENT_ID }),
+      body: JSON.stringify({ client_id: cliClientId }),
     })
     if (!res.ok) {
       throw new Error(`device authorization request failed (${res.status} ${res.statusText})`)
@@ -81,9 +81,9 @@ export const createHttpTransport = (authBaseUrl: string, fetchFn: FetchFn = fetc
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        grant_type: DEVICE_CODE_GRANT_TYPE,
+        grant_type: deviceCodeGrantType,
         device_code: deviceCode,
-        client_id: CLI_CLIENT_ID,
+        client_id: cliClientId,
       }),
     })
     if (res.ok) {

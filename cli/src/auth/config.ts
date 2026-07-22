@@ -17,10 +17,10 @@
 type Env = Record<string, string | undefined>
 
 /** Cloud URL used when `THUNDERBOLT_CLOUD_URL` is unset — matches the app default. */
-export const DEFAULT_CLOUD_URL = 'http://localhost:8000/v1'
+export const defaultCloudUrl = 'http://localhost:8000/v1'
 
 /** Client id the CLI presents to the device-authorization endpoint (RFC 8628). */
-export const CLI_CLIENT_ID = 'thunderbolt-cli'
+export const cliClientId = 'thunderbolt-cli'
 
 /**
  * Resolve the backend cloud URL: the `THUNDERBOLT_CLOUD_URL` env var (the CLI's
@@ -28,7 +28,7 @@ export const CLI_CLIENT_ID = 'thunderbolt-cli'
  *
  * @param env - environment map (defaults to `process.env`)
  */
-export const resolveCloudUrl = (env: Env = process.env): string => env.THUNDERBOLT_CLOUD_URL || DEFAULT_CLOUD_URL
+export const resolveCloudUrl = (env: Env = process.env): string => env.THUNDERBOLT_CLOUD_URL || defaultCloudUrl
 
 /**
  * Normalize a backend cloud URL to its `…/v1` API base. Accepts URLs with or
@@ -57,7 +57,7 @@ export const authBaseUrl = (cloudUrl: string): string => `${apiBaseUrl(cloudUrl)
 export const resolvePatToken = (env: Env = process.env): string | undefined => env.THUNDERBOLT_TOKEN || undefined
 
 /** Hosts for which plain HTTP is safe (the token never leaves the machine). */
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
 /**
  * Whether the cloud URL is safe to send a replayable bearer to: HTTPS anywhere,
@@ -70,6 +70,6 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 export const isSecureCloudUrl = (cloudUrl: string): boolean => {
   const { protocol, hostname } = new URL(cloudUrl)
   if (protocol === 'https:') return true
-  if (protocol === 'http:') return LOOPBACK_HOSTS.has(hostname) || hostname.endsWith('.localhost')
+  if (protocol === 'http:') return loopbackHosts.has(hostname) || hostname.endsWith('.localhost')
   return false
 }

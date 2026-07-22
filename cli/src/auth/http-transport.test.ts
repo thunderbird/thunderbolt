@@ -11,10 +11,10 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { CLI_CLIENT_ID } from './config.ts'
+import { cliClientId } from './config.ts'
 import { createHttpTransport, type FetchFn } from './http-transport.ts'
 
-const AUTH_BASE = 'https://api.test/v1/api/auth'
+const authBase = 'https://api.test/v1/api/auth'
 
 /** A fetch fn that records requests and returns one scripted response. */
 const stubFetch = (response: Response) => {
@@ -42,7 +42,7 @@ describe('createHttpTransport.requestCode', () => {
       }),
     )
 
-    const code = await createHttpTransport(AUTH_BASE, fetchFn).requestCode()
+    const code = await createHttpTransport(authBase, fetchFn).requestCode()
 
     expect(code).toEqual({
       deviceCode: 'dc',
@@ -52,13 +52,13 @@ describe('createHttpTransport.requestCode', () => {
       intervalSeconds: 5,
       expiresInSeconds: 1800,
     })
-    expect(requests[0].url).toBe(`${AUTH_BASE}/device/code`)
-    expect(requests[0].body).toEqual({ client_id: CLI_CLIENT_ID })
+    expect(requests[0].url).toBe(`${authBase}/device/code`)
+    expect(requests[0].body).toEqual({ client_id: cliClientId })
   })
 
   it('throws when the code request is rejected', async () => {
     const { fetchFn } = stubFetch(jsonResponse({ error: 'invalid_client' }, { status: 400, statusText: 'Bad Request' }))
-    await expect(createHttpTransport(AUTH_BASE, fetchFn).requestCode()).rejects.toThrow(
+    await expect(createHttpTransport(authBase, fetchFn).requestCode()).rejects.toThrow(
       /device authorization request failed/,
     )
   })
@@ -73,20 +73,20 @@ describe('createHttpTransport.pollToken', () => {
       ),
     )
 
-    const result = await createHttpTransport(AUTH_BASE, fetchFn).pollToken('dc')
+    const result = await createHttpTransport(authBase, fetchFn).pollToken('dc')
 
     expect(result).toEqual({ kind: 'approved', token: 'SIGNED.hmac' })
-    expect(requests[0].url).toBe(`${AUTH_BASE}/device/token`)
+    expect(requests[0].url).toBe(`${authBase}/device/token`)
     expect(requests[0].body).toEqual({
       grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
       device_code: 'dc',
-      client_id: CLI_CLIENT_ID,
+      client_id: cliClientId,
     })
   })
 
   it('throws when a 200 approval is missing the set-auth-token header', async () => {
     const { fetchFn } = stubFetch(jsonResponse({ access_token: 'RAW' }))
-    await expect(createHttpTransport(AUTH_BASE, fetchFn).pollToken('dc')).rejects.toThrow(/set-auth-token/)
+    await expect(createHttpTransport(authBase, fetchFn).pollToken('dc')).rejects.toThrow(/set-auth-token/)
   })
 
   it('maps the RFC 8628 §3.5 error codes to poll results', async () => {
@@ -99,12 +99,12 @@ describe('createHttpTransport.pollToken', () => {
 
     for (const [error, expected] of cases) {
       const { fetchFn } = stubFetch(jsonResponse({ error }, { status: 400 }))
-      expect(await createHttpTransport(AUTH_BASE, fetchFn).pollToken('dc')).toEqual(expected)
+      expect(await createHttpTransport(authBase, fetchFn).pollToken('dc')).toEqual(expected)
     }
   })
 
   it('throws on an unrecognized error code', async () => {
     const { fetchFn } = stubFetch(jsonResponse({ error: 'invalid_grant' }, { status: 400 }))
-    await expect(createHttpTransport(AUTH_BASE, fetchFn).pollToken('dc')).rejects.toThrow(/invalid_grant/)
+    await expect(createHttpTransport(authBase, fetchFn).pollToken('dc')).rejects.toThrow(/invalid_grant/)
   })
 })

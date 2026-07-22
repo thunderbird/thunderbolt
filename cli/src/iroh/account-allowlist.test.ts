@@ -163,21 +163,21 @@ describe('registerBridgeWithBackend — wire contract', () => {
 
 /** The bridge's own NodeId, included in the fetched list so cache tests aren't
  *  self-revoked (self-revocation is exercised in its own describe below). */
-const SELF = 'self-node'
+const selfNode = 'self-node'
 
 describe('createAccountAllowlist — in-memory cache', () => {
   it('trusts no peer until the first successful refresh', () => {
-    const allowlist = createAccountAllowlist(async () => [SELF, 'peer'], SELF)
+    const allowlist = createAccountAllowlist(async () => [selfNode, 'peer'], selfNode)
     expect(allowlist.has('peer')).toBe(false)
   })
 
   it('starts from a successfully fetched startup prime', () => {
-    const allowlist = createAccountAllowlist(async () => [], SELF, [SELF, 'peer'])
+    const allowlist = createAccountAllowlist(async () => [], selfNode, [selfNode, 'peer'])
     expect(allowlist.has('peer')).toBe(true)
   })
 
   it('populates the cache on refresh and trims the queried id', async () => {
-    const allowlist = createAccountAllowlist(async () => [SELF, 'peer-a', 'peer-b'], SELF)
+    const allowlist = createAccountAllowlist(async () => [selfNode, 'peer-a', 'peer-b'], selfNode)
     await allowlist.refresh()
     expect(allowlist.has('peer-a')).toBe(true)
     expect(allowlist.has('  peer-b  ')).toBe(true)
@@ -185,12 +185,12 @@ describe('createAccountAllowlist — in-memory cache', () => {
   })
 
   it('replaces the cache on each refresh, so a revoked id drops out', async () => {
-    let ids = [SELF, 'peer-a', 'peer-b']
-    const allowlist = createAccountAllowlist(async () => ids, SELF)
+    let ids = [selfNode, 'peer-a', 'peer-b']
+    const allowlist = createAccountAllowlist(async () => ids, selfNode)
     await allowlist.refresh()
     expect(allowlist.has('peer-b')).toBe(true)
 
-    ids = [SELF, 'peer-a'] // peer-b revoked in the account
+    ids = [selfNode, 'peer-a'] // peer-b revoked in the account
     await allowlist.refresh()
     expect(allowlist.has('peer-b')).toBe(false)
     expect(allowlist.has('peer-a')).toBe(true)
@@ -201,8 +201,8 @@ describe('createAccountAllowlist — in-memory cache', () => {
     let fail = false
     const allowlist = createAccountAllowlist(async () => {
       if (fail) throw new Error('network down')
-      return [SELF, 'peer-a']
-    }, SELF)
+      return [selfNode, 'peer-a']
+    }, selfNode)
 
     await allowlist.refresh()
     expect(allowlist.has('peer-a')).toBe(true)
@@ -219,7 +219,7 @@ describe('createAccountAllowlist — in-memory cache', () => {
     const fetchFn = mock(async () => {
       throw new Error('boom')
     })
-    const allowlist = createAccountAllowlist(fetchFn, SELF)
+    const allowlist = createAccountAllowlist(fetchFn, selfNode)
 
     await allowlist.refresh()
 
@@ -230,8 +230,8 @@ describe('createAccountAllowlist — in-memory cache', () => {
 
 describe('createAccountAllowlist — self-revocation', () => {
   it('trusts no account peer once this bridge is dropped from a populated allowlist', async () => {
-    // The populated list omits SELF → the account revoked this bridge.
-    const allowlist = createAccountAllowlist(async () => ['peer-a', 'peer-b'], SELF)
+    // The populated list omits selfNode → the account revoked this bridge.
+    const allowlist = createAccountAllowlist(async () => ['peer-a', 'peer-b'], selfNode)
     await allowlist.refresh()
 
     expect(allowlist.isSelfRevoked()).toBe(true)
@@ -240,7 +240,7 @@ describe('createAccountAllowlist — self-revocation', () => {
   })
 
   it('keeps trusting peers while this bridge is still listed', async () => {
-    const allowlist = createAccountAllowlist(async () => [SELF, 'peer-a'], SELF)
+    const allowlist = createAccountAllowlist(async () => [selfNode, 'peer-a'], selfNode)
     await allowlist.refresh()
 
     expect(allowlist.isSelfRevoked()).toBe(false)
@@ -248,7 +248,7 @@ describe('createAccountAllowlist — self-revocation', () => {
   })
 
   it('treats an empty allowlist as unknown, never self-revoked (unprimed / fetch failure)', async () => {
-    const allowlist = createAccountAllowlist(async () => [], SELF)
+    const allowlist = createAccountAllowlist(async () => [], selfNode)
     await allowlist.refresh()
 
     expect(allowlist.isSelfRevoked()).toBe(false) // empty ≠ revoked, so auto-trust isn't disabled on a blip
@@ -256,12 +256,12 @@ describe('createAccountAllowlist — self-revocation', () => {
   })
 
   it('re-trusts once this bridge returns to the allowlist (re-keyed / re-attested)', async () => {
-    let ids = ['peer-a'] // SELF absent → revoked
-    const allowlist = createAccountAllowlist(async () => ids, SELF)
+    let ids = ['peer-a'] // selfNode absent → revoked
+    const allowlist = createAccountAllowlist(async () => ids, selfNode)
     await allowlist.refresh()
     expect(allowlist.isSelfRevoked()).toBe(true)
 
-    ids = [SELF, 'peer-a'] // this bridge re-added
+    ids = [selfNode, 'peer-a'] // this bridge re-added
     await allowlist.refresh()
     expect(allowlist.isSelfRevoked()).toBe(false)
     expect(allowlist.has('peer-a')).toBe(true)

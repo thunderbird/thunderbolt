@@ -63,7 +63,7 @@ export class DeviceGrantError extends Error {
 }
 
 /** RFC 8628 §3.5: on `slow_down`, the client raises its poll interval by 5s. */
-const SLOW_DOWN_INCREMENT_MS = 5000
+const slowDownIncrementMs = 5000
 
 /**
  * Poll the token endpoint until the user approves, denies, or the code expires.
@@ -100,7 +100,7 @@ export const pollForToken = async (
       throw new DeviceGrantError('expired_token', 'the device code expired before it was approved')
     }
 
-    const nextIntervalMs = result.kind === 'slow_down' ? intervalMs + SLOW_DOWN_INCREMENT_MS : intervalMs
+    const nextIntervalMs = result.kind === 'slow_down' ? intervalMs + slowDownIncrementMs : intervalMs
     await clock.sleep(nextIntervalMs)
     return poll(nextIntervalMs)
   }

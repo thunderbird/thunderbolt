@@ -8,6 +8,7 @@ import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
 import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
+import { RemoveBridgeDialog } from '@/components/remove-bridge-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import dayjs from 'dayjs'
@@ -19,12 +20,18 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useApproveDevice } from '@/hooks/use-approve-device'
 import { useDenyDevice } from '@/hooks/use-deny-device'
 import { useRevokeDevice } from '@/hooks/use-revoke-device'
+import { useRemoveDevice } from '@/hooks/use-remove-device'
 import { useSetDeviceNodeId } from '@/hooks/use-set-device-node-id'
 import { useDevicePairing } from '@/hooks/use-device-pairing'
 import { encodePairingTicket } from '@/lib/pairing-ticket'
 
 const DeviceQrCode = lazy(() => import('@/components/device-qr-code'))
 const SetNodeIdDialog = lazy(() => import('@/components/set-node-id-dialog'))
+
+type ConfirmationTarget = {
+  action: 'approve' | 'deny' | 'remove' | 'revoke'
+  deviceId: string
+}
 
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) {
@@ -47,9 +54,7 @@ export default function DevicesSettingsPage() {
     queryKey: ['pending-devices'],
     query: toCompilableQuery(getPendingDevices(db)),
   })
-  const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
-  const [denyTarget, setDenyTarget] = useState<string | null>(null)
-  const [approveTarget, setApproveTarget] = useState<string | null>(null)
+  const [confirmationTarget, setConfirmationTarget] = useState<ConfirmationTarget | null>(null)
 
   const visibleDevices = devices.filter((d) => {
     if (d.revokedAt != null) {
@@ -59,6 +64,7 @@ export default function DevicesSettingsPage() {
   })
 
   const revokeMutation = useRevokeDevice()
+  const removeMutation = useRemoveDevice()
   const denyMutation = useDenyDevice()
   const approveMutation = useApproveDevice(pendingDevices)
   const setNodeIdMutation = useSetDeviceNodeId()
@@ -75,27 +81,39 @@ export default function DevicesSettingsPage() {
   }
 
   const confirmRevoke = () => {
-    if (revokeTarget) {
-      revokeMutation.mutate(revokeTarget, {
-        onSuccess: () => setRevokeTarget(null),
-      })
+    if (confirmationTarget?.action !== 'revoke') {
+      return
     }
+    revokeMutation.mutate(confirmationTarget.deviceId, {
+      onSuccess: () => setConfirmationTarget(null),
+    })
   }
 
   const confirmDeny = () => {
-    if (denyTarget) {
-      denyMutation.mutate(denyTarget, {
-        onSuccess: () => setDenyTarget(null),
-      })
+    if (confirmationTarget?.action !== 'deny') {
+      return
     }
+    denyMutation.mutate(confirmationTarget.deviceId, {
+      onSuccess: () => setConfirmationTarget(null),
+    })
   }
 
   const confirmApprove = () => {
-    if (approveTarget) {
-      approveMutation.mutate(approveTarget, {
-        onSuccess: () => setApproveTarget(null),
-      })
+    if (confirmationTarget?.action !== 'approve') {
+      return
     }
+    approveMutation.mutate(confirmationTarget.deviceId, {
+      onSuccess: () => setConfirmationTarget(null),
+    })
+  }
+
+  const confirmRemove = () => {
+    if (confirmationTarget?.action !== 'remove') {
+      return
+    }
+    removeMutation.mutate(confirmationTarget.deviceId, {
+      onSuccess: () => setConfirmationTarget(null),
+    })
   }
 
   const hasPendingDevices = pendingDevices.length > 0
@@ -103,6 +121,12 @@ export default function DevicesSettingsPage() {
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Devices" />
+
+      {removeMutation.error && (
+        <p className="text-sm text-destructive" role="alert">
+          {removeMutation.error.message}
+        </p>
+      )}
 
       {hasPendingDevices && (
         <>
@@ -123,7 +147,7 @@ export default function DevicesSettingsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setDenyTarget(device.id)}
+                          onClick={() => setConfirmationTarget({ action: 'deny', deviceId: device.id })}
                           disabled={denyMutation.isPending}
                         >
                           <Trash2 className="size-4 mr-1" />
@@ -132,7 +156,7 @@ export default function DevicesSettingsPage() {
                         <Button
                           variant="default"
                           size="sm"
-                          onClick={() => setApproveTarget(device.id)}
+                          onClick={() => setConfirmationTarget({ action: 'approve', deviceId: device.id })}
                           disabled={approveMutation.isPending}
                         >
                           {approveMutation.isPending && approveMutation.variables === device.id ? (
@@ -206,11 +230,22 @@ export default function DevicesSettingsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setRevokeTarget(device.id)}
+                        onClick={() => setConfirmationTarget({ action: 'revoke', deviceId: device.id })}
                         disabled={revokeMutation.isPending}
                       >
                         <Trash2 className="size-4 mr-1" />
                         Revoke
+                      </Button>
+                    )}
+                    {isRevoked && isBridge && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmationTarget({ action: 'remove', deviceId: device.id })}
+                        disabled={removeMutation.isPending}
+                      >
+                        <Trash2 className="size-4 mr-1" />
+                        Remove
                       </Button>
                     )}
                   </div>
@@ -255,26 +290,33 @@ export default function DevicesSettingsPage() {
       )}
 
       <ApproveDeviceDialog
-        open={approveTarget !== null}
-        onOpenChange={(open) => !open && setApproveTarget(null)}
+        open={confirmationTarget?.action === 'approve'}
+        onOpenChange={(open) => !open && setConfirmationTarget(null)}
         onConfirm={confirmApprove}
         isPending={approveMutation.isPending}
       />
 
       <RevokeDeviceDialog
-        open={revokeTarget !== null}
-        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        open={confirmationTarget?.action === 'revoke'}
+        onOpenChange={(open) => !open && setConfirmationTarget(null)}
         onConfirm={confirmRevoke}
         isPending={revokeMutation.isPending}
         variant="trusted"
       />
 
       <RevokeDeviceDialog
-        open={denyTarget !== null}
-        onOpenChange={(open) => !open && setDenyTarget(null)}
+        open={confirmationTarget?.action === 'deny'}
+        onOpenChange={(open) => !open && setConfirmationTarget(null)}
         onConfirm={confirmDeny}
         isPending={denyMutation.isPending}
         variant="pending"
+      />
+
+      <RemoveBridgeDialog
+        open={confirmationTarget?.action === 'remove'}
+        onOpenChange={(open) => !open && setConfirmationTarget(null)}
+        onConfirm={confirmRemove}
+        isPending={removeMutation.isPending}
       />
 
       {dialogDevice && (

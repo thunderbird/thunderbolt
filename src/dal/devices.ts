@@ -6,6 +6,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { devicesTable } from '@/db/tables'
 import type { DrizzleQueryWithPromise } from '@/types'
+import { HttpError, type HttpClient } from '@/lib/http'
 
 export type Device = {
   id: string
@@ -49,4 +50,30 @@ export const getPendingDevices = (db: AnyDrizzleDatabase) => {
     .where(and(eq(devicesTable.trusted, 0), eq(devicesTable.approvalPending, 1), isNull(devicesTable.revokedAt)))
     .orderBy(desc(devicesTable.createdAt))
   return query as typeof query & DrizzleQueryWithPromise<Device>
+}
+
+type RemoveDeviceResponse = {
+  success: true
+}
+
+type RemoveDeviceErrorResponse = {
+  error: string
+}
+
+/**
+ * Permanently removes a revoked bridge device through the authenticated backend.
+ */
+export const removeRevokedBridgeDevice = async (
+  httpClient: HttpClient,
+  deviceId: string,
+): Promise<RemoveDeviceResponse> => {
+  try {
+    return await httpClient.delete(`devices/${encodeURIComponent(deviceId)}`).json<RemoveDeviceResponse>()
+  } catch (error) {
+    if (!(error instanceof HttpError)) {
+      throw error
+    }
+    const response = (await error.response.json()) as RemoveDeviceErrorResponse
+    throw new Error(response.error, { cause: error })
+  }
 }

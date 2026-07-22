@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { db as DbType } from '@/db/client'
+import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { session } from '@/db/auth-schema'
 import { and, eq, gt } from 'drizzle-orm'
 
@@ -28,5 +28,5 @@ export const linkSessionToDevice = async (
     .where(and(eq(session.id, sessionId), eq(session.userId, userId)))
 
 /** Revoke (delete) all sessions linked to a specific device for a given user. */
-export const revokeDeviceSessions = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const revokeDeviceSessions = async (database: QueryableDatabase, deviceId: string, userId: string) =>
   database.delete(session).where(and(eq(session.deviceId, deviceId), eq(session.userId, userId)))

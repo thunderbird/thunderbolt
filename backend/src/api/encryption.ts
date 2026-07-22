@@ -442,7 +442,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'Invalid canary secret' }
         }
 
-        // Caller must be a trusted device (defense-in-depth — Option B1: only a trusted app
+        // Caller must be a trusted device (defense-in-depth: only a trusted app
         // device may attest another device's P2P identity).
         const callerDevice = await getDeviceById(database, callerDeviceId)
         if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
@@ -536,18 +536,17 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         const userId = sessionUser!.id
         const name = body.name?.trim() || 'Bridge'
         const result = await database.transaction(async (tx) => {
-          const txDb = tx as unknown as typeof database
-          const existingBridge = await getDeviceById(txDb, bridgeDeviceId(userId, body.nodeId))
+          const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
           if (!existingBridge) {
-            const activeCount = await countActiveDevices(txDb, userId)
+            const activeCount = await countActiveDevices(tx, userId)
             if (activeCount >= maxDevicesPerUser) {
               return { limitReached: true as const }
             }
           }
 
-          const [device] = await registerBridgeDevice(txDb, { userId, nodeId: body.nodeId, name })
+          const [device] = await registerBridgeDevice(tx, { userId, nodeId: body.nodeId, name })
           if (!device) {
-            const tombstone = await getDeviceById(txDb, bridgeDeviceId(userId, body.nodeId))
+            const tombstone = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
             if (tombstone?.userId === userId && tombstone.revokedAt != null) {
               return { revoked: true as const }
             }
@@ -580,8 +579,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       async ({ params, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const result = await database.transaction(async (tx) => {
-          const txDb = tx as unknown as typeof database
-          const device = await getDeviceById(txDb, params.deviceId)
+          const device = await getDeviceById(tx, params.deviceId)
           if (!device || device.userId !== userId) {
             return { notFound: true as const }
           }
@@ -589,8 +587,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             return { notRemovable: true as const }
           }
 
-          await revokeDeviceSessions(txDb, params.deviceId, userId)
-          const deleted = await deleteRevokedBridgeDevice(txDb, params.deviceId, userId)
+          await revokeDeviceSessions(tx, params.deviceId, userId)
+          const deleted = await deleteRevokedBridgeDevice(tx, params.deviceId, userId)
           return deleted.length > 0 ? { success: true as const } : { notFound: true as const }
         })
 

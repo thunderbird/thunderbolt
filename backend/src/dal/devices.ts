@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { db as DbType } from '@/db/client'
+import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { devicesTable } from '@/db/schema'
 import { and, count, eq, isNotNull, isNull, or } from 'drizzle-orm'
 import { createHash } from 'crypto'
@@ -14,7 +14,7 @@ export const bridgeDeviceId = (userId: string, nodeId: string) =>
   `bridge-${createHash('sha256').update(`${userId}:${nodeId}`).digest('hex')}`
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
-export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
+export const getDeviceById = async (database: QueryableDatabase, deviceId: string) =>
   database
     .select({
       userId: devicesTable.userId,
@@ -94,7 +94,7 @@ export const markDeviceTrusted = async (database: typeof DbType, deviceId: strin
 
 /** Count active (trusted, non-revoked) devices for a user.
  * Pending and limbo devices do NOT count toward the device cap (THU-502). */
-export const countActiveDevices = async (database: typeof DbType, userId: string) => {
+export const countActiveDevices = async (database: QueryableDatabase, userId: string) => {
   const rows = await database
     .select({ count: count() })
     .from(devicesTable)
@@ -168,7 +168,7 @@ export const getTrustedNodeIds = async (database: typeof DbType, userId: string)
  * normal device is refused re-registration. Callers treat the empty result as "revoked".
  */
 export const registerBridgeDevice = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   bridge: { userId: string; nodeId: string; name: string },
 ) => {
   const now = new Date()
@@ -194,7 +194,7 @@ export const registerBridgeDevice = async (
 
 /** Permanently remove a revoked bridge owned by `userId`.
  * Guards all eligibility conditions in the DELETE so callers cannot remove active or normal devices. */
-export const deleteRevokedBridgeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const deleteRevokedBridgeDevice = async (database: QueryableDatabase, deviceId: string, userId: string) =>
   database
     .delete(devicesTable)
     .where(

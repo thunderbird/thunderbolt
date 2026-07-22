@@ -81,7 +81,9 @@ const runAction = async (client: DeviceGrantClient, path: string, userCode: stri
       method: 'POST',
       body: { userCode },
     })
-    if (!error) return { ok: true }
+    if (!error) {
+      return { ok: true }
+    }
     return { ok: false, ...toFailure(error) }
   } catch (error) {
     return { ok: false, ...toFailure(error) }

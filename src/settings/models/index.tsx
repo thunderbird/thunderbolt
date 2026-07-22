@@ -24,8 +24,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import {
+  ResponsiveModalCancel,
   ResponsiveModalContentComposable,
   ResponsiveModalDescription,
+  ResponsiveModalFooter,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
@@ -148,6 +150,14 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
  * provider requires a passing connection test before Save is enabled.
  */
 const providerRequiresConnectionTest = (provider: Model['provider']) => provider !== 'thunderbolt'
+
+/** Determines whether the add-model form has completed every submission gate. */
+export const shouldDisableAddModel = (
+  isPending: boolean,
+  isFormValid: boolean,
+  requiresConnectionTest: boolean,
+  isConnectionSuccessful: boolean,
+) => isPending || !isFormValid || (requiresConnectionTest && !isConnectionSuccessful)
 
 /**
  * Providers that need an API key to authenticate the test round-trip. Custom
@@ -348,7 +358,7 @@ const EditModelForm = ({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="grid gap-4 pt-4 pb-2">
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-1 flex-col gap-4 pt-4 pb-2">
         <FormField
           control={form.control}
           name="name"
@@ -419,10 +429,8 @@ const EditModelForm = ({
           error={connectionError}
         />
 
-        <div className="flex justify-end gap-3 pt-2">
-          <Button type="button" variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
+        <ResponsiveModalFooter>
+          <ResponsiveModalCancel onClick={onCancel} />
           <Button
             type="submit"
             disabled={
@@ -433,7 +441,7 @@ const EditModelForm = ({
           >
             Save
           </Button>
-        </div>
+        </ResponsiveModalFooter>
       </form>
     </Form>
   )
@@ -558,6 +566,7 @@ export default function ModelsPage() {
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
+    mode: 'onChange',
     defaultValues: {
       provider: 'thunderbolt',
       name: '',
@@ -800,21 +809,21 @@ export default function ModelsPage() {
     dispatch({ type: 'SELECT_MODEL', modelId: modelId })
 
     if (modelId === 'custom') {
-      form.setValue('model', '')
+      form.setValue('model', '', { shouldValidate: true })
       form.setValue('customModel', '')
-      form.setValue('name', '')
+      form.setValue('name', '', { shouldValidate: true })
     } else {
-      form.setValue('model', modelId)
+      form.setValue('model', modelId, { shouldValidate: true })
       form.setValue('customModel', '')
 
       const model = allAvailableModels.find((m) => m.id === modelId)
 
       if (model?.name) {
-        form.setValue('name', model.name)
+        form.setValue('name', model.name, { shouldValidate: true })
       } else {
         // Generate a name locally
         const generatedName = generateModelName(modelId)
-        form.setValue('name', generatedName)
+        form.setValue('name', generatedName, { shouldValidate: true })
       }
     }
   }
@@ -840,6 +849,7 @@ export default function ModelsPage() {
         shouldDirty: false,
       })
       form.setValue('apiKey', '', { shouldValidate: false, shouldDirty: false })
+      void form.trigger()
 
       // Fetch models if we have the necessary credentials
       if (['thunderbolt', 'tinfoil', 'anthropic'].includes(currentProvider)) {
@@ -940,13 +950,13 @@ export default function ModelsPage() {
               <Plus />
             </Button>
           </DialogTrigger>
-          <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+          <ResponsiveModalContentComposable className="overflow-y-auto sm:max-h-[90vh] sm:max-w-[500px]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
               <ResponsiveModalDescription className="sr-only">Add a new AI model</ResponsiveModalDescription>
             </ResponsiveModalHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 pt-4 pb-2">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col gap-4 pt-4 pb-2">
                 <FormField
                   control={form.control}
                   name="provider"
@@ -1079,7 +1089,7 @@ export default function ModelsPage() {
                             className="rounded-lg"
                             onChange={(e) => {
                               field.onChange(e)
-                              form.setValue('model', e.target.value)
+                              form.setValue('model', e.target.value, { shouldValidate: true })
                             }}
                           />
                         </FormControl>
@@ -1129,20 +1139,20 @@ export default function ModelsPage() {
                   error={connectionError}
                 />
 
-                <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
-                    Cancel
-                  </Button>
+                <ResponsiveModalFooter>
+                  <ResponsiveModalCancel onClick={() => handleDialogOpenChange(false)} />
                   <Button
                     type="submit"
-                    disabled={
-                      addModelMutation.isPending ||
-                      (providerRequiresConnectionTest(watchedProvider) && connectionStatus !== 'success')
-                    }
+                    disabled={shouldDisableAddModel(
+                      addModelMutation.isPending,
+                      form.formState.isValid,
+                      providerRequiresConnectionTest(watchedProvider),
+                      connectionStatus === 'success',
+                    )}
                   >
                     {addModelMutation.isPending ? 'Adding...' : 'Add Model'}
                   </Button>
-                </div>
+                </ResponsiveModalFooter>
               </form>
             </Form>
           </ResponsiveModalContentComposable>

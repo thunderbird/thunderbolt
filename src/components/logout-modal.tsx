@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   ResponsiveModal,
+  ResponsiveModalCancel,
   ResponsiveModalContent,
   ResponsiveModalDescription,
   ResponsiveModalFooter,
@@ -94,9 +95,7 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
       </ResponsiveModalContent>
 
       <ResponsiveModalFooter className="justify-end">
-        <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoggingOut}>
-          Cancel
-        </Button>
+        <ResponsiveModalCancel onClick={() => handleOpenChange(false)} disabled={isLoggingOut} />
         <Button
           variant={selectedOption === 'delete' ? 'destructive' : 'default'}
           onClick={handleLogout}

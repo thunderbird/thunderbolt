@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal'
+import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { useApprovalPolling } from '@/hooks/use-approval-polling'
@@ -139,6 +139,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         }
       }}
     >
+      <ResponsiveModalTitle className="sr-only">Set up encrypted sync</ResponsiveModalTitle>
       {setup.step === 'recovery-key-entry' && (
         <button
           type="button"

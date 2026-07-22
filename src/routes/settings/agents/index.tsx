@@ -131,7 +131,7 @@ export default function AgentsSettingsPage() {
         </div>
       </div>
 
-      <DetailPanelSurface open={panelOpen} isMobile={isMobile}>
+      <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>
         {detailPanel}
       </DetailPanelSurface>
 

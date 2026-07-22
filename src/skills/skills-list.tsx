@@ -66,11 +66,7 @@ export const SkillsList = ({
           </Button>
         </PageHeader>
 
-        <PageSearch.Input
-          placeholder="Search skills"
-          onSearch={setSearch}
-          className="h-9 rounded-lg border-border bg-card text-sm placeholder:text-muted-foreground"
-        />
+        <PageSearch.Input placeholder="Search skills" onSearch={setSearch} className="rounded-full bg-card" />
       </PageSearch>
 
       {/* LayoutGroup links the Enabled and Disabled <ul>s so a row's

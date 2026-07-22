@@ -228,6 +228,7 @@ export const ModelSelector = ({
       trigger={renderTrigger}
       renderItem={renderItem}
       footer={footer}
+      contentClassName="max-md:bg-sidebar"
       width={320}
       maxHeight={340}
       side={side}

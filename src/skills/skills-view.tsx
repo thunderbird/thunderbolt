@@ -272,6 +272,13 @@ export const SkillsView = () => {
 
   const panel = renderPanel()
   const panelOpen = panelView === 'panel' && panel !== null
+  const closePanel = () => {
+    if (mode === 'detail') {
+      dispatch({ type: 'BACK_TO_LIST' })
+      return
+    }
+    requestLeave({ type: 'cancel' })
+  }
 
   return (
     <div className="relative flex h-full">
@@ -287,7 +294,7 @@ export const SkillsView = () => {
           onDeleteSkill={onDelete}
         />
       </div>
-      <DetailPanelSurface open={panelOpen} isMobile={isMobile}>
+      <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>
         {panel}
       </DetailPanelSurface>
       {pendingDependents && (

@@ -4,7 +4,7 @@
 
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
-import { createContext, type ComponentProps, type ReactNode } from 'react'
+import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
 
 import {
   Dialog,
@@ -17,18 +17,98 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
+import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
+const mobileFieldSurfaceClass =
+  '[&_[data-slot=input]]:bg-card [&_[data-slot=textarea]]:bg-card [&_[data-slot=select-trigger]]:bg-card [&_[data-slot=combobox-trigger]]:bg-card dark:[&_[data-slot=input]]:bg-input dark:[&_[data-slot=textarea]]:bg-input dark:[&_[data-slot=select-trigger]]:bg-input dark:[&_[data-slot=combobox-trigger]]:bg-input'
+
 // =============================================================================
-// Context for sharing mobile state and close handler with sub-components
+// Context for sharing the active surface with nested modal-aware components
 // =============================================================================
 
-const ResponsiveModalContext = createContext<{ isMobile: boolean; onClose: () => void }>({
+const ResponsiveModalContext = createContext<{ isMobile: boolean }>({
   isMobile: false,
-  onClose: () => {},
 })
+
+/** Reports whether a descendant is rendering inside the shared mobile modal shell. */
+export const useResponsiveModalContext = () => useContext(ResponsiveModalContext)
+
+type ResponsiveModalSurfaceVariant = 'structured' | 'composable'
+
+type ResponsiveModalDialogContentProps = ComponentProps<typeof DialogPrimitive.Content> & {
+  showCloseButton?: boolean
+  surfaceVariant: ResponsiveModalSurfaceVariant
+}
+
+const responsiveModalCloseClass =
+  'ring-offset-background focus:ring-ring absolute right-4 z-10 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none'
+
+/** Returns the shared surface classes for a responsive modal viewport and API variant. */
+export const getResponsiveModalSurfaceClass = (isMobile: boolean, surfaceVariant: ResponsiveModalSurfaceVariant) => {
+  if (isMobile) {
+    return cn('inset-0 h-dvh w-full gap-4 overflow-auto rounded-none border-0 p-6 shadow-none', mobileFieldSurfaceClass)
+  }
+
+  if (surfaceVariant === 'structured') {
+    return 'dark:bg-card top-[50%] left-[50%] min-h-[550px] max-h-[85vh] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-2xl p-6 shadow-lg sm:max-w-md'
+  }
+
+  return 'dark:bg-card top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-hidden rounded-2xl p-6 shadow-lg sm:max-w-lg'
+}
+
+/**
+ * The single responsive dialog surface used by both public modal APIs and by
+ * mobile detail views. Mobile geometry, safe areas, animation, fields, and the
+ * close control must remain centralized here.
+ */
+const ResponsiveModalDialogContent = ({
+  className,
+  children,
+  showCloseButton = true,
+  surfaceVariant,
+  ...props
+}: ResponsiveModalDialogContentProps) => {
+  const { isMobile } = useIsMobile()
+
+  return (
+    <ResponsiveModalContext value={{ isMobile }}>
+      <DialogPortal>
+        <DialogOverlay />
+        <DialogPrimitive.Content
+          data-slot="responsive-modal-content"
+          className={cn(
+            'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 flex flex-col duration-200',
+            getResponsiveModalSurfaceClass(isMobile, surfaceVariant),
+            className,
+          )}
+          style={
+            isMobile
+              ? {
+                  paddingBottom: 'calc(var(--safe-area-bottom-padding, 0px) + 24px)',
+                  paddingTop: 'calc(var(--safe-area-top-padding, 0px) + 56px)',
+                }
+              : undefined
+          }
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DialogClose
+              data-slot="responsive-modal-close"
+              className={responsiveModalCloseClass}
+              style={{ top: isMobile ? 'calc(var(--safe-area-top-padding, 0px) + 16px)' : 16 }}
+            >
+              <XIcon className="size-[var(--icon-size-default)]" />
+              <span className="sr-only">Close</span>
+            </DialogClose>
+          )}
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    </ResponsiveModalContext>
+  )
+}
 
 // =============================================================================
 // Main ResponsiveModal component
@@ -81,65 +161,19 @@ export const ResponsiveModal = ({
   onInteractOutside,
   onEscapeKeyDown,
 }: ResponsiveModalProps) => {
-  const { isMobile } = useIsMobile()
-
-  const handleClose = () => onOpenChange(false)
-
   return (
-    <ResponsiveModalContext.Provider value={{ isMobile, onClose: handleClose }}>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogPortal>
-          <DialogOverlay />
-          <DialogPrimitive.Content
-            onOpenAutoFocus={onOpenAutoFocus}
-            onInteractOutside={onInteractOutside}
-            onEscapeKeyDown={onEscapeKeyDown}
-            className={cn(
-              'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 duration-200',
-              // Desktop gets dark:bg-card (see dialog.tsx) — the full-screen
-              // mobile sheet IS the page, so it keeps the page background.
-              isMobile
-                ? 'inset-0 w-full min-h-dvh border-0 rounded-none shadow-none overflow-y-auto flex flex-col'
-                : 'dark:bg-card top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-2xl sm:max-w-md shadow-lg min-h-[550px] max-h-[85vh] flex flex-col',
-              className,
-            )}
-            style={
-              isMobile
-                ? {
-                    paddingTop: 'var(--safe-area-top-padding, 0px)',
-                    paddingBottom: 'calc(var(--safe-area-bottom-padding, 0px) + 24px)',
-                  }
-                : { padding: 24 }
-            }
-          >
-            {isMobile ? (
-              <>
-                {/* Close button positioned to match sidebar header's close button position */}
-                {showCloseButton && (
-                  <div
-                    className="absolute right-2 z-10"
-                    style={{ top: 'calc(var(--safe-area-top-padding, 0px) + 8px)' }}
-                  >
-                    <SidebarCloseButton onClick={handleClose} />
-                  </div>
-                )}
-                <div className="flex flex-col min-h-full flex-1 px-6 pt-14">{children}</div>
-              </>
-            ) : (
-              <>
-                {children}
-                {showCloseButton && (
-                  <DialogPrimitive.Close className="ring-offset-background focus:ring-ring absolute right-4 top-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
-                    <XIcon className="size-[var(--icon-size-default)]" />
-                    <span className="sr-only">Close</span>
-                  </DialogPrimitive.Close>
-                )}
-              </>
-            )}
-          </DialogPrimitive.Content>
-        </DialogPortal>
-      </Dialog>
-    </ResponsiveModalContext.Provider>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalDialogContent
+        className={className}
+        showCloseButton={showCloseButton}
+        surfaceVariant="structured"
+        onOpenAutoFocus={onOpenAutoFocus}
+        onInteractOutside={onInteractOutside}
+        onEscapeKeyDown={onEscapeKeyDown}
+      >
+        {children}
+      </ResponsiveModalDialogContent>
+    </Dialog>
   )
 }
 
@@ -164,6 +198,20 @@ type ResponsiveModalDescriptionProps = ComponentProps<typeof DialogDescription>
 
 export const ResponsiveModalDescription = ({ className, ...props }: ResponsiveModalDescriptionProps) => (
   <DialogDescription className={className} {...props} />
+)
+
+type ResponsiveModalActionsProps = ComponentProps<'div'>
+
+/** Optional mobile toolbar actions, positioned opposite the shared close control. */
+export const ResponsiveModalActions = ({ className, ...props }: ResponsiveModalActionsProps) => (
+  <div
+    className={cn(
+      'fixed left-4 z-10 flex items-center [&_[data-slot=button]]:size-[var(--touch-height-sm)] [&_[data-slot=button]]:rounded-full',
+      className,
+    )}
+    style={{ top: 'calc(var(--safe-area-top-padding, 0px) + 16px)' }}
+    {...props}
+  />
 )
 
 // =============================================================================
@@ -194,7 +242,17 @@ type ResponsiveModalFooterProps = ComponentProps<'div'>
 
 /** Footer section - stays at bottom of modal */
 export const ResponsiveModalFooter = ({ className, ...props }: ResponsiveModalFooterProps) => (
-  <DialogFooter className={cn('flex-shrink-0 flex-row gap-2 sm:justify-end', className)} {...props} />
+  <DialogFooter className={cn('mt-auto flex-shrink-0 flex-row justify-end gap-2 pt-4', className)} {...props} />
+)
+
+/** Standard secondary action for dismissing a responsive modal form. */
+export const ResponsiveModalCancel = ({
+  children = 'Cancel',
+  ...props
+}: Omit<ComponentProps<typeof Button>, 'type' | 'variant'>) => (
+  <Button type="button" variant="outline" {...props}>
+    {children}
+  </Button>
 )
 
 // =============================================================================
@@ -215,41 +273,15 @@ export const ResponsiveModalContentComposable = ({
   showCloseButton = true,
   ...props
 }: ResponsiveModalContentComposableProps) => {
-  const { isMobile } = useIsMobile()
-
   return (
-    <DialogPortal>
-      <DialogOverlay />
-      <DialogPrimitive.Content
-        className={cn(
-          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 flex flex-col gap-4 p-6 duration-200',
-          isMobile
-            ? 'inset-0 w-full h-dvh border-0 rounded-none shadow-none overflow-auto'
-            : 'dark:bg-card top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-2xl sm:max-w-lg shadow-lg',
-          className,
-        )}
-        style={
-          isMobile
-            ? {
-                paddingBottom: 'calc(var(--safe-area-bottom-padding, 0px) + 24px)',
-                paddingTop: 'calc(var(--safe-area-top-padding, 0px) + 56px)',
-              }
-            : undefined
-        }
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogClose
-            className="ring-offset-background focus:ring-ring absolute right-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none"
-            style={{ top: isMobile ? 'calc(var(--safe-area-top-padding, 0px) + 16px)' : 16 }}
-          >
-            <XIcon className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Close</span>
-          </DialogClose>
-        )}
-      </DialogPrimitive.Content>
-    </DialogPortal>
+    <ResponsiveModalDialogContent
+      className={className}
+      showCloseButton={showCloseButton}
+      surfaceVariant="composable"
+      {...props}
+    >
+      {children}
+    </ResponsiveModalDialogContent>
   )
 }
 

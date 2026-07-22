@@ -5,12 +5,17 @@
 import { Info, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
-import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+  useResponsiveModalContext,
+} from '@/components/ui/responsive-modal'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { validateSkillName } from '@/dal'
-import { cn } from '@/lib/utils'
+import { SkillSlugField } from './skill-slug-field'
 import { useSkillFormState, type SkillFormMode, type SkillFormValues } from './use-skill-form-state'
 
 export type { SkillFormMode, SkillFormValues }
@@ -51,11 +56,13 @@ export const SkillForm = ({
   /** Generic save-failure message shown next to the submit button. */
   submitError?: string | null
 }) => {
+  const { isMobile } = useResponsiveModalContext()
   const {
     label,
     slug,
     description,
     instruction,
+    isDirty,
     handleLabelChange,
     handleSlugChange,
     handleDescriptionChange,
@@ -89,9 +96,10 @@ export const SkillForm = ({
     instruction.trim() !== '' &&
     localSlugError === null &&
     !slugError
+  const canSave = canSubmit && (mode === 'create' || isDirty)
 
   const handleSubmit = () => {
-    if (!canSubmit) {
+    if (!canSave) {
       return
     }
     void onSubmit({
@@ -103,23 +111,32 @@ export const SkillForm = ({
   }
 
   return (
-    // No background of its own: inherits the desktop slide-in surface card
-    // or the mobile overlay's background.
-    <section className="relative flex h-full flex-1 flex-col text-foreground">
+    // No background of its own: inherits the desktop panel or mobile dialog surface.
+    <section className="relative flex min-h-full flex-col text-foreground md:h-full md:min-h-0 md:flex-1">
       {/* Same corner placement as the detail panel's close button (8px from
           top and right); behaves exactly like Cancel, including the
           unsaved-changes guard. */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onCancel}
-        aria-label="Close"
-        className={cn('absolute right-2 top-2', mutedIconButtonClass)}
-      >
-        <X className="size-4" />
-      </Button>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 px-6 py-5">
-        <h2 className="text-xl text-foreground">{mode === 'edit' ? 'Edit skill' : 'Create skill'}</h2>
+      {!isMobile && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onCancel}
+          aria-label="Close"
+          className="absolute right-2 top-2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="size-4" />
+        </Button>
+      )}
+      <div className="flex flex-col gap-5 px-6 pb-5 md:min-h-0 md:flex-1 md:py-5">
+        {isMobile ? (
+          <ResponsiveModalHeader className="mb-0">
+            <ResponsiveModalTitle>{mode === 'edit' ? 'Edit Skill' : 'Create Skill'}</ResponsiveModalTitle>
+          </ResponsiveModalHeader>
+        ) : (
+          <h2 className="text-lg font-semibold leading-none text-foreground">
+            {mode === 'edit' ? 'Edit Skill' : 'Create Skill'}
+          </h2>
+        )}
 
         <div className="flex flex-col gap-2">
           <label htmlFor="skill-label" className="text-base text-foreground">
@@ -131,39 +148,9 @@ export const SkillForm = ({
             placeholder="Daily Brief"
             value={label}
             onChange={(e) => handleLabelChange(e.target.value)}
-            className="h-9"
+            className="md:h-9"
           />
-          {/* De-emphasized slug row: most users never touch it — it fills
-              itself in from the Name. Ghost styling (no border until
-              hover/focus) keeps it from competing with the real fields. */}
-          <div className="flex items-center gap-1.5">
-            <label htmlFor="skill-slug" className="shrink-0 text-xs text-muted-foreground">
-              Slug
-            </label>
-            <div className="relative min-w-0 flex-1">
-              {/* Fixed `/` prefix — part of the chat trigger, not the stored
-                  value. */}
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 select-none text-xs text-muted-foreground/70"
-              >
-                /
-              </span>
-              <Input
-                id="skill-slug"
-                placeholder="daily-brief"
-                value={slug}
-                onChange={(e) => handleSlugChange(e.target.value)}
-                aria-invalid={localSlugError || slugError ? true : undefined}
-                className={cn(
-                  'h-7 rounded-md border-transparent bg-transparent pl-4 pr-2 !text-xs text-muted-foreground shadow-none',
-                  'hover:border-border focus-visible:border-border-strong focus-visible:text-foreground',
-                  'dark:bg-transparent dark:hover:bg-transparent',
-                )}
-              />
-            </div>
-          </div>
-          {(localSlugError || slugError) && <p className="text-sm text-destructive">{localSlugError ?? slugError}</p>}
+          <SkillSlugField mode={mode} slug={slug} error={localSlugError ?? slugError} onChange={handleSlugChange} />
         </div>
 
         <div className="flex flex-col gap-2">
@@ -193,7 +180,7 @@ export const SkillForm = ({
           />
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="flex flex-col gap-2 md:min-h-0 md:flex-1">
           <label htmlFor="skill-instruction" className="text-base text-foreground">
             Instructions
           </label>
@@ -202,7 +189,7 @@ export const SkillForm = ({
             placeholder="What the assistant should do…"
             value={instruction}
             onChange={(e) => handleInstructionChange(e.target.value)}
-            className="min-h-0 flex-1 resize-none"
+            className="min-h-48 resize-y md:min-h-0 md:flex-1 md:resize-none"
           />
         </div>
       </div>
@@ -218,7 +205,7 @@ export const SkillForm = ({
         <Button variant="outline" size="lg" onClick={onCancel} className="text-sm dark:hover:bg-accent">
           Cancel
         </Button>
-        <Button variant="default" size="lg" disabled={!canSubmit} className="text-sm" onClick={handleSubmit}>
+        <Button variant="default" size="lg" disabled={!canSave} className="text-sm" onClick={handleSubmit}>
           {mode === 'edit' ? 'Save' : 'Create'}
         </Button>
       </footer>

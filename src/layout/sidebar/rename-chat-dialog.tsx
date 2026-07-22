@@ -31,7 +31,6 @@ const RenameChatForm = ({ title, onOpenChange, onRename }: Omit<RenameChatDialog
   return (
     <DialogContent
       showCloseButton={false}
-      className="top-[30%]"
       onOpenAutoFocus={(e) => {
         e.preventDefault()
         // Deferred a frame: this dialog opens from a dropdown-menu item, and

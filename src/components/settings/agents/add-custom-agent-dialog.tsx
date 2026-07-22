@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  ResponsiveModalCancel,
   ResponsiveModalContentComposable,
   ResponsiveModalDescription,
+  ResponsiveModalFooter,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
@@ -282,19 +284,17 @@ export const AddCustomAgentDialog = ({
             </p>
           )}
         </div>
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <ResponsiveModalFooter>
           {state.submitError && (
             <p role="alert" className="min-w-0 flex-1 truncate text-[length:var(--font-size-sm)] text-destructive">
               {state.submitError}
             </p>
           )}
-          <Button variant="ghost" onClick={() => handleOpenChange(false)}>
-            Cancel
-          </Button>
+          <ResponsiveModalCancel onClick={() => handleOpenChange(false)} />
           <Button onClick={handleSubmit} disabled={!canSubmit}>
             Add agent
           </Button>
-        </div>
+        </ResponsiveModalFooter>
       </ResponsiveModalContentComposable>
     </Dialog>
   )

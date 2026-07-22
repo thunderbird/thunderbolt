@@ -18,7 +18,7 @@ const buttonVariants = cva(
         // switch ON track). bg-brand is the fallback under the image; hover
         // dims via brightness since the background is an image, not a color.
         default:
-          'bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95',
+          'bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100 disabled:brightness-100 disabled:[background-image:none]',
         destructive:
           'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         // Dark fill uses card (#282a2b) rather than input — input is the dark

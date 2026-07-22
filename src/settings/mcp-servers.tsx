@@ -12,8 +12,10 @@ import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
+  ResponsiveModalCancel,
   ResponsiveModalContentComposable,
   ResponsiveModalDescription,
+  ResponsiveModalFooter,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
@@ -731,7 +733,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               <Plus />
             </Button>
           </DialogTrigger>
-          <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[85vh]">
+          <ResponsiveModalContentComposable className="sm:max-h-[85vh] sm:max-w-[500px]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>{dialogTitle}</ResponsiveModalTitle>
               <ResponsiveModalDescription className="sr-only">{dialogDescription}</ResponsiveModalDescription>
@@ -760,10 +762,16 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               >
                 {/* rounded-lg to match the Input fields below (same treatment
                     as the preferences ThemeToggleGroup). */}
-                <ToggleGroupItem value="simple" className="first:rounded-l-lg last:rounded-r-lg">
+                <ToggleGroupItem
+                  value="simple"
+                  className="first:rounded-l-lg last:rounded-r-lg data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground dark:data-[state=on]:bg-accent"
+                >
                   Simple
                 </ToggleGroupItem>
-                <ToggleGroupItem value="advanced" className="first:rounded-l-lg last:rounded-r-lg">
+                <ToggleGroupItem
+                  value="advanced"
+                  className="first:rounded-l-lg last:rounded-r-lg data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground dark:data-[state=on]:bg-accent"
+                >
                   Advanced (JSON)
                 </ToggleGroupItem>
               </ToggleGroup>
@@ -911,16 +919,15 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               )}
             </div>
 
-            <div className="flex justify-end gap-3 pt-2 flex-shrink-0">
-              <Button
-                variant="ghost"
+            <ResponsiveModalFooter>
+              <ResponsiveModalCancel
                 onClick={() => {
                   form.resetAddDialog()
                   resetLocalDialogState()
                 }}
               >
                 Cancel
-              </Button>
+              </ResponsiveModalCancel>
               {form.editingServerId ? (
                 <Button
                   onClick={handleUpdateServer}
@@ -950,7 +957,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                   Add server
                 </Button>
               )}
-            </div>
+            </ResponsiveModalFooter>
           </ResponsiveModalContentComposable>
         </Dialog>
       </PageHeader>

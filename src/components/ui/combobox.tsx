@@ -100,6 +100,7 @@ export const Combobox = ({
       <PopoverPrimitive.Trigger asChild>
         <button
           type="button"
+          data-slot="combobox-trigger"
           role="combobox"
           aria-expanded={open}
           disabled={disabled}

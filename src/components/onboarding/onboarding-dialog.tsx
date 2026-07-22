@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase } from '@/contexts'
 import { deleteIntegrationCredentials } from '@/dal'
 import type { OAuthProvider } from '@/lib/auth'
@@ -102,21 +103,18 @@ export const OnboardingDialog = () => {
 
   return (
     <Dialog open={isOpen}>
-      <DialogContent
-        className={cn('p-0 overflow-hidden', !isMobile && 'h-[650px]')}
+      <ResponsiveModalContentComposable
+        className={cn('overflow-hidden p-0', !isMobile && 'h-[650px]')}
         showCloseButton={false}
-        useTransparentOverlay={!isMobile}
-        fullScreen={isMobile}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
         <DialogDescription className="sr-only">
           Complete the setup process to get started with Thunderbolt
         </DialogDescription>
         <div
-          className={cn('flex flex-col items-center', isMobile && 'h-dvh')}
+          className={cn('flex flex-col items-center', isMobile && 'h-full')}
           style={{
-            paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
-            paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
+            paddingBottom: 'var(--kb, 0px)',
           }}
         >
           <div className="flex items-center justify-center px-4 relative w-full pb-2">
@@ -171,7 +169,7 @@ export const OnboardingDialog = () => {
             />
           </div>
         </div>
-      </DialogContent>
+      </ResponsiveModalContentComposable>
     </Dialog>
   )
 }

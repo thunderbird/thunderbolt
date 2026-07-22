@@ -4,11 +4,14 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { Dialog } from '@/components/ui/dialog'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import {
+  getResponsiveModalSurfaceClass,
   ResponsiveModal,
   ResponsiveModalContent,
+  ResponsiveModalContentComposable,
   ResponsiveModalDescription,
   ResponsiveModalFooter,
   ResponsiveModalHeader,
@@ -80,6 +83,36 @@ describe('ResponsiveModal', () => {
     })
   })
 
+  describe('shared mobile surface', () => {
+    it('uses the full-screen shell and touch-sized close control', () => {
+      renderModal()
+
+      const close = screen.getByRole('button', { name: 'Close' })
+      const mobileSurfaceClass = getResponsiveModalSurfaceClass(true, 'structured')
+
+      expect(mobileSurfaceClass).toContain('h-dvh')
+      expect(mobileSurfaceClass).toContain('[&_[data-slot=input]]:bg-card')
+      expect(close.className).toContain('h-[var(--touch-height-sm)]')
+    })
+
+    it('uses the same shell for the composable API', () => {
+      render(
+        <Dialog open>
+          <ResponsiveModalContentComposable>
+            <ResponsiveModalHeader>
+              <ResponsiveModalTitle>Composable Title</ResponsiveModalTitle>
+            </ResponsiveModalHeader>
+          </ResponsiveModalContentComposable>
+        </Dialog>,
+        { wrapper: createTestProvider() },
+      )
+
+      expect(getResponsiveModalSurfaceClass(true, 'composable')).toContain('h-dvh')
+      expect(document.querySelector('[data-slot="responsive-modal-content"]')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+    })
+  })
+
   describe('ResponsiveModalContent', () => {
     it('applies centered class when centered prop is true', () => {
       render(
@@ -106,5 +139,13 @@ describe('ResponsiveModal', () => {
       const content = screen.getByTestId('content')
       expect(content.className).not.toContain('justify-center')
     })
+  })
+
+  it('anchors modal actions at the bottom of the surface', () => {
+    renderModal()
+
+    expect(screen.getByRole('button', { name: 'Action' }).closest('[data-slot="dialog-footer"]')?.className).toContain(
+      'mt-auto',
+    )
   })
 })

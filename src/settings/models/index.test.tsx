@@ -11,7 +11,7 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import ModelsPage, { systemModelMenuMessage } from './index'
+import ModelsPage, { shouldDisableAddModel, systemModelMenuMessage } from './index'
 
 describe('ModelsPage reactivity', () => {
   beforeAll(async () => {
@@ -65,6 +65,43 @@ describe('ModelsPage reactivity', () => {
     })
 
     expect(screen.getByText('Second Model')).toBeInTheDocument()
+  })
+})
+
+describe('add model form', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('disables Add Model while required fields are empty', async () => {
+    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add model' }))
+    await waitForElement(() => screen.queryByRole('heading', { name: 'Add Model' }))
+
+    expect(screen.getByRole('button', { name: 'Add Model' })).toBeDisabled()
+  })
+})
+
+describe('shouldDisableAddModel', () => {
+  it('enables submission only when validation and connection gates pass', () => {
+    expect(shouldDisableAddModel(false, true, false, false)).toBe(false)
+    expect(shouldDisableAddModel(false, true, true, true)).toBe(false)
+    expect(shouldDisableAddModel(false, false, false, false)).toBe(true)
+    expect(shouldDisableAddModel(false, true, true, false)).toBe(true)
+    expect(shouldDisableAddModel(true, true, false, false)).toBe(true)
   })
 })
 

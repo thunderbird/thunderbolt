@@ -115,7 +115,7 @@ export const ChatList = ({
           <SearchInput
             ref={searchInputRef}
             containerClassName="mb-1"
-            className="bg-sidebar-accent dark:bg-sidebar-accent border-transparent focus-visible:border-border"
+            className="rounded-xl border-transparent bg-sidebar-accent focus-visible:border-border dark:bg-sidebar-accent"
             placeholder="Search chats..."
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}

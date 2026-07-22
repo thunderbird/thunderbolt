@@ -52,12 +52,59 @@ describe('SkillForm slug auto-generation', () => {
 
     // Renaming must not touch the existing slug (it would break `/tokens`).
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Rebranded Brief' } })
-    expect(screen.getByLabelText('Slug')).toHaveValue('daily-brief')
+    expect(screen.getByText('/daily-brief')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit slug' }))
+    const slugInput = screen.getByLabelText('Slug')
+    expect(slugInput).toHaveValue('daily-brief')
 
     // Clearing the slug must NOT re-attach auto-generation in edit mode —
     // the user is retyping it deliberately, not asking for a rename cascade.
-    fireEvent.change(screen.getByLabelText('Slug'), { target: { value: '' } })
+    fireEvent.change(slugInput, { target: { value: '' } })
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Another Name' } })
-    expect(screen.getByLabelText('Slug')).toHaveValue('')
+    expect(slugInput).toHaveValue('')
+  })
+})
+
+describe('SkillForm responsive layout', () => {
+  it('keeps the Instructions field usable before the mobile modal scrolls', () => {
+    render(<SkillForm onCancel={noop} onSubmit={noop} />)
+
+    expect(screen.getByLabelText('Instructions')).toHaveClass('min-h-48', 'md:min-h-0')
+  })
+})
+
+describe('SkillForm edit submission', () => {
+  it('enables Save only while the form differs from its initial values', () => {
+    render(<SkillForm mode="edit" initialValues={editValues} onCancel={noop} onSubmit={noop} />)
+
+    const saveButton = screen.getByRole('button', { name: 'Save' })
+    expect(saveButton).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Updated Brief' } })
+    expect(saveButton).toBeEnabled()
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: editValues.label } })
+    expect(saveButton).toBeDisabled()
+  })
+})
+
+describe('SkillForm slug customization', () => {
+  it('toggles between the slug text and editable input', () => {
+    render(<SkillForm mode="edit" initialValues={editValues} onCancel={noop} onSubmit={noop} />)
+
+    expect(screen.getByText('/daily-brief')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Slug' })).not.toBeInTheDocument()
+
+    const editButton = screen.getByRole('button', { name: 'Edit slug' })
+    expect(editButton).toHaveClass('min-h-[var(--min-touch-height)]')
+    fireEvent.click(editButton)
+
+    expect(screen.getByRole('textbox', { name: 'Slug' })).toHaveValue('daily-brief')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish editing slug' }))
+
+    expect(screen.getByText('/daily-brief')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Slug' })).not.toBeInTheDocument()
   })
 })

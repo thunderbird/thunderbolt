@@ -162,13 +162,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           type="submit"
           variant="default"
           aria-label="Send message"
-          className={cn(
-            'size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0',
-            // Not submittable → an inert low-contrast grey instead of the
-            // default washed-out (opacity-50) brand gradient; the gradient
-            // appearing is the "you can send now" signal.
-            'disabled:opacity-100 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:[background-image:none]',
-          )}
+          className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
           disabled={isLoading || !submittable}
         >
           <ArrowUp className="size-[var(--icon-size-default)]" />

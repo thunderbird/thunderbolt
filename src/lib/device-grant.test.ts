@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 
 import {
   approveDeviceCode,
@@ -13,6 +13,15 @@ import {
 } from './device-grant'
 
 type FetchResult = { data: unknown; error: unknown }
+
+type ConsoleErrorSpy = ReturnType<typeof spyOn>
+
+const consoleError = { current: undefined as ConsoleErrorSpy | undefined }
+
+beforeEach(() => {
+  consoleError.current = spyOn(console, 'error').mockImplementation(() => {})
+})
+afterEach(() => consoleError.current?.mockRestore())
 
 /**
  * Build a fake device-grant client (DI, no module mocking). `respond` receives the path
@@ -63,6 +72,31 @@ describe('verifyDeviceCode', () => {
 
     expect(result.ok).toBe(false)
     expect(result).toMatchObject({ reason: 'invalid' })
+  })
+
+  it('reports a backend failure as unavailable without blaming the code', async () => {
+    const error = { error: 'internal_server_error', status: 503 }
+    const { client } = fakeClient(() => ({ data: null, error }))
+
+    const result = await verifyDeviceCode(client, 'ABCD1234')
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'unavailable',
+      message: 'The sign-in service is unavailable right now. Check your connection and try again.',
+    })
+    expect(consoleError.current).toHaveBeenCalledWith('Device grant request failed', error)
+  })
+
+  it('reports a transport failure as unavailable and logs the underlying error', async () => {
+    const underlyingError = new TypeError('Failed to fetch')
+    const error = { error: underlyingError, status: 500, statusText: 'Fetch Error' }
+    const { client } = fakeClient(() => ({ data: null, error }))
+
+    const result = await verifyDeviceCode(client, 'ABCD1234')
+
+    expect(result).toMatchObject({ ok: false, reason: 'unavailable' })
+    expect(consoleError.current).toHaveBeenCalledWith('Device grant request failed', underlyingError)
   })
 
   it('treats a missing body as an invalid code', async () => {

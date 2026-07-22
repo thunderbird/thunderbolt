@@ -10,9 +10,10 @@
  */
 
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { resetSharedIrohClientForTests } from '@/acp/iroh/iroh-transport'
 import type { IrohClientLike, IrohConnectionLike } from '@/acp/iroh/types'
+import { ensureSelfEnrollment, resetSelfEnrollmentForTests } from './iroh-enrollment'
 import { createMcpIrohTransport, mcpIrohAlpn } from './mcp-iroh-transport'
 
 type FakeConnection = {
@@ -75,9 +76,41 @@ const initialize = { jsonrpc: '2.0', id: 1, method: 'initialize' } as unknown as
 
 afterEach(() => {
   resetSharedIrohClientForTests()
+  resetSelfEnrollmentForTests()
 })
 
 describe('createMcpIrohTransport', () => {
+  it('warns and still dials when transparent enrollment fails', async () => {
+    const fake = makeFakeConnection()
+    const captured: CapturedConnect[] = []
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const post = mock(async () => {
+      throw new Error('403')
+    })
+    const ensureEnrollment: NonNullable<Parameters<typeof createMcpIrohTransport>[0]['ensureEnrollment']> = (
+      httpClient,
+      loadNodeId = async () => 'missing-node-id',
+    ) =>
+      ensureSelfEnrollment(httpClient, loadNodeId, {
+        loadOwnNodeId: async () => null,
+        loadDeviceId: () => 'device-1',
+      })
+    const transport = createMcpIrohTransport({
+      target: 'ticket-or-nodeid',
+      loadClient: async () => makeFakeClient(fake.connection, captured),
+      httpClient: { post } as unknown as Parameters<typeof ensureSelfEnrollment>[0],
+      ensureEnrollment,
+    })
+
+    try {
+      await transport.start()
+      expect(warn).toHaveBeenCalledWith('iroh transparent enrollment failed; using manual pairing fallback')
+      expect(captured).toEqual([{ target: 'ticket-or-nodeid', alpn: mcpIrohAlpn }])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('dials the target over the MCP ALPN on start()', async () => {
     const fake = makeFakeConnection()
     const captured: CapturedConnect[] = []

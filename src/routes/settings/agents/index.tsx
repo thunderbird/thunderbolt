@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
 import { testAcpConnection } from '@/acp'
+import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { DetailPanelSurface } from '@/components/detail-panel'
@@ -47,7 +48,7 @@ export default function AgentsSettingsPage({ loadAppNodeId, enrollIroh }: Agents
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
-  const runEnroll = enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId))
+  const runEnroll = enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId ?? irohClientNodeId))
   const { isMobile } = useIsMobile()
 
   const [dialogOpen, setDialogOpen] = useState(false)

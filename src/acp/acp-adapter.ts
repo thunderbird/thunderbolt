@@ -382,9 +382,8 @@ export const connectAcpAdapter = async (
     agentType: agent.type,
     signal: transportController.signal,
     webSocketFactory: deps.webSocketFactory,
-    // `httpClient` presence signals an authenticated cloud backend is wired:
-    // managed-ACP offers the signed bearer subprotocol when it's set; remote-ACP
-    // ignores it (the universal proxy / native WebSocket carry their own auth).
+    // Managed-ACP uses `httpClient` presence to offer its signed bearer
+    // subprotocol; iroh uses the client for transparent device enrollment.
     httpClient: ctx.httpClient,
   })
 

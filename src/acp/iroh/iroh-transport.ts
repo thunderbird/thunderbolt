@@ -20,6 +20,8 @@
 
 import type { AnyMessage, Stream } from '@agentclientprotocol/sdk'
 import { irohAlpnFor } from '@shared/iroh'
+import type { HttpClient } from '@/lib/http'
+import { ensureSelfEnrollment } from '@/lib/iroh-enrollment'
 import type { AcpTransport } from '../types'
 import { createNdjsonDecoder, encodeNdjsonFrame } from './ndjson'
 import type { IrohClientLike, IrohClientLoader, IrohConnectionLike } from './types'
@@ -263,11 +265,21 @@ export type OpenIrohTransportOptions = {
   alpn?: string
   /** Test seam — production omits and lazy-loads the wasm client. */
   loadClient?: IrohClientLoader
+  /** Authenticated backend client. Omitted only in true Standalone/test paths. */
+  httpClient?: Pick<HttpClient, 'post'>
+  /** Test seam for transparent enrollment ordering/fallback. */
+  ensureEnrollment?: typeof ensureSelfEnrollment
 }
 
 /** Open an ACP transport against an iroh bridge `target`. Dials over the shared
  *  relay endpoint, opens one bidi stream, and frames ACP JSON-RPC as ndjson. */
 export const openIrohTransport = async (options: OpenIrohTransportOptions): Promise<AcpTransport> => {
+  if (options.httpClient) {
+    await (options.ensureEnrollment ?? ensureSelfEnrollment)(options.httpClient, () =>
+      irohClientNodeId(options.loadClient),
+    )
+  }
+
   const connection = await dialIrohBridge({
     target: options.target,
     alpn: options.alpn ?? acpIrohAlpn,

@@ -60,6 +60,7 @@ import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import { useMcpServerOAuth, type McpOAuthCallback, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import { generateServerName, useAddServerForm } from '@/hooks/use-add-server-form'
 import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
+import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 
 export { generateServerName }
@@ -198,7 +199,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   const classifyAuth = deps.classifyMcpServerAuth ?? classifyMcpServerAuth
   const db = useDatabase()
   const httpClient = useHttpClient()
-  const runEnroll = deps.enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, deps.loadAppNodeId))
+  const runEnroll = deps.enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, deps.loadAppNodeId ?? irohClientNodeId))
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   // Read provider connection state read-only for status display. Sync ownership
   // lives in the single global useMcpSync() in AppContent — running it here too

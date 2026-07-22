@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { createWebFetchTool } from './webfetch.ts'
+import { createWebFetchTool, htmlToText } from './webfetch.ts'
 import type { WebFetchDependencies, WebFetchRequest } from './webfetch.ts'
 
 /** Resolve test hostnames to a stable public address without real DNS. */
@@ -208,5 +208,23 @@ describe('webfetch', () => {
     const output = await execute(fetch, 'https://example.com')
 
     expect(output).not.toContain('<')
+  })
+})
+
+describe('htmlToText', () => {
+  test('drops an unterminated comment', () => {
+    expect(htmlToText('Before<!-- hidden')).toBe('Before')
+  })
+
+  test('drops an unterminated raw-text element', () => {
+    expect(htmlToText('Before<script>hidden')).toBe('Before')
+  })
+
+  test('matches raw-text closing tags case-insensitively with trailing whitespace', () => {
+    expect(htmlToText('Before<ScRiPt>hidden</sCrIpT \n>After')).toBe('BeforeAfter')
+  })
+
+  test('escapes an opening angle bracket at end of input', () => {
+    expect(htmlToText('Before<')).toBe('Before&lt;')
   })
 })

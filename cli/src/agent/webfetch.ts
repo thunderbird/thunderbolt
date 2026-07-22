@@ -10,9 +10,36 @@ const defaultTimeoutMs = 15_000
 const defaultMaxResponseBytes = 1_500_000
 const defaultMaxTextLength = 100_000
 const maxRedirects = 5
-const maxHtmlSanitizationPasses = 32
 const privateAddressError = 'refusing to fetch private or internal address'
 const redirectStatuses = new Set([301, 302, 303, 307, 308])
+const lineBreakElements: ReadonlySet<string> = new Set([
+  'address',
+  'article',
+  'aside',
+  'blockquote',
+  'br',
+  'div',
+  'footer',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hr',
+  'li',
+  'main',
+  'nav',
+  'ol',
+  'p',
+  'pre',
+  'section',
+  'table',
+  'tr',
+  'ul',
+])
+const rawTextElements: ReadonlySet<string> = new Set(['noscript', 'script', 'style', 'svg'])
 
 const webFetchSchema = Type.Object({
   url: Type.String({ description: 'HTTP or HTTPS URL to read' }),
@@ -41,6 +68,11 @@ export type WebFetchRequest = (
 ) => Promise<Response>
 
 type ParsedIpAddress = { readonly version: 4; readonly value: bigint } | { readonly version: 6; readonly value: bigint }
+
+type HtmlQuote = "'" | '"'
+type HtmlScannerMode = 'comment' | 'rawText' | 'tag' | 'text'
+type RawTextElement = 'noscript' | 'script' | 'style' | 'svg'
+type TagFrame = { readonly characters: string[]; quote?: HtmlQuote }
 
 const blockedIpv4Ranges: ReadonlyArray<readonly [network: bigint, prefixLength: number]> = [
   [0x00000000n, 8], // 0.0.0.0/8 — current network and unspecified
@@ -202,32 +234,168 @@ const decodeHtmlEntities = (html: string): string => {
   })
 }
 
-/** Reapply sanitization so one removal cannot expose a skipped tag or comment. */
-const replaceUntilStable = (value: string, replace: (current: string) => string): string => {
-  const state = { value, passes: 0 }
-  while (state.passes < maxHtmlSanitizationPasses) {
-    const replaced = replace(state.value)
-    if (replaced === state.value) return replaced
-    state.value = replaced
-    state.passes += 1
+/** Identify characters permitted in an HTML tag name. */
+const isTagNameCharacter = (character: string): boolean =>
+  (character >= 'a' && character <= 'z') ||
+  (character >= 'A' && character <= 'Z') ||
+  (character >= '0' && character <= '9') ||
+  character === '-' ||
+  character === ':'
+
+/** Identify whitespace permitted before a raw-text closing angle bracket. */
+const isHtmlWhitespace = (character: string | undefined): boolean =>
+  character === ' ' || character === '\t' || character === '\n' || character === '\f' || character === '\r'
+
+/** Narrow a tag name to an element whose content must be discarded. */
+const isRawTextElement = (name: string): name is RawTextElement => rawTextElements.has(name)
+
+/** Read a completed tag's normalized name. */
+const readTagName = (tag: string): { readonly closing: boolean; readonly name: string } => {
+  const closing = tag.startsWith('/')
+  const nameStart = closing ? 1 : 0
+  const nameEnd = { value: nameStart }
+  while (isTagNameCharacter(tag[nameEnd.value] ?? '')) nameEnd.value += 1
+  return { closing, name: tag.slice(nameStart, nameEnd.value).toLowerCase() }
+}
+
+/** Test whether a completed opening tag closes itself. */
+const isSelfClosingTag = (tag: string): boolean => {
+  const index = { value: tag.length - 1 }
+  while (isHtmlWhitespace(tag[index.value])) index.value -= 1
+  return tag[index.value] === '/'
+}
+
+/** Test a case-insensitive substring without allocating a normalized copy. */
+const matchesCaseInsensitive = (value: string, index: number, expected: string): boolean => {
+  const offset = { value: 0 }
+  while (offset.value < expected.length) {
+    if (value[index + offset.value]?.toLowerCase() !== expected[offset.value]) return false
+    offset.value += 1
   }
-  return state.value
+  return true
+}
+
+/** Return index after a complete raw-text closing tag, or undefined when absent. */
+const findRawTextCloseEnd = (html: string, index: number, element: RawTextElement): number | undefined => {
+  if (html[index] !== '<' || html[index + 1] !== '/') return undefined
+  if (!matchesCaseInsensitive(html, index + 2, element)) return undefined
+
+  const closingIndex = { value: index + element.length + 2 }
+  while (isHtmlWhitespace(html[closingIndex.value])) closingIndex.value += 1
+  return html[closingIndex.value] === '>' ? closingIndex.value + 1 : undefined
+}
+
+/** Restore an unfinished ordinary tag as text for terminal angle-bracket escaping. */
+const appendUnfinishedTags = (output: string[], tagFrames: TagFrame[]): void => {
+  for (const frame of tagFrames) {
+    output.push('<')
+    for (const character of frame.characters) output.push(character)
+  }
+}
+
+/** Strip tags and hidden HTML content with one forward scan. */
+const stripHtml = (html: string): string => {
+  const output: string[] = []
+  const tagFrames: TagFrame[] = []
+  const state: { index: number; mode: HtmlScannerMode; rawTextElement?: RawTextElement } = {
+    index: 0,
+    mode: 'text',
+  }
+
+  while (state.index < html.length) {
+    if (state.mode === 'text') {
+      if (html[state.index] === '<') {
+        tagFrames.push({ characters: [] })
+        state.mode = 'tag'
+      } else {
+        output.push(html[state.index] ?? '')
+      }
+      state.index += 1
+      continue
+    }
+
+    if (state.mode === 'comment') {
+      if (html[state.index] === '-' && html[state.index + 1] === '-' && html[state.index + 2] === '>') {
+        state.index += 3
+        state.mode = tagFrames.length > 0 ? 'tag' : 'text'
+        continue
+      }
+      state.index += 1
+      continue
+    }
+
+    if (state.mode === 'rawText') {
+      const closeEnd = findRawTextCloseEnd(html, state.index, state.rawTextElement!)
+      if (closeEnd !== undefined) {
+        state.index = closeEnd
+        state.rawTextElement = undefined
+        state.mode = tagFrames.length > 0 ? 'tag' : 'text'
+        continue
+      }
+      state.index += 1
+      continue
+    }
+
+    const frame = tagFrames.at(-1)
+    if (!frame) throw new Error('HTML scanner entered tag state without a tag frame')
+    const character = html[state.index] ?? ''
+    if (frame.quote) {
+      frame.characters.push(character)
+      if (character === frame.quote) frame.quote = undefined
+      state.index += 1
+      continue
+    }
+    if (character === "'" || character === '"') {
+      frame.characters.push(character)
+      frame.quote = character
+      state.index += 1
+      continue
+    }
+    if (character === '<') {
+      tagFrames.push({ characters: [] })
+      state.index += 1
+      continue
+    }
+    if (character !== '>') {
+      frame.characters.push(character)
+      state.index += 1
+      if (
+        frame.characters.length === 3 &&
+        frame.characters[0] === '!' &&
+        frame.characters[1] === '-' &&
+        frame.characters[2] === '-'
+      ) {
+        tagFrames.pop()
+        state.mode = 'comment'
+      }
+      continue
+    }
+
+    const tag = frame.characters.join('')
+    const { closing, name } = readTagName(tag)
+    const rawTextElement = isRawTextElement(name) ? name : undefined
+    tagFrames.pop()
+    state.index += 1
+    if (rawTextElement && !closing && !isSelfClosingTag(tag)) {
+      state.rawTextElement = rawTextElement
+      state.mode = 'rawText'
+      continue
+    }
+    if (tagFrames.length > 0) continue
+    if (lineBreakElements.has(name)) output.push('\n')
+    state.mode = 'text'
+  }
+
+  if (state.mode === 'tag') appendUnfinishedTags(output, tagFrames)
+  return output.join('')
 }
 
 /** Convert HTML into compact readable text while dropping non-content elements. */
 export const htmlToText = (html: string): string => {
-  const withoutHiddenContent = replaceUntilStable(html, (current) =>
-    current.replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style|noscript|svg)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ''),
-  )
-  const withLineBreaks = withoutHiddenContent.replace(
-    /<\/?(?:address|article|aside|blockquote|br|div|footer|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|tr|ul)\b[^>]*>/gi,
-    '\n',
-  )
-  const withoutTags = replaceUntilStable(withLineBreaks, (current) => current.replace(/<[^>]*>/g, ''))
-  return decodeHtmlEntities(withoutTags)
+  return decodeHtmlEntities(stripHtml(html))
     // Terminal defense, applied last so entity decoding cannot reintroduce `<`: any
-    // angle bracket that survives the bounded strip passes (or decodes back into the
-    // text) is escaped outright, so no markup sequence can remain in the output.
+    // angle bracket preserved as unfinished text (or decoded back into the text) is
+    // escaped outright, so no markup sequence can remain in the output.
     .replaceAll('<', '&lt;')
     .replace(/\r\n?/g, '\n')
     .replace(/[\t\f\v ]+/g, ' ')

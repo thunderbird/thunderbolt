@@ -83,6 +83,79 @@ describe('webfetch', () => {
     ).resolves.toBe('public response')
   })
 
+  test('pins a hostname to the first resolved address and sends the original Host header', async () => {
+    const calls: Array<{ readonly url: string; readonly host: string | null }> = []
+    const fetch: WebFetchRequest = async (input, init) => {
+      calls.push({ url: String(input), host: new Headers(init?.headers).get('host') })
+      return new Response('public response')
+    }
+
+    await execute(fetch, 'https://public.example/article?q=1', {
+      resolve: async () => [{ address: '93.184.216.34' }, { address: '2606:2800:220:1:248:1893:25c8:1946' }],
+    })
+
+    expect(calls).toEqual([{ url: 'https://93.184.216.34/article?q=1', host: 'public.example' }])
+  })
+
+  test('uses one DNS answer for validation and connection', async () => {
+    const resolverCalls: string[] = []
+    const calls: string[] = []
+    const fetch: WebFetchRequest = async (input) => {
+      calls.push(String(input))
+      return new Response('public response')
+    }
+
+    await execute(fetch, 'https://rebind.example/secrets', {
+      resolve: async (hostname) => {
+        resolverCalls.push(hostname)
+        return resolverCalls.length === 1 ? [{ address: '93.184.216.34' }] : [{ address: '169.254.169.254' }]
+      },
+    })
+
+    expect(resolverCalls).toEqual(['rebind.example'])
+    expect(calls).toEqual(['https://93.184.216.34/secrets'])
+  })
+
+  test('re-pins every redirect hop with one resolution per hostname', async () => {
+    const resolverCalls: string[] = []
+    const calls: Array<{ readonly url: string; readonly host: string | null }> = []
+    const fetch: WebFetchRequest = async (input, init) => {
+      calls.push({ url: String(input), host: new Headers(init?.headers).get('host') })
+      return calls.length === 1
+        ? new Response(null, { status: 302, headers: { location: 'https://redirect.example/final' } })
+        : new Response('redirected response')
+    }
+
+    await execute(fetch, 'https://origin.example/start', {
+      resolve: async (hostname) => {
+        resolverCalls.push(hostname)
+        return [{ address: hostname === 'origin.example' ? '93.184.216.34' : '8.8.8.8' }]
+      },
+    })
+
+    expect(resolverCalls).toEqual(['origin.example', 'redirect.example'])
+    expect(calls).toEqual([
+      { url: 'https://93.184.216.34/start', host: 'origin.example' },
+      { url: 'https://8.8.8.8/final', host: 'redirect.example' },
+    ])
+  })
+
+  test('brackets a resolved IPv6 address in the pinned URL', async () => {
+    const calls: Array<{ readonly url: string; readonly host: string | null }> = []
+    const fetch: WebFetchRequest = async (input, init) => {
+      calls.push({ url: String(input), host: new Headers(init?.headers).get('host') })
+      return new Response('IPv6 response')
+    }
+
+    await execute(fetch, 'https://ipv6.example/article', {
+      resolve: async () => [{ address: '2606:2800:220:1:248:1893:25c8:1946' }],
+    })
+
+    expect(calls).toEqual([
+      { url: 'https://[2606:2800:220:1:248:1893:25c8:1946]/article', host: 'ipv6.example' },
+    ])
+  })
+
   test('rejects a hostname when any resolved address is private', async () => {
     const fetch: WebFetchRequest = async () => new Response('should not run')
 
@@ -103,7 +176,7 @@ describe('webfetch', () => {
     await expect(execute(fetch, 'https://public.example/start')).rejects.toThrow(
       'refusing to fetch private or internal address',
     )
-    expect(calls).toEqual(['https://public.example/start'])
+    expect(calls).toEqual(['https://93.184.216.34/start'])
   })
 
   test('enforces the five-hop redirect cap', async () => {
@@ -128,7 +201,7 @@ describe('webfetch', () => {
     }
 
     expect(await execute(fetch, 'https://example.com/article')).toContain('hello from web')
-    expect(calls).toEqual([{ url: 'https://example.com/article', redirect: 'manual' }])
+    expect(calls).toEqual([{ url: 'https://93.184.216.34/article', redirect: 'manual' }])
   })
 
   test('rejects schemes other than http and https before fetching', async () => {

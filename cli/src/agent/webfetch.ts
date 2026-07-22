@@ -64,7 +64,11 @@ export type WebFetchResolver = (hostname: string) => Promise<ReadonlyArray<{ rea
 
 export type WebFetchRequest = (
   input: string | URL,
-  init?: { readonly redirect?: 'error' | 'follow' | 'manual'; readonly signal?: AbortSignal },
+  init?: {
+    readonly headers?: Bun.HeadersInit
+    readonly redirect?: 'error' | 'follow' | 'manual'
+    readonly signal?: AbortSignal
+  },
 ) => Promise<Response>
 
 type ParsedIpAddress = { readonly version: 4; readonly value: bigint } | { readonly version: 6; readonly value: bigint }
@@ -162,25 +166,38 @@ const isPrivateOrInternalAddress = (address: ParsedIpAddress): boolean => {
   return blockedIpv6Ranges.some(([network, prefixLength]) => isInCidr(address.value, network, prefixLength, 128))
 }
 
-/** Resolve and reject any request target with a private or internal address. */
-const validateRequestTarget = async (url: URL, resolve: WebFetchResolver): Promise<void> => {
-  const hostname = url.hostname.replace(/^\[|\]$/g, '')
+/**
+ * Resolve, validate, and pin one request hop to its first public IP address.
+ * Mirrors `backend/src/utils/url-validation.ts#validateAndPin`; keep both implementations in sync.
+ */
+const validateAndPin = async (
+  url: URL,
+  resolve: WebFetchResolver,
+): Promise<[pinnedUrl: string, headers: Headers]> => {
+  const parsedUrl = new URL(url)
+  parsedUrl.username = ''
+  parsedUrl.password = ''
+  const hostname = parsedUrl.hostname.replace(/^\[|\]$/g, '')
   const literalAddress = parseIpAddress(hostname)
   if (literalAddress) {
     if (isPrivateOrInternalAddress(literalAddress)) throw new Error(privateAddressError)
-    return
+    return [parsedUrl.toString(), new Headers()]
   }
 
   const addresses = await resolve(hostname)
   if (addresses.length === 0) throw new Error(`webfetch could not resolve hostname: ${hostname}`)
-  if (
-    addresses.some(({ address }) => {
-      const parsedAddress = parseIpAddress(address)
-      return !parsedAddress || isPrivateOrInternalAddress(parsedAddress)
-    })
-  ) {
+  const parsedAddresses = addresses.map(({ address }) => parseIpAddress(address))
+  if (parsedAddresses.some((address) => !address || isPrivateOrInternalAddress(address))) {
     throw new Error(privateAddressError)
   }
+
+  const pinnedUrl = new URL(parsedUrl)
+  const firstAddress = addresses[0].address
+  pinnedUrl.hostname = parsedAddresses[0]?.version === 6 ? `[${firstAddress}]` : firstAddress
+  const headers = new Headers()
+  headers.set('Host', hostname)
+
+  return [pinnedUrl.toString(), headers]
 }
 
 /** Follow redirects manually so every network request receives fresh SSRF validation. */
@@ -193,8 +210,8 @@ const fetchWithValidatedRedirects = async (
   const state = { url: initialUrl, redirectsFollowed: 0 }
 
   while (true) {
-    await validateRequestTarget(state.url, resolve)
-    const response = await fetch(state.url, { redirect: 'manual', signal })
+    const [pinnedUrl, headers] = await validateAndPin(state.url, resolve)
+    const response = await fetch(pinnedUrl, { headers, redirect: 'manual', signal })
     const location = response.headers.get('location')
     if (!redirectStatuses.has(response.status) || !location) return { response, url: state.url }
     if (state.redirectsFollowed >= maxRedirects) {

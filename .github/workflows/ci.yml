@@ -393,7 +393,7 @@ jobs:
       # --rerun-each, which 5x'd the exposure) and retry up to 5x so an intermittent
       # drop self-heals while a genuine break (5 non-zero) still reds CI.
       - name: Test backend (segregated WS, 1x + retry)
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
         with:
           timeout_minutes: 5
           max_attempts: 5

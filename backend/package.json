@@ -58,7 +58,7 @@
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.5.0",
-    "oauth2-mock-server": "^8.2.2",
+    "oauth2-mock-server": "^9.1.0",
     "pino-pretty": "^13.1.1",
     "prettier": "^3.2.4",
     "tsx": "^4.20.6",

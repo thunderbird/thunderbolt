@@ -1,9 +1,10 @@
 # ⚡ thunderbolt
 
 A single-binary terminal coding agent. It operates directly in your working
-directory with four tools — **bash**, **read**, **write**, **edit** — built on
-the [Pi harness](https://www.npmjs.com/package/@earendil-works/pi-agent-core)
-and talking to models from Anthropic, OpenAI, Google, xAI, and other providers.
+directory with five tools — **bash**, **read**, **write**, **edit**, **webfetch**
+— plus provider-native web search where supported. Built on the
+[Pi harness](https://www.npmjs.com/package/@earendil-works/pi-agent-core) and
+talking to models from Anthropic, OpenAI, Google, xAI, and other providers.
 Give it a task as one prompt or drop into an interactive REPL; there's no daemon,
 and nothing to install but the binary.
 

@@ -11,21 +11,33 @@ type BuildSystemPromptParams = {
 /** Describe only tools registered on the harness. */
 const toolInstructions = (bashEnabled: boolean): string => {
   if (!bashEnabled) {
-    return `You have three filesystem tools:
+    return `You have four tools:
 - read  — read a file
 - write — create or overwrite a file
 - edit  — replace a span within a file
+- webfetch — read a specific HTTP or HTTPS URL
+
+Web access priority:
+1. Use web_search when available to search for current information and discover URLs.
+2. Use webfetch to read a specific URL.
+Bash is unavailable in this workspace-confined session, so do not try curl.
 
 Use read before edit. Make the smallest change that fully solves the task.`
   }
 
-  return `You have four coding tools:
+  return `You have five tools:
 - bash  — run shell commands (grep, sed, find, git, language toolchains, tests, …)
 - read  — read a file
 - write — create or overwrite a file
 - edit  — replace a span within a file
+- webfetch — read a specific HTTP or HTTPS URL
 
-Prefer bash for exploration (grep/find/ls) and for running builds and tests. Use \
+Web access priority:
+1. Use web_search when available to search for current information and discover URLs.
+2. Use webfetch to read a specific URL.
+3. Use bash with curl only as a last resort because bash requires user permission.
+
+Prefer bash for local exploration (grep/find/ls) and for running builds and tests. Use \
 read before edit. Make the smallest change that fully solves the task.`
 }
 

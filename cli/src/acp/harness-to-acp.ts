@@ -28,7 +28,7 @@ import type { SessionUpdate, StopReason, ToolCallContent } from '@agentclientpro
 import { toAcpToolKind } from '../../../shared/agent-tool-permissions.ts'
 
 /** Map a built-in tool name to its ACP {@link ToolKind}. */
-export const toToolKind = toAcpToolKind
+export const toToolKind = (toolName: string) => (toolName === 'webfetch' ? 'fetch' : toAcpToolKind(toolName))
 
 /**
  * Map a Pi {@link PiStopReason} to the ACP {@link StopReason} returned from

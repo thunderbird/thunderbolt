@@ -41,7 +41,7 @@ export const attachPermissionGate = (harness: AgentHarness, opts: { yolo: boolea
   const sessionAllowed = new Set<string>()
 
   harness.on('tool_call', async ({ toolName, input }) => {
-    if (isReadOnlyAgentTool(toolName) || sessionAllowed.has(toolName)) return undefined
+    if (isReadOnlyAgentTool(toolName) || toolName === 'webfetch' || sessionAllowed.has(toolName)) return undefined
 
     const request: PermissionRequest = { toolName, summary: summarize(toolName, input) }
     const decision = await opts.ask(request)

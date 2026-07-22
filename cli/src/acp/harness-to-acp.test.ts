@@ -28,11 +28,12 @@ const translate = (event: AgentHarnessEvent): SessionUpdate[] => {
 }
 
 describe('toToolKind', () => {
-  test('maps the four built-in coding tools to their ACP kinds', () => {
+  test('maps built-in coding and web tools to their ACP kinds', () => {
     expect(toToolKind('bash')).toBe('execute')
     expect(toToolKind('read')).toBe('read')
     expect(toToolKind('write')).toBe('edit')
     expect(toToolKind('edit')).toBe('edit')
+    expect(toToolKind('webfetch')).toBe('fetch')
   })
 
   test('falls back to `other` for any unknown / empty tool name', () => {

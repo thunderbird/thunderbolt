@@ -18,6 +18,7 @@ import {
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, test } from 'bun:test'
 import { resolveModel } from './model.ts'
+import { configureNativeWebSearch } from './model.ts'
 import { builtinProviders } from './types.ts'
 import type { BuiltinProvider } from './types.ts'
 
@@ -33,6 +34,43 @@ const firstCatalogModel = (provider: BuiltinProvider) => {
 const knownAnthropicId = firstCatalogModel('anthropic').id
 
 const emptyEnv: Readonly<Record<string, string | undefined>> = {}
+
+describe('configureNativeWebSearch', () => {
+  test('adds Anthropic server-side web search beside local tools', () => {
+    expect(
+      configureNativeWebSearch(
+        { provider: 'anthropic', api: 'anthropic-messages' },
+        { tools: [{ name: 'read', type: 'custom' }] },
+      ),
+    ).toEqual({
+      tools: [
+        { name: 'read', type: 'custom' },
+        { name: 'web_search', type: 'web_search_20250305' },
+      ],
+    })
+  })
+
+  test('adds native search only for OpenAI models using Responses API', () => {
+    expect(
+      configureNativeWebSearch(
+        { provider: 'openai', api: 'openai-responses' },
+        { tools: [{ type: 'function', name: 'read' }] },
+      ),
+    ).toEqual({
+      tools: [{ type: 'function', name: 'read' }, { type: 'web_search' }],
+    })
+
+    const completionsPayload = { tools: [{ type: 'function', name: 'read' }] }
+    expect(configureNativeWebSearch({ provider: 'openai', api: 'openai-completions' }, completionsPayload)).toBe(
+      completionsPayload,
+    )
+  })
+
+  test('leaves providers without supported native search unchanged', () => {
+    const payload = { tools: [{ name: 'read' }] }
+    expect(configureNativeWebSearch({ provider: 'google', api: 'google-generative-ai' }, payload)).toBe(payload)
+  })
+})
 
 /** Builds a one-model OpenAI catalog whose stream options are observable. */
 const capturingBuiltinModels = () => {

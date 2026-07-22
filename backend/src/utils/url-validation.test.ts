@@ -81,13 +81,13 @@ describe('isPrivateAddress', () => {
     expect(isPrivateAddress(ip)).toBe(true)
   })
 
-  // The embedded-IPv4 check must NOT block transition addresses wrapping a PUBLIC
-  // IPv4 — on a DNS64 deployment, legitimate IPv4-only sites resolve to 64:ff9b::<public>.
+  // Transition mechanisms remain blocked when the embedded IPv4 is public because
+  // the shared policy rejects non-global-unicast and deprecated IPv6 ranges.
   it.each([
     ['64:ff9b::808:808', 'NAT64 → 8.8.8.8'],
     ['2002:0808:0808::', '6to4 → 8.8.8.8'],
-  ])('allows %s (%s)', (ip) => {
-    expect(isPrivateAddress(ip)).toBe(false)
+  ])('blocks %s (%s)', (ip) => {
+    expect(isPrivateAddress(ip)).toBe(true)
   })
 
   // --- Allowed addresses ---
@@ -219,10 +219,8 @@ describe('validateAndPin', () => {
     await expect(validateAndPin('http://nat64-private.test/', undefined, testLookup)).rejects.toThrow(/64:ff9b::7f00:1/)
   })
 
-  it('allows a hostname whose AAAA wraps a PUBLIC IPv4 in a NAT64 prefix (DNS64)', async () => {
-    const [pinnedUrl, headers] = await validateAndPin('http://nat64-public.test/', undefined, testLookup)
-    expect(pinnedUrl).toBe('http://[64:ff9b::808:808]/')
-    expect(headers.get('host')).toBe('nat64-public.test')
+  it('blocks a hostname whose AAAA wraps a public IPv4 in a NAT64 prefix', async () => {
+    await expect(validateAndPin('http://nat64-public.test/', undefined, testLookup)).rejects.toThrow(/64:ff9b::808:808/)
   })
 
   it('pins to the resolved IP and preserves the original Host header', async () => {

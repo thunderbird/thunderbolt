@@ -5,6 +5,7 @@
 import { Type } from '@earendil-works/pi-ai'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { lookup } from 'node:dns/promises'
+import { isPrivateOrInternalAddress, parseIpAddress } from '../../../shared/ip-classification.ts'
 
 const defaultTimeoutMs = 15_000
 const defaultMaxResponseBytes = 1_500_000
@@ -71,109 +72,13 @@ export type WebFetchRequest = (
   },
 ) => Promise<Response>
 
-type ParsedIpAddress = { readonly version: 4; readonly value: bigint } | { readonly version: 6; readonly value: bigint }
-
 type HtmlQuote = "'" | '"'
 type HtmlScannerMode = 'comment' | 'rawText' | 'tag' | 'text'
 type RawTextElement = 'noscript' | 'script' | 'style' | 'svg'
 type TagFrame = { readonly characters: string[]; quote?: HtmlQuote }
 
-const blockedIpv4Ranges: ReadonlyArray<readonly [network: bigint, prefixLength: number]> = [
-  [0x00000000n, 8], // 0.0.0.0/8 — current network and unspecified
-  [0x0a000000n, 8], // 10.0.0.0/8 — private
-  [0x64400000n, 10], // 100.64.0.0/10 — shared address space
-  [0x7f000000n, 8], // 127.0.0.0/8 — loopback
-  [0xa9fe0000n, 16], // 169.254.0.0/16 — link-local
-  [0xac100000n, 12], // 172.16.0.0/12 — private
-  [0xc0000000n, 24], // 192.0.0.0/24 — IETF protocol assignments
-  [0xc0000200n, 24], // 192.0.2.0/24 — documentation
-  [0xc0586300n, 24], // 192.88.99.0/24 — deprecated 6to4 relay
-  [0xc0a80000n, 16], // 192.168.0.0/16 — private
-  [0xc6120000n, 15], // 198.18.0.0/15 — benchmarking
-  [0xc6336400n, 24], // 198.51.100.0/24 — documentation
-  [0xcb007100n, 24], // 203.0.113.0/24 — documentation
-  [0xe0000000n, 4], // 224.0.0.0/4 — multicast
-  [0xf0000000n, 4], // 240.0.0.0/4 — reserved
-]
-
-const blockedIpv6Ranges: ReadonlyArray<readonly [network: bigint, prefixLength: number]> = [
-  [0x20010000000000000000000000000000n, 23], // 2001::/23 — IETF protocol assignments
-  [0x20010db8000000000000000000000000n, 32], // 2001:db8::/32 — documentation
-  [0x20020000000000000000000000000000n, 16], // 2002::/16 — deprecated 6to4
-  [0x3fff0000000000000000000000000000n, 20], // 3fff::/20 — documentation
-]
-
-/** Parse canonical dotted-decimal IPv4 into a 32-bit integer. */
-const parseIpv4 = (address: string): bigint | undefined => {
-  const parts = address.split('.')
-  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return undefined
-  const bytes = parts.map(Number)
-  if (bytes.some((byte) => byte > 255)) return undefined
-  return bytes.reduce((value, byte) => (value << 8n) | BigInt(byte), 0n)
-}
-
-/** Parse compressed or full IPv6 into a 128-bit integer. */
-const parseIpv6 = (address: string): bigint | undefined => {
-  const normalizedAddress = address.replace(/^\[|\]$/g, '').split('%')[0]
-  if (!normalizedAddress?.includes(':')) return undefined
-  const dottedTail = normalizedAddress.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/)?.[1]
-  const ipv4Tail = dottedTail ? parseIpv4(dottedTail) : undefined
-  if (dottedTail && ipv4Tail === undefined) return undefined
-  const expandedAddress = dottedTail
-    ? normalizedAddress.replace(
-        dottedTail,
-        `${((ipv4Tail ?? 0n) >> 16n).toString(16)}:${((ipv4Tail ?? 0n) & 0xffffn).toString(16)}`,
-      )
-    : normalizedAddress
-  if ((expandedAddress.match(/::/g) ?? []).length > 1) return undefined
-
-  const [left = '', right] = expandedAddress.split('::')
-  const leftGroups = left ? left.split(':') : []
-  const rightGroups = right ? right.split(':') : []
-  const missingGroups = 8 - leftGroups.length - rightGroups.length
-  if ((right === undefined && missingGroups !== 0) || (right !== undefined && missingGroups < 1)) return undefined
-
-  const groups = [...leftGroups, ...Array.from({ length: missingGroups }, () => '0'), ...rightGroups]
-  if (groups.length !== 8 || groups.some((group) => !/^[\da-f]{1,4}$/i.test(group))) return undefined
-  return groups.reduce((value, group) => (value << 16n) | BigInt(`0x${group}`), 0n)
-}
-
-/** Parse IP literals while leaving domain names unresolved. */
-const parseIpAddress = (address: string): ParsedIpAddress | undefined => {
-  const ipv4 = parseIpv4(address)
-  if (ipv4 !== undefined) return { version: 4, value: ipv4 }
-  const ipv6 = parseIpv6(address)
-  return ipv6 === undefined ? undefined : { version: 6, value: ipv6 }
-}
-
-/** Test an integer IP address against a CIDR prefix. */
-const isInCidr = (value: bigint, network: bigint, prefixLength: number, addressBits: number): boolean => {
-  const shift = BigInt(addressBits - prefixLength)
-  return value >> shift === network >> shift
-}
-
-/** Reject non-public IPv4 and IPv6 address space, including mapped IPv4. */
-const isPrivateOrInternalAddress = (address: ParsedIpAddress): boolean => {
-  if (address.version === 4) {
-    return blockedIpv4Ranges.some(([network, prefixLength]) => isInCidr(address.value, network, prefixLength, 32))
-  }
-
-  const isIpv4Mapped = isInCidr(address.value, 0x00000000000000000000ffff00000000n, 96, 128)
-  if (isIpv4Mapped) return isPrivateOrInternalAddress({ version: 4, value: address.value & 0xffffffffn })
-
-  const isGlobalUnicast = isInCidr(address.value, 0x20000000000000000000000000000000n, 3, 128)
-  if (!isGlobalUnicast) return true
-  return blockedIpv6Ranges.some(([network, prefixLength]) => isInCidr(address.value, network, prefixLength, 128))
-}
-
-/**
- * Resolve, validate, and pin one request hop to its first public IP address.
- * Mirrors `backend/src/utils/url-validation.ts#validateAndPin`; keep both implementations in sync.
- */
-const validateAndPin = async (
-  url: URL,
-  resolve: WebFetchResolver,
-): Promise<[pinnedUrl: string, headers: Headers]> => {
+/** Resolve, validate, and pin one request hop to its first public IP address. */
+const validateAndPin = async (url: URL, resolve: WebFetchResolver): Promise<[pinnedUrl: string, headers: Headers]> => {
   const parsedUrl = new URL(url)
   parsedUrl.username = ''
   parsedUrl.password = ''

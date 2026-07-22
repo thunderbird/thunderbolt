@@ -4,22 +4,123 @@
 
 import { describe, expect, test } from 'bun:test'
 import { createWebFetchTool } from './webfetch.ts'
-import type { WebFetchRequest } from './webfetch.ts'
+import type { WebFetchDependencies, WebFetchRequest } from './webfetch.ts'
+
+/** Resolve test hostnames to a stable public address without real DNS. */
+const publicResolver = async (): Promise<ReadonlyArray<{ address: string }>> => [{ address: '93.184.216.34' }]
 
 /** Execute webfetch and return its text result. */
 const execute = async (
   fetch: WebFetchRequest,
   url: string,
-  options: { timeoutMs?: number; maxResponseBytes?: number; maxTextLength?: number } = {},
+  options: Omit<WebFetchDependencies, 'fetch'> = {},
 ): Promise<string> => {
-  const result = await createWebFetchTool({ fetch, ...options }).execute('webfetch-test', { url })
+  const result = await createWebFetchTool({ fetch, resolve: publicResolver, ...options }).execute('webfetch-test', {
+    url,
+  })
   const text = result.content.find((block) => block.type === 'text')
   if (!text || text.type !== 'text') throw new Error('webfetch returned no text')
   return text.text
 }
 
 describe('webfetch', () => {
-  test('fetches a specific URL through injected fetch and follows redirects', async () => {
+  test('rejects private IPv4 literals without DNS or fetch', async () => {
+    let resolverCalls = 0
+    let fetchCalls = 0
+    const fetch: WebFetchRequest = async () => {
+      fetchCalls += 1
+      return new Response('should not run')
+    }
+
+    await expect(
+      execute(fetch, 'http://10.0.0.1/secrets', {
+        resolve: async () => {
+          resolverCalls += 1
+          return publicResolver()
+        },
+      }),
+    ).rejects.toThrow('refusing to fetch private or internal address')
+    expect(resolverCalls).toBe(0)
+    expect(fetchCalls).toBe(0)
+  })
+
+  test('rejects IPv4 loopback literals', async () => {
+    const fetch: WebFetchRequest = async () => new Response('should not run')
+
+    await expect(execute(fetch, 'http://127.0.0.1/admin')).rejects.toThrow(
+      'refusing to fetch private or internal address',
+    )
+  })
+
+  test('rejects the AWS metadata link-local address', async () => {
+    const fetch: WebFetchRequest = async () => new Response('should not run')
+
+    await expect(execute(fetch, 'http://169.254.169.254/latest/meta-data')).rejects.toThrow(
+      'refusing to fetch private or internal address',
+    )
+  })
+
+  test('rejects IPv6 link-local and unique-local literals', async () => {
+    const fetch: WebFetchRequest = async () => new Response('should not run')
+
+    await expect(execute(fetch, 'http://[fe80::1]/')).rejects.toThrow('refusing to fetch private or internal address')
+    await expect(execute(fetch, 'http://[fc00::1]/')).rejects.toThrow('refusing to fetch private or internal address')
+  })
+
+  test('rejects reserved IPv6 documentation literals', async () => {
+    const fetch: WebFetchRequest = async () => new Response('should not run')
+
+    await expect(execute(fetch, 'http://[3fff::1]/')).rejects.toThrow('refusing to fetch private or internal address')
+  })
+
+  test('allows a public hostname when every resolved address is public', async () => {
+    const fetch: WebFetchRequest = async () => new Response('public response')
+
+    await expect(
+      execute(fetch, 'https://public.example', {
+        resolve: async () => [{ address: '93.184.216.34' }, { address: '2606:2800:220:1:248:1893:25c8:1946' }],
+      }),
+    ).resolves.toBe('public response')
+  })
+
+  test('rejects a hostname when any resolved address is private', async () => {
+    const fetch: WebFetchRequest = async () => new Response('should not run')
+
+    await expect(
+      execute(fetch, 'https://mixed.example', {
+        resolve: async () => [{ address: '93.184.216.34' }, { address: '192.168.1.10' }],
+      }),
+    ).rejects.toThrow('refusing to fetch private or internal address')
+  })
+
+  test('rejects a redirect from a public host to a private target', async () => {
+    const calls: string[] = []
+    const fetch: WebFetchRequest = async (input) => {
+      calls.push(String(input))
+      return new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/secrets' } })
+    }
+
+    await expect(execute(fetch, 'https://public.example/start')).rejects.toThrow(
+      'refusing to fetch private or internal address',
+    )
+    expect(calls).toEqual(['https://public.example/start'])
+  })
+
+  test('enforces the five-hop redirect cap', async () => {
+    const calls: string[] = []
+    const fetch: WebFetchRequest = async (input) => {
+      calls.push(String(input))
+      return new Response(null, {
+        status: 302,
+        headers: { location: `https://public-${calls.length}.example/next` },
+      })
+    }
+
+    await expect(execute(fetch, 'https://public-0.example/start')).rejects.toThrow(/redirect limit.*5/i)
+    expect(calls).toHaveLength(6)
+  })
+
+  test('fetches a specific URL through injected fetch', async () => {
     const calls: Array<{ url: string; redirect: 'error' | 'follow' | 'manual' }> = []
     const fetch: WebFetchRequest = async (input, init) => {
       calls.push({ url: String(input), redirect: init?.redirect ?? 'manual' })
@@ -27,7 +128,7 @@ describe('webfetch', () => {
     }
 
     expect(await execute(fetch, 'https://example.com/article')).toContain('hello from web')
-    expect(calls).toEqual([{ url: 'https://example.com/article', redirect: 'follow' }])
+    expect(calls).toEqual([{ url: 'https://example.com/article', redirect: 'manual' }])
   })
 
   test('rejects schemes other than http and https before fetching', async () => {
@@ -87,5 +188,15 @@ describe('webfetch', () => {
     expect(output).not.toContain('<h1>')
     expect(output).not.toContain('color: red')
     expect(output).not.toContain("alert('no')")
+  })
+
+  test('removes hidden content exposed by nested tags and comments', async () => {
+    const html = `<scr<script></script>ipt>nested script</script>
+      <!<!---->-->nested comment--><p>Visible content</p>`
+    const fetch: WebFetchRequest = async () => new Response(html, { headers: { 'content-type': 'text/html' } })
+
+    const output = await execute(fetch, 'https://example.com')
+
+    expect(output).toBe('Visible content')
   })
 })

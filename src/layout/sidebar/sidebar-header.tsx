@@ -20,7 +20,7 @@ import type { ReactNode } from 'react'
 type SidebarHeaderProps = {
   onToggle: () => void
   /** Chats/Settings pill, right-aligned in the desktop header while expanded.
-   *  (Mobile renders no header; its pill lives in the footer instead.) */
+   *  Mobile renders the pill in the sidebar content instead. */
   navToggle?: ReactNode
 }
 
@@ -92,8 +92,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
       )}
       {showMobileChromeSpacer && <div data-tauri-drag-region className="h-[var(--touch-height-xl)] flex-shrink-0" />}
       {/* Mobile renders no header strip at all: the overlay sidebar closes by
-          tapping outside (no toggle) and the theme/sync/account controls live
-          in the footer row, so the list gets the vertical space instead. */}
+          tapping outside, and its section toggle lives in the content. */}
       {!showChromeStrip && !isMobile && (
         <div className="h-[var(--touch-height-xl)] relative flex items-center justify-between px-2 flex-shrink-0">
           {/* Desktop web right-aligns the nav pill opposite the toggle,

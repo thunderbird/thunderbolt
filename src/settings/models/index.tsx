@@ -1155,11 +1155,11 @@ export default function ModelsPage() {
           const isSystemModel = model.isSystem === 1
 
           return (
-            <Card key={model.id} className="border border-border">
-              <CardHeader className="py-0">
+            <Card key={model.id} className="border border-border p-0">
+              <CardHeader className="px-4 py-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-6 min-w-0 flex-1">
-                    <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex items-center justify-center bg-muted text-muted-foreground size-9 rounded-md font-medium flex-shrink-0">
                       {getModelInitial(model)}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -1231,8 +1231,8 @@ export default function ModelsPage() {
                 </div>
               </CardHeader>
               {isEnabled && model.url && (
-                <CardContent className="pt-0 border-t">
-                  <div className="space-y-3 pt-4">
+                <CardContent className="border-t px-4 pb-3">
+                  <div className="space-y-3 pt-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">URL</span>
                       <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>

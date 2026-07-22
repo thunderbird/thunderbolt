@@ -53,12 +53,15 @@ const renderWithProviders = (authClient: AuthClient) => {
 
 describe('SidebarFooter', () => {
   describe('anonymous users', () => {
-    it('shows the Sign In affordance (treats anonymous as logged-out)', () => {
+    it('shows an icon-only Sign In affordance (treats anonymous as logged-out)', () => {
       const authClient = createMockAuthClient({
         session: { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } },
       })
       renderWithProviders(authClient)
-      expect(screen.getByText('Sign in')).toBeInTheDocument()
+      const button = screen.getByRole('button', { name: 'Sign in' })
+      expect(button).toBeInTheDocument()
+      expect(button.textContent).toBe('')
+      expect(button.className).toContain('w-[var(--touch-height-lg)]')
     })
 
     it('does NOT leak the synthetic anonymous email into the UI', () => {
@@ -85,7 +88,7 @@ describe('SidebarFooter', () => {
       })
       renderWithProviders(authClient)
       expect(screen.getByText('Real User')).toBeInTheDocument()
-      expect(screen.queryByText('Sign in')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
     })
 
     it('falls back to the email when the account has no display name', () => {
@@ -105,16 +108,18 @@ describe('SidebarFooter', () => {
       })
       renderWithProviders(authClient)
       const button = screen.getByRole('button', { name: 'Account menu' })
-      expect(button.className).toContain('size-[var(--touch-height-default)]')
+      expect(button.className).toContain('h-[var(--touch-height-lg)]')
+      expect(button.className).toContain('w-[var(--touch-height-lg)]')
       expect(button.querySelector('span')).toBeNull()
     })
   })
 
   describe('fully logged-out users', () => {
-    it('shows the Sign In affordance', () => {
+    it('shows the icon-only Sign In affordance', () => {
       const authClient = createMockAuthClient({ session: null })
       renderWithProviders(authClient)
-      expect(screen.getByText('Sign in')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+      expect(screen.queryByText('Sign in')).toBeNull()
     })
   })
 

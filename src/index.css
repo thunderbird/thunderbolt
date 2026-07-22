@@ -194,12 +194,12 @@
   --header-inset: calc(var(--safe-area-top-padding, 0px) + var(--touch-height-xl));
 
   /* Switch component specific */
-  --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
-  --switch-track-width: 2.75rem; /* 44px mobile */
+  --switch-track-height: 1.75rem; /* 28px mobile */
+  --switch-track-width: 3rem; /* 48px mobile */
   /* Track = 1px border + 2px inner padding; thumb fills exactly what's left so the
    *  2px gap to the border is identical on every side and in every state. Whole-px
    *  values only, so the dot never shifts size as it slides. */
-  --switch-thumb-size: 1.125rem; /* 18px mobile (24 - 2*border - 2*pad) */
+  --switch-thumb-size: 1.375rem; /* 22px mobile (28 - 2*border - 2*pad) */
   --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 20px */
 }
 

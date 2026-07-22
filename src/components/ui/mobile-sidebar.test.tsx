@@ -90,6 +90,12 @@ const flushAnimations = async () => {
 }
 
 describe('MobileSidebar', () => {
+  it('blurs the content behind the open drawer', () => {
+    render(<Harness onOpenChange={() => {}} />)
+
+    expect(getOverlay()).toHaveClass('backdrop-blur-sm')
+  })
+
   it('closes via onOpenChange(false) when the overlay is tapped', async () => {
     const onOpenChange = mock()
     render(<Harness onOpenChange={onOpenChange} />)

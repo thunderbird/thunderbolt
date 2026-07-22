@@ -103,13 +103,13 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
 
   return (
     <nav aria-label="Sidebar sections">
-      {/* Same height as the footer's New Chat / theme / account controls so
+      {/* Same height as the footer's New Chat and account controls so
           the row reads as one line. Mobile is full-bleed so the thumb's
-          diameter matches those controls exactly (44px); desktop keeps a 2px
+          diameter matches those controls exactly; desktop keeps a 2px
           inset for a more compact thumb in the header. Square segments +
           gap-0.5 mirror the ChatActions search/clear-all pair, so both icon
           duos sit the same distance apart. */}
-      <div className="flex h-[var(--touch-height-default)] w-fit items-center gap-0.5 md:p-0.5">
+      <div className="flex h-[var(--touch-height-lg)] w-fit items-center gap-0.5 md:h-[var(--touch-height-default)] md:p-0.5">
         {sections.map(renderSegment)}
       </div>
     </nav>

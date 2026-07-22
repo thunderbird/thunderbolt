@@ -63,7 +63,7 @@ export const SettingsSidebarContent = ({
   onSectionChange,
   onSettingsNavigate,
 }: SettingsSidebarContentProps) => {
-  const { toggleSidebar } = useSidebar()
+  const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
 
   const isItemActive = ({ path, matchPrefix }: NavItem) =>
@@ -96,6 +96,11 @@ export const SettingsSidebarContent = ({
               their dividers, so the groups' own vertical padding would double
               it. The last group keeps its bottom padding against the footer. */}
           <SidebarGroup className={isCollapsed ? (index === navGroups.length - 1 ? 'pt-0' : 'py-0') : undefined}>
+            {isMobile && index === 0 && (
+              <div className="flex h-[var(--touch-height-lg)] items-center">
+                <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
+              </div>
+            )}
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -120,7 +125,7 @@ export const SettingsSidebarContent = ({
 
       <div className="flex-1" />
 
-      <SidebarFooter navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />} />
+      <SidebarFooter />
     </SidebarContent>
   )
 }

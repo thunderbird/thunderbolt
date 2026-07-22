@@ -10,10 +10,8 @@ import { Header } from '@/components/ui/header'
  *
  * The scrim fades the page background from the very top of the viewport down
  * past the floating header, so content scrolling beneath stays legible behind
- * the header controls. Painted background-on-background, it is invisible
- * until content actually scrolls under it. It holds full opacity through the
- * top 40% (where the header buttons sit) before fading, so text scrolling
- * underneath can't bleed through the controls.
+ * the header controls. A subtle backdrop blur softens content passing behind
+ * the controls, then fades with the scrim so there is no hard blur boundary.
  *
  * The header floats over the content instead of consuming layout height —
  * pages own the full viewport and pad by `--header-inset` where needed.
@@ -21,8 +19,12 @@ import { Header } from '@/components/ui/header'
 export const FloatingHeader = () => (
   <>
     <div
-      className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-background via-background/60 to-transparent"
-      style={{ height: 'calc(var(--header-inset) + 1.75rem)' }}
+      className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-background via-background/80 to-transparent backdrop-blur-[4px]"
+      style={{
+        height: 'calc(var(--header-inset) + 2.5rem)',
+        maskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)',
+      }}
     />
     <div className="absolute inset-x-0 top-0 z-30" style={{ paddingTop: 'var(--safe-area-top-padding)' }}>
       <Header />

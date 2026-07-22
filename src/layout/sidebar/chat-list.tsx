@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
 import { RailDivider } from './rail-divider'
@@ -33,15 +34,61 @@ export const ChatList = ({
   searchQuery,
   showSearch,
   searchInputRef,
+  hasContentAbove,
+  mobileNavToggle,
   onChatClick,
   onRename,
   onSearchClick,
   onSearchQueryChange,
+  onContentAboveChange,
+  onContentBelowChange,
 }: ChatListProps) => {
+  const scrollContainerRef = useRef<HTMLUListElement>(null)
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) {
+      return
+    }
+
+    const updateScrollShadows = () => {
+      const remainingScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight - scrollContainer.scrollTop
+      onContentAboveChange(scrollContainer.scrollTop > 1)
+      onContentBelowChange(remainingScroll > 1)
+    }
+
+    updateScrollShadows()
+    scrollContainer.addEventListener('scroll', updateScrollShadows, { passive: true })
+    window.addEventListener('resize', updateScrollShadows)
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', updateScrollShadows)
+      window.removeEventListener('resize', updateScrollShadows)
+    }
+  }, [chatThreads.length, debouncedSearchQuery, onContentAboveChange, onContentBelowChange, showSearch])
+
   return (
     <>
-      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0', isCollapsed && 'pt-0')}>
-        {!isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
+      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0 md:pb-2', isCollapsed && 'pt-0')}>
+        {isMobile && (
+          <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
+            {mobileNavToggle}
+            {(chatThreads.length > 0 || debouncedSearchQuery) && (
+              <ChatActions
+                isCollapsed={isCollapsed}
+                debouncedSearchQuery={debouncedSearchQuery}
+                showSearch={showSearch}
+                deleteAllChatsMutation={deleteAllChatsMutation}
+                deleteAllChatsDialogRef={deleteAllChatsDialogRef}
+                onSearchClick={onSearchClick}
+              />
+            )}
+          </div>
+        )}
+        {isMobile && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
+          <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+        )}
+        {!isMobile && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
           <div className="flex items-center justify-between flex-shrink-0">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
             <ChatActions
@@ -74,7 +121,14 @@ export const ChatList = ({
             onChange={(e) => onSearchQueryChange(e.target.value)}
           />
         </div>
-        <SidebarMenu className="mt-2 group-data-[collapsible=icon]:mt-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide touch-pan-y">
+        <SidebarMenu
+          ref={scrollContainerRef}
+          className={cn(
+            'mt-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide touch-pan-y md:mt-2 group-data-[collapsible=icon]:mt-0',
+            isMobile && '-mx-2 w-[calc(100%+1rem)] px-2',
+            isMobile && hasContentAbove && 'shadow-[inset_0_8px_16px_-14px_rgba(0,0,0,0.35)]',
+          )}
+        >
           {isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
             <>
               <SidebarMenuItem>

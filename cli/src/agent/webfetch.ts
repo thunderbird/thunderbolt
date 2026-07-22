@@ -225,6 +225,10 @@ export const htmlToText = (html: string): string => {
   )
   const withoutTags = replaceUntilStable(withLineBreaks, (current) => current.replace(/<[^>]*>/g, ''))
   return decodeHtmlEntities(withoutTags)
+    // Terminal defense, applied last so entity decoding cannot reintroduce `<`: any
+    // angle bracket that survives the bounded strip passes (or decodes back into the
+    // text) is escaped outright, so no markup sequence can remain in the output.
+    .replaceAll('<', '&lt;')
     .replace(/\r\n?/g, '\n')
     .replace(/[\t\f\v ]+/g, ' ')
     .replace(/ *\n */g, '\n')

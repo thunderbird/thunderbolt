@@ -199,4 +199,14 @@ describe('webfetch', () => {
 
     expect(output).toBe('Visible content')
   })
+
+  test('escapes angle brackets that survive the bounded strip passes', async () => {
+    const pathological = '<'.repeat(40) + 'script>alert(1)</script' + '>'.repeat(40)
+    const fetch: WebFetchRequest = async () =>
+      new Response(pathological, { headers: { 'content-type': 'text/html' } })
+
+    const output = await execute(fetch, 'https://example.com')
+
+    expect(output).not.toContain('<')
+  })
 })

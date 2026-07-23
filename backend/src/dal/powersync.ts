@@ -12,6 +12,7 @@ import {
 import { type PowerSyncTableName, powersyncTableNames } from '@shared/powersync-tables'
 import { and, eq } from 'drizzle-orm'
 import type { AnyPgTable } from 'drizzle-orm/pg-core'
+import { bridgeDeviceIdPrefix } from './devices'
 
 const validTables = new Set<string>(powersyncTableNames)
 
@@ -47,7 +48,7 @@ const uploadDenyDelete = new Set<PowerSyncTableName>(['devices'])
  * and fail). Reserving the prefix from all client ops keeps bridge rows server-owned.
  */
 const isReservedDeviceId = (tableName: PowerSyncTableName, id: string) =>
-  tableName === 'devices' && id.startsWith('bridge-')
+  tableName === 'devices' && id.startsWith(bridgeDeviceIdPrefix)
 
 type PowerSyncOperation = {
   op: 'PUT' | 'PATCH' | 'DELETE'

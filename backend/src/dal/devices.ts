@@ -10,8 +10,10 @@ import { createHash } from 'crypto'
 /** Deterministic device id for a bridge, derived from (userId, nodeId). Keying the row on this
  * makes re-registration of the same bridge an idempotent upsert on (userId, nodeId) without a
  * dedicated unique constraint, and guarantees one account can never collide with another's id. */
+export const bridgeDeviceIdPrefix = 'bridge-'
+
 export const bridgeDeviceId = (userId: string, nodeId: string) =>
-  `bridge-${createHash('sha256').update(`${userId}:${nodeId}`).digest('hex')}`
+  `${bridgeDeviceIdPrefix}${createHash('sha256').update(`${userId}:${nodeId}`).digest('hex')}`
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: QueryableDatabase, deviceId: string) =>

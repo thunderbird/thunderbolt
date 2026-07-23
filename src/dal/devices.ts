@@ -18,6 +18,7 @@ export type Device = {
   lastSeen: string | null
   createdAt: string | null
   revokedAt: string | null
+  deviceType: 'normal' | 'bridge' | null
   nodeId: string | null
   nodeIdAttestedAt: string | null
 }

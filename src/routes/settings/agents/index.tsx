@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
 import { testAcpConnection } from '@/acp'
+import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
@@ -17,9 +18,20 @@ import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/a
 import { SettingsListPane } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
-import { useAuth, useDatabase } from '@/contexts'
+import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
+
+type AgentsSettingsPageProps = {
+  /** Test/DI override for reading this app's iroh NodeId. Forwarded to the add
+   *  dialog's pairing panel and used by the transparent same-account enrollment.
+   *  Production omits and lazy-loads the wasm client. */
+  loadAppNodeId?: () => Promise<string>
+  /** Test/DI override for app NodeId self-enrollment, fired when an iroh agent is added.
+   *  Production omits and binds the authenticated client. */
+  enrollIroh?: () => Promise<void>
+}
 
 /**
  * Settings page listing every agent the user can chat with: the built-in
@@ -29,13 +41,15 @@ import { useIsMobile } from '@/hooks/use-mobile'
  * page) where all viewing and management happens. The only other affordance
  * is "+" → the Add custom agent dialog.
  */
-export default function AgentsSettingsPage() {
+export default function AgentsSettingsPage({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) {
   const db = useDatabase()
   const agents = useAllAgents()
   const authClient = useAuth()
+  const httpClient = useHttpClient()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const runEnroll = enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId ?? irohClientNodeId))
   const { isMobile } = useIsMobile()
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -86,11 +100,24 @@ export default function AgentsSettingsPage() {
       enabled: 1,
       userId: currentUserId,
     })
+    if (payload.transport !== 'iroh') {
+      return
+    }
+    // App enrolls its own dialer NodeId; bridge registers itself server-side.
+    // Fire and forget: enrollment must never block add; manual pairing remains fallback.
+    void runEnroll().catch((error) => {
+      console.warn('iroh transparent enrollment failed; using manual pairing fallback', error)
+    })
   }
 
   const detailPanel = dialogOpen ? (
     <DetailPanel title="Add custom agent" onClose={closePanel}>
-      <AddCustomAgentForm onClose={closePanel} onSubmit={handleAdd} testAcpConnection={testAcpConnection} />
+      <AddCustomAgentForm
+        onClose={closePanel}
+        onSubmit={handleAdd}
+        testAcpConnection={testAcpConnection}
+        loadAppNodeId={loadAppNodeId}
+      />
     </DetailPanel>
   ) : activeAgent ? (
     <AgentDetail

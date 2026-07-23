@@ -30,6 +30,32 @@ export type ResolveModelDependencies = {
 
 const defaultDependencies: ResolveModelDependencies = { builtinModels, env: process.env }
 
+type ProviderRequestModel = Pick<Model<Api>, 'api' | 'provider'>
+
+/** True when unknown payload value is a string-keyed object. */
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+/** Append one provider-native tool without changing unsupported payload shapes. */
+const appendNativeTool = (payload: unknown, tool: Readonly<Record<string, string>>): unknown => {
+  if (!isRecord(payload) || !Array.isArray(payload.tools)) return payload
+  const alreadyPresent = payload.tools.some(
+    (candidate) => isRecord(candidate) && candidate.type === tool.type && candidate.name === tool.name,
+  )
+  if (alreadyPresent) return payload
+  return { ...payload, tools: [...payload.tools, tool] }
+}
+
+/** Add server-side web search only for provider APIs whose installed SDK supports it. */
+export const configureNativeWebSearch = (model: ProviderRequestModel, payload: unknown): unknown => {
+  if (model.provider === 'anthropic' && model.api === 'anthropic-messages') {
+    return appendNativeTool(payload, { name: 'web_search', type: 'web_search_20250305' })
+  }
+  if (model.provider === 'openai' && model.api === 'openai-responses') {
+    return appendNativeTool(payload, { type: 'web_search' })
+  }
+  return payload
+}
+
 /** Replaces selected provider streams with key-injecting delegates. */
 const applyApiKeyOverride = (models: MutableModels, providerId: BuiltinProvider, apiKey: string): void => {
   const provider = models.getProvider(providerId)

@@ -5,6 +5,7 @@
 import { useReducer } from 'react'
 import { Navigate, useLocation } from 'react-router'
 
+import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { useAppNodeId } from '@/components/settings/iroh-pairing-panel'
 import {
@@ -17,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { useAddServerForm } from '@/hooks/use-add-server-form'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useMcpServerOAuth, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
@@ -27,6 +28,7 @@ import { McpOAuthNeedsReauthError } from '@/lib/mcp-auth/ensure-valid-token'
 import { getOAuthState } from '@/lib/oauth-state'
 import { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
+import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 import { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { useMCP } from '@/lib/mcp-provider'
 import { computeEffectiveProxyEnabled, createProxyFetch } from '@/lib/proxy-fetch'
@@ -69,12 +71,17 @@ export type ConnectionsPageDeps = {
    *  Production omits and lazy-loads the wasm client only when an iroh target is
    *  entered, keeping the wasm chunk off the entry bundle. */
   loadAppNodeId?: () => Promise<string>
+  /** Test/DI override for app NodeId self-enrollment, fired when an iroh bridge is added.
+   *  Production omits and binds the authenticated client. */
+  enrollIroh?: () => Promise<void>
 }
 
 const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => {
   const probeTools = deps.probeMcpServerTools ?? probeMcpServerTools
   const classifyAuth = deps.classifyMcpServerAuth ?? classifyMcpServerAuth
   const db = useDatabase()
+  const httpClient = useHttpClient()
+  const runEnroll = deps.enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, deps.loadAppNodeId ?? irohClientNodeId))
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   // Read provider connection state read-only for status display. Sync ownership
   // lives in the single global useMcpSync() in AppContent — running it here too
@@ -165,6 +172,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     clearDialogError,
     startAddAndAuthorize,
     updateLiveServer: updateServer,
+    enrollIroh: runEnroll,
   })
 
   const getConnectionStatus = (server: McpServer): 'connected' | 'connecting' | 'disconnected' => {

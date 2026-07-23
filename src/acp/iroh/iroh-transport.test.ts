@@ -9,7 +9,8 @@
  */
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
-import { afterEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { ensureSelfEnrollment, resetSelfEnrollmentForTests } from '@/lib/iroh-enrollment'
 import {
   bindAndPersistForTests,
   bindIrohClient,
@@ -73,9 +74,53 @@ const enc = (s: string): Uint8Array => new TextEncoder().encode(s)
 
 afterEach(() => {
   resetSharedIrohClientForTests()
+  resetSelfEnrollmentForTests()
 })
 
 describe('openIrohTransport', () => {
+  it('enrolls a synced device once before repeated dials', async () => {
+    const order: string[] = []
+    const client: IrohClientLike = {
+      nodeId: () => 'fake-node-id',
+      connect: async () => {
+        order.push('dial')
+        return makeFakeConnection().connection
+      },
+    }
+    const post = mock(async () => {
+      order.push('enroll-post')
+      return new Response()
+    })
+    const httpClient = { post } as unknown as Parameters<typeof ensureSelfEnrollment>[0]
+    const ensureEnrollment: NonNullable<Parameters<typeof openIrohTransport>[0]['ensureEnrollment']> = (
+      enrollmentClient,
+      loadNodeId = async () => 'missing-node-id',
+    ) =>
+      ensureSelfEnrollment(enrollmentClient, loadNodeId, {
+        loadOwnNodeId: async () => null,
+        loadDeviceId: () => 'device-1',
+      })
+
+    await openIrohTransport({
+      target: 'first-target',
+      signal: new AbortController().signal,
+      loadClient: async () => client,
+      httpClient,
+      ensureEnrollment,
+    })
+    await openIrohTransport({
+      target: 'second-target',
+      signal: new AbortController().signal,
+      loadClient: async () => client,
+      httpClient,
+      ensureEnrollment,
+    })
+
+    expect(order).toEqual(['enroll-post', 'dial', 'dial'])
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(post).toHaveBeenCalledWith('devices/me/node-id', { json: { nodeId: 'fake-node-id' } })
+  })
+
   it('dials the target over the ACP ALPN', async () => {
     const fake = makeFakeConnection()
     const captured: CapturedConnect[] = []

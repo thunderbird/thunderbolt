@@ -1,10 +1,10 @@
 {
   "name": "@thunderbolt/cli",
-  "version": "0.1.110",
+  "version": "0.1.111",
   "private": true,
   "type": "module",
   "license": "MPL-2.0",
-  "description": "thunderbolt — a portable, single-binary terminal coding agent (bash/read/write/edit) built on the Pi harness.",
+  "description": "thunderbolt — a portable, single-binary terminal coding agent (bash/read/write/edit/webfetch) built on the Pi harness.",
   "bin": {
     "thunderbolt": "./src/index.ts"
   },
@@ -26,10 +26,12 @@
     "@earendil-works/pi-ai": "0.80.2",
     "@earendil-works/pi-coding-agent": "0.80.2",
     "@earendil-works/pi-tui": "0.80.2",
-    "@number0/iroh": "1.0.0"
+    "@number0/iroh": "1.0.0",
+    "qrcode-terminal": "0.12.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.20",
+    "@types/qrcode-terminal": "^0.12.2",
     "typescript": "^6.0.3"
   }
 }

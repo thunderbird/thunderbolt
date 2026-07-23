@@ -67,6 +67,7 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useChatStore } from '@/chats/chat-store'
 import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
 import { markAppMounted } from '@/lib/init-timing'
+import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { LazyMotion } from 'framer-motion'
 
 // Loaded after first paint so framer-motion feature code lives in an
@@ -88,6 +89,10 @@ const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
 const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
+
+// The CLI device-authorization approval page is off the chat/landing critical
+// path (only reached via a QR/link), so it ships in its own async chunk.
+const DeviceApproval = lazy(() => import('@/components/device-approval'))
 
 // Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates
 // both the lazy() call and the dynamic import() from production builds.
@@ -147,6 +152,26 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   )
 }
 
+/**
+ * Home shell for the authenticated `/` tree. When the user lands here right after
+ * completing login for a CLI device-approval request, replay the stashed `/device`
+ * URL (see `device-approval-return.ts`) so the approval page reopens pre-filled.
+ * Read once on mount via a lazy initializer, so normal landings are a no-op.
+ */
+const HomeShell = () => {
+  const [deviceReturn] = useState(takeDeviceApprovalReturn)
+  if (deviceReturn) {
+    return <Navigate to={deviceReturn} replace />
+  }
+  return (
+    <>
+      <Layout />
+      <OnboardingDialog />
+      <WelcomeDialog />
+    </>
+  )
+}
+
 const AppRoutes = ({ initData }: { initData: InitData }) => {
   usePageTracking()
   useDeepLinkListener()
@@ -164,6 +189,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Auth flow routes - NO guards (must work during auth) */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
+        <Route path="/device" element={<DeviceApproval />} />
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
@@ -180,16 +206,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Main app routes - authenticated only. The gate decides redirect
             targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
         <Route element={<AuthGate require="authenticated" />}>
-          <Route
-            path="/"
-            element={
-              <>
-                <Layout />
-                <OnboardingDialog />
-                <WelcomeDialog />
-              </>
-            }
-          >
+          <Route path="/" element={<HomeShell />}>
             {/* Home routes with HomeLayout */}
             <Route element={<ChatLayout />}>
               <Route index element={<Navigate to="/chats/new" replace />} />

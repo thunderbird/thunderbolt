@@ -8,6 +8,7 @@
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { HttpClient } from './http'
 import { getAuthToken } from './auth-token'
 import { createMcpIrohTransport } from './mcp-iroh-transport'
 import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
@@ -74,12 +75,13 @@ export const createMcpTransport = (
   type: MCPTransportType,
   cloudUrl: string,
   headers: Record<string, string>,
+  httpClient?: HttpClient,
 ) => {
   // iroh dials a peer bridge by NodeId/ticket over an encrypted relay — no URL,
   // proxy, or bearer applies (the link is e2e-encrypted and allowlist-gated), so
   // `cloudUrl`/`headers` are unused. `url` carries the NodeId/ticket.
   if (type === 'iroh') {
-    return createMcpIrohTransport({ target: url })
+    return createMcpIrohTransport({ target: url, httpClient })
   }
   const urlObj = new URL(url)
   // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the

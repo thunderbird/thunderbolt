@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { promises as dnsPromises } from 'node:dns'
-import { isIP } from 'node:net'
-import ipaddr from 'ipaddr.js'
+import { isPrivateOrInternalAddress, parseIpAddress } from '@shared/ip-classification'
 
 /** DNS lookup used by URL validation. Shape mirrors `dns.promises.lookup(host, { all: true })`.
  *  Injected as a dep so tests can substitute a deterministic resolver without
@@ -13,83 +12,14 @@ export type DnsLookup = (hostname: string) => Promise<Array<{ address: string; f
 
 const defaultDnsLookup: DnsLookup = (hostname) => dnsPromises.lookup(hostname, { all: true })
 
-/** IP ranges blocked for SSRF protection. Excludes multicast (could block legitimate CDN traffic). */
-const blockedRanges = new Set([
-  'private', // 10/8, 172.16/12, 192.168/16
-  'loopback', // 127/8, ::1
-  'linkLocal', // 169.254/16, fe80::/10
-  'uniqueLocal', // fc00::/7
-  'unspecified', // 0.0.0.0/8, ::
-  'carrierGradeNat', // 100.64/10 (RFC 6598)
-  'reserved', // 198.18/15, 192.0.0/24, 192.0.2/24, 198.51.100/24, 203.0.113/24, 240.0.0/4, etc.
-  'broadcast', // 255.255.255.255
-])
-
-type IpAddr = ReturnType<typeof ipaddr.process>
-
-/**
- * Extracts the IPv4 address embedded in an IPv6 transition/translation address,
- * or null if none is embedded. A host with the matching connectivity (NAT64/DNS64,
- * 6to4, Teredo) routes these to the embedded IPv4 — so the embedded address, including
- * a private/internal one, must be re-validated. Blocking the whole range would be wrong:
- * on a DNS64 deployment, legitimate public IPv4 sites resolve to `64:ff9b::<public-ip>`.
- * (`::ffff:x.x.x.x` is already normalized to IPv4 by `ipaddr.process`, so it's not here.)
- *
- * The `case` labels are coupled to ipaddr.js's range taxonomy — if an upgrade renames
- * or reclassifies these ranges, the `default` branch silently reverts to pre-fix behavior
- * (the embedded IPv4 stops being checked). Re-verify these labels when bumping ipaddr.js.
- * Operator-configured NAT64 prefixes (RFC 6052 §2.2 non-`/96` variants) are not detectable
- * here — only the well-known `64:ff9b::/96` is classified `rfc6052`.
- */
-const embeddedIpv4 = (addr: IpAddr): string | null => {
-  const bytes = addr.toByteArray()
-  switch (addr.range()) {
-    case 'rfc6052': // NAT64 64:ff9b::/96 — IPv4 in the low 32 bits
-    case 'rfc6145': // stateless IPv4/IPv6 translation — IPv4 in the low 32 bits
-      return bytes.slice(12, 16).join('.')
-    case '6to4': // 2002::/16 — IPv4 in bytes 2..5
-      return bytes.slice(2, 6).join('.')
-    case 'teredo': // 2001::/32 — client IPv4 in the low 32 bits, one's-complement obfuscated
-      return bytes
-        .slice(12, 16)
-        .map((b) => b ^ 0xff)
-        .join('.')
-    default:
-      return null
-  }
-}
-
 /**
  * Returns true if the IP address falls within a private/internal/reserved range.
  * Handles IPv4, IPv6, IPv4-mapped IPv6 (::ffff:x.x.x.x), bracketed notation ([::1]),
- * and IPv6 transition addresses (NAT64/6to4/Teredo) that embed a private IPv4.
+ * and IPv6 transition addresses (NAT64/6to4/Teredo) that embed IPv4.
  */
 export const isPrivateAddress = (rawHostname: string): boolean => {
-  const hostname = rawHostname.startsWith('[') && rawHostname.endsWith(']') ? rawHostname.slice(1, -1) : rawHostname
-
-  if (!ipaddr.isValid(hostname)) {
-    return false
-  }
-
-  // process() normalizes IPv4-mapped IPv6 (::ffff:127.0.0.1 / ::ffff:7f00:1) to IPv4
-  const addr = ipaddr.process(hostname)
-  if (blockedRanges.has(addr.range())) {
-    return true
-  }
-  const embedded = embeddedIpv4(addr)
-  return embedded !== null && isPrivateAddress(embedded)
-}
-
-/** Returns true if the hostname is a loopback address (127.0.0.0/8, ::1, or localhost). */
-const isLoopback = (hostname: string): boolean => {
-  const h = hostname.toLowerCase()
-  if (h === 'localhost') {
-    return true
-  }
-  if (!ipaddr.isValid(h)) {
-    return false
-  }
-  return ipaddr.process(h).range() === 'loopback'
+  const address = parseIpAddress(rawHostname)
+  return address ? isPrivateOrInternalAddress(address) : false
 }
 
 /** Returns the URL upgraded to https://, or null if it isn't http(s) and can't be safely upgraded. */
@@ -123,10 +53,7 @@ export const validateSafeUrl = (url: string): { valid: boolean; error?: string }
       return { valid: false, error: 'Only HTTP and HTTPS URLs are supported' }
     }
     const hostname = parsed.hostname.toLowerCase()
-    if (isLoopback(hostname)) {
-      return { valid: false, error: 'Internal URLs are not allowed' }
-    }
-    if (isPrivateAddress(hostname)) {
+    if (hostname === 'localhost' || isPrivateAddress(hostname)) {
       return { valid: false, error: 'Internal URLs are not allowed' }
     }
     return { valid: true }
@@ -156,9 +83,10 @@ export const validateAndPin = async (
   parsed.username = ''
   parsed.password = ''
   const hostname = parsed.hostname
+  const literalAddress = parseIpAddress(hostname)
 
-  if (isIP(hostname)) {
-    if (isPrivateAddress(hostname)) {
+  if (literalAddress) {
+    if (isPrivateOrInternalAddress(literalAddress)) {
       throw new Error(`Blocked: ${hostname} is a private/internal address`)
     }
     return [parsed.toString(), new Headers(extraHeaders)]
@@ -170,7 +98,11 @@ export const validateAndPin = async (
   }
 
   for (const { address } of addresses) {
-    if (isPrivateAddress(address)) {
+    const resolvedAddress = parseIpAddress(address)
+    if (!resolvedAddress) {
+      throw new Error(`Blocked: ${hostname} resolves to invalid IP address ${address}`)
+    }
+    if (isPrivateOrInternalAddress(resolvedAddress)) {
       throw new Error(`Blocked: ${hostname} resolves to private/internal address ${address}`)
     }
   }

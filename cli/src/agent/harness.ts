@@ -11,13 +11,22 @@
  */
 
 import { AgentHarness, InMemorySessionRepo } from '@earendil-works/pi-agent-core'
-import type { Session } from '@earendil-works/pi-agent-core'
+import type { AgentTool, Session } from '@earendil-works/pi-agent-core'
 import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-coding-agent'
-import { resolveModel } from './model.ts'
+import { configureNativeWebSearch, resolveModel } from './model.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 import type { HarnessBundle, HarnessConfig } from './types.ts'
 import { createWorkspaceTools } from './workspace-jail.ts'
+import { createWebFetchTool } from './webfetch.ts'
+
+/** Build complete toolset shared by local CLI and ACP-served harnesses. */
+export const createHarnessTools = (config: Pick<HarnessConfig, 'cwd' | 'workspaceRoot'>): AgentTool[] => {
+  const codingTools = config.workspaceRoot
+    ? createWorkspaceTools(config.workspaceRoot)
+    : [createBashTool(config.cwd), createReadTool(config.cwd), createWriteTool(config.cwd), createEditTool(config.cwd)]
+  return [...codingTools, createWebFetchTool()]
+}
 
 /**
  * Builds a ready-to-run harness for a single CLI invocation, paired with a
@@ -45,9 +54,7 @@ export const buildHarness = async (config: HarnessConfig, session?: Session): Pr
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
   })
-  const tools = config.workspaceRoot
-    ? createWorkspaceTools(config.workspaceRoot)
-    : [createBashTool(config.cwd), createReadTool(config.cwd), createWriteTool(config.cwd), createEditTool(config.cwd)]
+  const tools = createHarnessTools(config)
 
   const harness = new AgentHarness({
     env,
@@ -63,6 +70,9 @@ export const buildHarness = async (config: HarnessConfig, session?: Session): Pr
       bashEnabled: tools.some((tool) => tool.name === 'bash'),
     }),
   })
+  harness.on('before_provider_payload', ({ model: requestModel, payload }) => ({
+    payload: configureNativeWebSearch(requestModel, payload),
+  }))
 
   return {
     harness,

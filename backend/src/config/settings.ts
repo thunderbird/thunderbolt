@@ -4,6 +4,10 @@
 
 import { z } from 'zod'
 
+const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
+  message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
+})
+
 /**
  * Settings schema for environment variables validation
  */
@@ -50,6 +54,21 @@ const settingsSchema = z
     samlCert: z.string().default(''),
     betterAuthUrl: z.string().default('http://localhost:8000'),
     betterAuthSecret: z.string().min(1),
+
+    // Device Authorization Grant (RFC 8628) — used by the `thunderbolt` CLI to log in
+    // headless. `deviceAuthExpiresIn` is how long the device/user code stays valid before
+    // the CLI must restart the flow; `deviceAuthInterval` is the minimum client polling
+    // gap. Better Auth time strings ('30m', '5s', '1h'). Defaults follow RFC 8628 §3.2.
+    deviceAuthExpiresIn: betterAuthTimeString.default('30m'),
+    deviceAuthInterval: betterAuthTimeString.default('5s'),
+
+    // Better Auth API-key expiry values use seconds at runtime. New PATs expire after
+    // 90 days by default; callers may request a different supported lifetime at creation.
+    apiKeyDefaultExpiresInSeconds: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(90 * 24 * 60 * 60),
 
     // General settings
     logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
@@ -177,6 +196,9 @@ const parseSettings = (): Settings => {
     samlCert: process.env.SAML_CERT || '',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
+    deviceAuthExpiresIn: process.env.DEVICE_AUTH_EXPIRES_IN || '30m',
+    deviceAuthInterval: process.env.DEVICE_AUTH_INTERVAL || '5s',
+    apiKeyDefaultExpiresInSeconds: process.env.API_KEY_DEFAULT_EXPIRES_IN,
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',

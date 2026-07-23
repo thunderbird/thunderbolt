@@ -14,18 +14,19 @@
  * ALPN and that this adapts the raw bidi byte stream to the MCP SDK's `Transport`
  * interface (callback-based) rather than ACP's `{ readable, writable }` Stream.
  *
- * No proxy, bearer, or CORS applies — the relay link is encrypted and the bridge
- * is allowlist-gated by NodeId (`thunderbolt iroh allow <id>`), so `cloudUrl` and
- * the bearer headers the http/sse path threads through `/v1/proxy` are irrelevant
- * here.
+ * No proxy, bearer, or CORS applies to the relay link — it is encrypted and the
+ * bridge is allowlist-gated by NodeId (`thunderbolt iroh allow <id>`). Before
+ * dialing, the authenticated app client best-effort enrolls this device's NodeId.
  */
 
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { irohAlpnFor } from '@shared/iroh'
-import { dialIrohBridge } from '@/acp/iroh/iroh-transport'
+import { dialIrohBridge, irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { createNdjsonDecoder, encodeNdjsonFrame } from '@/acp/iroh/ndjson'
 import type { IrohClientLoader, IrohConnectionLike } from '@/acp/iroh/types'
+import type { HttpClient } from '@/lib/http'
+import { ensureSelfEnrollment } from '@/lib/iroh-enrollment'
 
 /** ALPN of the CLI MCP bridge (`cli/src/iroh/endpoint.ts`, `thunderbolt/mcp/0`).
  *  Must match byte-for-byte or the QUIC handshake is refused. */
@@ -36,6 +37,10 @@ export type McpIrohTransportOptions = {
   target: string
   /** Test seam — production omits and lazy-loads the shared wasm client. */
   loadClient?: IrohClientLoader
+  /** Authenticated backend client. Omitted only in true Standalone/test paths. */
+  httpClient?: Pick<HttpClient, 'post'>
+  /** Test seam for transparent enrollment ordering/fallback. */
+  ensureEnrollment?: typeof ensureSelfEnrollment
 }
 
 /**
@@ -109,6 +114,11 @@ export const createMcpIrohTransport = (options: McpIrohTransportOptions): Transp
         throw new Error('McpIrohTransport already started')
       }
       started = true
+      if (options.httpClient) {
+        await (options.ensureEnrollment ?? ensureSelfEnrollment)(options.httpClient, () =>
+          irohClientNodeId(options.loadClient),
+        )
+      }
       connection = await dialIrohBridge({
         target: options.target,
         alpn: mcpIrohAlpn,

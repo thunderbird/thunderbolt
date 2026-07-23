@@ -32,6 +32,9 @@ const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 
 const neverResolves = (_id: string, _url: string, _type: MCPTransportType): Promise<MCPClient> =>
   new Promise<MCPClient>(() => {})
 
+// A real HttpClientProvider (DI, no module mock) so the page's useHttpClient() resolves.
+// The default mock client 200s every request — the enrollment-specific tests inject their
+// own `enrollIroh` seam instead of asserting on this client.
 const McpProviderWrapper = ({ children }: { children: ReactNode }) => (
   <MemoryRouter>
     <HttpClientProvider httpClient={createMockHttpClient()}>
@@ -385,11 +388,11 @@ describe('ConnectionsPage iroh add flow', () => {
     cleanup()
   })
 
-  const openIrohForm = async () => {
-    const result = renderWithReactivity(<ConnectionsPage deps={{ loadAppNodeId: async () => appNodeId }} />, {
-      tables: ['mcp_servers', 'mcp_secrets'],
-      wrapper: McpProviderWrapper,
-    })
+  const openIrohForm = async (extraDeps: Partial<ConnectionsPageDeps> = {}) => {
+    const result = renderWithReactivity(
+      <ConnectionsPage deps={{ loadAppNodeId: async () => appNodeId, ...extraDeps }} />,
+      { tables: ['mcp_servers', 'mcp_secrets'], wrapper: McpProviderWrapper },
+    )
     const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add MCP server' }))
     fireEvent.click(openButton)
     const urlInput = await waitForElement(() => screen.queryByPlaceholderText('http://localhost:8000/mcp/'))
@@ -423,6 +426,52 @@ describe('ConnectionsPage iroh add flow', () => {
     expect(created[0]?.type).toBe('iroh')
     expect(created[0]?.url).toBe(irohTarget)
     expect(created[0]?.name).toBe('Laptop Bridge')
+  })
+
+  it('self-enrolls this app when adding an iroh bridge', async () => {
+    const enrollIroh = mock(async () => {})
+    await openIrohForm({ enrollIroh })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
+      await getClock().runAllAsync()
+    })
+
+    expect(enrollIroh).toHaveBeenCalledTimes(1)
+    expect(enrollIroh).toHaveBeenCalledWith()
+  })
+
+  it('still creates the server and keeps the manual pairing panel when enrollment fails', async () => {
+    const db = getDb()
+    const enrollIroh = mock(async () => {
+      throw new Error('no account (standalone)')
+    })
+    await openIrohForm({ enrollIroh })
+    expect(screen.getByTestId('iroh-pairing-panel')).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
+      await getClock().runAllAsync()
+    })
+
+    const created = await getAllMcpServers(db)
+    expect(created).toHaveLength(1)
+    expect(created[0]?.type).toBe('iroh')
+  })
+
+  it('does not block the add on a slow (never-resolving) enrollment', async () => {
+    const db = getDb()
+    const enrollIroh = mock(() => new Promise<void>(() => {}))
+    await openIrohForm({ enrollIroh })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
+      await getClock().runAllAsync()
+    })
+
+    const created = await getAllMcpServers(db)
+    expect(created).toHaveLength(1)
+    expect(screen.queryByText('Add MCP Server')).not.toBeInTheDocument()
   })
 })
 
@@ -500,7 +549,8 @@ describe('ConnectionsPage Edit server', () => {
     const irohTarget = 'a'.repeat(52)
     await createMcpServer(db, { id, name: 'Old Bridge', type: 'iroh', url: irohTarget, enabled: 1 })
 
-    renderWithReactivity(<ConnectionsPage deps={{ loadAppNodeId: async () => 'b'.repeat(52) }} />, {
+    const enrollIroh = mock(async () => {})
+    renderWithReactivity(<ConnectionsPage deps={{ loadAppNodeId: async () => 'b'.repeat(52), enrollIroh }} />, {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: McpProviderWrapper,
     })
@@ -529,6 +579,7 @@ describe('ConnectionsPage Edit server', () => {
     expect(rows[0]?.name).toBe('New Bridge')
     expect(rows[0]?.type).toBe('iroh')
     expect(rows[0]?.url).toBe(irohTarget)
+    expect(enrollIroh).not.toHaveBeenCalled()
   })
 })
 

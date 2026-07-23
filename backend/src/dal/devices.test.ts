@@ -11,6 +11,7 @@ import {
   countActiveDevices,
   denyDevice,
   getDeviceById,
+  getTrustedNodeIds,
   markDeviceTrusted,
   registerDevice,
   revokeDevice,
@@ -286,6 +287,66 @@ describe('devices DAL', () => {
       await seedDevice({ trusted: true, approvalPending: false, revokedAt: new Date() })
       const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-revoked')
       expect(rows).toHaveLength(0)
+    })
+  })
+
+  describe('getTrustedNodeIds', () => {
+    const seed = (
+      id: string,
+      nodeId: string | null,
+      over: { trusted?: boolean; approvalPending?: boolean; revokedAt?: Date; deviceType?: 'normal' | 'bridge' } = {},
+      forUserId = userId,
+    ) => {
+      const now = new Date()
+      const { trusted = true, approvalPending = !trusted, revokedAt, deviceType = 'normal' } = over
+      return db.insert(devicesTable).values({
+        id,
+        userId: forUserId,
+        name: id,
+        trusted,
+        approvalPending,
+        deviceType,
+        lastSeen: now,
+        createdAt: now,
+        ...(nodeId ? { nodeId, nodeIdAttestedAt: now } : {}),
+        ...(revokedAt ? { revokedAt } : {}),
+      })
+    }
+
+    it('returns node_id + device_type for trusted, non-revoked, bound devices only', async () => {
+      await seed('tn-trusted', 'node-a', { deviceType: 'normal' })
+      await seed('tn-bridge', 'node-b', { deviceType: 'bridge' })
+      await seed('tn-pending', 'node-c', { trusted: false })
+      await seed('tn-revoked', 'node-d', { trusted: true, revokedAt: new Date() })
+      await seed('tn-nonode', null, { trusted: true })
+
+      const rows = await getTrustedNodeIds(db, userId)
+      const byNode = Object.fromEntries(rows.map((r) => [r.nodeId, r.deviceType]))
+      expect(Object.keys(byNode).sort()).toEqual(['node-a', 'node-b'])
+      expect(byNode['node-b']).toBe('bridge')
+    })
+
+    it('is scoped to the user and never returns another account rows', async () => {
+      const now = new Date()
+      const otherUserId = 'other-user-nodeids'
+      await db.insert(user).values({
+        id: otherUserId,
+        name: 'Other',
+        email: 'other-nodeids@test.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await seed('tn-mine', 'node-mine')
+      await seed('tn-theirs', 'node-theirs', {}, otherUserId)
+
+      const rows = await getTrustedNodeIds(db, userId)
+      expect(rows.map((r) => r.nodeId)).toEqual(['node-mine'])
+    })
+
+    it('returns an empty array when no trusted bound devices exist', async () => {
+      const rows = await getTrustedNodeIds(db, userId)
+      expect(rows).toEqual([])
     })
   })
 

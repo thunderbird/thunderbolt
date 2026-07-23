@@ -35,6 +35,7 @@ type FormControllerOptions = {
   clearDialogError: () => void
   startAddAndAuthorize: ReturnType<typeof useMcpServerOAuth>['startAddAndAuthorize']
   updateLiveServer: ReturnType<typeof useMCP>['updateServer']
+  enrollIroh: () => Promise<void>
 }
 
 /** Owns MCP add, edit, import, toggle, and delete form operations. */
@@ -48,6 +49,7 @@ export const useMcpServerFormController = ({
   clearDialogError,
   startAddAndAuthorize,
   updateLiveServer,
+  enrollIroh,
 }: FormControllerOptions) => {
   const addPendingRef = useRef(false)
   const { url, isIroh, token, testResult, resolveServerName } = form
@@ -143,6 +145,14 @@ export const useMcpServerFormController = ({
     try {
       const serverUrl = isIroh ? url.trim() : url
       await addMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), serverUrl })
+      if (isIroh) {
+        // App enrolls its own dialer NodeId; bridge registers itself server-side.
+        // Fire and forget: enrollment must never block the add, and manual pairing remains the
+        // fallback for Standalone, unauthenticated, or offline use.
+        void enrollIroh().catch((error) => {
+          console.warn('iroh transparent enrollment failed; using manual pairing fallback', error)
+        })
+      }
       cancel()
     } catch (error) {
       console.error('Failed to add MCP server:', error)

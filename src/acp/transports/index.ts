@@ -53,11 +53,8 @@ export type OpenTransportInputs = {
   isStandalone?: () => boolean
   readProxyEnabled?: () => string | null
   backoffMs?: (attempt: number) => number
-  /** Presence signals an authenticated cloud backend is wired. Managed-ACP
-   *  offers the bearer subprotocol whenever this is set; without it managed-ACP
-   *  falls back to an unauthenticated direct connect (graceful no-op in true
-   *  Standalone — the endpoint isn't reachable). The client itself is never
-   *  used for auth: the bearer token rides the WS subprotocol synchronously. */
+  /** Authenticated cloud backend client. Managed-ACP uses its presence to offer
+   *  the bearer subprotocol; iroh uses it for transparent device enrollment. */
   httpClient?: HttpClient
   /** Test seam — production omits and the factory reads `getAuthToken()`. */
   getAuthToken?: () => string | null
@@ -92,7 +89,7 @@ export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTra
   // iroh dials a peer bridge by NodeId/ticket over an n0 relay — no URL, proxy,
   // or bearer routing applies. `inputs.url` carries the NodeId/ticket.
   if (inputs.transport === 'iroh') {
-    return openIrohTransport({ target: inputs.url, signal: inputs.signal })
+    return openIrohTransport({ target: inputs.url, signal: inputs.signal, httpClient: inputs.httpClient })
   }
   const webSocketFactory = inputs.webSocketFactory ?? resolveWebSocketFactory(inputs)
   return openWebSocketTransport({

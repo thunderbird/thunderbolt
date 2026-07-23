@@ -19,6 +19,7 @@ import { loadConfig } from './config/config.ts'
 import type { CliConfig } from './config/config.ts'
 import { createSetupWizardIO, runSetupWizard, shouldRunSetupWizard } from './config/wizard.ts'
 import type { ModelProvider } from './agent/types.ts'
+import { runLogin } from './auth/login.ts'
 
 /** Runs interactive setup with production terminal I/O and guaranteed cleanup. */
 const configure = async (requiredProvider?: ModelProvider): Promise<CliConfig> => {
@@ -35,7 +36,7 @@ const configure = async (requiredProvider?: ModelProvider): Promise<CliConfig> =
 
 try {
   const argv = Bun.argv.slice(2)
-  const storedConfig = await loadConfig()
+  const storedConfig = argv[0] === 'login' ? null : await loadConfig()
   const parsed = parseArgs(argv, { config: storedConfig })
 
   switch (parsed.kind) {
@@ -82,6 +83,9 @@ try {
       break
     case 'iroh-admin':
       await runIrohAdmin(parsed.action)
+      break
+    case 'login':
+      await runLogin()
       break
   }
 } catch (error) {

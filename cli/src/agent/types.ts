@@ -152,7 +152,7 @@ export type RunConfig =
     })
 
 /** Result of parsing argv: a run, config setup, bridge, connect, ACP server,
- *  iroh admin action, or terminal info action. */
+ *  iroh admin action, login, or terminal info action. */
 export type ParsedArgs =
   | { readonly kind: 'run'; readonly config: RunConfig }
   | { readonly kind: 'config' }
@@ -160,6 +160,7 @@ export type ParsedArgs =
   | { readonly kind: 'connect'; readonly config: ConnectConfig }
   | { readonly kind: 'acp-serve'; readonly config: ServeConfig }
   | { readonly kind: 'iroh-admin'; readonly action: IrohAdminAction }
+  | { readonly kind: 'login' }
   | { readonly kind: 'help' }
   | { readonly kind: 'version' }
   | { readonly kind: 'error'; readonly message: string }

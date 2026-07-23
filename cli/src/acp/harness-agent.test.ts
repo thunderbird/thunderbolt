@@ -336,6 +336,46 @@ describe('createHarnessAgent (ACP server)', () => {
     expect(decisions).toEqual([undefined, undefined, undefined])
   })
 
+  test('webfetch is auto-allowed without prompting while bash stays gated', async () => {
+    const decisions: Array<ToolCallResult | undefined> = []
+    const webBuilder: BuildServeHarness = async () => {
+      let gate: ((event: ToolCallEvent) => Promise<ToolCallResult | undefined>) | null = null
+      return {
+        harness: {
+          subscribe: () => () => {},
+          registerToolCallGate: (handler) => {
+            gate = handler
+          },
+          prompt: async () => {
+            decisions.push(
+              await gate?.({
+                type: 'tool_call',
+                toolCallId: 'web',
+                toolName: 'webfetch',
+                input: { url: 'https://example.com' },
+              }),
+            )
+            decisions.push(
+              await gate?.({ type: 'tool_call', toolCallId: 'shell', toolName: 'bash', input: { command: 'curl x' } }),
+            )
+            return assistantMessage('stop')
+          },
+          waitForIdle: async () => {},
+          abort: async () => {},
+        },
+        dispose: async () => {},
+      }
+    }
+
+    const { client, permissions } = connectPair(webBuilder, fakeStore(), 'reject-once')
+    await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const { sessionId } = await client.newSession({ cwd: '/', mcpServers: [] })
+    await client.prompt({ sessionId, prompt: [{ type: 'text', text: 'web' }] })
+
+    expect(decisions).toEqual([undefined, { block: true, reason: 'user rejected bash' }])
+    expect(permissions.map((request) => request.toolCall.toolCallId)).toEqual(['shell'])
+  })
+
   test('a denied permission blocks the tool and the model never sees it run', async () => {
     const agentToClient = new TransformStream<Uint8Array, Uint8Array>()
     const clientToAgent = new TransformStream<Uint8Array, Uint8Array>()

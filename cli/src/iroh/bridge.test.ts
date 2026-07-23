@@ -14,25 +14,66 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { Connection, Incoming } from '@number0/iroh'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BridgeConfig } from '../agent/types.ts'
+import type { AccountAllowlist, FetchFn } from './account-allowlist.ts'
 import { maxActiveProcs, redactArgv, type BridgeProc } from '../commands/bridge.ts'
 import { add } from './allowlist.ts'
 import {
   admitConnection,
+  accountTrustBanner,
   closeRefused,
   createHandshakeGuard,
   createRateLimiter,
   handleConnection,
   handshake,
+  heartbeatTick,
+  heartbeatIntervalMs,
+  isConnectionAllowed,
+  renderIrohBridgeBanner,
+  type OpenConnection,
   remoteKey,
+  startAccountTrust,
+  startMembershipHeartbeat,
 } from './bridge.ts'
 
 /** UTF-8 bytes of a close reason, computed independently of `reasonBytes`. */
 const bytesOf = (s: string): number[] => [...Buffer.from(s, 'utf8')]
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
+
+describe('renderIrohBridgeBanner', () => {
+  const baseConfig = {
+    transport: 'iroh',
+    port: 0,
+    command: ['local-agent'],
+  } as const
+
+  it('directs ACP bridge pairing to the app agents page', () => {
+    const banner = renderIrohBridgeBanner(
+      { ...baseConfig, protocol: 'acp' },
+      'acp-node',
+      'acp-ticket',
+      false,
+      'https://app.example.com/',
+    )
+
+    expect(banner).toContain('   pair in Thunderbolt app: https://app.example.com/settings/agents\n')
+  })
+
+  it('directs MCP bridge pairing to the app MCP servers page', () => {
+    const banner = renderIrohBridgeBanner(
+      { ...baseConfig, protocol: 'mcp' },
+      'mcp-node',
+      'mcp-ticket',
+      false,
+      'https://app.example.com',
+    )
+
+    expect(banner).toContain('   pair in Thunderbolt app: https://app.example.com/settings/mcp-servers\n')
+  })
+})
 
 describe('createRateLimiter — sliding window', () => {
   it('allows up to max within the window, then refuses', () => {
@@ -218,7 +259,7 @@ describe('handleConnection — the allowlist gate', () => {
     const incoming = { accept: async () => ({ connect: async () => connection }) } as unknown as Incoming
     const activeProcs = new Set<BridgeProc>()
 
-    await handleConnection(incoming, config, activeProcs, { release: () => {} }, 10)
+    await handleConnection(incoming, config, activeProcs, { release: () => {} }, { acceptTimeoutMs: 10 })
 
     expect(acceptBi).toHaveBeenCalledTimes(1)
     expect(activeProcs.size).toBe(0) // nothing spawned for an idle peer
@@ -382,5 +423,334 @@ describe('admitConnection — pre-handshake DoS gates', () => {
     )
     expect(ignore).toHaveBeenCalledTimes(1)
     expect(accept).not.toHaveBeenCalled() // dropped before the handshake
+  })
+})
+
+describe('admitConnection — live session tracking', () => {
+  const protocols = ['acp', 'mcp'] as const
+  const prevHome = process.env.THUNDERBOLT_HOME
+  let home: string
+  let stdout: ReturnType<typeof spyOn>
+  let stderr: ReturnType<typeof spyOn>
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'tb-live-session-'))
+    process.env.THUNDERBOLT_HOME = home
+    stdout = spyOn(process.stdout, 'write').mockImplementation(() => true)
+    stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+
+  afterEach(async () => {
+    stdout.mockRestore()
+    stderr.mockRestore()
+    if (prevHome === undefined) delete process.env.THUNDERBOLT_HOME
+    else process.env.THUNDERBOLT_HOME = prevHome
+    await rm(home, { recursive: true, force: true })
+  })
+
+  for (const protocol of protocols) {
+    it(`tracks an accepted ${protocol.toUpperCase()} session until heartbeat revocation closes it`, async () => {
+      const remoteId = `${protocol}-peer`
+      const trusted = new Set([remoteId])
+      const accountAllowlist = fakeAllowlist(trusted)
+      const openConnections = new Set<OpenConnection>()
+      const activeProcs = new Set<BridgeProc>()
+      const config: BridgeConfig = {
+        protocol,
+        transport: 'iroh',
+        port: 0,
+        command: [process.execPath, '-e', 'setInterval(() => {}, 1_000)'],
+      }
+      const closed = Promise.withResolvers<void>()
+      const recvRead = Promise.withResolvers<number[]>()
+      const read = mock(async () => recvRead.promise)
+      const close = mock(() => {
+        recvRead.resolve([])
+        closed.resolve()
+      })
+      const connection = {
+        remoteId: () => ({ toString: () => remoteId }),
+        acceptBi: async () => ({
+          recv: { read },
+          send: { writeAll: async () => {}, finish: async () => {} },
+        }),
+        closed: () => closed.promise,
+        close,
+      } as unknown as Connection
+      const incoming = {
+        remoteAddr: async () => ({ kind: 'relay', endpointId: remoteId }),
+        accept: async () => ({ connect: async () => connection }),
+        ignore: async () => {},
+      } as unknown as Incoming
+
+      const handling = admitConnection(
+        incoming,
+        config,
+        activeProcs,
+        { allow: () => true },
+        { tryAcquire: () => true, release: () => {} },
+        { accountAllowlist, openConnections },
+      )
+      try {
+        await flush()
+
+        expect([...openConnections]).toEqual([{ remoteId, connection }])
+
+        trusted.clear()
+        await heartbeatTick(accountAllowlist, openConnections)
+        await handling
+
+        expect(close).toHaveBeenCalledTimes(1)
+        expect(openConnections.size).toBe(0)
+      } finally {
+        recvRead.resolve([])
+        closed.resolve()
+        await handling
+      }
+    })
+  }
+})
+
+/** A stub {@link AccountAllowlist} over a fixed trusted set, with an injectable
+ *  refresh and self-revocation flag. Mirrors production: when self-revoked, `has`
+ *  trusts nobody so the gate and heartbeat drop every account peer. */
+const fakeAllowlist = (
+  trusted: Set<string>,
+  refresh: () => Promise<void> = async () => {},
+  isSelfRevoked: () => boolean = () => false,
+): AccountAllowlist => ({
+  has: (id) => !isSelfRevoked() && trusted.has(id),
+  refresh,
+  isSelfRevoked,
+})
+
+/** A stub open connection whose `close` is a spy, for heartbeat teardown assertions. */
+const fakeOpen = (remoteId: string): { open: OpenConnection; close: ReturnType<typeof mock> } => {
+  const close = mock(() => {})
+  return { open: { remoteId, connection: { close } as unknown as OpenConnection['connection'] }, close }
+}
+
+describe('account trust gate + heartbeat', () => {
+  let home: string
+  const prevHome = process.env.THUNDERBOLT_HOME
+  let stderr: ReturnType<typeof spyOn>
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'tb-trust-'))
+    process.env.THUNDERBOLT_HOME = home
+    stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+  afterEach(async () => {
+    stderr.mockRestore()
+    if (prevHome === undefined) delete process.env.THUNDERBOLT_HOME
+    else process.env.THUNDERBOLT_HOME = prevHome
+    await rm(home, { recursive: true, force: true })
+  })
+
+  describe('isConnectionAllowed — trust gate (account allowlist OR manual file)', () => {
+    it('admits a peer in the account allowlist even when the manual file is empty (auto-trust)', async () => {
+      expect(await isConnectionAllowed('acct-peer', fakeAllowlist(new Set(['acct-peer'])))).toBe(true)
+    })
+
+    it('admits a peer in the manual file even when it is absent from the account allowlist', async () => {
+      await add('manual-peer')
+      expect(await isConnectionAllowed('manual-peer', fakeAllowlist(new Set(['someone-else'])))).toBe(true)
+    })
+
+    it('denies a peer in neither the account allowlist nor the manual file', async () => {
+      await add('other-peer')
+      expect(await isConnectionAllowed('stranger', fakeAllowlist(new Set(['acct-peer'])))).toBe(false)
+    })
+
+    it('Standalone (no account allowlist): manual file only, admits/denies, never throws', async () => {
+      await add('manual-peer')
+      expect(await isConnectionAllowed('manual-peer', undefined)).toBe(true)
+      expect(await isConnectionAllowed('stranger', undefined)).toBe(false)
+    })
+
+    it('self-revoked bridge rejects an account peer at the gate when auto-trust is off', async () => {
+      // The allowlist still lists the peer, but this bridge is self-revoked → has() is
+      // false → the gate falls through to the (empty) manual file and denies.
+      const revoked = fakeAllowlist(
+        new Set(['acct-peer']),
+        async () => {},
+        () => true,
+      )
+      expect(await isConnectionAllowed('acct-peer', revoked)).toBe(false)
+    })
+
+    it('self-revoked bridge still admits a manual-file peer because manual trust persists', async () => {
+      await add('manual-peer')
+      const revoked = fakeAllowlist(
+        new Set(['manual-peer']),
+        async () => {},
+        () => true,
+      )
+      expect(await isConnectionAllowed('manual-peer', revoked)).toBe(true)
+    })
+  })
+
+  describe('heartbeatTick — live-connection revocation', () => {
+    it('refreshes the allowlist, tears down a now-revoked peer, and leaves a still-valid one', async () => {
+      const refresh = mock(async () => {})
+      const allowlist = fakeAllowlist(new Set(['still-valid']), refresh)
+      const valid = fakeOpen('still-valid')
+      const revoked = fakeOpen('revoked-peer')
+
+      await heartbeatTick(allowlist, new Set([valid.open, revoked.open]))
+
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(valid.close).not.toHaveBeenCalled()
+      expect(revoked.close).toHaveBeenCalledTimes(1)
+      expect(revoked.close.mock.calls[0][0]).toBe(closeRefused)
+      expect(revoked.close.mock.calls[0][1]).toEqual(bytesOf('membership revoked'))
+    })
+
+    it('keeps a peer that survives only in the manual file (account-revoked but manually allowed)', async () => {
+      await add('manual-peer')
+      const manual = fakeOpen('manual-peer')
+
+      await heartbeatTick(fakeAllowlist(new Set()), new Set([manual.open]))
+
+      expect(manual.close).not.toHaveBeenCalled()
+    })
+
+    it('self-revoked bridge tears down all account-auto-trusted sessions and logs once', async () => {
+      const refresh = mock(async () => {})
+      // Non-empty account set, but this bridge is self-revoked → has() trusts nobody,
+      // so every same-account session is torn down within the interval.
+      const allowlist = fakeAllowlist(new Set(['acct-a', 'acct-b']), refresh, () => true)
+      const a = fakeOpen('acct-a')
+      const b = fakeOpen('acct-b')
+
+      await heartbeatTick(allowlist, new Set([a.open, b.open]))
+
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(a.close).toHaveBeenCalledTimes(1)
+      expect(b.close).toHaveBeenCalledTimes(1)
+      const logged = stderr.mock.calls
+        .flat()
+        .some((s: unknown) => String(s).includes('no longer in the account allowlist'))
+      expect(logged).toBe(true)
+    })
+
+    it('self-revoked bridge preserves a manual-file peer during teardown', async () => {
+      await add('manual-peer')
+      const allowlist = fakeAllowlist(
+        new Set(['manual-peer']),
+        async () => {},
+        () => true,
+      )
+      const manual = fakeOpen('manual-peer')
+
+      await heartbeatTick(allowlist, new Set([manual.open]))
+
+      expect(manual.close).not.toHaveBeenCalled()
+    })
+
+    it('isolates a connection whose close() throws — the sweep continues to other peers', async () => {
+      const throwingClose = mock(() => {
+        throw new Error('NAPI close failed')
+      })
+      const bad: OpenConnection = {
+        remoteId: 'bad-peer',
+        connection: { close: throwingClose } as unknown as OpenConnection['connection'],
+      }
+      const good = fakeOpen('good-peer')
+
+      // Empty account set + empty manual file → both peers are revoked and get closed.
+      await heartbeatTick(fakeAllowlist(new Set()), new Set([bad, good.open]))
+
+      expect(throwingClose).toHaveBeenCalledTimes(1) // attempted despite throwing
+      expect(good.close).toHaveBeenCalledTimes(1) // sweep survived the throw and continued
+    })
+  })
+})
+
+describe('startMembershipHeartbeat — 45s cadence', () => {
+  it('runs on a 45s interval', () => {
+    expect(heartbeatIntervalMs).toBe(45_000)
+  })
+
+  it('refreshes each interval until stopped, driven by the injected clock (no real timers)', async () => {
+    const refresh = mock(async () => {})
+    const allowlist = fakeAllowlist(new Set(), refresh)
+    const pending: Array<() => void> = []
+    const sleep = mock((_ms: number) => new Promise<void>((resolve) => pending.push(resolve)))
+    const releaseOne = (): void => pending.shift()?.()
+
+    const stop = startMembershipHeartbeat(allowlist, new Set(), { now: () => 0, sleep })
+
+    await flush() // loop reaches the first sleep
+    expect(sleep).toHaveBeenCalledWith(heartbeatIntervalMs)
+
+    releaseOne() // first 45s elapses
+    await flush()
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    releaseOne() // second 45s elapses
+    await flush()
+    expect(refresh).toHaveBeenCalledTimes(2)
+
+    stop()
+    releaseOne() // wake the loop so it observes running=false and exits
+    await flush()
+    expect(refresh).toHaveBeenCalledTimes(2) // no tick after stop
+  })
+})
+
+describe('startAccountTrust — degradation boundary', () => {
+  const prevHome = process.env.THUNDERBOLT_HOME
+  const prevToken = process.env.THUNDERBOLT_TOKEN
+  let home: string
+  let stderr: ReturnType<typeof spyOn>
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'tb-account-trust-'))
+    process.env.THUNDERBOLT_HOME = home
+    delete process.env.THUNDERBOLT_TOKEN
+    stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+
+  afterEach(async () => {
+    stderr.mockRestore()
+    if (prevHome === undefined) delete process.env.THUNDERBOLT_HOME
+    else process.env.THUNDERBOLT_HOME = prevHome
+    if (prevToken === undefined) delete process.env.THUNDERBOLT_TOKEN
+    else process.env.THUNDERBOLT_TOKEN = prevToken
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('disables account auto-trust when stored auth JSON is corrupt', async () => {
+    await writeFile(join(home, 'auth.json'), '{"token":')
+
+    await expect(startAccountTrust(new Set(), 'self-node')).resolves.toBeUndefined()
+
+    expect(stderr).toHaveBeenCalledTimes(1)
+    expect(String(stderr.mock.calls[0][0])).toContain('account auto-trust disabled:')
+    expect(String(stderr.mock.calls[0][0])).toContain('using manual allowlist only')
+  })
+
+  it('reports revoked registration, disables auto-trust, and keeps the manual allowlist active', async () => {
+    await writeFile(join(home, 'auth.json'), JSON.stringify({ token: 'session-token', cloudUrl: 'https://api.test/v1' }))
+    await add('manual-peer')
+    const fetchFn: FetchFn = async () =>
+      new Response(JSON.stringify({ error: 'Bridge device revoked' }), {
+        status: 409,
+        headers: { 'content-type': 'application/json' },
+      })
+
+    const accountTrust = await startAccountTrust(new Set(), 'self-node', fetchFn)
+
+    expect(accountTrust).toBeUndefined()
+    expect(stderr).toHaveBeenCalledTimes(1)
+    expect(String(stderr.mock.calls[0][0])).toBe(
+      '⚡ iroh bridge: this device was revoked on your account — remove it in Settings → Devices to pair again (manual allowlist still works)\n',
+    )
+    expect(accountTrustBanner(accountTrust !== undefined)).toBe(
+      '   same-account auto-trust: off (manual allowlist only)\n' +
+        '   allow a peer with: thunderbolt iroh allow <their-node-id>\n',
+    )
+    expect(await isConnectionAllowed('manual-peer', accountTrust?.accountAllowlist)).toBe(true)
   })
 })

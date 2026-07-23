@@ -12,6 +12,7 @@ import {
 import { type PowerSyncTableName, powersyncTableNames } from '@shared/powersync-tables'
 import { and, eq } from 'drizzle-orm'
 import type { AnyPgTable } from 'drizzle-orm/pg-core'
+import { bridgeDeviceIdPrefix } from './devices'
 
 const validTables = new Set<string>(powersyncTableNames)
 
@@ -24,8 +25,13 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
     'mlkem_public_key',
     'approval_pending',
     'app_version',
-    // node_id binds a device to a P2P identity — trust-sensitive. Only settable via the
-    // canary-gated PATCH /devices/:id/node-id route, never via a raw PowerSync upload.
+    // device_type discriminates a bridge from a normal device and drives the account allowlist
+    // (bridges auto-trust same-account peers). Only the bridge-registration route may set it, so a
+    // client can't relabel its own device a 'bridge' via a raw PowerSync upload.
+    'device_type',
+    // node_id binds a device to a P2P identity — trust-sensitive. Writers are the canary-gated
+    // POST /devices/:id/node-id route for trusted-device administration and the session-pinned
+    // POST /devices/me/node-id route for self-enrollment, never a raw PowerSync upload.
     'node_id',
     'node_id_attested_at',
   ],
@@ -33,6 +39,16 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
 
 /** Tables that cannot be deleted via PowerSync upload — must use dedicated API endpoints. */
 const uploadDenyDelete = new Set<PowerSyncTableName>(['devices'])
+
+/**
+ * The `bridge-${sha256(userId:nodeId)}` device id namespace is derived and written exclusively by
+ * the server (registerBridgeDevice / POST /devices/bridge). A raw client upload sets `user_id` to
+ * itself but `id` freely, so without this guard a client could pre-create a row at a victim's
+ * deterministic bridge id and squat it (the victim's later upsert would conflict on a foreign row
+ * and fail). Reserving the prefix from all client ops keeps bridge rows server-owned.
+ */
+const isReservedDeviceId = (tableName: PowerSyncTableName, id: string) =>
+  tableName === 'devices' && id.startsWith(bridgeDeviceIdPrefix)
 
 type PowerSyncOperation = {
   op: 'PUT' | 'PATCH' | 'DELETE'
@@ -90,6 +106,10 @@ export const applyOperation = async (
   const pkColumn = powersyncPkColumn[tableName]
   const conflictTarget = powersyncConflictTarget[tableName]
   if (!table || !dbNameToKey || !pkColumn || !conflictTarget) {
+    return false
+  }
+
+  if (isReservedDeviceId(tableName, op.id)) {
     return false
   }
 

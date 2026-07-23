@@ -176,6 +176,7 @@ const attachAcpPermissionGate = (
   const sessionAllowed = new Set<string>()
 
   harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
+    if (toolName === 'webfetch') return undefined
     if (isReadOnlyAgentTool(toolName)) {
       const path =
         typeof input === 'object' && input !== null && 'path' in input && typeof input.path === 'string'

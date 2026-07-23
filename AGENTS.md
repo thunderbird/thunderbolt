@@ -74,7 +74,7 @@ Keep the entry bundle small by lazy-loading routes that aren't on the critical l
 
 **Lazy (`React.lazy(() => import(...))`):**
 
-- All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `McpServersPage`, `IntegrationsPage`, dev-only routes).
+- All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `ConnectionsPage`, dev-only routes).
 - Secondary features (`TasksPage`, `AutomationsPage`).
 - `WaitlistPage` and SSO flows (only hit by a subset of users).
 

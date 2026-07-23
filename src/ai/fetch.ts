@@ -57,8 +57,7 @@ import {
   type Tool,
   type ToolSet,
 } from 'ai'
-import { type MCPClient } from '@ai-sdk/mcp'
-import type { NamedMCPClient } from '@/lib/mcp-provider'
+import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import { isClosedConnectionError } from '@/lib/mcp-errors'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import { detectStreamChunk } from './smooth-chunking'

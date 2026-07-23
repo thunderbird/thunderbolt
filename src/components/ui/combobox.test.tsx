@@ -48,6 +48,7 @@ describe('Combobox', () => {
         '[&_[data-slot=command-input-wrapper]]:rounded-lg',
         '[&_[data-slot=command-input-wrapper]]:border',
       )
+      expect(searchInput.parentElement?.parentElement).toHaveClass('p-1')
       expect(popoverContent).toHaveClass('w-[var(--radix-popover-trigger-width)]')
     })
 

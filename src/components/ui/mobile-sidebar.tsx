@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useHaptics } from '@/hooks/use-haptics'
-import { mobileSidebarWidthRatio } from '@/lib/constants'
+import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
+import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { animate, m, useMotionValue, useReducedMotion, useTransform, type PanInfo } from 'framer-motion'
@@ -56,6 +57,7 @@ export const MobileSidebar = ({
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
   const { triggerImpact } = useHaptics()
+  const hasBackdropBlur = isPlatformMobile()
 
   // Honor prefers-reduced-motion: drive every open/close/snap-back with an instant transition
   // (no spring travel) while keeping drag-to-dismiss and the overlay dim intact. Derived during
@@ -126,9 +128,18 @@ export const MobileSidebar = ({
   return (
     <DialogPrimitive.Root open={internalOpen}>
       <DialogPrimitive.Portal>
-        {/* Keep the mobile overlay paint-only. A viewport-sized backdrop filter
-            is recomposited on every frame in WKWebView/Android WebView and
-            causes the drawer animation to stutter on physical devices. */}
+        {/* Keep the filter constant on its own compositing layer. Its opacity
+            follows the drawer so blur and tint fade together without animating
+            the blur radius itself. */}
+        {hasBackdropBlur && (
+          <m.div
+            data-slot="sidebar-blur"
+            className="pointer-events-none fixed inset-0 z-50 backdrop-blur-sm backdrop-saturate-[.25] will-change-opacity"
+            style={{ opacity: overlayOpacity }}
+          />
+        )}
+
+        {/* The interactive tint remains paint-only and shares the same fade. */}
         <m.div
           data-slot="sidebar-overlay"
           className="fixed inset-0 z-50 bg-black/40 will-change-opacity"
@@ -158,7 +169,9 @@ export const MobileSidebar = ({
           <div
             className="relative h-full"
             style={{
-              paddingBottom: 'var(--safe-area-bottom-padding)',
+              paddingBottom: isPlatformMobile()
+                ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
+                : 'var(--safe-area-bottom-padding)',
               paddingTop: 'var(--safe-area-top-padding)',
             }}
           >

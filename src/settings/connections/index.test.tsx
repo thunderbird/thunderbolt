@@ -29,11 +29,8 @@ const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 
 // focused on the DB-driven server list rendering. A MemoryRouter satisfies the
 // page's useLocation/useNavigate (the OAuth callback handler), and the mock
 // HttpClient satisfies useOAuthConnect (the integrations connect flow).
-const neverResolves = (() => new Promise<MCPClient>(() => {})) as (
-  id: string,
-  url: string,
-  type: MCPTransportType,
-) => Promise<MCPClient>
+const neverResolves = (_id: string, _url: string, _type: MCPTransportType): Promise<MCPClient> =>
+  new Promise<MCPClient>(() => {})
 
 const McpProviderWrapper = ({ children }: { children: ReactNode }) => (
   <MemoryRouter>
@@ -258,14 +255,14 @@ describe('ConnectionsPage Add & Authorize', () => {
 
   it('rolls back the created server row and shows the form error when the flow fails to start', async () => {
     const db = getDb()
-    const startMcpOAuthFlow = mock(async () => {
+    const startMcpOAuthFlow: NonNullable<ConnectionsPageDeps['startMcpOAuthFlow']> = mock(async () => {
       throw new Error('Another MCP authorization is already in progress — finish or cancel it first.')
     })
     await renderAddForm(
       {
         probeMcpServerTools: async () => Promise.reject(unauthorized()),
         classifyMcpServerAuth: async () => 'authorizable' as const,
-        startMcpOAuthFlow: startMcpOAuthFlow as unknown as ConnectionsPageDeps['startMcpOAuthFlow'],
+        startMcpOAuthFlow,
       },
       { url: 'https://oauth.example.com/mcp' },
     )
@@ -288,12 +285,14 @@ describe('ConnectionsPage Add & Authorize', () => {
     const db = getDb()
     // A flow that never resolves keeps the first call in flight so the re-entry
     // guard has something to block the second click against.
-    const startMcpOAuthFlow = mock(() => new Promise<never>(() => {}))
+    const startMcpOAuthFlow: NonNullable<ConnectionsPageDeps['startMcpOAuthFlow']> = mock(
+      () => new Promise<never>(() => {}),
+    )
     await renderAddForm(
       {
         probeMcpServerTools: async () => Promise.reject(unauthorized()),
         classifyMcpServerAuth: async () => 'authorizable' as const,
-        startMcpOAuthFlow: startMcpOAuthFlow as unknown as ConnectionsPageDeps['startMcpOAuthFlow'],
+        startMcpOAuthFlow,
       },
       { url: 'https://oauth.example.com/mcp' },
     )
@@ -312,12 +311,14 @@ describe('ConnectionsPage Add & Authorize', () => {
   })
 
   it('closes the add form once the OAuth flow starts cleanly', async () => {
-    const startMcpOAuthFlow = mock(async () => ({ status: 'redirected' as const }))
+    const startMcpOAuthFlow: NonNullable<ConnectionsPageDeps['startMcpOAuthFlow']> = mock(async () => ({
+      status: 'redirected' as const,
+    }))
     await renderAddForm(
       {
         probeMcpServerTools: async () => Promise.reject(unauthorized()),
         classifyMcpServerAuth: async () => 'authorizable' as const,
-        startMcpOAuthFlow: startMcpOAuthFlow as unknown as ConnectionsPageDeps['startMcpOAuthFlow'],
+        startMcpOAuthFlow,
       },
       { url: 'https://oauth.example.com/mcp' },
     )
@@ -330,6 +331,37 @@ describe('ConnectionsPage Add & Authorize', () => {
 
     // The form is gone — no lingering needs-oauth UI to trigger a duplicate add.
     expect(screen.queryByPlaceholderText('http://localhost:8000/mcp/')).not.toBeInTheDocument()
+  })
+})
+
+describe('ConnectionsPage ordinary add', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(cleanup)
+
+  it('creates one row when Add server is activated twice before the first write settles', async () => {
+    const db = getDb()
+    await renderAddForm({ probeMcpServerTools: async () => ['search'] }, { url: 'https://tools.example.com/mcp' })
+    await flushAutoProbe()
+    const addButton = screen.getByRole('button', { name: 'Add server' })
+
+    await act(async () => {
+      fireEvent.click(addButton)
+      fireEvent.click(addButton)
+      await getClock().runAllAsync()
+    })
+
+    expect(await getAllMcpServers(db)).toHaveLength(1)
   })
 })
 
@@ -523,10 +555,7 @@ describe('ConnectionsPage probe lifecycle', () => {
       // First probe (URL A) is held open; the later URL keeps its probe pending too.
       return call === 1 ? new Promise<string[]>((resolve) => (resolveFirst = resolve)) : new Promise<string[]>(() => {})
     })
-    await renderAddForm(
-      { probeMcpServerTools: probeMcpServerTools as unknown as ConnectionsPageDeps['probeMcpServerTools'] },
-      { url: 'https://a.example.com/mcp' },
-    )
+    await renderAddForm({ probeMcpServerTools }, { url: 'https://a.example.com/mcp' })
     // Kick the probe for URL A (stays in flight — the promise is held).
     await act(async () => {
       getClock().tick(700)
@@ -550,10 +579,7 @@ describe('ConnectionsPage probe lifecycle', () => {
 
   it('does not auto-probe after the add form is closed', async () => {
     const probeMcpServerTools = mock(async () => ['tool'])
-    await renderAddForm(
-      { probeMcpServerTools: probeMcpServerTools as unknown as ConnectionsPageDeps['probeMcpServerTools'] },
-      { url: 'https://late.example.com/mcp' },
-    )
+    await renderAddForm({ probeMcpServerTools }, { url: 'https://late.example.com/mcp' })
     // Close the form before the 700ms debounce fires.
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -567,11 +593,17 @@ describe('ConnectionsPage probe lifecycle', () => {
 type CreateClientFn = (serverId: string, url: string, type: MCPTransportType) => Promise<MCPClient>
 
 /** A connected-client stand-in whose tools() reports the given names. */
-const fakeClient = (toolNames: string[]): MCPClient =>
-  ({
-    tools: async () => Object.fromEntries(toolNames.map((name) => [name, {}])),
-    close: () => {},
-  }) as unknown as MCPClient
+const fakeClient = (toolNames: string[]): MCPClient => {
+  const emptyTools: Awaited<ReturnType<MCPClient['tools']>> = {}
+  const tools = new Proxy(emptyTools, {
+    ownKeys: () => toolNames,
+    getOwnPropertyDescriptor: () => ({ configurable: true, enumerable: true }),
+  })
+  return {
+    tools: async () => tools,
+    close: async () => {},
+  }
+}
 
 /** createClient that serves each queued outcome once, failing on extra connects. */
 const queuedCreateClient = (queue: Array<() => Promise<MCPClient>>): CreateClientFn => {

@@ -130,7 +130,7 @@ export const Combobox = ({
             shouldFilter={!isAsync}
             className="overflow-visible rounded-none bg-transparent [&_[data-slot=command-input-wrapper]]:rounded-lg [&_[data-slot=command-input-wrapper]]:border"
           >
-            <div className="relative px-1 pt-1">
+            <div className="relative p-1">
               <CommandInput
                 placeholder={searchPlaceholder}
                 value={isAsync ? searchValue : internalSearch}

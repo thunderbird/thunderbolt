@@ -12,6 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import { useEffect, useRef } from 'react'
@@ -89,7 +90,13 @@ export const ChatList = ({
 
   return (
     <>
-      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0', isCollapsed && 'pt-0')}>
+      <SidebarGroup
+        className={cn(
+          'flex-1 flex flex-col min-h-0 pb-0',
+          isCollapsed && 'pt-0',
+          isMobile && isPlatformMobile() && 'pt-1',
+        )}
+      >
         {isMobile && (
           <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
             {mobileNavToggle}
@@ -107,8 +114,10 @@ export const ChatList = ({
         )}
         {isMobile && searchInput}
         {isMobile && mobileSecondaryNavigation}
-        {isMobile && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
-          <SidebarGroupLabel className="mt-1">Recent Chats</SidebarGroupLabel>
+        {isMobile && !isCollapsed && (
+          <SidebarGroupLabel className="mt-1">
+            {chatThreads.length > 0 || debouncedSearchQuery ? 'Recent Chats' : 'No chats yet'}
+          </SidebarGroupLabel>
         )}
         {!isMobile && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
           <div className="flex items-center justify-between flex-shrink-0">

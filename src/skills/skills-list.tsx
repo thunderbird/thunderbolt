@@ -6,6 +6,8 @@ import { LayoutGroup, m } from 'framer-motion'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { SettingsEmptyState, SettingsNoResults } from '@/components/settings/settings-empty-state'
+import { SettingsListBody, SettingsListPane, SettingsSectionLabel } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
@@ -60,7 +62,7 @@ export const SkillsList = ({
   // floor, the column (header buttons included) stops sliding and tucks
   // under the panel via the parent's overflow clip.
   return (
-    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background p-4 md:min-w-[360px] md:px-5 text-foreground">
+    <SettingsListPane>
       <PageSearch onSearch={setSearch}>
         <PageHeader title="Skills">
           <PageSearch.Button />
@@ -77,7 +79,7 @@ export const SkillsList = ({
           unmounts from one list and remounts in the other, and framer-motion
           animates between the two positions. */}
       <LayoutGroup>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        <SettingsListBody>
           {/* `layout="position"` on the wrappers (not full `layout`) so the
               containers reposition without animating their bounding-box
               SIZE — full `layout` interpolates height via a transform,
@@ -105,7 +107,7 @@ export const SkillsList = ({
 
           {disabledRows.length > 0 && (
             <m.div layout="position" transition={skillRowTransition} className="flex flex-col gap-2">
-              <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Disabled</h2>
+              <SettingsSectionLabel>Disabled</SettingsSectionLabel>
               <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-4">
                 {disabledRows.map((skill) => (
                   <LibraryRow
@@ -126,24 +128,28 @@ export const SkillsList = ({
           {isLibraryEmpty && (
             // The "I deleted everything" empty state — the list is the page's
             // main surface now, so the create CTA lives here.
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-              <h2 className="text-xl">No skills yet</h2>
-              <p className="max-w-md text-sm text-muted-foreground">
-                Skills are reusable instruction templates you summon in chat with{' '}
-                <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
-              </p>
-              <Button size="sm" onClick={onCreate}>
-                <Plus />
-                Create your first skill
-              </Button>
-            </div>
+            <SettingsEmptyState
+              title="No skills yet"
+              description={
+                <>
+                  Skills are reusable instruction templates you summon in chat with{' '}
+                  <code className="rounded-md bg-secondary px-1 font-mono text-xs">/name</code>.
+                </>
+              }
+              action={
+                <Button size="sm" onClick={onCreate}>
+                  <Plus />
+                  Create your first skill
+                </Button>
+              }
+            />
           )}
           {!isLibraryEmpty && enabledRows.length === 0 && disabledRows.length === 0 && (
             // Search-empty state: the library has skills but none match.
-            <p className="flex h-32 items-center justify-center text-sm text-muted-foreground">No matching skills.</p>
+            <SettingsNoResults>No matching skills.</SettingsNoResults>
           )}
-        </div>
+        </SettingsListBody>
       </LayoutGroup>
-    </section>
+    </SettingsListPane>
   )
 }

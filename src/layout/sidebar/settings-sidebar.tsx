@@ -13,6 +13,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { isMobile as isPlatformMobile } from '@/lib/platform'
+import { cn } from '@/lib/utils'
 import { Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
@@ -94,7 +96,12 @@ export const SettingsSidebarContent = ({
           {/* Collapsed: SidebarContent's gap-2 alone spaces the groups and
               their dividers, so the groups' own vertical padding would double
               it. The last group keeps its bottom padding against the footer. */}
-          <SidebarGroup className={isCollapsed ? (index === navGroups.length - 1 ? 'pt-0' : 'py-0') : undefined}>
+          <SidebarGroup
+            className={cn(
+              isCollapsed && (index === navGroups.length - 1 ? 'pt-0' : 'py-0'),
+              isMobile && index === 0 && isPlatformMobile() && 'pt-1',
+            )}
+          >
             {isMobile && index === 0 && (
               <div className="flex h-[var(--touch-height-lg)] items-center">
                 <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />

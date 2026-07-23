@@ -5,10 +5,9 @@
 import { m } from 'framer-motion'
 import { SquarePen, Trash2 } from 'lucide-react'
 
+import { SettingsSelectableRow } from '@/components/settings/settings-list'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { Card } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-import { cn } from '@/lib/utils'
 import type { Skill } from '@/types'
 import { skillDisplayName } from './display'
 
@@ -54,38 +53,21 @@ export const LibraryRow = ({
     <m.li layout layoutId={skill.id} transition={skillRowTransition}>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <Card
-            className={cn(
-              'flex-row items-center gap-0 border-border p-0 transition-colors',
-              isActive ? 'bg-accent' : 'hover:bg-secondary/50',
-            )}
-          >
-            <button
-              type="button"
-              aria-label={`Open ${skillDisplayName(skill)}`}
-              aria-pressed={isActive}
-              onClick={() => onSelect(skill.id)}
-              className="flex min-w-0 flex-1 cursor-pointer items-center rounded-l-[inherit] px-4 py-3 text-left"
-            >
-              <div className="min-w-0 flex-1">
-                <div className={cn('truncate text-base font-medium', !enabled && 'text-muted-foreground')}>
-                  {skillDisplayName(skill)}
-                </div>
-                {skill.description && (
-                  <p className="truncate text-[length:var(--font-size-sm)] text-muted-foreground">
-                    {skill.description}
-                  </p>
-                )}
-              </div>
-            </button>
-            <div className="flex shrink-0 items-center pr-4">
+          <SettingsSelectableRow
+            title={skillDisplayName(skill)}
+            subtitle={skill.description}
+            selected={isActive}
+            dimmed={!enabled}
+            onSelect={() => onSelect(skill.id)}
+            ariaLabel={`Open ${skillDisplayName(skill)}`}
+            trailing={
               <Switch
                 checked={enabled}
                 onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
                 aria-label={`${enabled ? 'Disable' : 'Enable'} ${skillDisplayName(skill)}`}
               />
-            </div>
-          </Card>
+            }
+          />
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-56">
           <ContextMenuItem onClick={() => onEdit(skill.id)} className="cursor-pointer">

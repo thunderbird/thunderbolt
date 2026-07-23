@@ -5,6 +5,7 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { FormFooter } from '@/components/ui/form-footer'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import {
@@ -13,7 +14,6 @@ import {
   ResponsiveModalContent,
   ResponsiveModalContentComposable,
   ResponsiveModalDescription,
-  ResponsiveModalFooter,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from './responsive-modal'
@@ -40,9 +40,9 @@ describe('ResponsiveModal', () => {
         <ResponsiveModalContent>
           <p>Modal content</p>
         </ResponsiveModalContent>
-        <ResponsiveModalFooter>
+        <FormFooter>
           <button type="button">Action</button>
-        </ResponsiveModalFooter>
+        </FormFooter>
       </ResponsiveModal>,
       { wrapper: createTestProvider() },
     )
@@ -94,7 +94,7 @@ describe('ResponsiveModal', () => {
       expect(mobileSurfaceClass).toContain('h-dvh')
       expect(surface).toHaveClass('[&_[data-slot=input]]:!bg-card')
       expect(surface).toHaveClass('[&_[data-slot=combobox-trigger]]:!bg-card')
-      expect(close.className).toContain('h-[var(--touch-height-sm)]')
+      expect(close.className).toContain('size-[var(--touch-height-sm)]')
     })
 
     it('uses the same shell for the composable API', () => {
@@ -161,7 +161,7 @@ describe('ResponsiveModal', () => {
   it('anchors modal actions at the bottom of the surface', () => {
     renderModal()
 
-    expect(screen.getByRole('button', { name: 'Action' }).closest('[data-slot="dialog-footer"]')?.className).toContain(
+    expect(screen.getByRole('button', { name: 'Action' }).closest('[data-slot="form-footer"]')?.className).toContain(
       'mt-auto',
     )
   })

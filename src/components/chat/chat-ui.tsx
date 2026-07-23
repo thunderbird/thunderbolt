@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useIsMobile } from '@/hooks/use-mobile'
+import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, m } from 'framer-motion'
 import { useEffect, useRef } from 'react'
@@ -113,6 +114,7 @@ export default function ChatUI() {
         <m.div
           className={cn(
             '-mt-3 md:-mt-4 relative z-10 px-3 pb-3 md:px-4 md:pb-4 flex',
+            isMobile && isPlatformMobile() && 'pb-0',
             !hasMessages && !isMobile && 'flex-1 items-center',
           )}
           initial={false}

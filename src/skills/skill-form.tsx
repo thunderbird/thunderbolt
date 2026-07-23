@@ -6,8 +6,9 @@ import { Info } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
-import { ResponsiveModalCancel, ResponsiveModalFooter } from '@/components/ui/responsive-modal'
+import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { validateSkillName } from '@/dal'
@@ -181,7 +182,7 @@ export const SkillForm = ({
         </div>
       </div>
 
-      <ResponsiveModalFooter>
+      <FormFooter>
         {submitError && (
           <p role="alert" className="min-w-0 flex-1 truncate text-sm text-destructive">
             {submitError}
@@ -191,7 +192,7 @@ export const SkillForm = ({
         <Button disabled={!canSave} onClick={handleSubmit}>
           {mode === 'edit' ? 'Save' : 'Create'}
         </Button>
-      </ResponsiveModalFooter>
+      </FormFooter>
     </section>
   )
 }

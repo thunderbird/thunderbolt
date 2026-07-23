@@ -10,7 +10,6 @@ import {
   Dialog,
   DialogClose,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogOverlay,
   DialogPortal,
@@ -19,6 +18,7 @@ import {
   modalFieldSurfaceClass,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { modalAnimationClass, modalCloseClass } from '@/components/ui/modal-styles'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -42,9 +42,6 @@ type ResponsiveModalDialogContentProps = ComponentProps<typeof DialogPrimitive.C
 
 /** Mobile pins the close top-LEFT (header actions like the ⋯ menu take the
  *  top-right); desktop centered dialogs keep the conventional top-right. */
-const responsiveModalCloseClass =
-  'ring-offset-background focus:ring-ring absolute z-10 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none'
-
 /** Returns the shared surface classes for a responsive modal viewport and API variant. */
 export const getResponsiveModalSurfaceClass = (isMobile: boolean, surfaceVariant: ResponsiveModalSurfaceVariant) => {
   if (isMobile) {
@@ -79,7 +76,7 @@ const ResponsiveModalDialogContent = ({
         <DialogPrimitive.Content
           data-slot="responsive-modal-content"
           className={cn(
-            'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 flex flex-col duration-200',
+            `${modalAnimationClass} data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 flex flex-col bg-background duration-200`,
             modalFieldSurfaceClass,
             getResponsiveModalSurfaceClass(isMobile, surfaceVariant),
             className,
@@ -98,7 +95,7 @@ const ResponsiveModalDialogContent = ({
           {showCloseButton && (
             <DialogClose
               data-slot="responsive-modal-close"
-              className={cn(responsiveModalCloseClass, isMobile ? 'left-4' : 'right-4')}
+              className={cn(modalCloseClass, isMobile ? 'left-4' : 'right-4')}
               style={{ top: isMobile ? 'calc(var(--safe-area-top-padding, 0px) + 16px)' : 16 }}
             >
               <XIcon className="size-[var(--icon-size-default)]" />
@@ -146,9 +143,9 @@ type ResponsiveModalProps = {
  *     <p>Your content here</p>
  *   </ResponsiveModalContent>
  *
- *   <ResponsiveModalFooter>
+ *   <FormFooter>
  *     <Button onClick={() => setOpen(false)}>Close</Button>
- *   </ResponsiveModalFooter>
+ *   </FormFooter>
  * </ResponsiveModal>
  * ```
  */
@@ -237,17 +234,6 @@ export const ResponsiveModalContent = ({ className, centered, ...props }: Respon
     className={cn('flex-1 py-4 px-1 -mx-1 overflow-auto', centered && 'flex flex-col justify-center', className)}
     {...props}
   />
-)
-
-// =============================================================================
-// Footer component
-// =============================================================================
-
-type ResponsiveModalFooterProps = ComponentProps<'div'>
-
-/** Footer section - stays at bottom of modal */
-export const ResponsiveModalFooter = ({ className, ...props }: ResponsiveModalFooterProps) => (
-  <DialogFooter className={cn('mt-auto flex-shrink-0 flex-row justify-end gap-2 pt-4', className)} {...props} />
 )
 
 /** Standard secondary action for dismissing a responsive modal form. */

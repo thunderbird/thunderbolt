@@ -5,8 +5,7 @@
 import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { Card } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { SettingsSelectableRow } from '@/components/settings/settings-list'
 
 /** The square icon box that leads every agent list row and detail header. */
 export const AgentIconTile = ({ children }: { children: ReactNode }) => (
@@ -50,25 +49,22 @@ export const AgentListRow = ({
   subtitleTestId,
   chevronTestId,
 }: AgentListRowProps) => (
-  <Card data-testid={testId} className="border border-border p-0">
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={ariaLabel}
-      aria-pressed={isSelected}
-      className={cn(
-        'flex w-full cursor-pointer items-center gap-3 rounded-[inherit] px-4 py-3 text-left transition-colors',
-        isSelected ? 'bg-accent' : 'hover:bg-secondary/50',
-      )}
-    >
-      <AgentIconTile>{icon}</AgentIconTile>
-      <div className="min-w-0 flex-1">
-        <div className={cn('truncate text-base font-medium', isDimmed && 'text-muted-foreground')}>{title}</div>
-        <div className="truncate text-[length:var(--font-size-sm)] text-muted-foreground" data-testid={subtitleTestId}>
-          {subtitle}
-        </div>
-      </div>
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" data-testid={chevronTestId} />
-    </button>
-  </Card>
+  <div data-testid={testId}>
+    <SettingsSelectableRow
+      title={title}
+      subtitle={<span data-testid={subtitleTestId}>{subtitle}</span>}
+      leading={<AgentIconTile>{icon}</AgentIconTile>}
+      selected={isSelected}
+      dimmed={isDimmed}
+      onSelect={onOpen}
+      ariaLabel={ariaLabel}
+      trailing={
+        <ChevronRight
+          className="size-4 shrink-0 text-muted-foreground"
+          aria-hidden="true"
+          data-testid={chevronTestId}
+        />
+      }
+    />
+  </div>
 )

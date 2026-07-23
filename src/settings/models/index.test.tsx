@@ -2,16 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createModel } from '@/dal'
+import { createModel, getModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import ModelsPage, { shouldDisableAddModel, systemModelMenuMessage } from './index'
+import { http } from '@/lib/http'
 
 describe('ModelsPage reactivity', () => {
   beforeAll(async () => {
@@ -277,5 +278,85 @@ describe('model card action menu', () => {
     // The model field is a dropdown seeded with the stored model id.
     const modelTrigger = screen.getByRole('combobox')
     expect(modelTrigger).toHaveTextContent('gpt-4')
+  })
+
+  it('does not request a provider catalog merely by opening edit', async () => {
+    const db = getDb()
+    await createModel(db, {
+      id: uuidv7(),
+      provider: 'openai',
+      name: 'Private Key Model',
+      model: 'gpt-4',
+      apiKey: 'sk-never-send',
+      isSystem: 0,
+      enabled: 1,
+    })
+    const getSpy = spyOn(http, 'get')
+
+    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    await waitForElement(() => screen.queryByText('Private Key Model'))
+    await openMenuForModel('Private Key Model')
+    fireEvent.click(await screen.findByText('Edit'))
+    await screen.findByRole('heading', { name: 'Edit Model' })
+
+    expect(getSpy).not.toHaveBeenCalled()
+    getSpy.mockRestore()
+  })
+
+  it('saves name-only edits without requiring a new connection test', async () => {
+    const db = getDb()
+    const id = uuidv7()
+    await createModel(db, {
+      id,
+      provider: 'openai',
+      name: 'Old Name',
+      model: 'gpt-4',
+      apiKey: 'sk-saved',
+      isSystem: 0,
+      enabled: 1,
+    })
+
+    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    await waitForElement(() => screen.queryByText('Old Name'))
+    await openMenuForModel('Old Name')
+    fireEvent.click(await screen.findByText('Edit'))
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'New Name' } })
+    const save = screen.getByRole('button', { name: 'Save' })
+    expect(save).toBeEnabled()
+
+    await act(async () => {
+      fireEvent.click(save)
+      await getClock().runAllAsync()
+    })
+
+    expect((await getModel(db, id))?.name).toBe('New Name')
+    expect((await getModel(db, id))?.apiKey).toBe('sk-saved')
+  })
+
+  it('clears a retained local API key only after explicit confirmation', async () => {
+    const db = getDb()
+    const id = uuidv7()
+    await createModel(db, {
+      id,
+      provider: 'openai',
+      name: 'Clearable Key',
+      model: 'gpt-4',
+      apiKey: 'sk-remove',
+      isSystem: 0,
+      enabled: 1,
+    })
+
+    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    await waitForElement(() => screen.queryByText('Clearable Key'))
+    await openMenuForModel('Clearable Key')
+    fireEvent.click(await screen.findByText('Edit'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear saved API key' }))
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await getClock().runAllAsync()
+    })
+
+    expect((await getModel(db, id))?.apiKey).toBeNull()
   })
 })

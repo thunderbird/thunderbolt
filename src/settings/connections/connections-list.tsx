@@ -5,14 +5,20 @@
 import { Plug, Plus, SquarePen, Trash2 } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
+import { SettingsEmptyState, SettingsNoResults } from '@/components/settings/settings-empty-state'
+import {
+  SettingsListBody,
+  SettingsListPane,
+  SettingsSectionLabel,
+  SettingsSelectableRow,
+} from '@/components/settings/settings-list'
 import { StatusIndicator, type StatusState } from '@/components/status-indicator'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Switch } from '@/components/ui/switch'
-import { cn } from '@/lib/utils'
+import { StatusCard } from '@/components/ui/status-card'
 import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName, serverMatchesQuery } from './display'
 import type { Integration } from './types'
@@ -36,38 +42,23 @@ const ConnectionRow = ({
   onSelect: () => void
   switchProps: { checked: boolean; disabled?: boolean; onCheckedChange: (next: boolean) => void; label: string }
 }) => (
-  <Card
-    className={cn(
-      'flex-row items-center gap-0 border-border p-0 transition-colors',
-      isActive ? 'bg-accent' : 'hover:bg-secondary/50',
-    )}
-  >
-    <button
-      type="button"
-      aria-label={`Open ${title}`}
-      aria-pressed={isActive}
-      onClick={onSelect}
-      className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-l-[inherit] px-4 py-3 text-left"
-    >
-      <span className="flex size-5 shrink-0 items-center justify-center">{leading}</span>
-      <span className="min-w-0 flex-1">
-        <span className={cn('block truncate text-base font-medium', disabledLook && 'text-muted-foreground')}>
-          {title}
-        </span>
-        {subtitle && (
-          <span className="block truncate text-[length:var(--font-size-sm)] text-muted-foreground">{subtitle}</span>
-        )}
-      </span>
-    </button>
-    <div className="flex shrink-0 items-center pr-4">
+  <SettingsSelectableRow
+    title={title}
+    subtitle={subtitle}
+    leading={<span className="flex size-5 items-center justify-center">{leading}</span>}
+    selected={isActive}
+    dimmed={disabledLook}
+    onSelect={onSelect}
+    ariaLabel={`Open ${title}`}
+    trailing={
       <Switch
         checked={switchProps.checked}
         disabled={switchProps.disabled}
         onCheckedChange={switchProps.onCheckedChange}
         aria-label={switchProps.label}
       />
-    </div>
-  </Card>
+    }
+  />
 )
 
 const IntegrationRow = ({
@@ -176,6 +167,7 @@ export const ConnectionsList = ({
   onToggleServer,
   onEditServer,
   onDeleteServer,
+  error,
 }: {
   integrations: Integration[]
   /** True once the async sources behind the integrations' enabled state have
@@ -194,6 +186,7 @@ export const ConnectionsList = ({
   onToggleServer: (id: string, next: boolean) => void
   onEditServer: (id: string) => void
   onDeleteServer: (id: string) => void
+  error?: string | null
 }) => {
   const [search, setSearch] = useState('')
 
@@ -212,7 +205,7 @@ export const ConnectionsList = ({
   // squeezes the list to this floor, the column stops sliding and tucks under
   // the panel via the parent's overflow clip.
   return (
-    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background p-4 md:min-w-[360px] md:px-5 text-foreground">
+    <SettingsListPane>
       <PageSearch onSearch={setSearch}>
         <PageHeader title="Connections">
           <PageSearch.Button />
@@ -224,7 +217,9 @@ export const ConnectionsList = ({
         <PageSearch.Input placeholder="Search connections" onSearch={setSearch} />
       </PageSearch>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+      {error && <StatusCard title="Connection update failed" description={error} />}
+
+      <SettingsListBody>
         {filteredIntegrations.length > 0 && (
           <ul className="flex flex-col gap-4">
             {filteredIntegrations.map((integration) => (
@@ -241,7 +236,7 @@ export const ConnectionsList = ({
 
         {filteredServers.length > 0 && (
           <div className="mt-5 flex flex-col gap-2">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">MCP servers</h2>
+            <SettingsSectionLabel>MCP servers</SettingsSectionLabel>
             <ul className="flex flex-col gap-4">
               {filteredServers.map((server) => (
                 <ServerRow
@@ -260,24 +255,21 @@ export const ConnectionsList = ({
         )}
 
         {servers.length === 0 && !search.trim() && (
-          <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-muted-foreground/25 px-6 py-10 text-center">
-            <Plug className="size-8 text-muted-foreground" aria-hidden="true" />
-            <p className="max-w-md text-sm text-muted-foreground">
-              Connect your own MCP servers to give agents more tools.
-            </p>
-            <Button size="sm" onClick={onAdd}>
-              <Plus />
-              Add your first server
-            </Button>
-          </div>
+          <SettingsEmptyState
+            className="mt-1"
+            icon={<Plug className="size-8 text-muted-foreground" aria-hidden="true" />}
+            description="Connect your own MCP servers to give agents more tools."
+            action={
+              <Button size="sm" onClick={onAdd}>
+                <Plus />
+                Add your first server
+              </Button>
+            }
+          />
         )}
 
-        {nothingMatches && search.trim() && (
-          <p className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-            No matching connections.
-          </p>
-        )}
-      </div>
-    </section>
+        {nothingMatches && search.trim() && <SettingsNoResults>No matching connections.</SettingsNoResults>}
+      </SettingsListBody>
+    </SettingsListPane>
   )
 }

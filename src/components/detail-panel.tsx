@@ -100,8 +100,8 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
         className={cn(
           'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto md:pt-4',
           subtitle ? 'pt-8' : 'pt-6',
-          '[&_[data-slot=dialog-footer]]:sticky [&_[data-slot=dialog-footer]]:bottom-0 [&_[data-slot=dialog-footer]]:z-10 [&_[data-slot=dialog-footer]]:bg-background',
-          'md:[&_[data-slot=dialog-footer]]:static md:[&_[data-slot=dialog-footer]]:bg-transparent',
+          '[&_[data-slot=form-footer]]:sticky [&_[data-slot=form-footer]]:bottom-0 [&_[data-slot=form-footer]]:z-10 [&_[data-slot=form-footer]]:bg-background',
+          'md:[&_[data-slot=form-footer]]:static md:[&_[data-slot=form-footer]]:bg-transparent',
         )}
       >
         {children}
@@ -141,7 +141,15 @@ export const DetailPanelSurface = ({ open, isMobile, onClose, children }: Detail
         className="[filter:drop-shadow(var(--shadow-glow-strong))] dark:[filter:drop-shadow(0_0_32px_rgb(0_0_0/24%))]"
       >
         <div className="h-full pb-12">
-          <div className="h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar">
+          <div
+            className={cn(
+              'h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar',
+              '[&_[data-slot=input]]:bg-background [&_[data-slot=textarea]]:bg-background',
+              '[&_[data-slot=select-trigger]]:bg-background [&_[data-slot=combobox-trigger]]:bg-background',
+              'dark:[&_[data-slot=input]]:bg-input dark:[&_[data-slot=textarea]]:bg-input',
+              'dark:[&_[data-slot=select-trigger]]:bg-input dark:[&_[data-slot=combobox-trigger]]:bg-input',
+            )}
+          >
             {children}
           </div>
         </div>

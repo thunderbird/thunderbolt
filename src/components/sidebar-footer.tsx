@@ -36,7 +36,7 @@ import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
 import { getDownloadUrl } from '@/lib/download-links'
-import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
+import { isMobile as isPlatformMobile, isWebDesktopPlatform, isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -283,6 +283,7 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
           '!gap-0 bg-sidebar',
           hasContentBelow && 'shadow-[0_-8px_16px_-14px_rgba(0,0,0,0.35)]',
           isDesktopCollapsed && '!p-0',
+          isMobile && isPlatformMobile() && '!pb-0',
           className,
         )}
       >

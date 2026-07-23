@@ -14,7 +14,8 @@ import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
 import { SidebarWebview } from '@/content-view/sidebar-webview'
 import { Sideview } from '@/content-view/sideview'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isTauri } from '@/lib/platform'
+import { edgeSpacing } from '@/lib/constants'
+import { isMobile as isPlatformMobile, isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
 import { Suspense, useEffect, useRef } from 'react'
@@ -107,8 +108,12 @@ export default function Page() {
                 // it already covers that region, so subtract it. Without this, the
                 // safe-area inset stacks on top of `chat-ui`'s `var(--kb)` and shoves
                 // a bottom-anchored input well above the keyboard (THU-586). At rest
-                // (`--kb` = 0) this is just the full safe-area inset, unchanged.
-                paddingBottom: 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
+                // (`--kb` = 0) this is the full safe-area inset. Native mobile keeps
+                // at least the standard 12px edge spacing when the inset is smaller.
+                paddingBottom:
+                  isMobile && isPlatformMobile()
+                    ? `max(var(--safe-area-bottom-padding) - var(--kb, 0px), ${edgeSpacing.mobile}px)`
+                    : 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
               }}
             >
               <Suspense fallback={<PageFallback />}>

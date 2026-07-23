@@ -110,7 +110,7 @@ const PageSearchInput = ({
         ref={inputRef}
         inputSize="lg"
         showIcon
-        className={cn('rounded-xl bg-card', className)}
+        className={cn('rounded-lg bg-card', className)}
         placeholder={placeholder}
         value={searchValue}
         onChange={handleChange}

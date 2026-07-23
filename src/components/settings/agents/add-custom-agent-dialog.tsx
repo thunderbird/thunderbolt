@@ -5,9 +5,10 @@
 import { useReducer } from 'react'
 import { Check, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ResponsiveModalCancel, ResponsiveModalFooter } from '@/components/ui/responsive-modal'
+import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { StatusCard } from '@/components/ui/status-card'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
@@ -275,7 +276,7 @@ export const AddCustomAgentDialog = ({
           </p>
         )}
       </div>
-      <ResponsiveModalFooter>
+      <FormFooter>
         {state.submitError && (
           <p role="alert" className="min-w-0 flex-1 truncate text-[length:var(--font-size-sm)] text-destructive">
             {state.submitError}
@@ -285,7 +286,7 @@ export const AddCustomAgentDialog = ({
         <Button onClick={handleSubmit} disabled={!canSubmit}>
           Add agent
         </Button>
-      </ResponsiveModalFooter>
+      </FormFooter>
     </div>
   )
 }

@@ -6,11 +6,11 @@ import { HardDrive, Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import {
   ResponsiveModal,
   ResponsiveModalContent,
   ResponsiveModalDescription,
-  ResponsiveModalFooter,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
@@ -64,7 +64,7 @@ export const RevokedDeviceModal = ({ open }: RevokedDeviceModalProps) => {
         />
       </ResponsiveModalContent>
 
-      <ResponsiveModalFooter className="justify-end">
+      <FormFooter className="justify-end">
         <Button
           variant={selectedOption === 'delete' ? 'destructive' : 'default'}
           onClick={handleConfirm}
@@ -79,7 +79,7 @@ export const RevokedDeviceModal = ({ open }: RevokedDeviceModalProps) => {
             'Confirm'
           )}
         </Button>
-      </ResponsiveModalFooter>
+      </FormFooter>
     </ResponsiveModal>
   )
 }

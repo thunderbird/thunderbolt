@@ -7,10 +7,12 @@ import type { ComponentProps, KeyboardEvent, ReactNode } from 'react'
 
 import { IrohPairingPanel } from '@/components/settings/iroh-pairing-panel'
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ResponsiveModalCancel, ResponsiveModalFooter } from '@/components/ui/responsive-modal'
+import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { StatusCard } from '@/components/ui/status-card'
 import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import type { UseAddServerFormResult } from '@/hooks/use-add-server-form'
@@ -36,7 +38,7 @@ const toneIconClasses: Record<StatusTone, string> = {
 }
 
 /** A status box (toned icon + bold title row) used by the form's result panels. */
-const StatusPanel = ({
+const ResultStatusCard = ({
   tone,
   icon,
   title,
@@ -47,13 +49,9 @@ const StatusPanel = ({
   title: string
   children?: ReactNode
 }) => (
-  <div className="rounded-lg border border-border bg-card p-4">
-    <div className="flex items-center gap-2 text-foreground">
-      <span className={toneIconClasses[tone]}>{icon}</span>
-      <span className="font-medium">{title}</span>
-    </div>
+  <StatusCard icon={<span className={toneIconClasses[tone]}>{icon}</span>} title={title}>
     {children}
-  </div>
+  </StatusCard>
 )
 
 /**
@@ -265,7 +263,7 @@ export const McpServerForm = ({
                 )}
 
                 {testResult.kind === 'success' && (
-                  <StatusPanel tone="success" icon={<Check className="h-4 w-4" />} title="Connection successful!">
+                  <ResultStatusCard tone="success" icon={<Check className="h-4 w-4" />} title="Connection successful!">
                     {serverCapabilities.length > 0 && (
                       <div className="mt-3">
                         <p className="text-sm font-medium text-foreground">Available tools:</p>
@@ -279,7 +277,7 @@ export const McpServerForm = ({
                         </ul>
                       </div>
                     )}
-                  </StatusPanel>
+                  </ResultStatusCard>
                 )}
 
                 {testResult.kind !== 'success' &&
@@ -287,9 +285,9 @@ export const McpServerForm = ({
                   (() => {
                     const panel = testResultPanels[testResult.kind]
                     return (
-                      <StatusPanel tone={panel.tone} icon={panel.icon} title={panel.title}>
+                      <ResultStatusCard tone={panel.tone} icon={panel.icon} title={panel.title}>
                         <p className="text-sm mt-1 text-muted-foreground">{panel.body}</p>
-                      </StatusPanel>
+                      </ResultStatusCard>
                     )
                   })()}
               </>
@@ -318,14 +316,14 @@ export const McpServerForm = ({
 
         {errorPanel && (
           <div className="mb-2">
-            <StatusPanel tone="destructive" icon={<X className="h-4 w-4" />} title={errorPanel.title}>
+            <ResultStatusCard tone="destructive" icon={<X className="h-4 w-4" />} title={errorPanel.title}>
               <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{errorPanel.body}</p>
-            </StatusPanel>
+            </ResultStatusCard>
           </div>
         )}
       </div>
 
-      <ResponsiveModalFooter>
+      <FormFooter>
         <ResponsiveModalCancel onClick={onCancel}>Cancel</ResponsiveModalCancel>
         {form.editingServerId ? (
           <Button
@@ -336,11 +334,11 @@ export const McpServerForm = ({
             // OAuth edits keep the existing credential valid.
             disabled={!isSaveReady || (!editProbeWaived && testResult.kind !== 'success') || isSavePending}
           >
-            Save Changes
+            {isSavePending ? 'Saving…' : 'Save Changes'}
           </Button>
         ) : mode === 'advanced' ? (
           <Button onClick={onImportConfig} disabled={!jsonText.trim() || isImportPending}>
-            Import Servers
+            {isImportPending ? 'Importing…' : 'Import Servers'}
           </Button>
         ) : !isIroh && testResult.kind === 'needs-oauth' ? (
           <Button onClick={onAddAndAuthorize} disabled={!isUrlReady || isAddAuthorizePending}>
@@ -348,11 +346,14 @@ export const McpServerForm = ({
             Add &amp; Authorize
           </Button>
         ) : (
-          <Button onClick={onAddServer} disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success')}>
-            Add server
+          <Button
+            onClick={onAddServer}
+            disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success') || isSavePending}
+          >
+            {isSavePending ? 'Adding…' : 'Add server'}
           </Button>
         )}
-      </ResponsiveModalFooter>
+      </FormFooter>
     </div>
   )
 }

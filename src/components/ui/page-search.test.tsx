@@ -14,7 +14,7 @@ describe('PageSearch', () => {
       </PageSearch>,
     )
 
-    expect(screen.getByPlaceholderText('Search items')).toHaveClass('rounded-xl', 'bg-card')
+    expect(screen.getByPlaceholderText('Search items')).toHaveClass('rounded-lg', 'bg-card')
   })
 
   it('adds space below the input only while search is open', () => {

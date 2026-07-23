@@ -5,7 +5,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
-import { ResponsiveModalFooter } from './ui/responsive-modal'
+import { FormFooter } from './ui/form-footer'
 import { DetailPanel, DetailPanelSurface } from './detail-panel'
 
 describe('DetailPanelSurface', () => {
@@ -20,9 +20,9 @@ describe('DetailPanelSurface', () => {
       <DetailPanelSurface open isMobile onClose={onClose}>
         <DetailPanel title="Detail title" onClose={onClose}>
           <p>Detail body</p>
-          <ResponsiveModalFooter>
+          <FormFooter>
             <button type="button">Save</button>
-          </ResponsiveModalFooter>
+          </FormFooter>
         </DetailPanel>
       </DetailPanelSurface>,
     )
@@ -30,7 +30,7 @@ describe('DetailPanelSurface', () => {
     expect(document.querySelector('[data-slot="responsive-modal-content"]')).toBeInTheDocument()
     expect(screen.getByText('Detail body')).toBeInTheDocument()
     const scrollArea = screen.getByText('Detail body').parentElement
-    expect(scrollArea).toHaveClass('pt-6', 'md:pt-4', '[&_[data-slot=dialog-footer]]:sticky')
+    expect(scrollArea).toHaveClass('pt-6', 'md:pt-4', '[&_[data-slot=form-footer]]:sticky')
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledTimes(1)

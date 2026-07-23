@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Check, Copy, LockKeyhole, MoreVertical, RefreshCw, SquarePen, Trash2 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { AvailableTools } from '@/components/available-tools'
@@ -63,6 +63,15 @@ export const McpServerDetail = ({
   const [copied, setCopied] = useState(false)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current) {
+        clearTimeout(copiedTimerRef.current)
+      }
+    },
+    [],
+  )
+
   const handleCopyUrl = async () => {
     try {
       await navigator.clipboard.writeText(server.url ?? '')
@@ -120,13 +129,13 @@ export const McpServerDetail = ({
             {connectionError && (
               <Button variant="outline" size="sm" disabled={isRetrying} onClick={onRetry}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
-                {isRetrying ? 'Retrying...' : 'Retry connection'}
+                {isRetrying ? 'Retrying…' : 'Retry connection'}
               </Button>
             )}
             {(showAuthorize || isAuthorizing) && (
               <Button variant="outline" size="sm" disabled={isAuthorizing} onClick={onAuthorize}>
                 <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
-                {isAuthorizing ? 'Authorizing...' : 'Authorize'}
+                {isAuthorizing ? 'Authorizing…' : 'Authorize'}
               </Button>
             )}
             {isAuthorized && (

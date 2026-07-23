@@ -5,6 +5,33 @@
 import { eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpSecretsTable } from '../db/tables'
+import type { DrizzleQueryWithPromise } from '@/types'
+
+export type McpCredentialSummary = {
+  id: string
+  type: 'bearer' | 'oauth'
+  bearerToken?: string
+}
+
+/** Query all local MCP credentials without exposing the storage table to UI code. */
+export const getMcpServerCredentialRows = (db: AnyDrizzleDatabase) => {
+  const query = db.select().from(mcpSecretsTable)
+  return query as typeof query & DrizzleQueryWithPromise<{ id: string; credentials: string | null }>
+}
+
+/** Converts a persisted credential row to the limited shape needed by settings UI. */
+export const parseMcpCredentialSummary = (row: {
+  id: string
+  credentials: string | null
+}): McpCredentialSummary | null => {
+  if (!row.credentials) {
+    return null
+  }
+  const credentials = JSON.parse(row.credentials) as McpServerCredentials
+  return credentials.type === 'bearer'
+    ? { id: row.id, type: 'bearer', bearerToken: credentials.token }
+    : { id: row.id, type: 'oauth' }
+}
 
 /** Credential blob stored on-device for an MCP server. Forward-supports OAuth token sets. */
 export type McpServerCredentials =

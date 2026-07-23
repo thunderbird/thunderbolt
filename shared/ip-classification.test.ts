@@ -105,6 +105,28 @@ describe('IP literal parsing', () => {
   test.each(['example.com', '', '1.2.3', '256.0.0.1', '2001::db8::1', '2001:db8::zzzz'])('rejects %s', (value) => {
     expect(parseIpAddress(value)).toBeUndefined()
   })
+
+  test.each([
+    ['1.2.3.', 'empty IPv4 segment'],
+    ['1..2.3', 'empty IPv4 segment'],
+    ['1,2.3.4', 'bad IPv4 separator'],
+    ['1234.2.3.4', 'overlong IPv4 part'],
+    ['1.2.3.4.5', 'overlong IPv4 part list'],
+    ['2001:db8:0:0:0:0:1', 'truncated IPv6 group list'],
+    ['2001:db8:0:0:0:0:1:', 'empty IPv6 segment'],
+    ['2001-db8::1', 'bad IPv6 separator'],
+    ['[2001:db8::1', 'missing closing IPv6 bracket'],
+    ['2001:db8::1]', 'missing opening IPv6 bracket'],
+    ['2001:db8:00000::1', 'overlong IPv6 group'],
+    ['1:2:3:4:5:6:7:8:9', 'overlong IPv6 group list'],
+    ['::ffff:192.0.2', 'truncated embedded IPv4 tail'],
+    ['::ffff:192..2.1', 'empty embedded IPv4 segment'],
+    ['::ffff:192-0.2.1', 'bad embedded IPv4 separator'],
+    ['::ffff:192.0.2.1000', 'overlong embedded IPv4 part'],
+    ['::ffff:192.0.2.1.5', 'overlong embedded IPv4 part list'],
+  ] as const)('rejects %s (%s)', (value) => {
+    expect(parseIpAddress(value)).toBeUndefined()
+  })
 })
 
 describe('private and internal IP classification', () => {

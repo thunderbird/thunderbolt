@@ -63,8 +63,12 @@ const parseIpv4 = (address: string): bigint | undefined => {
 
 /** Parse compressed or full IPv6 into a 128-bit integer. */
 const parseIpv6 = (address: string): bigint | undefined => {
-  const normalizedAddress = address.replace(/^\[|\]$/g, '').split('%')[0]
-  if (!normalizedAddress?.includes(':')) return undefined
+  const hasOpeningBracket = address.startsWith('[')
+  const hasClosingBracket = address.endsWith(']')
+  if (hasOpeningBracket !== hasClosingBracket) return undefined
+  const unwrappedAddress = hasOpeningBracket ? address.slice(1, -1) : address
+  const normalizedAddress = unwrappedAddress.split('%')[0]
+  if (normalizedAddress === undefined || !normalizedAddress.includes(':')) return undefined
   const dottedTail = normalizedAddress.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/)?.[1]
   const ipv4Tail = dottedTail ? parseIpv4(dottedTail) : undefined
   if (dottedTail && ipv4Tail === undefined) return undefined
@@ -102,20 +106,22 @@ const isInCidr = (value: bigint, network: bigint, prefixLength: number, addressB
 /** Extract IPv4 embedded by an IPv6 mapping or transition mechanism. */
 export const extractEmbeddedIpv4Address = (address: ParsedIpAddress): EmbeddedIpv4Address | undefined => {
   if (address.version === 4) return undefined
-  if (isInCidr(address.value, ipv4MappedNetwork, 96, 128)) {
-    return { mechanism: 'ipv4-mapped', address: { version: 4, value: address.value & ipv4Mask } }
+  const ipv6Value = address.value
+  if (typeof ipv6Value !== 'bigint') return undefined
+  if (isInCidr(ipv6Value, ipv4MappedNetwork, 96, 128)) {
+    return { mechanism: 'ipv4-mapped', address: { version: 4, value: ipv6Value & ipv4Mask } }
   }
-  if (isInCidr(address.value, rfc6052Network, 96, 128)) {
-    return { mechanism: 'rfc6052', address: { version: 4, value: address.value & ipv4Mask } }
+  if (isInCidr(ipv6Value, rfc6052Network, 96, 128)) {
+    return { mechanism: 'rfc6052', address: { version: 4, value: ipv6Value & ipv4Mask } }
   }
-  if (isInCidr(address.value, rfc6145Network, 96, 128)) {
-    return { mechanism: 'rfc6145', address: { version: 4, value: address.value & ipv4Mask } }
+  if (isInCidr(ipv6Value, rfc6145Network, 96, 128)) {
+    return { mechanism: 'rfc6145', address: { version: 4, value: ipv6Value & ipv4Mask } }
   }
-  if (isInCidr(address.value, sixToFourNetwork, 16, 128)) {
-    return { mechanism: '6to4', address: { version: 4, value: (address.value >> 80n) & ipv4Mask } }
+  if (isInCidr(ipv6Value, sixToFourNetwork, 16, 128)) {
+    return { mechanism: '6to4', address: { version: 4, value: (ipv6Value >> 80n) & ipv4Mask } }
   }
-  if (isInCidr(address.value, teredoNetwork, 32, 128)) {
-    return { mechanism: 'teredo', address: { version: 4, value: (address.value & ipv4Mask) ^ ipv4Mask } }
+  if (isInCidr(ipv6Value, teredoNetwork, 32, 128)) {
+    return { mechanism: 'teredo', address: { version: 4, value: (ipv6Value & ipv4Mask) ^ ipv4Mask } }
   }
   return undefined
 }

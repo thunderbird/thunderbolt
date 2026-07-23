@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AlertCircle, CheckCircle2, Loader2, ShieldQuestion, Terminal } from 'lucide-react'
+import { AlertCircle, Loader2, ShieldQuestion, Terminal } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useReducer, useRef } from 'react'
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { GradientCheck } from '@/components/ui/gradient-check'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth, type AuthClient } from '@/contexts'
@@ -224,9 +225,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
       {state.status === 'approved' && (
         <>
           <DialogHeader>
-            <div className={`${iconWrapper} bg-green-100 dark:bg-green-900/30`}>
-              <CheckCircle2 className="size-[var(--icon-size-default)] text-green-600 dark:text-green-400" />
-            </div>
+            <GradientCheck className="mx-auto mb-4 size-12" />
             <DialogTitle className="text-center text-xl">Sign-in approved</DialogTitle>
             <DialogDescription className="text-center">You can return to your terminal.</DialogDescription>
           </DialogHeader>

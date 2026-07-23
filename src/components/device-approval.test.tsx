@@ -163,6 +163,9 @@ describe('DeviceApproval', () => {
 
       expect(screen.getByText('Sign-in approved')).toBeInTheDocument()
       expect(screen.getByText('You can return to your terminal.')).toBeInTheDocument()
+      const successIcon = screen.getByText('Sign-in approved').closest('[role="dialog"]')?.querySelector('svg')
+      expect(successIcon?.querySelector('linearGradient')).toBeInTheDocument()
+      expect(successIcon).toHaveAttribute('aria-hidden', 'true')
       expect(fetch).toHaveBeenCalledWith('/device/approve', { method: 'POST', body: { userCode: 'ABCD1234' } })
     })
   })

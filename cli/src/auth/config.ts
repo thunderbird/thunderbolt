@@ -19,16 +19,35 @@ type Env = Record<string, string | undefined>
 /** Cloud URL used when `THUNDERBOLT_CLOUD_URL` is unset — matches the app default. */
 export const defaultCloudUrl = 'http://localhost:8000/v1'
 
+/** App URL used when `THUNDERBOLT_APP_URL` is unset in a local development build. */
+export const defaultAppUrl = 'http://localhost:1420'
+
+const bakedCloudUrl = process.env.THUNDERBOLT_BUILD_CLOUD_URL
+const bakedAppUrl = process.env.THUNDERBOLT_BUILD_APP_URL
+
 /** Client id the CLI presents to the device-authorization endpoint (RFC 8628). */
 export const cliClientId = 'thunderbolt-cli'
 
 /**
  * Resolve the backend cloud URL: the `THUNDERBOLT_CLOUD_URL` env var (the CLI's
- * mirror of the app's `VITE_THUNDERBOLT_CLOUD_URL`) or the localhost default.
+ * mirror of the app's `VITE_THUNDERBOLT_CLOUD_URL`), the baked release default,
+ * or the localhost development default.
  *
  * @param env - environment map (defaults to `process.env`)
+ * @param buildDefault - URL baked into a release binary at compile time
  */
-export const resolveCloudUrl = (env: Env = process.env): string => env.THUNDERBOLT_CLOUD_URL || defaultCloudUrl
+export const resolveCloudUrl = (env: Env = process.env, buildDefault = bakedCloudUrl): string =>
+  env.THUNDERBOLT_CLOUD_URL || buildDefault || defaultCloudUrl
+
+/**
+ * Resolve the Thunderbolt app URL used in pairing instructions: the runtime
+ * `THUNDERBOLT_APP_URL`, the baked release default, or local development.
+ *
+ * @param env - environment map (defaults to `process.env`)
+ * @param buildDefault - URL baked into a release binary at compile time
+ */
+export const resolveAppUrl = (env: Env = process.env, buildDefault = bakedAppUrl): string =>
+  env.THUNDERBOLT_APP_URL || buildDefault || defaultAppUrl
 
 /**
  * Normalize a backend cloud URL to its `…/v1` API base. Accepts URLs with or

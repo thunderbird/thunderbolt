@@ -32,6 +32,7 @@ import {
   heartbeatTick,
   heartbeatIntervalMs,
   isConnectionAllowed,
+  renderIrohBridgeBanner,
   type OpenConnection,
   remoteKey,
   startAccountTrust,
@@ -41,6 +42,38 @@ import {
 /** UTF-8 bytes of a close reason, computed independently of `reasonBytes`. */
 const bytesOf = (s: string): number[] => [...Buffer.from(s, 'utf8')]
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
+
+describe('renderIrohBridgeBanner', () => {
+  const baseConfig = {
+    transport: 'iroh',
+    port: 0,
+    command: ['local-agent'],
+  } as const
+
+  it('directs ACP bridge pairing to the app agents page', () => {
+    const banner = renderIrohBridgeBanner(
+      { ...baseConfig, protocol: 'acp' },
+      'acp-node',
+      'acp-ticket',
+      false,
+      'https://app.example.com/',
+    )
+
+    expect(banner).toContain('   pair in Thunderbolt app: https://app.example.com/settings/agents\n')
+  })
+
+  it('directs MCP bridge pairing to the app MCP servers page', () => {
+    const banner = renderIrohBridgeBanner(
+      { ...baseConfig, protocol: 'mcp' },
+      'mcp-node',
+      'mcp-ticket',
+      false,
+      'https://app.example.com',
+    )
+
+    expect(banner).toContain('   pair in Thunderbolt app: https://app.example.com/settings/mcp-servers\n')
+  })
+})
 
 describe('createRateLimiter — sliding window', () => {
   it('allows up to max within the window, then refuses', () => {

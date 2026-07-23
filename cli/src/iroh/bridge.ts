@@ -18,7 +18,7 @@
 import type { Connection, Incoming } from '@number0/iroh'
 import { hostname } from 'node:os'
 import type { BridgeConfig } from '../agent/types.ts'
-import { isSecureCloudUrl } from '../auth/config.ts'
+import { isSecureCloudUrl, resolveAppUrl } from '../auth/config.ts'
 import type { Clock } from '../auth/device-grant.ts'
 import { resolveBridgeCredential } from '../auth/token-store.ts'
 import { atProcCapacity, redactArgv, spawnAgent, type BridgeProc } from '../commands/bridge.ts'
@@ -437,6 +437,34 @@ export const accountTrustBanner = (enabled: boolean): string =>
       '   allow a peer with: thunderbolt iroh allow <their-node-id>\n'
 
 /**
+ * Render startup details, including exact app page where this bridge is paired.
+ *
+ * @param config - bridge protocol, transport, port, and spawned command
+ * @param nodeId - bridge's public iroh node id
+ * @param ticket - bridge's current iroh connection ticket
+ * @param accountTrustEnabled - whether same-account auto-trust initialized
+ * @param appUrl - Thunderbolt app base URL
+ */
+export const renderIrohBridgeBanner = (
+  config: BridgeConfig,
+  nodeId: string,
+  ticket: string,
+  accountTrustEnabled: boolean,
+  appUrl: string = resolveAppUrl(),
+): string => {
+  const settingsPath = config.protocol === 'acp' ? '/settings/agents' : '/settings/mcp-servers'
+  const pairingUrl = `${appUrl.replace(/\/+$/, '')}${settingsPath}`
+  return (
+    `⚡ thunderbolt ${config.protocol} bridge (iroh) ready\n` +
+    `   node id: ${nodeId}\n` +
+    `   ticket:  ${ticket}\n` +
+    `   pair in Thunderbolt app: ${pairingUrl}\n` +
+    `   spawning per connection: ${redactArgv(config.command)}\n` +
+    accountTrustBanner(accountTrustEnabled)
+  )
+}
+
+/**
  * Wire same-account auto-trust when this bridge has a backend credential:
  * resolve it (env PAT via `x-api-key`, else the stored device-grant session bearer),
  * self-register the bridge's bare NodeId, prime the account allowlist before any
@@ -509,13 +537,7 @@ export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
   const handshakeGuard = createHandshakeGuard(maxConcurrentHandshakes)
   const accountTrust = await startAccountTrust(openConnections, nodeId)
 
-  process.stdout.write(
-    `⚡ thunderbolt ${config.protocol} bridge (iroh) ready\n` +
-      `   node id: ${nodeId}\n` +
-      `   ticket:  ${ticket}\n` +
-      `   spawning per connection: ${redactArgv(config.command)}\n` +
-      accountTrustBanner(accountTrust !== undefined),
-  )
+  process.stdout.write(renderIrohBridgeBanner(config, nodeId, ticket, accountTrust !== undefined))
 
   const shutdown = (): void => {
     accountTrust?.stop()

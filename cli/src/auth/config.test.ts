@@ -10,22 +10,47 @@
 
 import { describe, expect, test } from 'bun:test'
 import {
-  defaultCloudUrl,
   apiBaseUrl,
   authBaseUrl,
+  defaultAppUrl,
+  defaultCloudUrl,
   isSecureCloudUrl,
+  resolveAppUrl,
   resolveCloudUrl,
   resolvePatToken,
 } from './config.ts'
 
 describe('resolveCloudUrl', () => {
-  test('uses THUNDERBOLT_CLOUD_URL when set', () => {
-    expect(resolveCloudUrl({ THUNDERBOLT_CLOUD_URL: 'https://api.example.com/v1' })).toBe('https://api.example.com/v1')
+  test('prefers THUNDERBOLT_CLOUD_URL over the baked release default', () => {
+    expect(resolveCloudUrl({ THUNDERBOLT_CLOUD_URL: 'https://runtime.example.com/v1' }, 'https://baked.example.com/v1')).toBe(
+      'https://runtime.example.com/v1',
+    )
+  })
+
+  test('uses the baked release default when the runtime override is unset', () => {
+    expect(resolveCloudUrl({}, 'https://baked.example.com/v1')).toBe('https://baked.example.com/v1')
   })
 
   test('falls back to the localhost default when unset or empty', () => {
     expect(resolveCloudUrl({})).toBe(defaultCloudUrl)
     expect(resolveCloudUrl({ THUNDERBOLT_CLOUD_URL: '' })).toBe(defaultCloudUrl)
+  })
+})
+
+describe('resolveAppUrl', () => {
+  test('prefers THUNDERBOLT_APP_URL over the baked release default', () => {
+    expect(resolveAppUrl({ THUNDERBOLT_APP_URL: 'https://runtime.example.com' }, 'https://baked.example.com')).toBe(
+      'https://runtime.example.com',
+    )
+  })
+
+  test('uses the baked release default when the runtime override is unset', () => {
+    expect(resolveAppUrl({}, 'https://baked.example.com')).toBe('https://baked.example.com')
+  })
+
+  test('falls back to the localhost default when unset or empty', () => {
+    expect(resolveAppUrl({})).toBe(defaultAppUrl)
+    expect(resolveAppUrl({ THUNDERBOLT_APP_URL: '' })).toBe(defaultAppUrl)
   })
 })
 

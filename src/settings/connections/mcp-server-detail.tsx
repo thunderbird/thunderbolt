@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Check, Copy, LockKeyhole, MoreVertical, RefreshCw, SquarePen, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { Check, Copy, LockKeyhole, RefreshCw } from 'lucide-react'
 
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { AvailableTools } from '@/components/available-tools'
+import { DetailActionsMenu, DetailEditDeleteMenuItems } from '@/components/settings/detail-actions-menu'
 import { StatusIndicator, type StatusState } from '@/components/status-indicator'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import type { OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName } from './display'
@@ -60,26 +60,11 @@ export const McpServerDetail = ({
   onDelete: () => void
   onClose: () => void
 }) => {
-  const [copied, setCopied] = useState(false)
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(
-    () => () => {
-      if (copiedTimerRef.current) {
-        clearTimeout(copiedTimerRef.current)
-      }
-    },
-    [],
-  )
+  const { copy, isCopied } = useCopyToClipboard()
 
   const handleCopyUrl = async () => {
     try {
-      await navigator.clipboard.writeText(server.url ?? '')
-      setCopied(true)
-      if (copiedTimerRef.current) {
-        clearTimeout(copiedTimerRef.current)
-      }
-      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
+      await copy(server.url ?? '')
     } catch (error) {
       console.error('Failed to copy URL:', error)
     }
@@ -92,23 +77,9 @@ export const McpServerDetail = ({
   const effectiveStatus: StatusState = !isEnabled ? 'neutral' : connectionError ? 'error' : status
 
   const actionsMenu = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
-          <MoreVertical />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
-        <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
-          <SquarePen />
-          Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
-          <Trash2 />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <DetailActionsMenu>
+      <DetailEditDeleteMenuItems onEdit={onEdit} onDelete={onDelete} />
+    </DetailActionsMenu>
   )
 
   return (
@@ -182,12 +153,12 @@ export const McpServerDetail = ({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Copy URL"
+            aria-label={server.type === 'iroh' ? 'Copy bridge target' : 'Copy URL'}
             className={mutedIconButtonClass}
             onClick={handleCopyUrl}
-            disabled={copied}
+            disabled={isCopied}
           >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </Button>
         </div>
         <p className="text-[length:var(--font-size-xs)] text-muted-foreground">

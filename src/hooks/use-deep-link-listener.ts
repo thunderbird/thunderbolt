@@ -60,11 +60,8 @@ export const determineNavigationTarget = (
     return { path: '/chats/new', oauth }
   }
 
-  if (oauthReturnContext === 'integrations') {
-    return { path: '/settings/connections', oauth }
-  }
-
-  // Default to the connections page (integrations live there)
+  // Everything else (including the 'integrations' context) lands on the
+  // connections page — integrations live there.
   return { path: '/settings/connections', oauth }
 }
 

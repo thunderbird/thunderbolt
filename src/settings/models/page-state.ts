@@ -2,64 +2,44 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { AvailableModel } from './model-catalog'
-
 export type ModelPanel = { kind: 'add' } | { kind: 'detail' | 'edit'; modelId: string } | null
 
 export type ModelsPageState = {
   panel: ModelPanel
   deleteConfirmId: string | null
-  catalog: AvailableModel[]
-  catalogRequestKey: string | null
-  loadingCatalog: boolean
-  catalogError: string | null
   selectedModelId: string
+  /** User-facing message from the most recent failed DAL mutation. */
+  mutationError: string | null
 }
 
 export type ModelsPageAction =
-  | { type: 'open-panel'; panel: ModelPanel }
-  | { type: 'confirm-delete'; modelId: string | null }
-  | { type: 'catalog-loading'; requestKey: string }
-  | { type: 'catalog-loaded'; requestKey: string; models: AvailableModel[] }
-  | { type: 'catalog-failed'; requestKey: string; error: string }
-  | { type: 'invalidate-catalog' }
-  | { type: 'select-model'; modelId: string }
+  | { type: 'PANEL_CHANGED'; panel: ModelPanel }
+  | { type: 'DELETE_REQUESTED'; modelId: string }
+  | { type: 'DELETE_DISMISSED' }
+  | { type: 'MODEL_SELECTED'; modelId: string }
+  | { type: 'MUTATION_FAILED'; error: string }
+  | { type: 'MUTATION_STARTED' }
 
 export const initialModelsPageState: ModelsPageState = {
   panel: null,
   deleteConfirmId: null,
-  catalog: [],
-  catalogRequestKey: null,
-  loadingCatalog: false,
-  catalogError: null,
   selectedModelId: '',
+  mutationError: null,
 }
 
 export const modelsPageReducer = (state: ModelsPageState, action: ModelsPageAction): ModelsPageState => {
   switch (action.type) {
-    case 'open-panel':
-      return { ...state, panel: action.panel }
-    case 'confirm-delete':
-      return { ...state, deleteConfirmId: action.modelId }
-    case 'catalog-loading':
-      return {
-        ...state,
-        loadingCatalog: true,
-        catalog: [],
-        catalogError: null,
-        catalogRequestKey: action.requestKey,
-      }
-    case 'catalog-loaded':
-      return state.catalogRequestKey === action.requestKey
-        ? { ...state, loadingCatalog: false, catalog: action.models }
-        : state
-    case 'catalog-failed':
-      return state.catalogRequestKey === action.requestKey
-        ? { ...state, loadingCatalog: false, catalog: [], catalogError: action.error }
-        : state
-    case 'invalidate-catalog':
-      return { ...state, catalog: [], catalogRequestKey: null, loadingCatalog: false, catalogError: null }
-    case 'select-model':
+    case 'PANEL_CHANGED':
+      return { ...state, panel: action.panel, mutationError: null }
+    case 'DELETE_REQUESTED':
+      return { ...state, deleteConfirmId: action.modelId, mutationError: null }
+    case 'DELETE_DISMISSED':
+      return { ...state, deleteConfirmId: null, mutationError: null }
+    case 'MODEL_SELECTED':
       return { ...state, selectedModelId: action.modelId }
+    case 'MUTATION_FAILED':
+      return { ...state, mutationError: action.error }
+    case 'MUTATION_STARTED':
+      return { ...state, mutationError: null }
   }
 }

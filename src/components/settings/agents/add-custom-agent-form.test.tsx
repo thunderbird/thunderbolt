@@ -5,28 +5,22 @@
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { AddCustomAgentDialog, type AddCustomAgentPayload, type TestAcpConnectionFn } from './add-custom-agent-dialog'
+import { AddCustomAgentForm, type AddCustomAgentPayload, type TestAcpConnectionFn } from './add-custom-agent-form'
 
 afterEach(() => {
   cleanup()
 })
 
-describe('AddCustomAgentDialog', () => {
+describe('AddCustomAgentForm', () => {
   const notIos = () => false
 
   const succeedingProbe: TestAcpConnectionFn = async () => ({ success: true })
 
   it('keeps Add Agent disabled until both name and URL are filled and the connection test succeeds', async () => {
     const onSubmit = mock(async () => {})
-    const onOpenChange = mock(() => {})
+    const onClose = mock(() => {})
     render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        onSubmit={onSubmit}
-        isIos={notIos}
-        testAcpConnection={succeedingProbe}
-      />,
+      <AddCustomAgentForm onClose={onClose} onSubmit={onSubmit} isIos={notIos} testAcpConnection={succeedingProbe} />,
     )
 
     const submit = screen.getByRole('button', { name: /add agent/i })
@@ -47,15 +41,9 @@ describe('AddCustomAgentDialog', () => {
 
   it('invokes onSubmit with websocket transport and trimmed values', async () => {
     const onSubmit = mock(async (_: AddCustomAgentPayload) => {})
-    const onOpenChange = mock(() => {})
+    const onClose = mock(() => {})
     render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        onSubmit={onSubmit}
-        isIos={notIos}
-        testAcpConnection={succeedingProbe}
-      />,
+      <AddCustomAgentForm onClose={onClose} onSubmit={onSubmit} isIos={notIos} testAcpConnection={succeedingProbe} />,
     )
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  My Agent  ' } })
@@ -78,8 +66,8 @@ describe('AddCustomAgentDialog', () => {
       description: 'Demo',
       transport: 'websocket',
     })
-    // Closes dialog on success.
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // Closes the panel on success.
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the dialog open with submit re-enabled when onSubmit rejects', async () => {
@@ -87,15 +75,9 @@ describe('AddCustomAgentDialog', () => {
     const onSubmit = mock(async () => {
       throw new Error('insert failed')
     })
-    const onOpenChange = mock(() => {})
+    const onClose = mock(() => {})
     render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        onSubmit={onSubmit}
-        isIos={notIos}
-        testAcpConnection={succeedingProbe}
-      />,
+      <AddCustomAgentForm onClose={onClose} onSubmit={onSubmit} isIos={notIos} testAcpConnection={succeedingProbe} />,
     )
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'My Agent' } })
@@ -109,8 +91,8 @@ describe('AddCustomAgentDialog', () => {
     })
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
-    // The dialog stays open with the form intact so the user can retry.
-    expect(onOpenChange).not.toHaveBeenCalled()
+    // The form stays open and intact so the user can retry.
+    expect(onClose).not.toHaveBeenCalled()
     expect(screen.getByLabelText(/name/i)).toHaveValue('My Agent')
     expect(screen.getByRole('button', { name: /add agent/i })).not.toBeDisabled()
     expect(consoleError).toHaveBeenCalled()
@@ -119,8 +101,8 @@ describe('AddCustomAgentDialog', () => {
 
   it('shows the iOS rejection inline for ws:// at render time, keeps Add disabled, and does NOT call onSubmit', () => {
     const onSubmit = mock(async () => {})
-    const onOpenChange = mock(() => {})
-    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={() => true} />)
+    const onClose = mock(() => {})
+    render(<AddCustomAgentForm onClose={onClose} onSubmit={onSubmit} isIos={() => true} />)
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'iOS Agent' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ws://example.com/ws' } })
@@ -133,8 +115,8 @@ describe('AddCustomAgentDialog', () => {
 
   it('shows an inline error for http:// (unsupported scheme) at render time and keeps Add disabled', () => {
     const onSubmit = mock(async () => {})
-    const onOpenChange = mock(() => {})
-    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
+    const onClose = mock(() => {})
+    render(<AddCustomAgentForm onClose={onClose} onSubmit={onSubmit} isIos={notIos} />)
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Bad Agent' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'http://example.com' } })
@@ -146,8 +128,8 @@ describe('AddCustomAgentDialog', () => {
 
   it('shows an inline error for unsupported schemes at render time and keeps Add disabled', () => {
     const onSubmit = mock(async () => {})
-    const onOpenChange = mock(() => {})
-    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
+    const onClose = mock(() => {})
+    render(<AddCustomAgentForm onClose={onClose} onSubmit={onSubmit} isIos={notIos} />)
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Bad Agent' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ftp://example.com' } })
@@ -158,22 +140,16 @@ describe('AddCustomAgentDialog', () => {
   })
 })
 
-describe('AddCustomAgentDialog — connection status', () => {
+describe('AddCustomAgentForm — connection status', () => {
   const notIos = () => false
 
   const renderWithProbe = (testAcpConnection: TestAcpConnectionFn) => {
     const onSubmit = mock(async () => {})
-    const onOpenChange = mock(() => {})
+    const onClose = mock(() => {})
     render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        onSubmit={onSubmit}
-        isIos={notIos}
-        testAcpConnection={testAcpConnection}
-      />,
+      <AddCustomAgentForm onClose={onClose} onSubmit={onSubmit} isIos={notIos} testAcpConnection={testAcpConnection} />,
     )
-    return { onSubmit, onOpenChange }
+    return { onSubmit, onClose }
   }
 
   const fillNameAndUrl = () => {
@@ -261,7 +237,7 @@ describe('AddCustomAgentDialog — connection status', () => {
   })
 })
 
-describe('AddCustomAgentDialog — iroh', () => {
+describe('AddCustomAgentForm — iroh', () => {
   const notIos = () => false
   const irohTarget = 'a'.repeat(52)
   const appNodeId = 'b'.repeat(52)
@@ -270,18 +246,17 @@ describe('AddCustomAgentDialog — iroh', () => {
 
   const renderIroh = () => {
     const onSubmit = mock(async (_: AddCustomAgentPayload) => {})
-    const onOpenChange = mock(() => {})
+    const onClose = mock(() => {})
     render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={onOpenChange}
+      <AddCustomAgentForm
+        onClose={onClose}
         onSubmit={onSubmit}
         isIos={notIos}
         testAcpConnection={async () => ({ success: true })}
         loadAppNodeId={loadAppNodeId}
       />,
     )
-    return { onSubmit, onOpenChange }
+    return { onSubmit, onClose }
   }
 
   it('hides Test Connection for an iroh target and gates Add on name + valid target only', async () => {
@@ -316,9 +291,8 @@ describe('AddCustomAgentDialog — iroh', () => {
   it('surfaces an error when the app pairing identity fails to load', async () => {
     const onSubmit = mock(async () => {})
     render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={() => {}}
+      <AddCustomAgentForm
+        onClose={() => {}}
         onSubmit={onSubmit}
         isIos={notIos}
         loadAppNodeId={async () => {
@@ -335,16 +309,15 @@ describe('AddCustomAgentDialog — iroh', () => {
     await waitFor(() => expect(panel.textContent).toMatch(/relay unreachable/i))
   })
 
-  it('re-loads the app NodeId after a reset and an iroh target is re-entered (no stuck "Loading")', async () => {
+  it('re-loads the app NodeId after the target is cleared and re-entered (no stuck "Loading")', async () => {
     let calls = 0
     const countingLoad = async () => {
       calls += 1
       return appNodeId
     }
     render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={() => {}}
+      <AddCustomAgentForm
+        onClose={() => {}}
         onSubmit={async () => {}}
         isIos={notIos}
         testAcpConnection={async () => ({ success: true })}
@@ -358,9 +331,9 @@ describe('AddCustomAgentDialog — iroh', () => {
     await waitFor(() => expect(screen.getByTestId('iroh-pairing-panel').textContent).toContain(appNodeId))
     expect(calls).toBe(1)
 
-    // Cancel resets the form (RESET → appNodeId back to idle, url cleared).
+    // Clearing the target disarms the loader (appNodeId back to idle).
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+      fireEvent.change(screen.getByLabelText(/url/i), { target: { value: '' } })
     })
 
     // Re-entering an iroh target must re-fire the load rather than strand on "Loading".
@@ -372,7 +345,7 @@ describe('AddCustomAgentDialog — iroh', () => {
   })
 
   it('submits with transport: iroh and the target stored as url', async () => {
-    const { onSubmit, onOpenChange } = renderIroh()
+    const { onSubmit, onClose } = renderIroh()
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  Laptop Bridge  ' } })
     await act(async () => {
@@ -390,6 +363,6 @@ describe('AddCustomAgentDialog — iroh', () => {
       description: null,
       transport: 'iroh',
     })
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

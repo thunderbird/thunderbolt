@@ -2,12 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { X } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
+import { StatusCard } from '@/components/ui/status-card'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
 import { useEditModelFormState, type EditModelSubmission } from './use-edit-model-form-state'
@@ -19,10 +22,11 @@ type EditModelFormProps = {
   onCancel: () => void
   onSubmit: (values: EditModelSubmission) => void
   isPending: boolean
+  submitError: string | null
 }
 
 /** Presentational model edit form driven by useEditModelFormState. */
-export const EditModelForm = ({ model, onCancel, onSubmit, isPending }: EditModelFormProps) => {
+export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitError }: EditModelFormProps) => {
   const state = useEditModelFormState(model)
 
   return (
@@ -129,6 +133,13 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending }: EditMode
           status={state.connection.status}
           error={state.connection.error}
         />
+        {submitError && (
+          <StatusCard
+            icon={<X className="h-4 w-4 text-destructive" />}
+            title="Something went wrong"
+            description={submitError}
+          />
+        )}
         <FormFooter>
           <ResponsiveModalCancel onClick={onCancel} />
           <Button type="submit" disabled={isPending || state.isSaveDisabled}>

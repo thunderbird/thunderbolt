@@ -9,10 +9,20 @@ import openAiLogoSrc from '@/assets/openai.svg'
 import openRouterLogoSrc from '@/assets/openrouter.svg'
 import tinfoilLogoSrc from '@/assets/tinfoil.svg'
 import { AppLogo } from '@/components/app-logo'
+import { IconTile } from '@/components/settings/icon-tile'
 import type { Model } from '@/types'
 
+const providerLabels: Record<Model['provider'], string> = {
+  thunderbolt: 'Thunderbolt',
+  tinfoil: 'Tinfoil',
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  custom: 'Custom',
+  openrouter: 'OpenRouter',
+}
+
 /** System-managed Tinfoil is a Thunderbolt product; Tinfoil is only its transport. */
-export const isThunderboltManagedModel = (model: Pick<Model, 'provider' | 'isSystem'>): boolean =>
+const isThunderboltManagedModel = (model: Pick<Model, 'provider' | 'isSystem'>): boolean =>
   model.provider === 'thunderbolt' || (model.provider === 'tinfoil' && model.isSystem === 1)
 
 const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSystem'> }) => {
@@ -31,27 +41,17 @@ const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSyste
     case 'custom':
       return <Server className="size-5 text-muted-foreground" aria-hidden="true" />
     case 'thunderbolt':
+      // Unreachable — isThunderboltManagedModel covers it — but keeps the
+      // switch exhaustive.
       return null
   }
 }
 
 export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider' | 'isSystem'> }) => (
-  <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+  <IconTile>
     <ModelProviderIcon model={model} />
-  </div>
+  </IconTile>
 )
 
-export const getProviderDisplay = (model: Pick<Model, 'provider' | 'isSystem'>): string => {
-  if (isThunderboltManagedModel(model)) {
-    return 'Thunderbolt'
-  }
-  const labels: Record<Model['provider'], string> = {
-    thunderbolt: 'Thunderbolt',
-    tinfoil: 'Tinfoil',
-    anthropic: 'Anthropic',
-    openai: 'OpenAI',
-    custom: 'Custom',
-    openrouter: 'OpenRouter',
-  }
-  return labels[model.provider]
-}
+export const getProviderDisplay = (model: Pick<Model, 'provider' | 'isSystem'>): string =>
+  isThunderboltManagedModel(model) ? 'Thunderbolt' : providerLabels[model.provider]

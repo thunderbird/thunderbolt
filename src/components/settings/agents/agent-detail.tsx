@@ -5,7 +5,7 @@
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import dayjs from 'dayjs'
-import { Loader2, MoreVertical, Trash2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 
@@ -25,8 +25,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button, mutedIconButtonClass } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
+import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import { useDatabase } from '@/contexts'
 import { getAllMcpServers } from '@/dal'
@@ -35,7 +36,7 @@ import { cn } from '@/lib/utils'
 import { useLibrarySkills } from '@/skills/use-skills'
 import type { Agent } from '@/types/acp'
 import { acpEndpointLabel, agentProvenanceLine } from './agent-provenance'
-import type { TestAcpConnectionFn } from './add-custom-agent-dialog'
+import type { TestAcpConnectionFn } from './add-custom-agent-form'
 
 /** On-demand probe result: the panel never polls on open — Status starts at
  *  `idle` and reflects the last explicit "Test connection" run. `error` holds
@@ -108,19 +109,12 @@ export const AgentDetail = ({
   }
 
   const managementMenu = isEditable && (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
-          <MoreVertical />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
-        <DropdownMenuItem onClick={() => setConfirmOpen(true)} className="cursor-pointer">
-          <Trash2 />
-          Remove agent
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <DetailActionsMenu>
+      <DropdownMenuItem onClick={() => setConfirmOpen(true)} className="cursor-pointer">
+        <Trash2 />
+        Remove agent
+      </DropdownMenuItem>
+    </DetailActionsMenu>
   )
 
   return (

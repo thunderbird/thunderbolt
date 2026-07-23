@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useDatabase } from '@/contexts'
-import { generateServerName, useAddServerForm } from '@/hooks/use-add-server-form'
+import { useAddServerForm } from '@/hooks/use-add-server-form'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useMcpServerOAuth, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import { getAuthToken } from '@/lib/auth-token'
@@ -122,7 +122,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     db,
     buildOAuthFetch,
     reconnectServer,
-    clearNavState: () => dispatch({ type: 'clear-navigation-state' }),
+    clearNavState: () => dispatch({ type: 'NAVIGATION_STATE_CONSUMED' }),
     startMcpOAuthFlow: deps.startMcpOAuthFlow,
     completeMcpOAuthFlow: deps.completeMcpOAuthFlow,
   })
@@ -167,19 +167,6 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     updateLiveServer: updateServer,
   })
 
-  const handleCancelForm = formController.cancel
-  const handleModeChange = formController.changeMode
-
-  const handleAddServer = formController.add
-
-  const handleUpdateServer = formController.update
-
-  const handleEditServer = formController.edit
-
-  const handleImportConfig = formController.importConfig
-  const handleAddAndAuthorize = formController.addAndAuthorize
-  const handleUrlKeyDown = formController.onUrlKeyDown
-
   const getConnectionStatus = (server: McpServer): 'connected' | 'connecting' | 'disconnected' => {
     // Get real connection status from MCP provider
     const mcpServer = mcpServers.find((s) => s.id === server.id)
@@ -190,17 +177,17 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   }
 
   const handleRetryConnection = async (serverId: string) => {
-    dispatch({ type: 'retrying', serverId })
+    dispatch({ type: 'RETRY_STARTED', serverId })
     try {
       await reconnectServer(serverId)
     } catch (error) {
       console.error('Failed to reconnect MCP server:', error)
       dispatch({
-        type: 'set-integration-error',
+        type: 'INTEGRATION_FAILED',
         error: error instanceof Error ? error.message : 'Failed to reconnect MCP server',
       })
     } finally {
-      dispatch({ type: 'retrying', serverId: null })
+      dispatch({ type: 'RETRY_SETTLED' })
     }
   }
 
@@ -269,13 +256,16 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const renderPanel = () => {
     if (form.isAddDialogOpen) {
       return (
-        <DetailPanel title={form.editingServerId ? 'Edit MCP Server' : 'Add MCP Server'} onClose={handleCancelForm}>
+        <DetailPanel
+          title={form.editingServerId ? 'Edit MCP Server' : 'Add MCP Server'}
+          onClose={formController.cancel}
+        >
           <McpServerForm
             form={form}
             mode={mode}
-            onModeChange={handleModeChange}
+            onModeChange={formController.changeMode}
             jsonText={jsonText}
-            onJsonTextChange={(value) => dispatch({ type: 'set-json', value })}
+            onJsonTextChange={(value) => dispatch({ type: 'JSON_CHANGED', value })}
             errorPanel={formError}
             appNodeId={appNodeId}
             urlValidation={formController.urlValidation}
@@ -285,12 +275,12 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
             isAddAuthorizePending={isAddAuthorizePending}
             isSavePending={formController.updateMutation.isPending || formController.addMutation.isPending}
             isImportPending={formController.importMutation.isPending}
-            onCancel={handleCancelForm}
-            onAddServer={handleAddServer}
-            onUpdateServer={handleUpdateServer}
-            onImportConfig={handleImportConfig}
-            onAddAndAuthorize={handleAddAndAuthorize}
-            onUrlKeyDown={handleUrlKeyDown}
+            onCancel={formController.cancel}
+            onAddServer={formController.add}
+            onUpdateServer={formController.update}
+            onImportConfig={formController.importConfig}
+            onAddAndAuthorize={formController.addAndAuthorize}
+            onUrlKeyDown={formController.onUrlKeyDown}
           />
         </DetailPanel>
       )
@@ -304,8 +294,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           error={integrationError}
           onGetPro={integrationsController.getPro}
           onDisconnect={() => integrationsController.disconnect(activeIntegration)}
-          onError={(error) => dispatch({ type: 'set-integration-error', error: error.message })}
-          onClose={() => dispatch({ type: 'select', selection: null })}
+          onError={(error) => dispatch({ type: 'INTEGRATION_FAILED', error: error.message })}
+          onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
         />
       )
     }
@@ -326,9 +316,9 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           isRetrying={retryingServerId === activeServer.id}
           onRetry={() => handleRetryConnection(activeServer.id)}
           onAuthorize={() => startAuthorize(activeServer)}
-          onEdit={() => handleEditServer(activeServer)}
-          onDelete={() => dispatch({ type: 'confirm-delete', server: activeServer })}
-          onClose={() => dispatch({ type: 'select', selection: null })}
+          onEdit={() => formController.edit(activeServer)}
+          onDelete={() => dispatch({ type: 'DELETE_REQUESTED', server: activeServer })}
+          onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
         />
       )
     }
@@ -339,12 +329,12 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const panelOpen = panel !== null
 
   const closePanel = () => {
-    dispatch({ type: 'set-integration-error', error: null })
+    dispatch({ type: 'INTEGRATION_ERROR_CLEARED' })
     if (form.isAddDialogOpen) {
-      handleCancelForm()
+      formController.cancel()
       return
     }
-    dispatch({ type: 'select', selection: null })
+    dispatch({ type: 'SELECTION_CHANGED', selection: null })
   }
 
   const toggleSelection = (next: NonNullable<ConnectionSelection>) => {
@@ -352,14 +342,14 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     // carry it over to whichever panel opens next.
     // Selecting a row supersedes an open add/edit form (same as the agents page).
     if (form.isAddDialogOpen) {
-      handleCancelForm()
+      formController.cancel()
     }
     const selection = selected?.kind === next.kind && selected.id === next.id && !form.isAddDialogOpen ? null : next
-    dispatch({ type: 'select', selection })
+    dispatch({ type: 'SELECTION_CHANGED', selection })
   }
 
   const openAddForm = () => {
-    dispatch({ type: 'select', selection: null })
+    dispatch({ type: 'SELECTION_CHANGED', selection: null })
     form.openDialog()
   }
 
@@ -380,13 +370,13 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           onEditServer={(id) => {
             const server = servers.find((s) => s.id === id)
             if (server) {
-              handleEditServer(server)
+              formController.edit(server)
             }
           }}
           onDeleteServer={(id) => {
             const server = servers.find((s) => s.id === id)
             if (server) {
-              dispatch({ type: 'confirm-delete', server })
+              dispatch({ type: 'DELETE_REQUESTED', server })
             }
           }}
           error={integrationError}
@@ -398,12 +388,12 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       {clearNavigationState && location.state !== null && <Navigate to="." replace state={null} />}
       <AlertDialog
         open={pendingDelete !== null}
-        onOpenChange={(open) => !open && dispatch({ type: 'confirm-delete', server: null })}
+        onOpenChange={(open) => !open && dispatch({ type: 'DELETE_DISMISSED' })}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Server</AlertDialogTitle>
-            <AlertDialogDescription>Remove this MCP server and its saved credentials?</AlertDialogDescription>
+            <AlertDialogTitle>Delete Server</AlertDialogTitle>
+            <AlertDialogDescription>Delete this MCP server and its saved credentials?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={formController.deleteMutation.isPending}>Cancel</AlertDialogCancel>
@@ -420,7 +410,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
                 }
               }}
             >
-              {formController.deleteMutation.isPending ? 'Removing…' : 'Remove'}
+              {formController.deleteMutation.isPending ? 'Deleting…' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -429,5 +419,4 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   )
 }
 
-export { generateServerName }
 export default ConnectionsPage

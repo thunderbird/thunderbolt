@@ -32,6 +32,7 @@ export const SlideInPanel = ({
   children: ReactNode
 }) => (
   <aside
+    data-slot="slide-in-panel"
     // z-30 lifts the panel above the layout's top header scrim (z-20) so the
     // gradient fades out over the list only and never washes over the panel's
     // top edge. The panel starts below the header, so nothing else competes.

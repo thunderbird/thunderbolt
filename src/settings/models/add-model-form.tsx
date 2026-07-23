@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
-import { providerRequiresApiKey, providerRequiresConnectionTest } from './model-policy'
+import { catalogRequiresApiKey, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
 
 export const addModelFormSchema = z
   .object({
@@ -52,6 +52,7 @@ type AddModelFormProps = {
   isTesting: boolean
   connectionStatus: 'idle' | 'success' | 'error'
   connectionError: string | null
+  submitError: string | null
   onSubmit: (values: AddModelFormValues) => void
   onCancel: () => void
   onProviderChange: (provider: Model['provider']) => void
@@ -73,6 +74,7 @@ export const AddModelForm = ({
   isTesting,
   connectionStatus,
   connectionError,
+  submitError,
   onSubmit,
   onCancel,
   onProviderChange,
@@ -87,9 +89,7 @@ export const AddModelForm = ({
   const model = form.watch('model')
   const showModelSelection =
     !catalogError &&
-    (['thunderbolt', 'tinfoil', 'anthropic'].includes(provider) ||
-      Boolean(provider && apiKey) ||
-      (provider === 'custom' && Boolean(url)))
+    (providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url)))
 
   return (
     <Form {...form}>
@@ -184,9 +184,7 @@ export const AddModelForm = ({
         <Button
           type="button"
           variant="outline"
-          disabled={
-            isLoadingCatalog || (providerRequiresApiKey(provider) && !apiKey) || (provider === 'custom' && !url)
-          }
+          disabled={isLoadingCatalog || (catalogRequiresApiKey(provider) && !apiKey) || (provider === 'custom' && !url)}
           onClick={onRefreshCatalog}
         >
           {isLoadingCatalog ? 'Refreshing models…' : 'Refresh model catalog'}
@@ -254,12 +252,8 @@ export const AddModelForm = ({
         )}
         {!supportsTools && (model || selectedModelId === 'custom') && (
           <StatusCard
-            title={
-              <>
-                <X className="h-5 w-5 text-warning" />
-                Model may not be compatible
-              </>
-            }
+            icon={<X className="h-4 w-4 text-warning" />}
+            title="Model may not be compatible"
             description="This model does not seem to support tool usage."
           />
         )}
@@ -272,15 +266,23 @@ export const AddModelForm = ({
           status={connectionStatus}
           error={connectionError}
         />
+        {submitError && (
+          <StatusCard
+            icon={<X className="h-4 w-4 text-destructive" />}
+            title="Something went wrong"
+            description={submitError}
+          />
+        )}
         <FormFooter>
           <ResponsiveModalCancel onClick={onCancel} />
           <Button
             type="submit"
-            disabled={
-              isPending ||
-              !form.formState.isValid ||
-              (providerRequiresConnectionTest(provider) && connectionStatus !== 'success')
-            }
+            disabled={shouldDisableAddModel({
+              isPending,
+              isFormValid: form.formState.isValid,
+              provider,
+              connectionStatus,
+            })}
           >
             {isPending ? 'Adding…' : 'Add Model'}
           </Button>

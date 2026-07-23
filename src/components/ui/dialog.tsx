@@ -7,10 +7,13 @@ import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
 import { cn } from '@/lib/utils'
-import { centeredModalSurfaceClass, modalAnimationClass, modalCloseClass, modalOverlayClass } from './modal-styles'
-
-export const modalFieldSurfaceClass =
-  '[&_[data-slot=input]]:!bg-card [&_[data-slot=textarea]]:!bg-card [&_[data-slot=select-trigger]]:!bg-card [&_[data-slot=combobox-trigger]]:!bg-card dark:[&_[data-slot=input]]:!bg-input dark:[&_[data-slot=textarea]]:!bg-input dark:[&_[data-slot=select-trigger]]:!bg-input dark:[&_[data-slot=combobox-trigger]]:!bg-input'
+import {
+  centeredModalSurfaceClass,
+  modalAnimationClass,
+  modalCloseClass,
+  modalFieldSurfaceClass,
+  modalOverlayClass,
+} from './modal-styles'
 
 const Dialog = ({ ...props }: ComponentProps<typeof DialogPrimitive.Root>) => {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />

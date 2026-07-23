@@ -94,7 +94,7 @@ describe('MobileSidebar', () => {
     render(<Harness onOpenChange={() => {}} />)
 
     expect(getOverlay()).toHaveClass('bg-black/40')
-    expect(getOverlay()).toHaveClass('will-change-opacity')
+    expect(getOverlay()).toHaveClass('will-change-[opacity]')
     expect(getOverlay()).not.toHaveClass('backdrop-blur-md')
   })
 

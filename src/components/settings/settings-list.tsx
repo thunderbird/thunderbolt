@@ -35,9 +35,12 @@ type SettingsSelectableRowProps = Omit<ComponentProps<typeof Card>, 'onSelect' |
   title: ReactNode
   subtitle?: ReactNode
   leading?: ReactNode
+  /** Interactive controls (e.g. a switch) in their own lane outside the row's tap target. */
   trailing?: ReactNode
-  selected?: boolean
-  dimmed?: boolean
+  /** Decorative affordance (e.g. a chevron) rendered inside the tap target so clicking it selects the row. */
+  trailingIcon?: ReactNode
+  isSelected?: boolean
+  isDimmed?: boolean
   onSelect: () => void
   ariaLabel: string
 }
@@ -48,8 +51,9 @@ export const SettingsSelectableRow = ({
   subtitle,
   leading,
   trailing,
-  selected = false,
-  dimmed = false,
+  trailingIcon,
+  isSelected = false,
+  isDimmed = false,
   onSelect,
   ariaLabel,
   className,
@@ -58,7 +62,7 @@ export const SettingsSelectableRow = ({
   <Card
     className={cn(
       'flex-row items-stretch gap-0 border-border p-0 transition-colors',
-      selected ? 'bg-accent' : 'hover:bg-secondary/50',
+      isSelected ? 'bg-accent' : 'hover:bg-secondary/50',
       className,
     )}
     {...props}
@@ -66,22 +70,22 @@ export const SettingsSelectableRow = ({
     <button
       type="button"
       aria-label={ariaLabel}
-      aria-pressed={selected}
+      aria-pressed={isSelected}
       onClick={onSelect}
-      className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-l-lg px-4 py-3 text-left"
+      className={cn(
+        'flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-l-[inherit] px-4 py-3 text-left',
+        !trailing && 'rounded-r-[inherit] pr-4',
+      )}
     >
       {leading && <span className="flex shrink-0 items-center justify-center">{leading}</span>}
       <span className="min-w-0 flex-1">
-        <span className={cn('block truncate text-base font-medium', dimmed && 'text-muted-foreground')}>{title}</span>
+        <span className={cn('block truncate text-base font-medium', isDimmed && 'text-muted-foreground')}>{title}</span>
         {subtitle && (
           <span className="block truncate text-[length:var(--font-size-sm)] text-muted-foreground">{subtitle}</span>
         )}
       </span>
+      {trailingIcon && <span className="flex shrink-0 items-center">{trailingIcon}</span>}
     </button>
-    {trailing && (
-      <div className="flex shrink-0 items-center rounded-r-lg pr-4" onClick={(event) => event.stopPropagation()}>
-        {trailing}
-      </div>
-    )}
+    {trailing && <div className="flex shrink-0 items-center rounded-r-[inherit] pr-4">{trailing}</div>}
   </Card>
 )

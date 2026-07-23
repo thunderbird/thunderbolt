@@ -31,7 +31,7 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }:
           key={model.id}
           onSelect={() => onSelect(model.id)}
           ariaLabel={`Open ${model.name}`}
-          selected={activeModelId === model.id}
+          isSelected={activeModelId === model.id}
           leading={<ModelProviderIconTile model={model} />}
           title={
             <span className="flex min-w-0 items-center gap-2">

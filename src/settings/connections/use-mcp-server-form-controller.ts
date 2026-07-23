@@ -53,14 +53,14 @@ export const useMcpServerFormController = ({
   const { url, isIroh, token, testResult, resolveServerName } = form
   const urlValidation = !isIroh && url ? validateMcpServerUrl(url) : null
   const isUrlReady = Boolean(url) && urlValidation?.ok === true
-  const isSaveReady = isIroh ? isIroh && resolveServerName().length > 0 : isUrlReady
+  const isSaveReady = isIroh ? resolveServerName().length > 0 : isUrlReady
   const editProbeWaived = isIroh || !form.hasConnectionEdits || form.isClearingBearerOnly || form.isOAuthEdit
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => updateMcpServerEnabled(db, id, enabled),
     onError: (error) =>
       dispatch({
-        type: 'set-integration-error',
+        type: 'INTEGRATION_FAILED',
         error: error instanceof Error ? error.message : 'Failed to update MCP server',
       }),
   })
@@ -79,6 +79,7 @@ export const useMcpServerFormController = ({
       serverUrl,
       transport,
       nextToken,
+      isClearingStoredToken,
       originalCredentialType,
     }: {
       id: string
@@ -86,11 +87,15 @@ export const useMcpServerFormController = ({
       serverUrl: string
       transport: MCPTransportType
       nextToken: string
+      isClearingStoredToken: boolean
       originalCredentialType: StoredCredentialType
     }) => {
+      // Credential tri-state: a typed token replaces, an explicit clear of a
+      // stored bearer deletes (null), and an untouched empty field keeps
+      // whatever is stored (undefined).
       const credentials = nextToken
         ? ({ type: 'bearer', token: nextToken } as const)
-        : originalCredentialType === 'bearer'
+        : isClearingStoredToken && originalCredentialType === 'bearer'
           ? null
           : undefined
       await updateMcpServerWithCredentials(db, id, { name, url: serverUrl, type: transport }, credentials)
@@ -114,21 +119,21 @@ export const useMcpServerFormController = ({
   })
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteMcpServer(db, id),
-    onSuccess: () => dispatch({ type: 'confirm-delete', server: null }),
+    onSuccess: () => dispatch({ type: 'DELETE_DISMISSED' }),
     onError: (error) =>
       dispatch({
-        type: 'set-integration-error',
+        type: 'INTEGRATION_FAILED',
         error: error instanceof Error ? error.message : 'Failed to remove MCP server',
       }),
   })
 
   const cancel = () => {
     form.resetAddDialog()
-    dispatch({ type: 'reset-form' })
+    dispatch({ type: 'FORM_RESET' })
   }
   const changeMode = (mode: AddServerMode) => {
     clearDialogError()
-    dispatch({ type: 'set-mode', mode })
+    dispatch({ type: 'MODE_CHANGED', mode })
   }
   const add = async () => {
     if (!isSaveReady || addPendingRef.current) {
@@ -141,7 +146,7 @@ export const useMcpServerFormController = ({
       cancel()
     } catch (error) {
       console.error('Failed to add MCP server:', error)
-      dispatch({ type: 'set-update-error', error: 'Could not add the server. Please try again.' })
+      dispatch({ type: 'SAVE_FAILED', error: 'Could not add the server. Please try again.' })
     } finally {
       addPendingRef.current = false
     }
@@ -153,13 +158,14 @@ export const useMcpServerFormController = ({
     const id = form.editingServerId
     const row = servers.find((server) => server.id === id)
     if (!row) {
-      return
+      // The edit form can only open from an existing row; a miss means state corruption.
+      throw new Error(`MCP server ${id} is being edited but no longer exists`)
     }
     const name = resolveServerName()
     const transport = form.transport
     const enabled = row.enabled === 1
     const serverUrl = isIroh ? url.trim() : url
-    dispatch({ type: 'set-update-error', error: null })
+    dispatch({ type: 'SAVE_STARTED' })
     try {
       await updateMutation.mutateAsync({
         id,
@@ -167,11 +173,12 @@ export const useMcpServerFormController = ({
         serverUrl,
         transport,
         nextToken: token,
+        isClearingStoredToken: form.isClearingStoredToken,
         originalCredentialType: credentialsById[id]?.type ?? 'none',
       })
     } catch (error) {
       console.error('Failed to update MCP server:', error)
-      dispatch({ type: 'set-update-error', error: 'Could not save changes. Please try again.' })
+      dispatch({ type: 'SAVE_FAILED', error: 'Could not save changes. Please try again.' })
       return
     }
     try {
@@ -181,20 +188,20 @@ export const useMcpServerFormController = ({
       )
     } catch (error) {
       console.error('Failed to update live MCP server:', error)
-      dispatch({ type: 'set-update-error', error: 'Changes were saved, but reconnecting failed. Please retry.' })
+      dispatch({ type: 'SAVE_FAILED', error: 'Changes were saved, but reconnecting failed. Please retry.' })
       return
     }
     cancel()
   }
   const edit = (server: McpServer) => {
     const credential = credentialsById[server.id]
-    dispatch({ type: 'select', selection: { kind: 'server', id: server.id } })
+    dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'server', id: server.id } })
     form.openEditDialog(server, credential?.bearerToken ?? null, credential?.type ?? 'none')
   }
   const importConfig = async () => {
     const result = parseMcpServersConfig(jsonText)
     if (!result.ok) {
-      dispatch({ type: 'set-import-error', error: result.errors.join('\n') })
+      dispatch({ type: 'IMPORT_FAILED', error: result.errors.join('\n') })
       return
     }
     try {
@@ -202,7 +209,7 @@ export const useMcpServerFormController = ({
       cancel()
     } catch (error) {
       console.error('Failed to import MCP servers:', error)
-      dispatch({ type: 'set-import-error', error: 'Could not import servers. Please try again.' })
+      dispatch({ type: 'IMPORT_FAILED', error: 'Could not import servers. Please try again.' })
     }
   }
   const addAndAuthorize = async () => {

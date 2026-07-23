@@ -134,7 +134,7 @@ export const MobileSidebar = ({
         {hasBackdropBlur && (
           <m.div
             data-slot="sidebar-blur"
-            className="pointer-events-none fixed inset-0 z-50 backdrop-blur-sm backdrop-saturate-[.25] will-change-opacity"
+            className="pointer-events-none fixed inset-0 z-50 backdrop-blur-sm backdrop-saturate-[.25] will-change-[opacity]"
             style={{ opacity: overlayOpacity }}
           />
         )}
@@ -142,7 +142,7 @@ export const MobileSidebar = ({
         {/* The interactive tint remains paint-only and shares the same fade. */}
         <m.div
           data-slot="sidebar-overlay"
-          className="fixed inset-0 z-50 bg-black/40 will-change-opacity"
+          className="fixed inset-0 z-50 bg-black/40 will-change-[opacity]"
           style={{ opacity: overlayOpacity }}
           onClick={handleClose}
         />

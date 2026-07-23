@@ -44,14 +44,12 @@ export type ChatListProps = {
   searchQuery: string
   showSearch: boolean
   searchInputRef: RefObject<HTMLInputElement | null>
-  hasContentAbove: boolean
   mobileNavToggle: ReactNode
   mobileSecondaryNavigation: ReactNode
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: (e?: MouseEvent) => void
   onSearchQueryChange: (value: string) => void
-  onContentAboveChange: (hasContentAbove: boolean) => void
   onContentBelowChange: (hasContentBelow: boolean) => void
 }
 

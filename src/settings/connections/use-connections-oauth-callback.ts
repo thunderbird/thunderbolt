@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, type Dispatch } from 'react'
+import { useEffect, useEffectEvent, useRef, type Dispatch } from 'react'
 
 import type { McpOAuthCallback } from '@/hooks/use-mcp-server-oauth'
 import { getConnectionsOAuthCallback } from './oauth-callback'
@@ -24,37 +24,44 @@ export const useConnectionsOAuthCallback = ({
   getIntegrationProvider,
   dispatch,
 }: ConnectionsOAuthCallbackControllerOptions): void => {
+  // Each navigation state must be handled exactly once, even if the effect
+  // re-fires for the same state (e.g. StrictMode remounts).
   const processedStateRef = useRef<unknown>(null)
-
-  useEffect(() => {
-    if (processedStateRef.current === locationState) {
+  // The handlers arrive as unstable closures; wrapping them in an effect event
+  // keeps the effect keyed on `locationState` alone.
+  const handleCallback = useEffectEvent((state: unknown) => {
+    if (processedStateRef.current === state) {
       return
     }
-    const callback = getConnectionsOAuthCallback(locationState)
+    const callback = getConnectionsOAuthCallback(state)
     if (callback.kind === 'none') {
       return
     }
-    processedStateRef.current = locationState
+    processedStateRef.current = state
     if (callback.kind === 'mcp') {
       void processMcpCallback(callback.callback)
       return
     }
 
     const process = async () => {
-      dispatch({ type: 'processing-callback', processing: true })
+      dispatch({ type: 'CALLBACK_STARTED' })
       const provider = getIntegrationProvider()
       if (provider) {
-        dispatch({ type: 'select', selection: { kind: 'integration', id: provider } })
+        dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'integration', id: provider } })
       }
       try {
         await processIntegrationCallback(callback.callback)
       } catch (error) {
         console.error('Failed to complete OAuth:', error)
       } finally {
-        dispatch({ type: 'processing-callback', processing: false })
-        dispatch({ type: 'clear-navigation-state' })
+        dispatch({ type: 'CALLBACK_SETTLED' })
+        dispatch({ type: 'NAVIGATION_STATE_CONSUMED' })
       }
     }
     void process()
-  }, [dispatch, getIntegrationProvider, locationState, processIntegrationCallback, processMcpCallback])
+  })
+
+  useEffect(() => {
+    handleCallback(locationState)
+  }, [locationState])
 }

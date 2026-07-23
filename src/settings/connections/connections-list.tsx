@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Plug, Plus, SquarePen, Trash2 } from 'lucide-react'
+import { Plug, Plus, X } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
+import { EditDeleteContextMenuContent } from '@/components/settings/edit-delete-context-menu'
 import { SettingsEmptyState, SettingsNoResults } from '@/components/settings/settings-empty-state'
 import {
   SettingsListBody,
@@ -14,7 +15,7 @@ import {
 } from '@/components/settings/settings-list'
 import { StatusIndicator, type StatusState } from '@/components/status-indicator'
 import { Button } from '@/components/ui/button'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Switch } from '@/components/ui/switch'
@@ -29,35 +30,28 @@ const ConnectionRow = ({
   subtitle,
   leading,
   isActive,
-  disabledLook,
+  isDimmed,
   onSelect,
-  switchProps,
+  trailing,
 }: {
   title: string
   subtitle?: string
   leading: ReactNode
   isActive: boolean
   /** Mutes the title (disabled integration / disabled server). */
-  disabledLook?: boolean
+  isDimmed?: boolean
   onSelect: () => void
-  switchProps: { checked: boolean; disabled?: boolean; onCheckedChange: (next: boolean) => void; label: string }
+  trailing: ReactNode
 }) => (
   <SettingsSelectableRow
     title={title}
     subtitle={subtitle}
     leading={<span className="flex size-5 items-center justify-center">{leading}</span>}
-    selected={isActive}
-    dimmed={disabledLook}
+    isSelected={isActive}
+    isDimmed={isDimmed}
     onSelect={onSelect}
     ariaLabel={`Open ${title}`}
-    trailing={
-      <Switch
-        checked={switchProps.checked}
-        disabled={switchProps.disabled}
-        onCheckedChange={switchProps.onCheckedChange}
-        aria-label={switchProps.label}
-      />
-    }
+    trailing={trailing}
   />
 )
 
@@ -78,16 +72,18 @@ const IntegrationRow = ({
       subtitle={integration.isConnected ? integration.userEmail : undefined}
       leading={integration.icon}
       isActive={isActive}
-      disabledLook={!integration.isConnected}
+      isDimmed={!integration.isConnected}
       onSelect={onSelect}
-      switchProps={{
-        checked: integration.isEnabled,
-        // Enabling only makes sense once the account is connected — the aside
-        // holds the connect flow.
-        disabled: !integration.isConnected,
-        onCheckedChange: onToggleEnabled,
-        label: `${integration.isEnabled ? 'Disable' : 'Enable'} ${integration.name}`,
-      }}
+      trailing={
+        <Switch
+          checked={integration.isEnabled}
+          // Enabling only makes sense once the account is connected — the aside
+          // holds the connect flow.
+          disabled={!integration.isConnected}
+          onCheckedChange={onToggleEnabled}
+          aria-label={`${integration.isEnabled ? 'Disable' : 'Enable'} ${integration.name}`}
+        />
+      }
     />
   </li>
 )
@@ -111,7 +107,7 @@ const ServerRow = ({
 }) => {
   const title = serverDisplayName(server)
   const url = cleanServerUrl(server.url ?? '')
-  const enabled = server.enabled === 1
+  const isEnabled = server.enabled === 1
   return (
     <li>
       <ContextMenu>
@@ -122,28 +118,21 @@ const ServerRow = ({
               // Hide the subtitle when the name IS the cleaned URL — no point
               // printing the same string twice.
               subtitle={title === url ? undefined : url}
-              leading={<StatusIndicator status={enabled ? status : 'neutral'} size="sm" />}
+              leading={<StatusIndicator status={isEnabled ? status : 'neutral'} size="sm" />}
               isActive={isActive}
-              disabledLook={!enabled}
+              isDimmed={!isEnabled}
               onSelect={onSelect}
-              switchProps={{
-                checked: enabled,
-                onCheckedChange: onToggleEnabled,
-                label: `${enabled ? 'Disable' : 'Enable'} ${title}`,
-              }}
+              trailing={
+                <Switch
+                  checked={isEnabled}
+                  onCheckedChange={onToggleEnabled}
+                  aria-label={`${isEnabled ? 'Disable' : 'Enable'} ${title}`}
+                />
+              }
             />
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="min-w-56">
-          <ContextMenuItem onClick={onEdit} className="cursor-pointer">
-            <SquarePen className="size-4 mr-2" />
-            Edit
-          </ContextMenuItem>
-          <ContextMenuItem onClick={onDelete} className="cursor-pointer">
-            <Trash2 className="size-4 mr-2" />
-            Delete
-          </ContextMenuItem>
-        </ContextMenuContent>
+        <EditDeleteContextMenuContent onEdit={onEdit} onDelete={onDelete} />
       </ContextMenu>
     </li>
   )
@@ -189,15 +178,15 @@ export const ConnectionsList = ({
   error?: string | null
 }) => {
   const [search, setSearch] = useState('')
+  const query = search.trim()
 
   const { filteredIntegrations, filteredServers } = useMemo(() => {
-    const query = search.trim()
     const needle = query.toLowerCase()
     return {
       filteredIntegrations: integrations.filter((i) => !query || i.name.toLowerCase().includes(needle)),
       filteredServers: servers.filter((s) => serverMatchesQuery(s, query)),
     }
-  }, [integrations, servers, search])
+  }, [integrations, servers, query])
 
   const nothingMatches = filteredIntegrations.length === 0 && filteredServers.length === 0
 
@@ -217,7 +206,13 @@ export const ConnectionsList = ({
         <PageSearch.Input placeholder="Search connections" onSearch={setSearch} />
       </PageSearch>
 
-      {error && <StatusCard title="Connection update failed" description={error} />}
+      {error && (
+        <StatusCard
+          icon={<X className="h-4 w-4 text-destructive" />}
+          title="Connection update failed"
+          description={error}
+        />
+      )}
 
       <SettingsListBody>
         {filteredIntegrations.length > 0 && (
@@ -254,7 +249,7 @@ export const ConnectionsList = ({
           </div>
         )}
 
-        {servers.length === 0 && !search.trim() && (
+        {servers.length === 0 && !query && (
           <SettingsEmptyState
             className="mt-1"
             icon={<Plug className="size-8 text-muted-foreground" aria-hidden="true" />}
@@ -268,7 +263,7 @@ export const ConnectionsList = ({
           />
         )}
 
-        {nothingMatches && search.trim() && <SettingsNoResults>No matching connections.</SettingsNoResults>}
+        {nothingMatches && query && <SettingsNoResults>No matching connections.</SettingsNoResults>}
       </SettingsListBody>
     </SettingsListPane>
   )

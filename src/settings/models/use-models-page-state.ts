@@ -18,9 +18,10 @@ import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
 import { addModelFormSchema, type AddModelFormValues } from './add-model-form'
-import { catalogRequestKey, describeModelFetchError, fetchModelsForProvider } from './model-catalog'
 import type { EditModelSubmission } from './edit-model-form'
+import { providerAutoFetchesCatalog } from './model-policy'
 import { initialModelsPageState, modelsPageReducer } from './page-state'
+import { catalogToComboboxItems, useModelCatalog } from './use-model-catalog'
 
 /** Generates a readable display name from a provider model identifier. */
 export const generateModelName = (modelId: string): string => {
@@ -40,7 +41,8 @@ export const useModelsPageState = () => {
   const db = useDatabase()
   const { isMobile } = useIsMobile()
   const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
-  const { panel, deleteConfirmId, loadingCatalog, selectedModelId, catalog, catalogError } = state
+  const { panel, deleteConfirmId, selectedModelId, mutationError } = state
+  const catalog = useModelCatalog()
   const isAddPanelOpen = panel?.kind === 'add'
   const activeModelId = panel?.kind === 'detail' || panel?.kind === 'edit' ? panel.modelId : null
   const { data: models = [] } = useQuery({
@@ -67,9 +69,26 @@ export const useModelsPageState = () => {
   const model = form.watch('model')
   const connection = useModelConnectionTest({ provider, model, url, apiKey })
 
+  const failMutation = (message: string) => (error: unknown) => {
+    console.error(message, error)
+    dispatch({ type: 'MUTATION_FAILED', error: message })
+  }
+  const clearMutationError = () => dispatch({ type: 'MUTATION_STARTED' })
+
+  /** Tears down every piece of add-form state so a reopened panel starts fresh. */
+  const resetAddForm = () => {
+    form.reset()
+    form.clearErrors()
+    connection.reset()
+    catalog.invalidateCatalog()
+    dispatch({ type: 'MODEL_SELECTED', modelId: '' })
+  }
+
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       updateModel(db, id, { enabled: enabled ? 1 : 0 }),
+    onMutate: clearMutationError,
+    onError: failMutation('Failed to update the model.'),
   })
   const addMutation = useMutation({
     mutationFn: (values: AddModelFormValues) =>
@@ -83,22 +102,27 @@ export const useModelsPageState = () => {
         toolUsage: 1,
         contextWindow: null,
       }),
+    onMutate: clearMutationError,
     onSuccess: () => {
-      form.reset()
-      form.clearErrors()
-      dispatch({ type: 'open-panel', panel: null })
+      resetAddForm()
+      dispatch({ type: 'PANEL_CHANGED', panel: null })
     },
+    onError: failMutation('Failed to add the model.'),
   })
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteModel(db, id),
-    onSuccess: () => dispatch({ type: 'confirm-delete', modelId: null }),
+    onMutate: clearMutationError,
+    onSuccess: () => dispatch({ type: 'DELETE_DISMISSED' }),
+    onError: failMutation('Failed to remove the model.'),
   })
   const editMutation = useMutation({
     mutationFn: async (values: EditModelSubmission) => {
       const { id, ...fields } = values
       await updateModel(db, id, { ...fields, url: fields.url || null })
     },
-    onSuccess: (_result, values) => dispatch({ type: 'open-panel', panel: { kind: 'detail', modelId: values.id } }),
+    onMutate: clearMutationError,
+    onSuccess: (_result, values) => dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'detail', modelId: values.id } }),
+    onError: failMutation('Failed to save the model.'),
   })
   const resetMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -109,44 +133,29 @@ export const useModelsPageState = () => {
       }
       await resetModelToDefault(db, id, defaultModel)
     },
+    onMutate: clearMutationError,
+    onError: failMutation('Failed to reset the model.'),
   })
 
-  const fetchCatalog = async (nextProvider: Model['provider'], nextApiKey?: string, nextUrl?: string) => {
-    const requestKey = catalogRequestKey({ provider: nextProvider, apiKey: nextApiKey, url: nextUrl })
-    dispatch({ type: 'catalog-loading', requestKey })
-    try {
-      dispatch({
-        type: 'catalog-loaded',
-        requestKey,
-        models: await fetchModelsForProvider({ provider: nextProvider, apiKey: nextApiKey, url: nextUrl }),
-      })
-    } catch (error) {
-      console.error('Failed to fetch models:', error)
-      dispatch({ type: 'catalog-failed', requestKey, error: describeModelFetchError(error) })
-    }
-  }
   const setAddPanelOpen = (open: boolean) => {
     if (open) {
-      dispatch({ type: 'open-panel', panel: { kind: 'add' } })
+      dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
       connection.reset()
-      if (form.getValues('provider') === 'thunderbolt' && catalog.length === 0) {
-        void fetchCatalog('thunderbolt')
+      const currentProvider = form.getValues('provider')
+      if (providerAutoFetchesCatalog(currentProvider) && catalog.models.length === 0) {
+        void catalog.fetchCatalog({ provider: currentProvider })
       }
       return
     }
-    form.reset()
-    form.clearErrors()
-    dispatch({ type: 'open-panel', panel: null })
-    connection.reset()
+    resetAddForm()
+    dispatch({ type: 'PANEL_CHANGED', panel: null })
   }
   const closePanel = () => {
     if (isAddPanelOpen) {
-      form.reset()
-      form.clearErrors()
-      connection.reset()
+      resetAddForm()
     }
     dispatch({
-      type: 'open-panel',
+      type: 'PANEL_CHANGED',
       panel: panel?.kind === 'edit' ? { kind: 'detail', modelId: panel.modelId } : null,
     })
   }
@@ -160,7 +169,7 @@ export const useModelsPageState = () => {
     connection.test({ provider: values.provider, model: modelId, url: values.url, apiKey: values.apiKey })
   }
   const selectModel = (modelId: string) => {
-    dispatch({ type: 'select-model', modelId })
+    dispatch({ type: 'MODEL_SELECTED', modelId })
     if (modelId === 'custom') {
       form.setValue('model', '', { shouldValidate: true })
       form.setValue('customModel', '')
@@ -169,11 +178,11 @@ export const useModelsPageState = () => {
     }
     form.setValue('model', modelId, { shouldValidate: true })
     form.setValue('customModel', '')
-    const selected = catalog.find((candidate) => candidate.id === modelId)
+    const selected = catalog.models.find((candidate) => candidate.id === modelId)
     form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
   }
   const changeProvider = (nextProvider: Model['provider']) => {
-    dispatch({ type: 'invalidate-catalog' })
+    catalog.invalidateCatalog()
     form.setValue('name', '', { shouldValidate: false, shouldDirty: false })
     form.setValue('model', '', { shouldValidate: false, shouldDirty: false })
     form.setValue('customModel', '', { shouldValidate: false, shouldDirty: false })
@@ -183,22 +192,18 @@ export const useModelsPageState = () => {
     })
     form.setValue('apiKey', '', { shouldValidate: false, shouldDirty: false })
     void form.trigger()
-    if (nextProvider === 'thunderbolt' || nextProvider === 'anthropic') {
-      void fetchCatalog(nextProvider)
+    if (providerAutoFetchesCatalog(nextProvider)) {
+      void catalog.fetchCatalog({ provider: nextProvider })
     }
   }
   const modelItems = useMemo((): ComboboxItem[] => {
-    const items = catalog.map((candidate) => ({
-      id: candidate.id,
-      label: candidate.name || candidate.id,
-      description: candidate.name ? candidate.id : undefined,
-    }))
+    const items = catalogToComboboxItems(catalog.models)
     return provider === 'thunderbolt' ? items : [...items, { id: 'custom', label: 'Custom' }]
-  }, [catalog, provider])
+  }, [catalog.models, provider])
   const supportsTools =
     !selectedModelId ||
     selectedModelId === 'custom' ||
-    catalog.find((candidate) => candidate.id === selectedModelId)?.supports_tools === true
+    catalog.models.find((candidate) => candidate.id === selectedModelId)?.supports_tools === true
 
   return {
     isMobile,
@@ -209,22 +214,24 @@ export const useModelsPageState = () => {
     activeModel,
     editingModel,
     isAddPanelOpen,
+    mutationError,
     addForm: {
       form,
       modelItems,
       selectedModelId,
-      isLoadingCatalog: loadingCatalog,
-      catalogError,
+      isLoadingCatalog: catalog.isLoading,
+      catalogError: catalog.error,
       supportsTools,
       isPending: addMutation.isPending,
       isTesting: connection.isTesting,
       connectionStatus: connection.status,
       connectionError: connection.error,
+      submitError: mutationError,
       onSubmit: submitAdd,
       onCancel: () => setAddPanelOpen(false),
       onProviderChange: changeProvider,
-      onCatalogInvalidated: () => dispatch({ type: 'invalidate-catalog' }),
-      onRefreshCatalog: () => void fetchCatalog(provider, apiKey, url),
+      onCatalogInvalidated: catalog.invalidateCatalog,
+      onRefreshCatalog: () => void catalog.fetchCatalog({ provider, apiKey, url }),
       onSelectModel: selectModel,
       onTestConnection: testConnection,
     },
@@ -232,15 +239,16 @@ export const useModelsPageState = () => {
     closePanel,
     selectActiveModel: (modelId: string) =>
       dispatch({
-        type: 'open-panel',
+        type: 'PANEL_CHANGED',
         panel: activeModelId === modelId ? null : { kind: 'detail', modelId },
       }),
     toggleModel: (id: string, enabled: boolean) => toggleMutation.mutate({ id, enabled }),
-    openEditPanel: (modelId: string) => dispatch({ type: 'open-panel', panel: { kind: 'edit', modelId } }),
-    closeEditPanel: (modelId: string) => dispatch({ type: 'open-panel', panel: { kind: 'detail', modelId } }),
+    openEditPanel: (modelId: string) => dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'edit', modelId } }),
+    closeEditPanel: (modelId: string) => dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'detail', modelId } }),
     submitEdit: (values: EditModelSubmission) => editMutation.mutate(values),
     isEditPending: editMutation.isPending,
-    requestDelete: (modelId: string | null) => dispatch({ type: 'confirm-delete', modelId }),
+    requestDelete: (modelId: string | null) =>
+      modelId ? dispatch({ type: 'DELETE_REQUESTED', modelId }) : dispatch({ type: 'DELETE_DISMISSED' }),
     confirmDelete: () => {
       if (deleteConfirmId) {
         deleteMutation.mutate(deleteConfirmId)

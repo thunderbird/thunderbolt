@@ -10,10 +10,11 @@ import { testAcpConnection } from '@/acp'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
-import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
+import { AddCustomAgentForm, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-form'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
+import { SettingsListPane } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase } from '@/contexts'
@@ -89,12 +90,7 @@ export default function AgentsSettingsPage() {
 
   const detailPanel = dialogOpen ? (
     <DetailPanel title="Add custom agent" onClose={closePanel}>
-      <AddCustomAgentDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onSubmit={handleAdd}
-        testAcpConnection={testAcpConnection}
-      />
+      <AddCustomAgentForm onClose={closePanel} onSubmit={handleAdd} testAcpConnection={testAcpConnection} />
     </DetailPanel>
   ) : activeAgent ? (
     <AgentDetail
@@ -122,14 +118,11 @@ export default function AgentsSettingsPage() {
   return (
     <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
-        {/* md:min-w keeps the rows readable when the detail panel is open on a
-            narrow window: the list stops shrinking and slides under the panel
-            (the column's overflow-hidden clips it at the panel edge) — the
-            same behavior the models page gets from its cards' min-content
-            width (~320px incl. padding). Desktop-only: the panel is a
-            full-screen modal on mobile, and a hard floor would overflow
-            sub-360px phones. */}
-        <div className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-6 overflow-y-auto p-4 md:min-w-[360px] md:px-5">
+        {/* The pane's md:min-w keeps the rows readable when the detail panel
+            is open on a narrow window: the list stops shrinking and slides
+            under the panel (the column's overflow-hidden clips it at the
+            panel edge). */}
+        <SettingsListPane className="gap-6 overflow-y-auto">
           <PageHeader title="Agents">
             {allowCustomAgents && (
               <Button
@@ -158,7 +151,7 @@ export default function AgentsSettingsPage() {
 
             <ThunderboltCliRow isSelected={cliOpen} onOpen={toggleCliPanel} />
           </div>
-        </div>
+        </SettingsListPane>
       </div>
 
       <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>

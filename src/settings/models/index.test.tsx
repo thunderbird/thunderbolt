@@ -11,7 +11,8 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import ModelsPage, { shouldDisableAddModel, systemModelMenuMessage } from './index'
+import ModelsPage from './index'
+import { systemModelMenuMessage } from './model-detail'
 import { http } from '@/lib/http'
 
 describe('ModelsPage reactivity', () => {
@@ -96,16 +97,6 @@ describe('add model form', () => {
     // button on the page behind the panel.
     const panel = screen.getByRole('complementary')
     expect(within(panel).getByRole('button', { name: 'Add Model' })).toBeDisabled()
-  })
-})
-
-describe('shouldDisableAddModel', () => {
-  it('enables submission only when validation and connection gates pass', () => {
-    expect(shouldDisableAddModel(false, true, false, false)).toBe(false)
-    expect(shouldDisableAddModel(false, true, true, true)).toBe(false)
-    expect(shouldDisableAddModel(false, false, false, false)).toBe(true)
-    expect(shouldDisableAddModel(false, true, true, false)).toBe(true)
-    expect(shouldDisableAddModel(true, true, false, false)).toBe(true)
   })
 })
 
@@ -293,14 +284,17 @@ describe('model card action menu', () => {
     })
     const getSpy = spyOn(http, 'get')
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
-    await waitForElement(() => screen.queryByText('Private Key Model'))
-    await openMenuForModel('Private Key Model')
-    fireEvent.click(await screen.findByText('Edit'))
-    await screen.findByRole('heading', { name: 'Edit Model' })
+    try {
+      renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+      await waitForElement(() => screen.queryByText('Private Key Model'))
+      await openMenuForModel('Private Key Model')
+      fireEvent.click(await screen.findByText('Edit'))
+      await screen.findByRole('heading', { name: 'Edit Model' })
 
-    expect(getSpy).not.toHaveBeenCalled()
-    getSpy.mockRestore()
+      expect(getSpy).not.toHaveBeenCalled()
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 
   it('saves name-only edits without requiring a new connection test', async () => {

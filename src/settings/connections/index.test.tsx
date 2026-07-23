@@ -18,7 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
-import ConnectionsPage, { generateServerName } from '.'
+import ConnectionsPage from '.'
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
 const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 })
@@ -461,15 +461,17 @@ describe('ConnectionsPage Edit server', () => {
     await openServerDetail('Original')
     await clickDetailMenuItem('Edit')
 
-    // Panel title flips to Edit and the existing values are surfaced — name in the
-    // visible input and token in the password field (URL stays read off the input).
+    // Panel title flips to Edit and the existing values are surfaced — name in
+    // the visible input; the stored token is only hinted at via the masked
+    // placeholder, never round-tripped into the DOM.
     expect(await waitForElement(() => screen.queryByText('Edit MCP Server'))).toBeInTheDocument()
     const nameInput = screen.getByPlaceholderText('Server name (used to prefix tools)') as HTMLInputElement
     const urlInput = screen.getByPlaceholderText('http://localhost:8000/mcp/') as HTMLInputElement
-    const tokenInput = screen.getByPlaceholderText('Bearer token or API key') as HTMLInputElement
+    const tokenInput = screen.getByPlaceholderText('••••••••••••••••') as HTMLInputElement
     expect(nameInput.value).toBe('Original')
     expect(urlInput.value).toBe('https://old.example.com/mcp')
-    expect(tokenInput.value).toBe('original-token')
+    expect(tokenInput.value).toBe('')
+    expect(screen.getByRole('button', { name: 'Clear saved credential' })).toBeInTheDocument()
     // Bulk-import toggle is hidden in Edit mode.
     expect(screen.queryByRole('radio', { name: 'Advanced (JSON)' })).not.toBeInTheDocument()
 
@@ -815,22 +817,5 @@ describe('ConnectionsPage add-form error labeling', () => {
     expect(screen.queryByText('Import failed')).not.toBeInTheDocument()
     expect(screen.queryByText('Authorization error')).not.toBeInTheDocument()
     expect(screen.queryByText(importMessage)).not.toBeInTheDocument()
-  })
-})
-
-describe('generateServerName', () => {
-  const cases: Array<[string, string]> = [
-    ['http://192.168.1.100', '192.168.1.100'],
-    ['http://10.0.1.1', '10.0.1.1'],
-    ['https://api.github.com', 'github'],
-    ['https://render.com', 'render'],
-    ['http://localhost:3000', 'localhost-3000'],
-    ['https://example.com.', 'example'],
-    ['http://[::1]:8080', 'localhost-8080'],
-    ['http://[2001:db8::1]', '2001:db8::1'],
-  ]
-
-  it.each(cases)('derives %p → %p', (url, expected) => {
-    expect(generateServerName(url)).toBe(expected)
   })
 })

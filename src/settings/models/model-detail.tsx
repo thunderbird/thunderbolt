@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AlertTriangle, MoreVertical, SquarePen, Trash2 } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 
 import { DetailDivider, DetailPanel } from '@/components/detail-panel'
 import { ModificationIndicator } from '@/components/modification-indicator'
-import { DetailSection } from '@/components/settings/detail-section'
-import { Button, mutedIconButtonClass } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DetailActionsMenu, DetailEditDeleteMenuItems } from '@/components/settings/detail-actions-menu'
+import { DetailField } from '@/components/settings/detail-field'
 import { needsApiKey } from '@/components/ui/model-selector/model-selector'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { isModelModified } from '@/defaults/utils'
@@ -31,49 +30,33 @@ export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: Model
     title={model.name}
     subtitle={getProviderDisplay(model)}
     actions={
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
-            <MoreVertical />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-56">
-          {model.isSystem === 1 ? (
-            <div className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
-              {systemModelMenuMessage}
-            </div>
-          ) : (
-            <>
-              <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
-                <SquarePen />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
-                <Trash2 />
-                Delete
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <DetailActionsMenu>
+        {model.isSystem === 1 ? (
+          <div className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+            {systemModelMenuMessage}
+          </div>
+        ) : (
+          <DetailEditDeleteMenuItems onEdit={onEdit} onDelete={onDelete} />
+        )}
+      </DetailActionsMenu>
     }
     onClose={onClose}
   >
     <div className="flex flex-col gap-4">
-      <DetailSection label="Model">
+      <DetailField label="Model">
         <p className="truncate text-base text-foreground">{model.model}</p>
-      </DetailSection>
+      </DetailField>
       {model.url && (
-        <DetailSection label="URL">
+        <DetailField label="URL">
           <p className="truncate text-base text-foreground">{model.url}</p>
-        </DetailSection>
+        </DetailField>
       )}
       {!!model.isConfidential && (
-        <DetailSection label="Privacy">
+        <DetailField label="Privacy">
           <div>
             <PrivateBadge />
           </div>
-        </DetailSection>
+        </DetailField>
       )}
     </div>
 

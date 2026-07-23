@@ -6,6 +6,7 @@ import type { Model } from '@/types'
 
 export type ApiKeyEdit = { kind: 'keep' } | { kind: 'replace'; value: string } | { kind: 'clear' }
 
+/** Maps an API-key edit to DAL semantics: keep → undefined, clear → null, replace → the value. */
 export const apiKeyEditValue = (edit: ApiKeyEdit): string | null | undefined => {
   if (edit.kind === 'keep') {
     return undefined
@@ -37,3 +38,28 @@ export const providerRequiresConnectionTest = (provider: Model['provider']): boo
 
 export const providerRequiresApiKey = (provider: Model['provider']): boolean =>
   provider !== 'thunderbolt' && provider !== 'custom'
+
+/**
+ * Whether fetching the provider's model catalog needs a user-supplied API key.
+ * Narrower than `providerRequiresApiKey`: Tinfoil and Anthropic need a key to
+ * chat, but their catalogs load without one.
+ */
+export const catalogRequiresApiKey = (provider: Model['provider']): boolean =>
+  provider === 'openai' || provider === 'openrouter'
+
+/** Providers whose catalog loads without credentials, so forms fetch it eagerly. */
+export const providerAutoFetchesCatalog = (provider: Model['provider']): boolean =>
+  provider === 'thunderbolt' || provider === 'anthropic' || provider === 'tinfoil'
+
+/** Submission gate for the add-model form. */
+export const shouldDisableAddModel = ({
+  isPending,
+  isFormValid,
+  provider,
+  connectionStatus,
+}: {
+  isPending: boolean
+  isFormValid: boolean
+  provider: Model['provider']
+  connectionStatus: 'idle' | 'success' | 'error'
+}): boolean => isPending || !isFormValid || (providerRequiresConnectionTest(provider) && connectionStatus !== 'success')

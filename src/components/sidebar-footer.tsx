@@ -32,11 +32,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SidebarFooter as ShadcnSidebarFooter, useSidebar } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
+import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
 import { getDownloadUrl } from '@/lib/download-links'
-import { isMobile as isPlatformMobile, isWebDesktopPlatform, isTauri } from '@/lib/platform'
+import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -153,6 +154,7 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
   const authClient = useAuth()
   const navigate = useNavigate()
   const { isMobile, setOpenMobile, state } = useSidebar()
+  const isNativeMobile = useIsNativeMobile()
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -283,7 +285,7 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
           '!gap-0 bg-sidebar',
           hasContentBelow && 'shadow-[0_-8px_16px_-14px_rgba(0,0,0,0.35)]',
           isDesktopCollapsed && '!p-0',
-          isMobile && isPlatformMobile() && '!pb-0',
+          isNativeMobile && '!pb-0',
           className,
         )}
       >

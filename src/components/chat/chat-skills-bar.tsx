@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SearchInput } from '@/components/ui/search-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -335,10 +336,8 @@ const MobileOverlay = ({ onDismiss }: { onDismiss: () => void }) => {
   }, [onDismiss])
 
   return createPortal(
-    <button
-      type="button"
-      aria-label="Dismiss"
-      className="fixed inset-0 z-[5] cursor-default bg-black/30 backdrop-blur-sm max-md:backdrop-blur-md max-md:backdrop-saturate-[.25]"
+    <MobileBlurBackdrop
+      className="z-[5] bg-black/30 backdrop-blur-sm backdrop-saturate-100 max-md:backdrop-blur-md max-md:backdrop-saturate-[.25] dark:bg-black/30"
       onClick={onDismiss}
     />,
     document.body,

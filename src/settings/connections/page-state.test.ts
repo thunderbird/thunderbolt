@@ -12,7 +12,7 @@ describe('connectionsPageReducer', () => {
       importError: 'bad import',
       updateError: 'bad update',
     }
-    expect(connectionsPageReducer(failed, { type: 'set-mode', mode: 'advanced' })).toMatchObject({
+    expect(connectionsPageReducer(failed, { type: 'MODE_CHANGED', mode: 'advanced' })).toMatchObject({
       mode: 'advanced',
       importError: null,
       updateError: null,
@@ -21,10 +21,10 @@ describe('connectionsPageReducer', () => {
 
   it('uses a single selection for mutually exclusive panels', () => {
     const selected = connectionsPageReducer(createConnectionsPageState(), {
-      type: 'select',
+      type: 'SELECTION_CHANGED',
       selection: { kind: 'server', id: 'server-1' },
     })
     expect(selected.selected).toEqual({ kind: 'server', id: 'server-1' })
-    expect(connectionsPageReducer(selected, { type: 'select', selection: null }).selected).toBeNull()
+    expect(connectionsPageReducer(selected, { type: 'SELECTION_CHANGED', selection: null }).selected).toBeNull()
   })
 })

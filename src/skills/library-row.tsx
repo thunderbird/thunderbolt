@@ -56,8 +56,8 @@ export const LibraryRow = ({
           <SettingsSelectableRow
             title={skillDisplayName(skill)}
             subtitle={skill.description}
-            selected={isActive}
-            dimmed={!enabled}
+            isSelected={isActive}
+            isDimmed={!enabled}
             onSelect={() => onSelect(skill.id)}
             ariaLabel={`Open ${skillDisplayName(skill)}`}
             trailing={

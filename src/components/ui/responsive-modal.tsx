@@ -15,10 +15,9 @@ import {
   DialogPortal,
   DialogTitle,
   DialogTrigger,
-  modalFieldSurfaceClass,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { modalAnimationClass, modalCloseClass } from '@/components/ui/modal-styles'
+import { modalAnimationClass, modalCloseClass, modalFieldSurfaceClass } from '@/components/ui/modal-styles'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -40,8 +39,6 @@ type ResponsiveModalDialogContentProps = ComponentProps<typeof DialogPrimitive.C
   surfaceVariant: ResponsiveModalSurfaceVariant
 }
 
-/** Mobile pins the close top-LEFT (header actions like the ⋯ menu take the
- *  top-right); desktop centered dialogs keep the conventional top-right. */
 /** Returns the shared surface classes for a responsive modal viewport and API variant. */
 export const getResponsiveModalSurfaceClass = (isMobile: boolean, surfaceVariant: ResponsiveModalSurfaceVariant) => {
   if (isMobile) {
@@ -277,10 +274,3 @@ export const ResponsiveModalContentComposable = ({
 }
 
 export const ResponsiveModalTrigger = DialogTrigger
-
-// =============================================================================
-// Deprecated exports (for backwards compatibility)
-// =============================================================================
-
-/** @deprecated Use ResponsiveModalContent instead */
-export const ResponsiveModalBody = ResponsiveModalContent

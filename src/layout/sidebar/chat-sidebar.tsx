@@ -90,7 +90,6 @@ export const ChatSidebarContent = ({
 }: ChatSidebarContentProps) => {
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
-  const [hasContentAbove, setHasContentAbove] = useState(false)
   const [hasContentBelow, setHasContentBelow] = useState(false)
 
   return (
@@ -110,19 +109,17 @@ export const ChatSidebarContent = ({
               <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />
             )}
             <SidebarMenu>
-              {!isMobile && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={onCreateNewChat}
-                    tooltip="New Chat"
-                    className="cursor-pointer"
-                    isActive={location.pathname === '/chats/new'}
-                  >
-                    <MessageCirclePlus className="size-[var(--icon-size-default)]" />
-                    <span>New Chat</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={onCreateNewChat}
+                  tooltip="New Chat"
+                  className="cursor-pointer"
+                  isActive={location.pathname === '/chats/new'}
+                >
+                  <MessageCirclePlus className="size-[var(--icon-size-default)]" />
+                  <span>New Chat</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {showTasks && <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -144,7 +141,6 @@ export const ChatSidebarContent = ({
         searchQuery={searchQuery}
         showSearch={showSearch}
         searchInputRef={searchInputRef}
-        hasContentAbove={hasContentAbove}
         mobileNavToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
         mobileSecondaryNavigation={
           showTasks ? (
@@ -157,7 +153,6 @@ export const ChatSidebarContent = ({
         onRename={onRename}
         onSearchClick={onSearchClick}
         onSearchQueryChange={onSearchQueryChange}
-        onContentAboveChange={setHasContentAbove}
         onContentBelowChange={setHasContentBelow}
       />
 

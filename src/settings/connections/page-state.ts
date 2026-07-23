@@ -21,17 +21,22 @@ export type ConnectionsPageState = {
 }
 
 export type ConnectionsPageAction =
-  | { type: 'select'; selection: ConnectionSelection }
-  | { type: 'set-mode'; mode: AddServerMode }
-  | { type: 'set-json'; value: string }
-  | { type: 'set-import-error'; error: string | null }
-  | { type: 'set-update-error'; error: string | null }
-  | { type: 'set-integration-error'; error: string | null }
-  | { type: 'confirm-delete'; server: McpServer | null }
-  | { type: 'retrying'; serverId: string | null }
-  | { type: 'processing-callback'; processing: boolean }
-  | { type: 'clear-navigation-state' }
-  | { type: 'reset-form' }
+  | { type: 'SELECTION_CHANGED'; selection: ConnectionSelection }
+  | { type: 'MODE_CHANGED'; mode: AddServerMode }
+  | { type: 'JSON_CHANGED'; value: string }
+  | { type: 'IMPORT_FAILED'; error: string }
+  | { type: 'SAVE_STARTED' }
+  | { type: 'SAVE_FAILED'; error: string }
+  | { type: 'INTEGRATION_FAILED'; error: string }
+  | { type: 'INTEGRATION_ERROR_CLEARED' }
+  | { type: 'DELETE_REQUESTED'; server: McpServer }
+  | { type: 'DELETE_DISMISSED' }
+  | { type: 'RETRY_STARTED'; serverId: string }
+  | { type: 'RETRY_SETTLED' }
+  | { type: 'CALLBACK_STARTED' }
+  | { type: 'CALLBACK_SETTLED' }
+  | { type: 'NAVIGATION_STATE_CONSUMED' }
+  | { type: 'FORM_RESET' }
 
 export const createConnectionsPageState = (isProcessingCallback = false): ConnectionsPageState => ({
   selected: null,
@@ -51,27 +56,37 @@ export const connectionsPageReducer = (
   action: ConnectionsPageAction,
 ): ConnectionsPageState => {
   switch (action.type) {
-    case 'select':
+    case 'SELECTION_CHANGED':
       return { ...state, selected: action.selection, integrationError: null }
-    case 'set-mode':
+    case 'MODE_CHANGED':
       return { ...state, mode: action.mode, importError: null, updateError: null }
-    case 'set-json':
+    case 'JSON_CHANGED':
       return { ...state, jsonText: action.value }
-    case 'set-import-error':
+    case 'IMPORT_FAILED':
       return { ...state, importError: action.error }
-    case 'set-update-error':
+    case 'SAVE_STARTED':
+      return { ...state, updateError: null }
+    case 'SAVE_FAILED':
       return { ...state, updateError: action.error }
-    case 'set-integration-error':
+    case 'INTEGRATION_FAILED':
       return { ...state, integrationError: action.error }
-    case 'confirm-delete':
+    case 'INTEGRATION_ERROR_CLEARED':
+      return { ...state, integrationError: null }
+    case 'DELETE_REQUESTED':
       return { ...state, pendingDelete: action.server }
-    case 'retrying':
+    case 'DELETE_DISMISSED':
+      return { ...state, pendingDelete: null }
+    case 'RETRY_STARTED':
       return { ...state, retryingServerId: action.serverId }
-    case 'processing-callback':
-      return { ...state, isProcessingCallback: action.processing }
-    case 'clear-navigation-state':
+    case 'RETRY_SETTLED':
+      return { ...state, retryingServerId: null }
+    case 'CALLBACK_STARTED':
+      return { ...state, isProcessingCallback: true }
+    case 'CALLBACK_SETTLED':
+      return { ...state, isProcessingCallback: false }
+    case 'NAVIGATION_STATE_CONSUMED':
       return { ...state, clearNavigationState: true }
-    case 'reset-form':
+    case 'FORM_RESET':
       return { ...state, mode: 'simple', jsonText: '', importError: null, updateError: null }
   }
 }

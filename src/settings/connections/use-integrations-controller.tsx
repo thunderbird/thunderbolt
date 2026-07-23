@@ -85,7 +85,7 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
   }
 
   const { processCallback } = useOAuthConnect({
-    onError: (error) => dispatch({ type: 'set-integration-error', error: error.message }),
+    onError: (error) => dispatch({ type: 'INTEGRATION_FAILED', error: error.message }),
     returnContext: 'integrations',
   })
 
@@ -99,7 +99,7 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
     } catch (error) {
       console.error('Failed to disconnect integration', error)
       dispatch({
-        type: 'set-integration-error',
+        type: 'INTEGRATION_FAILED',
         error: error instanceof Error ? error.message : 'Failed to disconnect integration',
       })
     }
@@ -116,7 +116,7 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
     } catch (error) {
       console.error('Failed to update integration', error)
       dispatch({
-        type: 'set-integration-error',
+        type: 'INTEGRATION_FAILED',
         error: error instanceof Error ? error.message : 'Failed to update integration',
       })
     }

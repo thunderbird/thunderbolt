@@ -4,15 +4,17 @@
 
 import type { ComponentProps, ReactNode } from 'react'
 
+import { DetailSectionTitle } from '@/components/detail-panel'
 import { cn } from '@/lib/utils'
 
-type DetailSectionProps = ComponentProps<'section'> & {
+type DetailFieldProps = ComponentProps<'section'> & {
   label: ReactNode
 }
 
-export const DetailSection = ({ label, className, children, ...props }: DetailSectionProps) => (
+/** A labeled value block for detail panels, using the shared section-title style. */
+export const DetailField = ({ label, className, children, ...props }: DetailFieldProps) => (
   <section className={cn('flex flex-col gap-1', className)} {...props}>
-    <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+    <DetailSectionTitle>{label}</DetailSectionTitle>
     {children}
   </section>
 )

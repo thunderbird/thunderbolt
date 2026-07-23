@@ -5,14 +5,11 @@
 import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { IconTile } from '@/components/settings/icon-tile'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 
 /** The square icon box that leads every agent list row and detail header. */
-export const AgentIconTile = ({ children }: { children: ReactNode }) => (
-  <div className="flex aspect-square size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-    {children}
-  </div>
-)
+export const AgentIconTile = ({ children }: { children: ReactNode }) => <IconTile>{children}</IconTile>
 
 type AgentListRowProps = {
   icon: ReactNode
@@ -54,11 +51,11 @@ export const AgentListRow = ({
       title={title}
       subtitle={<span data-testid={subtitleTestId}>{subtitle}</span>}
       leading={<AgentIconTile>{icon}</AgentIconTile>}
-      selected={isSelected}
-      dimmed={isDimmed}
+      isSelected={isSelected}
+      isDimmed={isDimmed}
       onSelect={onOpen}
       ariaLabel={ariaLabel}
-      trailing={
+      trailingIcon={
         <ChevronRight
           className="size-4 shrink-0 text-muted-foreground"
           aria-hidden="true"

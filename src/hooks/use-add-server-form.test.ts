@@ -301,7 +301,8 @@ describe('useAddServerForm', () => {
   it('reports isClearingBearerOnly only when a stored bearer is cleared with URL/transport untouched', () => {
     const { result } = renderForm(makeDeps())
 
-    // Bearer-authorized server: token is prefilled from mcp_secrets.
+    // Bearer-authorized server: the token stays out of the input; the form
+    // only knows a stored bearer exists.
     act(() =>
       result.current.openEditDialog(
         makeMcpServer({ id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
@@ -309,11 +310,12 @@ describe('useAddServerForm', () => {
         'bearer',
       ),
     )
+    expect(result.current.hasStoredBearerToken).toBe(true)
     expect(result.current.isClearingBearerOnly).toBe(false)
 
-    // Clearing the bearer flips it — the Save gate must recognize this so
-    // removing auth from a still-protected server doesn't get stuck disabled.
-    act(() => result.current.changeToken(''))
+    // Clearing the stored bearer flips it — the Save gate must recognize this
+    // so removing auth from a still-protected server doesn't get stuck disabled.
+    act(() => result.current.toggleClearStoredToken())
     expect(result.current.hasConnectionEdits).toBe(true)
     expect(result.current.isClearingBearerOnly).toBe(true)
 

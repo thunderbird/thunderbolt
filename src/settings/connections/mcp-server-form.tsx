@@ -23,6 +23,11 @@ import type { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 /** Add-form mode: a single guided server form, or a raw JSON config paste. */
 export type AddServerMode = 'simple' | 'advanced'
 
+/** Mode toggle items match the Input fields' rounding (same treatment as the
+ *  preferences ThemeToggleGroup). */
+const modeToggleItemClass =
+  'first:rounded-l-lg last:rounded-r-lg data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground dark:data-[state=on]:bg-accent'
+
 type StatusTone = 'success' | 'warning' | 'destructive'
 
 /**
@@ -169,18 +174,10 @@ export const McpServerForm = ({
           }}
           className="w-full flex-shrink-0 rounded-lg"
         >
-          {/* rounded-lg to match the Input fields below (same treatment
-              as the preferences ThemeToggleGroup). */}
-          <ToggleGroupItem
-            value="simple"
-            className="first:rounded-l-lg last:rounded-r-lg data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground dark:data-[state=on]:bg-accent"
-          >
+          <ToggleGroupItem value="simple" className={modeToggleItemClass}>
             Simple
           </ToggleGroupItem>
-          <ToggleGroupItem
-            value="advanced"
-            className="first:rounded-l-lg last:rounded-r-lg data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground dark:data-[state=on]:bg-accent"
-          >
+          <ToggleGroupItem value="advanced" className={modeToggleItemClass}>
             Advanced (JSON)
           </ToggleGroupItem>
         </ToggleGroup>
@@ -250,10 +247,19 @@ export const McpServerForm = ({
                   <Input
                     id="token"
                     type="password"
-                    placeholder="Bearer token or API key"
+                    placeholder={
+                      form.hasStoredBearerToken && !form.isClearingStoredToken
+                        ? '••••••••••••••••'
+                        : 'Bearer token or API key'
+                    }
                     value={newServerToken}
                     onChange={(e) => form.changeToken(e.target.value)}
                   />
+                  {form.hasStoredBearerToken && !newServerToken && (
+                    <Button type="button" variant="ghost" className="mt-1" onClick={form.toggleClearStoredToken}>
+                      {form.isClearingStoredToken ? 'Keep saved credential' : 'Clear saved credential'}
+                    </Button>
+                  )}
                 </div>
 
                 {isUrlReady && (

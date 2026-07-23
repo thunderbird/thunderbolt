@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useIsMobile } from '@/hooks/use-mobile'
-import { isMobile as isPlatformMobile } from '@/lib/platform'
+import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, m } from 'framer-motion'
 import { useEffect, useRef } from 'react'
@@ -55,6 +54,7 @@ export default function ChatUI() {
     useChatScrollHandler()
 
   const { isMobile } = useIsMobile()
+  const isNativeMobile = useIsNativeMobile()
 
   // Scroll to bottom instantly when entering an existing chat
   // Effect re-runs when scrollToBottom changes (when container becomes available)
@@ -114,7 +114,7 @@ export default function ChatUI() {
         <m.div
           className={cn(
             '-mt-3 md:-mt-4 relative z-10 px-3 pb-3 md:px-4 md:pb-4 flex',
-            isMobile && isPlatformMobile() && 'pb-0',
+            isNativeMobile && 'pb-0',
             !hasMessages && !isMobile && 'flex-1 items-center',
           )}
           initial={false}

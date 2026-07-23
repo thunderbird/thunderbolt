@@ -62,7 +62,9 @@ describe('DetailPanelSurface', () => {
     expect(document.querySelector('[data-slot="responsive-modal-content"]')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close details' })).toBeInTheDocument()
     const surface = screen.getByText('Detail body').closest('.bg-sidebar')
-    expect(surface?.closest('aside')).toHaveClass('[filter:drop-shadow(var(--shadow-glow-strong))]')
+    expect(surface?.closest('[data-slot="slide-in-panel"]')).toHaveClass(
+      '[filter:drop-shadow(var(--shadow-glow-strong))]',
+    )
     expect(surface?.parentElement).toHaveClass('pb-12')
     expect(surface?.parentElement).not.toHaveClass('pt-3')
     expect(surface?.parentElement).not.toHaveClass('pl-4')

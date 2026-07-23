@@ -12,10 +12,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { isMobile as isPlatformMobile } from '@/lib/platform'
+import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
 import { RailDivider } from './rail-divider'
@@ -35,17 +35,19 @@ export const ChatList = ({
   searchQuery,
   showSearch,
   searchInputRef,
-  hasContentAbove,
   mobileNavToggle,
   mobileSecondaryNavigation,
   onChatClick,
   onRename,
   onSearchClick,
   onSearchQueryChange,
-  onContentAboveChange,
   onContentBelowChange,
 }: ChatListProps) => {
   const scrollContainerRef = useRef<HTMLUListElement>(null)
+  const isNativeMobile = useIsNativeMobile()
+  // Drives this list's own top scroll shadow; only the bottom counterpart is
+  // lifted (the sidebar footer renders that shadow).
+  const [hasContentAbove, setHasContentAbove] = useState(false)
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -55,7 +57,7 @@ export const ChatList = ({
 
     const updateScrollShadows = () => {
       const remainingScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight - scrollContainer.scrollTop
-      onContentAboveChange(scrollContainer.scrollTop > 1)
+      setHasContentAbove(scrollContainer.scrollTop > 1)
       onContentBelowChange(remainingScroll > 1)
     }
 
@@ -67,7 +69,7 @@ export const ChatList = ({
       scrollContainer.removeEventListener('scroll', updateScrollShadows)
       window.removeEventListener('resize', updateScrollShadows)
     }
-  }, [chatThreads.length, debouncedSearchQuery, onContentAboveChange, onContentBelowChange, showSearch])
+  }, [chatThreads.length, debouncedSearchQuery, onContentBelowChange, showSearch])
 
   const searchInput = (
     <div
@@ -91,11 +93,7 @@ export const ChatList = ({
   return (
     <>
       <SidebarGroup
-        className={cn(
-          'flex-1 flex flex-col min-h-0 pb-0',
-          isCollapsed && 'pt-0',
-          isMobile && isPlatformMobile() && 'pt-1',
-        )}
+        className={cn('flex-1 flex flex-col min-h-0 pb-0', isCollapsed && 'pt-0', isNativeMobile && 'pt-1')}
       >
         {isMobile && (
           <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">

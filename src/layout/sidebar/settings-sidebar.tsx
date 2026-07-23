@@ -13,7 +13,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { isMobile as isPlatformMobile } from '@/lib/platform'
+import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
@@ -65,6 +65,7 @@ export const SettingsSidebarContent = ({
   onSettingsNavigate,
 }: SettingsSidebarContentProps) => {
   const { isMobile, toggleSidebar } = useSidebar()
+  const isNativeMobile = useIsNativeMobile()
   const location = useLocation()
 
   const isItemActive = ({ path, matchPrefix }: NavItem) =>
@@ -99,7 +100,7 @@ export const SettingsSidebarContent = ({
           <SidebarGroup
             className={cn(
               isCollapsed && (index === navGroups.length - 1 ? 'pt-0' : 'py-0'),
-              isMobile && index === 0 && isPlatformMobile() && 'pt-1',
+              isNativeMobile && index === 0 && 'pt-1',
             )}
           >
             {isMobile && index === 0 && (

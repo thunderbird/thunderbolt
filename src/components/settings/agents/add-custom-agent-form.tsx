@@ -23,15 +23,14 @@ export type AddCustomAgentPayload = {
   transport: CustomAgentTransport
 }
 
-/** Async probe signature the dialog uses to test a remote agent endpoint.
+/** Async probe signature the form uses to test a remote agent endpoint.
  *  Production wires the real `testAcpConnection`; tests inject a stub. */
 export type TestAcpConnectionFn = (opts: {
   url: string
 }) => Promise<{ success: true } | { success: false; error: string }>
 
-type AddCustomAgentDialogProps = {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+type AddCustomAgentFormProps = {
+  onClose: () => void
   onSubmit: (payload: AddCustomAgentPayload) => Promise<void> | void
   /** Test/DI override for the iOS guard. Production callers omit this. */
   isIos?: () => boolean
@@ -43,7 +42,7 @@ type AddCustomAgentDialogProps = {
   loadAppNodeId?: () => Promise<string>
 }
 
-type AgentDialogState = {
+type AgentFormState = {
   name: string
   url: string
   description: string
@@ -55,8 +54,8 @@ type AgentDialogState = {
   connectionError: string | null
 }
 
-/** User-meaningful dialog events; the reducer maps each to a state delta. */
-type AgentDialogAction =
+/** User-meaningful form events; the reducer maps each to a state delta. */
+type AgentFormAction =
   | { type: 'NAME_CHANGED'; value: string }
   | { type: 'URL_CHANGED'; value: string }
   | { type: 'DESCRIPTION_CHANGED'; value: string }
@@ -65,9 +64,8 @@ type AgentDialogAction =
   | { type: 'CONNECTION_TEST_STARTED' }
   | { type: 'CONNECTION_TEST_SUCCEEDED' }
   | { type: 'CONNECTION_TEST_FAILED'; error: string }
-  | { type: 'RESET'; next: AgentDialogState }
 
-const emptyState: AgentDialogState = {
+const emptyState: AgentFormState = {
   name: '',
   url: '',
   description: '',
@@ -78,7 +76,7 @@ const emptyState: AgentDialogState = {
   connectionError: null,
 }
 
-const agentDialogReducer = (state: AgentDialogState, action: AgentDialogAction): AgentDialogState => {
+const agentFormReducer = (state: AgentFormState, action: AgentFormAction): AgentFormState => {
   switch (action.type) {
     case 'NAME_CHANGED':
       return { ...state, name: action.value }
@@ -98,20 +96,17 @@ const agentDialogReducer = (state: AgentDialogState, action: AgentDialogAction):
       return { ...state, isTestingConnection: false, connectionStatus: 'success' }
     case 'CONNECTION_TEST_FAILED':
       return { ...state, isTestingConnection: false, connectionStatus: 'error', connectionError: action.error }
-    case 'RESET':
-      return action.next
   }
 }
 
-export const AddCustomAgentDialog = ({
-  open,
-  onOpenChange,
+export const AddCustomAgentForm = ({
+  onClose,
   onSubmit,
   isIos,
   testAcpConnection = defaultTestAcpConnection,
   loadAppNodeId = irohClientNodeId,
-}: AddCustomAgentDialogProps) => {
-  const [state, dispatch] = useReducer(agentDialogReducer, emptyState)
+}: AddCustomAgentFormProps) => {
+  const [state, dispatch] = useReducer(agentFormReducer, emptyState)
 
   const trimmedName = state.name.trim()
   const trimmedUrl = state.url.trim()
@@ -136,14 +131,6 @@ export const AddCustomAgentDialog = ({
   // shown for allowlisting. The shared hook keeps the wasm chunk lazy (loads only
   // while an iroh target is selected) and re-arms when the target is re-entered.
   const appNodeId = useAppNodeId(isIroh, loadAppNodeId)
-
-  const handleOpenChange = (next: boolean) => {
-    if (!next) {
-      // On close, reset so a reopen without remount lands in a predictable shape.
-      dispatch({ type: 'RESET', next: emptyState })
-    }
-    onOpenChange(next)
-  }
 
   const handleTestConnection = async () => {
     dispatch({ type: 'CONNECTION_TEST_STARTED' })
@@ -171,18 +158,13 @@ export const AddCustomAgentDialog = ({
         transport: validation.transport,
       })
     } catch (error) {
-      // Keep the dialog open with the form intact so the user can retry —
-      // and say why nothing happened.
+      // Keep the form intact so the user can retry — and say why nothing happened.
       console.error('Failed to add custom agent', error)
       dispatch({ type: 'SUBMIT_FAILED', message: "Couldn't add the agent. Please try again." })
       return
     }
-    dispatch({ type: 'RESET', next: emptyState })
-    onOpenChange(false)
-  }
-
-  if (!open) {
-    return null
+    // The parent unmounts the form on close, so state resets by remount.
+    onClose()
   }
 
   // Renders as plain panel content — the agents page hosts it inside the
@@ -250,23 +232,15 @@ export const AddCustomAgentDialog = ({
         )}
         {state.connectionStatus === 'success' && (
           <StatusCard
-            title={
-              <>
-                <Check className="h-5 w-5 text-success" />
-                Connection successful!
-              </>
-            }
+            icon={<Check className="h-4 w-4 text-success" />}
+            title="Connection successful!"
             description="Successfully connected to the agent."
           />
         )}
         {state.connectionStatus === 'error' && (
           <StatusCard
-            title={
-              <>
-                <X className="h-5 w-5 text-destructive" />
-                Connection failed
-              </>
-            }
+            icon={<X className="h-4 w-4 text-destructive" />}
+            title="Connection failed"
             description={state.connectionError || 'Could not connect to the agent.'}
           />
         )}
@@ -282,7 +256,7 @@ export const AddCustomAgentDialog = ({
             {state.submitError}
           </p>
         )}
-        <ResponsiveModalCancel onClick={() => handleOpenChange(false)} />
+        <ResponsiveModalCancel onClick={onClose} />
         <Button onClick={handleSubmit} disabled={!canSubmit}>
           Add agent
         </Button>

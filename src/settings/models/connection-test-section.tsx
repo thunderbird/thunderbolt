@@ -20,7 +20,7 @@ type ConnectionTestSectionProps = {
 }
 
 /** Determines whether the current provider fields are sufficient for a test. */
-export const canTestModelConnection = (provider: Model['provider'], model?: string, apiKey?: string | null) => {
+const canTestModelConnection = (provider: Model['provider'], model?: string, apiKey?: string | null) => {
   if (!providerRequiresConnectionTest(provider) || !model) {
     return false
   }
@@ -61,23 +61,15 @@ export const ConnectionTestSection = ({
       )}
       {status === 'success' && (
         <StatusCard
-          title={
-            <>
-              <Check className="h-5 w-5 text-success" />
-              Test successful!
-            </>
-          }
+          icon={<Check className="h-4 w-4 text-success" />}
+          title="Test successful!"
           description="Successfully got a response from the model."
         />
       )}
       {status === 'error' && (
         <StatusCard
-          title={
-            <>
-              <X className="h-5 w-5 text-destructive" />
-              Test failed
-            </>
-          }
+          icon={<X className="h-4 w-4 text-destructive" />}
+          title="Test failed"
           description={error || 'Received an error while testing the model.'}
         />
       )}

@@ -115,7 +115,7 @@ export {
 } from './model-profiles'
 
 // Devices
-export { getAllDevices, getDevice, getPendingDevices, removeRevokedBridgeDevice, type Device } from './devices'
+export { getAllDevices, getDevice, getPendingDevices, type Device } from './devices'
 
 // Integrations
 export {

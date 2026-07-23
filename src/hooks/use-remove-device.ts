@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useHttpClient } from '@/contexts'
-import { removeRevokedBridgeDevice } from '@/dal'
+import { removeRevokedBridgeDevice } from '@/lib/device-removal'
 import { useMutation } from '@tanstack/react-query'
 
 /**

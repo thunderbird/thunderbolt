@@ -9,7 +9,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { testAcpConnection } from '@/acp'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
-import { DetailPanelSurface } from '@/components/detail-panel'
+import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
@@ -48,12 +48,26 @@ export default function AgentsSettingsPage() {
   // agent is deleted on another device, `activeAgent` turns undefined and the
   // panel closes on its own.
   const activeAgent = activePanel?.kind === 'agent' ? agents.find((a) => a.id === activePanel.id) : undefined
-  const panelOpen = activeAgent !== undefined || cliOpen
+  // The add form shares the slide-in surface with the detail views (same
+  // aside idiom as the skills create form).
+  const panelOpen = dialogOpen || activeAgent !== undefined || cliOpen
 
-  const closePanel = () => setActivePanel(null)
-  const toggleAgentPanel = (id: string) =>
+  const closePanel = () => {
+    setDialogOpen(false)
+    setActivePanel(null)
+  }
+  const openAddPanel = () => {
+    setActivePanel(null)
+    setDialogOpen(true)
+  }
+  const toggleAgentPanel = (id: string) => {
+    setDialogOpen(false)
     setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
-  const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
+  }
+  const toggleCliPanel = () => {
+    setDialogOpen(false)
+    setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
+  }
 
   const handleAdd = async (payload: AddCustomAgentPayload) => {
     if (!currentUserId) {
@@ -73,7 +87,16 @@ export default function AgentsSettingsPage() {
     })
   }
 
-  const detailPanel = activeAgent ? (
+  const detailPanel = dialogOpen ? (
+    <DetailPanel title="Add custom agent" onClose={closePanel}>
+      <AddCustomAgentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSubmit={handleAdd}
+        testAcpConnection={testAcpConnection}
+      />
+    </DetailPanel>
+  ) : activeAgent ? (
     <AgentDetail
       // Keyed by id so inline-edit drafts reset when switching agents.
       key={activeAgent.id}
@@ -97,9 +120,16 @@ export default function AgentsSettingsPage() {
   ) : null
 
   return (
-    <div className="relative flex h-full overflow-hidden">
+    <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
-        <div className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-6 overflow-y-auto p-4 md:px-5">
+        {/* md:min-w keeps the rows readable when the detail panel is open on a
+            narrow window: the list stops shrinking and slides under the panel
+            (the column's overflow-hidden clips it at the panel edge) — the
+            same behavior the models page gets from its cards' min-content
+            width (~320px incl. padding). Desktop-only: the panel is a
+            full-screen modal on mobile, and a hard floor would overflow
+            sub-360px phones. */}
+        <div className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-6 overflow-y-auto p-4 md:min-w-[360px] md:px-5">
           <PageHeader title="Agents">
             {allowCustomAgents && (
               <Button
@@ -107,7 +137,7 @@ export default function AgentsSettingsPage() {
                 size="icon"
                 className="bg-card"
                 aria-label="Add custom agent"
-                onClick={() => setDialogOpen(true)}
+                onClick={openAddPanel}
                 disabled={!currentUserId}
               >
                 <Plus />
@@ -134,13 +164,6 @@ export default function AgentsSettingsPage() {
       <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>
         {detailPanel}
       </DetailPanelSurface>
-
-      <AddCustomAgentDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onSubmit={handleAdd}
-        testAcpConnection={testAcpConnection}
-      />
     </div>
   )
 }

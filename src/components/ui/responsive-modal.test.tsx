@@ -4,7 +4,7 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import {
@@ -88,10 +88,12 @@ describe('ResponsiveModal', () => {
       renderModal()
 
       const close = screen.getByRole('button', { name: 'Close' })
+      const surface = document.querySelector('[data-slot="responsive-modal-content"]')
       const mobileSurfaceClass = getResponsiveModalSurfaceClass(true, 'structured')
 
       expect(mobileSurfaceClass).toContain('h-dvh')
-      expect(mobileSurfaceClass).toContain('[&_[data-slot=input]]:bg-card')
+      expect(surface).toHaveClass('[&_[data-slot=input]]:!bg-card')
+      expect(surface).toHaveClass('[&_[data-slot=combobox-trigger]]:!bg-card')
       expect(close.className).toContain('h-[var(--touch-height-sm)]')
     })
 
@@ -110,6 +112,21 @@ describe('ResponsiveModal', () => {
       expect(getResponsiveModalSurfaceClass(true, 'composable')).toContain('h-dvh')
       expect(document.querySelector('[data-slot="responsive-modal-content"]')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+    })
+
+    it('uses the same field surfaces in plain dialogs', () => {
+      render(
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Plain Dialog</DialogTitle>
+            <input data-slot="input" />
+          </DialogContent>
+        </Dialog>,
+      )
+
+      const surface = document.querySelector('[data-slot="dialog-content"]')
+      expect(surface).toHaveClass('[&_[data-slot=input]]:!bg-card')
+      expect(surface).toHaveClass('dark:[&_[data-slot=input]]:!bg-input')
     })
   })
 

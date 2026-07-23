@@ -52,9 +52,6 @@ describe('SkillForm slug auto-generation', () => {
 
     // Renaming must not touch the existing slug (it would break `/tokens`).
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Rebranded Brief' } })
-    expect(screen.getByText('/daily-brief')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit slug' }))
     const slugInput = screen.getByLabelText('Slug')
     expect(slugInput).toHaveValue('daily-brief')
 
@@ -89,22 +86,11 @@ describe('SkillForm edit submission', () => {
   })
 })
 
-describe('SkillForm slug customization', () => {
-  it('toggles between the slug text and editable input', () => {
+describe('SkillForm slug input', () => {
+  it('uses the standard input in edit mode', () => {
     render(<SkillForm mode="edit" initialValues={editValues} onCancel={noop} onSubmit={noop} />)
 
-    expect(screen.getByText('/daily-brief')).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: 'Slug' })).not.toBeInTheDocument()
-
-    const editButton = screen.getByRole('button', { name: 'Edit slug' })
-    expect(editButton).toHaveClass('min-h-[var(--min-touch-height)]')
-    fireEvent.click(editButton)
-
     expect(screen.getByRole('textbox', { name: 'Slug' })).toHaveValue('daily-brief')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Finish editing slug' }))
-
-    expect(screen.getByText('/daily-brief')).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: 'Slug' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit slug' })).not.toBeInTheDocument()
   })
 })

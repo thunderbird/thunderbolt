@@ -217,7 +217,7 @@ const BuiltInBody = () => {
           <div className="flex flex-col gap-1">
             <FieldLabel>MCP servers</FieldLabel>
             <Link
-              to="/settings/mcp-servers"
+              to="/settings/connections"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
               {mcpServers.length} {mcpServers.length === 1 ? 'MCP server' : 'MCP servers'}
@@ -226,7 +226,7 @@ const BuiltInBody = () => {
           <div className="flex flex-col gap-1">
             <FieldLabel>Integrations</FieldLabel>
             <Link
-              to="/settings/integrations"
+              to="/settings/connections"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
               Manage integrations

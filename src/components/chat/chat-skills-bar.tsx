@@ -338,7 +338,7 @@ const MobileOverlay = ({ onDismiss }: { onDismiss: () => void }) => {
     <button
       type="button"
       aria-label="Dismiss"
-      className="fixed inset-0 z-[5] cursor-default bg-black/30 backdrop-blur-sm"
+      className="fixed inset-0 z-[5] cursor-default bg-black/30 backdrop-blur-sm max-md:backdrop-blur-md max-md:backdrop-saturate-[.25]"
       onClick={onDismiss}
     />,
     document.body,

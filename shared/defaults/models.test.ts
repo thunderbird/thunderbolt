@@ -21,7 +21,7 @@ const computeSnapshotHash = () =>
   defaultModels.map((model, index) => `${index}:${model.id}:${hashModel(model)}`).join('|')
 
 const expected = {
-  version: 2,
+  version: 3,
   hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-1vf2pk|1:019f227e-d640-727d-ba12-d51bd7d0a3d6:bvaax2|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
 }
 

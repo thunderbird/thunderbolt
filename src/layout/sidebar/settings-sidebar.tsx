@@ -13,7 +13,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import { Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
@@ -38,9 +38,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: 'What agents use',
     items: [
       { path: '/settings/skills', label: 'Skills', icon: Zap },
+      { path: '/settings/connections', label: 'Connections', icon: Plug },
       { path: '/settings/models', label: 'Models', icon: Cpu, matchPrefix: true },
-      { path: '/settings/integrations', label: 'Integrations', icon: Plug },
-      { path: '/settings/mcp-servers', label: 'MCP servers', icon: Server },
     ],
   },
   {

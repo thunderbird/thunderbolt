@@ -7,7 +7,6 @@ import { Info, MoreVertical, SquarePen, Trash2 } from 'lucide-react'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { useResponsiveModalContext } from '@/components/ui/responsive-modal'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 /**
@@ -29,12 +28,10 @@ export const SkillDetail = ({
   instruction: string
   onEdit: () => void
   onDelete: () => void
-  /** Close (X, right of the actions menu) — dismisses the desktop slide-in
+  /** Close (X, left of the actions menu) — dismisses the desktop slide-in
    *  panel or the mobile overlay. */
   onClose: () => void
 }) => {
-  const { isMobile } = useResponsiveModalContext()
-
   const actionsMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -42,7 +39,7 @@ export const SkillDetail = ({
           <MoreVertical />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={isMobile ? 'start' : 'end'} className="min-w-56">
+      <DropdownMenuContent align="end" className="min-w-56">
         <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
           <SquarePen />
           Edit

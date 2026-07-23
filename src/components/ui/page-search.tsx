@@ -89,6 +89,7 @@ const PageSearchInput = ({
   onSearch,
   placeholder,
   wrapperClassName,
+  className,
   ...searchInputProps
 }: PageSearchInputProps) => {
   const { open, inputRef, searchValue, setSearchValue } = usePageSearchContext()
@@ -101,7 +102,7 @@ const PageSearchInput = ({
     <div
       className={cn(
         'transition-all duration-300 ease-in-out flex-shrink-0',
-        open ? 'max-h-14 opacity-100' : 'max-h-0 opacity-0 overflow-hidden',
+        open ? 'max-h-16 pb-2 opacity-100' : 'max-h-0 pb-0 opacity-0 overflow-hidden',
         wrapperClassName,
       )}
     >
@@ -109,7 +110,7 @@ const PageSearchInput = ({
         ref={inputRef}
         inputSize="lg"
         showIcon
-        className="rounded-full"
+        className={cn('rounded-xl bg-card', className)}
         placeholder={placeholder}
         value={searchValue}
         onChange={handleChange}

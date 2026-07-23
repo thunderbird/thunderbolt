@@ -20,7 +20,8 @@ import { getGreeting } from './chat-ui-greeting'
 
 const EmptyChatGreeting = () => {
   return (
-    <div className="flex items-center gap-5">
+    // The logo's transparent padding shifts the combined ink bounds 10px right, so compensate to optically center them.
+    <div className="-translate-x-2.5 flex items-center gap-5">
       <AppLogo size={72} className="opacity-60" />
       <span className="font-heading text-3xl font-medium text-muted-foreground">{getGreeting()}</span>
     </div>

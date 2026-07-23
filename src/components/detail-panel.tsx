@@ -16,6 +16,7 @@ import {
   ResponsiveModalTitle,
   useResponsiveModalContext,
 } from '@/components/ui/responsive-modal'
+import { cn } from '@/lib/utils'
 
 /**
  * Shared anatomy for the slide-in detail panels (skills, agents, CLI): one
@@ -66,7 +67,9 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
           {actions && <ResponsiveModalActions>{actions}</ResponsiveModalActions>}
         </>
       ) : (
-        <header className="relative flex h-16 shrink-0 items-center justify-between gap-4">
+        // mt-2.5 brings the icon tile's top gap to 24px ((64 − 36) / 2 + 10),
+        // matching the panel's md:px-6 left padding.
+        <header className="relative mt-2.5 flex h-16 shrink-0 items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             {icon}
             <div className="flex min-w-0 flex-col justify-center leading-tight">
@@ -74,9 +77,11 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
               {subtitle && <span className="truncate text-xs text-muted-foreground">{subtitle}</span>}
             </div>
           </div>
-          {/* Pin the actions to the card's top-right corner, 8px from both
-              edges (right: 24px padding − 16px). */}
-          <div className="absolute -right-4 top-2 flex shrink-0 items-center gap-0.5">
+          {/* Pin the controls to the card's top-right corner, 8px from both
+              edges (right: 24px padding − 16px; top: 8px − the header's 10px
+              margin). Close sits outermost (the desktop convention); the
+              mobile shell instead splits them across the top corners. */}
+          <div className="absolute -right-4 -top-0.5 flex shrink-0 items-center gap-0.5">
             {actions}
             <Button
               variant="ghost"
@@ -85,13 +90,22 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
               aria-label="Close details"
               className={mutedIconButtonClass}
             >
-              <X className="size-4" />
+              <X />
             </Button>
           </div>
         </header>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pt-4">{children}</div>
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto md:pt-4',
+          subtitle ? 'pt-8' : 'pt-6',
+          '[&_[data-slot=dialog-footer]]:sticky [&_[data-slot=dialog-footer]]:bottom-0 [&_[data-slot=dialog-footer]]:z-10 [&_[data-slot=dialog-footer]]:bg-background',
+          'md:[&_[data-slot=dialog-footer]]:static md:[&_[data-slot=dialog-footer]]:bg-transparent',
+        )}
+      >
+        {children}
+      </div>
     </section>
   )
 }
@@ -108,17 +122,26 @@ type DetailPanelSurfaceProps = {
  * right-side slide-in at a ~50/50 split with the list (half the viewport
  * minus half the sidebar), on one continuous surface card lifted off the
  * page by the app's soft glow shadow plus a faint border — bg-sidebar
- * (near-white in light mode) like the chat composer, bottom padding floating
- * the card off the window edge, right edge flush and square with only the
- * left corners rounded. Mobile: a full-screen modal using the same fade/scale
- * transition as the app's other responsive modals.
+ * (near-white in light mode) like the chat composer. The header inset above
+ * and bottom padding below float the card off the window edges by the same
+ * 48px; callers leave the outer
+ * flex row unclipped so the glow can extend beyond that inset naturally. Its
+ * right edge stays flush and square with only the left corners rounded. Mobile
+ * uses the same full-screen fade/scale modal as other responsive views.
  */
 export const DetailPanelSurface = ({ open, isMobile, onClose, children }: DetailPanelSurfaceProps) => {
   if (!isMobile) {
     return (
-      <SlideInPanel open={open} width="clamp(400px, calc(50vw - 128px), 800px)">
-        <div className="h-full pb-4">
-          <div className="h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar shadow-glow">
+      // The warm 6% glow is invisible on the dark background (same rationale
+      // as the .dark elevation overrides in index.css), so dark mode swaps in
+      // a slightly stronger black ink at the same blur radius.
+      <SlideInPanel
+        open={open}
+        width="clamp(440px, calc(50vw - 128px), 520px)"
+        className="[filter:drop-shadow(var(--shadow-glow-strong))] dark:[filter:drop-shadow(0_0_32px_rgb(0_0_0/24%))]"
+      >
+        <div className="h-full pb-12">
+          <div className="h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar">
             {children}
           </div>
         </div>

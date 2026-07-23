@@ -323,7 +323,6 @@ describe('SkillsView state machine', () => {
       // Confirming lands in a fresh edit form on the target skill.
       const editName = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement
       expect(editName.value).toBe('Beta')
-      fireEvent.click(screen.getByRole('button', { name: 'Edit slug' }))
       const editSlug = screen.getByRole('textbox', { name: 'Slug' }) as HTMLInputElement
       expect(editSlug.value).toBe('beta')
       expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()

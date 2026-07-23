@@ -7,15 +7,7 @@ import { Check, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  ResponsiveModalCancel,
-  ResponsiveModalContentComposable,
-  ResponsiveModalDescription,
-  ResponsiveModalFooter,
-  ResponsiveModalHeader,
-  ResponsiveModalTitle,
-} from '@/components/ui/responsive-modal'
-import { Dialog } from '@/components/ui/dialog'
+import { ResponsiveModalCancel, ResponsiveModalFooter } from '@/components/ui/responsive-modal'
 import { StatusCard } from '@/components/ui/status-card'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
@@ -188,114 +180,112 @@ export const AddCustomAgentDialog = ({
     onOpenChange(false)
   }
 
+  if (!open) {
+    return null
+  }
+
+  // Renders as plain panel content — the agents page hosts it inside the
+  // shared DetailPanelSurface (same aside idiom as the skills create form),
+  // which owns the "Add custom agent" header and close affordance.
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <ResponsiveModalContentComposable className="sm:max-w-[500px]">
-        <ResponsiveModalHeader>
-          <ResponsiveModalTitle>Add custom agent</ResponsiveModalTitle>
-          <ResponsiveModalDescription>
-            Connect a remote agent that speaks the Agent Client Protocol.
-          </ResponsiveModalDescription>
-        </ResponsiveModalHeader>
-        <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
-          <div className="grid grid-cols-1 gap-2">
-            <Label htmlFor="agent-name">Name</Label>
-            <Input
-              id="agent-name"
-              placeholder="My Agent"
-              value={state.name}
-              onChange={(e) => dispatch({ type: 'NAME_CHANGED', value: e.target.value })}
-              autoComplete="off"
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-2">
-            <Label htmlFor="agent-url">URL</Label>
-            <Input
-              id="agent-url"
-              placeholder="wss://example.com/ws or paste an iroh ticket"
-              value={state.url}
-              onChange={(e) => dispatch({ type: 'URL_CHANGED', value: e.target.value })}
-              autoComplete="off"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-              A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare
-              NodeId works only if the peer is discoverable).
-            </p>
-          </div>
-          {isIroh && <IrohPairingPanel appNodeId={appNodeId} />}
-          <div className="grid grid-cols-1 gap-2">
-            <Label htmlFor="agent-description">Description</Label>
-            <Input
-              id="agent-description"
-              placeholder="Optional"
-              value={state.description}
-              onChange={(e) => dispatch({ type: 'DESCRIPTION_CHANGED', value: e.target.value })}
-              autoComplete="off"
-            />
-          </div>
-          {canTestConnection && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={handleTestConnection}
-              disabled={state.isTestingConnection}
-            >
-              {state.isTestingConnection ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Testing agent…
-                </>
-              ) : (
-                'Test connection'
-              )}
-            </Button>
-          )}
-          {state.connectionStatus === 'success' && (
-            <StatusCard
-              title={
-                <>
-                  <Check className="h-5 w-5 text-green-600" />
-                  Connection successful!
-                </>
-              }
-              description="Successfully connected to the agent."
-              className="border-green-200/50 dark:border-green-500/20"
-            />
-          )}
-          {state.connectionStatus === 'error' && (
-            <StatusCard
-              title={
-                <>
-                  <X className="h-5 w-5 text-red-600" />
-                  Connection failed
-                </>
-              }
-              description={state.connectionError || 'Could not connect to the agent.'}
-              className="bg-red-50/50 dark:bg-red-500/10 border-red-200/50 dark:border-red-500/20"
-            />
-          )}
-          {urlError && (
-            <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
-              {urlError}
-            </p>
-          )}
+    <div className="flex flex-1 flex-col">
+      <p className="text-sm text-muted-foreground">Connect a remote agent that speaks the Agent Client Protocol.</p>
+      <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
+        <div className="grid grid-cols-1 gap-2">
+          <Label htmlFor="agent-name">Name</Label>
+          <Input
+            id="agent-name"
+            placeholder="My Agent"
+            value={state.name}
+            onChange={(e) => dispatch({ type: 'NAME_CHANGED', value: e.target.value })}
+            autoComplete="off"
+          />
         </div>
-        <ResponsiveModalFooter>
-          {state.submitError && (
-            <p role="alert" className="min-w-0 flex-1 truncate text-[length:var(--font-size-sm)] text-destructive">
-              {state.submitError}
-            </p>
-          )}
-          <ResponsiveModalCancel onClick={() => handleOpenChange(false)} />
-          <Button onClick={handleSubmit} disabled={!canSubmit}>
-            Add agent
+        <div className="grid grid-cols-1 gap-2">
+          <Label htmlFor="agent-url">URL</Label>
+          <Input
+            id="agent-url"
+            placeholder="wss://example.com/ws or paste an iroh ticket"
+            value={state.url}
+            onChange={(e) => dispatch({ type: 'URL_CHANGED', value: e.target.value })}
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+            A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId
+            works only if the peer is discoverable).
+          </p>
+        </div>
+        {isIroh && <IrohPairingPanel appNodeId={appNodeId} />}
+        <div className="grid grid-cols-1 gap-2">
+          <Label htmlFor="agent-description">Description</Label>
+          <Input
+            id="agent-description"
+            placeholder="Optional"
+            value={state.description}
+            onChange={(e) => dispatch({ type: 'DESCRIPTION_CHANGED', value: e.target.value })}
+            autoComplete="off"
+          />
+        </div>
+        {canTestConnection && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleTestConnection}
+            disabled={state.isTestingConnection}
+          >
+            {state.isTestingConnection ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Testing agent…
+              </>
+            ) : (
+              'Test connection'
+            )}
           </Button>
-        </ResponsiveModalFooter>
-      </ResponsiveModalContentComposable>
-    </Dialog>
+        )}
+        {state.connectionStatus === 'success' && (
+          <StatusCard
+            title={
+              <>
+                <Check className="h-5 w-5 text-success" />
+                Connection successful!
+              </>
+            }
+            description="Successfully connected to the agent."
+          />
+        )}
+        {state.connectionStatus === 'error' && (
+          <StatusCard
+            title={
+              <>
+                <X className="h-5 w-5 text-destructive" />
+                Connection failed
+              </>
+            }
+            description={state.connectionError || 'Could not connect to the agent.'}
+          />
+        )}
+        {urlError && (
+          <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
+            {urlError}
+          </p>
+        )}
+      </div>
+      <ResponsiveModalFooter>
+        {state.submitError && (
+          <p role="alert" className="min-w-0 flex-1 truncate text-[length:var(--font-size-sm)] text-destructive">
+            {state.submitError}
+          </p>
+        )}
+        <ResponsiveModalCancel onClick={() => handleOpenChange(false)} />
+        <Button onClick={handleSubmit} disabled={!canSubmit}>
+          Add agent
+        </Button>
+      </ResponsiveModalFooter>
+    </div>
   )
 }

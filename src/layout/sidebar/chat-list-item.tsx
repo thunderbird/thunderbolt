@@ -190,11 +190,9 @@ export const ChatListItem = memo(
                 />
               </ContextMenuContent>
 
-              {/* The trigger is the vertically-centered dots icon; the negative
-                  alignOffset walks the menu back up so its top edge lines up with
-                  the row's top edge (row is 32px on desktop, 44px on mobile;
-                  icon is 16px). */}
-              <DropdownMenuContent side="right" align="start" alignOffset={isMobile ? -14 : -8} className="min-w-56">
+              {/* Keep the mobile menu level with its visible trigger. Desktop
+                  retains the tighter row-aligned position. */}
+              <DropdownMenuContent side="right" align="start" alignOffset={isMobile ? 0 : -8} className="min-w-56">
                 <ChatItemActions
                   Item={DropdownMenuItem}
                   onRename={startRename}

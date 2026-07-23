@@ -122,26 +122,26 @@ export const Combobox = ({
           align={align}
           sideOffset={4}
           className={cn(
-            'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 min-w-[8rem] origin-(--radix-popover-content-transform-origin) overflow-hidden rounded-xl border shadow-md w-[--radix-popover-trigger-width]',
+            'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 min-w-[8rem] w-[var(--radix-popover-trigger-width)] origin-(--radix-popover-content-transform-origin) overflow-hidden rounded-xl border shadow-md',
             contentClassName,
           )}
         >
           <Command
             shouldFilter={!isAsync}
-            className="overflow-visible rounded-none bg-transparent [&_[data-slot=command-input-wrapper]]:border-b-0"
+            className="overflow-visible rounded-none bg-transparent [&_[data-slot=command-input-wrapper]]:rounded-lg [&_[data-slot=command-input-wrapper]]:border"
           >
-            <div className={cn('relative', hasListContent && 'border-b')}>
+            <div className="relative px-1 pt-1">
               <CommandInput
                 placeholder={searchPlaceholder}
                 value={isAsync ? searchValue : internalSearch}
                 onValueChange={isAsync ? onSearchChange : setInternalSearch}
               />
               {loading && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
+                <Loader2 className="absolute right-4 top-[calc(50%+2px)] -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
               )}
             </div>
             {hasListContent && (
-              <CommandList className="max-h-[min(300px,var(--radix-popover-content-available-height,300px))] overscroll-contain p-1">
+              <CommandList className="mt-2 max-h-[min(300px,var(--radix-popover-content-available-height,300px))] overscroll-contain p-1 pt-0">
                 {!loading && emptyMessage && <CommandEmpty>{emptyMessage}</CommandEmpty>}
                 {items.map((item) => (
                   <CommandItem

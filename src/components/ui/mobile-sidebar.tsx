@@ -126,11 +126,12 @@ export const MobileSidebar = ({
   return (
     <DialogPrimitive.Root open={internalOpen}>
       <DialogPrimitive.Portal>
-        {/* Blur and dim the content behind the mobile drawer while fading the
-            overlay with the drawer's position. */}
+        {/* Keep the mobile overlay paint-only. A viewport-sized backdrop filter
+            is recomposited on every frame in WKWebView/Android WebView and
+            causes the drawer animation to stutter on physical devices. */}
         <m.div
           data-slot="sidebar-overlay"
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+          className="fixed inset-0 z-50 bg-black/40 will-change-opacity"
           style={{ opacity: overlayOpacity }}
           onClick={handleClose}
         />
@@ -146,7 +147,7 @@ export const MobileSidebar = ({
           onDragEnd={handleDragEnd}
           style={{ x, ...style }}
           className={cn(
-            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] shadow-lg flex flex-col',
+            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] shadow-lg flex flex-col will-change-transform',
             side === 'left' ? 'left-0' : 'right-0',
             className,
           )}

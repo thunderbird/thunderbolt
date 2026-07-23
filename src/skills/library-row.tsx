@@ -6,7 +6,9 @@ import { m } from 'framer-motion'
 import { SquarePen, Trash2 } from 'lucide-react'
 
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { Card } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 import type { Skill } from '@/types'
 import { skillDisplayName } from './display'
 
@@ -52,36 +54,38 @@ export const LibraryRow = ({
     <m.li layout layoutId={skill.id} transition={skillRowTransition}>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => onSelect(skill.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onSelect(skill.id)
-              }
-            }}
-            className={`group flex h-[var(--touch-height-default)] w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-base transition-colors ${
-              enabled ? 'text-foreground' : 'text-muted-foreground/60'
-            } ${isActive ? 'bg-accent' : 'hover:bg-accent'}`}
+          <Card
+            className={cn(
+              'flex-row items-center gap-0 border-border p-0 transition-colors',
+              isActive ? 'bg-accent' : 'hover:bg-secondary/50',
+            )}
           >
-            <span className="min-w-0 flex-1 truncate leading-none">{skillDisplayName(skill)}</span>
-            {/* `inline-flex items-center` keeps the Switch optically centered
-                with the name's text baseline. stopPropagation so toggling
-                doesn't also open the detail panel. */}
-            <span
-              className="inline-flex shrink-0 items-center"
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
+            <button
+              type="button"
+              aria-label={`Open ${skillDisplayName(skill)}`}
+              aria-pressed={isActive}
+              onClick={() => onSelect(skill.id)}
+              className="flex min-w-0 flex-1 cursor-pointer items-center rounded-l-[inherit] px-4 py-3 text-left"
             >
+              <div className="min-w-0 flex-1">
+                <div className={cn('truncate text-base font-medium', !enabled && 'text-muted-foreground')}>
+                  {skillDisplayName(skill)}
+                </div>
+                {skill.description && (
+                  <p className="truncate text-[length:var(--font-size-sm)] text-muted-foreground">
+                    {skill.description}
+                  </p>
+                )}
+              </div>
+            </button>
+            <div className="flex shrink-0 items-center pr-4">
               <Switch
                 checked={enabled}
                 onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
                 aria-label={`${enabled ? 'Disable' : 'Enable'} ${skillDisplayName(skill)}`}
               />
-            </span>
-          </div>
+            </div>
+          </Card>
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-56">
           <ContextMenuItem onClick={() => onEdit(skill.id)} className="cursor-pointer">

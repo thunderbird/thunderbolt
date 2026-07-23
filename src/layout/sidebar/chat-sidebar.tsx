@@ -50,6 +50,20 @@ type ChatSidebarContentProps = {
   onSearchQueryChange: (value: string) => void
 }
 
+type TasksMenuItemProps = {
+  isActive: boolean
+  onClick: () => void
+}
+
+const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => (
+  <SidebarMenuItem>
+    <SidebarMenuButton onClick={onClick} tooltip="Tasks" className="cursor-pointer" isActive={isActive}>
+      <CheckSquare className="size-[var(--icon-size-default)]" />
+      <span>Tasks</span>
+    </SidebarMenuButton>
+  </SidebarMenuItem>
+)
+
 export const ChatSidebarContent = ({
   isMobile,
   isCollapsed,
@@ -86,7 +100,7 @@ export const ChatSidebarContent = ({
         navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
       />
 
-      {(!isMobile || showTasks) && (
+      {!isMobile && (
         <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pt-2 pb-0')}>
           {/* Collapsed: pb-0 so SidebarContent's gap-2 alone spaces the divider
               below; pt-2 gives the nav toggle the same 8px above as the rail's
@@ -109,19 +123,7 @@ export const ChatSidebarContent = ({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
-              {showTasks && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={onTasksClick}
-                    tooltip="Tasks"
-                    className="cursor-pointer"
-                    isActive={location.pathname.startsWith('/tasks')}
-                  >
-                    <CheckSquare className="size-[var(--icon-size-default)]" />
-                    <span>Tasks</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+              {showTasks && <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -144,6 +146,13 @@ export const ChatSidebarContent = ({
         searchInputRef={searchInputRef}
         hasContentAbove={hasContentAbove}
         mobileNavToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
+        mobileSecondaryNavigation={
+          showTasks ? (
+            <SidebarMenu className="mt-2 flex-shrink-0">
+              <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
+            </SidebarMenu>
+          ) : null
+        }
         onChatClick={onChatClick}
         onRename={onRename}
         onSearchClick={onSearchClick}
@@ -152,7 +161,7 @@ export const ChatSidebarContent = ({
         onContentBelowChange={setHasContentBelow}
       />
 
-      <SidebarFooter className="flex-shrink-0" hasContentBelow={hasContentBelow} />
+      <SidebarFooter className="flex-shrink-0 md:-mt-2" hasContentBelow={hasContentBelow} />
     </SidebarContent>
   )
 }

@@ -281,13 +281,13 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
       <ShadcnSidebarFooter
         className={cn(
           '!gap-0 bg-sidebar',
-          isMobile && hasContentBelow && 'shadow-[0_-8px_16px_-14px_rgba(0,0,0,0.35)]',
+          hasContentBelow && 'shadow-[0_-8px_16px_-14px_rgba(0,0,0,0.35)]',
           isDesktopCollapsed && '!p-0',
           className,
         )}
       >
         {isDesktopCollapsed ? (
-          <div className="flex flex-col items-center py-2">
+          <div className="flex flex-col items-center py-1">
             {isPending ? (
               <div className="flex size-[var(--touch-height-default)] items-center justify-center">
                 <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />

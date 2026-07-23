@@ -66,7 +66,7 @@ export default function OAuthCallback() {
         // pending), independent of the shared return-context slot — so a
         // concurrent integrations flow can't misroute it to the wrong page.
         if (isMcpOAuthCallback({ code, state, error: oauthError })) {
-          navigate('/settings/mcp-servers', { state: { oauth: oauthPayload } })
+          navigate('/settings/connections', { state: { oauth: oauthPayload } })
           return
         }
 
@@ -78,7 +78,7 @@ export default function OAuthCallback() {
         } else if (returnContext === 'onboarding') {
           navigate('/chats/new', { state: { oauth: oauthPayload } })
         } else {
-          navigate('/settings/integrations', { state: { oauth: oauthPayload } })
+          navigate('/settings/connections', { state: { oauth: oauthPayload } })
         }
       }, 500)
 

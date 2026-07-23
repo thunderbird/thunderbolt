@@ -4,7 +4,7 @@
 
 import { useCallback, useReducer } from 'react'
 
-import { DetailPanelSurface } from '@/components/detail-panel'
+import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -214,24 +214,27 @@ export const SkillsView = () => {
   }
 
   const createForm = (
-    <SkillForm
-      // Keying on the pre-filled slug forces a fresh form mount when the
-      // user clicks "Create it" for a different slug back-to-back.
-      key={createInitialName ? `create:${createInitialName}` : 'create'}
-      mode="create"
-      initialValues={
-        createInitialName
-          ? {
-              name: createInitialName,
-              // Suggest a Title Case name from the slug the user typed in chat.
-              label: titleCaseFromSlug(createInitialName),
-              description: '',
-              instruction: '',
-            }
-          : undefined
-      }
-      {...sharedFormProps}
-    />
+    // The panel's close X behaves as Cancel, including the dirty guard.
+    <DetailPanel title="Create Skill" onClose={sharedFormProps.onCancel}>
+      <SkillForm
+        // Keying on the pre-filled slug forces a fresh form mount when the
+        // user clicks "Create it" for a different slug back-to-back.
+        key={createInitialName ? `create:${createInitialName}` : 'create'}
+        mode="create"
+        initialValues={
+          createInitialName
+            ? {
+                name: createInitialName,
+                // Suggest a Title Case name from the slug the user typed in chat.
+                label: titleCaseFromSlug(createInitialName),
+                description: '',
+                instruction: '',
+              }
+            : undefined
+        }
+        {...sharedFormProps}
+      />
+    </DetailPanel>
   )
 
   const renderPanel = () => {
@@ -254,19 +257,21 @@ export const SkillsView = () => {
       )
     }
     return (
-      <SkillForm
-        key={`edit:${activeSkill.id}`}
-        mode="edit"
-        initialValues={{
-          name: activeSkill.name,
-          // Legacy rows without a label get a Title Case suggestion so the
-          // required Name field doesn't start empty.
-          label: skillDisplayName(activeSkill),
-          description: activeSkill.description,
-          instruction: activeSkill.instruction,
-        }}
-        {...sharedFormProps}
-      />
+      <DetailPanel title="Edit Skill" onClose={sharedFormProps.onCancel}>
+        <SkillForm
+          key={`edit:${activeSkill.id}`}
+          mode="edit"
+          initialValues={{
+            name: activeSkill.name,
+            // Legacy rows without a label get a Title Case suggestion so the
+            // required Name field doesn't start empty.
+            label: skillDisplayName(activeSkill),
+            description: activeSkill.description,
+            instruction: activeSkill.instruction,
+          }}
+          {...sharedFormProps}
+        />
+      </DetailPanel>
     )
   }
 

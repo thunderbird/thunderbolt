@@ -16,13 +16,11 @@ import {
   DialogPortal,
   DialogTitle,
   DialogTrigger,
+  modalFieldSurfaceClass,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-
-const mobileFieldSurfaceClass =
-  '[&_[data-slot=input]]:bg-card [&_[data-slot=textarea]]:bg-card [&_[data-slot=select-trigger]]:bg-card [&_[data-slot=combobox-trigger]]:bg-card dark:[&_[data-slot=input]]:bg-input dark:[&_[data-slot=textarea]]:bg-input dark:[&_[data-slot=select-trigger]]:bg-input dark:[&_[data-slot=combobox-trigger]]:bg-input'
 
 // =============================================================================
 // Context for sharing the active surface with nested modal-aware components
@@ -42,13 +40,15 @@ type ResponsiveModalDialogContentProps = ComponentProps<typeof DialogPrimitive.C
   surfaceVariant: ResponsiveModalSurfaceVariant
 }
 
+/** Mobile pins the close top-LEFT (header actions like the ⋯ menu take the
+ *  top-right); desktop centered dialogs keep the conventional top-right. */
 const responsiveModalCloseClass =
-  'ring-offset-background focus:ring-ring absolute right-4 z-10 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none'
+  'ring-offset-background focus:ring-ring absolute z-10 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none'
 
 /** Returns the shared surface classes for a responsive modal viewport and API variant. */
 export const getResponsiveModalSurfaceClass = (isMobile: boolean, surfaceVariant: ResponsiveModalSurfaceVariant) => {
   if (isMobile) {
-    return cn('inset-0 h-dvh w-full gap-4 overflow-auto rounded-none border-0 p-6 shadow-none', mobileFieldSurfaceClass)
+    return 'inset-0 h-dvh w-full gap-4 overflow-auto rounded-none border-0 p-6 shadow-none'
   }
 
   if (surfaceVariant === 'structured') {
@@ -80,6 +80,7 @@ const ResponsiveModalDialogContent = ({
           data-slot="responsive-modal-content"
           className={cn(
             'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 flex flex-col duration-200',
+            modalFieldSurfaceClass,
             getResponsiveModalSurfaceClass(isMobile, surfaceVariant),
             className,
           )}
@@ -97,7 +98,7 @@ const ResponsiveModalDialogContent = ({
           {showCloseButton && (
             <DialogClose
               data-slot="responsive-modal-close"
-              className={responsiveModalCloseClass}
+              className={cn(responsiveModalCloseClass, isMobile ? 'left-4' : 'right-4')}
               style={{ top: isMobile ? 'calc(var(--safe-area-top-padding, 0px) + 16px)' : 16 }}
             >
               <XIcon className="size-[var(--icon-size-default)]" />
@@ -202,11 +203,15 @@ export const ResponsiveModalDescription = ({ className, ...props }: ResponsiveMo
 
 type ResponsiveModalActionsProps = ComponentProps<'div'>
 
-/** Optional mobile toolbar actions, positioned opposite the shared close control. */
+/** Optional mobile toolbar actions, positioned opposite the shared close control
+ *  (close sits top-left; actions sit top-right). */
 export const ResponsiveModalActions = ({ className, ...props }: ResponsiveModalActionsProps) => (
   <div
     className={cn(
-      'fixed left-4 z-10 flex items-center [&_[data-slot=button]]:size-[var(--touch-height-sm)] [&_[data-slot=button]]:rounded-full',
+      // No size/radius overrides here: action buttons style themselves via
+      // mutedIconButtonClass, which mirrors the shared close control's
+      // responsive size (--touch-height-sm) and mobile circle shape.
+      'fixed right-4 z-10 flex items-center',
       className,
     )}
     style={{ top: 'calc(var(--safe-area-top-padding, 0px) + 16px)' }}

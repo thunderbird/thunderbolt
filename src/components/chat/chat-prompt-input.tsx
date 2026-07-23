@@ -29,7 +29,7 @@ import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, Paperclip, Plus, X } from 'lucide-react'
+import { AlertCircle, Loader2, Paperclip, Plug, Plus, X } from 'lucide-react'
 import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -567,6 +567,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             <DropdownMenuItem onSelect={() => fileInputRef.current?.click()} className="cursor-pointer">
               <Paperclip className="size-[var(--icon-size-sm)]" />
               Upload file
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => navigate('/settings/connections')} className="cursor-pointer">
+              <Plug className="size-[var(--icon-size-sm)]" />
+              Connections
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

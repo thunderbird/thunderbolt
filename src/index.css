@@ -104,6 +104,9 @@
      with dark:shadow-none. */
   --shadow-glow: 0 0 32px rgb(38 33 32 / 0.06);
   --shadow-glow-sm: 0 0 16px rgb(38 33 32 / 0.06);
+  /* Stronger variant for the slide-in detail panel, which needs more lift to
+     separate from the page content it slides over. */
+  --shadow-glow-strong: 0 0 32px rgb(38 33 32 / 0.09);
 }
 
 /* Shadow colors for the three elevation intensities above. Light mode runs

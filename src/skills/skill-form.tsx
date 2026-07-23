@@ -2,20 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Info, X } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  ResponsiveModalHeader,
-  ResponsiveModalTitle,
-  useResponsiveModalContext,
-} from '@/components/ui/responsive-modal'
+import { ResponsiveModalCancel, ResponsiveModalFooter } from '@/components/ui/responsive-modal'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { validateSkillName } from '@/dal'
-import { SkillSlugField } from './skill-slug-field'
 import { useSkillFormState, type SkillFormMode, type SkillFormValues } from './use-skill-form-state'
 
 export type { SkillFormMode, SkillFormValues }
@@ -26,6 +21,10 @@ export type { SkillFormMode, SkillFormValues }
  * slug hands control back to auto-generation). Edit mode never auto-rewrites
  * the slug — renaming an existing skill must not silently break `/tokens`
  * already used in chats.
+ *
+ * Renders as plain panel content — the skills view hosts it inside the shared
+ * DetailPanel, which owns the "Create Skill"/"Edit Skill" header and the
+ * close affordance (close behaves as Cancel, including the dirty guard).
  */
 export const SkillForm = ({
   onCancel,
@@ -56,7 +55,6 @@ export const SkillForm = ({
   /** Generic save-failure message shown next to the submit button. */
   submitError?: string | null
 }) => {
-  const { isMobile } = useResponsiveModalContext()
   const {
     label,
     slug,
@@ -111,33 +109,9 @@ export const SkillForm = ({
   }
 
   return (
-    // No background of its own: inherits the desktop panel or mobile dialog surface.
-    <section className="relative flex min-h-full flex-col text-foreground md:h-full md:min-h-0 md:flex-1">
-      {/* Same corner placement as the detail panel's close button (8px from
-          top and right); behaves exactly like Cancel, including the
-          unsaved-changes guard. */}
-      {!isMobile && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onCancel}
-          aria-label="Close"
-          className="absolute right-2 top-2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <X className="size-4" />
-        </Button>
-      )}
-      <div className="flex flex-col gap-5 px-6 pb-5 md:min-h-0 md:flex-1 md:py-5">
-        {isMobile ? (
-          <ResponsiveModalHeader className="mb-0">
-            <ResponsiveModalTitle>{mode === 'edit' ? 'Edit Skill' : 'Create Skill'}</ResponsiveModalTitle>
-          </ResponsiveModalHeader>
-        ) : (
-          <h2 className="text-lg font-semibold leading-none text-foreground">
-            {mode === 'edit' ? 'Edit Skill' : 'Create Skill'}
-          </h2>
-        )}
-
+    // No background of its own: inherits the hosting detail panel's surface.
+    <section className="flex min-h-full flex-col text-foreground md:h-full md:min-h-0 md:flex-1">
+      <div className="flex flex-col gap-5 md:min-h-0 md:flex-1">
         <div className="flex flex-col gap-2">
           <label htmlFor="skill-label" className="text-base text-foreground">
             Name
@@ -150,7 +124,20 @@ export const SkillForm = ({
             onChange={(e) => handleLabelChange(e.target.value)}
             className="md:h-9"
           />
-          <SkillSlugField mode={mode} slug={slug} error={localSlugError ?? slugError} onChange={handleSlugChange} />
+          <div className="mt-1 flex flex-col gap-2">
+            <label htmlFor="skill-slug" className="text-base text-foreground">
+              Slug
+            </label>
+            <Input
+              id="skill-slug"
+              placeholder="daily-brief"
+              value={slug}
+              onChange={(event) => handleSlugChange(event.target.value)}
+              aria-invalid={localSlugError || slugError ? true : undefined}
+              className="md:h-9"
+            />
+            {(localSlugError ?? slugError) && <p className="text-sm text-destructive">{localSlugError ?? slugError}</p>}
+          </div>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -194,21 +181,17 @@ export const SkillForm = ({
         </div>
       </div>
 
-      <footer className="flex items-center justify-end gap-2 px-6 py-4">
+      <ResponsiveModalFooter>
         {submitError && (
           <p role="alert" className="min-w-0 flex-1 truncate text-sm text-destructive">
             {submitError}
           </p>
         )}
-        {/* The outline variant's dark hover (bg-input/50) is invisible on the
-            sidebar-surface card; use the accent hover so it reads. */}
-        <Button variant="outline" size="lg" onClick={onCancel} className="text-sm dark:hover:bg-accent">
-          Cancel
-        </Button>
-        <Button variant="default" size="lg" disabled={!canSave} className="text-sm" onClick={handleSubmit}>
+        <ResponsiveModalCancel onClick={onCancel} className="dark:hover:bg-accent" />
+        <Button disabled={!canSave} onClick={handleSubmit}>
           {mode === 'edit' ? 'Save' : 'Create'}
         </Button>
-      </footer>
+      </ResponsiveModalFooter>
     </section>
   )
 }

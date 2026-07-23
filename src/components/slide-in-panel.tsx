@@ -4,6 +4,8 @@
 
 import type { ReactNode } from 'react'
 
+import { cn } from '@/lib/utils'
+
 // Linear's spring curve — fast start, smooth tail, no overshoot.
 const slideEasing = 'cubic-bezier(0.32, 0.72, 0, 1)'
 
@@ -18,12 +20,25 @@ const slideEasing = 'cubic-bezier(0.32, 0.72, 0, 1)'
  * the inner content div reuses it as a stable width while the outer collapses
  * to 0, and a percentage would resolve against the collapsed parent.
  */
-export const SlideInPanel = ({ open, width, children }: { open: boolean; width: string; children: ReactNode }) => (
+export const SlideInPanel = ({
+  open,
+  width,
+  className,
+  children,
+}: {
+  open: boolean
+  width: string
+  className?: string
+  children: ReactNode
+}) => (
   <aside
     // z-30 lifts the panel above the layout's top header scrim (z-20) so the
     // gradient fades out over the list only and never washes over the panel's
     // top edge. The panel starts below the header, so nothing else competes.
-    className="relative z-30 h-full shrink-0 overflow-hidden transition-[width] duration-300 motion-reduce:transition-none"
+    className={cn(
+      'relative z-30 h-full shrink-0 overflow-hidden transition-[width] duration-300 motion-reduce:transition-none',
+      className,
+    )}
     style={{ width: open ? width : '0px', transitionTimingFunction: slideEasing }}
     aria-hidden={!open}
     inert={!open}

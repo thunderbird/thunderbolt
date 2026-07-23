@@ -48,7 +48,12 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
           </div>
         )}
       </div>
-      {isMenuOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={handleClose} />}
+      {isMenuOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-md backdrop-saturate-[.25]"
+          onClick={handleClose}
+        />
+      )}
     </div>
   )
 }

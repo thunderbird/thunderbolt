@@ -51,11 +51,15 @@ const buttonVariants = cva(
   },
 )
 
-/** Compact 32px muted icon action (panel-header close/X, kebab menus). Pair
- *  with `variant="ghost" size="icon"`. The svg rule bumps icons to 20px unless
- *  the icon carries its own explicit `size-*` class. */
+/** Compact muted icon action (panel-header close/X, kebab menus). Pair with
+ *  `variant="ghost" size="icon"`. Sized via --touch-height-sm (40px mobile /
+ *  32px desktop) and icons via --icon-size-default (20px / 16px), with the
+ *  same bg-muted feedback circle as the responsive modal's shared close
+ *  control (also painted while a trigger's menu is open); icons carrying
+ *  their own explicit `size-*` class keep it. Mobile is a circle like that
+ *  close control; desktop's rounded-xl matches the sidebar nav toggle. */
 export const mutedIconButtonClass =
-  "size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground [&_svg:not([class*='size-'])]:size-5"
+  "size-[var(--touch-height-sm)] rounded-full md:rounded-xl text-muted-foreground hover:bg-muted dark:hover:bg-muted hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground [&_svg:not([class*='size-'])]:size-[var(--icon-size-default)]"
 
 const Button = ({
   className,

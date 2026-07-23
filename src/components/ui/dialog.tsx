@@ -8,6 +8,9 @@ import { type ComponentProps } from 'react'
 
 import { cn } from '@/lib/utils'
 
+export const modalFieldSurfaceClass =
+  '[&_[data-slot=input]]:!bg-card [&_[data-slot=textarea]]:!bg-card [&_[data-slot=select-trigger]]:!bg-card [&_[data-slot=combobox-trigger]]:!bg-card dark:[&_[data-slot=input]]:!bg-input dark:[&_[data-slot=textarea]]:!bg-input dark:[&_[data-slot=select-trigger]]:!bg-input dark:[&_[data-slot=combobox-trigger]]:!bg-input'
+
 const Dialog = ({ ...props }: ComponentProps<typeof DialogPrimitive.Root>) => {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
@@ -34,7 +37,9 @@ const DialogOverlay = ({
       data-slot="dialog-overlay"
       className={cn(
         'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50',
-        useTransparentOverlay ? 'bg-black/50 backdrop-blur-md' : 'bg-background',
+        useTransparentOverlay
+          ? 'bg-black/50 backdrop-blur-md max-md:backdrop-blur-lg max-md:backdrop-saturate-[.25]'
+          : 'bg-background',
         className,
       )}
       {...props}
@@ -61,6 +66,7 @@ const DialogContent = ({
         data-slot="dialog-content"
         className={cn(
           ' bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 grid gap-4 p-6 duration-200',
+          modalFieldSurfaceClass,
           // dark:bg-card — borderless centered modals need an elevated surface
           // tone in dark mode; bg-background matches the page exactly and
           // disappears. Full-screen dialogs ARE the page, so they keep it.

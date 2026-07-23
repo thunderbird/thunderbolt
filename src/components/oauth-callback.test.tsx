@@ -21,13 +21,14 @@ const PageProbe = ({ testId }: { testId: string }) => {
   return <div data-testid={testId}>{oauth?.error}</div>
 }
 
+// Both the MCP and integrations flows land on the combined Connections page —
+// which handler processes the payload there is decided by `isMcpOAuthCallback`.
 const renderCallback = () =>
   render(
     <MemoryRouter initialEntries={['/oauth/callback']}>
       <Routes>
         <Route path="/oauth/callback" element={<OAuthCallback />} />
-        <Route path="/settings/mcp-servers" element={<PageProbe testId="mcp-servers-page" />} />
-        <Route path="/settings/integrations" element={<PageProbe testId="integrations-page" />} />
+        <Route path="/settings/connections" element={<PageProbe testId="connections-page" />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -72,16 +73,16 @@ describe('OAuthCallback routing', () => {
 
     await settleDeferredRedirect()
 
-    expect(screen.getByTestId('mcp-servers-page')).toHaveTextContent('User denied access')
+    expect(screen.getByTestId('connections-page')).toHaveTextContent('User denied access')
   })
 
-  it('routes a description-only error to integrations when no MCP handshake is pending', async () => {
+  it('routes a description-only error to connections when no MCP handshake is pending', async () => {
     setCallbackUrl('?error_description=User+denied+access')
     renderCallback()
 
     await settleDeferredRedirect()
 
-    expect(screen.getByTestId('integrations-page')).toHaveTextContent('User denied access')
+    expect(screen.getByTestId('connections-page')).toHaveTextContent('User denied access')
   })
 
   it('claims an error-only callback for the pending MCP handshake (existing behavior preserved)', async () => {
@@ -91,6 +92,6 @@ describe('OAuthCallback routing', () => {
 
     await settleDeferredRedirect()
 
-    expect(screen.getByTestId('mcp-servers-page')).toHaveTextContent('access_denied')
+    expect(screen.getByTestId('connections-page')).toHaveTextContent('access_denied')
   })
 })

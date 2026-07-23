@@ -55,9 +55,12 @@ export const SkillsList = ({
 
   // The shared settings Header (burger on mobile, drag region on Tauri)
   // always renders above this page, so the header row here starts at the
-  // same `p-4` offset as the other settings pages.
+  // same `p-4` offset as the other settings pages. md:min-w mirrors the
+  // agents/models pages: once the detail aside squeezes the list to this
+  // floor, the column (header buttons included) stops sliding and tucks
+  // under the panel via the parent's overflow clip.
   return (
-    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background p-4 md:px-5 text-foreground">
+    <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background p-4 md:min-w-[360px] md:px-5 text-foreground">
       <PageSearch onSearch={setSearch}>
         <PageHeader title="Skills">
           <PageSearch.Button />
@@ -66,7 +69,7 @@ export const SkillsList = ({
           </Button>
         </PageHeader>
 
-        <PageSearch.Input placeholder="Search skills" onSearch={setSearch} className="rounded-full bg-card" />
+        <PageSearch.Input placeholder="Search skills" onSearch={setSearch} />
       </PageSearch>
 
       {/* LayoutGroup links the Enabled and Disabled <ul>s so a row's
@@ -84,7 +87,7 @@ export const SkillsList = ({
               row across with its own delayed spring (`skillRowTransition`),
               and the wrapper's height jumps instantly to fit. */}
           {enabledRows.length > 0 && (
-            <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-1.5">
+            <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-4">
               {enabledRows.map((skill) => (
                 <LibraryRow
                   key={skill.id}
@@ -101,9 +104,9 @@ export const SkillsList = ({
           )}
 
           {disabledRows.length > 0 && (
-            <m.div layout="position" transition={skillRowTransition} className="flex flex-col gap-1">
-              <h2 className="px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Disabled</h2>
-              <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-1.5">
+            <m.div layout="position" transition={skillRowTransition} className="flex flex-col gap-2">
+              <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Disabled</h2>
+              <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-4">
                 {disabledRows.map((skill) => (
                   <LibraryRow
                     key={skill.id}

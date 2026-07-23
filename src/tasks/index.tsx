@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -34,7 +35,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
-import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
+import { CheckCircle2, GripVertical, Plus } from 'lucide-react'
 import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -117,9 +118,9 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
             : style.transition || 'transform 20ms ease-out',
       }}
       className={cn(
-        'group flex items-center gap-3 rounded-lg bg-background px-3 py-2',
+        'group relative flex items-center gap-3 rounded-lg bg-background px-3 py-2',
         'hover:bg-muted/50 transition-colors',
-        isDragging && 'shadow-lg',
+        isDragging ? 'z-20 shadow-lg' : 'hover:z-10 focus-within:z-10',
       )}
     >
       <button
@@ -158,30 +159,33 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
             onClick={handleStartEdit}
             disabled={isCompleting}
             className={cn(
-              'w-full text-left text-sm leading-5',
+              'group/task-text relative block h-5 w-full select-none text-left text-sm leading-5',
               'p-0 m-0',
               'transition-all duration-300',
               isCompleting && 'line-through text-muted-foreground',
             )}
-            style={{ height: '20px' }} // Explicit height
           >
-            {task.item}
+            <span className="block truncate">{task.item}</span>
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 z-20 hidden whitespace-normal rounded-lg border bg-popover px-2 py-1.5 text-popover-foreground shadow-lg group-hover/task-text:block group-active/task-text:block group-focus-visible/task-text:block"
+            >
+              {task.item}
+            </span>
           </button>
         )}
       </div>
 
-      <button
-        onClick={() => onComplete(task.id)}
-        disabled={isEditing}
-        className={cn(
-          'p-1 transition-colors',
-          'hover:text-primary',
-          isCompleting && 'text-primary',
-          isEditing && 'opacity-50 cursor-not-allowed',
-        )}
-      >
-        {isCompleting ? <CheckCircle2 className="h-5 w-5" /> : <Square className="h-5 w-5" />}
-      </button>
+      <Checkbox
+        aria-label={`Complete ${task.item}`}
+        checked={isCompleting}
+        disabled={isEditing || isCompleting}
+        onCheckedChange={(checked) => {
+          if (checked) {
+            onComplete(task.id)
+          }
+        }}
+      />
     </div>
   )
 })
@@ -237,9 +241,7 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
           style={{ height: '20px' }}
         />
       </div>
-      <div className="p-1">
-        <Square className="h-5 w-5 text-muted-foreground" />
-      </div>
+      <Checkbox aria-label="Complete new task" disabled />
     </div>
   )
 }
@@ -470,19 +472,17 @@ export default function TasksPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* pt clears the floating header; scrolled rows pass beneath it. */}
       <div className="flex-1 overflow-y-auto pt-[var(--header-inset)]">
-        <div className="flex flex-col gap-6 px-8 py-4 md:px-12 w-full max-w-[1200px] mx-auto">
+        <div className="flex flex-col gap-3 px-8 py-4 md:px-12 w-full max-w-[1200px] mx-auto">
           <PageSearch onSearch={handleSearch}>
             <PageHeader title="Tasks">
               {!showEmptyState && (
                 <>
                   <PageSearch.Button />
-                  {/* mr-2 lines the button's center up with the task rows'
-                      checkbox column (row px-3 + checkbox p-1 + 20px icon). */}
                   <Button
                     variant="outline"
                     size="icon"
                     aria-label="Add task"
-                    className="mr-2 bg-card"
+                    className="bg-card"
                     onClick={() => setIsAddingNew(true)}
                     disabled={isAddingNew}
                   >
@@ -561,7 +561,10 @@ export default function TasksPage() {
                       <div className="flex items-center gap-3 rounded-lg bg-background px-3 py-2 shadow-lg border">
                         <GripVertical className="h-4 w-4 text-muted-foreground" />
                         <span className="flex-1 text-sm">{activeTask.item}</span>
-                        <Square className="h-5 w-5 text-muted-foreground" />
+                        <div
+                          aria-hidden
+                          className="size-[var(--icon-size-default)] rounded-md border border-border-strong"
+                        />
                       </div>
                     )}
                   </DragOverlay>

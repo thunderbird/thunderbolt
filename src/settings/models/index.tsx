@@ -3,6 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getTinfoilClient } from '@/ai/fetch'
+import openAiLogoSrc from '@/assets/openai.svg'
+import openRouterLogoSrc from '@/assets/openrouter.svg'
+import tinfoilLogoSrc from '@/assets/tinfoil.svg'
+import { AppLogo } from '@/components/app-logo'
+import { DetailDivider, DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { ModificationIndicator } from '@/components/modification-indicator'
 import {
   AlertDialog,
@@ -15,22 +20,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { needsApiKey } from '@/components/ui/model-selector/model-selector'
-import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
-import {
-  ResponsiveModalCancel,
-  ResponsiveModalContentComposable,
-  ResponsiveModalDescription,
-  ResponsiveModalFooter,
-  ResponsiveModalHeader,
-  ResponsiveModalTitle,
-} from '@/components/ui/responsive-modal'
+import { ResponsiveModalCancel, ResponsiveModalFooter } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
@@ -42,6 +39,7 @@ import { isModelModified } from '@/defaults/utils'
 import { fetch } from '@/lib/fetch'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
+import { useIsMobile } from '@/hooks/use-mobile'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
@@ -49,7 +47,8 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { http } from '@/lib/http'
 import { PrivateBadge } from '@/components/ui/private-badge'
-import { AlertTriangle, Check, Cpu, Loader2, MoreVertical, Plus, SquarePen, Trash2, X } from 'lucide-react'
+import { SiAnthropic } from '@icons-pack/react-simple-icons'
+import { AlertTriangle, Check, Cpu, Loader2, MoreVertical, Plus, Server, SquarePen, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -145,11 +144,147 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
 }
 
 /**
+ * Fetches the selectable model catalog for a provider. Providers without a
+ * listable endpoint (thunderbolt, anthropic) return hardwired catalogs;
+ * OpenAI-compatible providers require an API key (custom URLs may omit it)
+ * and return [] when the credentials to list aren't available yet.
+ */
+const fetchModelsForProvider = async (provider: string, apiKey?: string, url?: string): Promise<AvailableModel[]> => {
+  switch (provider) {
+    case 'tinfoil': {
+      // /v1/models is unauthenticated, but route through SecureClient so
+      // attestation is warmed up before the user's first chat.
+      const client = await getTinfoilClient()
+      const response = await http.get(`${client.getBaseURL()}models`, { fetch: client.fetch }).json<{
+        data: Array<AvailableModel & { endpoints?: string[]; tool_calling?: boolean }>
+      }>()
+
+      // The catalog also includes embedding, audio, document, and tts
+      // models; filter to ones that expose chat completions.
+      return (response.data || [])
+        .filter((m) => Array.isArray(m.endpoints) && m.endpoints.includes('/v1/chat/completions'))
+        .map((m) => ({ ...m, supports_tools: m.tool_calling === true }))
+        .sort((a, b) => a.id.localeCompare(b.id))
+    }
+    case 'thunderbolt':
+      return [
+        { id: 'kimi-k2-instruct', name: 'Kimi K2', supports_tools: true },
+        { id: 'deepseek-r1-0528', name: 'DeepSeek R1', supports_tools: true },
+        { id: 'mistral-large-3', name: 'Mistral Large 3', supports_tools: true },
+        { id: 'llama-v3p1-405b-instruct', name: 'Llama 3.1', supports_tools: true },
+      ]
+    case 'anthropic':
+      return [
+        { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', supports_tools: true },
+        { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', supports_tools: true },
+        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', supports_tools: true },
+        { id: 'claude-3-7-sonnet-20250219', name: 'Claude Sonnet 3.7', supports_tools: true },
+        { id: 'claude-3-5-sonnet-20241022', name: 'Claude Sonnet 3.5 (New)', supports_tools: true },
+        { id: 'claude-3-5-haiku-20241022', name: 'Claude Haiku 3.5', supports_tools: true },
+        { id: 'claude-3-5-sonnet-20240620', name: 'Claude Sonnet 3.5 (Old)', supports_tools: true },
+        { id: 'claude-3-haiku-20240307', name: 'Claude Haiku 3', supports_tools: true },
+        { id: 'claude-3-opus-20240229', name: 'Claude Opus 3', supports_tools: true },
+      ]
+  }
+
+  const listing = ((): { endpoint: string; headers: Record<string, string> } | null => {
+    switch (provider) {
+      case 'openai':
+        return apiKey
+          ? { endpoint: 'https://api.openai.com/v1/models', headers: { Authorization: `Bearer ${apiKey}` } }
+          : null
+      case 'openrouter':
+        return apiKey
+          ? { endpoint: 'https://openrouter.ai/api/v1/models', headers: { Authorization: `Bearer ${apiKey}` } }
+          : null
+      case 'custom':
+        // For Custom (OpenAI Compatible), try even without API key
+        return url
+          ? {
+              endpoint: `${normalizeOpenAiBaseUrl(url)}/models`,
+              headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+            }
+          : null
+      default:
+        return null
+    }
+  })()
+
+  if (!listing) {
+    return []
+  }
+
+  const response = await http
+    .get(listing.endpoint, { headers: listing.headers, fetch })
+    .json<{ data: AvailableModel[] }>()
+
+  return (response.data || [])
+    .map((model) => {
+      const supportedParameters = model.supported_parameters ?? []
+      const supportsToolsByParams = supportedParameters.includes('tools') || supportedParameters.includes('tool_choice')
+
+      return { ...model, supports_tools: model.supports_tools === true || supportsToolsByParams }
+    })
+    .sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/** Maps a catalog-fetch failure to the user-facing message shown in the form. */
+const describeModelFetchError = (error: unknown): string => {
+  // Browser/network failure (could be offline, CORS, cert error, etc.)
+  if (error instanceof TypeError) {
+    return 'Network request failed (the browser blocked the request or the server is unreachable).'
+  }
+  // HttpError with a Response object
+  if (typeof error === 'object' && error && 'response' in error) {
+    const response = (error as { response?: Response }).response
+    return response
+      ? `Server responded with status ${response.status} ${response.statusText}`
+      : 'Server responded with an unknown error.'
+  }
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  return 'Failed to load models'
+}
+
+/**
  * Thunderbolt uses the app's authenticated cloud endpoint — no user-supplied
  * credentials to verify — so Save is not gated on a live test. Every other
  * provider requires a passing connection test before Save is enabled.
  */
 const providerRequiresConnectionTest = (provider: Model['provider']) => provider !== 'thunderbolt'
+
+/** System-managed Tinfoil is a Thunderbolt product; Tinfoil is only its transport. */
+const isThunderboltManagedModel = (model: Pick<Model, 'provider' | 'isSystem'>) =>
+  model.provider === 'thunderbolt' || (model.provider === 'tinfoil' && model.isSystem === 1)
+
+/** Returns the public provider mark shown in model rows and detail headers. */
+const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSystem'> }) => {
+  if (isThunderboltManagedModel(model)) {
+    return <AppLogo size={20} alt="" />
+  }
+
+  switch (model.provider) {
+    case 'thunderbolt':
+      return <AppLogo size={20} alt="" />
+    case 'openai':
+      return <img src={openAiLogoSrc} alt="" className="size-5 dark:invert" />
+    case 'anthropic':
+      return <SiAnthropic size={20} aria-hidden="true" />
+    case 'openrouter':
+      return <img src={openRouterLogoSrc} alt="" className="h-5 w-auto dark:invert" />
+    case 'tinfoil':
+      return <img src={tinfoilLogoSrc} alt="" className="size-5 dark:invert" />
+    case 'custom':
+      return <Server className="size-5 text-muted-foreground" aria-hidden="true" />
+  }
+}
+
+const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider' | 'isSystem'> }) => (
+  <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+    <ModelProviderIcon model={model} />
+  </div>
+)
 
 /** Determines whether the add-model form has completed every submission gate. */
 export const shouldDisableAddModel = (
@@ -230,12 +365,11 @@ const ConnectionTestSection = ({
         <StatusCard
           title={
             <>
-              <Check className="h-5 w-5 text-green-600" />
+              <Check className="h-5 w-5 text-success" />
               Test successful!
             </>
           }
           description="Successfully got a response from the model."
-          className="border-green-200/50 dark:border-green-500/20"
         />
       )}
 
@@ -243,12 +377,11 @@ const ConnectionTestSection = ({
         <StatusCard
           title={
             <>
-              <X className="h-5 w-5 text-red-600" />
+              <X className="h-5 w-5 text-destructive" />
               Test failed
             </>
           }
           description={error || 'Received an error while testing the model.'}
-          className="bg-red-50/50 dark:bg-red-500/10 border-red-200/50 dark:border-red-500/20"
         />
       )}
     </>
@@ -322,13 +455,64 @@ const EditModelForm = ({
       name: model.name || '',
       model: model.model,
       url: model.url || '',
-      apiKey: model.apiKey || '',
+      // The stored key never round-trips into the field — a masked
+      // placeholder stands in for it, and an empty draft means "keep it".
+      apiKey: '',
     },
   })
 
   const watchedModel = form.watch('model')
   const watchedUrl = form.watch('url')
   const watchedApiKey = form.watch('apiKey')
+  // Blank key field falls back to the stored key (for listing, testing, and
+  // saving) so editing other fields never requires re-entering the secret.
+  const effectiveApiKey = watchedApiKey || model.apiKey || undefined
+
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
+  const [isCustomModel, setIsCustomModel] = useState(false)
+
+  // Async catalog load on mount, keyed by the model being edited (the form
+  // remounts per model via `key={model.id}`).
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const catalog = await fetchModelsForProvider(model.provider, model.apiKey ?? undefined, model.url ?? undefined)
+        if (!cancelled) {
+          setAvailableModels(catalog)
+        }
+      } catch (error) {
+        // Selector falls back to the stored model + free-text Custom entry.
+        console.error('Failed to fetch models:', error)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [model])
+
+  const modelItems = useMemo((): ComboboxItem[] => {
+    const items: ComboboxItem[] = availableModels.map((m) => ({
+      id: m.id,
+      label: m.name || m.id,
+      description: m.name ? m.id : undefined,
+    }))
+    if (!availableModels.some((m) => m.id === model.model)) {
+      items.unshift({ id: model.model, label: model.model })
+    }
+    items.push({ id: 'custom', label: 'Custom' })
+    return items
+  }, [availableModels, model.model])
+
+  const handleModelSelect = (id: string) => {
+    if (id === 'custom') {
+      setIsCustomModel(true)
+      return
+    }
+    setIsCustomModel(false)
+    form.setValue('model', id, { shouldValidate: true, shouldDirty: true })
+  }
 
   const {
     isTesting,
@@ -339,11 +523,11 @@ const EditModelForm = ({
     provider: model.provider,
     model: watchedModel,
     url: watchedUrl,
-    apiKey: watchedApiKey,
+    apiKey: effectiveApiKey,
   })
 
   const handleSubmit = (values: z.infer<typeof editFormSchema>) => {
-    onSubmit({ ...values, id: model.id })
+    onSubmit({ ...values, apiKey: values.apiKey || model.apiKey || '', id: model.id })
   }
 
   const handleTest = () => {
@@ -352,7 +536,7 @@ const EditModelForm = ({
       provider: model.provider,
       model: values.model,
       url: values.url,
-      apiKey: values.apiKey,
+      apiKey: values.apiKey || model.apiKey || undefined,
     })
   }
 
@@ -377,10 +561,21 @@ const EditModelForm = ({
           control={form.control}
           name="model"
           render={({ field }) => (
-            <FormItem>
+            <FormItem className="flex flex-col">
               <FormLabel>Model</FormLabel>
               <FormControl>
-                <Input {...field} className="rounded-lg" />
+                {isCustomModel ? (
+                  <Input {...field} placeholder="e.g., gpt-4-turbo-preview" className="rounded-lg" />
+                ) : (
+                  <Combobox
+                    items={modelItems}
+                    value={watchedModel}
+                    onValueChange={handleModelSelect}
+                    placeholder="Select model..."
+                    searchPlaceholder="Search models..."
+                    emptyMessage="No models found."
+                  />
+                )}
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -411,7 +606,12 @@ const EditModelForm = ({
               <FormItem>
                 <FormLabel>API Key</FormLabel>
                 <FormControl>
-                  <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
+                  <Input
+                    type="password"
+                    {...field}
+                    placeholder={model.apiKey ? '••••••••••••••••' : 'sk-...'}
+                    className="rounded-lg"
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -422,7 +622,7 @@ const EditModelForm = ({
         <ConnectionTestSection
           provider={model.provider}
           model={watchedModel}
-          apiKey={watchedApiKey}
+          apiKey={effectiveApiKey}
           isTesting={isTesting}
           onTest={handleTest}
           status={connectionStatus}
@@ -447,43 +647,15 @@ const EditModelForm = ({
   )
 }
 
-const EditModelModal = ({
-  model,
-  onOpenChange,
-  onSubmit,
-  isPending,
-}: {
-  model: Model | null
-  onOpenChange: (open: boolean) => void
-  onSubmit: (values: z.infer<typeof editFormSchema> & { id: string }) => void
-  isPending: boolean
-}) => (
-  <Dialog open={!!model} onOpenChange={onOpenChange}>
-    <ResponsiveModalContentComposable className="sm:max-w-[500px]">
-      <ResponsiveModalHeader>
-        <ResponsiveModalTitle>Edit Model</ResponsiveModalTitle>
-        <ResponsiveModalDescription className="sr-only">Edit model configuration</ResponsiveModalDescription>
-      </ResponsiveModalHeader>
-      {model && (
-        <EditModelForm
-          key={model.id}
-          model={model}
-          onCancel={() => onOpenChange(false)}
-          onSubmit={onSubmit}
-          isPending={isPending}
-        />
-      )}
-    </ResponsiveModalContentComposable>
-  </Dialog>
-)
-
 /** Copy shown in the actions menu for built-in models. Exported for unit tests. */
 export const systemModelMenuMessage = "Built-in models can't be edited or removed"
 
 export default function ModelsPage() {
   const db = useDatabase()
+  const { isMobile } = useIsMobile()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
+  const [activeModelId, setActiveModelId] = useState<string | null>(null)
   const { isAddDialogOpen, deleteConfirmOpen, isLoadingModels, selectedModelId, allAvailableModels, modelLoadError } =
     state
 
@@ -491,6 +663,7 @@ export default function ModelsPage() {
     queryKey: ['models'],
     query: toCompilableQuery(getAllModels(db)),
   })
+  const activeModel = models.find((model) => model.id === activeModelId)
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
@@ -600,6 +773,10 @@ export default function ModelsPage() {
 
   const handleDialogOpenChange = (open: boolean) => {
     if (open) {
+      // The add form takes over the shared panel surface — close any open
+      // model detail / edit view so the two never contend for it.
+      setActiveModelId(null)
+      setEditingModel(null)
       dispatch({ type: 'OPEN_DIALOG' })
       resetConnectionTest()
 
@@ -616,165 +793,13 @@ export default function ModelsPage() {
 
   const fetchAvailableModels = async (provider: string, apiKey?: string, url?: string) => {
     dispatch({ type: 'FETCH_MODELS_START' })
-
     try {
-      let endpoint = ''
-      let headers: Record<string, string> = {}
-
-      switch (provider) {
-        case 'openai':
-          endpoint = 'https://api.openai.com/v1/models'
-          headers = { Authorization: `Bearer ${apiKey}` }
-          break
-        case 'custom':
-          if (url) {
-            endpoint = `${normalizeOpenAiBaseUrl(url)}/models`
-            if (apiKey) {
-              headers = { Authorization: `Bearer ${apiKey}` }
-            }
-          }
-          break
-        case 'openrouter':
-          endpoint = 'https://openrouter.ai/api/v1/models'
-          headers = { Authorization: `Bearer ${apiKey}` }
-          break
-        case 'tinfoil': {
-          // /v1/models is unauthenticated, but route through SecureClient so
-          // attestation is warmed up before the user's first chat.
-          const client = await getTinfoilClient()
-          const response = await http.get(`${client.getBaseURL()}models`, { fetch: client.fetch }).json<{
-            data: Array<AvailableModel & { endpoints?: string[]; tool_calling?: boolean }>
-          }>()
-
-          // The catalog also includes embedding, audio, document, and tts
-          // models; filter to ones that expose chat completions.
-          const tinfoilModels = (response.data || [])
-            .filter((m) => Array.isArray(m.endpoints) && m.endpoints.includes('/v1/chat/completions'))
-            .map((m) => ({ ...m, supports_tools: m.tool_calling === true }))
-            .sort((a, b) => a.id.localeCompare(b.id))
-
-          dispatch({ type: 'FETCH_MODELS_SUCCESS', models: tinfoilModels })
-          return
-        }
-        case 'thunderbolt': {
-          const thunderboltModels = [
-            { id: 'kimi-k2-instruct', name: 'Kimi K2', supports_tools: true },
-            { id: 'deepseek-r1-0528', name: 'DeepSeek R1', supports_tools: true },
-            { id: 'mistral-large-3', name: 'Mistral Large 3', supports_tools: true },
-            { id: 'llama-v3p1-405b-instruct', name: 'Llama 3.1', supports_tools: true },
-          ]
-          dispatch({ type: 'FETCH_MODELS_SUCCESS', models: thunderboltModels })
-          return
-        }
-        case 'anthropic': {
-          const anthropicModels = [
-            {
-              id: 'claude-opus-4-1-20250805',
-              name: 'Claude Opus 4.1',
-              supports_tools: true,
-            },
-            {
-              id: 'claude-opus-4-20250514',
-              name: 'Claude Opus 4',
-              supports_tools: true,
-            },
-            {
-              id: 'claude-sonnet-4-20250514',
-              name: 'Claude Sonnet 4',
-              supports_tools: true,
-            },
-            {
-              id: 'claude-3-7-sonnet-20250219',
-              name: 'Claude Sonnet 3.7',
-              supports_tools: true,
-            },
-            {
-              id: 'claude-3-5-sonnet-20241022',
-              name: 'Claude Sonnet 3.5 (New)',
-              supports_tools: true,
-            },
-            {
-              id: 'claude-3-5-haiku-20241022',
-              name: 'Claude Haiku 3.5',
-              supports_tools: true,
-            },
-            {
-              id: 'claude-3-5-sonnet-20240620',
-              name: 'Claude Sonnet 3.5 (Old)',
-              supports_tools: true,
-            },
-            {
-              id: 'claude-3-haiku-20240307',
-              name: 'Claude Haiku 3',
-              supports_tools: true,
-            },
-            {
-              id: 'claude-3-opus-20240229',
-              name: 'Claude Opus 3',
-              supports_tools: true,
-            },
-          ]
-          dispatch({ type: 'FETCH_MODELS_SUCCESS', models: anthropicModels })
-          return
-        }
-      }
-
-      if (endpoint) {
-        // For Custom (OpenAI Compatible), try even without API key, otherwise require API key
-        if (provider === 'custom' || apiKey) {
-          const response = await http.get(endpoint, { headers, fetch }).json<{ data: AvailableModel[] }>()
-
-          let models = (response.data || []).map((m) => {
-            const supportsToolsByParams =
-              Array.isArray((m as any).supported_parameters) &&
-              ((m as any).supported_parameters.includes('tools') ||
-                (m as any).supported_parameters.includes('tool_choice'))
-
-            const supportsTools = (m as any).supports_tools === true || supportsToolsByParams
-
-            return { ...m, supports_tools: supportsTools }
-          })
-
-          // Sort models alphabetically by ID
-          models = models.sort((a, b) => a.id.localeCompare(b.id))
-
-          // Store all models for search functionality
-          dispatch({ type: 'FETCH_MODELS_SUCCESS', models })
-        }
-      }
+      // An empty catalog (missing credentials) keeps the previous UI: the
+      // model picker simply doesn't render until the key/URL is supplied.
+      dispatch({ type: 'FETCH_MODELS_SUCCESS', models: await fetchModelsForProvider(provider, apiKey, url) })
     } catch (error) {
       console.error('Failed to fetch models:', error)
-
-      // Browser/network failure (could be offline, CORS, cert error, etc.)
-      if (error instanceof TypeError) {
-        dispatch({
-          type: 'FETCH_MODELS_FAILURE',
-          error: 'Network request failed (the browser blocked the request or the server is unreachable).',
-        })
-      }
-      // HttpError with a Response object
-      else if (typeof error === 'object' && error && 'response' in error) {
-        // @ts-expect-error – HttpError shape
-        const response: Response | undefined = error.response
-        if (response) {
-          dispatch({
-            type: 'FETCH_MODELS_FAILURE',
-            error: `Server responded with status ${response.status} ${response.statusText}`,
-          })
-        } else {
-          dispatch({ type: 'FETCH_MODELS_FAILURE', error: 'Server responded with an unknown error.' })
-        }
-      }
-      // Generic JavaScript error
-      else if (error instanceof Error && error.message) {
-        dispatch({ type: 'FETCH_MODELS_FAILURE', error: error.message })
-      } else {
-        dispatch({ type: 'FETCH_MODELS_FAILURE', error: 'Failed to load models' })
-      }
-
-      // No models could be fetched; state already handled in failure action
-    } finally {
-      // Nothing to do in finally; state set in success/failure actions
+      dispatch({ type: 'FETCH_MODELS_FAILURE', error: describeModelFetchError(error) })
     }
   }
 
@@ -878,8 +903,12 @@ export default function ModelsPage() {
     }
   }, [watchedApiKey, watchedUrl, form])
 
-  const getProviderDisplay = (provider: string) => {
-    switch (provider) {
+  const getProviderDisplay = (model: Model) => {
+    if (isThunderboltManagedModel(model)) {
+      return 'Thunderbolt'
+    }
+
+    switch (model.provider) {
       case 'thunderbolt':
         return 'Thunderbolt'
       case 'tinfoil':
@@ -893,12 +922,8 @@ export default function ModelsPage() {
       case 'openrouter':
         return 'OpenRouter'
       default:
-        return provider
+        return model.provider
     }
-  }
-
-  const getModelInitial = (model: Model) => {
-    return model.name[0].toUpperCase()
   }
 
   const handleDeleteModel = (modelId: string) => {
@@ -923,7 +948,7 @@ export default function ModelsPage() {
       return true
     }
     const model = allAvailableModels.find((m) => m.id === selectedModelId)
-    return (model as any)?.supports_tools === true
+    return model?.supports_tools === true
   })()
 
   const watchedModel = form.watch('model')
@@ -941,244 +966,268 @@ export default function ModelsPage() {
     apiKey: watchedApiKey,
   })
 
-  return (
-    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
-      <PageHeader title="Models">
-        <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="bg-card" aria-label="Add model">
-              <Plus />
-            </Button>
-          </DialogTrigger>
-          <ResponsiveModalContentComposable className="overflow-y-auto sm:max-h-[90vh] sm:max-w-[500px]">
-            <ResponsiveModalHeader>
-              <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
-              <ResponsiveModalDescription className="sr-only">Add a new AI model</ResponsiveModalDescription>
-            </ResponsiveModalHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col gap-4 pt-4 pb-2">
-                <FormField
-                  control={form.control}
-                  name="provider"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Provider</FormLabel>
-                      <FormControl>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <SelectTrigger className="w-full rounded-lg">
-                            <SelectValue placeholder="Select provider" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="thunderbolt">Thunderbolt</SelectItem>
-                            <SelectItem value="tinfoil">Tinfoil</SelectItem>
-                            <SelectItem value="openai">OpenAI</SelectItem>
-                            <SelectItem value="openrouter">OpenRouter</SelectItem>
-                            <SelectItem value="anthropic">Anthropic</SelectItem>
-                            <SelectItem value="custom">Custom</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+  // The add form renders inside the shared detail-panel surface (same aside
+  // idiom as the skills create form), so it's built here and slotted into the
+  // surface below.
+  const addModelForm = (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col gap-4 pt-4 pb-2">
+        <FormField
+          control={form.control}
+          name="provider"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Provider</FormLabel>
+              <FormControl>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger className="w-full rounded-lg">
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="thunderbolt">Thunderbolt</SelectItem>
+                    <SelectItem value="tinfoil">Tinfoil</SelectItem>
+                    <SelectItem value="openai">OpenAI</SelectItem>
+                    <SelectItem value="openrouter">OpenRouter</SelectItem>
+                    <SelectItem value="anthropic">Anthropic</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-                {/* URL for OpenAI Compatible */}
-                {form.watch('provider') === 'custom' && (
-                  <FormField
-                    control={form.control}
-                    name="url"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>URL</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input {...field} placeholder="http://localhost:11434/v1" className="pr-10 rounded-lg" />
-                            {isLoadingModels && (
-                              <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                            )}
-                          </div>
-                        </FormControl>
-                        {modelLoadError && (
-                          <p className="text-sm text-destructive mt-1 whitespace-pre-line">{modelLoadError}</p>
-                        )}
-                        <FormMessage />
-                      </FormItem>
+        {/* URL for OpenAI Compatible */}
+        {form.watch('provider') === 'custom' && (
+          <FormField
+            control={form.control}
+            name="url"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>URL</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <Input {...field} placeholder="http://localhost:11434/v1" className="pr-10 rounded-lg" />
+                    {isLoadingModels && (
+                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
                     )}
-                  />
+                  </div>
+                </FormControl>
+                {modelLoadError && (
+                  <p className="text-sm text-destructive mt-1 whitespace-pre-line">{modelLoadError}</p>
                 )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
-                {/* API Key */}
-                {form.watch('provider') !== 'thunderbolt' && (
-                  <FormField
-                    control={form.control}
-                    name="apiKey"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>API Key{form.watch('provider') === 'custom' ? ' (Optional)' : ''}</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
-                        </FormControl>
-                        {modelLoadError && form.watch('provider') !== 'custom' && (
-                          <p className="text-sm text-destructive mt-1 whitespace-pre-line">{modelLoadError}</p>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+        {/* API Key */}
+        {form.watch('provider') !== 'thunderbolt' && (
+          <FormField
+            control={form.control}
+            name="apiKey"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>API Key{form.watch('provider') === 'custom' ? ' (Optional)' : ''}</FormLabel>
+                <FormControl>
+                  <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
+                </FormControl>
+                {modelLoadError && form.watch('provider') !== 'custom' && (
+                  <p className="text-sm text-destructive mt-1 whitespace-pre-line">{modelLoadError}</p>
                 )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
-                {/* Model Selection with Autocomplete - Show based on provider and API key */}
-                {(() => {
-                  const provider = form.watch('provider')
-                  const apiKey = form.watch('apiKey')
-                  const url = form.watch('url')
+        {/* Model Selection with Autocomplete - Show based on provider and API key */}
+        {(() => {
+          const provider = form.watch('provider')
+          const apiKey = form.watch('apiKey')
+          const url = form.watch('url')
 
-                  // Show model selection if:
-                  // 1. Thunderbolt / Tinfoil (no API key needed)
-                  // 1. Anthropic (API key required for testing - model list is hardwired)
-                  // 2. Other providers with API key
-                  // 3. OpenAI Compatible with URL (API key optional)
-                  const showModelSelection =
-                    !modelLoadError &&
-                    (['thunderbolt', 'tinfoil', 'anthropic'].includes(provider) ||
-                      (provider && apiKey) ||
-                      (provider === 'custom' && url))
+          // Show model selection if:
+          // 1. Thunderbolt / Tinfoil (no API key needed)
+          // 1. Anthropic (API key required for testing - model list is hardwired)
+          // 2. Other providers with API key
+          // 3. OpenAI Compatible with URL (API key optional)
+          const showModelSelection =
+            !modelLoadError &&
+            (['thunderbolt', 'tinfoil', 'anthropic'].includes(provider) ||
+              (provider && apiKey) ||
+              (provider === 'custom' && url))
 
-                  if (!showModelSelection) {
-                    return null
-                  }
-
-                  return (
-                    <FormField
-                      control={form.control}
-                      name="model"
-                      render={() => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>Model</FormLabel>
-                          <FormControl>
-                            <Combobox
-                              items={comboboxItems}
-                              value={selectedModelId || undefined}
-                              onValueChange={(id) => handleSelectModel(id)}
-                              placeholder="Select model..."
-                              searchPlaceholder="Search models..."
-                              emptyMessage="No models found."
-                              loading={isLoadingModels}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )
-                })()}
-
-                {/* Custom Model Input */}
-                {selectedModelId === 'custom' && (
-                  <FormField
-                    control={form.control}
-                    name="customModel"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Model</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., gpt-4-turbo-preview"
-                            className="rounded-lg"
-                            onChange={(e) => {
-                              field.onChange(e)
-                              form.setValue('model', e.target.value, { shouldValidate: true })
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                {/* Display Name - Only show when model is selected */}
-                {(watchedModel || selectedModelId === 'custom') && (
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Display Name</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                {/* Warning when model lacks tool support */}
-                {!supportsToolsSelected && (watchedModel || selectedModelId === 'custom') && (
-                  <StatusCard
-                    title={
-                      <>
-                        <X className="h-5 w-5 text-red-600" />
-                        Model may not be compatible
-                      </>
-                    }
-                    description="This model does not seem to support tool usage."
-                  />
-                )}
-
-                <ConnectionTestSection
-                  provider={watchedProvider}
-                  model={watchedModel}
-                  apiKey={watchedApiKey}
-                  isTesting={isTestingConnection}
-                  onTest={testConnection}
-                  status={connectionStatus}
-                  error={connectionError}
-                />
-
-                <ResponsiveModalFooter>
-                  <ResponsiveModalCancel onClick={() => handleDialogOpenChange(false)} />
-                  <Button
-                    type="submit"
-                    disabled={shouldDisableAddModel(
-                      addModelMutation.isPending,
-                      form.formState.isValid,
-                      providerRequiresConnectionTest(watchedProvider),
-                      connectionStatus === 'success',
-                    )}
-                  >
-                    {addModelMutation.isPending ? 'Adding...' : 'Add Model'}
-                  </Button>
-                </ResponsiveModalFooter>
-              </form>
-            </Form>
-          </ResponsiveModalContentComposable>
-        </Dialog>
-      </PageHeader>
-
-      <div className="grid gap-4">
-        {models.map((model) => {
-          const isEnabled = model.enabled === 1
-          const isSystemModel = model.isSystem === 1
+          if (!showModelSelection) {
+            return null
+          }
 
           return (
-            <Card key={model.id} className="border border-border p-0">
-              <CardHeader className="px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="flex items-center justify-center bg-muted text-muted-foreground size-9 rounded-md font-medium flex-shrink-0">
-                      {getModelInitial(model)}
-                    </div>
+            <FormField
+              control={form.control}
+              name="model"
+              render={() => (
+                <FormItem className="flex flex-col">
+                  <FormLabel>Model</FormLabel>
+                  <FormControl>
+                    <Combobox
+                      items={comboboxItems}
+                      value={selectedModelId || undefined}
+                      onValueChange={(id) => handleSelectModel(id)}
+                      placeholder="Select model..."
+                      searchPlaceholder="Search models..."
+                      emptyMessage="No models found."
+                      loading={isLoadingModels}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )
+        })()}
+
+        {/* Custom Model Input */}
+        {selectedModelId === 'custom' && (
+          <FormField
+            control={form.control}
+            name="customModel"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Model</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    placeholder="e.g., gpt-4-turbo-preview"
+                    className="rounded-lg"
+                    onChange={(e) => {
+                      field.onChange(e)
+                      form.setValue('model', e.target.value, { shouldValidate: true })
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {/* Display Name - Only show when model is selected */}
+        {(watchedModel || selectedModelId === 'custom') && (
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Display Name</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {/* Warning when model lacks tool support */}
+        {!supportsToolsSelected && (watchedModel || selectedModelId === 'custom') && (
+          <StatusCard
+            title={
+              <>
+                <X className="h-5 w-5 text-warning" />
+                Model may not be compatible
+              </>
+            }
+            description="This model does not seem to support tool usage."
+          />
+        )}
+
+        <ConnectionTestSection
+          provider={watchedProvider}
+          model={watchedModel}
+          apiKey={watchedApiKey}
+          isTesting={isTestingConnection}
+          onTest={testConnection}
+          status={connectionStatus}
+          error={connectionError}
+        />
+
+        <ResponsiveModalFooter>
+          <ResponsiveModalCancel onClick={() => handleDialogOpenChange(false)} />
+          <Button
+            type="submit"
+            disabled={shouldDisableAddModel(
+              addModelMutation.isPending,
+              form.formState.isValid,
+              providerRequiresConnectionTest(watchedProvider),
+              connectionStatus === 'success',
+            )}
+          >
+            {addModelMutation.isPending ? 'Adding...' : 'Add Model'}
+          </Button>
+        </ResponsiveModalFooter>
+      </form>
+    </Form>
+  )
+
+  return (
+    <div className="relative flex h-full">
+      <div className="min-w-0 flex-1 overflow-hidden">
+        {/* md:min-w mirrors the agents page: once the aside squeezes the list
+            to this floor, the whole column (header buttons included) stops
+            sliding and tucks under the panel via the parent's overflow clip. */}
+        <div className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-6 overflow-y-auto p-4 pb-12 md:min-w-[360px] md:px-5">
+          <PageHeader title="Models">
+            <Button
+              variant="outline"
+              size="icon"
+              className="bg-card"
+              aria-label="Add model"
+              onClick={() => handleDialogOpenChange(true)}
+            >
+              <Plus />
+            </Button>
+          </PageHeader>
+
+          <div className="grid gap-4">
+            {models.map((model) => {
+              const isEnabled = model.enabled === 1
+              const isSelected = activeModel?.id === model.id
+
+              return (
+                <Card
+                  key={model.id}
+                  onClick={() => {
+                    // A row tap claims the panel: dismiss the add form and any
+                    // in-progress edit before toggling this model's detail.
+                    if (isAddDialogOpen) {
+                      handleDialogOpenChange(false)
+                    }
+                    setEditingModel(null)
+                    setActiveModelId((current) => (current === model.id ? null : model.id))
+                  }}
+                  className={
+                    isSelected
+                      ? 'flex-row items-center gap-0 border-border bg-accent p-0'
+                      : 'flex-row items-center gap-0 border-border p-0 transition-colors hover:bg-secondary/50'
+                  }
+                >
+                  <button
+                    type="button"
+                    aria-label={`Open ${model.name}`}
+                    aria-pressed={isSelected}
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-l-[inherit] px-4 py-3 text-left"
+                  >
+                    <ModelProviderIconTile model={model} />
                     <div className="min-w-0 flex-1">
-                      <CardTitle className="text-lg font-medium flex flex-row items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-2 truncate text-base font-medium">
                         {needsApiKey(model) && (
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <AlertTriangle className="size-3.5 text-amber-500" />
+                                <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
                               </TooltipTrigger>
                               <TooltipContent side="bottom">
                                 <p>API key not configured</p>
@@ -1186,96 +1235,154 @@ export default function ModelsPage() {
                             </Tooltip>
                           </TooltipProvider>
                         )}
-                        <ModificationIndicator
-                          hasModifications={isModelModified(model)}
-                          onReset={() => handleResetModel(model.id)}
-                          customMessage="You've customized this model."
-                          ariaLabel="Modified model"
-                          requireConfirmation={false}
-                        >
-                          {model.name}
-                        </ModificationIndicator>
+                        <span className="truncate">{model.name}</span>
                         {!!model.isConfidential && <PrivateBadge />}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        {getProviderDisplay(model.provider)} - {model.model}
+                      </div>
+                      <p className="truncate text-[length:var(--font-size-sm)] text-muted-foreground">
+                        {getProviderDisplay(model)}
                       </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
-                          <MoreVertical />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-56">
-                        {isSystemModel ? (
-                          <div className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
-                            {systemModelMenuMessage}
-                          </div>
-                        ) : (
-                          <>
-                            <DropdownMenuItem onClick={() => setEditingModel(model)} className="cursor-pointer">
-                              <SquarePen />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
-                              className="cursor-pointer"
-                            >
-                              <Trash2 />
-                              Delete
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  </button>
+                  <div className="flex shrink-0 items-center pr-4">
                     <Switch
                       checked={isEnabled}
+                      onClick={(event) => event.stopPropagation()}
                       onCheckedChange={(checked) => toggleModelMutation.mutate({ id: model.id, enabled: checked })}
                       className="cursor-pointer"
-                      aria-label={isEnabled ? 'Disable model' : 'Enable model'}
+                      aria-label={isEnabled ? `Disable ${model.name}` : `Enable ${model.name}`}
                     />
                   </div>
-                </div>
-              </CardHeader>
-              {isEnabled && model.url && (
-                <CardContent className="border-t px-4 pb-3">
-                  <div className="space-y-3 pt-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">URL</span>
-                      <span className="text-sm font-mono truncate max-w-[300px]">{model.url}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          )
-        })}
+                </Card>
+              )
+            })}
 
-        {models.length === 0 && (
-          <Card className="border-dashed border-2 border-muted-foreground/25">
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <Cpu className="size-10 text-muted-foreground mb-4" />
-              <h3 className="font-medium text-foreground mb-1">No models configured</h3>
-              <p className="text-sm text-muted-foreground mb-4">Get started by adding your first AI model.</p>
-              <Button onClick={() => handleDialogOpenChange(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Model
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+            {models.length === 0 && (
+              <Card className="border-dashed border-2 border-muted-foreground/25">
+                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                  <Cpu className="size-10 text-muted-foreground mb-4" />
+                  <h3 className="font-medium text-foreground mb-1">No models configured</h3>
+                  <p className="text-sm text-muted-foreground mb-4">Get started by adding your first AI model.</p>
+                  <Button onClick={() => handleDialogOpenChange(true)} variant="outline">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Model
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Edit Model Modal */}
-      <EditModelModal
-        model={editingModel}
-        onOpenChange={(open) => !open && setEditingModel(null)}
-        onSubmit={(values) => editModelMutation.mutate(values)}
-        isPending={editModelMutation.isPending}
-      />
+      <DetailPanelSurface
+        open={isAddDialogOpen || activeModel !== undefined}
+        isMobile={isMobile}
+        onClose={() => {
+          if (isAddDialogOpen) {
+            handleDialogOpenChange(false)
+          }
+          setEditingModel(null)
+          setActiveModelId(null)
+        }}
+      >
+        {isAddDialogOpen ? (
+          <DetailPanel title="Add Model" onClose={() => handleDialogOpenChange(false)}>
+            {addModelForm}
+          </DetailPanel>
+        ) : activeModel && editingModel ? (
+          <DetailPanel title="Edit Model" subtitle={editingModel.name} onClose={() => setEditingModel(null)}>
+            <EditModelForm
+              key={editingModel.id}
+              model={editingModel}
+              onCancel={() => setEditingModel(null)}
+              onSubmit={(values) => editModelMutation.mutate(values)}
+              isPending={editModelMutation.isPending}
+            />
+          </DetailPanel>
+        ) : activeModel ? (
+          <DetailPanel
+            icon={<ModelProviderIconTile model={activeModel} />}
+            title={activeModel.name}
+            subtitle={getProviderDisplay(activeModel)}
+            actions={
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
+                    <MoreVertical />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-56">
+                  {activeModel.isSystem === 1 ? (
+                    <div className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+                      {systemModelMenuMessage}
+                    </div>
+                  ) : (
+                    <>
+                      <DropdownMenuItem onClick={() => setEditingModel(activeModel)} className="cursor-pointer">
+                        <SquarePen />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: activeModel.id })}
+                        className="cursor-pointer"
+                      >
+                        <Trash2 />
+                        Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
+            onClose={() => setActiveModelId(null)}
+          >
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium text-muted-foreground">Model</p>
+                <p className="truncate text-base text-foreground">{activeModel.model}</p>
+              </div>
+              {activeModel.url && (
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium text-muted-foreground">URL</p>
+                  <p className="truncate text-base text-foreground">{activeModel.url}</p>
+                </div>
+              )}
+              {!!activeModel.isConfidential && (
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium text-muted-foreground">Privacy</p>
+                  <div>
+                    <PrivateBadge />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {needsApiKey(activeModel) && (
+              <>
+                <DetailDivider />
+                <div className="flex items-center gap-2 text-sm text-amber-600">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  API key not configured
+                </div>
+              </>
+            )}
+
+            {isModelModified(activeModel) && (
+              <>
+                <DetailDivider />
+                <ModificationIndicator
+                  hasModifications
+                  onReset={() => handleResetModel(activeModel.id)}
+                  customMessage="You've customized this model."
+                  ariaLabel="Modified model"
+                  requireConfirmation={false}
+                >
+                  Customized model
+                </ModificationIndicator>
+              </>
+            )}
+          </DetailPanel>
+        ) : null}
+      </DetailPanelSurface>
 
       {/* Delete Confirmation */}
       <AlertDialog

@@ -194,6 +194,15 @@ const testLookup: DnsLookup = (host) => {
       { address: '10.0.0.1', family: 4 },
     ])
   }
+  if (host === 'invalid-answer.test') {
+    return Promise.resolve([{ address: 'not-an-ip', family: 4 }])
+  }
+  if (host === 'mixed-invalid-answer.test') {
+    return Promise.resolve([
+      { address: '93.184.216.34', family: 4 },
+      { address: 'not-an-ip', family: 4 },
+    ])
+  }
   // DNS64-style synthesis: AAAA wraps an IPv4 in the NAT64 well-known prefix.
   if (host === 'nat64-private.test') {
     return Promise.resolve([{ address: '64:ff9b::7f00:1', family: 6 }])
@@ -213,6 +222,31 @@ describe('validateAndPin', () => {
 
   it('blocks when ANY resolved address is private, even if the first is public', async () => {
     await expect(validateAndPin('http://mixed.test/', undefined, testLookup)).rejects.toThrow(/10\.0\.0\.1/)
+  })
+
+  it('rejects an unparseable resolver answer instead of pinning it', async () => {
+    await expect(validateAndPin('http://invalid-answer.test/', undefined, testLookup)).rejects.toThrow(
+      /invalid IP address not-an-ip/,
+    )
+  })
+
+  it('rejects when any resolver answer is unparseable, even if the first is public', async () => {
+    await expect(validateAndPin('http://mixed-invalid-answer.test/', undefined, testLookup)).rejects.toThrow(
+      /invalid IP address not-an-ip/,
+    )
+  })
+
+  it('passes domain names through the pre-resolution check to DNS', async () => {
+    const resolvedHostnames: string[] = []
+    const lookup: DnsLookup = (hostname) => {
+      resolvedHostnames.push(hostname)
+      return Promise.resolve([{ address: '93.184.216.34', family: 4 }])
+    }
+
+    const [pinnedUrl] = await validateAndPin('http://domain-name.test/path', undefined, lookup)
+
+    expect(resolvedHostnames).toEqual(['domain-name.test'])
+    expect(pinnedUrl).toBe('http://93.184.216.34/path')
   })
 
   it('blocks a hostname whose AAAA wraps a private IPv4 in a NAT64 prefix', async () => {

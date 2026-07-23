@@ -98,7 +98,11 @@ export const validateAndPin = async (
   }
 
   for (const { address } of addresses) {
-    if (isPrivateAddress(address)) {
+    const resolvedAddress = parseIpAddress(address)
+    if (!resolvedAddress) {
+      throw new Error(`Blocked: ${hostname} resolves to invalid IP address ${address}`)
+    }
+    if (isPrivateOrInternalAddress(resolvedAddress)) {
       throw new Error(`Blocked: ${hostname} resolves to private/internal address ${address}`)
     }
   }

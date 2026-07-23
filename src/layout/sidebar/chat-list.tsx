@@ -108,7 +108,7 @@ export const ChatList = ({
         {isMobile && searchInput}
         {isMobile && mobileSecondaryNavigation}
         {isMobile && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
-          <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+          <SidebarGroupLabel className="mt-1">Recent Chats</SidebarGroupLabel>
         )}
         {!isMobile && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
           <div className="flex items-center justify-between flex-shrink-0">

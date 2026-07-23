@@ -28,8 +28,8 @@ type MenuItemComponent = ComponentType<{
   children?: ReactNode
 }>
 
-/** The same Rename/Delete actions back both the right-click context menu and
- *  the `⋯` dropdown — only the Radix item primitive differs. */
+/** The same Rename/Delete actions back the context menu and desktop `⋯`
+ *  dropdown — only the Radix item primitive differs. */
 const ChatItemActions = ({
   Item,
   onRename,
@@ -167,14 +167,16 @@ export const ChatListItem = memo(
                     </AnimatePresence>
                     <span className="truncate flex-1 min-w-0">{displayTitle}</span>
                   </div>
-                  <DropdownMenuTrigger asChild>
-                    <MoreHorizontal
-                      className={cn(
-                        'shrink-0 size-4',
-                        !isMobile && !anyMenuOpen && 'opacity-0 group-hover/item:opacity-100 transition-opacity',
-                      )}
-                    />
-                  </DropdownMenuTrigger>
+                  {!isMobile && (
+                    <DropdownMenuTrigger asChild>
+                      <MoreHorizontal
+                        className={cn(
+                          'shrink-0 size-4',
+                          !anyMenuOpen && 'opacity-0 group-hover/item:opacity-100 transition-opacity',
+                        )}
+                      />
+                    </DropdownMenuTrigger>
+                  )}
                 </SidebarMenuButton>
               </ContextMenuTrigger>
 
@@ -190,17 +192,17 @@ export const ChatListItem = memo(
                 />
               </ContextMenuContent>
 
-              {/* Keep the mobile menu level with its visible trigger. Desktop
-                  retains the tighter row-aligned position. */}
-              <DropdownMenuContent side="right" align="start" alignOffset={isMobile ? 0 : -8} className="min-w-56">
-                <ChatItemActions
-                  Item={DropdownMenuItem}
-                  onRename={startRename}
-                  onDelete={startDelete}
-                  deleteLabel={deleteLabel}
-                  isDeletePending={deleteChatMutation.isPending}
-                />
-              </DropdownMenuContent>
+              {!isMobile && (
+                <DropdownMenuContent side="right" align="start" alignOffset={-8} className="min-w-56">
+                  <ChatItemActions
+                    Item={DropdownMenuItem}
+                    onRename={startRename}
+                    onDelete={startDelete}
+                    deleteLabel={deleteLabel}
+                    isDeletePending={deleteChatMutation.isPending}
+                  />
+                </DropdownMenuContent>
+              )}
             </SidebarMenuItem>
           </ContextMenu>
         </DropdownMenu>

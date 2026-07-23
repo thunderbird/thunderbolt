@@ -54,6 +54,11 @@ describe('ChatListItem', () => {
     expect(screen.getByText('My Chat')).toBeInTheDocument()
   })
 
+  it('hides the overflow menu on mobile', () => {
+    const { container } = renderWithProviders(createProps({ isMobile: true }))
+    expect(container.querySelector('svg')).toBeNull()
+  })
+
   it('navigates when clicking the chat item', () => {
     const onChatClick = mock()
     renderWithProviders(createProps({ onChatClick }))

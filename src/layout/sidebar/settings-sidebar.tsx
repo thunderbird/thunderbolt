@@ -100,7 +100,9 @@ export const SettingsSidebarContent = ({
                 <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
               </div>
             )}
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupLabel className={isMobile && index === 0 ? 'mt-1' : undefined}>
+              {group.label}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (

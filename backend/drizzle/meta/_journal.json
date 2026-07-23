@@ -176,6 +176,13 @@
       "when": 1783439554245,
       "tag": "0024_dry_quasimodo",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784819243043,
+      "tag": "0025_reapply_cli_auth_tables",
+      "breakpoints": true
     }
   ]
 }

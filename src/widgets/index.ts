@@ -7,7 +7,7 @@
  *
  * To add a new widget:
  * 1. Create a new directory under src/widgets/ with:
- *    - instructions.ts (model-facing instructions, seeded as a skill when the model emits the widget directly)
+ *    - instructions.ts (only when a seeded skill supplies model-facing instructions)
  *    - schema.ts (Zod schema + parse function)
  *    - [widget-name].tsx (React component)
  *    - [widget-name].stories.tsx (Storybook stories - optional)

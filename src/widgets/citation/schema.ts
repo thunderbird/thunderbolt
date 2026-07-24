@@ -16,7 +16,9 @@ const validateSourcesString = (sources: string): boolean => {
 }
 
 /**
- * Zod schema for citation widget
+ * Citation payload schema. Models cite each source once with `[N]` after the
+ * final sentence using it; they never emit `<widget:citation>` tags, alternate
+ * brackets, footnotes, or source lists.
  */
 export const schema = z.object({
   widget: z.literal('citation'),

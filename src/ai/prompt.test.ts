@@ -167,7 +167,9 @@ describe('createPrompt', () => {
     const result = createPrompt(baseParams)
 
     for (const widget of widgetRegistry) {
-      expect(result).not.toContain(widget.module.instructions)
+      if ('instructions' in widget.module) {
+        expect(result).not.toContain(widget.module.instructions)
+      }
     }
     expect(result).not.toContain('# Widget Components')
   })

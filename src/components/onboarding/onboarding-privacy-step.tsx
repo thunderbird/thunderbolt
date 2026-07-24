@@ -26,8 +26,8 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
   }
 
   return (
-    <div className="w-full flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col justify-center">
+    <div className="flex w-full flex-1 flex-col justify-center">
+      <div className="flex flex-col">
         <OnboardingStepHeader
           icon={<AppLogo size={72} />}
           title="Welcome to Thunderbolt!"
@@ -55,7 +55,7 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
         </div>
       </div>
 
-      <div>
+      <div className="mt-8">
         <div className="flex items-center gap-3 pl-1">
           <Checkbox
             id="terms-agreement"

@@ -104,7 +104,7 @@ export const OnboardingDialog = () => {
   return (
     <Dialog open={isOpen}>
       <ResponsiveModalContentComposable
-        className={cn('overflow-hidden p-0', !isMobile && 'h-[650px]')}
+        className={cn('overflow-hidden p-0', !isMobile && 'h-[650px] max-h-[calc(100dvh-2rem)]')}
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
@@ -112,15 +112,13 @@ export const OnboardingDialog = () => {
           Complete the setup process to get started with Thunderbolt
         </DialogDescription>
         <div
-          className={cn('flex flex-col items-center', isMobile && 'h-full')}
-          style={{
-            paddingBottom: 'var(--kb, 0px)',
-          }}
+          className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
+          style={isMobile ? { paddingBottom: 'var(--kb, 0px)' } : undefined}
         >
-          <div className="flex items-center justify-center px-4 relative w-full pb-2">
+          <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
             <StepIndicators currentStep={state.currentStep} totalSteps={5} />
           </div>
-          <div className="flex flex-1 flex-col overflow-scroll px-6 pb-4 pt-6">
+          <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
             {state.currentStep === 2 && (
               <OnboardingAuthStep
@@ -138,7 +136,7 @@ export const OnboardingDialog = () => {
             )}
             {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>
-          <div className="flex w-full px-5 pt-2 relative">
+          <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons
               onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
               onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}

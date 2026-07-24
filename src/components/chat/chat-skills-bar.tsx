@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Plus } from 'lucide-react'
-import { useEffect, useReducer } from 'react'
+import { lazy, Suspense, useEffect, useReducer } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 
@@ -16,7 +16,6 @@ import { maxPinnedSkills } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { skillDisplayName, skillMatchesQuery } from '@/skills/display'
-import { ReorderPanel } from '@/skills/reorder-panel'
 import { chipSurfaceClass, SuggestionChip } from '@/skills/suggestion-chip'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import {
@@ -25,6 +24,9 @@ import {
   usePinnedSkills as usePinnedSkills_default,
 } from '@/skills/use-skills'
 import type { Skill } from '@/types'
+
+const loadReorderPanel = () => import('@/skills/reorder-panel')
+const ReorderPanel = lazy(() => loadReorderPanel().then((module) => ({ default: module.ReorderPanel })))
 
 type BarState = {
   reorderMode: boolean
@@ -132,24 +134,26 @@ export const ChatSkillsBar = ({
     return (
       <>
         {isMobile && <MobileOverlay onDismiss={() => dispatch({ type: 'REORDER_CLOSED' })} />}
-        <ReorderPanel
-          pinned={pinned}
-          onReorder={async (ids, move) => {
-            // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
-            // even for adjacent swaps, where a diff-based heuristic can't tell
-            // which side the user actually dragged. Await the mutation before
-            // firing telemetry so a rejection doesn't record a phantom event.
-            dispatch({ type: 'MUTATION_STARTED' })
-            try {
-              await reorderPins(ids)
-              trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
-            } catch (error) {
-              console.error('reorderPins failed:', error)
-              dispatch({ type: 'MUTATION_FAILED', message: "Couldn't save the new order." })
-            }
-          }}
-          onClose={() => dispatch({ type: 'REORDER_CLOSED' })}
-        />
+        <Suspense fallback={null}>
+          <ReorderPanel
+            pinned={pinned}
+            onReorder={async (ids, move) => {
+              // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
+              // even for adjacent swaps, where a diff-based heuristic can't tell
+              // which side the user actually dragged. Await the mutation before
+              // firing telemetry so a rejection doesn't record a phantom event.
+              dispatch({ type: 'MUTATION_STARTED' })
+              try {
+                await reorderPins(ids)
+                trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
+              } catch (error) {
+                console.error('reorderPins failed:', error)
+                dispatch({ type: 'MUTATION_FAILED', message: "Couldn't save the new order." })
+              }
+            }}
+            onClose={() => dispatch({ type: 'REORDER_CLOSED' })}
+          />
+        </Suspense>
       </>
     )
   }
@@ -203,7 +207,10 @@ export const ChatSkillsBar = ({
             onClick={() => onAddToChat(skill.name)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onEdit={() => void navigate('/settings/skills', { state: { startEditSkill: skill.id } })}
-            onReorder={() => dispatch({ type: 'REORDER_OPENED' })}
+            onReorder={() => {
+              void loadReorderPanel()
+              dispatch({ type: 'REORDER_OPENED' })
+            }}
             onUnpin={() => handleTogglePin(skill, 'unpin')}
           />
         ))}

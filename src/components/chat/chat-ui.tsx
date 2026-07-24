@@ -5,9 +5,9 @@
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, m } from 'framer-motion'
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
-import { ChatMessages } from './chat-messages'
+import { loadChatMessageList } from './chat-messages-loader'
 import { ChatPromptInput } from './chat-prompt-input'
 import { PermissionDialogHost } from './permission-dialog-host'
 import { useCurrentChatSession } from '@/chats/chat-store'
@@ -17,6 +17,8 @@ import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
 import { getGreeting } from './chat-ui-greeting'
+
+const ChatMessageList = lazy(() => loadChatMessageList().then((module) => ({ default: module.ChatMessageList })))
 
 const EmptyChatGreeting = () => {
   return (
@@ -88,8 +90,9 @@ export default function ChatUI() {
                     Top padding clears the floating header (the layout's scrim
                     keeps scrolled messages legible behind it). */}
                 <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-[calc(var(--header-inset)+1rem)] pb-0 md:px-4">
-                  <ChatMessages />
-                  <div ref={scrollTargetRef} className="shrink-0 !mt-0 h-2 md:h-3" />
+                  <Suspense fallback={null}>
+                    <ChatMessageList scrollTargetRef={scrollTargetRef} />
+                  </Suspense>
                 </div>
               </m.div>
               <ScrollToBottomButton

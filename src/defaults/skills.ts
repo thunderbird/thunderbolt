@@ -75,8 +75,8 @@ const importantEmailsInstruction = `Review the user's inbox and summarize the 5 
  * The starter set mirrors the legacy `defaultAutomations` so new users get
  * the same content under the Skills model.
  *
- * Each lands enabled and pinned in the order listed; a user who soft-deletes
- * one will not see it re-seeded.
+ * Each lands enabled. User-facing task skills are pinned; model-facing widget
+ * contracts are not. A user who soft-deletes one will not see it re-seeded.
  */
 export const defaultSkillDailyBrief: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
@@ -113,7 +113,7 @@ export const defaultSkillWeatherForecast: Skill = {
   description: 'Use this skill when the user asks for a current or upcoming weather forecast.',
   instruction: weatherForecastWidgetInstruction,
   enabled: 1,
-  pinnedOrder: 2,
+  pinnedOrder: null,
   deletedAt: null,
   defaultHash: null,
   userId: null,
@@ -127,7 +127,7 @@ export const defaultSkillLinkPreview: Skill = {
     'Use this skill when the user wants web results, news, products, recommendations, or other fetched pages shown as rich link previews.',
   instruction: linkPreviewWidgetInstruction,
   enabled: 1,
-  pinnedOrder: 3,
+  pinnedOrder: null,
   deletedAt: null,
   defaultHash: null,
   userId: null,
@@ -141,7 +141,7 @@ export const defaultSkillConnectIntegration: Skill = {
     'Use this skill when the user asks to access email or calendar but required Google or Microsoft tools are unavailable.',
   instruction: connectIntegrationWidgetInstruction,
   enabled: 1,
-  pinnedOrder: 4,
+  pinnedOrder: null,
   deletedAt: null,
   defaultHash: null,
   userId: null,
@@ -154,7 +154,7 @@ export const defaultSkillAsk: Skill = {
   description: 'Use this skill when asking the user to choose from options or answer an interactive quiz prompt.',
   instruction: askWidgetInstruction,
   enabled: 1,
-  pinnedOrder: 5,
+  pinnedOrder: null,
   deletedAt: null,
   defaultHash: null,
   userId: null,
@@ -168,7 +168,7 @@ export const defaultSkillMap: Skill = {
     'Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map.',
   instruction: mapWidgetInstruction,
   enabled: 1,
-  pinnedOrder: 6,
+  pinnedOrder: null,
   deletedAt: null,
   defaultHash: null,
   userId: null,

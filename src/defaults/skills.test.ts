@@ -38,7 +38,7 @@ const computeSnapshotHash = () =>
 
 const expectedSnapshot = {
   version: 3,
-  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd|2:01996330-0000-7000-8000-000000000003:-oawvjh|3:01996330-0000-7000-8000-000000000004:22br3x|4:01996330-0000-7000-8000-000000000005:-72ymfz|5:01996330-0000-7000-8000-000000000006:-31t7et|6:01996330-0000-7000-8000-000000000007:-rhvl8t',
+  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd|2:01996330-0000-7000-8000-000000000003:-7noodp|3:01996330-0000-7000-8000-000000000004:6xuyso|4:01996330-0000-7000-8000-000000000005:-bonu0t|5:01996330-0000-7000-8000-000000000006:-bjz9so|6:01996330-0000-7000-8000-000000000007:swem9b',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -98,21 +98,16 @@ describe('defaultSkills', () => {
     expect(names).not.toContain('document-result')
   })
 
-  it('seeds every default with a pinnedOrder so new users start with pinned chips in chat', () => {
-    // Regression guard — Chris flagged that seeded skills must be pinned by
-    // default. Pinning is now manageable only from the chat composer; a new
-    // user with no pinned defaults would see the chip bar empty until they
-    // open the `+` popover and pin one manually, which loses the "starter
-    // chip is ready" affordance that the legacy automations gave them.
-    for (const skill of defaultSkills) {
-      expect(typeof skill.pinnedOrder).toBe('number')
-      expect(skill.pinnedOrder).not.toBeNull()
-    }
-  })
-
-  it('assigns each default a unique pinnedOrder so the order is stable on seed', () => {
-    const orders = defaultSkills.map((s) => s.pinnedOrder)
-    expect(new Set(orders).size).toBe(orders.length)
+  it('pins task skills but not model-facing widget contracts', () => {
+    expect(defaultSkills.map((skill) => [skill.name, skill.pinnedOrder])).toEqual([
+      ['daily-brief', 0],
+      ['important-emails', 1],
+      ['weather-forecast', null],
+      ['link-preview', null],
+      ['connect-integration', null],
+      ['ask', null],
+      ['map', null],
+    ])
   })
 
   it('seeds every default as enabled — disabled defaults would never reach the chat resolver', () => {

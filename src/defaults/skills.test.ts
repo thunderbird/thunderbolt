@@ -4,7 +4,21 @@
 
 import { describe, expect, it, test } from 'bun:test'
 
-import { defaultSkills, defaultSkillsVersion, hashSkill } from './skills'
+import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
+import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
+import { instructions as linkPreviewWidgetInstruction } from '@/widgets/link-preview/instructions'
+import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions'
+import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
+import {
+  defaultSkillAsk,
+  defaultSkillConnectIntegration,
+  defaultSkillLinkPreview,
+  defaultSkillMap,
+  defaultSkills,
+  defaultSkillsVersion,
+  defaultSkillWeatherForecast,
+  hashSkill,
+} from './skills'
 
 /**
  * Snapshot pinning the shipped defaults to their declared version. When you
@@ -23,8 +37,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 2,
-  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd',
+  version: 3,
+  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd|2:01996330-0000-7000-8000-000000000003:-oawvjh|3:01996330-0000-7000-8000-000000000004:22br3x|4:01996330-0000-7000-8000-000000000005:-72ymfz|5:01996330-0000-7000-8000-000000000006:-31t7et|6:01996330-0000-7000-8000-000000000007:-rhvl8t',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -37,6 +51,53 @@ describe('defaultSkills version snapshot', () => {
 })
 
 describe('defaultSkills', () => {
+  it('ships spontaneous widget skills with load-bearing descriptions and canonical instruction bodies', () => {
+    const widgetSkills = [
+      {
+        skill: defaultSkillWeatherForecast,
+        description: 'Use this skill when the user asks for a current or upcoming weather forecast.',
+        instruction: weatherForecastWidgetInstruction,
+      },
+      {
+        skill: defaultSkillLinkPreview,
+        description:
+          'Use this skill when the user wants web results, news, products, recommendations, or other fetched pages shown as rich link previews.',
+        instruction: linkPreviewWidgetInstruction,
+      },
+      {
+        skill: defaultSkillConnectIntegration,
+        description:
+          'Use this skill when the user asks to access email or calendar but required Google or Microsoft tools are unavailable.',
+        instruction: connectIntegrationWidgetInstruction,
+      },
+      {
+        skill: defaultSkillAsk,
+        description: 'Use this skill when asking the user to choose from options or answer an interactive quiz prompt.',
+        instruction: askWidgetInstruction,
+      },
+      {
+        skill: defaultSkillMap,
+        description:
+          'Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map.',
+        instruction: mapWidgetInstruction,
+      },
+    ]
+
+    for (const { skill, description, instruction } of widgetSkills) {
+      expect(defaultSkills).toContain(skill)
+      expect(skill.description).toBe(description)
+      expect(skill.description).not.toContain('\n')
+      expect(skill.instruction).toBe(instruction)
+    }
+  })
+
+  it('does not seed flow-coupled citation or document-result contracts as user-invoked skills', () => {
+    const names = defaultSkills.map((skill) => skill.name)
+
+    expect(names).not.toContain('citation')
+    expect(names).not.toContain('document-result')
+  })
+
   it('seeds every default with a pinnedOrder so new users start with pinned chips in chat', () => {
     // Regression guard — Chris flagged that seeded skills must be pinned by
     // default. Pinning is now manageable only from the chat composer; a new

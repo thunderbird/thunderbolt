@@ -4,6 +4,11 @@
 
 import { hashValues } from '@/lib/utils'
 import type { Skill, SkillRow } from '@/types'
+import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
+import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
+import { instructions as linkPreviewWidgetInstruction } from '@/widgets/link-preview/instructions'
+import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions'
+import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
 
 /**
  * Hash of user-editable fields. Includes `deletedAt` so soft-deletes are
@@ -101,7 +106,83 @@ export const defaultSkillImportantEmails: Skill = {
   userId: null,
 }
 
-export const defaultSkills: ReadonlyArray<Skill> = [defaultSkillDailyBrief, defaultSkillImportantEmails] as const
+export const defaultSkillWeatherForecast: Skill = {
+  id: '01996330-0000-7000-8000-000000000003',
+  name: 'weather-forecast',
+  label: 'Weather Forecast',
+  description: 'Use this skill when the user asks for a current or upcoming weather forecast.',
+  instruction: weatherForecastWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: 2,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillLinkPreview: Skill = {
+  id: '01996330-0000-7000-8000-000000000004',
+  name: 'link-preview',
+  label: 'Link Preview',
+  description:
+    'Use this skill when the user wants web results, news, products, recommendations, or other fetched pages shown as rich link previews.',
+  instruction: linkPreviewWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: 3,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillConnectIntegration: Skill = {
+  id: '01996330-0000-7000-8000-000000000005',
+  name: 'connect-integration',
+  label: 'Connect Integration',
+  description:
+    'Use this skill when the user asks to access email or calendar but required Google or Microsoft tools are unavailable.',
+  instruction: connectIntegrationWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: 4,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillAsk: Skill = {
+  id: '01996330-0000-7000-8000-000000000006',
+  name: 'ask',
+  label: 'Ask',
+  description: 'Use this skill when asking the user to choose from options or answer an interactive quiz prompt.',
+  instruction: askWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: 5,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillMap: Skill = {
+  id: '01996330-0000-7000-8000-000000000007',
+  name: 'map',
+  label: 'Map',
+  description:
+    'Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map.',
+  instruction: mapWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: 6,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkills: ReadonlyArray<Skill> = [
+  defaultSkillDailyBrief,
+  defaultSkillImportantEmails,
+  defaultSkillWeatherForecast,
+  defaultSkillLinkPreview,
+  defaultSkillConnectIntegration,
+  defaultSkillAsk,
+  defaultSkillMap,
+] as const
 
 /**
  * Monotonic version of the shipped skill defaults. Bump every time
@@ -114,4 +195,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [defaultSkillDailyBrief, defa
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 2
+export const defaultSkillsVersion = 3

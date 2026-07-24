@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { defaultSkillDailyBrief, defaultSkillImportantEmails, defaultSkills, hashSkill } from '@/defaults/skills'
+import {
+  defaultSkillDailyBrief,
+  defaultSkillImportantEmails,
+  defaultSkills,
+  defaultSkillsVersion,
+  hashSkill,
+} from '@/defaults/skills'
 import { getDb } from '@/db/database'
 import { settingsTable, skillsTable } from '@/db/tables'
 import { reconcileDefaults, versionMarkerKeys } from '@/lib/reconcile-defaults'
@@ -117,6 +123,6 @@ describe('restampSkillDefaultHashes', () => {
       .from(settingsTable)
       .where(eq(settingsTable.key, versionMarkerKeys.skills))
       .get()
-    expect(marker?.value).toBe('2')
+    expect(marker?.value).toBe(String(defaultSkillsVersion))
   })
 })

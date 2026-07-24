@@ -7,9 +7,6 @@ import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { lookup } from 'node:dns/promises'
 import { isPrivateOrInternalAddress, parseIpAddress } from '../../../shared/ip-classification.ts'
 
-/** Single source for the tool's name — the permission gates and ACP kind mapping key off it. */
-export const webFetchToolName = 'webfetch'
-
 const defaultTimeoutMs = 15_000
 const defaultMaxResponseBytes = 1_500_000
 const defaultMaxTextLength = 100_000
@@ -94,15 +91,14 @@ const validateAndPin = async (url: URL, resolve: WebFetchResolver): Promise<[pin
 
   const addresses = await resolve(hostname)
   if (addresses.length === 0) throw new Error(`webfetch could not resolve hostname: ${hostname}`)
-  const parsedAddresses = addresses.map(({ address }) => {
-    const parsed = parseIpAddress(address)
-    if (!parsed || isPrivateOrInternalAddress(parsed)) throw new Error(privateAddressError)
-    return parsed
-  })
+  const parsedAddresses = addresses.map(({ address }) => parseIpAddress(address))
+  if (parsedAddresses.some((address) => !address || isPrivateOrInternalAddress(address))) {
+    throw new Error(privateAddressError)
+  }
 
   const pinnedUrl = new URL(parsedUrl)
   const firstAddress = addresses[0].address
-  pinnedUrl.hostname = parsedAddresses[0].version === 6 ? `[${firstAddress}]` : firstAddress
+  pinnedUrl.hostname = parsedAddresses[0]?.version === 6 ? `[${firstAddress}]` : firstAddress
   const headers = new Headers()
   headers.set('Host', hostname)
 
@@ -179,22 +175,24 @@ const isRawTextElement = (name: string): name is RawTextElement => rawTextElemen
 const readTagName = (tag: string): { readonly closing: boolean; readonly name: string } => {
   const closing = tag.startsWith('/')
   const nameStart = closing ? 1 : 0
-  let nameEnd = nameStart
-  while (isTagNameCharacter(tag[nameEnd] ?? '')) nameEnd += 1
-  return { closing, name: tag.slice(nameStart, nameEnd).toLowerCase() }
+  const nameEnd = { value: nameStart }
+  while (isTagNameCharacter(tag[nameEnd.value] ?? '')) nameEnd.value += 1
+  return { closing, name: tag.slice(nameStart, nameEnd.value).toLowerCase() }
 }
 
 /** Test whether a completed opening tag closes itself. */
 const isSelfClosingTag = (tag: string): boolean => {
-  let index = tag.length - 1
-  while (isHtmlWhitespace(tag[index])) index -= 1
-  return tag[index] === '/'
+  const index = { value: tag.length - 1 }
+  while (isHtmlWhitespace(tag[index.value])) index.value -= 1
+  return tag[index.value] === '/'
 }
 
 /** Test a case-insensitive substring without allocating a normalized copy. */
 const matchesCaseInsensitive = (value: string, index: number, expected: string): boolean => {
-  for (let offset = 0; offset < expected.length; offset += 1) {
-    if (value[index + offset]?.toLowerCase() !== expected[offset]) return false
+  const offset = { value: 0 }
+  while (offset.value < expected.length) {
+    if (value[index + offset.value]?.toLowerCase() !== expected[offset.value]) return false
+    offset.value += 1
   }
   return true
 }
@@ -204,9 +202,9 @@ const findRawTextCloseEnd = (html: string, index: number, element: RawTextElemen
   if (html[index] !== '<' || html[index + 1] !== '/') return undefined
   if (!matchesCaseInsensitive(html, index + 2, element)) return undefined
 
-  let closingIndex = index + element.length + 2
-  while (isHtmlWhitespace(html[closingIndex])) closingIndex += 1
-  return html[closingIndex] === '>' ? closingIndex + 1 : undefined
+  const closingIndex = { value: index + element.length + 2 }
+  while (isHtmlWhitespace(html[closingIndex.value])) closingIndex.value += 1
+  return html[closingIndex.value] === '>' ? closingIndex.value + 1 : undefined
 }
 
 /** Restore an unfinished ordinary tag as text for terminal angle-bracket escaping. */
@@ -337,21 +335,20 @@ const readCappedBody = async (
 
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
-  let bytesRead = 0
-  let truncated = false
+  const state = { bytesRead: 0, truncated: false }
   try {
-    while (bytesRead <= maxBytes) {
+    while (state.bytesRead <= maxBytes) {
       const { value, done } = await reader.read()
       if (done) break
-      const remaining = maxBytes - bytesRead
+      const remaining = maxBytes - state.bytesRead
       if (value.byteLength <= remaining) {
         chunks.push(value)
-        bytesRead += value.byteLength
+        state.bytesRead += value.byteLength
         continue
       }
       if (remaining > 0) chunks.push(value.subarray(0, remaining))
-      bytesRead = maxBytes
-      truncated = true
+      state.bytesRead = maxBytes
+      state.truncated = true
       await reader.cancel()
       break
     }
@@ -359,13 +356,13 @@ const readCappedBody = async (
     reader.releaseLock()
   }
 
-  const bytes = new Uint8Array(bytesRead)
-  let offset = 0
+  const bytes = new Uint8Array(state.bytesRead)
+  const offset = { value: 0 }
   for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
+    bytes.set(chunk, offset.value)
+    offset.value += chunk.byteLength
   }
-  return { bytes, truncated }
+  return { bytes, truncated: state.truncated }
 }
 
 /** Limit model-visible text and append one explicit truncation marker. */
@@ -386,8 +383,8 @@ export const createWebFetchTool = (
   const maxTextLength = dependencies.maxTextLength ?? defaultMaxTextLength
 
   return {
-    name: webFetchToolName,
-    label: webFetchToolName,
+    name: 'webfetch',
+    label: 'webfetch',
     description:
       'Read a specific HTTP or HTTPS URL from the web and return readable text. Use web_search first when you need to discover URLs.',
     parameters: webFetchSchema,

@@ -393,15 +393,13 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       // for the key's owner when an `x-api-key` header is present, so a key authenticates as the
       // account that created it — the escape hatch when the interactive device grant can't run.
       // The plugin's per-key rate limit defaults to 10 requests/day, which is unusable for
-      // automation; raise it to a generous per-minute budget instead of disabling it, so PAT
-      // traffic keeps a per-credential throttle on top of the account/IP-level limits (the
-      // Better Auth IP limiter is in-memory and single-instance only). A leaked PAT is further
-      // mitigated by expiry and revoking the key (same posture as a compromised device).
-      // Installed plugin runtime interprets defaultExpiresIn as seconds.
+      // automation; disable it and rely on the account/IP-level limits already in this stack.
+      // A leaked PAT is mitigated by expiry and revoking the key (same posture as a
+      // compromised device). Installed plugin runtime interprets defaultExpiresIn as seconds.
       apiKey({
         enableSessionForAPIKeys: true,
         keyExpiration: { defaultExpiresIn: settings.apiKeyDefaultExpiresInSeconds },
-        rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 300 },
+        rateLimit: { enabled: false },
       }),
       // Anonymous plugin is operator-gated: register only when AUTH_ALLOW_ANONYMOUS=true.
       // Otherwise /v1/api/auth/sign-in/anonymous returns 404 — defense-in-depth against

@@ -1680,7 +1680,7 @@ describe('Encryption API', () => {
       expect((await response.json()).nodeIds).toEqual([])
     })
 
-    it("never leaks another account's rows", async () => {
+    it('never leaks another account rows', async () => {
       await createUserAndSession(p('u-al-a'), p('tok-al-a'), `${p('al-a')}@test.com`)
       await createUserAndSession(p('u-al-b'), p('tok-al-b'), `${p('al-b')}@test.com`)
       await insertDeviceWithNode(p('al-mine'), p('u-al-a'), 'node-mine')

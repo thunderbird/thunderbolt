@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultApiKeyExpirySeconds, type Settings } from '@/config/settings'
+import type { Settings } from '@/config/settings'
 
 /**
  * Creates a fully-populated `Settings` object for tests.
@@ -35,7 +35,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
   deviceAuthExpiresIn: '30m',
   deviceAuthInterval: '5s',
-  apiKeyDefaultExpiresInSeconds: defaultApiKeyExpirySeconds,
+  apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   logLevel: 'INFO' as const,
   port: 8000,
   appUrl: 'http://localhost:1420',

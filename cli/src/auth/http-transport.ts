@@ -44,10 +44,9 @@ const mapPollError = (error: string): TokenPollResult => {
   throw new Error(`device authorization failed: ${error}`)
 }
 
-/** The subset of `fetch` the CLI's wire clients use; injectable so wire contracts
- *  can be unit-tested without a real network. Shared with the iroh account
- *  allowlist client so the CLI has one `FetchFn`, not two drifting copies. */
-export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>
+/** The subset of `fetch` this transport uses; injectable so the wire contract can
+ *  be unit-tested without a real network. */
+export type FetchFn = (url: string, init: RequestInit) => Promise<Response>
 
 /**
  * Build a {@link DeviceGrantTransport} bound to a Better Auth base URL

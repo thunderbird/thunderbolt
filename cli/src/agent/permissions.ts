@@ -5,7 +5,6 @@
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
 import { isReadOnlyAgentTool } from '../../../shared/agent-tool-permissions.ts'
 import { sanitizePermissionText } from '../ui/render.ts'
-import { webFetchToolName } from './webfetch.ts'
 import type { PermissionPrompt, PermissionRequest } from './types.ts'
 
 /**
@@ -42,10 +41,7 @@ export const attachPermissionGate = (harness: AgentHarness, opts: { yolo: boolea
   const sessionAllowed = new Set<string>()
 
   harness.on('tool_call', async ({ toolName, input }) => {
-    // webfetch is auto-allowed: read-only and SSRF-guarded, so no prompt.
-    if (isReadOnlyAgentTool(toolName) || toolName === webFetchToolName || sessionAllowed.has(toolName)) {
-      return undefined
-    }
+    if (isReadOnlyAgentTool(toolName) || toolName === 'webfetch' || sessionAllowed.has(toolName)) return undefined
 
     const request: PermissionRequest = { toolName, summary: summarize(toolName, input) }
     const decision = await opts.ask(request)

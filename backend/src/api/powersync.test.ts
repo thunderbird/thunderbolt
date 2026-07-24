@@ -10,7 +10,7 @@ import { createTestDb } from '@/test-utils/db'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { clearSettingsCache, defaultApiKeyExpirySeconds } from '@/config/settings'
+import { clearSettingsCache } from '@/config/settings'
 import { Elysia } from 'elysia'
 import { createPowerSyncRoutes } from './powersync'
 
@@ -61,7 +61,7 @@ const powersyncSettings: Settings = {
   betterAuthSecret,
   deviceAuthExpiresIn: '30m',
   deviceAuthInterval: '5s',
-  apiKeyDefaultExpiresInSeconds: defaultApiKeyExpirySeconds,
+  apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   e2eeEnabled: true,
   rateLimitEnabled: false,
   swaggerEnabled: false,

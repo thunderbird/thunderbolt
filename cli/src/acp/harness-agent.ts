@@ -54,7 +54,6 @@ import { cliVersion } from '../cli.ts'
 import { buildHarness } from '../agent/harness.ts'
 import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
 import { isExistingPathInWorkspace } from '../agent/workspace-jail.ts'
-import { webFetchToolName } from '../agent/webfetch.ts'
 import { createHarnessToAcpTranslator, toAcpStopReason, toToolKind } from './harness-to-acp.ts'
 import type { SessionStore } from './session-store.ts'
 
@@ -177,8 +176,7 @@ const attachAcpPermissionGate = (
   const sessionAllowed = new Set<string>()
 
   harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
-    // webfetch is auto-allowed: read-only and SSRF-guarded, so no prompt.
-    if (toolName === webFetchToolName) return undefined
+    if (toolName === 'webfetch') return undefined
     if (isReadOnlyAgentTool(toolName)) {
       const path =
         typeof input === 'object' && input !== null && 'path' in input && typeof input.path === 'string'

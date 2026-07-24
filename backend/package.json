@@ -17,7 +17,7 @@
     "email": "email dev --dir src/emails --port 3000"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.22.1",
+    "@agentclientprotocol/sdk": "^1.2.1",
     "@better-auth/api-key": "^1.6.9",
     "@better-auth/sso": "^1.6.9",
     "@electric-sql/pglite": "^0.5.4",

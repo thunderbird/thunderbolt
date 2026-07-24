@@ -341,7 +341,15 @@ export const startMembershipHeartbeat = (
     while (running) {
       await clock.sleep(intervalMs)
       if (!running) break
-      await heartbeatTick(accountAllowlist, openConnections)
+      try {
+        await heartbeatTick(accountAllowlist, openConnections)
+      } catch (err) {
+        // heartbeatTick isolates its own failures; this backstop keeps the loop
+        // alive even if an injected allowlist throws where the built-in soft-fails.
+        process.stderr.write(
+          `⚡ iroh bridge: heartbeat tick failed: ${err instanceof Error ? err.message : String(err)}\n`,
+        )
+      }
     }
   })()
   return () => {
@@ -360,12 +368,12 @@ export const handleConnection = async (
   config: BridgeConfig,
   activeProcs: Set<BridgeProc>,
   guard: { release: () => void },
-  opts: HandleConnectionOptions = {},
+  options: HandleConnectionOptions = {},
 ): Promise<void> => {
   const connection = await handshake(incoming, guard)
   const remoteId = connection.remoteId().toString()
 
-  if (!(await isConnectionAllowed(remoteId, opts.accountAllowlist))) {
+  if (!(await isConnectionAllowed(remoteId, options.accountAllowlist))) {
     process.stderr.write(`⚡ iroh bridge: refused ${remoteId} (not allowlisted)\n`)
     connection.close(closeRefused, reasonBytes('not allowlisted'))
     return
@@ -376,7 +384,7 @@ export const handleConnection = async (
   // runs before its data plane exists. The wait is bounded: a peer that completes
   // the handshake (and passes the allowlist) but never opens the stream is closed
   // rather than left to pin the connection forever.
-  const bi = await acceptBidiStream(connection, opts.acceptTimeoutMs ?? defaultAcceptTimeoutMs)
+  const bi = await acceptBidiStream(connection, options.acceptTimeoutMs ?? defaultAcceptTimeoutMs)
   if (!bi) {
     process.stderr.write(`⚡ iroh bridge: closed ${remoteId} (idle: no data stream)\n`)
     return
@@ -397,12 +405,20 @@ export const handleConnection = async (
     return
   }
   activeProcs.add(proc)
-  const openConnections = opts.openConnections
+  const openConnections = options.openConnections
   if (openConnections) {
     const open: OpenConnection = { remoteId, connection }
     openConnections.add(open)
     const removeOpenConnection = (): boolean => openConnections.delete(open)
-    void connection.closed().then(removeOpenConnection, removeOpenConnection)
+    void (async () => {
+      try {
+        await connection.closed()
+      } catch {
+        // A rejected closed() still means the connection is gone; prune regardless.
+      } finally {
+        removeOpenConnection()
+      }
+    })()
   }
   void proc.exited.then(() => activeProcs.delete(proc))
   // A dropped connection kills the agent and removes the heartbeat registry entry.
@@ -432,7 +448,7 @@ type AccountTrust = { readonly accountAllowlist: AccountAllowlist; readonly stop
 /** Format the startup banner's account-trust status from the initialized trust state. */
 export const accountTrustBanner = (enabled: boolean): string =>
   enabled
-    ? '   same-account auto-trust: on (backend allowlist, 45s heartbeat)\n'
+    ? `   same-account auto-trust: on (backend allowlist, ${heartbeatIntervalMs / 1000}s heartbeat)\n`
     : '   same-account auto-trust: off (manual allowlist only)\n' +
       '   allow a peer with: thunderbolt iroh allow <their-node-id>\n'
 
@@ -452,7 +468,7 @@ export const renderIrohBridgeBanner = (
   accountTrustEnabled: boolean,
   appUrl: string = resolveAppUrl(),
 ): string => {
-  const settingsPath = config.protocol === 'acp' ? '/settings/agents' : '/settings/mcp-servers'
+  const settingsPath = config.protocol === 'acp' ? '/settings/agents' : '/settings/connections'
   const pairingUrl = `${appUrl.replace(/\/+$/, '')}${settingsPath}`
   return (
     `⚡ thunderbolt ${config.protocol} bridge (iroh) ready\n` +
@@ -550,15 +566,17 @@ export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
 
   // Only track open connections when the heartbeat is live to re-check them; in
   // Standalone there is nothing to consume the registry, so we don't populate it.
-  const opts: HandleConnectionOptions = accountTrust
+  const connectionOptions: HandleConnectionOptions = accountTrust
     ? { accountAllowlist: accountTrust.accountAllowlist, openConnections }
     : {}
   while (true) {
     const incoming = await endpoint.acceptNext()
     if (!incoming) break
-    void admitConnection(incoming, config, activeProcs, handshakeBudget, handshakeGuard, opts).catch((err) => {
-      process.stderr.write(`⚡ iroh bridge: connection error: ${err instanceof Error ? err.message : String(err)}\n`)
-    })
+    void admitConnection(incoming, config, activeProcs, handshakeBudget, handshakeGuard, connectionOptions).catch(
+      (err) => {
+        process.stderr.write(`⚡ iroh bridge: connection error: ${err instanceof Error ? err.message : String(err)}\n`)
+      },
+    )
   }
   // The accept loop only ends when the endpoint closes; end the heartbeat loop so no
   // further tick runs after the endpoint is gone.
@@ -578,7 +596,7 @@ export const admitConnection = async (
   activeProcs: Set<BridgeProc>,
   handshakeBudget: { allow: (key: string) => boolean },
   handshakeGuard: { tryAcquire: () => boolean; release: () => void },
-  opts: HandleConnectionOptions = {},
+  options: HandleConnectionOptions = {},
 ): Promise<void> => {
   const key = await remoteKey(incoming)
   if (!handshakeBudget.allow(key)) {
@@ -591,5 +609,5 @@ export const admitConnection = async (
     await incoming.ignore()
     return
   }
-  await handleConnection(incoming, config, activeProcs, handshakeGuard, opts)
+  await handleConnection(incoming, config, activeProcs, handshakeGuard, options)
 }

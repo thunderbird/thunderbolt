@@ -258,10 +258,10 @@ describe('devices DAL', () => {
   })
 
   describe('setDeviceNodeId', () => {
-    const seedDevice = (over: Record<string, unknown>) =>
+    const seedDevice = (overrides: Record<string, unknown>) =>
       db
         .insert(devicesTable)
-        .values({ id: 'd-bind', userId, name: 'Bind', lastSeen: new Date(), createdAt: new Date(), ...over })
+        .values({ id: 'd-bind', userId, name: 'Bind', lastSeen: new Date(), createdAt: new Date(), ...overrides })
 
     it('binds a node_id on a trusted device', async () => {
       await seedDevice({ trusted: true, approvalPending: false })
@@ -294,11 +294,16 @@ describe('devices DAL', () => {
     const seed = (
       id: string,
       nodeId: string | null,
-      over: { trusted?: boolean; approvalPending?: boolean; revokedAt?: Date; deviceType?: 'normal' | 'bridge' } = {},
+      overrides: {
+        trusted?: boolean
+        approvalPending?: boolean
+        revokedAt?: Date
+        deviceType?: 'normal' | 'bridge'
+      } = {},
       forUserId = userId,
     ) => {
       const now = new Date()
-      const { trusted = true, approvalPending = !trusted, revokedAt, deviceType = 'normal' } = over
+      const { trusted = true, approvalPending = !trusted, revokedAt, deviceType = 'normal' } = overrides
       return db.insert(devicesTable).values({
         id,
         userId: forUserId,

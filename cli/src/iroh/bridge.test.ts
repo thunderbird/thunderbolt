@@ -71,7 +71,7 @@ describe('renderIrohBridgeBanner', () => {
       'https://app.example.com',
     )
 
-    expect(banner).toContain('   pair in Thunderbolt app: https://app.example.com/settings/mcp-servers\n')
+    expect(banner).toContain('   pair in Thunderbolt app: https://app.example.com/settings/connections\n')
   })
 })
 

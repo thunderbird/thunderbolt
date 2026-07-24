@@ -40,8 +40,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 3,
-  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd|2:01996330-0000-7000-8000-000000000003:-7noodp|3:01996330-0000-7000-8000-000000000004:6xuyso|4:01996330-0000-7000-8000-000000000005:-bonu0t|5:01996330-0000-7000-8000-000000000006:-bjz9so|6:01996330-0000-7000-8000-000000000007:swem9b',
+  version: 4,
+  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd|2:01996330-0000-7000-8000-000000000003:-4otv4y|3:01996330-0000-7000-8000-000000000004:-o0c0ul|4:01996330-0000-7000-8000-000000000005:atrnpq|5:01996330-0000-7000-8000-000000000006:ejr8vn|6:01996330-0000-7000-8000-000000000007:o1nire',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -127,6 +127,15 @@ describe('defaultSkills', () => {
     expect(isWidgetSkillId(defaultSkillDailyBrief.id)).toBe(false)
     expect(isWidgetSkillId(defaultSkillImportantEmails.id)).toBe(false)
     expect(isWidgetSkillId('user-skill-id')).toBe(false)
+  })
+
+  it('excludes user-controlled state from widget hashes only', () => {
+    expect(hashSkill({ ...defaultSkillWeatherForecast, enabled: 0, pinnedOrder: 4 })).toBe(
+      hashSkill(defaultSkillWeatherForecast),
+    )
+    expect(hashSkill({ ...defaultSkillDailyBrief, enabled: 0, pinnedOrder: 4 })).not.toBe(
+      hashSkill(defaultSkillDailyBrief),
+    )
   })
 
   it('seeds every default as enabled — disabled defaults would never reach the chat resolver', () => {

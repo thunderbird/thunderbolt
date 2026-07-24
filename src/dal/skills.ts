@@ -193,12 +193,13 @@ export type UpdateSkillInput = Partial<
 /**
  * Patch an existing skill. Throws {@link SkillNameInvalidError} if `name` fails
  * the AgentSkills spec, {@link SkillNameTakenError} if it collides with another
- * skill, or `Error` if a widget rendering contract receives a content patch.
+ * skill, or `Error` if a widget rendering contract receives any patch other
+ * than `enabled`.
  */
 export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
-  const changesWidgetContent = Object.keys(patch).some((field) => field !== 'enabled' && field !== 'pinnedOrder')
-  if (isWidgetSkillId(id) && changesWidgetContent) {
-    throw new Error(`updateSkill: widget skill "${id}" only supports enabled and pinnedOrder updates`)
+  const changesLockedWidgetField = Object.keys(patch).some((field) => field !== 'enabled')
+  if (isWidgetSkillId(id) && changesLockedWidgetField) {
+    throw new Error(`updateSkill: widget skill "${id}" only supports enabled updates`)
   }
   if (patch.name !== undefined) {
     const slugError = validateSkillName(patch.name)
@@ -235,9 +236,13 @@ export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promi
 
 /**
  * Pin or unpin a skill. Pass `null` to unpin. Pass a number to set the pin position.
- * Throws {@link PinLimitExceededError} if pinning would exceed {@link maxPinnedSkills}.
+ * Throws `Error` for widget contracts or {@link PinLimitExceededError} if
+ * pinning would exceed {@link maxPinnedSkills}.
  */
 export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {
+  if (isWidgetSkillId(id)) {
+    throw new Error(`setPinned: refusing to pin widget skill "${id}"`)
+  }
   if (order !== null) {
     const pinned = await countPinned(db, id)
     if (pinned >= maxPinnedSkills) {

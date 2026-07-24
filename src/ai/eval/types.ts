@@ -3,15 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ThunderboltUIMessage } from '@/types'
+import type { WidgetName } from '@/widgets'
 
-export type WidgetName =
-  | 'ask'
-  | 'citation'
-  | 'connect-integration'
-  | 'document-result'
-  | 'link-preview'
-  | 'map'
-  | 'weather-forecast'
+export type { WidgetName }
 
 /** A single evaluation scenario: one prompt tested against one model in one mode */
 export type EvalScenario = {

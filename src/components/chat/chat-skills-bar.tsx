@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SearchInput } from '@/components/ui/search-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
+import { isWidgetSkillId } from '@/defaults/skills'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { skillDisplayName, skillMatchesQuery } from '@/skills/display'
@@ -156,7 +157,7 @@ export const ChatSkillsBar = ({
   // Pinnable = enabled and not already pinned. The popover only ever lists
   // pin candidates, never a dual "pin / unpin" surface — unpin lives on the
   // chip's own dropdown.
-  const pinnable = library.filter((s) => isEnabled(s.id) && !pinnedSet.has(s.id))
+  const pinnable = library.filter((s) => !isWidgetSkillId(s.id) && isEnabled(s.id) && !pinnedSet.has(s.id))
   const query = addQuery.trim()
   const pinnableFiltered = pinnable.filter((s) => skillMatchesQuery(s, query))
   const pinCapReached = pinnedSet.size >= maxPinnedSkills

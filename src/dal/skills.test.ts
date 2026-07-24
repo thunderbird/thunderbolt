@@ -4,7 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { defaultSkillWeatherForecast } from '@/defaults/skills'
+import { defaultSkillDailyBrief, defaultSkillWeatherForecast } from '@/defaults/skills'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import {
@@ -200,23 +200,24 @@ describe('skills DAL', () => {
       await expect(updateSkill(getDb(), a.id, { name: 'SHOUTING' })).rejects.toBeInstanceOf(SkillNameInvalidError)
     })
 
-    it('allows enabled and pinnedOrder patches for widget skills', async () => {
+    it('allows enabled patches for widget skills', async () => {
       const widget = await seedWidgetSkill()
 
-      await updateSkill(getDb(), widget.id, { enabled: 0, pinnedOrder: 2 })
+      await updateSkill(getDb(), widget.id, { enabled: 0 })
 
       const after = await getSkill(getDb(), widget.id)
       expect(after?.enabled).toBe(0)
-      expect(after?.pinnedOrder).toBe(2)
+      expect(after?.pinnedOrder).toBeNull()
     })
 
-    it('rejects content patches for widget skills', async () => {
+    it('rejects locked-field patches for widget skills', async () => {
       const widget = await seedWidgetSkill()
       const disallowedPatches: UpdateSkillInput[] = [
         { name: 'renamed-widget' },
         { label: 'Renamed Widget' },
         { description: 'Changed description' },
         { instruction: 'Changed instruction' },
+        { pinnedOrder: 2 },
         { enabled: 0, description: 'Mixed allowed and disallowed fields' },
       ]
 
@@ -271,6 +272,18 @@ describe('skills DAL', () => {
   })
 
   describe('setPinned', () => {
+    it('rejects widget skills but pins task skills', async () => {
+      const widget = await seedWidgetSkill()
+      const task = { ...defaultSkillDailyBrief, pinnedOrder: null }
+      await getDb().insert(skillsTable).values(task)
+
+      await expect(setPinned(getDb(), widget.id, 0)).rejects.toThrow(/widget skill/i)
+      await setPinned(getDb(), task.id, 0)
+
+      expect((await getSkill(getDb(), widget.id))?.pinnedOrder).toBeNull()
+      expect((await getSkill(getDb(), task.id))?.pinnedOrder).toBe(0)
+    })
+
     it('pins and unpins', async () => {
       const skill = await seed({ name: 'p' })
       await setPinned(getDb(), skill.id, 0)

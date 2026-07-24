@@ -11,25 +11,25 @@ import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions
 import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
 
 /**
- * Hash of reconciled skill fields. Includes `deletedAt` so soft-deletes of
- * editable defaults are treated as a user configuration choice and are not
- * re-seeded on next app init.
+ * Hash of reconciled skill fields. Widget contracts hash only their locked
+ * content so enabled or legacy pinned state cannot block contract updates.
+ * Editable task defaults also include state and `deletedAt`, so those user
+ * changes remain protected from reconciliation.
  *
  * Accepts raw (nullable) rows as well as `Skill` so the hash-restamp data
  * migration can stamp exactly what reconciliation will later recompute.
  */
 export const hashSkill = (
-  skill: Pick<SkillRow, 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder' | 'deletedAt'>,
-): string =>
-  hashValues([
-    skill.name,
-    skill.label,
-    skill.description,
-    skill.instruction,
-    skill.enabled,
-    skill.pinnedOrder,
-    skill.deletedAt,
-  ])
+  skill: Pick<
+    SkillRow,
+    'id' | 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder' | 'deletedAt'
+  >,
+): string => {
+  const contentFields = [skill.name, skill.label, skill.description, skill.instruction]
+  return hashValues(
+    isWidgetSkillId(skill.id) ? contentFields : [...contentFields, skill.enabled, skill.pinnedOrder, skill.deletedAt],
+  )
+}
 
 const dailyBriefInstruction = `Create a daily brief with the following sections. Do not ask the user for any missing information — just skip sections for which you are missing information or tools.
 
@@ -77,7 +77,7 @@ const importantEmailsInstruction = `Review the user's inbox and summarize the 5 
  *
  * Each lands enabled. User-facing task skills are pinned; model-facing widget
  * contracts are not. Task skills may be edited or soft-deleted; widget
- * contracts only expose enabled and pinned state.
+ * contracts only expose enabled state.
  */
 export const defaultSkillDailyBrief: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
@@ -207,4 +207,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 3
+export const defaultSkillsVersion = 4

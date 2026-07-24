@@ -5,6 +5,7 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { automationsToSkills } from './automations-to-skills'
 import { restampSkillDefaultHashes } from './restamp-skill-default-hashes'
+import { restampWidgetSkillDefaultHashes } from './restamp-widget-skill-default-hashes'
 
 /**
  * Runtime data migrations.
@@ -38,7 +39,11 @@ export type DataMigration = {
   run: (db: AnyDrizzleDatabase) => Promise<void>
 }
 
-const migrations: readonly DataMigration[] = [automationsToSkills, restampSkillDefaultHashes] as const
+const migrations: readonly DataMigration[] = [
+  automationsToSkills,
+  restampSkillDefaultHashes,
+  restampWidgetSkillDefaultHashes,
+] as const
 
 /**
  * Run every registered migration in order. One migration failing logs and

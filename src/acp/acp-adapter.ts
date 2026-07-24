@@ -314,7 +314,9 @@ const composeAcpPrompt = (
 ): string =>
   [
     sessionSkillDisclosure,
-    skillInstructions && skillInstructions.length > 0 ? skillInstructions.join('\n\n') : undefined,
+    sessionSkillDisclosure === undefined && skillInstructions && skillInstructions.length > 0
+      ? skillInstructions.join('\n\n')
+      : undefined,
     priorTranscript ? `Conversation so far:\n\n${priorTranscript}` : undefined,
     userText,
   ]

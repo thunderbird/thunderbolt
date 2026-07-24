@@ -432,7 +432,7 @@ describe('connectAcpAdapter — skills capability', () => {
     expect(sentPromptText(calls)).not.toContain('Extract decisions and action items.')
   })
 
-  it('folds listing and full bodies into first prompt only for non-capability agents', async () => {
+  it('discloses each forced skill once on the first prompt and preserves forced invocation later', async () => {
     const { transport } = buildFakeTransport()
     const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
     const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
@@ -441,7 +441,10 @@ describe('connectAcpAdapter — skills capability', () => {
       getEnabledSkills: async () => enabledSkills,
     })
 
-    const firstResponse = await adapter.fetch(promptInit('Plan my morning'), threadCtx('thread-fallback'))
+    const firstResponse = await adapter.fetch(
+      promptInit('/daily-brief'),
+      threadCtx('thread-fallback', { skillInstructions: [enabledSkills[0].instruction] }),
+    )
     await act(async () => {
       releasePrompts()
       await getClock().runAllAsync()
@@ -450,17 +453,22 @@ describe('connectAcpAdapter — skills capability', () => {
 
     const firstPrompt = sentPromptText(calls)
     expect(firstPrompt).toContain('- daily-brief: Build a concise daily rundown.')
-    expect(firstPrompt).toContain('Gather current weather and calendar details.')
+    expect(firstPrompt.split(enabledSkills[0].instruction)).toHaveLength(2)
     expect(firstPrompt).toContain('Extract decisions and action items.')
-    expect(firstPrompt.endsWith('Plan my morning')).toBe(true)
+    expect(firstPrompt.endsWith('/daily-brief')).toBe(true)
 
-    const secondResponse = await adapter.fetch(promptInit('Now summarize'), threadCtx('thread-fallback'))
+    const secondResponse = await adapter.fetch(
+      promptInit('/daily-brief'),
+      threadCtx('thread-fallback', { skillInstructions: [enabledSkills[0].instruction] }),
+    )
     await act(async () => {
       await getClock().runAllAsync()
       await readSse(secondResponse)
     })
 
-    expect(sentPromptText(calls, 1)).toBe('Now summarize')
+    const secondPrompt = sentPromptText(calls, 1)
+    expect(secondPrompt).toContain(enabledSkills[0].instruction)
+    expect(secondPrompt.endsWith('/daily-brief')).toBe(true)
   })
 })
 

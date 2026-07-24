@@ -22,6 +22,9 @@
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter } from '@/types/acp'
+import { getAllSkills } from '@/dal'
+import { getDb } from '@/db/database'
+import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { connectAcpAdapter, type AcpAdapterDeps } from './acp-adapter'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
 import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
@@ -39,6 +42,9 @@ export type ConnectToAgentContext = {
 }
 
 export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
+
+/** Read enabled skills from same DAL source used by built-in agent. */
+const getEnabledSkills = async () => selectEnabledSkillDefinitions(await getAllSkills(getDb()))
 
 /** Build an `AgentAdapter` for the given agent. */
 export const connectToAgent = async (
@@ -58,6 +64,7 @@ export const connectToAgent = async (
       webSocketFactory: deps.webSocketFactory,
       textDeltaThrottleMs: deps.textDeltaThrottleMs,
       handshakeTimeoutMs: deps.handshakeTimeoutMs,
+      getEnabledSkills: deps.getEnabledSkills ?? getEnabledSkills,
     },
   )
 }

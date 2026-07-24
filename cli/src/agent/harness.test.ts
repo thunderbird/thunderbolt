@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { createHarnessTools } from './harness.ts'
 
 describe('createHarnessTools', () => {
@@ -20,5 +21,14 @@ describe('createHarnessTools', () => {
       'edit',
       'webfetch',
     ])
+  })
+
+  test('registers skill tool only when session provides skills', () => {
+    const skills: SkillDefinition[] = [
+      { name: 'daily-brief', description: 'Build a daily rundown.', instruction: 'Gather current details.' },
+    ]
+
+    expect(createHarnessTools({ cwd: '/work' }).map((tool) => tool.name)).not.toContain('skill')
+    expect(createHarnessTools({ cwd: '/work', skills }).map((tool) => tool.name)).toContain('skill')
   })
 })

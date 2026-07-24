@@ -4,6 +4,15 @@
 
 import type { ThunderboltUIMessage } from '@/types'
 
+export type WidgetName =
+  | 'ask'
+  | 'citation'
+  | 'connect-integration'
+  | 'document-result'
+  | 'link-preview'
+  | 'map'
+  | 'weather-forecast'
+
 /** A single evaluation scenario: one prompt tested against one model in one mode */
 export type EvalScenario = {
   id: string
@@ -26,6 +35,8 @@ export type EvalCriteria = {
   mustProduceOutput: boolean
   minCitations?: number
   mustUseLinkPreviews?: boolean
+  mustUseWidget?: WidgetName
+  mustNotUseWidgets?: boolean
   noHomepageLinks?: boolean
   noReviewSites?: boolean
   maxSteps?: number

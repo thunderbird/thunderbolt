@@ -169,13 +169,15 @@ Use these names in `EVAL_MODES`:
 
 ## Scenarios
 
-15 prompts per mode, tested against each registered model.
+Core suites contain 15 prompts per mode, tested against each registered model. Validation, multi-turn, and widget-regression scenarios add focused coverage.
 
 **Chat mode** covers: news queries, product recommendations, factual lookups, comparisons, multi-part travel queries, medical info, stock market data, and more.
 
 **Search mode** covers: news, restaurants, tutorials, research papers, product searches, local businesses, and tricky queries where the model must distinguish individual pages from aggregates.
 
 **Research mode** covers: multi-country analyses, scientific consensus questions, education system comparisons, gene therapy reviews, housing/migration data correlation, and other prompts requiring 5+ searches and 10+ source citations.
+
+**Widget regression** covers spontaneous weather forecasts, link previews, integration connection prompts, interactive questions, and maps, plus factual and coding prompts that must remain plain text. Citation tags are excluded because citation instructions explicitly forbid them. Document-result tags are excluded because they require Document Search mode and tool results, which this runner does not support.
 
 All scenarios are defined in `scenarios.ts`.
 
@@ -186,6 +188,8 @@ The runner automatically checks:
 - **`mustProduceOutput`** — Response text must not be empty
 - **`minCitations`** — Minimum count of `[N]` citation markers
 - **`mustUseLinkPreviews`** — Must contain `<widget:link-preview url="...">` tags
+- **`mustUseWidget`** — Must contain the configured widget tag
+- **`mustNotUseWidgets`** — Must not contain any widget tag
 - **`noHomepageLinks`** — URLs must have deep paths (no `/` or `/section/` only)
 - **`noReviewSites`** — No links to pcmag.com, cnet.com, wirecutter.com, etc.
 - **`maxSteps`** — Tool call count must not exceed limit

@@ -25,7 +25,7 @@ export const extractCitations = (text: string): string[] => {
 export const extractLinkPreviewUrls = (text: string): string[] =>
   [...text.matchAll(/url="(https?:\/\/[^"]+)"/g)].map((m) => m[1])
 
-/** Extract all widget tags from the response (weather-forecast, link-preview, connect-integration) */
+/** Extract all widget tags from the response */
 export const extractWidgets = (text: string): string[] => [...text.matchAll(/<widget:([a-z-]+)/g)].map((m) => m[1])
 
 /**
@@ -121,7 +121,7 @@ export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durati
     failures.push(`Error: ${parsed.error}`)
   }
 
-  checkCriteria(criteria, parsed, citations, linkPreviewUrls, homepageUrls, reviewSiteUrls, failures)
+  checkCriteria(criteria, parsed, citations, widgets, linkPreviewUrls, homepageUrls, reviewSiteUrls, failures)
 
   return {
     scenario,
@@ -146,6 +146,7 @@ const checkCriteria = (
   criteria: EvalCriteria,
   parsed: ParsedStream,
   citations: string[],
+  widgets: string[],
   linkPreviewUrls: string[],
   homepageUrls: string[],
   reviewSiteUrls: string[],
@@ -161,6 +162,14 @@ const checkCriteria = (
 
   if (criteria.mustUseLinkPreviews && linkPreviewUrls.length === 0) {
     failures.push('No <widget:link-preview> tags found in response')
+  }
+
+  if (criteria.mustUseWidget && !widgets.includes(criteria.mustUseWidget)) {
+    failures.push(`No <widget:${criteria.mustUseWidget}> tag found in response`)
+  }
+
+  if (criteria.mustNotUseWidgets && widgets.length > 0) {
+    failures.push(`Unexpected widget tags found: ${widgets.join(', ')}`)
   }
 
   if (criteria.noHomepageLinks && homepageUrls.length > 0) {

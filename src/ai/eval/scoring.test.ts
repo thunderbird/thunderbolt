@@ -70,3 +70,55 @@ describe('scoreResult — maxToolCalls + duplicate reporting', () => {
     expect(result.toolCallCount).toBe(2)
   })
 })
+
+describe('scoreResult — widget criteria', () => {
+  const scenario: EvalScenario = {
+    id: 'opus/chat/WIDGET_TEST',
+    modelName: 'opus',
+    modeName: 'chat',
+    prompt: 'p',
+    criteria: { mustProduceOutput: true },
+  }
+
+  test('requires the configured widget instead of accepting another widget', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true, mustUseWidget: 'map' } },
+      makeParsed({ text: '<widget:weather-forecast location="Berlin" region="" country="Germany" />' }),
+      100,
+    )
+
+    expect(result.passed).toBe(false)
+    expect(result.failures).toContain('No <widget:map> tag found in response')
+  })
+
+  test('passes when the configured widget is present', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true, mustUseWidget: 'ask' } },
+      makeParsed({ text: `<widget:ask mode="choice" prompt="Pick one" options='[]' />` }),
+      100,
+    )
+
+    expect(result.passed).toBe(true)
+  })
+
+  test('rejects every widget when widgets are forbidden', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true, mustNotUseWidgets: true } },
+      makeParsed({ text: 'Plain answer <widget:unknown />' }),
+      100,
+    )
+
+    expect(result.passed).toBe(false)
+    expect(result.failures).toContain('Unexpected widget tags found: unknown')
+  })
+
+  test('allows plain text when widgets are forbidden', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true, mustNotUseWidgets: true } },
+      makeParsed({ text: 'Plain answer' }),
+      100,
+    )
+
+    expect(result.passed).toBe(true)
+  })
+})

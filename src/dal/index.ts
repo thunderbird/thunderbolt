@@ -75,12 +75,20 @@ export {
   getAllMcpServers,
   getRemoteMcpServers,
   updateMcpServer,
+  updateMcpServerEnabled,
   updateMcpServerWithCredentials,
   type McpServerWithCredential,
 } from './mcp-servers'
 
 // MCP Secrets (local-only credentials)
-export { deleteMcpServerCredentials, getMcpServerCredentials, setMcpServerCredentials } from './mcp-secrets'
+export {
+  deleteMcpServerCredentials,
+  getMcpServerCredentialRows,
+  getMcpServerCredentials,
+  parseMcpCredentialSummary,
+  setMcpServerCredentials,
+  type McpCredentialSummary,
+} from './mcp-secrets'
 
 // Prompts
 export {

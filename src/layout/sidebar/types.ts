@@ -5,7 +5,7 @@
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import type { UseMutationResult } from '@tanstack/react-query'
-import type { MouseEvent, RefObject } from 'react'
+import type { MouseEvent, ReactNode, RefObject } from 'react'
 
 /** Top-level sidebar sections switchable via the nav toggle. */
 export type SidebarSection = 'chats' | 'settings'
@@ -44,10 +44,13 @@ export type ChatListProps = {
   searchQuery: string
   showSearch: boolean
   searchInputRef: RefObject<HTMLInputElement | null>
+  mobileNavToggle: ReactNode
+  mobileSecondaryNavigation: ReactNode
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: (e?: MouseEvent) => void
   onSearchQueryChange: (value: string) => void
+  onContentBelowChange: (hasContentBelow: boolean) => void
 }
 
 export type ChatListItemProps = {

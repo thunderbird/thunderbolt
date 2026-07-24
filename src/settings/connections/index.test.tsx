@@ -5,20 +5,20 @@
 import { createMcpServer, createMcpServerWithCredentials, getAllMcpServers, getMcpServerCredentials } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
-import { createMockHttpClient } from '@/test-utils/http-client'
 import { HttpClientProvider } from '@/contexts'
+import { createMockHttpClient } from '@/test-utils/http-client'
+import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { MCPProvider, useMCP, type MCPClient } from '@/lib/mcp-provider'
 import type { MCPTransportType } from '@/lib/mcp-transport'
-import type { McpServersPageDeps } from './mcp-servers'
+import type { ConnectionsPageDeps } from '.'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { createElement, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
-import McpServersPage, { generateServerName } from './mcp-servers'
+import ConnectionsPage from '.'
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
 const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 })
@@ -27,27 +27,39 @@ const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 
 // reads live (empty) connection state via useMCP — no need to mock the shared
 // useMcpSync hook. The fake client never resolves tools, keeping the test
 // focused on the DB-driven server list rendering. A MemoryRouter satisfies the
-// page's useLocation/useNavigate (the OAuth callback handler).
-const neverResolves = (() => new Promise<MCPClient>(() => {})) as (
-  id: string,
-  url: string,
-  type: MCPTransportType,
-) => Promise<MCPClient>
+// page's useLocation/useNavigate (the OAuth callback handler), and the mock
+// HttpClient satisfies useOAuthConnect (the integrations connect flow).
+const neverResolves = (_id: string, _url: string, _type: MCPTransportType): Promise<MCPClient> =>
+  new Promise<MCPClient>(() => {})
 
 // A real HttpClientProvider (DI, no module mock) so the page's useHttpClient() resolves.
 // The default mock client 200s every request — the enrollment-specific tests inject their
 // own `enrollIroh` seam instead of asserting on this client.
-const mockHttpClient = createMockHttpClient()
+const McpProviderWrapper = ({ children }: { children: ReactNode }) => (
+  <MemoryRouter>
+    <HttpClientProvider httpClient={createMockHttpClient()}>
+      <MCPProvider createClient={neverResolves}>{children}</MCPProvider>
+    </HttpClientProvider>
+  </MemoryRouter>
+)
 
-const McpProviderWrapper = ({ children }: { children: ReactNode }) =>
-  createElement(HttpClientProvider, {
-    httpClient: mockHttpClient,
-    children: createElement(MemoryRouter, {
-      children: createElement(MCPProvider, { createClient: neverResolves, children }),
-    }),
+/** Opens a server row's detail panel by its display name. */
+const openServerDetail = async (name: string) => {
+  const row = await waitForElement(() => screen.queryByRole('button', { name: `Open ${name}` }))
+  fireEvent.click(row)
+}
+
+/** Opens the detail panel's ⋯ actions menu and clicks an item (Radix opens on pointerdown). */
+const clickDetailMenuItem = async (label: string) => {
+  const more = await waitForElement(() => screen.queryByRole('button', { name: 'More' }))
+  await act(async () => {
+    fireEvent.pointerDown(more, { button: 0 })
   })
+  const item = await waitForElement(() => screen.queryByText(label))
+  fireEvent.click(item)
+}
 
-describe('McpServersPage reactivity', () => {
+describe('ConnectionsPage list', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -64,29 +76,34 @@ describe('McpServersPage reactivity', () => {
     cleanup()
   })
 
-  it('updates when mcp_servers table changes', async () => {
+  it('shows the pre-baked integrations and updates when mcp_servers changes', async () => {
     const db = getDb()
-    const serverId1 = uuidv7()
-    const serverId2 = uuidv7()
 
     await createMcpServer(db, {
-      id: serverId1,
+      id: uuidv7(),
       name: 'First Server',
       url: 'http://localhost:8000/mcp/',
       type: 'http',
       enabled: 1,
     })
 
-    const { triggerChange } = renderWithReactivity(<McpServersPage />, {
+    const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
       tables: ['mcp_servers'],
       wrapper: McpProviderWrapper,
     })
 
-    await waitForElement(() => screen.queryByText('localhost:8000/mcp'))
-    expect(screen.getByText('localhost:8000/mcp')).toBeInTheDocument()
+    // Pre-baked integrations render at the top (Thunderbolt renamed from
+    // "Thunderbolt Pro").
+    await waitForElement(() => screen.queryByText('Thunderbolt'))
+    expect(screen.getByText('Google')).toBeInTheDocument()
+    expect(screen.getByText('Microsoft')).toBeInTheDocument()
+    expect(screen.queryByText('Thunderbolt Pro')).not.toBeInTheDocument()
+
+    await waitForElement(() => screen.queryByText('First Server'))
+    expect(screen.getByText('First Server')).toBeInTheDocument()
 
     await createMcpServer(db, {
-      id: serverId2,
+      id: uuidv7(),
       name: 'Second Server',
       url: 'http://localhost:9000/mcp/',
       type: 'http',
@@ -98,14 +115,33 @@ describe('McpServersPage reactivity', () => {
       await getClock().runAllAsync()
     })
 
-    expect(screen.getByText('localhost:9000/mcp')).toBeInTheDocument()
+    expect(screen.getByText('Second Server')).toBeInTheDocument()
+  })
+
+  it('falls back to the cleaned URL for a server without a name', async () => {
+    const db = getDb()
+    await createMcpServer(db, {
+      id: uuidv7(),
+      name: '',
+      url: 'http://localhost:8000/mcp/',
+      type: 'http',
+      enabled: 1,
+    })
+
+    renderWithReactivity(<ConnectionsPage />, {
+      tables: ['mcp_servers'],
+      wrapper: McpProviderWrapper,
+    })
+
+    await waitForElement(() => screen.queryByText('localhost:8000/mcp'))
+    expect(screen.getByText('localhost:8000/mcp')).toBeInTheDocument()
   })
 })
 
-// Renders the page with injected probe/flow deps, opens the Add dialog, and
+// Renders the page with injected probe/flow deps, opens the add form, and
 // types the URL (+ optional token). Returns the deps' mocks for assertions.
-const renderAddDialog = async (deps: McpServersPageDeps, { url, token }: { url: string; token?: string }) => {
-  const result = renderWithReactivity(<McpServersPage deps={deps} />, {
+const renderAddForm = async (deps: ConnectionsPageDeps, { url, token }: { url: string; token?: string }) => {
+  const result = renderWithReactivity(<ConnectionsPage deps={deps} />, {
     tables: ['mcp_servers', 'mcp_secrets'],
     wrapper: McpProviderWrapper,
   })
@@ -127,7 +163,7 @@ const flushAutoProbe = async () => {
   })
 }
 
-describe('McpServersPage Test Connection classification', () => {
+describe('ConnectionsPage Test Connection classification', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -146,7 +182,7 @@ describe('McpServersPage Test Connection classification', () => {
 
   it('classifies a supplied-credential 401 as a rejected token without consulting OAuth discovery', async () => {
     const classifyMcpServerAuth = mock(async () => 'authorizable' as const)
-    await renderAddDialog(
+    await renderAddForm(
       { probeMcpServerTools: async () => Promise.reject(unauthorized()), classifyMcpServerAuth },
       { url: 'https://oauth.example.com/mcp', token: 'pat-123' },
     )
@@ -159,7 +195,7 @@ describe('McpServersPage Test Connection classification', () => {
 
   it('classifies an empty-credential 401 via discovery and offers Add & Authorize', async () => {
     const classifyMcpServerAuth = mock(async () => 'authorizable' as const)
-    await renderAddDialog(
+    await renderAddForm(
       { probeMcpServerTools: async () => Promise.reject(unauthorized()), classifyMcpServerAuth },
       { url: 'https://oauth.example.com/mcp' },
     )
@@ -173,7 +209,7 @@ describe('McpServersPage Test Connection classification', () => {
 
   it('the debounced probe reflects a credential entered during the window', async () => {
     const classifyMcpServerAuth = mock(async () => 'authorizable' as const)
-    await renderAddDialog(
+    await renderAddForm(
       { probeMcpServerTools: async () => Promise.reject(unauthorized()), classifyMcpServerAuth },
       { url: 'https://oauth.example.com/mcp' },
     )
@@ -191,7 +227,7 @@ describe('McpServersPage Test Connection classification', () => {
   })
 
   it('shows a successful probe result with the discovered tools', async () => {
-    await renderAddDialog(
+    await renderAddForm(
       { probeMcpServerTools: async () => ['search', 'fetch'] },
       { url: 'https://tools.example.com/mcp' },
     )
@@ -203,7 +239,7 @@ describe('McpServersPage Test Connection classification', () => {
   })
 })
 
-describe('McpServersPage Add & Authorize', () => {
+describe('ConnectionsPage Add & Authorize', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -220,16 +256,16 @@ describe('McpServersPage Add & Authorize', () => {
     cleanup()
   })
 
-  it('rolls back the created server row and shows the dialog error when the flow fails to start', async () => {
+  it('rolls back the created server row and shows the form error when the flow fails to start', async () => {
     const db = getDb()
-    const startMcpOAuthFlow = mock(async () => {
+    const startMcpOAuthFlow: NonNullable<ConnectionsPageDeps['startMcpOAuthFlow']> = mock(async () => {
       throw new Error('Another MCP authorization is already in progress — finish or cancel it first.')
     })
-    await renderAddDialog(
+    await renderAddForm(
       {
         probeMcpServerTools: async () => Promise.reject(unauthorized()),
         classifyMcpServerAuth: async () => 'authorizable' as const,
-        startMcpOAuthFlow: startMcpOAuthFlow as unknown as McpServersPageDeps['startMcpOAuthFlow'],
+        startMcpOAuthFlow,
       },
       { url: 'https://oauth.example.com/mcp' },
     )
@@ -252,12 +288,14 @@ describe('McpServersPage Add & Authorize', () => {
     const db = getDb()
     // A flow that never resolves keeps the first call in flight so the re-entry
     // guard has something to block the second click against.
-    const startMcpOAuthFlow = mock(() => new Promise<never>(() => {}))
-    await renderAddDialog(
+    const startMcpOAuthFlow: NonNullable<ConnectionsPageDeps['startMcpOAuthFlow']> = mock(
+      () => new Promise<never>(() => {}),
+    )
+    await renderAddForm(
       {
         probeMcpServerTools: async () => Promise.reject(unauthorized()),
         classifyMcpServerAuth: async () => 'authorizable' as const,
-        startMcpOAuthFlow: startMcpOAuthFlow as unknown as McpServersPageDeps['startMcpOAuthFlow'],
+        startMcpOAuthFlow,
       },
       { url: 'https://oauth.example.com/mcp' },
     )
@@ -275,13 +313,15 @@ describe('McpServersPage Add & Authorize', () => {
     expect(startMcpOAuthFlow).toHaveBeenCalledTimes(1)
   })
 
-  it('closes the Add dialog once the OAuth flow starts cleanly', async () => {
-    const startMcpOAuthFlow = mock(async () => ({ status: 'redirected' as const }))
-    await renderAddDialog(
+  it('closes the add form once the OAuth flow starts cleanly', async () => {
+    const startMcpOAuthFlow: NonNullable<ConnectionsPageDeps['startMcpOAuthFlow']> = mock(async () => ({
+      status: 'redirected' as const,
+    }))
+    await renderAddForm(
       {
         probeMcpServerTools: async () => Promise.reject(unauthorized()),
         classifyMcpServerAuth: async () => 'authorizable' as const,
-        startMcpOAuthFlow: startMcpOAuthFlow as unknown as McpServersPageDeps['startMcpOAuthFlow'],
+        startMcpOAuthFlow,
       },
       { url: 'https://oauth.example.com/mcp' },
     )
@@ -292,12 +332,43 @@ describe('McpServersPage Add & Authorize', () => {
       await getClock().runAllAsync()
     })
 
-    // Dialog is gone — no lingering needs-oauth UI to trigger a duplicate add.
+    // The form is gone — no lingering needs-oauth UI to trigger a duplicate add.
     expect(screen.queryByPlaceholderText('http://localhost:8000/mcp/')).not.toBeInTheDocument()
   })
 })
 
-describe('McpServersPage iroh add flow', () => {
+describe('ConnectionsPage ordinary add', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(cleanup)
+
+  it('creates one row when Add server is activated twice before the first write settles', async () => {
+    const db = getDb()
+    await renderAddForm({ probeMcpServerTools: async () => ['search'] }, { url: 'https://tools.example.com/mcp' })
+    await flushAutoProbe()
+    const addButton = screen.getByRole('button', { name: 'Add server' })
+
+    await act(async () => {
+      fireEvent.click(addButton)
+      fireEvent.click(addButton)
+      await getClock().runAllAsync()
+    })
+
+    expect(await getAllMcpServers(db)).toHaveLength(1)
+  })
+})
+
+describe('ConnectionsPage iroh add flow', () => {
   const irohTarget = 'a'.repeat(52)
   const appNodeId = 'b'.repeat(52)
 
@@ -317,9 +388,9 @@ describe('McpServersPage iroh add flow', () => {
     cleanup()
   })
 
-  const openIrohDialog = async (extraDeps: Partial<McpServersPageDeps> = {}) => {
+  const openIrohForm = async (extraDeps: Partial<ConnectionsPageDeps> = {}) => {
     const result = renderWithReactivity(
-      <McpServersPage deps={{ loadAppNodeId: async () => appNodeId, ...extraDeps }} />,
+      <ConnectionsPage deps={{ loadAppNodeId: async () => appNodeId, ...extraDeps }} />,
       { tables: ['mcp_servers', 'mcp_secrets'], wrapper: McpProviderWrapper },
     )
     const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add MCP server' }))
@@ -333,7 +404,7 @@ describe('McpServersPage iroh add flow', () => {
   }
 
   it('shows the pairing panel with this app allow command for an iroh target', async () => {
-    await openIrohDialog()
+    await openIrohForm()
     const panel = await waitForElement(() => screen.queryByTestId('iroh-pairing-panel'))
     await waitForElement(() => (panel.textContent?.includes(`thunderbolt iroh allow ${appNodeId}`) ? panel : null))
     // The http/sse-only controls are hidden for iroh.
@@ -343,7 +414,7 @@ describe('McpServersPage iroh add flow', () => {
 
   it('stores the server with type="iroh" and the NodeId as url', async () => {
     const db = getDb()
-    await openIrohDialog()
+    await openIrohForm()
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
@@ -359,7 +430,7 @@ describe('McpServersPage iroh add flow', () => {
 
   it('self-enrolls this app when adding an iroh bridge', async () => {
     const enrollIroh = mock(async () => {})
-    await openIrohDialog({ enrollIroh })
+    await openIrohForm({ enrollIroh })
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
@@ -375,7 +446,7 @@ describe('McpServersPage iroh add flow', () => {
     const enrollIroh = mock(async () => {
       throw new Error('no account (standalone)')
     })
-    await openIrohDialog({ enrollIroh })
+    await openIrohForm({ enrollIroh })
     expect(screen.getByTestId('iroh-pairing-panel')).toBeInTheDocument()
 
     await act(async () => {
@@ -391,7 +462,7 @@ describe('McpServersPage iroh add flow', () => {
   it('does not block the add on a slow (never-resolving) enrollment', async () => {
     const db = getDb()
     const enrollIroh = mock(() => new Promise<void>(() => {}))
-    await openIrohDialog({ enrollIroh })
+    await openIrohForm({ enrollIroh })
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
@@ -404,7 +475,7 @@ describe('McpServersPage iroh add flow', () => {
   })
 })
 
-describe('McpServersPage Edit server', () => {
+describe('ConnectionsPage Edit server', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -421,7 +492,7 @@ describe('McpServersPage Edit server', () => {
     cleanup()
   })
 
-  it('prefills the dialog from the existing server and persists the patch on Save', async () => {
+  it('prefills the form from the existing server and persists the patch on Save', async () => {
     const db = getDb()
     const id = uuidv7()
     await createMcpServerWithCredentials(
@@ -430,23 +501,26 @@ describe('McpServersPage Edit server', () => {
       { type: 'bearer', token: 'original-token' },
     )
 
-    renderWithReactivity(<McpServersPage deps={{ probeMcpServerTools: async () => ['search'] }} />, {
+    renderWithReactivity(<ConnectionsPage deps={{ probeMcpServerTools: async () => ['search'] }} />, {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: McpProviderWrapper,
     })
 
-    const editButton = await waitForElement(() => screen.queryByRole('button', { name: 'Edit server' }))
-    fireEvent.click(editButton)
+    // Edit lives in the detail panel's ⋯ menu now.
+    await openServerDetail('Original')
+    await clickDetailMenuItem('Edit')
 
-    // Dialog title flips to Edit and the existing values are surfaced — name in the
-    // visible input and token in the password field (URL stays read off the input).
+    // Panel title flips to Edit and the existing values are surfaced — name in
+    // the visible input; the stored token is only hinted at via the masked
+    // placeholder, never round-tripped into the DOM.
     expect(await waitForElement(() => screen.queryByText('Edit MCP Server'))).toBeInTheDocument()
     const nameInput = screen.getByPlaceholderText('Server name (used to prefix tools)') as HTMLInputElement
     const urlInput = screen.getByPlaceholderText('http://localhost:8000/mcp/') as HTMLInputElement
-    const tokenInput = screen.getByPlaceholderText('Bearer token or API key') as HTMLInputElement
+    const tokenInput = screen.getByPlaceholderText('••••••••••••••••') as HTMLInputElement
     expect(nameInput.value).toBe('Original')
     expect(urlInput.value).toBe('https://old.example.com/mcp')
-    expect(tokenInput.value).toBe('original-token')
+    expect(tokenInput.value).toBe('')
+    expect(screen.getByRole('button', { name: 'Clear saved credential' })).toBeInTheDocument()
     // Bulk-import toggle is hidden in Edit mode.
     expect(screen.queryByRole('radio', { name: 'Advanced (JSON)' })).not.toBeInTheDocument()
 
@@ -476,13 +550,13 @@ describe('McpServersPage Edit server', () => {
     await createMcpServer(db, { id, name: 'Old Bridge', type: 'iroh', url: irohTarget, enabled: 1 })
 
     const enrollIroh = mock(async () => {})
-    renderWithReactivity(<McpServersPage deps={{ loadAppNodeId: async () => 'b'.repeat(52), enrollIroh }} />, {
+    renderWithReactivity(<ConnectionsPage deps={{ loadAppNodeId: async () => 'b'.repeat(52), enrollIroh }} />, {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: McpProviderWrapper,
     })
 
-    const editButton = await waitForElement(() => screen.queryByRole('button', { name: 'Edit server' }))
-    fireEvent.click(editButton)
+    await openServerDetail('Old Bridge')
+    await clickDetailMenuItem('Edit')
 
     // The iroh pairing panel (not the http/sse probe UI) is what edit surfaces.
     await waitForElement(() => screen.queryByTestId('iroh-pairing-panel'))
@@ -509,7 +583,7 @@ describe('McpServersPage Edit server', () => {
   })
 })
 
-describe('McpServersPage probe lifecycle', () => {
+describe('ConnectionsPage probe lifecycle', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -534,10 +608,7 @@ describe('McpServersPage probe lifecycle', () => {
       // First probe (URL A) is held open; the later URL keeps its probe pending too.
       return call === 1 ? new Promise<string[]>((resolve) => (resolveFirst = resolve)) : new Promise<string[]>(() => {})
     })
-    await renderAddDialog(
-      { probeMcpServerTools: probeMcpServerTools as unknown as McpServersPageDeps['probeMcpServerTools'] },
-      { url: 'https://a.example.com/mcp' },
-    )
+    await renderAddForm({ probeMcpServerTools }, { url: 'https://a.example.com/mcp' })
     // Kick the probe for URL A (stays in flight — the promise is held).
     await act(async () => {
       getClock().tick(700)
@@ -559,13 +630,10 @@ describe('McpServersPage probe lifecycle', () => {
     expect(screen.queryByText('stale-tool')).not.toBeInTheDocument()
   })
 
-  it('does not auto-probe after the Add dialog is closed', async () => {
+  it('does not auto-probe after the add form is closed', async () => {
     const probeMcpServerTools = mock(async () => ['tool'])
-    await renderAddDialog(
-      { probeMcpServerTools: probeMcpServerTools as unknown as McpServersPageDeps['probeMcpServerTools'] },
-      { url: 'https://late.example.com/mcp' },
-    )
-    // Close the dialog before the 700ms debounce fires.
+    await renderAddForm({ probeMcpServerTools }, { url: 'https://late.example.com/mcp' })
+    // Close the form before the 700ms debounce fires.
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     })
@@ -578,11 +646,17 @@ describe('McpServersPage probe lifecycle', () => {
 type CreateClientFn = (serverId: string, url: string, type: MCPTransportType) => Promise<MCPClient>
 
 /** A connected-client stand-in whose tools() reports the given names. */
-const fakeClient = (toolNames: string[]): MCPClient =>
-  ({
-    tools: async () => Object.fromEntries(toolNames.map((name) => [name, {}])),
-    close: () => {},
-  }) as unknown as MCPClient
+const fakeClient = (toolNames: string[]): MCPClient => {
+  const emptyTools: Awaited<ReturnType<MCPClient['tools']>> = {}
+  const tools = new Proxy(emptyTools, {
+    ownKeys: () => toolNames,
+    getOwnPropertyDescriptor: () => ({ configurable: true, enumerable: true }),
+  })
+  return {
+    tools: async () => tools,
+    close: async () => {},
+  }
+}
 
 /** createClient that serves each queued outcome once, failing on extra connects. */
 const queuedCreateClient = (queue: Array<() => Promise<MCPClient>>): CreateClientFn => {
@@ -614,19 +688,19 @@ const getMcp = () => {
 
 const makeMcpWrapper = (createClient: CreateClientFn) => {
   const Wrapper = ({ children }: { children: ReactNode }) => (
-    <HttpClientProvider httpClient={mockHttpClient}>
-      <MemoryRouter>
+    <MemoryRouter>
+      <HttpClientProvider httpClient={createMockHttpClient()}>
         <MCPProvider createClient={createClient}>
           <CaptureMcpContext />
           {children}
         </MCPProvider>
-      </MemoryRouter>
-    </HttpClientProvider>
+      </HttpClientProvider>
+    </MemoryRouter>
   )
   return Wrapper
 }
 
-/** Expands the card's Available Tools accordion when it isn't already open. */
+/** Expands the panel's Available Tools accordion when it isn't already open. */
 const ensureToolsExpanded = async () => {
   const label = await waitForElement(() => screen.queryByText('Available Tools'))
   const trigger = label.closest('button')
@@ -635,7 +709,7 @@ const ensureToolsExpanded = async () => {
   }
 }
 
-describe('McpServersPage tools refresh after reconnect', () => {
+describe('ConnectionsPage tools refresh after reconnect', () => {
   beforeAll(async () => {
     // The dropped-connection scenarios intentionally fail a reconnect, which the
     // provider logs via console.error.
@@ -657,13 +731,14 @@ describe('McpServersPage tools refresh after reconnect', () => {
   })
 
   // Creates the DB row, renders the page inside a live MCPProvider using the
-  // given createClient, and registers + connects the server through the provider.
+  // given createClient, registers + connects the server through the provider,
+  // and opens the server's detail panel (tools/status live there now).
   const addLiveServer = async (createClient: CreateClientFn) => {
     const db = getDb()
     const serverId = uuidv7()
     const url = 'http://localhost:8000/mcp/'
     await createMcpServer(db, { id: serverId, name: 'srv', url, type: 'http', enabled: 1 })
-    renderWithReactivity(<McpServersPage />, {
+    renderWithReactivity(<ConnectionsPage />, {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: makeMcpWrapper(createClient),
     })
@@ -671,6 +746,7 @@ describe('McpServersPage tools refresh after reconnect', () => {
       await getMcp().addServer({ id: serverId, name: 'srv', url, type: 'http', enabled: true })
       await getClock().runAllAsync()
     })
+    await openServerDetail('srv')
     return serverId
   }
 
@@ -709,7 +785,7 @@ describe('McpServersPage tools refresh after reconnect', () => {
     expect(screen.getByText('alpha_tool')).toBeInTheDocument()
 
     // Drop the connection: the failed reconnect leaves the server disconnected
-    // with an error — the card must not keep rendering the dead connection's tools.
+    // with an error — the panel must not keep rendering the dead connection's tools.
     await act(async () => {
       await getMcp().reconnectServer(serverId)
       await getClock().runAllAsync()
@@ -731,7 +807,7 @@ describe('McpServersPage tools refresh after reconnect', () => {
     )
 
     // Drop the connection: the failed reconnect leaves the server errored, which
-    // surfaces the Retry connection affordance on the card.
+    // surfaces the Retry connection affordance in the detail panel.
     await act(async () => {
       await getMcp().reconnectServer(serverId)
       await getClock().runAllAsync()
@@ -749,7 +825,7 @@ describe('McpServersPage tools refresh after reconnect', () => {
   })
 })
 
-describe('McpServersPage add-dialog error labeling', () => {
+describe('ConnectionsPage add-form error labeling', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -767,7 +843,7 @@ describe('McpServersPage add-dialog error labeling', () => {
   })
 
   it('clears a JSON import error when switching back to simple mode', async () => {
-    renderWithReactivity(<McpServersPage />, {
+    renderWithReactivity(<ConnectionsPage />, {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: McpProviderWrapper,
     })
@@ -775,7 +851,7 @@ describe('McpServersPage add-dialog error labeling', () => {
     fireEvent.click(openButton)
 
     // Advanced mode: paste a config with no servers, then import → error panel.
-    fireEvent.click(screen.getByText('Advanced (JSON)'))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Advanced (JSON)')))
     const textarea = await waitForElement(() => screen.queryByLabelText('Servers JSON'))
     fireEvent.change(textarea, { target: { value: '{}' } })
     await act(async () => {
@@ -792,22 +868,5 @@ describe('McpServersPage add-dialog error labeling', () => {
     expect(screen.queryByText('Import failed')).not.toBeInTheDocument()
     expect(screen.queryByText('Authorization error')).not.toBeInTheDocument()
     expect(screen.queryByText(importMessage)).not.toBeInTheDocument()
-  })
-})
-
-describe('generateServerName', () => {
-  const cases: Array<[string, string]> = [
-    ['http://192.168.1.100', '192.168.1.100'],
-    ['http://10.0.1.1', '10.0.1.1'],
-    ['https://api.github.com', 'github'],
-    ['https://render.com', 'render'],
-    ['http://localhost:3000', 'localhost-3000'],
-    ['https://example.com.', 'example'],
-    ['http://[::1]:8080', 'localhost-8080'],
-    ['http://[2001:db8::1]', '2001:db8::1'],
-  ]
-
-  it.each(cases)('derives %p → %p', (url, expected) => {
-    expect(generateServerName(url)).toBe(expected)
   })
 })

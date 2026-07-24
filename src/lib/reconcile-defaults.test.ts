@@ -20,7 +20,13 @@ import {
 } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
+import {
+  defaultModelGlm52,
+  defaultModels,
+  defaultModelsVersion,
+  hashModel,
+  type SharedModel,
+} from '@shared/defaults/models'
 import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
@@ -890,6 +896,27 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, targetId)).get()
     expect(upgraded?.name).toBe(defaultModels[0].name)
     expect(upgraded?.defaultHash).toBe(hashModel(defaultModels[0]))
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+  })
+
+  test('newer bundle updates server-owned model metadata excluded from the user-edit hash', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+    await db
+      .update(modelsTable)
+      .set({ description: 'Confidential chat via Tinfoil' })
+      .where(eq(modelsTable.id, defaultModelGlm52.id))
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultModelsVersion - 1) })
+      .where(eq(settingsTable.key, modelsVersionKey))
+
+    await reconcileDefaults(db)
+
+    const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelGlm52.id)).get()
+    expect(upgraded?.description).toBe('Confidential chat via Thunderbolt')
+    expect(upgraded?.provider).toBe('tinfoil')
+    expect(upgraded?.isConfidential).toBe(1)
     expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
   })
 

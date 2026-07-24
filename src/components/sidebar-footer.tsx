@@ -25,7 +25,6 @@ import type { User } from '@shared/types/auth'
 import { LogoutModal } from '@/components/logout-modal'
 import { BrandGradientIcon } from '@/components/ui/brand-gradient-icon'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { NavLink } from '@/components/ui/nav-link'
@@ -33,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SidebarFooter as ShadcnSidebarFooter, useSidebar } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
+import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
@@ -48,10 +48,7 @@ const openLink = (url: string) => window.open(url, '_blank', 'noopener,noreferre
 
 type SidebarFooterProps = {
   className?: string
-  /** Chats/Settings pill. On the mobile overlay it renders here, at the right
-   *  of the footer row, so section switching sits in thumb reach; desktop
-   *  ignores it (the pill lives in the sidebar header there). */
-  navToggle?: ReactNode
+  hasContentBelow?: boolean
 }
 
 type AccountMenuItem = {
@@ -98,7 +95,7 @@ const GradientCloud = ({ className }: { className?: string }) => (
 
 /**
  * Single cloud glyph carrying both auth and sync state:
- * - logged out            → muted outline cloud (paired with a "Sign in" label)
+ * - logged out            → muted outline cloud
  * - logged in, sync off   → muted CloudOff ("connected account, not syncing")
  * - syncing, connecting   → spinner
  * - syncing, offline      → amber CloudAlert ("will sync when back online")
@@ -153,10 +150,11 @@ export const syncStatusText = (
   return 'Connected'
 }
 
-export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
+export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFooterProps) => {
   const authClient = useAuth()
   const navigate = useNavigate()
   const { isMobile, setOpenMobile, state } = useSidebar()
+  const isNativeMobile = useIsNativeMobile()
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -214,16 +212,14 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
 
   const stateIcon = <SyncStateIcon isLoggedIn={!!user} syncEnabled={syncEnabled} connectionStatus={connectionStatus} />
 
-  // Accounts without a name/email label collapse to an icon-only control; it
-  // must be a perfect circle matching the theme toggle beside it.
+  // Accounts without a name/email label collapse to an icon-only perfect circle.
   const accountLabel = (displayName ?? displayEmail ?? '').trim()
 
-  // Same height as the theme toggle beside it; full-radius, hugging its
-  // content on the left edge of the footer.
+  // Full-radius and sized to hug its content on the left edge of the footer.
   const pillClassName = (hasLabel: boolean) =>
     cn(
-      'flex h-[var(--touch-height-default)] max-w-full min-w-0 cursor-pointer items-center rounded-full',
-      hasLabel ? 'w-fit gap-2 px-3' : 'size-[var(--touch-height-default)] justify-center',
+      'flex h-[var(--touch-height-lg)] max-w-full min-w-0 cursor-pointer items-center rounded-full md:h-[var(--touch-height-default)]',
+      hasLabel ? 'w-fit gap-2 px-3' : 'w-[var(--touch-height-lg)] justify-center md:w-[var(--touch-height-default)]',
       'text-[length:var(--font-size-body)] transition-colors outline-none',
       'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
       menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
@@ -240,9 +236,8 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
     }
     if (!user) {
       return (
-        <button type="button" className={pillClassName(true)} onClick={handleSignInClick}>
+        <button type="button" aria-label="Sign in" className={pillClassName(false)} onClick={handleSignInClick}>
           {stateIcon}
-          <span className="truncate">Sign in</span>
         </button>
       )
     }
@@ -260,8 +255,6 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
     )
   }
 
-  // Collapsed desktop rail: the theme toggle stacks above the account/sync
-  // button so both stay reachable at icon-rail width.
   const collapsedButtonClass =
     'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent'
   const collapsedControl = !user ? (
@@ -287,12 +280,17 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
 
   return (
     <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
-      <ShadcnSidebarFooter className={cn('!gap-0', isDesktopCollapsed && '!p-0', className)}>
+      <ShadcnSidebarFooter
+        className={cn(
+          '!gap-0 bg-sidebar',
+          hasContentBelow && 'shadow-[0_-8px_16px_-14px_rgba(0,0,0,0.35)]',
+          isDesktopCollapsed && '!p-0',
+          isNativeMobile && '!pb-0',
+          className,
+        )}
+      >
         {isDesktopCollapsed ? (
-          <div className="flex flex-col items-center gap-1 py-2">
-            {/* Dev-only quick toggle; users switch themes in Preferences →
-                User Experience. */}
-            {import.meta.env.DEV && <ThemeToggle />}
+          <div className="flex flex-col items-center py-1">
             {isPending ? (
               <div className="flex size-[var(--touch-height-default)] items-center justify-center">
                 <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />
@@ -302,28 +300,25 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
             )}
           </div>
         ) : (
-          <div className="flex w-full min-w-0 items-center gap-1">
-            <div className="min-w-0 flex-1">{renderAccountControl()}</div>
-            <div className="flex shrink-0 items-center gap-1">
-              {/* Dev-only quick toggle; users switch themes in Preferences →
-                  User Experience. */}
-              {import.meta.env.DEV && <ThemeToggle />}
-              {isMobile && navToggle}
-              {/* Mobile-only: desktop's New Chat list item covers this. Brand
-                  gradient, matching the primary Button variant. */}
-              {isMobile && (
+          <>
+            {isMobile ? (
+              <div className="flex w-full min-w-0 items-center gap-1">
+                <div className="min-w-0">{renderAccountControl()}</div>
                 <button
                   type="button"
                   aria-label="New Chat"
                   title="New Chat"
                   onClick={handleNewChat}
-                  className="flex size-[var(--touch-height-default)] shrink-0 cursor-pointer items-center justify-center rounded-full bg-brand text-brand-foreground shadow-sm [background-image:var(--gradient-brand)] transition-[filter] hover:brightness-[1.06] active:brightness-95"
+                  className="ml-auto flex h-[var(--touch-height-lg)] shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-brand px-4 text-brand-foreground shadow-sm [background-image:var(--gradient-brand)] transition-[filter] hover:brightness-[1.06] active:brightness-95"
                 >
                   <MessageCirclePlus className={iconSize} />
+                  <span>New Chat</span>
                 </button>
-              )}
-            </div>
-          </div>
+              </div>
+            ) : (
+              <div className="min-w-0">{renderAccountControl()}</div>
+            )}
+          </>
         )}
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
         <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />

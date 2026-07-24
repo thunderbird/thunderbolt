@@ -9,6 +9,7 @@ import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-me
 import { useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
+import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   id: string
@@ -41,7 +42,13 @@ export default function ChatDetailPage() {
 
   const isNew = params.chatThreadId === 'new'
 
-  const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [params.chatThreadId])
+  const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [isNew, params.chatThreadId])
+
+  useEffect(() => {
+    if (!isNew) {
+      void loadChatMessageList()
+    }
+  }, [isNew])
 
   if (!id) {
     return null

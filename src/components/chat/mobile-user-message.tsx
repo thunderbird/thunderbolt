@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useLongPress } from '@/hooks/use-long-press'
 import { extractTextFromParts } from '@/lib/message-utils'
@@ -48,7 +49,7 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
           </div>
         )}
       </div>
-      {isMenuOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={handleClose} />}
+      {isMenuOpen && <MobileBlurBackdrop className="bg-black/40 dark:bg-black/40" onClick={handleClose} />}
     </div>
   )
 }

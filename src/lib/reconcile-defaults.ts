@@ -152,6 +152,9 @@ const advanceVersionMarker = async (
  *   A server-shipped OTA payload cannot flip these on a bundle-known id;
  *   a new value ships under a fresh id. Only applies to updates — inserts
  *   use the default as-is.
+ * @property metadataFields - Server-owned fields intentionally excluded from
+ *   the user-edit hash. Differences in these fields still trigger an update
+ *   after the row's hashed fields are verified as unmodified.
  */
 export type ReconcileDefaultsForTableOptions = {
   keyField?: string
@@ -159,6 +162,7 @@ export type ReconcileDefaultsForTableOptions = {
   insertMissing?: boolean
   canResurrect?: boolean
   frozenFields?: readonly string[]
+  metadataFields?: readonly string[]
 }
 
 /**
@@ -203,6 +207,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     insertMissing = canOverwrite,
     canResurrect = canOverwrite,
     frozenFields = [],
+    metadataFields = [],
   } = options
 
   if (defaults.length === 0) {
@@ -307,12 +312,16 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
         ? defaultItem
         : (frozenFields.reduce<T>((acc, field) => ({ ...acc, [field]: (existing as any)[field] }), defaultItem) as T)
     const effectiveHash = frozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
+    const metadataChanged = metadataFields.some(
+      (field) => (existing as Record<string, unknown>)[field] !== (effectiveDefault as Record<string, unknown>)[field],
+    )
 
     // Skip update if the effective default matches what's already stored
     // (prevents empty PATCH operations, and collapses OTA payloads that only
-    // touch frozen fields to a no-op). Row content genuinely matches target —
-    // keep `everyBundleRowAtTarget` true for this row.
-    if (existing.defaultHash === effectiveHash) {
+    // touch frozen fields to a no-op). Server-owned metadata is intentionally
+    // outside the hash, so compare it explicitly before declaring the row at
+    // target.
+    if (existing.defaultHash === effectiveHash && !metadataChanged) {
       continue
     }
 
@@ -513,6 +522,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       canOverwrite: modelsGate.canOverwrite,
       canResurrect: initialSyncCompleted,
       frozenFields: ['isConfidential', 'provider'],
+      metadataFields: ['description', 'vendor'],
     })
 
     // Model profiles ship 1:1 with models and mutate together in practice, so

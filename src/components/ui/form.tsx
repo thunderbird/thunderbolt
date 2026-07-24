@@ -100,7 +100,7 @@ const FormControl = ({ ...props }: ComponentProps<typeof Slot>) => {
 
   return (
     <Slot
-      data-slot="form-control"
+      data-form-control=""
       id={formItemId}
       aria-describedby={!error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`}
       aria-invalid={!!error}

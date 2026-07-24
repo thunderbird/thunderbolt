@@ -10,11 +10,12 @@ import { testAcpConnection } from '@/acp'
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
-import { DetailPanelSurface } from '@/components/detail-panel'
-import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
+import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
+import { AddCustomAgentForm, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-form'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
+import { SettingsListPane } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase, useHttpClient } from '@/contexts'
@@ -38,9 +39,9 @@ type AgentsSettingsPageProps = {
  * discovery, and user-added custom remote ACP endpoints. Rows are read-only —
  * clicking one slides in a detail panel (same slide-in idiom as the skills
  * page) where all viewing and management happens. The only other affordance
- * is "+" → the Add custom agent dialog.
+ * is "+" → the Add Custom Agent panel.
  */
-export default function AgentsSettingsPage({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) {
+const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) => {
   const db = useDatabase()
   const agents = useAllAgents()
   const authClient = useAuth()
@@ -51,20 +52,24 @@ export default function AgentsSettingsPage({ loadAppNodeId, enrollIroh }: Agents
   const runEnroll = enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId ?? irohClientNodeId))
   const { isMobile } = useIsMobile()
 
-  const [dialogOpen, setDialogOpen] = useState(false)
-  // The CLI install card shares the slide-in panel slot with the agent rows,
-  // so the selection is a union rather than a bare agent id (a string
-  // sentinel could collide with a server-chosen agent id).
-  const [activePanel, setActivePanel] = useState<{ kind: 'agent'; id: string } | { kind: 'cli' } | null>(null)
+  // The add form, the CLI install card, and the agent rows all share the one
+  // slide-in panel slot, so the selection is a single union — the panels are
+  // mutually exclusive by construction (a string sentinel could collide with
+  // a server-chosen agent id).
+  const [activePanel, setActivePanel] = useState<
+    { kind: 'add' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
+  >(null)
   const cliOpen = activePanel?.kind === 'cli'
+  const addOpen = activePanel?.kind === 'add'
 
   // Deriving from the live list means the panel follows sync: if the active
   // agent is deleted on another device, `activeAgent` turns undefined and the
   // panel closes on its own.
   const activeAgent = activePanel?.kind === 'agent' ? agents.find((a) => a.id === activePanel.id) : undefined
-  const panelOpen = activeAgent !== undefined || cliOpen
+  const panelOpen = addOpen || activeAgent !== undefined || cliOpen
 
   const closePanel = () => setActivePanel(null)
+  const openAddPanel = () => setActivePanel({ kind: 'add' })
   const toggleAgentPanel = (id: string) =>
     setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
   const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
@@ -95,33 +100,55 @@ export default function AgentsSettingsPage({ loadAppNodeId, enrollIroh }: Agents
     })
   }
 
-  const detailPanel = activeAgent ? (
-    <AgentDetail
-      // Keyed by id so inline-edit drafts reset when switching agents.
-      key={activeAgent.id}
-      agent={activeAgent}
-      currentUserId={currentUserId}
-      onClose={closePanel}
-      onRemoved={closePanel}
-      onUpdate={async (patch) => {
-        const wireIdentityChanged = await updateAgent(db, activeAgent.id, patch)
-        if (wireIdentityChanged) {
-          // Refresh any live chat sessions pointed at this agent so their next
-          // send reconnects against the new endpoint (THU-695).
-          useChatStore.getState().applyAgentWireIdentityChange({ ...activeAgent, ...patch })
-        }
-      }}
-      onDelete={() => deleteAgent(db, activeAgent.id)}
-      testAcpConnection={testAcpConnection}
-    />
-  ) : cliOpen ? (
-    <ThunderboltCliDetail onClose={closePanel} />
-  ) : null
+  const renderPanel = () => {
+    if (addOpen) {
+      return (
+        <DetailPanel title="Add Custom Agent" onClose={closePanel}>
+          <AddCustomAgentForm
+            onClose={closePanel}
+            onSubmit={handleAdd}
+            testAcpConnection={testAcpConnection}
+            loadAppNodeId={loadAppNodeId}
+          />
+        </DetailPanel>
+      )
+    }
+    if (activeAgent) {
+      return (
+        <AgentDetail
+          // Keyed by id so inline-edit drafts reset when switching agents.
+          key={activeAgent.id}
+          agent={activeAgent}
+          currentUserId={currentUserId}
+          onClose={closePanel}
+          onRemoved={closePanel}
+          onUpdate={async (patch) => {
+            const wireIdentityChanged = await updateAgent(db, activeAgent.id, patch)
+            if (wireIdentityChanged) {
+              // Refresh any live chat sessions pointed at this agent so their next
+              // send reconnects against the new endpoint (THU-695).
+              useChatStore.getState().applyAgentWireIdentityChange({ ...activeAgent, ...patch })
+            }
+          }}
+          onDelete={() => deleteAgent(db, activeAgent.id)}
+          testAcpConnection={testAcpConnection}
+        />
+      )
+    }
+    if (cliOpen) {
+      return <ThunderboltCliDetail onClose={closePanel} />
+    }
+    return null
+  }
 
   return (
-    <div className="relative flex h-full overflow-hidden">
+    <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
-        <div className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-6 overflow-y-auto p-4 md:px-5">
+        {/* The pane's md:min-w keeps the rows readable when the detail panel
+            is open on a narrow window: the list stops shrinking and slides
+            under the panel (the column's overflow-hidden clips it at the
+            panel edge). */}
+        <SettingsListPane className="gap-6 overflow-y-auto">
           <PageHeader title="Agents">
             {allowCustomAgents && (
               <Button
@@ -129,7 +156,7 @@ export default function AgentsSettingsPage({ loadAppNodeId, enrollIroh }: Agents
                 size="icon"
                 className="bg-card"
                 aria-label="Add custom agent"
-                onClick={() => setDialogOpen(true)}
+                onClick={openAddPanel}
                 disabled={!currentUserId}
               >
                 <Plus />
@@ -150,20 +177,14 @@ export default function AgentsSettingsPage({ loadAppNodeId, enrollIroh }: Agents
 
             <ThunderboltCliRow isSelected={cliOpen} onOpen={toggleCliPanel} />
           </div>
-        </div>
+        </SettingsListPane>
       </div>
 
-      <DetailPanelSurface open={panelOpen} isMobile={isMobile}>
-        {detailPanel}
+      <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>
+        {renderPanel()}
       </DetailPanelSurface>
-
-      <AddCustomAgentDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onSubmit={handleAdd}
-        testAcpConnection={testAcpConnection}
-        loadAppNodeId={loadAppNodeId}
-      />
     </div>
   )
 }
+
+export default AgentsSettingsPage

@@ -4,6 +4,8 @@
 
 import { useSyncExternalStore } from 'react'
 
+import { isMobile as isPlatformMobile } from '@/lib/platform'
+
 const mobileBreakpoint = 768
 const mql = () => window.matchMedia(`(max-width: ${mobileBreakpoint - 1}px)`)
 
@@ -18,4 +20,14 @@ const getSnapshot = () => mql().matches
 export const useIsMobile = () => {
   const isMobile = useSyncExternalStore(subscribe, getSnapshot)
   return { isMobile }
+}
+
+/**
+ * True when the viewport is mobile-sized AND the app is the native (Tauri)
+ * iOS/Android build — the combination that gets native-only spacing tweaks
+ * (safe areas, keyboard insets).
+ */
+export const useIsNativeMobile = () => {
+  const { isMobile } = useIsMobile()
+  return isMobile && isPlatformMobile()
 }

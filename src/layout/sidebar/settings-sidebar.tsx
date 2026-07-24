@@ -13,7 +13,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import { useIsNativeMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
+import { Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
@@ -38,9 +40,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: 'What agents use',
     items: [
       { path: '/settings/skills', label: 'Skills', icon: Zap },
+      { path: '/settings/connections', label: 'Connections', icon: Plug },
       { path: '/settings/models', label: 'Models', icon: Cpu, matchPrefix: true },
-      { path: '/settings/integrations', label: 'Integrations', icon: Plug },
-      { path: '/settings/mcp-servers', label: 'MCP servers', icon: Server },
     ],
   },
   {
@@ -63,7 +64,8 @@ export const SettingsSidebarContent = ({
   onSectionChange,
   onSettingsNavigate,
 }: SettingsSidebarContentProps) => {
-  const { toggleSidebar } = useSidebar()
+  const { isMobile, toggleSidebar } = useSidebar()
+  const isNativeMobile = useIsNativeMobile()
   const location = useLocation()
 
   const isItemActive = ({ path, matchPrefix }: NavItem) =>
@@ -95,8 +97,20 @@ export const SettingsSidebarContent = ({
           {/* Collapsed: SidebarContent's gap-2 alone spaces the groups and
               their dividers, so the groups' own vertical padding would double
               it. The last group keeps its bottom padding against the footer. */}
-          <SidebarGroup className={isCollapsed ? (index === navGroups.length - 1 ? 'pt-0' : 'py-0') : undefined}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroup
+            className={cn(
+              isCollapsed && (index === navGroups.length - 1 ? 'pt-0' : 'py-0'),
+              isNativeMobile && index === 0 && 'pt-1',
+            )}
+          >
+            {isMobile && index === 0 && (
+              <div className="flex h-[var(--touch-height-lg)] items-center">
+                <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
+              </div>
+            )}
+            <SidebarGroupLabel className={isMobile && index === 0 ? 'mt-1' : undefined}>
+              {group.label}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
@@ -120,7 +134,7 @@ export const SettingsSidebarContent = ({
 
       <div className="flex-1" />
 
-      <SidebarFooter navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />} />
+      <SidebarFooter />
     </SidebarContent>
   )
 }

@@ -5,7 +5,7 @@
 import { SkillsView } from '@/skills/skills-view'
 
 const SkillsPage = () => (
-  <div className="h-full overflow-hidden">
+  <div className="h-full">
     <SkillsView />
   </div>
 )

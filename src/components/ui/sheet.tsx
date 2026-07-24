@@ -7,6 +7,7 @@ import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
 import { cn } from '@/lib/utils'
+import { modalCloseClass, modalOverlayClass } from './modal-styles'
 
 const Sheet = ({ ...props }: ComponentProps<typeof SheetPrimitive.Root>) => {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
@@ -25,16 +26,7 @@ const SheetPortal = ({ ...props }: ComponentProps<typeof SheetPrimitive.Portal>)
 }
 
 const SheetOverlay = ({ className, ...props }: ComponentProps<typeof SheetPrimitive.Overlay>) => {
-  return (
-    <SheetPrimitive.Overlay
-      data-slot="sheet-overlay"
-      className={cn(
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 backdrop-blur-md',
-        className,
-      )}
-      {...props}
-    />
-  )
+  return <SheetPrimitive.Overlay data-slot="sheet-overlay" className={cn(modalOverlayClass, className)} {...props} />
 }
 
 const SheetContent = ({
@@ -70,7 +62,7 @@ const SheetContent = ({
       >
         {children}
         {!hideCloseButton && (
-          <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
+          <SheetPrimitive.Close className={cn(modalCloseClass, 'top-4 right-4')}>
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>

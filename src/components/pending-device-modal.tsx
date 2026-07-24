@@ -8,7 +8,7 @@ import { Smartphone } from 'lucide-react'
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
 import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { Button } from '@/components/ui/button'
-import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal'
+import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { useApproveDevice } from '@/hooks/use-approve-device'
 import { useDenyDevice } from '@/hooks/use-deny-device'
@@ -58,7 +58,9 @@ export const PendingDeviceModal = () => {
               <IconCircle>
                 <Smartphone className="w-8 h-8 text-primary" />
               </IconCircle>
-              <h2 className="text-2xl font-bold">New device waiting</h2>
+              <ResponsiveModalTitle className="text-2xl font-bold leading-normal">
+                New device waiting
+              </ResponsiveModalTitle>
               <p className="text-muted-foreground">A new device is requesting access to your encrypted data.</p>
 
               {pendingDeviceToNotify && (

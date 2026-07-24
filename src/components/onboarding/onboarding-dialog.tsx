@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase } from '@/contexts'
 import { deleteIntegrationCredentials } from '@/dal'
 import type { OAuthProvider } from '@/lib/auth'
@@ -102,27 +103,22 @@ export const OnboardingDialog = () => {
 
   return (
     <Dialog open={isOpen}>
-      <DialogContent
-        className={cn('p-0 overflow-hidden', !isMobile && 'h-[650px]')}
+      <ResponsiveModalContentComposable
+        className={cn('overflow-hidden p-0', !isMobile && 'h-[650px] max-h-[calc(100dvh-2rem)]')}
         showCloseButton={false}
-        useTransparentOverlay={!isMobile}
-        fullScreen={isMobile}
       >
         <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
         <DialogDescription className="sr-only">
           Complete the setup process to get started with Thunderbolt
         </DialogDescription>
         <div
-          className={cn('flex flex-col items-center', isMobile && 'h-dvh')}
-          style={{
-            paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
-            paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
-          }}
+          className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
+          style={isMobile ? { paddingBottom: 'var(--kb, 0px)' } : undefined}
         >
-          <div className="flex items-center justify-center px-4 relative w-full pb-2">
+          <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
             <StepIndicators currentStep={state.currentStep} totalSteps={5} />
           </div>
-          <div className="flex flex-1 flex-col overflow-scroll px-6 pb-4 pt-6">
+          <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
             {state.currentStep === 2 && (
               <OnboardingAuthStep
@@ -140,7 +136,7 @@ export const OnboardingDialog = () => {
             )}
             {state.currentStep === 5 && <OnboardingCelebrationStep />}
           </div>
-          <div className="flex w-full px-5 pt-2 relative">
+          <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons
               onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
               onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}
@@ -171,7 +167,7 @@ export const OnboardingDialog = () => {
             />
           </div>
         </div>
-      </DialogContent>
+      </ResponsiveModalContentComposable>
     </Dialog>
   )
 }

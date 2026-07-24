@@ -39,8 +39,17 @@ describe('Combobox', () => {
     it('supports controlled open state', () => {
       const handleOpenChange = mock()
       render(<Combobox items={mockItems} onValueChange={() => {}} open={true} onOpenChange={handleOpenChange} />)
-      // When open, the search input should be visible
-      expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument()
+      const searchInput = screen.getByPlaceholderText('Search...')
+      const command = searchInput.closest('[data-slot="command"]')
+      const popoverContent = command?.parentElement
+
+      expect(searchInput).toBeInTheDocument()
+      expect(command).toHaveClass(
+        '[&_[data-slot=command-input-wrapper]]:rounded-lg',
+        '[&_[data-slot=command-input-wrapper]]:border',
+      )
+      expect(searchInput.parentElement?.parentElement).toHaveClass('p-1')
+      expect(popoverContent).toHaveClass('w-[var(--radix-popover-trigger-width)]')
     })
 
     it('calls onOpenChange when trigger is clicked', () => {

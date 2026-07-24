@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import type { ChatActionsProps } from './types'
 
+const actionButtonClass = 'size-[var(--touch-height-lg)] md:size-8 items-center justify-center cursor-pointer'
+
 export const ChatActions = ({
   isCollapsed,
   debouncedSearchQuery,
@@ -30,25 +32,25 @@ export const ChatActions = ({
         onClick={(e) => onSearchClick(e)}
         aria-label="Search chats"
         className={cn(
-          'w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer',
+          actionButtonClass,
           showSearch && 'bg-sidebar-accent',
           debouncedSearchQuery && 'bg-primary/15 text-primary hover:bg-primary/25 hover:text-primary',
         )}
       >
-        <Search className="size-4" />
+        <Search className="size-[var(--icon-size-default)]" />
       </SidebarMenuButton>
       <Tooltip>
         <TooltipTrigger asChild>
           <SidebarMenuButton
             onClick={() => deleteAllChatsDialogRef.current?.open()}
             aria-label="Clear all chats"
-            className="w-fit pr-0 pl-0 aspect-square items-center justify-center cursor-pointer"
+            className={actionButtonClass}
             disabled={deleteAllChatsMutation.isPending}
           >
             {deleteAllChatsMutation.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
+              <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
             ) : (
-              <Flame className="size-4" />
+              <Flame className="size-[var(--icon-size-default)]" />
             )}
           </SidebarMenuButton>
         </TooltipTrigger>

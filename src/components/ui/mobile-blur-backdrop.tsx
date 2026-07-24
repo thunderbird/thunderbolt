@@ -9,10 +9,16 @@ type MobileBlurBackdropProps = {
   className?: string
 }
 
-/** Full-screen blurred backdrop used on mobile to dim content behind popovers/menus. */
+/** Full-screen backdrop used on mobile to blur and mute content behind popovers/menus.
+ *  Rendered as a button so dismissing works for keyboard and screen-reader users. */
 export const MobileBlurBackdrop = ({ onClick, className }: MobileBlurBackdropProps) => (
-  <div
-    className={cn('fixed inset-0 z-40 backdrop-blur-sm bg-white/30 dark:bg-black/30', className)}
+  <button
+    type="button"
+    aria-label="Dismiss"
+    className={cn(
+      'fixed inset-0 z-40 cursor-default bg-white/30 backdrop-blur-md backdrop-saturate-[.25] dark:bg-black/30',
+      className,
+    )}
     onClick={onClick}
   />
 )

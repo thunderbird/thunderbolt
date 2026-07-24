@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { ArrowLeft } from 'lucide-react'
 
 type OnboardingActionButtonsProps = {
@@ -49,10 +48,7 @@ export const OnboardingActionButtons = ({
           <Button
             onClick={onContinue}
             disabled={continueDisabled}
-            className={cn(
-              !showBack && !showSkip && 'w-full',
-              'disabled:opacity-100 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:[background-image:none]',
-            )}
+            className={!showBack && !showSkip ? 'w-full' : undefined}
           >
             {continueText}
           </Button>

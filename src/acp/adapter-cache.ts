@@ -28,11 +28,15 @@
  */
 
 import { useAgentCommandsStore } from './agent-commands-store'
-import { connectToAgent as defaultConnectToAgent } from './connect'
-import type { ConnectToAgentContext, ConnectToAgentDeps } from './connect'
+import type { connectToAgent as defaultConnectToAgent, ConnectToAgentContext, ConnectToAgentDeps } from './connect'
 import type { Agent, AgentAdapter } from '@/types/acp'
 
 const cache = new Map<string, Promise<AgentAdapter>>()
+
+/** Preload the agent connection pipeline before the user's first send. */
+export const preloadAgentConnection = (): void => {
+  void import('./connect')
+}
 
 /** DI seam so tests can inject a counting/fake `connectToAgent` without
  *  `mock.module()`. Production omits and binds to the real entry point. */
@@ -55,8 +59,9 @@ export const getOrConnectAdapter = async (
     return cached
   }
 
-  const connect = deps.connectToAgent ?? defaultConnectToAgent
-  const pending = connect(agent, ctx, deps)
+  const pending = deps.connectToAgent
+    ? deps.connectToAgent(agent, ctx, deps)
+    : import('./connect').then(({ connectToAgent }) => connectToAgent(agent, ctx, deps))
   // Evict a failed connect so the poisoned promise isn't replayed on retry.
   pending.catch(() => {
     if (cache.get(agent.id) === pending) {

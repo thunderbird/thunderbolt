@@ -10,6 +10,9 @@ import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from
 
 type WeatherForecastProps = WeatherForecastData
 
+const temperatureUnitItemClass =
+  'h-full aspect-square flex-none rounded-xl px-0 text-[length:var(--font-size-sm)] text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 data-[state=on]:bg-accent data-[state=on]:text-foreground'
+
 export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecastProps) => {
   const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>(temperature_unit)
   const today = days[0]
@@ -82,25 +85,12 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
           value={temperatureUnit}
           onValueChange={(value) => value && setTemperatureUnit(value as 'c' | 'f')}
           aria-label="Temperature Unit"
-          variant="outline"
-          className="cursor-pointer"
+          className="h-[var(--touch-height-lg)] gap-0.5 rounded-none md:h-[var(--touch-height-default)] md:p-0.5"
         >
-          {/* Selected side reads as the raised card surface; unselected stays
-              transparent so it blends with the page background (the accent
-              tint sits close to the page color here, which made the old
-              on/off styling look inverted). */}
-          <ToggleGroupItem
-            value="c"
-            aria-label="Celsius"
-            className="cursor-pointer data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground"
-          >
+          <ToggleGroupItem value="c" aria-label="Celsius" className={temperatureUnitItemClass}>
             °C
           </ToggleGroupItem>
-          <ToggleGroupItem
-            value="f"
-            aria-label="Fahrenheit"
-            className="cursor-pointer data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground"
-          >
+          <ToggleGroupItem value="f" aria-label="Fahrenheit" className={temperatureUnitItemClass}>
             °F
           </ToggleGroupItem>
         </ToggleGroup>

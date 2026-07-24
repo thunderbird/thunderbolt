@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, m } from 'framer-motion'
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
-import { ChatMessages } from './chat-messages'
+import { loadChatMessageList } from './chat-messages-loader'
 import { ChatPromptInput } from './chat-prompt-input'
 import { PermissionDialogHost } from './permission-dialog-host'
 import { useCurrentChatSession } from '@/chats/chat-store'
@@ -18,9 +18,12 @@ import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
 import { getGreeting } from './chat-ui-greeting'
 
+const ChatMessageList = lazy(() => loadChatMessageList().then((module) => ({ default: module.ChatMessageList })))
+
 const EmptyChatGreeting = () => {
   return (
-    <div className="flex items-center gap-5">
+    // The logo's transparent padding shifts the combined ink bounds 10px right, so compensate to optically center them.
+    <div className="-translate-x-2.5 flex items-center gap-5">
       <AppLogo size={72} className="opacity-60" />
       <span className="font-heading text-3xl font-medium text-muted-foreground">{getGreeting()}</span>
     </div>
@@ -53,6 +56,7 @@ export default function ChatUI() {
     useChatScrollHandler()
 
   const { isMobile } = useIsMobile()
+  const isNativeMobile = useIsNativeMobile()
 
   // Scroll to bottom instantly when entering an existing chat
   // Effect re-runs when scrollToBottom changes (when container becomes available)
@@ -86,8 +90,9 @@ export default function ChatUI() {
                     Top padding clears the floating header (the layout's scrim
                     keeps scrolled messages legible behind it). */}
                 <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-[calc(var(--header-inset)+1rem)] pb-0 md:px-4">
-                  <ChatMessages />
-                  <div ref={scrollTargetRef} className="shrink-0 !mt-0 h-2 md:h-3" />
+                  <Suspense fallback={null}>
+                    <ChatMessageList scrollTargetRef={scrollTargetRef} />
+                  </Suspense>
                 </div>
               </m.div>
               <ScrollToBottomButton
@@ -112,6 +117,7 @@ export default function ChatUI() {
         <m.div
           className={cn(
             '-mt-3 md:-mt-4 relative z-10 px-3 pb-3 md:px-4 md:pb-4 flex',
+            isNativeMobile && 'pb-0',
             !hasMessages && !isMobile && 'flex-1 items-center',
           )}
           initial={false}

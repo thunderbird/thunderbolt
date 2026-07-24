@@ -6,11 +6,12 @@ import { HardDrive, Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import {
   ResponsiveModal,
+  ResponsiveModalCancel,
   ResponsiveModalContent,
   ResponsiveModalDescription,
-  ResponsiveModalFooter,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
@@ -93,10 +94,8 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
         />
       </ResponsiveModalContent>
 
-      <ResponsiveModalFooter className="justify-end">
-        <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoggingOut}>
-          Cancel
-        </Button>
+      <FormFooter className="justify-end">
+        <ResponsiveModalCancel onClick={() => handleOpenChange(false)} disabled={isLoggingOut} />
         <Button
           variant={selectedOption === 'delete' ? 'destructive' : 'default'}
           onClick={handleLogout}
@@ -111,7 +110,7 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
             'Log out'
           )}
         </Button>
-      </ResponsiveModalFooter>
+      </FormFooter>
     </ResponsiveModal>
   )
 }

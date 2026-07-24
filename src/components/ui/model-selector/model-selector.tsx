@@ -14,6 +14,7 @@ import { GradientLock } from '@/components/ui/gradient-lock'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
+import { needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { AlertTriangle, ChevronDown, Plus } from 'lucide-react'
@@ -36,22 +37,6 @@ export type ModelSelectorProps = {
 type ModelItemData = {
   model: Model
   disabledByEncryption: boolean
-}
-
-/**
- * Models that require an API key but don't have one yet need configuration.
- * Thunderbolt is server-authenticated; custom (OpenAI-compatible) endpoints treat
- * the key as optional; system Tinfoil rows are also server-authenticated (the key
- * is injected by the backend proxy) — none of those flag as missing.
- */
-export const needsApiKey = (model: Model) => {
-  if (model.provider === 'thunderbolt' || model.provider === 'custom') {
-    return false
-  }
-  if (model.provider === 'tinfoil' && model.isSystem === 1) {
-    return false
-  }
-  return !model.apiKey
 }
 
 const toMenuItem = (
@@ -228,6 +213,7 @@ export const ModelSelector = ({
       trigger={renderTrigger}
       renderItem={renderItem}
       footer={footer}
+      contentClassName="max-md:bg-sidebar"
       width={320}
       maxHeight={340}
       side={side}

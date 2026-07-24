@@ -1189,6 +1189,25 @@ describe('Models DAL', () => {
       expect(model?.apiKey).toBe('sk-second')
     })
 
+    it('should delete an existing secret when apiKey is explicitly cleared', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+      await createModel(db, {
+        id: modelId,
+        provider: 'openai',
+        name: 'Model with key',
+        model: 'gpt-4',
+        apiKey: 'sk-secret',
+      })
+
+      await updateModel(db, modelId, { apiKey: null })
+
+      expect(
+        await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get(),
+      ).toBeUndefined()
+      expect((await getModel(db, modelId))?.apiKey).toBeNull()
+    })
+
     it('should hard-delete secret when model is deleted', async () => {
       const db = getDb()
       const modelId = uuidv7()

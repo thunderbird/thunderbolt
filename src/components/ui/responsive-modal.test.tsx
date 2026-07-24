@@ -4,13 +4,16 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { FormFooter } from '@/components/ui/form-footer'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import {
+  getResponsiveModalSurfaceClass,
   ResponsiveModal,
   ResponsiveModalContent,
+  ResponsiveModalContentComposable,
   ResponsiveModalDescription,
-  ResponsiveModalFooter,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from './responsive-modal'
@@ -37,9 +40,9 @@ describe('ResponsiveModal', () => {
         <ResponsiveModalContent>
           <p>Modal content</p>
         </ResponsiveModalContent>
-        <ResponsiveModalFooter>
+        <FormFooter>
           <button type="button">Action</button>
-        </ResponsiveModalFooter>
+        </FormFooter>
       </ResponsiveModal>,
       { wrapper: createTestProvider() },
     )
@@ -80,6 +83,53 @@ describe('ResponsiveModal', () => {
     })
   })
 
+  describe('shared mobile surface', () => {
+    it('uses the full-screen shell and touch-sized close control', () => {
+      renderModal()
+
+      const close = screen.getByRole('button', { name: 'Close' })
+      const surface = document.querySelector('[data-slot="responsive-modal-content"]')
+      const mobileSurfaceClass = getResponsiveModalSurfaceClass(true, 'structured')
+
+      expect(mobileSurfaceClass).toContain('h-dvh')
+      expect(surface).toHaveClass('[&_[data-slot=input]]:!bg-card')
+      expect(surface).toHaveClass('[&_[data-slot=combobox-trigger]]:!bg-card')
+      expect(close.className).toContain('size-[var(--touch-height-sm)]')
+    })
+
+    it('uses the same shell for the composable API', () => {
+      render(
+        <Dialog open>
+          <ResponsiveModalContentComposable>
+            <ResponsiveModalHeader>
+              <ResponsiveModalTitle>Composable Title</ResponsiveModalTitle>
+            </ResponsiveModalHeader>
+          </ResponsiveModalContentComposable>
+        </Dialog>,
+        { wrapper: createTestProvider() },
+      )
+
+      expect(getResponsiveModalSurfaceClass(true, 'composable')).toContain('h-dvh')
+      expect(document.querySelector('[data-slot="responsive-modal-content"]')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+    })
+
+    it('uses the same field surfaces in plain dialogs', () => {
+      render(
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Plain Dialog</DialogTitle>
+            <input data-slot="input" />
+          </DialogContent>
+        </Dialog>,
+      )
+
+      const surface = document.querySelector('[data-slot="dialog-content"]')
+      expect(surface).toHaveClass('[&_[data-slot=input]]:!bg-card')
+      expect(surface).toHaveClass('dark:[&_[data-slot=input]]:!bg-input')
+    })
+  })
+
   describe('ResponsiveModalContent', () => {
     it('applies centered class when centered prop is true', () => {
       render(
@@ -106,5 +156,13 @@ describe('ResponsiveModal', () => {
       const content = screen.getByTestId('content')
       expect(content.className).not.toContain('justify-center')
     })
+  })
+
+  it('anchors modal actions at the bottom of the surface', () => {
+    renderModal()
+
+    expect(screen.getByRole('button', { name: 'Action' }).closest('[data-slot="form-footer"]')?.className).toContain(
+      'mt-auto',
+    )
   })
 })

@@ -236,7 +236,7 @@ describe('SkillsView state machine', () => {
         wrapper: wrapperWithNavState({ startEditSkill: created.id }),
       })
 
-      await waitForElement(() => screen.queryByText('Edit skill'))
+      await waitForElement(() => screen.queryByText('Edit Skill'))
       const nameInput = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement
       expect(nameInput.value).toBe('Daily Brief')
       expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()

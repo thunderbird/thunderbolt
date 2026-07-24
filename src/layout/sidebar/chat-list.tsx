@@ -12,8 +12,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
 import { RailDivider } from './rail-divider'
@@ -33,15 +35,90 @@ export const ChatList = ({
   searchQuery,
   showSearch,
   searchInputRef,
+  mobileNavToggle,
+  mobileSecondaryNavigation,
   onChatClick,
   onRename,
   onSearchClick,
   onSearchQueryChange,
+  onContentBelowChange,
 }: ChatListProps) => {
+  const scrollContainerRef = useRef<HTMLUListElement>(null)
+  const isNativeMobile = useIsNativeMobile()
+  // Drives this list's own top scroll shadow; only the bottom counterpart is
+  // lifted (the sidebar footer renders that shadow).
+  const [hasContentAbove, setHasContentAbove] = useState(false)
+  // The list has something to show either when threads exist or when a search
+  // is active (an empty result set still renders the "no matches" note).
+  const hasListContent = chatThreads.length > 0 || Boolean(debouncedSearchQuery)
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) {
+      return
+    }
+
+    const updateScrollShadows = () => {
+      const remainingScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight - scrollContainer.scrollTop
+      setHasContentAbove(scrollContainer.scrollTop > 1)
+      onContentBelowChange(remainingScroll > 1)
+    }
+
+    updateScrollShadows()
+    scrollContainer.addEventListener('scroll', updateScrollShadows, { passive: true })
+    window.addEventListener('resize', updateScrollShadows)
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', updateScrollShadows)
+      window.removeEventListener('resize', updateScrollShadows)
+    }
+  }, [chatThreads.length, debouncedSearchQuery, onContentBelowChange, showSearch])
+
+  const searchInput = (
+    <div
+      className={`overflow-hidden transition-[max-height,opacity,margin-top] duration-300 ease-in-out flex-shrink-0 ${
+        showSearch && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery)
+          ? 'max-h-12 opacity-100 mt-2'
+          : 'max-h-0 opacity-0'
+      }`}
+    >
+      <SearchInput
+        ref={searchInputRef}
+        containerClassName="mb-1"
+        className="rounded-xl border-transparent bg-sidebar-accent focus-visible:border-border dark:bg-sidebar-accent"
+        placeholder="Search chats..."
+        value={searchQuery}
+        onChange={(e) => onSearchQueryChange(e.target.value)}
+      />
+    </div>
+  )
+
   return (
     <>
-      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0', isCollapsed && 'pt-0')}>
-        {!isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
+      <SidebarGroup
+        className={cn('flex-1 flex flex-col min-h-0 pb-0', isCollapsed && 'pt-0', isNativeMobile && 'pt-1')}
+      >
+        {isMobile && (
+          <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
+            {mobileNavToggle}
+            {hasListContent && (
+              <ChatActions
+                isCollapsed={isCollapsed}
+                debouncedSearchQuery={debouncedSearchQuery}
+                showSearch={showSearch}
+                deleteAllChatsMutation={deleteAllChatsMutation}
+                deleteAllChatsDialogRef={deleteAllChatsDialogRef}
+                onSearchClick={onSearchClick}
+              />
+            )}
+          </div>
+        )}
+        {isMobile && searchInput}
+        {isMobile && mobileSecondaryNavigation}
+        {isMobile && !isCollapsed && (
+          <SidebarGroupLabel className="mt-1">{hasListContent ? 'Recent Chats' : 'No chats yet'}</SidebarGroupLabel>
+        )}
+        {!isMobile && !isCollapsed && hasListContent && (
           <div className="flex items-center justify-between flex-shrink-0">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
             <ChatActions
@@ -58,24 +135,15 @@ export const ChatList = ({
             would otherwise escape the shrinking/growing box and paint over the
             first chat rows. Transition is scoped to the animated properties so
             sidebar-width changes (rail collapse) don't ride along. */}
-        <div
-          className={`overflow-hidden transition-[max-height,opacity,margin-top] duration-300 ease-in-out flex-shrink-0 ${
-            showSearch && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery)
-              ? 'max-h-12 opacity-100 mt-2'
-              : 'max-h-0 opacity-0'
-          }`}
+        {!isMobile && searchInput}
+        <SidebarMenu
+          ref={scrollContainerRef}
+          className={cn(
+            'mt-0 -mx-2 w-[calc(100%+1rem)] flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 scrollbar-hide touch-pan-y md:mt-2 group-data-[collapsible=icon]:mt-0',
+            hasContentAbove && 'shadow-[inset_0_8px_16px_-14px_rgba(0,0,0,0.35)]',
+          )}
         >
-          <SearchInput
-            ref={searchInputRef}
-            containerClassName="mb-1"
-            className="bg-sidebar-accent dark:bg-sidebar-accent border-transparent focus-visible:border-border"
-            placeholder="Search chats..."
-            value={searchQuery}
-            onChange={(e) => onSearchQueryChange(e.target.value)}
-          />
-        </div>
-        <SidebarMenu className="mt-2 group-data-[collapsible=icon]:mt-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide touch-pan-y">
-          {isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
+          {isCollapsed && hasListContent && (
             <>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={(e) => onSearchClick(e)} tooltip="Search chats" className="cursor-pointer">

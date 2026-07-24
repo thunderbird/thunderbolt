@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
+import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { estimateTokensForText } from '@/ai/tokenizers'
@@ -29,7 +30,7 @@ import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, Paperclip, Plus, X } from 'lucide-react'
+import { AlertCircle, Loader2, Paperclip, Plug, Plus, X } from 'lucide-react'
 import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -44,6 +45,7 @@ import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
 import { FileCard } from './file-card'
+import { loadChatMessageList } from './chat-messages-loader'
 
 /** Max size for a chat attachment stored locally and sent to the agent. */
 const maxAttachmentBytes = 25 * 1024 * 1024
@@ -253,6 +255,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // one for the form and one for the textarea) avoids two cached pointers
     // to the same node drifting out of sync.
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+    const hasPreloadedSendDependencies = useRef(false)
+
+    const preloadSendDependencies = useCallback(() => {
+      if (hasPreloadedSendDependencies.current) {
+        return
+      }
+      hasPreloadedSendDependencies.current = true
+      preloadAgentConnection()
+      void loadChatMessageList()
+    }, [])
 
     const getTextarea = (): HTMLTextAreaElement | null => {
       textareaRef.current = formRef.current?.querySelector('textarea') ?? null
@@ -568,6 +580,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               <Paperclip className="size-[var(--icon-size-sm)]" />
               Upload file
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => navigate('/settings/connections')} className="cursor-pointer">
+              <Plug className="size-[var(--icon-size-sm)]" />
+              Connections
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         {isConnecting ? (
@@ -780,7 +796,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               ) : undefined
             }
             value={input}
-            onChange={(value: string) => setInput(value)}
+            onChange={(value: string) => {
+              if (value.length > 0) {
+                preloadSendDependencies()
+              }
+              setInput(value)
+            }}
             placeholder="Ask me anything..."
             showSubmitButton
             onSubmit={handleSubmit}

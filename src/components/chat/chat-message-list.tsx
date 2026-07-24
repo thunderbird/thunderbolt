@@ -10,6 +10,8 @@ type ChatMessageListProps = {
   scrollTargetRef: RefCallback<HTMLDivElement>
 }
 
+/** The lazily-split chat message subtree — loaded via `loadChatMessageList` so the
+ *  message renderers stay out of the entry bundle until a chat actually opens. */
 export const ChatMessageList = ({ scrollTargetRef }: ChatMessageListProps) => (
   <>
     <ChatMessages />

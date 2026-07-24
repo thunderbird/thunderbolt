@@ -104,7 +104,10 @@ describe('createMcpIrohTransport', () => {
 
     try {
       await transport.start()
-      expect(warn).toHaveBeenCalledWith('iroh transparent enrollment failed; using manual pairing fallback')
+      expect(warn).toHaveBeenCalledWith(
+        'iroh transparent enrollment failed; using manual pairing fallback',
+        expect.anything(),
+      )
       expect(captured).toEqual([{ target: 'ticket-or-nodeid', alpn: mcpIrohAlpn }])
     } finally {
       warn.mockRestore()

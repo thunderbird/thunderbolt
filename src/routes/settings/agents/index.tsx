@@ -21,11 +21,11 @@ import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
+import { fireAndForgetSelfEnrollment, selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 
 type AgentsSettingsPageProps = {
   /** Test/DI override for reading this app's iroh NodeId. Forwarded to the add
-   *  dialog's pairing panel and used by the transparent same-account enrollment.
+   *  form's pairing panel and used by the transparent same-account enrollment.
    *  Production omits and lazy-loads the wasm client. */
   loadAppNodeId?: () => Promise<string>
   /** Test/DI override for app NodeId self-enrollment, fired when an iroh agent is added.
@@ -94,10 +94,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
       return
     }
     // App enrolls its own dialer NodeId; bridge registers itself server-side.
-    // Fire and forget: enrollment must never block add; manual pairing remains fallback.
-    void runEnroll().catch((error) => {
-      console.warn('iroh transparent enrollment failed; using manual pairing fallback', error)
-    })
+    fireAndForgetSelfEnrollment(runEnroll)
   }
 
   const renderPanel = () => {

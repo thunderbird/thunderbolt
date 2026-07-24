@@ -22,6 +22,7 @@ type ModelsListProps = {
   onAdd: () => void
 }
 
+/** Presentational list of configured models with enable toggles and the add affordance. */
 export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }: ModelsListProps) => (
   <SettingsListBody className="gap-4">
     {models.map((model) => {

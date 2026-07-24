@@ -97,7 +97,7 @@ export const McpServerDetail = ({
         <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-2 text-base text-foreground">
             <StatusIndicator status={effectiveStatus} size="sm" />
-            {isEnabled ? statusLabels[connectionError ? 'error' : status] : 'Disabled'}
+            {effectiveStatus === 'neutral' ? 'Disabled' : statusLabels[effectiveStatus]}
           </span>
           <span className="flex items-center gap-2">
             {connectionError && (

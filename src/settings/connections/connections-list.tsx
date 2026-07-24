@@ -145,7 +145,7 @@ const ServerRow = ({
  */
 export const ConnectionsList = ({
   integrations,
-  integrationsReady,
+  areIntegrationsReady,
   servers,
   serverStatus,
   activeKey,
@@ -162,7 +162,7 @@ export const ConnectionsList = ({
   /** True once the async sources behind the integrations' enabled state have
    *  resolved — used to remount the rows so their switches render directly in
    *  the loaded position instead of animating off→on. */
-  integrationsReady: boolean
+  areIntegrationsReady: boolean
   servers: McpServer[]
   /** Live connection state for a server row's status dot. */
   serverStatus: (server: McpServer) => StatusState
@@ -219,7 +219,7 @@ export const ConnectionsList = ({
           <ul className="flex flex-col gap-4">
             {filteredIntegrations.map((integration) => (
               <IntegrationRow
-                key={`${integration.id}:${integrationsReady}`}
+                key={`${integration.id}:${areIntegrationsReady}`}
                 integration={integration}
                 isActive={activeKey === `integration:${integration.id}`}
                 onSelect={() => onSelectIntegration(integration.id)}

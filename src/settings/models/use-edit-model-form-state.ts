@@ -17,7 +17,7 @@ import {
   providerRequiresConnectionTest,
   type ApiKeyEdit,
 } from './model-policy'
-import { catalogToComboboxItems, useModelCatalog } from './use-model-catalog'
+import { catalogToComboboxItems, customModelItem, useModelCatalog } from './use-model-catalog'
 
 const editModelFormSchema = z.object({
   name: z.string().min(1, { message: 'Name is required.' }),
@@ -62,7 +62,7 @@ export const useEditModelFormState = (model: Model) => {
     if (!catalog.models.some((available) => available.id === model.model)) {
       items.unshift({ id: model.model, label: model.model })
     }
-    return [...items, { id: 'custom', label: 'Custom' }]
+    return [...items, customModelItem]
   }, [model.model, catalog.models])
   const connection = useModelConnectionTest({
     provider: model.provider,

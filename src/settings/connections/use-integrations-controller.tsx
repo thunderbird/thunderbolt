@@ -35,7 +35,7 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
   const integrationSettings = useSettings({ integrations_pro_is_enabled: false })
   const { data: status, isLoading: isStatusLoading } = useIntegrationStatus()
   const { data: proStatus } = useQuery({ queryKey: ['proStatus'], queryFn: getProStatus })
-  const integrationsReady =
+  const areIntegrationsReady =
     !integrationSettings.integrationsProIsEnabled.isLoading && !isStatusLoading && proStatus !== undefined
 
   const integrations = useMemo((): Integration[] => {
@@ -132,5 +132,5 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
     alert('Thunderbolt Pro is not available yet. Stay tuned!')
   }
 
-  return { integrations, integrationsReady, toolsFor, processCallback, disconnect, toggle, getPro }
+  return { integrations, areIntegrationsReady, toolsFor, processCallback, disconnect, toggle, getPro }
 }

@@ -12,14 +12,16 @@ import { AppLogo } from '@/components/app-logo'
 import { IconTile } from '@/components/settings/icon-tile'
 import type { Model } from '@/types'
 
-/** Canonical display names for model providers — the single source for labels. */
+/** Canonical display names for model providers — the single source for labels.
+ *  Key order is the provider-picker menu order (the add form derives its options
+ *  from these keys, so a new provider can't silently drop out of the picker). */
 export const providerLabels: Record<Model['provider'], string> = {
   thunderbolt: 'Thunderbolt',
   tinfoil: 'Tinfoil',
-  anthropic: 'Anthropic',
   openai: 'OpenAI',
-  custom: 'Custom',
   openrouter: 'OpenRouter',
+  anthropic: 'Anthropic',
+  custom: 'Custom',
 }
 
 /** System-managed Tinfoil is a Thunderbolt product; Tinfoil is only its transport. */

@@ -17,6 +17,7 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { useAddServerForm } from '@/hooks/use-add-server-form'
 import type { useMcpServerOAuth } from '@/hooks/use-mcp-server-oauth'
 import type { StoredCredentialType } from '@/lib/mcp-auth/auth-decision'
+import { fireAndForgetSelfEnrollment } from '@/lib/iroh-enrollment'
 import { parseMcpServersConfig, type ParsedMcpServer } from '@/lib/mcp-config-import'
 import type { useMCP } from '@/lib/mcp-provider'
 import type { MCPTransportType } from '@/lib/mcp-transport'
@@ -72,7 +73,7 @@ export const useMcpServerFormController = ({
   const urlValidation = !isIroh && url ? validateMcpServerUrl(url) : null
   const isUrlReady = Boolean(url) && urlValidation?.ok === true
   const isSaveReady = isIroh ? resolveServerName().length > 0 : isUrlReady
-  const editProbeWaived = isIroh || !form.hasConnectionEdits || form.isClearingBearerOnly || form.isOAuthEdit
+  const isEditProbeWaived = isIroh || !form.hasConnectionEdits || form.isClearingBearerOnly || form.isOAuthEdit
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => updateMcpServerEnabled(db, id, enabled),
@@ -156,11 +157,7 @@ export const useMcpServerFormController = ({
       await addMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), serverUrl })
       if (isIroh) {
         // App enrolls its own dialer NodeId; bridge registers itself server-side.
-        // Fire and forget: enrollment must never block the add, and manual pairing remains the
-        // fallback for Standalone, unauthenticated, or offline use.
-        void enrollIroh().catch((error) => {
-          console.warn('iroh transparent enrollment failed; using manual pairing fallback', error)
-        })
+        fireAndForgetSelfEnrollment(enrollIroh)
       }
       cancel()
     } catch (error) {
@@ -262,7 +259,7 @@ export const useMcpServerFormController = ({
       void add()
       return
     }
-    if (form.editingServerId && isSaveReady && editProbeWaived) {
+    if (form.editingServerId && isSaveReady && isEditProbeWaived) {
       void update()
       return
     }
@@ -283,7 +280,7 @@ export const useMcpServerFormController = ({
     urlValidation,
     isUrlReady,
     isSaveReady,
-    editProbeWaived,
+    isEditProbeWaived,
     cancel,
     changeMode,
     add,

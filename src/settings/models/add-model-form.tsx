@@ -19,8 +19,9 @@ import { ConnectionTestSection } from './connection-test-section'
 import { catalogRequiresApiKey, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
 import { providerLabels } from './model-presentation'
 
-/** Menu order for the provider picker (labels come from `providerLabels`). */
-const providerOptions: Model['provider'][] = ['thunderbolt', 'tinfoil', 'openai', 'openrouter', 'anthropic', 'custom']
+/** Provider picker options, derived from the exhaustive labels Record so a new
+ *  provider added to `Model['provider']` shows up here by construction. */
+const providerOptions = Object.keys(providerLabels) as Model['provider'][]
 
 export const addModelFormSchema = z
   .object({

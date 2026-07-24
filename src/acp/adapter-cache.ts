@@ -44,6 +44,16 @@ export type AdapterCacheDeps = {
   connectToAgent?: typeof defaultConnectToAgent
 }
 
+/** Load the connect chunk on demand (kept out of the entry bundle) and connect. */
+const lazilyConnectToAgent = async (
+  agent: Agent,
+  ctx: ConnectToAgentContext,
+  deps: ConnectToAgentDeps,
+): Promise<AgentAdapter> => {
+  const { connectToAgent } = await import('./connect')
+  return connectToAgent(agent, ctx, deps)
+}
+
 /**
  * Return the cached adapter for `agent`, connecting once on first use. Concurrent
  * callers awaiting the same agent share a single in-flight connect. A failed
@@ -59,9 +69,7 @@ export const getOrConnectAdapter = async (
     return cached
   }
 
-  const pending = deps.connectToAgent
-    ? deps.connectToAgent(agent, ctx, deps)
-    : import('./connect').then(({ connectToAgent }) => connectToAgent(agent, ctx, deps))
+  const pending = deps.connectToAgent ? deps.connectToAgent(agent, ctx, deps) : lazilyConnectToAgent(agent, ctx, deps)
   // Evict a failed connect so the poisoned promise isn't replayed on retry.
   pending.catch(() => {
     if (cache.get(agent.id) === pending) {

@@ -60,6 +60,9 @@ export const createConnectionsPageState = (isProcessingCallback = false): Connec
   shouldClearNavigationState: false,
 })
 
+/** The add/edit form's three error channels, cleared together on mode change and reset. */
+const clearedFormErrors = { importError: null, addError: null, updateError: null }
+
 /** Reducer for the Connections page's panel selection, form modes, and error channels. */
 export const connectionsPageReducer = (
   state: ConnectionsPageState,
@@ -69,7 +72,7 @@ export const connectionsPageReducer = (
     case 'SELECTION_CHANGED':
       return { ...state, selected: action.selection, integrationError: null, serverError: null }
     case 'MODE_CHANGED':
-      return { ...state, mode: action.mode, importError: null, addError: null, updateError: null }
+      return { ...state, mode: action.mode, ...clearedFormErrors }
     case 'JSON_CHANGED':
       return { ...state, jsonText: action.value }
     case 'IMPORT_FAILED':
@@ -101,6 +104,6 @@ export const connectionsPageReducer = (
     case 'NAVIGATION_STATE_CONSUMED':
       return { ...state, shouldClearNavigationState: true }
     case 'FORM_RESET':
-      return { ...state, mode: 'simple', jsonText: '', importError: null, addError: null, updateError: null }
+      return { ...state, mode: 'simple', jsonText: '', ...clearedFormErrors }
   }
 }

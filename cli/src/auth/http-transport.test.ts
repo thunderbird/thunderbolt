@@ -20,7 +20,7 @@ const authBase = 'https://api.test/v1/api/auth'
 const stubFetch = (response: Response) => {
   const requests: { url: string; body: unknown }[] = []
   const fetchFn: FetchFn = async (url, init) => {
-    requests.push({ url, body: JSON.parse(String(init.body)) })
+    requests.push({ url, body: JSON.parse(String(init?.body)) })
     return response
   }
   return { fetchFn, requests }

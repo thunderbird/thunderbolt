@@ -21,7 +21,7 @@ import { addModelFormSchema, type AddModelFormValues } from './add-model-form'
 import type { EditModelSubmission } from './edit-model-form'
 import { providerAutoFetchesCatalog } from './model-policy'
 import { initialModelsPageState, modelsPageReducer } from './page-state'
-import { catalogToComboboxItems, useModelCatalog } from './use-model-catalog'
+import { catalogToComboboxItems, customModelItem, useModelCatalog } from './use-model-catalog'
 
 /** Generates a readable display name from a provider model identifier. */
 export const generateModelName = (modelId: string): string => {
@@ -113,7 +113,7 @@ export const useModelsPageState = () => {
     mutationFn: (id: string) => deleteModel(db, id),
     onMutate: clearMutationError,
     onSuccess: () => dispatch({ type: 'DELETE_DISMISSED' }),
-    onError: failMutation('Failed to remove the model.'),
+    onError: failMutation('Failed to delete the model.'),
   })
   const editMutation = useMutation({
     mutationFn: async (values: EditModelSubmission) => {
@@ -137,16 +137,15 @@ export const useModelsPageState = () => {
     onError: failMutation('Failed to reset the model.'),
   })
 
-  const setAddPanelOpen = (open: boolean) => {
-    if (open) {
-      dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
-      connection.reset()
-      const currentProvider = form.getValues('provider')
-      if (providerAutoFetchesCatalog(currentProvider) && catalog.models.length === 0) {
-        void catalog.fetchCatalog({ provider: currentProvider })
-      }
-      return
+  const openAddPanel = () => {
+    dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
+    connection.reset()
+    const currentProvider = form.getValues('provider')
+    if (providerAutoFetchesCatalog(currentProvider) && catalog.models.length === 0) {
+      void catalog.fetchCatalog({ provider: currentProvider })
     }
+  }
+  const cancelAddPanel = () => {
     resetAddForm()
     dispatch({ type: 'PANEL_CHANGED', panel: null })
   }
@@ -202,7 +201,7 @@ export const useModelsPageState = () => {
   }
   const modelItems = useMemo((): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
-    return provider === 'thunderbolt' ? items : [...items, { id: 'custom', label: 'Custom' }]
+    return provider === 'thunderbolt' ? items : [...items, customModelItem]
   }, [catalog.models, provider])
   const supportsTools =
     !selectedModelId ||
@@ -232,14 +231,14 @@ export const useModelsPageState = () => {
       connectionError: connection.error,
       submitError: mutationError,
       onSubmit: submitAdd,
-      onCancel: () => setAddPanelOpen(false),
+      onCancel: cancelAddPanel,
       onProviderChange: changeProvider,
       onCatalogInvalidated: catalog.invalidateCatalog,
       onRefreshCatalog: () => void catalog.fetchCatalog({ provider, apiKey, url }),
       onSelectModel: selectModel,
       onTestConnection: testConnection,
     },
-    openAddPanel: () => setAddPanelOpen(true),
+    openAddPanel,
     closePanel,
     selectActiveModel: (modelId: string) =>
       dispatch({

@@ -13,7 +13,7 @@ import '@/lib/dayjs'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { iconForAgent } from '@/components/agent-icon'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
-import { AgentIconTile } from '@/components/settings/agents/agent-list-row'
+import { IconTile } from '@/components/settings/icon-tile'
 import { EditableField, FieldLabel } from '@/components/settings/agents/editable-field'
 import { inferTransport, validateAgentUrl } from '@/components/settings/agents/validate-agent-url'
 import {
@@ -120,14 +120,14 @@ export const AgentDetail = ({
   return (
     <DetailPanel
       icon={
-        <AgentIconTile>
+        <IconTile>
           {/* The logo reads slightly smaller than the lucide glyphs at equal
               box size, so it gets a half-step bump. */}
           <Icon
             className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-5.5' : 'size-5')}
             aria-hidden="true"
           />
-        </AgentIconTile>
+        </IconTile>
       }
       title={agent.name}
       subtitle={agentProvenanceLine(agent)}

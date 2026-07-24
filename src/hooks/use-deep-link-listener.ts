@@ -4,6 +4,7 @@
 
 import { isMcpOAuthCallback, type OAuthCallbackParams } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
+import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { useEffect } from 'react'
@@ -52,7 +53,7 @@ export const determineNavigationTarget = (
     return { path: '/settings/connections', oauth }
   }
 
-  if (oauthReturnContext?.startsWith('/') && !oauthReturnContext.startsWith('//')) {
+  if (isSafeRelativePath(oauthReturnContext)) {
     return { path: oauthReturnContext, oauth }
   }
 

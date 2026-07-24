@@ -98,7 +98,8 @@ const testResultPanels: Record<
  * The Add/Edit MCP server form, hosted inside the Connections detail aside
  * (the `DetailPanel` shell provides the title + close). All state and handlers
  * live in the page (`ConnectionsPage`) — this component is the ported dialog
- * body from the old MCP Servers page, unchanged in behavior.
+ * body from the old MCP Servers page, extended with the stored-credential
+ * affordances (masked bearer placeholder + "Clear saved credential").
  */
 export const McpServerForm = ({
   form,
@@ -111,7 +112,7 @@ export const McpServerForm = ({
   urlValidation,
   isUrlReady,
   isSaveReady,
-  editProbeWaived,
+  isEditProbeWaived,
   isAddAuthorizePending,
   isSavePending,
   isImportPending,
@@ -134,7 +135,7 @@ export const McpServerForm = ({
   isUrlReady: boolean
   isSaveReady: boolean
   /** True when the edit can save without a fresh successful probe. */
-  editProbeWaived: boolean
+  isEditProbeWaived: boolean
   isAddAuthorizePending: boolean
   isSavePending: boolean
   isImportPending: boolean
@@ -158,6 +159,9 @@ export const McpServerForm = ({
     handleUrlBlur,
   } = form
 
+  const failurePanel =
+    testResult.kind !== 'success' && testResult.kind !== 'idle' ? testResultPanels[testResult.kind] : null
+
   /** The footer's primary action, by precedence: Save Changes (editing),
    *  Import Servers (advanced add), Add & Authorize (URL classified as OAuth),
    *  else plain Add. */
@@ -167,10 +171,10 @@ export const McpServerForm = ({
         <Button
           onClick={onUpdateServer}
           // A fresh successful probe is required only when the edit touches
-          // the connection and no waiver applies (see `editProbeWaived`):
+          // the connection and no waiver applies (see `isEditProbeWaived`):
           // iroh has no probe, and metadata-only / bearer-clear / empty-token
           // OAuth edits keep the existing credential valid.
-          disabled={!isSaveReady || (!editProbeWaived && testResult.kind !== 'success') || isSavePending}
+          disabled={!isSaveReady || (!isEditProbeWaived && testResult.kind !== 'success') || isSavePending}
         >
           {isSavePending ? 'Saving…' : 'Save Changes'}
         </Button>
@@ -329,16 +333,11 @@ export const McpServerForm = ({
                   </ResultStatusCard>
                 )}
 
-                {testResult.kind !== 'success' &&
-                  testResult.kind !== 'idle' &&
-                  (() => {
-                    const panel = testResultPanels[testResult.kind]
-                    return (
-                      <ResultStatusCard tone={panel.tone} icon={panel.icon} title={panel.title}>
-                        <p className="text-sm mt-1 text-muted-foreground">{panel.body}</p>
-                      </ResultStatusCard>
-                    )
-                  })()}
+                {failurePanel && (
+                  <ResultStatusCard tone={failurePanel.tone} icon={failurePanel.icon} title={failurePanel.title}>
+                    <p className="text-sm mt-1 text-muted-foreground">{failurePanel.body}</p>
+                  </ResultStatusCard>
+                )}
               </>
             )}
           </div>

@@ -80,38 +80,16 @@ export default function DevicesSettingsPage() {
     pairing.closeDialog()
   }
 
-  const confirmRevoke = () => {
-    if (confirmationTarget?.action !== 'revoke') {
+  /** Runs the confirmed action's mutation against the pending target, closing the dialog on success.
+   *  The action guard makes a stale dialog's confirm a no-op if the target changed under it. */
+  const confirmPendingAction = (
+    action: ConfirmationTarget['action'],
+    mutation: { mutate: (deviceId: string, options: { onSuccess: () => void }) => void },
+  ) => {
+    if (confirmationTarget?.action !== action) {
       return
     }
-    revokeMutation.mutate(confirmationTarget.deviceId, {
-      onSuccess: () => setConfirmationTarget(null),
-    })
-  }
-
-  const confirmDeny = () => {
-    if (confirmationTarget?.action !== 'deny') {
-      return
-    }
-    denyMutation.mutate(confirmationTarget.deviceId, {
-      onSuccess: () => setConfirmationTarget(null),
-    })
-  }
-
-  const confirmApprove = () => {
-    if (confirmationTarget?.action !== 'approve') {
-      return
-    }
-    approveMutation.mutate(confirmationTarget.deviceId, {
-      onSuccess: () => setConfirmationTarget(null),
-    })
-  }
-
-  const confirmRemove = () => {
-    if (confirmationTarget?.action !== 'remove') {
-      return
-    }
-    removeMutation.mutate(confirmationTarget.deviceId, {
+    mutation.mutate(confirmationTarget.deviceId, {
       onSuccess: () => setConfirmationTarget(null),
     })
   }
@@ -292,14 +270,14 @@ export default function DevicesSettingsPage() {
       <ApproveDeviceDialog
         open={confirmationTarget?.action === 'approve'}
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
-        onConfirm={confirmApprove}
+        onConfirm={() => confirmPendingAction('approve', approveMutation)}
         isPending={approveMutation.isPending}
       />
 
       <RevokeDeviceDialog
         open={confirmationTarget?.action === 'revoke'}
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
-        onConfirm={confirmRevoke}
+        onConfirm={() => confirmPendingAction('revoke', revokeMutation)}
         isPending={revokeMutation.isPending}
         variant="trusted"
       />
@@ -307,7 +285,7 @@ export default function DevicesSettingsPage() {
       <RevokeDeviceDialog
         open={confirmationTarget?.action === 'deny'}
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
-        onConfirm={confirmDeny}
+        onConfirm={() => confirmPendingAction('deny', denyMutation)}
         isPending={denyMutation.isPending}
         variant="pending"
       />
@@ -315,7 +293,7 @@ export default function DevicesSettingsPage() {
       <RemoveBridgeDialog
         open={confirmationTarget?.action === 'remove'}
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
-        onConfirm={confirmRemove}
+        onConfirm={() => confirmPendingAction('remove', removeMutation)}
         isPending={removeMutation.isPending}
       />
 

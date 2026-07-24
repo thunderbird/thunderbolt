@@ -182,7 +182,8 @@ export type UseAddServerFormResult = {
   /** Id of the server being edited, or null when the form is in Add mode. */
   editingServerId: string | null
   openAddForm: () => void
-  /** Opens the form in Edit mode with all fields prefilled from the existing server. */
+  /** Opens the form in Edit mode with the metadata fields prefilled from the existing
+   *  server (a stored bearer token is kept for probes but never shown in the input). */
   openEditForm: (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => void
   /** Closes the form and clears all add-form state (Cancel / Escape / panel close). */
   resetAddForm: () => void

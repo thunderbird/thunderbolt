@@ -57,7 +57,8 @@ export const MobileSidebar = ({
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
   const { triggerImpact } = useHaptics()
-  const hasBackdropBlur = isPlatformMobile()
+  // Native mobile gets the blur backdrop and the safe-area-aware bottom padding.
+  const isNativeMobile = isPlatformMobile()
 
   // Honor prefers-reduced-motion: drive every open/close/snap-back with an instant transition
   // (no spring travel) while keeping drag-to-dismiss and the overlay dim intact. Derived during
@@ -131,7 +132,7 @@ export const MobileSidebar = ({
         {/* Keep the filter constant on its own compositing layer. Its opacity
             follows the drawer so blur and tint fade together without animating
             the blur radius itself. */}
-        {hasBackdropBlur && (
+        {isNativeMobile && (
           <m.div
             data-slot="sidebar-blur"
             className="pointer-events-none fixed inset-0 z-50 backdrop-blur-sm backdrop-saturate-[.25] will-change-[opacity]"
@@ -169,7 +170,7 @@ export const MobileSidebar = ({
           <div
             className="relative h-full"
             style={{
-              paddingBottom: isPlatformMobile()
+              paddingBottom: isNativeMobile
                 ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
                 : 'var(--safe-area-bottom-padding)',
               paddingTop: 'var(--safe-area-top-padding)',

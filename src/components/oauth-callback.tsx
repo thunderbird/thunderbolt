@@ -4,6 +4,7 @@
 
 import { isMcpOAuthCallback } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState } from '@/lib/oauth-state'
+import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import Loading from '@/loading'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
@@ -73,7 +74,7 @@ export default function OAuthCallback() {
         const oauthState = await getOAuthState()
         const returnContext = oauthState.returnContext
 
-        if (returnContext?.startsWith('/') && !returnContext.startsWith('//')) {
+        if (isSafeRelativePath(returnContext)) {
           navigate(returnContext, { state: { oauth: oauthPayload } })
         } else if (returnContext === 'onboarding') {
           navigate('/chats/new', { state: { oauth: oauthPayload } })

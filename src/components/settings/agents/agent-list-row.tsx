@@ -8,9 +8,6 @@ import type { ReactNode } from 'react'
 import { IconTile } from '@/components/settings/icon-tile'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 
-/** The square icon box that leads every agent list row and detail header. */
-export const AgentIconTile = ({ children }: { children: ReactNode }) => <IconTile>{children}</IconTile>
-
 type AgentListRowProps = {
   icon: ReactNode
   title: ReactNode
@@ -50,7 +47,7 @@ export const AgentListRow = ({
     <SettingsSelectableRow
       title={title}
       subtitle={<span data-testid={subtitleTestId}>{subtitle}</span>}
-      leading={<AgentIconTile>{icon}</AgentIconTile>}
+      leading={<IconTile>{icon}</IconTile>}
       isSelected={isSelected}
       isDimmed={isDimmed}
       onSelect={onOpen}

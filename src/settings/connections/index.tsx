@@ -147,20 +147,18 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   // wasm chunk lazy and off the entry bundle (and the http/sse flow).
   const appNodeId = useAppNodeId(isIroh, deps.loadAppNodeId)
 
-  // The add/edit form surfaces at most one error: a JSON import failure
-  // (advanced), an Add failure, an Edit save failure (Save Changes), or an
-  // OAuth authorization failure. The title is derived from the error itself —
-  // not the current mode — so a message is always labeled by its own context
-  // (switching modes clears the other sources, see `changeMode`).
-  const formError = importError
-    ? { title: 'Import failed', body: importError }
-    : addError
-      ? { title: 'Add failed', body: addError }
-      : updateError
-        ? { title: 'Save failed', body: updateError }
-        : dialogError
-          ? { title: 'Authorization error', body: dialogError }
-          : null
+  // The add/edit form surfaces at most one error: the first non-null source
+  // wins. The title is derived from the error itself — not the current mode —
+  // so a message is always labeled by its own context (switching modes clears
+  // the other sources, see `changeMode`).
+  const formErrorSources = [
+    { title: 'Import failed', body: importError },
+    { title: 'Add failed', body: addError },
+    { title: 'Save failed', body: updateError },
+    { title: 'Authorization error', body: dialogError },
+  ]
+  const formError =
+    formErrorSources.find((source): source is { title: string; body: string } => source.body != null) ?? null
 
   const { servers, credentialsById, serverTools } = useMcpServersData(db, mcpServers)
 
@@ -179,9 +177,11 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     enrollIroh: runEnroll,
   })
 
+  /** The live provider connection for a stored server row, when one exists. */
+  const connectionFor = (serverId: string) => mcpServers.find((s) => s.id === serverId)
+
   const getConnectionStatus = (server: McpServer): 'connected' | 'connecting' | 'disconnected' => {
-    // Get real connection status from MCP provider
-    const mcpServer = mcpServers.find((s) => s.id === server.id)
+    const mcpServer = connectionFor(server.id)
     if (mcpServer) {
       return mcpServer.isConnected ? 'connected' : 'disconnected'
     }
@@ -218,7 +218,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     if (explicit) {
       return explicit
     }
-    const conn = mcpServers.find((s) => s.id === server.id)
+    const conn = connectionFor(server.id)
     const decision = deriveOAuthCardDecision({
       isConnected: conn?.isConnected ?? false,
       credentialType: credentialsById[server.id]?.type ?? 'none',
@@ -237,7 +237,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   /** A genuine connection failure: enabled, not connected, has an error, and
    *  not an OAuth needs-auth case (those get the Authorize affordance instead). */
   const getConnectionError = (server: McpServer): Error | null => {
-    const conn = mcpServers.find((s) => s.id === server.id)
+    const conn = connectionFor(server.id)
     const oauthState = getOAuthCardState(server)
     return server.enabled === 1 && !conn?.isConnected && conn?.error && oauthState === null ? conn.error : null
   }
@@ -286,7 +286,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
             urlValidation={formController.urlValidation}
             isUrlReady={formController.isUrlReady}
             isSaveReady={formController.isSaveReady}
-            editProbeWaived={formController.editProbeWaived}
+            isEditProbeWaived={formController.isEditProbeWaived}
             isAddAuthorizePending={isAddAuthorizePending}
             isSavePending={formController.updateMutation.isPending || formController.addMutation.isPending}
             isImportPending={formController.importMutation.isPending}
@@ -315,7 +315,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       )
     }
     if (activeServer) {
-      const conn = mcpServers.find((s) => s.id === activeServer.id)
+      const conn = connectionFor(activeServer.id)
       // Tools render only for the LIVE connection — after a drop the panel
       // shows its error state, never the previous connection's cached list.
       // (During an in-place reconnect, e.g. re-authorize, isConnected stays
@@ -354,14 +354,14 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   }
 
   const toggleSelection = (next: NonNullable<ConnectionSelection>) => {
-    // An integration error is scoped to the aside it happened in — don't
-    // carry it over to whichever panel opens next.
     // Selecting a row supersedes an open add/edit form (same as the agents page).
     if (form.isAddFormOpen) {
       formController.cancel()
+      dispatch({ type: 'SELECTION_CHANGED', selection: next })
+      return
     }
-    const selection = selected?.kind === next.kind && selected.id === next.id && !form.isAddFormOpen ? null : next
-    dispatch({ type: 'SELECTION_CHANGED', selection })
+    const isReselected = selected?.kind === next.kind && selected.id === next.id
+    dispatch({ type: 'SELECTION_CHANGED', selection: isReselected ? null : next })
   }
 
   const openAddForm = () => {
@@ -369,12 +369,20 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     form.openAddForm()
   }
 
+  /** Run an action against a stored server row, ignoring ids that no longer resolve (deleted mid-render). */
+  const withServer = (id: string, action: (server: McpServer) => void) => {
+    const server = servers.find((s) => s.id === id)
+    if (server) {
+      action(server)
+    }
+  }
+
   return (
     <div className="relative flex h-full">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <ConnectionsList
           integrations={integrationsController.integrations}
-          integrationsReady={integrationsController.integrationsReady}
+          areIntegrationsReady={integrationsController.areIntegrationsReady}
           servers={servers}
           serverStatus={rowStatus}
           activeKey={panelOpen && selected && !form.isAddFormOpen ? `${selected.kind}:${selected.id}` : null}
@@ -383,18 +391,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           onSelectServer={(id) => toggleSelection({ kind: 'server', id })}
           onToggleIntegration={integrationsController.toggle}
           onToggleServer={(id, enabled) => formController.toggleMutation.mutate({ id, enabled })}
-          onEditServer={(id) => {
-            const server = servers.find((s) => s.id === id)
-            if (server) {
-              formController.edit(server)
-            }
-          }}
-          onDeleteServer={(id) => {
-            const server = servers.find((s) => s.id === id)
-            if (server) {
-              dispatch({ type: 'DELETE_REQUESTED', server })
-            }
-          }}
+          onEditServer={(id) => withServer(id, formController.edit)}
+          onDeleteServer={(id) => withServer(id, (server) => dispatch({ type: 'DELETE_REQUESTED', server }))}
           error={integrationError}
         />
       </div>

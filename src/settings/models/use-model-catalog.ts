@@ -53,6 +53,10 @@ export const modelCatalogReducer = (state: ModelCatalogState, action: ModelCatal
   }
 }
 
+/** The sentinel combobox entry that switches the form into free-text model entry.
+ *  Shared by the add and edit forms so the `'custom'` id has one source. */
+export const customModelItem: ComboboxItem = { id: 'custom', label: 'Custom' }
+
 /** Maps catalog entries to combobox items (name falls back to the raw id). */
 export const catalogToComboboxItems = (models: AvailableModel[]): ComboboxItem[] =>
   models.map((candidate) => ({

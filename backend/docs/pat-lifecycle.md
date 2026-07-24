@@ -17,7 +17,7 @@ curl --fail-with-body --silent --show-error \
   --data '{"name":"ci"}'
 ```
 
-Response contains plaintext `key` once. Store that value as `THUNDERBOLT_TOKEN`. New keys expire after `API_KEY_DEFAULT_EXPIRES_IN` seconds; default is `7776000` seconds (90 days). Creation may include `expiresIn` in seconds to request another plugin-supported lifetime (currently 1–365 days). Listing never returns plaintext key.
+Response contains the plaintext `key` once. Store that value as `THUNDERBOLT_TOKEN`. New keys expire after `API_KEY_DEFAULT_EXPIRES_IN` seconds; the default is `7776000` seconds (90 days). The create request may include `expiresIn` (seconds) to request a different lifetime supported by the plugin (currently 1–365 days). Listing never returns the plaintext key.
 
 ## List
 
@@ -39,4 +39,4 @@ curl --fail-with-body --silent --show-error \
   --data '{"keyId":"<key-id>"}'
 ```
 
-Deletion revokes key immediately. If PAT may be compromised, revoke it, replace stored `THUNDERBOLT_TOKEN`, and issue a new key. CLI reads PAT from `THUNDERBOLT_TOKEN` and sends it as `x-api-key`; API-key sessions and disabled per-key rate limiting are deliberate for headless automation. Account/IP-level limits still apply.
+Deletion revokes the key immediately. If a PAT may be compromised, revoke it, replace the stored `THUNDERBOLT_TOKEN`, and issue a new key. The CLI reads the PAT from `THUNDERBOLT_TOKEN` and sends it as `x-api-key`; API-key sessions carry a generous per-key rate limit (300 requests/minute) sized for headless automation. Account/IP-level limits still apply.

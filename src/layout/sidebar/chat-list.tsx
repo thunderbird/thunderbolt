@@ -72,14 +72,14 @@ export const ChatList = ({
       scrollContainer.removeEventListener('scroll', updateScrollShadows)
       window.removeEventListener('resize', updateScrollShadows)
     }
+    // `showSearch` isn't read in the effect but expanding/collapsing the search
+    // input changes the list height, so the shadows must be re-measured.
   }, [chatThreads.length, debouncedSearchQuery, onContentBelowChange, showSearch])
 
   const searchInput = (
     <div
       className={`overflow-hidden transition-[max-height,opacity,margin-top] duration-300 ease-in-out flex-shrink-0 ${
-        showSearch && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery)
-          ? 'max-h-12 opacity-100 mt-2'
-          : 'max-h-0 opacity-0'
+        showSearch && !isCollapsed && hasListContent ? 'max-h-12 opacity-100 mt-2' : 'max-h-0 opacity-0'
       }`}
     >
       <SearchInput

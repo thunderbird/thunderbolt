@@ -14,6 +14,7 @@ import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import { getProviderDisplay, ModelProviderIconTile } from './model-presentation'
 
+/** Copy shown in the actions menu for built-in models. Exported for unit tests. */
 export const systemModelMenuMessage = "Built-in models can't be edited or removed"
 
 type ModelDetailProps = {
@@ -24,6 +25,7 @@ type ModelDetailProps = {
   onClose: () => void
 }
 
+/** Read-only detail panel for one model: provider identity, config fields, and the ⋯ actions menu. */
 export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: ModelDetailProps) => (
   <DetailPanel
     icon={<ModelProviderIconTile model={model} />}

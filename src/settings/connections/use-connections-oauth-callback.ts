@@ -39,7 +39,11 @@ export const useConnectionsOAuthCallback = ({
     }
     processedStateRef.current = state
     if (callback.kind === 'mcp') {
-      void processMcpCallback(callback.callback)
+      // The MCP hook surfaces failures through its own card state; this catch only
+      // guards against an unexpected rejection escaping as an unhandled rejection.
+      void Promise.resolve(processMcpCallback(callback.callback)).catch((error) => {
+        console.error('Failed to complete MCP OAuth callback:', error)
+      })
       return
     }
 

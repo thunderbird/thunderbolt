@@ -57,6 +57,8 @@ mise.toml
 !.claude/skills/
 !.claude/skills/thunder-deep-review/
 !.claude/skills/thunder-deep-review/**
+!.claude/skills/thunder-perf-hunt/
+!.claude/skills/thunder-perf-hunt/**
 .zed/**
 .zedscratches/**
 .mcp.json
@@ -80,3 +82,7 @@ Pulumi.*.yaml
 
 # Astro
 .astro/
+
+# thunder-perf-hunt run artifacts (reports, screenshots) + throwaway pglite data
+.perf-hunt/
+.pglite/

@@ -1,0 +1,21 @@
+{
+  "$comment": "Learned overlay for thunder-perf-hunt. Only false-positive exclusions and crawler-discovered scenarios live here (safe to auto-append). Everything else is a reviewed code change. See references/self-improve.md.",
+  "excludeSignatures": [
+    {
+      "category": "console-error",
+      "match": "Ehbp-Response-Nonce",
+      "reason": "Test-env artifact: the explorer clicks the real Send-message affordance, but the anonymous perf stack has no AI provider key, so the backend returns 503 and the client surfaces it as a 'Missing Ehbp-Response-Nonce header' protocol error. Not a shippable bug. (Use the /message-simulator scenario for the keyless streaming path.)"
+    },
+    {
+      "category": "console-error",
+      "match": "503 (Service Unavailable)",
+      "reason": "Test-env artifact: inference proxy returns 503 in the keyless perf stack when the explorer sends a real chat message. Not a shippable bug."
+    },
+    {
+      "category": "a11y",
+      "match": "chat-streaming-sim",
+      "reason": "The chat-streaming-sim scenario targets the dev-only /message-simulator page (tree-shaken from production builds), and exists to measure the streaming render hot path — its axe findings (e.g. an unlabeled dev Combobox) are not shipped-user concerns."
+    }
+  ],
+  "extraScenarios": []
+}

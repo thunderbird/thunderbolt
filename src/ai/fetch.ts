@@ -21,7 +21,7 @@ import { getLocalSetting } from '@/stores/local-settings-store'
 import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import { isSsoMode } from '@/lib/auth-mode'
-import { getAuthToken } from '@/lib/auth-token'
+import { getAuthToken, getUserCacheSecret } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
@@ -109,7 +109,7 @@ let userTinfoilClient: SecureClient | null = null
  */
 const createSystemTinfoilClient = (cloudUrl: string): Promise<SecureClient> => {
   const clientPromise = import('tinfoil').then(
-    ({ SecureClient }) => new SecureClient({ baseURL: `${cloudUrl}/tinfoil` }),
+    ({ SecureClient }) => new SecureClient({ baseURL: `${cloudUrl}/tinfoil`, userCacheSecret: getUserCacheSecret() }),
   )
   void clientPromise.catch(() => systemTinfoilClients.delete(cloudUrl))
   systemTinfoilClients.set(cloudUrl, clientPromise)
@@ -163,7 +163,7 @@ const evictSystemTinfoilClient = (): void => {
 export const getTinfoilClient = async (): Promise<SecureClient> => {
   if (!userTinfoilClient) {
     const { SecureClient } = await import('tinfoil')
-    userTinfoilClient = new SecureClient()
+    userTinfoilClient = new SecureClient({ userCacheSecret: getUserCacheSecret() })
   }
   await userTinfoilClient.ready()
   return userTinfoilClient

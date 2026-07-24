@@ -151,7 +151,7 @@
     "remark-parse": "^11.0.0",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "tinfoil": "^1.1.4",
+    "tinfoil": "^1.1.11",
     "unified": "^11.0.5",
     "uuid": "^14.0.0",
     "web-haptics": "^0.0.6",

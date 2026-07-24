@@ -126,6 +126,13 @@ describe('createBuiltInAdapter persistent harness', () => {
         supportsTools: true,
         sourceCollector: [],
         toolset,
+        skills: [
+          {
+            name: 'review',
+            description: 'Use for reviews.',
+            instruction: 'Follow project style.',
+          },
+        ],
         mcpToolsMetadata: undefined,
         stableSystemPrompt: 'stable prompt',
         volatileSystemPrompt: `timestamp ${index + 1}`,
@@ -197,10 +204,10 @@ describe('createBuiltInAdapter persistent harness', () => {
       await response.text()
     }
 
-    await send(request([{ role: 'user', parts: [{ type: 'text', text: 'first' }] }]))
+    await send(request([{ role: 'user', parts: [{ type: 'text', text: '/review' }] }]))
     await send(
       request([
-        { role: 'user', parts: [{ type: 'text', text: 'first' }] },
+        { role: 'user', parts: [{ type: 'text', text: '/review' }] },
         { role: 'assistant', parts: [{ type: 'text', text: 'reply' }] },
         { role: 'user', parts: [{ type: 'text', text: 'second' }] },
       ]),
@@ -208,7 +215,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     context.regenerationRevision = 1
     await send(
       request([
-        { role: 'user', parts: [{ type: 'text', text: 'first' }] },
+        { role: 'user', parts: [{ type: 'text', text: '/review' }] },
         { role: 'assistant', parts: [{ type: 'text', text: 'reply' }] },
         { role: 'user', parts: [{ type: 'text', text: 'second' }] },
       ]),
@@ -222,10 +229,10 @@ describe('createBuiltInAdapter persistent harness', () => {
       ['read', 'third'],
     ])
     expect(toPiCalls).toEqual(toolsets)
-    expect(promptCalls.map((call) => call.text)).toEqual(['first', 'second', 'second'])
+    expect(promptCalls.map((call) => call.text)).toEqual(['Follow project style.\n\n/review', 'second', 'second'])
     expect(buildCalls[0]?.history).toEqual([])
     expect(buildCalls[1]?.history).toEqual([
-      { role: 'user', text: 'first' },
+      { role: 'user', text: '/review' },
       { role: 'assistant', text: 'reply' },
     ])
     const firstSystemPrompt = buildCalls[0]?.systemPrompt as () => string

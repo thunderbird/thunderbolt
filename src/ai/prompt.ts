@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { widgetPrompts } from '@/widgets'
 import type { ModelProfile } from '@/types'
+import { buildSkillListing, type SkillDefinition } from '@shared/agent-core/skills'
 
 /** Parameters to build the system prompt */
 export type PromptParams = {
@@ -26,6 +26,8 @@ export type PromptParams = {
   modeSystemPrompt?: string
   /** Summary of connected MCP servers (name + tool count) */
   mcpServersSummary?: string
+  /** Enabled skills available through progressive disclosure */
+  skills?: readonly SkillDefinition[]
 }
 
 export type PromptParts = {
@@ -46,6 +48,7 @@ export const createPromptParts = (
     integrationStatus,
     modeSystemPrompt,
     mcpServersSummary,
+    skills = [],
   }: PromptParams,
   currentDate: Date = new Date(),
 ): PromptParts => {
@@ -82,6 +85,7 @@ export const createPromptParts = (
   ]
     .filter(Boolean)
     .join('\n')
+  const skillListing = buildSkillListing(skills)
 
   // Output Format asks models to format math as `$…$` / `$$…$$` only (never
   // `\(…\)` / `\[…\]`). The chat renderer (src/components/chat/memoized-markdown.tsx)
@@ -131,6 +135,7 @@ Think about what widget components to show the user, then work backwards to the 
 Don't mention tool names unless asked.
 ${toolsOverride ? `\n${toolsOverride}` : ''}
 ${mcpServersSummary ? `\n## Connected MCP Servers\nYou have tools from these external services (tool names prefixed by server name):\n${mcpServersSummary}\nUse these when the user asks about these services.` : ''}
+${skillListing ? `\n${skillListing}` : ''}
 
 ## Link Previews
 • Aggregate pages (listicles, "Top 10") are for DISCOVERY ONLY
@@ -138,11 +143,10 @@ ${mcpServersSummary ? `\n## Connected MCP Servers\nYou have tools from these ext
 • For products: link to official manufacturer pages
 ${linkPreviewsOverride ? `\n${linkPreviewsOverride}` : ''}
 
-${widgetPrompts}
-
 # Output Format
 Cite sources with [N] INLINE at the end of the sentence, on the SAME LINE — never on a new line or separate paragraph.
 Place each [N] once after the period of the last sentence using that source.
+Do not emit <widget:citation> tags, 【1】 brackets, footnotes, or source lists at the end.
 Correct: "The metro area has 37 million residents. [1] [2]"
 Wrong: "The metro area has 37 million residents.\n[1]" (citation on new line)
 Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" (repeated [1])

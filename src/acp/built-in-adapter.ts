@@ -54,6 +54,7 @@ import {
 } from '@/ai/fetch'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
+import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
@@ -440,7 +441,10 @@ const fetchViaHarness = async (
     return fallback()
   }
 
-  const { history, prompt } = await prepareBuiltInConversation(parseMessages(init), context.skillInstructions)
+  const messages = parseMessages(init)
+  const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
+  const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
+  const { history, prompt } = await prepareBuiltInConversation(messages, skillInstructions)
 
   // Build the thread's harness on its first turn (seeding `history`); reuse it on
   // every later turn whose config signature is unchanged, and rebuild it when the

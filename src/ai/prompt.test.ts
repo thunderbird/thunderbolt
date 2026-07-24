@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
+import { widgetRegistry } from '@/widgets'
 import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
 import { createPrompt, createPromptParts, type PromptParams } from './prompt'
 
@@ -143,6 +144,38 @@ describe('createPrompt', () => {
   test('keeps the verify-before-answering directive', () => {
     const result = createPrompt(baseParams)
     expect(result).toContain('never state facts without verifying them first')
+  })
+
+  test('lists enabled skill names and descriptions without instruction bodies', () => {
+    const result = createPrompt({
+      ...baseParams,
+      skills: [
+        {
+          name: 'daily-brief',
+          description: 'Use for a daily rundown.',
+          instruction: 'Gather private full instructions here.',
+        },
+      ],
+    })
+
+    expect(result).toContain('## Skills')
+    expect(result).toContain('- daily-brief: Use for a daily rundown.')
+    expect(result).not.toContain('Gather private full instructions here.')
+  })
+
+  test('does not inject widget instruction bodies into every prompt', () => {
+    const result = createPrompt(baseParams)
+
+    for (const widget of widgetRegistry) {
+      expect(result).not.toContain(widget.module.instructions)
+    }
+    expect(result).not.toContain('# Widget Components')
+  })
+
+  test('keeps citation tags forbidden after removing widget instruction injection', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result).toContain('Do not emit <widget:citation> tags')
   })
 
   test('keeps the per-turn timestamp in the suffix (prefix-cache friendly)', () => {

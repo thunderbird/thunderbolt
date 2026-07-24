@@ -39,6 +39,7 @@ import type {
 import { describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
+import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '@shared/agent-core/skills'
 import type { AcpTransport } from './types'
 import { connectAcpAdapter, type AcpAdapterContext } from './acp-adapter'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
@@ -106,6 +107,7 @@ const buildFakeConnection = (
     hangInitialize?: boolean
     loadSession?: boolean
     resume?: boolean
+    skills?: boolean
     /** Reject the resume/load call so a test exercises the tier fallthrough. */
     rejectResume?: boolean
     rejectLoad?: boolean
@@ -143,6 +145,7 @@ const buildFakeConnection = (
         agentCapabilities: {
           loadSession: opts.loadSession ?? false,
           sessionCapabilities: opts.resume ? { resume: {} } : {},
+          _meta: opts.skills ? skillsCapabilityMeta : undefined,
         },
       })
     }
@@ -227,6 +230,19 @@ const conversationInit = (turns: { role: 'user' | 'assistant'; text: string }[])
 /** Read the text of the single text block the adapter posted on `session/prompt`. */
 const sentPromptText = (calls: { prompt: PromptRequest[] }, index = 0): string =>
   (calls.prompt[index]?.prompt?.[0] as { type: string; text: string }).text
+
+const enabledSkills: SkillDefinition[] = [
+  {
+    name: 'daily-brief',
+    description: 'Build a concise daily rundown.',
+    instruction: 'Gather current weather and calendar details.',
+  },
+  {
+    name: 'meeting-notes',
+    description: 'Summarize a meeting.',
+    instruction: 'Extract decisions and action items.',
+  },
+]
 
 describe('connectAcpAdapter — handshake failure modes', () => {
   it('rejects after handshakeTimeoutMs when initialize never resolves and tears down the transport', async () => {
@@ -350,6 +366,109 @@ describe('connectAcpAdapter — handshake failure modes', () => {
 
     const sent = calls.prompt[0]?.prompt?.[0] as { type: string; text: string }
     expect(sent.text).toBe('just a normal message')
+  })
+})
+
+describe('connectAcpAdapter — skills capability', () => {
+  it('detects capability metadata from initialize and sends full skills on session/new', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls } = buildFakeConnection({ skills: true })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+
+    expect(adapter.capabilities?.skills).toBe(true)
+    await adapter.ensureSession(threadCtx('thread-new'))
+
+    expect(calls.newSession[0]?._meta).toEqual(buildWireSkillsMeta(enabledSkills))
+  })
+
+  it('sends full skills on supported session/resume and session/load requests', async () => {
+    const resumeTransport = buildFakeTransport().transport
+    const resumeConnection = buildFakeConnection({ skills: true, resume: true })
+    const resumeAdapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => resumeTransport,
+      ClientSideConnection: resumeConnection.FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+    await resumeAdapter.ensureSession(threadCtx('thread-resume', { acpSessionId: 'existing-resume' }))
+
+    expect(resumeConnection.calls.resumeSession[0]?._meta).toEqual(buildWireSkillsMeta(enabledSkills))
+
+    const loadTransport = buildFakeTransport().transport
+    const loadConnection = buildFakeConnection({ skills: true, loadSession: true })
+    const loadAdapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => loadTransport,
+      ClientSideConnection: loadConnection.FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+    await loadAdapter.ensureSession(threadCtx('thread-load', { acpSessionId: 'existing-load' }))
+
+    expect(loadConnection.calls.loadSession[0]?._meta).toEqual(buildWireSkillsMeta(enabledSkills))
+  })
+
+  it('keeps catalog bodies out of capability prompts while preserving forced invocation', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ skills: true })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+
+    const response = await adapter.fetch(
+      promptInit('/daily-brief'),
+      threadCtx('thread-capability', { skillInstructions: [enabledSkills[0].instruction] }),
+    )
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(response)
+    })
+
+    expect(sentPromptText(calls)).toBe('Gather current weather and calendar details.\n\n/daily-brief')
+    expect(sentPromptText(calls)).not.toContain('Extract decisions and action items.')
+  })
+
+  it('discloses each forced skill once on the first prompt and preserves forced invocation later', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+
+    const firstResponse = await adapter.fetch(
+      promptInit('/daily-brief'),
+      threadCtx('thread-fallback', { skillInstructions: [enabledSkills[0].instruction] }),
+    )
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(firstResponse)
+    })
+
+    const firstPrompt = sentPromptText(calls)
+    expect(firstPrompt).toContain('- daily-brief: Build a concise daily rundown.')
+    expect(firstPrompt.split(enabledSkills[0].instruction)).toHaveLength(2)
+    expect(firstPrompt).toContain('Extract decisions and action items.')
+    expect(firstPrompt.endsWith('/daily-brief')).toBe(true)
+
+    const secondResponse = await adapter.fetch(
+      promptInit('/daily-brief'),
+      threadCtx('thread-fallback', { skillInstructions: [enabledSkills[0].instruction] }),
+    )
+    await act(async () => {
+      await getClock().runAllAsync()
+      await readSse(secondResponse)
+    })
+
+    const secondPrompt = sentPromptText(calls, 1)
+    expect(secondPrompt).toContain(enabledSkills[0].instruction)
+    expect(secondPrompt.endsWith('/daily-brief')).toBe(true)
   })
 })
 

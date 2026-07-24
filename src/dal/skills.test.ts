@@ -4,6 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
+import { defaultSkillDailyBrief, defaultSkillWeatherForecast } from '@/defaults/skills'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import {
@@ -24,6 +25,7 @@ import {
   softDeleteSkill,
   updateSkill,
   validateSkillName,
+  type UpdateSkillInput,
 } from './skills'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -46,6 +48,12 @@ const seed = async (input: { name: string; label?: string; description?: string;
     description: input.description ?? `desc for ${input.name}`,
     instruction: input.instruction ?? `instruction for ${input.name}`,
   })
+
+/** Insert one stable widget contract for DAL mutation tests. */
+const seedWidgetSkill = async () => {
+  await getDb().insert(skillsTable).values(defaultSkillWeatherForecast)
+  return defaultSkillWeatherForecast
+}
 
 describe('validateSkillName (AgentSkills spec)', () => {
   it('accepts canonical slugs', () => {
@@ -191,6 +199,36 @@ describe('skills DAL', () => {
       const a = await seed({ name: 'legit-name' })
       await expect(updateSkill(getDb(), a.id, { name: 'SHOUTING' })).rejects.toBeInstanceOf(SkillNameInvalidError)
     })
+
+    it('allows enabled patches for widget skills', async () => {
+      const widget = await seedWidgetSkill()
+
+      await updateSkill(getDb(), widget.id, { enabled: 0 })
+
+      const after = await getSkill(getDb(), widget.id)
+      expect(after?.enabled).toBe(0)
+      expect(after?.pinnedOrder).toBeNull()
+    })
+
+    it('rejects locked-field patches for widget skills', async () => {
+      const widget = await seedWidgetSkill()
+      const disallowedPatches: UpdateSkillInput[] = [
+        { name: 'renamed-widget' },
+        { label: 'Renamed Widget' },
+        { description: 'Changed description' },
+        { instruction: 'Changed instruction' },
+        { pinnedOrder: 2 },
+        { enabled: 0, description: 'Mixed allowed and disallowed fields' },
+      ]
+
+      for (const patch of disallowedPatches) {
+        await expect(updateSkill(getDb(), widget.id, patch)).rejects.toThrow(/widget skill/i)
+      }
+
+      const after = await getSkill(getDb(), widget.id)
+      expect(after?.enabled).toBe(1)
+      expect(after?.description).toBe(defaultSkillWeatherForecast.description)
+    })
   })
 
   describe('softDeleteSkill', () => {
@@ -224,9 +262,28 @@ describe('skills DAL', () => {
       const all = await getAllSkills(getDb())
       expect(all.find((s) => s.id === skill.id)).toBeUndefined()
     })
+
+    it('rejects deleting widget skills', async () => {
+      const widget = await seedWidgetSkill()
+
+      await expect(softDeleteSkill(getDb(), widget.id)).rejects.toThrow(/widget skill/i)
+      expect(await getSkill(getDb(), widget.id)).toEqual(widget)
+    })
   })
 
   describe('setPinned', () => {
+    it('rejects widget skills but pins task skills', async () => {
+      const widget = await seedWidgetSkill()
+      const task = { ...defaultSkillDailyBrief, pinnedOrder: null }
+      await getDb().insert(skillsTable).values(task)
+
+      await expect(setPinned(getDb(), widget.id, 0)).rejects.toThrow(/widget skill/i)
+      await setPinned(getDb(), task.id, 0)
+
+      expect((await getSkill(getDb(), widget.id))?.pinnedOrder).toBeNull()
+      expect((await getSkill(getDb(), task.id))?.pinnedOrder).toBe(0)
+    })
+
     it('pins and unpins', async () => {
       const skill = await seed({ name: 'p' })
       await setPinned(getDb(), skill.id, 0)

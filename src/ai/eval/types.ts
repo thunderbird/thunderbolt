@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ThunderboltUIMessage } from '@/types'
+import type { WidgetName } from '@/widgets'
+
+export type { WidgetName }
 
 /** A single evaluation scenario: one prompt tested against one model in one mode */
 export type EvalScenario = {
@@ -26,6 +29,8 @@ export type EvalCriteria = {
   mustProduceOutput: boolean
   minCitations?: number
   mustUseLinkPreviews?: boolean
+  mustUseWidget?: WidgetName
+  mustNotUseWidgets?: boolean
   noHomepageLinks?: boolean
   noReviewSites?: boolean
   maxSteps?: number

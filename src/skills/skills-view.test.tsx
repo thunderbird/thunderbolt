@@ -19,6 +19,7 @@ import '@/test-utils/framer-motion-mock'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
+import { defaultSkillWeatherForecast } from '@/defaults/skills'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { SkillsView } from './skills-view'
@@ -69,6 +70,29 @@ const flush = async () => {
 }
 
 describe('SkillsView state machine', () => {
+  describe('widget rendering contracts', () => {
+    it('offers enable/disable without edit or delete affordances', async () => {
+      await getDb().insert(skillsTable).values(defaultSkillWeatherForecast)
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+
+      const rowLabel = await waitForElement(() => screen.queryByText('Weather Forecast'))
+      fireEvent.contextMenu(rowLabel)
+      await flush()
+      expect(screen.queryByText('Edit')).not.toBeInTheDocument()
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+
+      fireEvent.click(rowLabel)
+      await flush()
+      expect(screen.getByText('Built-in skill · Read-only')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('switch', { name: 'Disable Weather Forecast' }))
+      await flush()
+      expect((await getSkill(getDb(), defaultSkillWeatherForecast.id))?.enabled).toBe(0)
+    })
+  })
+
   describe('handleToggleEnabled — auto-unpin on disable', () => {
     it('unpins a pinned skill when its row switch is turned off', async () => {
       const skill = await createSkill(getDb(), {

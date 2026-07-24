@@ -15,17 +15,19 @@ import type { AgentTool, Session } from '@earendil-works/pi-agent-core'
 import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-coding-agent'
 import { configureNativeWebSearch, resolveModel } from './model.ts'
+import { createSkillTool } from './skill-tool.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 import type { HarnessBundle, HarnessConfig } from './types.ts'
 import { createWorkspaceTools } from './workspace-jail.ts'
 import { createWebFetchTool } from './webfetch.ts'
 
 /** Build complete toolset shared by local CLI and ACP-served harnesses. */
-export const createHarnessTools = (config: Pick<HarnessConfig, 'cwd' | 'workspaceRoot'>): AgentTool[] => {
+export const createHarnessTools = (config: Pick<HarnessConfig, 'cwd' | 'workspaceRoot' | 'skills'>): AgentTool[] => {
   const codingTools = config.workspaceRoot
     ? createWorkspaceTools(config.workspaceRoot)
     : [createBashTool(config.cwd), createReadTool(config.cwd), createWriteTool(config.cwd), createEditTool(config.cwd)]
-  return [...codingTools, createWebFetchTool()]
+  const skillTools = config.skills?.length ? [createSkillTool(config.skills)] : []
+  return [...codingTools, createWebFetchTool(), ...skillTools]
 }
 
 /**
@@ -68,6 +70,7 @@ export const buildHarness = async (config: HarnessConfig, session?: Session): Pr
       cwd: config.cwd,
       modelId: config.announceModel ? config.model : undefined,
       bashEnabled: tools.some((tool) => tool.name === 'bash'),
+      skills: config.skills,
     }),
   })
   harness.on('before_provider_payload', ({ model: requestModel, payload }) => ({

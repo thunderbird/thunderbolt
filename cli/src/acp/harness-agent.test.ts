@@ -27,7 +27,13 @@ import type {
 } from '@agentclientprotocol/sdk'
 import type { StopReason as PiStopReason, AssistantMessage } from '@earendil-works/pi-ai'
 import { InMemorySessionRepo } from '@earendil-works/pi-agent-core'
-import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type {
+  AgentHarnessEvent,
+  Session as PiSession,
+  ToolCallEvent,
+  ToolCallResult,
+} from '@earendil-works/pi-agent-core'
+import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { createHarnessAgent } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
 import type { SessionStore } from './session-store.ts'
@@ -170,7 +176,45 @@ describe('createHarnessAgent (ACP server)', () => {
     expect(init.protocolVersion).toBe(PROTOCOL_VERSION)
     expect(init.agentCapabilities?.loadSession).toBe(false)
     expect(init.agentCapabilities?.sessionCapabilities?.resume).toBeDefined()
+    expect(init.agentCapabilities?._meta).toEqual(skillsCapabilityMeta)
     expect(init.agentInfo?.name).toBe('thunderbolt')
+  })
+
+  test('session/new and session/resume pass wire-delivered skills into harness config', async () => {
+    const capturedSkills: Array<readonly SkillDefinition[]> = []
+    const capturingBuilder: BuildServeHarness = async (harnessConfig) => {
+      capturedSkills.push(harnessConfig.skills ?? [])
+      return {
+        harness: {
+          subscribe: () => () => {},
+          registerToolCallGate: () => {},
+          prompt: async () => assistantMessage('stop'),
+          waitForIdle: async () => {},
+          abort: async () => {},
+        },
+        dispose: async () => {},
+      }
+    }
+    const skills: SkillDefinition[] = [
+      {
+        name: 'daily-brief',
+        description: 'Build a concise daily rundown.',
+        instruction: 'Gather current weather and calendar details.',
+      },
+    ]
+    const meta = buildWireSkillsMeta(skills)
+    const { client } = connectPair(capturingBuilder)
+    await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+
+    await client.newSession({ cwd: '/', mcpServers: [], _meta: meta })
+    await client.resumeSession({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      cwd: '/',
+      mcpServers: [],
+      _meta: meta,
+    })
+
+    expect(capturedSkills).toEqual([skills, skills])
   })
 
   test('session/resume opens the stored session by id and injects it into the harness (no replay)', async () => {
@@ -336,7 +380,7 @@ describe('createHarnessAgent (ACP server)', () => {
     expect(decisions).toEqual([undefined, undefined, undefined])
   })
 
-  test('webfetch is auto-allowed without prompting while bash stays gated', async () => {
+  test('webfetch and skill are auto-allowed without prompting while bash stays gated', async () => {
     const decisions: Array<ToolCallResult | undefined> = []
     const webBuilder: BuildServeHarness = async () => {
       let gate: ((event: ToolCallEvent) => Promise<ToolCallResult | undefined>) | null = null
@@ -356,6 +400,14 @@ describe('createHarnessAgent (ACP server)', () => {
               }),
             )
             decisions.push(
+              await gate?.({
+                type: 'tool_call',
+                toolCallId: 'skill',
+                toolName: 'skill',
+                input: { name: 'daily-brief' },
+              }),
+            )
+            decisions.push(
               await gate?.({ type: 'tool_call', toolCallId: 'shell', toolName: 'bash', input: { command: 'curl x' } }),
             )
             return assistantMessage('stop')
@@ -372,7 +424,7 @@ describe('createHarnessAgent (ACP server)', () => {
     const { sessionId } = await client.newSession({ cwd: '/', mcpServers: [] })
     await client.prompt({ sessionId, prompt: [{ type: 'text', text: 'web' }] })
 
-    expect(decisions).toEqual([undefined, { block: true, reason: 'user rejected bash' }])
+    expect(decisions).toEqual([undefined, undefined, { block: true, reason: 'user rejected bash' }])
     expect(permissions.map((request) => request.toolCall.toolCallId)).toEqual(['shell'])
   })
 

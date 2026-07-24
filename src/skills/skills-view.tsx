@@ -6,6 +6,7 @@ import { useCallback, useReducer } from 'react'
 
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
+import { isWidgetSkillId } from '@/defaults/skills'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
@@ -50,8 +51,9 @@ export const SkillsView = () => {
   // `editSkill` (selects an existing, likely disabled skill so the user can
   // enable it) or `createSkill` (opens the create form pre-filled with the
   // slug the user just typed — `''` opens a blank form); the pinned chips'
-  // "Edit skill" action sends `startEditSkill`, which lands straight in the
-  // edit form. Same consume-once pattern as `runSkill` in chat-prompt-input.
+  // "Edit skill" action sends `startEditSkill`, which opens an edit form or
+  // read-only widget detail. Same consume-once pattern as `runSkill` in
+  // chat-prompt-input.
   useConsumeNavState('editSkill', (id) => dispatch({ type: 'SELECT_SKILL', id }))
   useConsumeNavState('startEditSkill', (id) => dispatch({ type: 'START_EDIT', id }))
   useConsumeNavState('createSkill', (slug) => dispatch({ type: 'START_CREATE', initialName: slug || undefined }))
@@ -247,6 +249,7 @@ export const SkillsView = () => {
           name={skillDisplayName(activeSkill)}
           description={activeSkill.description}
           instruction={activeSkill.instruction}
+          readOnly={isWidgetSkillId(activeSkill.id)}
           onEdit={() => onEdit(activeSkill.id)}
           onDelete={() => onDelete(activeSkill.id)}
           onClose={() => dispatch({ type: 'BACK_TO_LIST' })}

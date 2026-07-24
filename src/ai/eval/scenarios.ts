@@ -299,6 +299,54 @@ const multiTurnChatPrompts: PromptDef[] = [
 ]
 
 // ──────────────────────────────────────────────
+// Widget Regression Prompts — baseline vs progressive disclosure parity
+// Citation is excluded because its contract forbids <widget:citation>.
+// Document-result is excluded because it requires Document Search mode/tool
+// results, which this runner does not support.
+// ──────────────────────────────────────────────
+
+const widgetChatPrompts: PromptDef[] = [
+  {
+    id: 'WIDGET_WEATHER_FORECAST',
+    prompt: "What's the weather like in Berlin this weekend?",
+    criteria: { mustProduceOutput: true, mustUseWidget: 'weather-forecast' },
+  },
+  {
+    id: 'WIDGET_CONNECT_INTEGRATION',
+    prompt: 'What meetings do I have on my Outlook calendar today?',
+    criteria: { mustProduceOutput: true, mustUseWidget: 'connect-integration' },
+  },
+  {
+    id: 'WIDGET_ASK',
+    prompt: 'Quiz me with one multiple-choice question about email protocols.',
+    criteria: { mustProduceOutput: true, mustUseWidget: 'ask' },
+  },
+  {
+    id: 'WIDGET_MAP',
+    prompt: 'Plot Seattle, Portland, and San Francisco together so I can compare their locations.',
+    criteria: { mustProduceOutput: true, mustUseWidget: 'map' },
+  },
+  {
+    id: 'WIDGET_NONE_FACTUAL',
+    prompt: 'Why does the sky appear blue?',
+    criteria: { mustProduceOutput: true, mustNotUseWidgets: true },
+  },
+  {
+    id: 'WIDGET_NONE_CODING',
+    prompt: 'Write a TypeScript function that returns the larger of two numbers.',
+    criteria: { mustProduceOutput: true, mustNotUseWidgets: true },
+  },
+]
+
+const widgetSearchPrompts: PromptDef[] = [
+  {
+    id: 'WIDGET_LINK_PREVIEW',
+    prompt: 'Find me three beginner-friendly TypeScript tutorials.',
+    criteria: { ...searchCriteria, mustUseWidget: 'link-preview' },
+  },
+]
+
+// ──────────────────────────────────────────────
 // Scenario Generation
 // ──────────────────────────────────────────────
 
@@ -328,6 +376,8 @@ const allScenarios: EvalScenario[] = [
   ...buildScenarios(validationSearchPrompts, 'search', searchCriteria),
   ...buildScenarios(validationResearchPrompts, 'research', researchCriteria),
   ...buildScenarios(multiTurnChatPrompts, 'chat', chatCriteria),
+  ...buildScenarios(widgetChatPrompts, 'chat', chatCriteria),
+  ...buildScenarios(widgetSearchPrompts, 'search', searchCriteria),
 ]
 
 /** Get scenarios filtered by model names and mode names */

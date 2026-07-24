@@ -48,6 +48,12 @@ import type {
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
+import {
+  buildSkillCatalog,
+  buildWireSkillsMeta,
+  supportsWireSkills,
+  type SkillDefinition,
+} from '@shared/agent-core/skills'
 import { blobToBase64, getAttachments, type HydratedAttachment } from '@/lib/attachments'
 import { renderMessageQuotesAsText } from '@/lib/quotes'
 import { getTransformer } from '@/files/transformers'
@@ -101,6 +107,7 @@ export const adaptCapabilities = (response: InitializeResponse): AgentCapabiliti
   const caps = response.agentCapabilities
   return {
     loadSession: caps?.loadSession ?? false,
+    skills: supportsWireSkills(caps?._meta),
     // `sessionCapabilities.resume` is an empty `SessionResumeCapabilities`
     // object (`{}`) when supported, `null`/absent otherwise — so presence, not
     // truthiness, is the signal.
@@ -162,6 +169,7 @@ export const buildPromptBlocks = async (
   embeddedContext: boolean,
   deps: PromptBlockDeps = defaultPromptBlockDeps,
   priorTranscript?: string,
+  sessionSkillDisclosure?: string,
 ): Promise<ContentBlock[]> => {
   const lastUser = [...parseRequestMessages(init)].reverse().find((m) => m.role === 'user')
   if (!lastUser) {
@@ -176,7 +184,7 @@ export const buildPromptBlocks = async (
   const userText = [quotesText, replyText].filter(Boolean).join('\n\n')
   // Skill instructions + (fallback) prior transcript ride the text block (ACP
   // has no system channel) — see composeAcpPrompt.
-  const text = composeAcpPrompt(skillInstructions, userText, priorTranscript)
+  const text = composeAcpPrompt(skillInstructions, userText, priorTranscript, sessionSkillDisclosure)
 
   const attachments = getAttachments(lastUser)
   if (attachments.length === 0) {
@@ -285,19 +293,30 @@ const extractPriorTranscript = (init: RequestInit): string | undefined => {
   return transcript.length > 0 ? transcript : undefined
 }
 
-/** Fold resolved user-skill instructions + (fallback) prior transcript into the
- *  single prompt-text channel ACP gives us. Order: skill instructions first
- *  (behavioral, system-like), the prior-conversation context block next, the
- *  live user text last — mirroring how the built-in pipeline layers system →
- *  history → prompt. Absent blocks are omitted; with none, the user text is
- *  sent unchanged. */
+/** Build one complete skill disclosure for an ACP agent without wire support. */
+const buildFallbackSkillDisclosure = (skills: readonly SkillDefinition[]): string | undefined => {
+  const catalog = buildSkillCatalog(skills)
+  if (!catalog) {
+    return undefined
+  }
+  const instructions = skills.map(({ name, instruction }) => `### ${name}\n${instruction}`).join('\n\n')
+  return `## Skills\n${catalog}\n\nFull skill instructions:\n\n${instructions}`
+}
+
+/** Fold session skill disclosure, forced user-skill instructions, and fallback
+ *  prior transcript into ACP's single prompt-text channel. Absent blocks are
+ *  omitted; with none, user text stays unchanged. */
 const composeAcpPrompt = (
   skillInstructions: string[] | undefined,
   userText: string,
   priorTranscript?: string,
+  sessionSkillDisclosure?: string,
 ): string =>
   [
-    skillInstructions && skillInstructions.length > 0 ? skillInstructions.join('\n\n') : undefined,
+    sessionSkillDisclosure,
+    sessionSkillDisclosure === undefined && skillInstructions && skillInstructions.length > 0
+      ? skillInstructions.join('\n\n')
+      : undefined,
     priorTranscript ? `Conversation so far:\n\n${priorTranscript}` : undefined,
     userText,
   ]
@@ -316,6 +335,8 @@ export type AcpAdapterDeps = {
   webSocketFactory?: WebSocketFactory
   /** Override throttle for tests of the prompt → translator pipeline. */
   textDeltaThrottleMs?: number
+  /** Resolve enabled app skills when a thread creates or restores its ACP session. */
+  getEnabledSkills?: () => Promise<SkillDefinition[]>
   /** Connect-phase timeout (ms). Defaults to a generous 30s. Tests inject a
    *  small value to exercise the timeout path deterministically. */
   handshakeTimeoutMs?: number
@@ -443,6 +464,7 @@ export const connectAcpAdapter = async (
   }
 
   const capabilities = await runInitialize()
+  const getEnabledSkills = deps.getEnabledSkills ?? (async () => [])
 
   // Resolved ACP session id per chat thread. `null` while a thread's first
   // resolution is in flight is impossible — we store the in-flight promise so
@@ -454,6 +476,7 @@ export const connectAcpAdapter = async (
   // prompt never persists an empty session id.
   type FreshSessionState = {
     readonly sessionId: string
+    readonly skillDisclosure?: string
     readonly persistence?: Promise<void>
   }
   const freshPending = new Map<string, FreshSessionState>()
@@ -475,10 +498,22 @@ export const connectAcpAdapter = async (
     if (existing) {
       return existing
     }
-    const resolveNew = async (): Promise<string> => {
-      const newSession = await guardHandshake(connection.newSession({ cwd: sessionCwd, mcpServers: [] }))
+    const resolveNew = async (
+      skills: readonly SkillDefinition[],
+      skillsMeta: Record<string, unknown> | undefined,
+    ): Promise<string> => {
+      const newSession = await guardHandshake(
+        connection.newSession({
+          cwd: sessionCwd,
+          mcpServers: [],
+          ...(skillsMeta ? { _meta: skillsMeta } : {}),
+        }),
+      )
       // Defer persistence + transcript seeding to the first real send.
-      freshPending.set(context.threadId, { sessionId: newSession.sessionId })
+      freshPending.set(context.threadId, {
+        sessionId: newSession.sessionId,
+        skillDisclosure: capabilities.skills ? undefined : buildFallbackSkillDisclosure(skills),
+      })
       return newSession.sessionId
     }
     // Try a stored-session restore, swallowing a runtime rejection (session
@@ -492,23 +527,39 @@ export const connectAcpAdapter = async (
       )
     const resolve = (async (): Promise<string> => {
       const stored = context.acpSessionId
+      const skills = await getEnabledSkills()
+      const skillsMeta = capabilities.skills ? buildWireSkillsMeta(skills) : undefined
       // `resume` restores execution state with no replay; `load` has the agent
       // replay its own transcript over `session/update`. Resume is tried first.
       if (
         stored &&
         capabilities.resume &&
-        (await tryRestore(connection.resumeSession({ sessionId: stored, cwd: sessionCwd, mcpServers: [] })))
+        (await tryRestore(
+          connection.resumeSession({
+            sessionId: stored,
+            cwd: sessionCwd,
+            mcpServers: [],
+            ...(skillsMeta ? { _meta: skillsMeta } : {}),
+          }),
+        ))
       ) {
         return stored
       }
       if (
         stored &&
         capabilities.loadSession &&
-        (await tryRestore(connection.loadSession({ sessionId: stored, cwd: sessionCwd, mcpServers: [] })))
+        (await tryRestore(
+          connection.loadSession({
+            sessionId: stored,
+            cwd: sessionCwd,
+            mcpServers: [],
+            ...(skillsMeta ? { _meta: skillsMeta } : {}),
+          }),
+        ))
       ) {
         return stored
       }
-      return resolveNew()
+      return resolveNew(skills, skillsMeta)
     })()
     // Evict on failure so a transient handshake error doesn't poison the thread
     // — the next send retries a fresh resolution.
@@ -520,27 +571,30 @@ export const connectAcpAdapter = async (
   /** Persist and consume one freshly minted session marker. A failed write
    *  restores the marker so the next send retries instead of silently losing
    *  both durable session continuity and first-send transcript replay. */
-  const consumeFreshSession = async (context: AgentAdapterContext, sessionId: string): Promise<boolean> => {
+  const consumeFreshSession = async (
+    context: AgentAdapterContext,
+    sessionId: string,
+  ): Promise<FreshSessionState | null> => {
     const pending = freshPending.get(context.threadId)
     if (!pending || pending.sessionId !== sessionId) {
-      return false
+      return null
     }
     if (pending.persistence) {
       await pending.persistence
-      return false
+      return null
     }
 
     const persistence = context.onAcpSessionId(sessionId)
-    freshPending.set(context.threadId, { sessionId, persistence })
+    freshPending.set(context.threadId, { ...pending, persistence })
     try {
       await persistence
       if (freshPending.get(context.threadId)?.persistence === persistence) {
         freshPending.delete(context.threadId)
       }
-      return true
+      return pending
     } catch (error) {
       if (freshPending.get(context.threadId)?.persistence === persistence) {
-        freshPending.set(context.threadId, { sessionId })
+        freshPending.set(context.threadId, pending)
       }
       throw error
     }
@@ -554,14 +608,15 @@ export const connectAcpAdapter = async (
     // is keyed on "fresh session's first prompt" (not "we prepended a
     // transcript") so a brand-new thread's second prompt never re-injects its
     // first exchange. Consumption happens only after persistence succeeds.
-    const isFirstSendOfFreshSession = await consumeFreshSession(context, sessionId)
-    const priorTranscript = isFirstSendOfFreshSession ? extractPriorTranscript(init) : undefined
+    const freshSession = await consumeFreshSession(context, sessionId)
+    const priorTranscript = freshSession ? extractPriorTranscript(init) : undefined
     const prompt = await buildPromptBlocks(
       init,
       context.skillInstructions,
       capabilities.promptCapabilities.embeddedContext,
       defaultPromptBlockDeps,
       priorTranscript,
+      freshSession?.skillDisclosure,
     )
 
     const { body, translator, close } = createTranslatorStream({

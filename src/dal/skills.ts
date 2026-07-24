@@ -6,6 +6,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { skillsTable } from '../db/tables'
+import { isWidgetSkillId } from '../defaults/skills'
 import type { DrizzleQueryWithPromise, Skill } from '../types'
 import { nowIso } from '../lib/utils'
 
@@ -185,14 +186,21 @@ export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInpu
   return row
 }
 
-export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'label' | 'description' | 'instruction'>>
+export type UpdateSkillInput = Partial<
+  Pick<Skill, 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder'>
+>
 
 /**
  * Patch an existing skill. Throws {@link SkillNameInvalidError} if `name` fails
- * the AgentSkills spec, or {@link SkillNameTakenError} if it collides with
- * another skill.
+ * the AgentSkills spec, {@link SkillNameTakenError} if it collides with another
+ * skill, or `Error` if a widget rendering contract receives any patch other
+ * than `enabled`.
  */
 export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
+  const changesLockedWidgetField = Object.keys(patch).some((field) => field !== 'enabled')
+  if (isWidgetSkillId(id) && changesLockedWidgetField) {
+    throw new Error(`updateSkill: widget skill "${id}" only supports enabled updates`)
+  }
   if (patch.name !== undefined) {
     const slugError = validateSkillName(patch.name)
     if (slugError) {
@@ -206,9 +214,13 @@ export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: Upd
 /**
  * Soft-delete a skill: set `deleted_at` and wipe user content (`name`, `label`,
  * `description`, `instruction`). The tombstone (`id`, `user_id`, `deleted_at`)
- * remains so PowerSync propagates the delete to other devices.
+ * remains so PowerSync propagates the delete to other devices. Widget
+ * rendering contracts cannot be deleted.
  */
 export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+  if (isWidgetSkillId(id)) {
+    throw new Error(`softDeleteSkill: refusing to delete widget skill "${id}"`)
+  }
   await db
     .update(skillsTable)
     .set({
@@ -224,9 +236,13 @@ export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promi
 
 /**
  * Pin or unpin a skill. Pass `null` to unpin. Pass a number to set the pin position.
- * Throws {@link PinLimitExceededError} if pinning would exceed {@link maxPinnedSkills}.
+ * Throws `Error` for widget contracts or {@link PinLimitExceededError} if
+ * pinning would exceed {@link maxPinnedSkills}.
  */
 export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {
+  if (isWidgetSkillId(id)) {
+    throw new Error(`setPinned: refusing to pin widget skill "${id}"`)
+  }
   if (order !== null) {
     const pinned = await countPinned(db, id)
     if (pinned >= maxPinnedSkills) {

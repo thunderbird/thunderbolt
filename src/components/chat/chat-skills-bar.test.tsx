@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { defaultSkillWeatherForecast } from '@/defaults/skills'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import type { Skill } from '@/types'
 import { ChatSkillsBar } from './chat-skills-bar'
@@ -98,6 +99,19 @@ describe('ChatSkillsBar', () => {
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
     })
     expect(screen.getByLabelText('Add a skill')).toBeTruthy()
+  })
+
+  it('excludes widget skills from pin candidates', () => {
+    const task = { ...skill('task', 'daily-brief'), label: 'Daily Brief' }
+    renderBar({
+      useLibrarySkills: fakeUseLibrarySkills([task, defaultSkillWeatherForecast]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set([task.id, defaultSkillWeatherForecast.id])),
+    })
+
+    fireEvent.click(screen.getByLabelText('Add a skill'))
+
+    expect(screen.getByText('Daily Brief')).toBeTruthy()
+    expect(screen.queryByText('Weather Forecast')).toBeNull()
   })
 
   it('keeps the "+ Add a skill" trigger clickable when every enabled skill is already pinned (popover still offers New skill)', () => {

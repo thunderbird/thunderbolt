@@ -179,7 +179,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
     )
 
     // initialize runs at connect; session resolution is now lazy/per-thread.
@@ -202,7 +202,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
     )
 
     await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: 'existing-sess' }))
@@ -221,7 +221,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
     )
     expect(adapter.capabilities).toMatchObject({ resume: true })
 
@@ -245,7 +245,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
     )
 
     await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: 'old-stale', onAcpSessionId }))
@@ -261,7 +261,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
     )
 
     const init: RequestInit = {

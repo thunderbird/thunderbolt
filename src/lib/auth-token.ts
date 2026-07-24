@@ -49,6 +49,12 @@ export const clearDeviceId = (): void => {
  * Get or create the Tinfoil prompt-cache secret (from localStorage).
  * Per-device, never synced (THU-708). Distinct from the device ID: it must
  * only reach the attested enclave, never our backend.
+ *
+ * Plain localStorage is deliberate: the same store holds the bearer token,
+ * which grants full account access — strictly more than a cache-namespace
+ * key. The SDK needs the plaintext string, so a client-side wrapping key
+ * would add no protection (it would live in the same origin storage). Moves
+ * to encrypted storage together with the auth token (see file TODO).
  */
 export const getUserCacheSecret = (): string => {
   const existing = localStorage.getItem(userCacheSecretKey)

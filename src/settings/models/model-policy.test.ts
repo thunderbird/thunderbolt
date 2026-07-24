@@ -62,16 +62,16 @@ describe('catalog policy', () => {
   it('requires a key only where the provider list endpoint does', () => {
     expect(catalogRequiresApiKey('openai')).toBe(true)
     expect(catalogRequiresApiKey('openrouter')).toBe(true)
+    expect(catalogRequiresApiKey('anthropic')).toBe(true)
     expect(catalogRequiresApiKey('tinfoil')).toBe(false)
-    expect(catalogRequiresApiKey('anthropic')).toBe(false)
     expect(catalogRequiresApiKey('thunderbolt')).toBe(false)
     expect(catalogRequiresApiKey('custom')).toBe(false)
   })
 
   it('auto-fetches exactly the keyless, url-less catalogs', () => {
     expect(providerAutoFetchesCatalog('thunderbolt')).toBe(true)
-    expect(providerAutoFetchesCatalog('anthropic')).toBe(true)
     expect(providerAutoFetchesCatalog('tinfoil')).toBe(true)
+    expect(providerAutoFetchesCatalog('anthropic')).toBe(false)
     expect(providerAutoFetchesCatalog('openai')).toBe(false)
     expect(providerAutoFetchesCatalog('custom')).toBe(false)
   })

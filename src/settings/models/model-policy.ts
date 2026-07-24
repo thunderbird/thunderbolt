@@ -61,15 +61,15 @@ export const needsApiKey = (model: Pick<Model, 'provider' | 'isSystem' | 'apiKey
 
 /**
  * Whether fetching the provider's model catalog needs a user-supplied API key.
- * Narrower than `providerRequiresApiKey`: Tinfoil and Anthropic need a key to
- * chat, but their catalogs load without one.
+ * Narrower than `providerRequiresApiKey`: Tinfoil needs a key to chat, but its
+ * catalog loads without one.
  */
 export const catalogRequiresApiKey = (provider: Model['provider']): boolean =>
-  provider === 'openai' || provider === 'openrouter'
+  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic'
 
 /** Providers whose catalog loads without credentials, so forms fetch it eagerly. */
 export const providerAutoFetchesCatalog = (provider: Model['provider']): boolean =>
-  provider === 'thunderbolt' || provider === 'anthropic' || provider === 'tinfoil'
+  provider === 'thunderbolt' || provider === 'tinfoil'
 
 /** Submission gate for the add-model form. */
 export const shouldDisableAddModel = ({

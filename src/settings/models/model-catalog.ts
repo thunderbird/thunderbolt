@@ -29,21 +29,26 @@ export const thunderboltModelCatalog: AvailableModel[] = defaultModels
   .filter((model) => model.provider === 'thunderbolt')
   .map((model) => ({ id: model.model, name: model.name, supports_tools: model.toolUsage === 1 }))
 
-// Anthropic's /v1/models endpoint requires an API key even to list, and this
-// catalog must render before the user has entered one — so the list is
-// maintained by hand. Update it from https://docs.anthropic.com/en/docs/about-claude/models
-// when Anthropic ships new models.
-const anthropicModelCatalog: AvailableModel[] = [
-  { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', supports_tools: true },
-  { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', supports_tools: true },
-  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', supports_tools: true },
-  { id: 'claude-3-7-sonnet-20250219', name: 'Claude Sonnet 3.7', supports_tools: true },
-  { id: 'claude-3-5-sonnet-20241022', name: 'Claude Sonnet 3.5', supports_tools: true },
-  { id: 'claude-3-5-haiku-20241022', name: 'Claude Haiku 3.5', supports_tools: true },
-  { id: 'claude-3-5-sonnet-20240620', name: 'Claude Sonnet 3.5 (Old)', supports_tools: true },
-  { id: 'claude-3-haiku-20240307', name: 'Claude Haiku 3', supports_tools: true },
-  { id: 'claude-3-opus-20240229', name: 'Claude Opus 3', supports_tools: true },
-]
+/** Anthropic's models endpoint is not OpenAI-compatible: auth is `x-api-key` (not a
+ *  bearer), a version header is mandatory, and rows carry `display_name`. Listing
+ *  requires the user's key, so the catalog is key-gated like OpenAI/OpenRouter. */
+const fetchAnthropicModels = async (apiKey: string): Promise<AvailableModel[]> => {
+  const response = await http
+    .get('https://api.anthropic.com/v1/models', {
+      // The default page size is 20; 1000 is the documented maximum.
+      searchParams: { limit: '1000' },
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        // Anthropic rejects browser (CORS) requests without this opt-in header.
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      fetch,
+    })
+    .json<{ data: Array<{ id: string; display_name?: string }> }>()
+  // The endpoint doesn't report tool support; every listed Claude model supports tools.
+  return response.data.map((model) => ({ id: model.id, name: model.display_name, supports_tools: true }))
+}
 
 /** Stable identity for the inputs that produced a catalog result. */
 export const catalogRequestKey = ({ provider, apiKey, url }: CatalogRequest): string =>
@@ -70,7 +75,7 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
     return thunderboltModelCatalog
   }
   if (provider === 'anthropic') {
-    return anthropicModelCatalog
+    return apiKey ? fetchAnthropicModels(apiKey) : []
   }
   if (provider === 'tinfoil') {
     const client = await getTinfoilClient()

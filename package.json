@@ -61,7 +61,7 @@
     "@ai-sdk/anthropic": "^3.0.14",
     "@ai-sdk/mcp": "^1.0.9",
     "@ai-sdk/openai": "^3.0.11",
-    "@ai-sdk/openai-compatible": "^2.0.12",
+    "@ai-sdk/openai-compatible": "^3.0.11",
     "@ai-sdk/react": "^3.0.39",
     "@anthropic-ai/sdk": "0.91.1",
     "@dnd-kit/core": "^6.3.1",

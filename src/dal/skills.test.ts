@@ -4,6 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
+import { defaultSkillWeatherForecast } from '@/defaults/skills'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import {
@@ -24,6 +25,7 @@ import {
   softDeleteSkill,
   updateSkill,
   validateSkillName,
+  type UpdateSkillInput,
 } from './skills'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -46,6 +48,12 @@ const seed = async (input: { name: string; label?: string; description?: string;
     description: input.description ?? `desc for ${input.name}`,
     instruction: input.instruction ?? `instruction for ${input.name}`,
   })
+
+/** Insert one stable widget contract for DAL mutation tests. */
+const seedWidgetSkill = async () => {
+  await getDb().insert(skillsTable).values(defaultSkillWeatherForecast)
+  return defaultSkillWeatherForecast
+}
 
 describe('validateSkillName (AgentSkills spec)', () => {
   it('accepts canonical slugs', () => {
@@ -191,6 +199,35 @@ describe('skills DAL', () => {
       const a = await seed({ name: 'legit-name' })
       await expect(updateSkill(getDb(), a.id, { name: 'SHOUTING' })).rejects.toBeInstanceOf(SkillNameInvalidError)
     })
+
+    it('allows enabled and pinnedOrder patches for widget skills', async () => {
+      const widget = await seedWidgetSkill()
+
+      await updateSkill(getDb(), widget.id, { enabled: 0, pinnedOrder: 2 })
+
+      const after = await getSkill(getDb(), widget.id)
+      expect(after?.enabled).toBe(0)
+      expect(after?.pinnedOrder).toBe(2)
+    })
+
+    it('rejects content patches for widget skills', async () => {
+      const widget = await seedWidgetSkill()
+      const disallowedPatches: UpdateSkillInput[] = [
+        { name: 'renamed-widget' },
+        { label: 'Renamed Widget' },
+        { description: 'Changed description' },
+        { instruction: 'Changed instruction' },
+        { enabled: 0, description: 'Mixed allowed and disallowed fields' },
+      ]
+
+      for (const patch of disallowedPatches) {
+        await expect(updateSkill(getDb(), widget.id, patch)).rejects.toThrow(/widget skill/i)
+      }
+
+      const after = await getSkill(getDb(), widget.id)
+      expect(after?.enabled).toBe(1)
+      expect(after?.description).toBe(defaultSkillWeatherForecast.description)
+    })
   })
 
   describe('softDeleteSkill', () => {
@@ -223,6 +260,13 @@ describe('skills DAL', () => {
       expect(await getSkillByName(getDb(), 'gone')).toBeNull()
       const all = await getAllSkills(getDb())
       expect(all.find((s) => s.id === skill.id)).toBeUndefined()
+    })
+
+    it('rejects deleting widget skills', async () => {
+      const widget = await seedWidgetSkill()
+
+      await expect(softDeleteSkill(getDb(), widget.id)).rejects.toThrow(/widget skill/i)
+      expect(await getSkill(getDb(), widget.id)).toEqual(widget)
     })
   })
 

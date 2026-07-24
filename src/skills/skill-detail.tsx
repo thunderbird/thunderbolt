@@ -12,12 +12,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 /**
  * Detail panel for a single skill. Pinning is managed from the chat composer
  * and enable/disable lives on the list row's switch; this view shows the
- * skill's content plus edit / delete controls.
+ * skill's content plus edit/delete controls when the skill is editable.
  */
 export const SkillDetail = ({
   name,
   description,
   instruction,
+  readOnly,
   onEdit,
   onDelete,
   onClose,
@@ -26,13 +27,14 @@ export const SkillDetail = ({
   name: string
   description: string
   instruction: string
+  readOnly: boolean
   onEdit: () => void
   onDelete: () => void
   /** Close (X, right of the actions menu) — dismisses the desktop slide-in
    *  panel or the mobile overlay. */
   onClose: () => void
 }) => {
-  const actionsMenu = (
+  const actionsMenu = !readOnly && (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
@@ -53,7 +55,12 @@ export const SkillDetail = ({
   )
 
   return (
-    <DetailPanel title={name} actions={actionsMenu} onClose={onClose}>
+    <DetailPanel
+      title={name}
+      subtitle={readOnly ? 'Built-in skill · Read-only' : undefined}
+      actions={actionsMenu}
+      onClose={onClose}
+    >
       <div className="flex shrink-0 flex-col gap-2">
         <DetailSectionTitle>
           Description

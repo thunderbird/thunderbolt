@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isWidgetSkillId } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import type { DependentsAction } from './dependents-dialog'
 
@@ -68,6 +69,9 @@ export const initialSkillsViewState: SkillsViewState = {
   createInitialName: null,
 }
 
+/** Resolve an edit request without exposing widget rendering contracts to forms. */
+const modeForSkillEdit = (id: string): Mode => (isWidgetSkillId(id) ? 'detail' : 'edit')
+
 /**
  * Action type for the SkillsView state machine. Each action describes a
  * user-meaningful event (a click, a confirm, a successful mutation) — the
@@ -82,7 +86,7 @@ export type SkillsViewAction =
    * `initialName` pre-fills the form when arriving from a "create it" deep
    * link out of the chat composer. */
   | { type: 'START_CREATE'; initialName?: string }
-  /** User opened the edit form for a specific skill. */
+  /** User requested editing a skill. Widget contracts stay in read-only detail. */
   | { type: 'START_EDIT'; id: string }
   /** Leave the form (confirmed) and apply the parked intent. */
   | { type: 'PERFORM_LEAVE'; leave: LeaveIntent; isMobile: boolean }
@@ -99,7 +103,7 @@ export type SkillsViewAction =
   | { type: 'CLOSE_DELETE' }
   /** Close the dependents confirm dialog (cancelled or confirmed). */
   | { type: 'CLOSE_DEPENDENTS' }
-  /** User clicked a row in the dependents dialog — jump to edit that skill. */
+  /** User clicked a row in the dependents dialog — open that skill. */
   | { type: 'JUMP_TO_DEPENDENT'; id: string }
   /** Form reports its dirty state changed. */
   | { type: 'SET_DIRTY'; dirty: boolean }
@@ -134,14 +138,22 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       }
 
     case 'START_EDIT':
-      return { ...state, mode: 'edit', activeId: action.id, slugError: null, submitError: null, panelView: 'panel' }
+      return {
+        ...state,
+        mode: modeForSkillEdit(action.id),
+        activeId: action.id,
+        slugError: null,
+        submitError: null,
+        panelView: 'panel',
+      }
 
     case 'PERFORM_LEAVE': {
       const { leave } = action
       const nextActiveId = leave.type === 'select' || leave.type === 'edit' ? leave.id : state.activeId
-      // `edit`/`create` land in a fresh form on the target; `cancel`/`select`
-      // land in detail.
-      const nextMode: Mode = leave.type === 'edit' || leave.type === 'create' ? leave.type : 'detail'
+      // Editable `edit` targets and `create` land in fresh forms. Widget edit
+      // targets, `cancel`, and `select` land in detail.
+      const nextMode: Mode =
+        leave.type === 'edit' ? modeForSkillEdit(leave.id) : leave.type === 'create' ? 'create' : 'detail'
       // `edit`/`create` need the panel open — they can be triggered from a
       // list-row action while panelView is still 'list'. On mobile a `cancel`
       // drops the user back to the list. Driving this here (not in the form's
@@ -179,10 +191,8 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return { ...state, activeId: action.skill.id, pendingDelete: action.skill }
 
     case 'OPEN_DEPENDENTS':
-      // Opening the dependents dialog from inside an edit session can later
-      // trigger JUMP_TO_DEPENDENT, which starts a fresh edit on another skill.
-      // Reset `isDirty` and `slugError` now so the inherited edit-session state
-      // doesn't bleed into the new form.
+      // Opening from an edit session can later jump to another skill. Reset
+      // form state so it does not bleed into the next detail or edit surface.
       return {
         ...state,
         activeId: action.payload.skill.id,
@@ -199,23 +209,18 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return { ...state, pendingDependents: null }
 
     case 'JUMP_TO_DEPENDENT':
-      // Fresh edit session on a different skill: clear `isDirty` and
-      // the form errors so a stale dirty flag from the prior form doesn't trigger
-      // a spurious discard-changes dialog on the new (untouched) form.
-      // SkillForm remounts via its `key` change, so the values themselves are
-      // already clean — this resets the parent's tracking state to match.
+      // Clear form state before opening the dependent. Editable skills get a
+      // fresh form; widget contracts stay in read-only detail.
       return {
         ...state,
         activeId: action.id,
-        mode: 'edit',
+        mode: modeForSkillEdit(action.id),
         pendingDependents: null,
         isDirty: false,
         slugError: null,
         submitError: null,
         // The dependents dialog can be opened from a list-row action while
-        // panelView is still 'list'; opening the panel here gives the edit
-        // form a surface to render on (full-screen overlay on mobile, the
-        // right-hand slide-in on desktop).
+        // panelView is still 'list'; opening the panel here reveals the target.
         panelView: 'panel',
       }
 

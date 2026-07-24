@@ -6,6 +6,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { skillsTable } from '../db/tables'
+import { isWidgetSkillId } from '../defaults/skills'
 import type { DrizzleQueryWithPromise, Skill } from '../types'
 import { nowIso } from '../lib/utils'
 
@@ -185,14 +186,20 @@ export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInpu
   return row
 }
 
-export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'label' | 'description' | 'instruction'>>
+export type UpdateSkillInput = Partial<
+  Pick<Skill, 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder'>
+>
 
 /**
  * Patch an existing skill. Throws {@link SkillNameInvalidError} if `name` fails
- * the AgentSkills spec, or {@link SkillNameTakenError} if it collides with
- * another skill.
+ * the AgentSkills spec, {@link SkillNameTakenError} if it collides with another
+ * skill, or `Error` if a widget rendering contract receives a content patch.
  */
 export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
+  const changesWidgetContent = Object.keys(patch).some((field) => field !== 'enabled' && field !== 'pinnedOrder')
+  if (isWidgetSkillId(id) && changesWidgetContent) {
+    throw new Error(`updateSkill: widget skill "${id}" only supports enabled and pinnedOrder updates`)
+  }
   if (patch.name !== undefined) {
     const slugError = validateSkillName(patch.name)
     if (slugError) {
@@ -206,9 +213,13 @@ export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: Upd
 /**
  * Soft-delete a skill: set `deleted_at` and wipe user content (`name`, `label`,
  * `description`, `instruction`). The tombstone (`id`, `user_id`, `deleted_at`)
- * remains so PowerSync propagates the delete to other devices.
+ * remains so PowerSync propagates the delete to other devices. Widget
+ * rendering contracts cannot be deleted.
  */
 export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+  if (isWidgetSkillId(id)) {
+    throw new Error(`softDeleteSkill: refusing to delete widget skill "${id}"`)
+  }
   await db
     .update(skillsTable)
     .set({

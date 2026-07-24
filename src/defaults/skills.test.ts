@@ -10,6 +10,8 @@ import { instructions as linkPreviewWidgetInstruction } from '@/widgets/link-pre
 import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions'
 import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
 import {
+  defaultSkillDailyBrief,
+  defaultSkillImportantEmails,
   defaultSkillAsk,
   defaultSkillConnectIntegration,
   defaultSkillLinkPreview,
@@ -18,6 +20,7 @@ import {
   defaultSkillsVersion,
   defaultSkillWeatherForecast,
   hashSkill,
+  isWidgetSkillId,
 } from './skills'
 
 /**
@@ -108,6 +111,22 @@ describe('defaultSkills', () => {
       ['ask', null],
       ['map', null],
     ])
+  })
+
+  it('identifies widget contracts by stable default id', () => {
+    for (const skill of [
+      defaultSkillWeatherForecast,
+      defaultSkillLinkPreview,
+      defaultSkillConnectIntegration,
+      defaultSkillAsk,
+      defaultSkillMap,
+    ]) {
+      expect(isWidgetSkillId(skill.id)).toBe(true)
+    }
+
+    expect(isWidgetSkillId(defaultSkillDailyBrief.id)).toBe(false)
+    expect(isWidgetSkillId(defaultSkillImportantEmails.id)).toBe(false)
+    expect(isWidgetSkillId('user-skill-id')).toBe(false)
   })
 
   it('seeds every default as enabled — disabled defaults would never reach the chat resolver', () => {

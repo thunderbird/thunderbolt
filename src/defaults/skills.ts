@@ -11,9 +11,9 @@ import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions
 import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
 
 /**
- * Hash of user-editable fields. Includes `deletedAt` so soft-deletes are
- * treated as a user configuration choice — a user who deletes a default does
- * NOT get it re-seeded on next app init.
+ * Hash of reconciled skill fields. Includes `deletedAt` so soft-deletes of
+ * editable defaults are treated as a user configuration choice and are not
+ * re-seeded on next app init.
  *
  * Accepts raw (nullable) rows as well as `Skill` so the hash-restamp data
  * migration can stamp exactly what reconciliation will later recompute.
@@ -76,7 +76,8 @@ const importantEmailsInstruction = `Review the user's inbox and summarize the 5 
  * the same content under the Skills model.
  *
  * Each lands enabled. User-facing task skills are pinned; model-facing widget
- * contracts are not. A user who soft-deletes one will not see it re-seeded.
+ * contracts are not. Task skills may be edited or soft-deleted; widget
+ * contracts only expose enabled and pinned state.
  */
 export const defaultSkillDailyBrief: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
@@ -173,6 +174,17 @@ export const defaultSkillMap: Skill = {
   defaultHash: null,
   userId: null,
 }
+
+const widgetSkillIds = new Set([
+  defaultSkillWeatherForecast.id,
+  defaultSkillLinkPreview.id,
+  defaultSkillConnectIntegration.id,
+  defaultSkillAsk.id,
+  defaultSkillMap.id,
+])
+
+/** Whether a skill id belongs to a model-facing widget rendering contract. */
+export const isWidgetSkillId = (id: string): boolean => widgetSkillIds.has(id)
 
 export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillDailyBrief,

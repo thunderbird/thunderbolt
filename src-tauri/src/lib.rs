@@ -82,6 +82,18 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         });
     }
 
+    // WebKitGTK's WASM optimizing JIT tier (OMG) leaks native memory when repeatedly
+    // recompiling wa-sqlite's WASM module (used via IDBBatchAtomicVFS, PowerSync's OPFS
+    // fallback on this platform - see getPowerSyncOptions in src/db/powersync/database.ts),
+    // eventually OOM-killing the WebKitWebProcess. Disabling just the OMG tier (baseline
+    // JIT stays on) avoids it. Must be set before the webview is created, since WebKitGTK
+    // reads JSC_* env vars at its own init time. Remove once upstream WebKit fixes this
+    // (tracked at https://bugs.webkit.org/show_bug.cgi?id=319572).
+    #[cfg(target_os = "linux")]
+    {
+        std::env::set_var("JSC_useOMGJIT", "false");
+    }
+
     builder
 }
 

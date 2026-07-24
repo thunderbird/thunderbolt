@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { WASQLiteOpenFactory } from '@powersync/web'
+import { WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
 
 const { getPowerSyncDatabaseConfig, getPowerSyncOptions } = await import('./database')
 
@@ -100,6 +100,27 @@ describe('getPowerSyncOptions', () => {
       const options = getPowerSyncOptions('foo/bar/thunderbolt-sync.db', 'safari-tauri')
       const factory = options.database as WASQLiteOpenFactory
       expect(factory.waOptions.dbFilename).toBe('thunderbolt-sync.db')
+    })
+
+    it('uses OPFSCoopSyncVFS when OPFS is available (default)', () => {
+      const options = getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri')
+      const factory = options.database as WASQLiteOpenFactory
+      expect(factory.waOptions.vfs).toBe(WASQLiteVFS.OPFSCoopSyncVFS)
+    })
+
+    it('falls back to IDBBatchAtomicVFS when OPFS is unavailable', () => {
+      const options = getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri', false)
+      const factory = options.database as WASQLiteOpenFactory
+      expect(factory.waOptions.vfs).toBe(WASQLiteVFS.IDBBatchAtomicVFS)
+    })
+
+    it('keeps Tauri-safe worker wiring in the OPFS-unavailable fallback', () => {
+      const options = getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri', false)
+      const factory = options.database as WASQLiteOpenFactory
+      expect(factory.waOptions.worker).toBe('/@powersync/worker/WASQLiteDB.umd.js')
+      expect(factory.waOptions.flags?.enableMultiTabs).toBe(false)
+      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: false })
+      expect(options.sync).toEqual({ worker: '/@powersync/worker/SharedSyncImplementation.umd.js' })
     })
   })
 })

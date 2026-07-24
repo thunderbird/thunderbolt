@@ -6,9 +6,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bu
 import {
   clearAuthToken,
   clearDeviceId,
+  clearUserCacheSecret,
   getAuthenticatedHeaders,
   getAuthToken,
   getDeviceId,
+  getUserCacheSecret,
   onAuthTokenChangedInOtherTab,
   setAuthToken,
 } from './auth-token'
@@ -47,6 +49,7 @@ beforeAll(() => {
 beforeEach(() => {
   clearAuthToken()
   clearDeviceId()
+  clearUserCacheSecret()
 })
 
 // Mirror the beforeEach cleanup so the last test's token can't leak into the
@@ -54,6 +57,7 @@ beforeEach(() => {
 afterEach(() => {
   clearAuthToken()
   clearDeviceId()
+  clearUserCacheSecret()
 })
 
 describe('auth-token', () => {
@@ -96,6 +100,28 @@ describe('auth-token', () => {
       expect(getAuthToken()).toBeNull()
       setAuthToken('other')
       expect(getAuthToken()).toBe('other')
+    })
+  })
+
+  describe('getUserCacheSecret', () => {
+    it('returns 64-char hex', () => {
+      expect(getUserCacheSecret()).toMatch(/^[0-9a-f]{64}$/)
+    })
+
+    it('returns the same secret across calls', () => {
+      expect(getUserCacheSecret()).toBe(getUserCacheSecret())
+    })
+
+    it('differs from the device ID', () => {
+      expect(getUserCacheSecret()).not.toBe(getDeviceId())
+    })
+
+    it('generates a new secret after clearUserCacheSecret', () => {
+      const first = getUserCacheSecret()
+      clearUserCacheSecret()
+      const second = getUserCacheSecret()
+      expect(second).toMatch(/^[0-9a-f]{64}$/)
+      expect(second).not.toBe(first)
     })
   })
 

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
+import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
 import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { Clock } from '@sinonjs/fake-timers'
@@ -128,6 +128,7 @@ afterEach(() => {
   // get-session call against the next file's HTTP client.
   clearAuthToken()
   clearDeviceId()
+  clearUserCacheSecret()
 })
 
 /**

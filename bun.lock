@@ -150,7 +150,7 @@
         "jsdom": "^29.1.1",
         "lint-staged": "^17.0.4",
         "msw": "^2.10.5",
-        "oauth2-mock-server": "^8.2.2",
+        "oauth2-mock-server": "^9.1.0",
         "playwright": "^1.58.2",
         "prettier": "^3.6.2",
         "rsocket-core": "1.0.0-alpha.3",
@@ -2074,7 +2074,7 @@
 
     "node-rsa": ["node-rsa@1.1.1", "", { "dependencies": { "asn1": "^0.2.4" } }, "sha512-Jd4cvbJMryN21r5HgxQOpMEqv+ooke/korixNNK3mGqfGJmy0M77WDDzo/05969+OkMy3XW1UuZsSmW9KQm7Fw=="],
 
-    "oauth2-mock-server": ["oauth2-mock-server@8.2.2", "", { "dependencies": { "basic-auth": "^2.0.1", "cors": "^2.8.6", "express": "^5.2.1", "is-plain-obj": "^4.1.0", "jose": "^6.1.3" }, "bin": { "oauth2-mock-server": "dist/oauth2-mock-server.js" } }, "sha512-ZjMFtomGM4q1DflxEJpq2WVtSLbOjqlJYkkuGWdq9nL3oAbDExamFyhDN/bUqcooCHWeI0n99K/NU+gXEZLNiA=="],
+    "oauth2-mock-server": ["oauth2-mock-server@9.1.0", "", { "dependencies": { "basic-auth": "^2.0.1", "is-plain-obj": "^4.1.0", "jose": "^6.2.3" }, "bin": { "oauth2-mock-server": "dist/oauth2-mock-server.mjs" } }, "sha512-1Aug6KQhD9IoxyCogFb0XQqovSOhkvOSRUz5Zm98o96H4omt1HEbUMxwzgwl7GO42eh+BqBH/uCbcKIxi4OBbg=="],
 
     "object-assign": ["object-assign@4.1.1", "", {}, "sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg=="],
 

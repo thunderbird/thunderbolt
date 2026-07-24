@@ -27,6 +27,7 @@ export const initialModelsPageState: ModelsPageState = {
   mutationError: null,
 }
 
+/** Reducer for the Models page's panel, delete confirmation, add-form model pick, and mutation error. */
 export const modelsPageReducer = (state: ModelsPageState, action: ModelsPageAction): ModelsPageState => {
   switch (action.type) {
     case 'PANEL_CHANGED':

@@ -24,10 +24,15 @@ export type CatalogRequest = {
   url?: string
 }
 
+/** Built-in catalog derived from the shipped default models; never fetched. */
 export const thunderboltModelCatalog: AvailableModel[] = defaultModels
   .filter((model) => model.provider === 'thunderbolt')
   .map((model) => ({ id: model.model, name: model.name, supports_tools: model.toolUsage === 1 }))
 
+// Anthropic's /v1/models endpoint requires an API key even to list, and this
+// catalog must render before the user has entered one — so the list is
+// maintained by hand. Update it from https://docs.anthropic.com/en/docs/about-claude/models
+// when Anthropic ships new models.
 const anthropicModelCatalog: AvailableModel[] = [
   { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', supports_tools: true },
   { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', supports_tools: true },
@@ -35,11 +40,29 @@ const anthropicModelCatalog: AvailableModel[] = [
   { id: 'claude-3-7-sonnet-20250219', name: 'Claude Sonnet 3.7', supports_tools: true },
   { id: 'claude-3-5-sonnet-20241022', name: 'Claude Sonnet 3.5', supports_tools: true },
   { id: 'claude-3-5-haiku-20241022', name: 'Claude Haiku 3.5', supports_tools: true },
+  { id: 'claude-3-5-sonnet-20240620', name: 'Claude Sonnet 3.5 (Old)', supports_tools: true },
+  { id: 'claude-3-haiku-20240307', name: 'Claude Haiku 3', supports_tools: true },
+  { id: 'claude-3-opus-20240229', name: 'Claude Opus 3', supports_tools: true },
 ]
 
 /** Stable identity for the inputs that produced a catalog result. */
 export const catalogRequestKey = ({ provider, apiKey, url }: CatalogRequest): string =>
   JSON.stringify([provider, apiKey ?? '', url ?? ''])
+
+/** The OpenAI-compatible models endpoint for a provider, or undefined when its
+ *  prerequisite (API key, base URL) is missing so no request should be made. */
+const resolveCatalogEndpoint = ({ provider, apiKey, url }: CatalogRequest): string | undefined => {
+  if (provider === 'openai') {
+    return apiKey ? 'https://api.openai.com/v1/models' : undefined
+  }
+  if (provider === 'openrouter') {
+    return apiKey ? 'https://openrouter.ai/api/v1/models' : undefined
+  }
+  if (provider === 'custom' && url) {
+    return `${normalizeOpenAiBaseUrl(url)}/models`
+  }
+  return undefined
+}
 
 /** Fetches a provider catalog only when explicitly requested by the caller. */
 export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogRequest): Promise<AvailableModel[]> => {
@@ -60,14 +83,7 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
-  const endpoint =
-    provider === 'openai'
-      ? apiKey && 'https://api.openai.com/v1/models'
-      : provider === 'openrouter'
-        ? apiKey && 'https://openrouter.ai/api/v1/models'
-        : provider === 'custom' && url
-          ? `${normalizeOpenAiBaseUrl(url)}/models`
-          : undefined
+  const endpoint = resolveCatalogEndpoint({ provider, apiKey, url })
   if (!endpoint) {
     return []
   }
@@ -85,6 +101,7 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
     .sort((left, right) => left.id.localeCompare(right.id))
 }
 
+/** Maps a catalog-fetch failure to a user-facing message (network, HTTP status, or generic). */
 export const describeModelFetchError = (error: unknown): string => {
   if (error instanceof TypeError) {
     return 'Network request failed (the browser blocked the request or the server is unreachable).'

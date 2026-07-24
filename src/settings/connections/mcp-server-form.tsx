@@ -158,6 +158,49 @@ export const McpServerForm = ({
     handleUrlBlur,
   } = form
 
+  /** The footer's primary action, by precedence: Save Changes (editing),
+   *  Import Servers (advanced add), Add & Authorize (URL classified as OAuth),
+   *  else plain Add. */
+  const renderPrimaryAction = () => {
+    if (form.editingServerId) {
+      return (
+        <Button
+          onClick={onUpdateServer}
+          // A fresh successful probe is required only when the edit touches
+          // the connection and no waiver applies (see `editProbeWaived`):
+          // iroh has no probe, and metadata-only / bearer-clear / empty-token
+          // OAuth edits keep the existing credential valid.
+          disabled={!isSaveReady || (!editProbeWaived && testResult.kind !== 'success') || isSavePending}
+        >
+          {isSavePending ? 'Saving…' : 'Save Changes'}
+        </Button>
+      )
+    }
+    if (mode === 'advanced') {
+      return (
+        <Button onClick={onImportConfig} disabled={!jsonText.trim() || isImportPending}>
+          {isImportPending ? 'Importing…' : 'Import Servers'}
+        </Button>
+      )
+    }
+    if (!isIroh && testResult.kind === 'needs-oauth') {
+      return (
+        <Button onClick={onAddAndAuthorize} disabled={!isUrlReady || isAddAuthorizePending}>
+          <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
+          Add &amp; Authorize
+        </Button>
+      )
+    }
+    return (
+      <Button
+        onClick={onAddServer}
+        disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success') || isSavePending}
+      >
+        {isSavePending ? 'Adding…' : 'Add server'}
+      </Button>
+    )
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       {/* Advanced (JSON) is bulk-import only — irrelevant when editing a single server. */}
@@ -331,34 +374,7 @@ export const McpServerForm = ({
 
       <FormFooter>
         <ResponsiveModalCancel onClick={onCancel}>Cancel</ResponsiveModalCancel>
-        {form.editingServerId ? (
-          <Button
-            onClick={onUpdateServer}
-            // A fresh successful probe is required only when the edit touches
-            // the connection and no waiver applies (see `editProbeWaived`):
-            // iroh has no probe, and metadata-only / bearer-clear / empty-token
-            // OAuth edits keep the existing credential valid.
-            disabled={!isSaveReady || (!editProbeWaived && testResult.kind !== 'success') || isSavePending}
-          >
-            {isSavePending ? 'Saving…' : 'Save Changes'}
-          </Button>
-        ) : mode === 'advanced' ? (
-          <Button onClick={onImportConfig} disabled={!jsonText.trim() || isImportPending}>
-            {isImportPending ? 'Importing…' : 'Import Servers'}
-          </Button>
-        ) : !isIroh && testResult.kind === 'needs-oauth' ? (
-          <Button onClick={onAddAndAuthorize} disabled={!isUrlReady || isAddAuthorizePending}>
-            <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
-            Add &amp; Authorize
-          </Button>
-        ) : (
-          <Button
-            onClick={onAddServer}
-            disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success') || isSavePending}
-          >
-            {isSavePending ? 'Adding…' : 'Add server'}
-          </Button>
-        )}
+        {renderPrimaryAction()}
       </FormFooter>
     </div>
   )

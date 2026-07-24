@@ -74,7 +74,7 @@ describe('useAddServerForm', () => {
   it('clears a successful test result when any field is edited', async () => {
     const { result } = renderForm(makeDeps())
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('https://tools.example.com/mcp'))
     await act(async () => {
       getClock().tick(700)
@@ -96,7 +96,7 @@ describe('useAddServerForm', () => {
     }) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('https://a.example.com/mcp'))
     await act(async () => {
       getClock().tick(700)
@@ -120,7 +120,7 @@ describe('useAddServerForm', () => {
     ) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('https://tools.example.com/mcp'))
     await act(async () => {
       getClock().tick(700)
@@ -151,7 +151,7 @@ describe('useAddServerForm', () => {
 
     // Public http:// is rejected by validateMcpServerUrl (https required), so the
     // debounce must respect that policy and not probe a URL the page already gates.
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('http://public.example.com/mcp'))
     await act(async () => {
       getClock().tick(700)
@@ -165,7 +165,7 @@ describe('useAddServerForm', () => {
     const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('http://public.example.com/mcp'))
     act(() => result.current.handleUrlBlur())
     await act(async () => {
@@ -179,7 +179,7 @@ describe('useAddServerForm', () => {
     const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('http://localhost:8000/mcp'))
     await act(async () => {
       getClock().tick(700)
@@ -193,7 +193,7 @@ describe('useAddServerForm', () => {
     const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))
 
-    // No openDialog() — the debounce is gated on isAddDialogOpen.
+    // No openAddForm() — the debounce is gated on isAddFormOpen.
     act(() => result.current.changeUrl('https://late.example.com/mcp'))
     await act(async () => {
       getClock().tick(700)
@@ -212,7 +212,7 @@ describe('useAddServerForm', () => {
     ) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools, classifyMcpServerAuth }))
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('https://oauth.example.com/mcp'))
     await act(async () => {
       getClock().tick(700)
@@ -250,7 +250,7 @@ describe('useAddServerForm', () => {
     const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('a'.repeat(52)))
     act(() => result.current.handleUrlBlur())
     await act(async () => {
@@ -264,7 +264,7 @@ describe('useAddServerForm', () => {
   it('keeps a passing test result when only the name is edited', async () => {
     const { result } = renderForm(makeDeps())
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('https://tools.example.com/mcp'))
     await act(async () => {
       getClock().tick(700)
@@ -282,7 +282,7 @@ describe('useAddServerForm', () => {
     const { result } = renderForm(makeDeps())
 
     act(() =>
-      result.current.openEditDialog(
+      result.current.openEditForm(
         makeMcpServer({ id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
         'tok-1',
         'bearer',
@@ -304,7 +304,7 @@ describe('useAddServerForm', () => {
     // Bearer-authorized server: the token stays out of the input; the form
     // only knows a stored bearer exists.
     act(() =>
-      result.current.openEditDialog(
+      result.current.openEditForm(
         makeMcpServer({ id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
         'tok-1',
         'bearer',
@@ -328,7 +328,7 @@ describe('useAddServerForm', () => {
     const { result } = renderForm(makeDeps())
 
     act(() =>
-      result.current.openEditDialog(
+      result.current.openEditForm(
         makeMcpServer({ id: 's2', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
         null,
         'oauth',
@@ -345,7 +345,7 @@ describe('useAddServerForm', () => {
     // Open Edit on an OAuth server — the token field is deliberately empty
     // (OAuth credentials aren't surfaced in the token input).
     act(() =>
-      result.current.openEditDialog(
+      result.current.openEditForm(
         makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
         null,
         'oauth',
@@ -367,7 +367,7 @@ describe('useAddServerForm', () => {
     const { result } = renderForm(makeDeps())
 
     act(() =>
-      result.current.openEditDialog(
+      result.current.openEditForm(
         makeMcpServer({ id: 'bearer-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
         'tok-1',
         'bearer',
@@ -381,7 +381,7 @@ describe('useAddServerForm', () => {
 
   it('does not report isOAuthEdit in Add mode (no original snapshot)', () => {
     const { result } = renderForm(makeDeps())
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     expect(result.current.isOAuthEdit).toBe(false)
   })
 
@@ -390,7 +390,7 @@ describe('useAddServerForm', () => {
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))
 
     act(() =>
-      result.current.openEditDialog(
+      result.current.openEditForm(
         makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
         null,
         'oauth',
@@ -413,7 +413,7 @@ describe('useAddServerForm', () => {
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))
 
     act(() =>
-      result.current.openEditDialog(
+      result.current.openEditForm(
         makeMcpServer({ id: 'oauth-1', name: 'GH', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 }),
         null,
         'oauth',
@@ -433,20 +433,20 @@ describe('useAddServerForm', () => {
   it('hasConnectionEdits is true in Add mode (no original snapshot)', () => {
     const { result } = renderForm(makeDeps())
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     // No original to diff against — Add must keep the existing test-success Save gate.
     expect(result.current.hasConnectionEdits).toBe(true)
   })
 
-  it('resets all form state on resetAddDialog', async () => {
+  it('resets all form state on resetAddForm', async () => {
     const { result } = renderForm(makeDeps())
 
-    act(() => result.current.openDialog())
+    act(() => result.current.openAddForm())
     act(() => result.current.changeUrl('https://tools.example.com/mcp'))
     act(() => result.current.changeToken('pat-123'))
-    act(() => result.current.resetAddDialog())
+    act(() => result.current.resetAddForm())
 
-    expect(result.current.isAddDialogOpen).toBe(false)
+    expect(result.current.isAddFormOpen).toBe(false)
     expect(result.current.url).toBe('')
     expect(result.current.token).toBe('')
     expect(result.current.name).toBe('')

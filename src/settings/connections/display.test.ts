@@ -58,6 +58,6 @@ describe('serverMatchesQuery', () => {
   })
 
   it('tolerates null name and url', () => {
-    expect(serverMatchesQuery(server({ name: null as unknown as string, url: null }), 'anything')).toBe(false)
+    expect(serverMatchesQuery({ name: null, url: null }, 'anything')).toBe(false)
   })
 })

@@ -19,6 +19,27 @@ describe('connectionsPageReducer', () => {
     })
   })
 
+  it('scopes a failed server action to that server and clears it on retry/selection', () => {
+    const failed = connectionsPageReducer(createConnectionsPageState(), {
+      type: 'SERVER_FAILED',
+      serverId: 'server-1',
+      error: 'reconnect failed',
+    })
+    expect(failed.serverError).toEqual({ serverId: 'server-1', message: 'reconnect failed' })
+    expect(connectionsPageReducer(failed, { type: 'RETRY_STARTED', serverId: 'server-1' }).serverError).toBeNull()
+    expect(connectionsPageReducer(failed, { type: 'SELECTION_CHANGED', selection: null }).serverError).toBeNull()
+  })
+
+  it('keeps add failures on their own channel so the form title matches', () => {
+    const failed = connectionsPageReducer(createConnectionsPageState(), {
+      type: 'ADD_FAILED',
+      error: 'add failed',
+    })
+    expect(failed.addError).toBe('add failed')
+    expect(failed.updateError).toBeNull()
+    expect(connectionsPageReducer(failed, { type: 'FORM_RESET' }).addError).toBeNull()
+  })
+
   it('uses a single selection for mutually exclusive panels', () => {
     const selected = connectionsPageReducer(createConnectionsPageState(), {
       type: 'SELECTION_CHANGED',

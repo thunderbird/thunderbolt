@@ -102,7 +102,7 @@ describe('SidebarFooter', () => {
     it('collapses to an icon-only perfect circle when the display label is blank', () => {
       // OTP sign-ups get name '' (not null); the old pill kept its horizontal
       // padding and rendered a 48×32 oval around the cloud icon. Blank labels
-      // must produce the square rounded-full control that matches ThemeToggle.
+      // must produce a square rounded-full icon-only control.
       const authClient = createMockAuthClient({
         session: { user: { id: 'real-3', email: '', name: '', isAnonymous: false } },
       })

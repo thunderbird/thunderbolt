@@ -49,8 +49,8 @@ export const generateServerName = (url: string): string => {
 }
 
 type AddServerFormState = {
-  isAddDialogOpen: boolean
-  /** Non-null when the dialog is editing an existing server (id) instead of adding one. */
+  isAddFormOpen: boolean
+  /** Non-null when the form is editing an existing server (id) instead of adding one. */
   editingServerId: string | null
   name: string
   /** True once the user edits the name field, so the URL stops re-deriving it. */
@@ -81,9 +81,9 @@ type AddServerFormState = {
 }
 
 type AddServerFormAction =
-  | { type: 'DIALOG_OPENED' }
-  | { type: 'EDIT_DIALOG_OPENED'; server: McpServer; bearerToken: string | null; credentialType: StoredCredentialType }
-  | { type: 'DIALOG_RESET' }
+  | { type: 'FORM_OPENED' }
+  | { type: 'EDIT_FORM_OPENED'; server: McpServer; bearerToken: string | null; credentialType: StoredCredentialType }
+  | { type: 'FORM_RESET' }
   | { type: 'NAME_CHANGED'; value: string }
   | { type: 'URL_CHANGED'; value: string; derivedName: string | null }
   | { type: 'TRANSPORT_CHANGED'; value: MCPTransportType }
@@ -95,7 +95,7 @@ type AddServerFormAction =
   | { type: 'PROBE_SETTLED' }
 
 const initialState: AddServerFormState = {
-  isAddDialogOpen: false,
+  isAddFormOpen: false,
   editingServerId: null,
   name: '',
   nameManuallyEdited: false,
@@ -111,9 +111,9 @@ const initialState: AddServerFormState = {
 
 const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAction): AddServerFormState => {
   switch (action.type) {
-    case 'DIALOG_OPENED':
-      return { ...state, isAddDialogOpen: true }
-    case 'EDIT_DIALOG_OPENED': {
+    case 'FORM_OPENED':
+      return { ...state, isAddFormOpen: true }
+    case 'EDIT_FORM_OPENED': {
       // Edit prefills the metadata fields from the existing row; the stored
       // bearer token deliberately stays OUT of the token input (masked-keep
       // pattern — see `storedBearerToken`). `nameManuallyEdited` is set so a
@@ -122,7 +122,7 @@ const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAc
       const transport: MCPTransportType = action.server.type === 'sse' ? 'sse' : 'http'
       return {
         ...initialState,
-        isAddDialogOpen: true,
+        isAddFormOpen: true,
         editingServerId: action.server.id,
         name: action.server.name ?? '',
         nameManuallyEdited: true,
@@ -132,7 +132,7 @@ const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAc
         originalConnection: { url, transport, credentialType: action.credentialType },
       }
     }
-    case 'DIALOG_RESET':
+    case 'FORM_RESET':
       return initialState
     case 'NAME_CHANGED':
       return { ...state, name: action.value, nameManuallyEdited: true }
@@ -169,7 +169,7 @@ const effectiveProbeToken = (state: AddServerFormState): string | undefined => {
   return state.isClearingStoredToken ? undefined : (state.storedBearerToken ?? undefined)
 }
 
-/** Test-only DI seams for the Add-dialog probe + OAuth-discovery classification,
+/** Test-only DI seams for the add-form probe + OAuth-discovery classification,
  *  plus the proxy-routed fetch builder they share with the live transport. */
 export type AddServerFormDeps = {
   probeMcpServerTools: typeof probeMcpServerTools
@@ -178,14 +178,14 @@ export type AddServerFormDeps = {
 }
 
 export type UseAddServerFormResult = {
-  isAddDialogOpen: boolean
-  /** Id of the server being edited, or null when the dialog is in Add mode. */
+  isAddFormOpen: boolean
+  /** Id of the server being edited, or null when the form is in Add mode. */
   editingServerId: string | null
-  openDialog: () => void
-  /** Opens the dialog in Edit mode with all fields prefilled from the existing server. */
-  openEditDialog: (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => void
-  /** Closes the dialog and clears all add-form state (Cancel / Escape / overlay). */
-  resetAddDialog: () => void
+  openAddForm: () => void
+  /** Opens the form in Edit mode with all fields prefilled from the existing server. */
+  openEditForm: (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => void
+  /** Closes the form and clears all add-form state (Cancel / Escape / panel close). */
+  resetAddForm: () => void
   name: string
   url: string
   /** Effective transport: `iroh` when the URL is a NodeId/ticket, else the
@@ -238,9 +238,9 @@ export type UseAddServerFormResult = {
 }
 
 /**
- * Owns the "Add MCP Server" dialog form: the field state (name/url/transport/
+ * Owns the "Add MCP Server" panel form: the field state (name/url/transport/
  * token), the Test Connection probe with its auth classification, and the
- * stale-probe / dialog-reset bookkeeping. Mirrors `useMcpServerOAuth`'s
+ * stale-probe / form-reset bookkeeping. Mirrors `useMcpServerOAuth`'s
  * ergonomics so the page stays a thin consumer — it keeps the submit handlers
  * (`handleAddServer` / `handleAddAndAuthorize`) that tie this form to the
  * server mutation and the OAuth hook, reading the form via the returned getters.
@@ -265,25 +265,25 @@ export const useAddServerForm = ({
   const probeIdRef = useRef(0)
   const lastAutoTestedUrlRef = useRef<string | null>(null)
 
-  const openDialog = () => dispatch({ type: 'DIALOG_OPENED' })
+  const openAddForm = () => dispatch({ type: 'FORM_OPENED' })
 
-  // Open the dialog with the metadata fields prefilled from an existing server
+  // Open the form with the metadata fields prefilled from an existing server
   // row. The stored bearer token (null for OAuth or no-cred) is retained for
   // probes but never shown in the input. The auto-detect effect will probe the
   // prefilled URL after the standard 700ms debounce, so the user must still
   // pass Test Connection before saving — same gate as Add.
-  const openEditDialog = (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => {
+  const openEditForm = (server: McpServer, bearerToken: string | null, credentialType: StoredCredentialType) => {
     probeIdRef.current += 1
     lastAutoTestedUrlRef.current = null
     onClearDialogError()
-    dispatch({ type: 'EDIT_DIALOG_OPENED', server, bearerToken, credentialType })
+    dispatch({ type: 'EDIT_FORM_OPENED', server, bearerToken, credentialType })
   }
 
-  // Closes the Add dialog and clears all add-form state. Bumps the probe id so an
-  // in-flight connection probe can't land its result after the dialog is gone.
-  const resetAddDialog = () => {
+  // Closes the add form and clears all its state. Bumps the probe id so an
+  // in-flight connection probe can't land its result after the form is gone.
+  const resetAddForm = () => {
     probeIdRef.current += 1
-    dispatch({ type: 'DIALOG_RESET' })
+    dispatch({ type: 'FORM_RESET' })
     onClearDialogError()
     lastAutoTestedUrlRef.current = null
   }
@@ -372,7 +372,7 @@ export const useAddServerForm = ({
     // wait until the user actually types a bearer to convert away from OAuth.
     const skipForOAuthEdit = state.originalConnection?.credentialType === 'oauth' && !state.token
     if (
-      !state.isAddDialogOpen ||
+      !state.isAddFormOpen ||
       !validateMcpServerUrl(state.url).ok ||
       state.url === lastAutoTestedUrlRef.current ||
       skipForOAuthEdit
@@ -386,7 +386,7 @@ export const useAddServerForm = ({
     }, 700)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.url, state.token, state.transport, state.isAddDialogOpen])
+  }, [state.url, state.token, state.transport, state.isAddFormOpen])
 
   // An iroh NodeId/ticket isn't a URL — route it to the peer-to-peer transport
   // and skip the http/sse probe + credential flow (the bridge is allowlist-gated,
@@ -434,11 +434,11 @@ export const useAddServerForm = ({
   }
 
   return {
-    isAddDialogOpen: state.isAddDialogOpen,
+    isAddFormOpen: state.isAddFormOpen,
     editingServerId: state.editingServerId,
-    openDialog,
-    openEditDialog,
-    resetAddDialog,
+    openAddForm,
+    openEditForm,
+    resetAddForm,
     name: state.name,
     url: state.url,
     transport,
@@ -461,11 +461,12 @@ export const useAddServerForm = ({
       state.transport !== state.originalConnection.transport ||
       state.token !== '' ||
       state.isClearingStoredToken,
+    // No `token === ''` conjunct: the reducer guarantees it — toggling clear
+    // empties the token, and typing a token drops the clear flag.
     isClearingBearerOnly:
       !!state.originalConnection &&
       state.originalConnection.credentialType === 'bearer' &&
       state.isClearingStoredToken &&
-      state.token === '' &&
       state.url === state.originalConnection.url &&
       state.transport === state.originalConnection.transport,
     isOAuthEdit: state.originalConnection?.credentialType === 'oauth' && state.token === '',

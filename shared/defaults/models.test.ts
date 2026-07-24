@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { hashValues } from '../lib/hash'
 import { defaultModels, defaultModelsVersion, hashModel } from './models'
 
 /**
@@ -20,9 +21,17 @@ import { defaultModels, defaultModelsVersion, hashModel } from './models'
 const computeSnapshotHash = () =>
   defaultModels.map((model, index) => `${index}:${model.id}:${hashModel(model)}`).join('|')
 
+// `hashModel` deliberately hashes only user-editable fields (it drives the
+// user-edit detection in reconciliation), so it is blind to metadata like
+// `vendor` and `description`. Hash those separately here so a metadata-only
+// defaults change still trips the snapshot and gets its version bump.
+const computeMetadataHash = () =>
+  defaultModels.map((model, index) => `${index}:${hashValues([model.vendor, model.description])}`).join('|')
+
 const expected = {
   version: 3,
   hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-1vf2pk|1:019f227e-d640-727d-ba12-d51bd7d0a3d6:bvaax2|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
+  metadataHash: '0:vzhyk4|1:-x2wlw2|2:-cajkcl',
 }
 
 describe('defaultModels version snapshot', () => {
@@ -30,6 +39,7 @@ describe('defaultModels version snapshot', () => {
     expect({
       version: defaultModelsVersion,
       hash: computeSnapshotHash(),
+      metadataHash: computeMetadataHash(),
     }).toEqual(expected)
   })
 })

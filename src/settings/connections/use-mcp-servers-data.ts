@@ -15,6 +15,14 @@ import type { MCPClient, MCPServerConnection } from '@/lib/mcp-provider'
 type ServerTools = Record<string, string[]>
 type CredentialSummary = { type: StoredCredentialType; bearerToken?: string }
 
+/**
+ * Monotonic identity tag for an MCP client instance. A successful reconnect
+ * (Retry connection, OAuth re-authorize) swaps the client object without
+ * changing the server id, so the tools query keys on `id:generation` to detect
+ * the swap and refetch — keying on the id set alone would serve the dead
+ * client's cached tools. The WeakMap hands every new instance a fresh
+ * generation while keeping replaced clients collectable.
+ */
 const clientGenerations = new WeakMap<MCPClient, number>()
 const clientGenerationCounter = { current: 0 }
 

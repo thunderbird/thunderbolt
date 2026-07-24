@@ -17,6 +17,10 @@ import { StatusCard } from '@/components/ui/status-card'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
 import { catalogRequiresApiKey, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
+import { providerLabels } from './model-presentation'
+
+/** Menu order for the provider picker (labels come from `providerLabels`). */
+const providerOptions: Model['provider'][] = ['thunderbolt', 'tinfoil', 'openai', 'openrouter', 'anthropic', 'custom']
 
 export const addModelFormSchema = z
   .object({
@@ -112,12 +116,11 @@ export const AddModelForm = ({
                     <SelectValue placeholder="Select provider" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="thunderbolt">Thunderbolt</SelectItem>
-                    <SelectItem value="tinfoil">Tinfoil</SelectItem>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="openrouter">OpenRouter</SelectItem>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                    <SelectItem value="custom">Custom</SelectItem>
+                    {providerOptions.map((provider) => (
+                      <SelectItem key={provider} value={provider}>
+                        {providerLabels[provider]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </FormControl>

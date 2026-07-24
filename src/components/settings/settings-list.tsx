@@ -7,6 +7,7 @@ import type { ComponentProps, ReactNode } from 'react'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
+/** The scrollable list column of a settings page: centered, width-capped shell. */
 export const SettingsListPane = ({ className, ...props }: ComponentProps<'section'>) => (
   <section
     className={cn(
@@ -17,10 +18,12 @@ export const SettingsListPane = ({ className, ...props }: ComponentProps<'sectio
   />
 )
 
+/** The scrolling region inside `SettingsListPane` (header stays pinned above it). */
 export const SettingsListBody = ({ className, ...props }: ComponentProps<'div'>) => (
   <div className={cn('flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto', className)} {...props} />
 )
 
+/** Uppercase section heading between groups of settings rows. */
 export const SettingsSectionLabel = ({ className, ...props }: ComponentProps<'h2'>) => (
   <h2
     className={cn(

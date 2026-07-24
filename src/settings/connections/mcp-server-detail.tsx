@@ -38,6 +38,7 @@ export const McpServerDetail = ({
   server,
   status,
   connectionError,
+  actionError,
   oauthState,
   tools,
   isRetrying,
@@ -51,6 +52,8 @@ export const McpServerDetail = ({
   status: StatusState
   /** A genuine connection failure (enabled, not connected, non-OAuth). */
   connectionError: Error | null
+  /** A failed user action on this server (e.g. a retry that threw). */
+  actionError: string | null
   oauthState: OAuthCardState | { phase: 'authorized' } | null
   tools: string[]
   isRetrying: boolean
@@ -136,6 +139,7 @@ export const McpServerDetail = ({
             </TooltipContent>
           </Tooltip>
         )}
+        {actionError && <p className="text-sm text-destructive">{actionError}</p>}
         {oauthState?.phase === 'needs-auth' && (
           <p className="text-sm text-muted-foreground">
             {oauthState.message ?? 'This server requires authorization. Click Authorize to connect.'}

@@ -51,10 +51,12 @@ export const useEditModelFormState = (model: Model) => {
   const [isCustomModel, setIsCustomModel] = useState(false)
   const [apiKeyEdit, setApiKeyEdit] = useState<ApiKeyEdit>({ kind: 'keep' })
   const catalog = useModelCatalog()
-  const effectiveApiKey = modelApiKeyForConnection(
-    model.apiKey,
-    apiKeyEdit.kind === 'replace' ? { kind: 'replace', value: watchedApiKey ?? '' } : apiKeyEdit,
-  )
+  // `apiKeyEdit` records the *kind* of edit, but a replacement token keeps
+  // changing in the form field after the kind was set — substitute the live
+  // watched value so probes and catalog refreshes use the latest keystroke.
+  const liveApiKeyEdit: ApiKeyEdit =
+    apiKeyEdit.kind === 'replace' ? { kind: 'replace', value: watchedApiKey ?? '' } : apiKeyEdit
+  const effectiveApiKey = modelApiKeyForConnection(model.apiKey, liveApiKeyEdit)
   const modelItems = useMemo((): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
     if (!catalog.models.some((available) => available.id === model.model)) {

@@ -183,6 +183,10 @@ export const useModelsPageState = () => {
   }
   const changeProvider = (nextProvider: Model['provider']) => {
     catalog.invalidateCatalog()
+    // Clear the picked model too — a stale selection (especially 'custom') would
+    // keep the previous provider's model/custom fields rendered against the new
+    // provider's catalog.
+    dispatch({ type: 'MODEL_SELECTED', modelId: '' })
     form.setValue('name', '', { shouldValidate: false, shouldDirty: false })
     form.setValue('model', '', { shouldValidate: false, shouldDirty: false })
     form.setValue('customModel', '', { shouldValidate: false, shouldDirty: false })

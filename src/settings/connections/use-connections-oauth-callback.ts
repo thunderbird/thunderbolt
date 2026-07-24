@@ -43,7 +43,7 @@ export const useConnectionsOAuthCallback = ({
       return
     }
 
-    const process = async () => {
+    const handleIntegrationCallback = async () => {
       dispatch({ type: 'CALLBACK_STARTED' })
       const provider = getIntegrationProvider()
       if (provider) {
@@ -58,7 +58,7 @@ export const useConnectionsOAuthCallback = ({
         dispatch({ type: 'NAVIGATION_STATE_CONSUMED' })
       }
     }
-    void process()
+    void handleIntegrationCallback()
   })
 
   useEffect(() => {

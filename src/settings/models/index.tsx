@@ -28,6 +28,12 @@ import { useModelsPageState } from './use-models-page-state'
 const ModelsPage = () => {
   const page = useModelsPageState()
   const { activeModel, editingModel } = page
+  // Mutation errors surface where the mutation was triggered — the delete
+  // dialog, add form, and edit form each render `mutationError` themselves, so
+  // the page-level card shows only when none of those surfaces is open.
+  const showPageLevelError = Boolean(
+    page.mutationError && !page.deleteConfirmId && !page.isAddPanelOpen && !editingModel,
+  )
 
   const renderPanel = () => {
     if (page.isAddPanelOpen) {
@@ -84,7 +90,7 @@ const ModelsPage = () => {
               <Plus />
             </Button>
           </PageHeader>
-          {page.mutationError && !page.deleteConfirmId && !page.isAddPanelOpen && !editingModel && (
+          {showPageLevelError && (
             <StatusCard
               icon={<X className="h-4 w-4 text-destructive" />}
               title="Something went wrong"

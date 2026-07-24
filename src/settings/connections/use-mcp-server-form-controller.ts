@@ -25,6 +25,22 @@ import type { McpServer } from '@/types'
 import type { AddServerMode } from './mcp-server-form'
 import type { ConnectionsPageAction } from './page-state'
 
+/**
+ * Maps the edit form's credential tri-state to DAL semantics: a typed token
+ * replaces, an explicit clear of a stored bearer deletes (`null`), and an
+ * untouched empty field keeps whatever is stored (`undefined`).
+ */
+export const resolveCredentialUpdate = (
+  nextToken: string,
+  isClearingStoredToken: boolean,
+  originalCredentialType: StoredCredentialType,
+): { type: 'bearer'; token: string } | null | undefined => {
+  if (nextToken) {
+    return { type: 'bearer', token: nextToken }
+  }
+  return isClearingStoredToken && originalCredentialType === 'bearer' ? null : undefined
+}
+
 type FormControllerOptions = {
   db: AnyDrizzleDatabase
   form: ReturnType<typeof useAddServerForm>
@@ -92,14 +108,7 @@ export const useMcpServerFormController = ({
       isClearingStoredToken: boolean
       originalCredentialType: StoredCredentialType
     }) => {
-      // Credential tri-state: a typed token replaces, an explicit clear of a
-      // stored bearer deletes (null), and an untouched empty field keeps
-      // whatever is stored (undefined).
-      const credentials = nextToken
-        ? ({ type: 'bearer', token: nextToken } as const)
-        : isClearingStoredToken && originalCredentialType === 'bearer'
-          ? null
-          : undefined
+      const credentials = resolveCredentialUpdate(nextToken, isClearingStoredToken, originalCredentialType)
       await updateMcpServerWithCredentials(db, id, { name, url: serverUrl, type: transport }, credentials)
     },
   })
@@ -130,7 +139,7 @@ export const useMcpServerFormController = ({
   })
 
   const cancel = () => {
-    form.resetAddDialog()
+    form.resetAddForm()
     dispatch({ type: 'FORM_RESET' })
   }
   const changeMode = (mode: AddServerMode) => {
@@ -156,7 +165,7 @@ export const useMcpServerFormController = ({
       cancel()
     } catch (error) {
       console.error('Failed to add MCP server:', error)
-      dispatch({ type: 'SAVE_FAILED', error: 'Could not add the server. Please try again.' })
+      dispatch({ type: 'ADD_FAILED', error: "Couldn't add the server. Please try again." })
     } finally {
       addPendingRef.current = false
     }
@@ -168,8 +177,16 @@ export const useMcpServerFormController = ({
     const id = form.editingServerId
     const row = servers.find((server) => server.id === id)
     if (!row) {
-      // The edit form can only open from an existing row; a miss means state corruption.
-      throw new Error(`MCP server ${id} is being edited but no longer exists`)
+      // The edit form can only open from an existing row; a miss means state
+      // corruption (or the row was deleted on another device mid-edit). Surface
+      // it in the form like every other save failure instead of throwing into
+      // the voided onClick promise.
+      console.error(`MCP server ${id} is being edited but no longer exists`)
+      dispatch({
+        type: 'SAVE_FAILED',
+        error: 'This server no longer exists. It may have been removed on another device.',
+      })
+      return
     }
     const name = resolveServerName()
     const transport = form.transport
@@ -188,7 +205,7 @@ export const useMcpServerFormController = ({
       })
     } catch (error) {
       console.error('Failed to update MCP server:', error)
-      dispatch({ type: 'SAVE_FAILED', error: 'Could not save changes. Please try again.' })
+      dispatch({ type: 'SAVE_FAILED', error: "Couldn't save changes. Please try again." })
       return
     }
     try {
@@ -206,7 +223,7 @@ export const useMcpServerFormController = ({
   const edit = (server: McpServer) => {
     const credential = credentialsById[server.id]
     dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'server', id: server.id } })
-    form.openEditDialog(server, credential?.bearerToken ?? null, credential?.type ?? 'none')
+    form.openEditForm(server, credential?.bearerToken ?? null, credential?.type ?? 'none')
   }
   const importConfig = async () => {
     const result = parseMcpServersConfig(jsonText)
@@ -219,7 +236,7 @@ export const useMcpServerFormController = ({
       cancel()
     } catch (error) {
       console.error('Failed to import MCP servers:', error)
-      dispatch({ type: 'IMPORT_FAILED', error: 'Could not import servers. Please try again.' })
+      dispatch({ type: 'IMPORT_FAILED', error: "Couldn't import servers. Please try again." })
     }
   }
   const addAndAuthorize = async () => {

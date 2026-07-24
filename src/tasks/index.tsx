@@ -36,8 +36,30 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { CheckCircle2, GripVertical, Plus } from 'lucide-react'
-import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
+
+/**
+ * Whether the referenced element's content overflows horizontally — i.e. the
+ * CSS `truncate` ellipsis is active. Remeasured when the text changes and on
+ * element resizes, so the hover overlay only appears when it adds information.
+ */
+const useIsTruncated = (text: string) => {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [isTruncated, setIsTruncated] = useState(false)
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) {
+      return
+    }
+    const measure = () => setIsTruncated(element.scrollWidth > element.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [text])
+  return { ref, isTruncated }
+}
 
 // Task Item Component - Memoized for performance
 type TaskItemProps = {
@@ -52,6 +74,7 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(task.item)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { ref: taskTextRef, isTruncated } = useIsTruncated(task.item)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -165,13 +188,19 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
               isCompleting && 'line-through text-muted-foreground',
             )}
           >
-            <span className="block truncate">{task.item}</span>
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 z-20 hidden whitespace-normal rounded-lg border bg-popover px-2 py-1.5 text-popover-foreground shadow-lg group-hover/task-text:block group-active/task-text:block group-focus-visible/task-text:block"
-            >
+            <span ref={taskTextRef} className="block truncate">
               {task.item}
             </span>
+            {/* The full-text overlay only adds information when the row text is
+                actually ellipsized. */}
+            {isTruncated && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 top-0 z-20 hidden whitespace-normal rounded-lg border bg-popover px-2 py-1.5 text-popover-foreground shadow-lg group-hover/task-text:block group-active/task-text:block group-focus-visible/task-text:block"
+              >
+                {task.item}
+              </span>
+            )}
           </button>
         )}
       </div>

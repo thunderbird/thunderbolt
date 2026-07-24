@@ -21,8 +21,10 @@ export const cleanServerUrl = (url: string): string => {
 /** Display title for an MCP server row/panel: its name, falling back to the cleaned URL. */
 export const serverDisplayName = (server: McpServer): string => server.name || cleanServerUrl(server.url ?? '')
 
-/** Case-insensitive match against a server's name and URL for the page search. */
-export const serverMatchesQuery = (server: McpServer, query: string): boolean => {
+/** Case-insensitive match against a server's name and URL for the page search.
+ *  Accepts nullable fields structurally — rows synced from other devices can
+ *  have a null name. */
+export const serverMatchesQuery = (server: { name?: string | null; url?: string | null }, query: string): boolean => {
   if (!query) {
     return true
   }

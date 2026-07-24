@@ -452,7 +452,7 @@ export const renderIrohBridgeBanner = (
   accountTrustEnabled: boolean,
   appUrl: string = resolveAppUrl(),
 ): string => {
-  const settingsPath = config.protocol === 'acp' ? '/settings/agents' : '/settings/mcp-servers'
+  const settingsPath = config.protocol === 'acp' ? '/settings/agents' : '/settings/connections'
   const pairingUrl = `${appUrl.replace(/\/+$/, '')}${settingsPath}`
   return (
     `⚡ thunderbolt ${config.protocol} bridge (iroh) ready\n` +

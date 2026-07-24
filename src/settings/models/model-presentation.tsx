@@ -12,7 +12,8 @@ import { AppLogo } from '@/components/app-logo'
 import { IconTile } from '@/components/settings/icon-tile'
 import type { Model } from '@/types'
 
-const providerLabels: Record<Model['provider'], string> = {
+/** Canonical display names for model providers — the single source for labels. */
+export const providerLabels: Record<Model['provider'], string> = {
   thunderbolt: 'Thunderbolt',
   tinfoil: 'Tinfoil',
   anthropic: 'Anthropic',
@@ -47,11 +48,13 @@ const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSyste
   }
 }
 
+/** Provider logo in the standard settings icon tile (Thunderbolt-branded for managed models). */
 export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider' | 'isSystem'> }) => (
   <IconTile>
     <ModelProviderIcon model={model} />
   </IconTile>
 )
 
+/** Provider label for display — system-managed Tinfoil models brand as Thunderbolt. */
 export const getProviderDisplay = (model: Pick<Model, 'provider' | 'isSystem'>): string =>
   isThunderboltManagedModel(model) ? 'Thunderbolt' : providerLabels[model.provider]

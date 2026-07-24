@@ -100,12 +100,14 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     mode,
     jsonText,
     importError,
+    addError,
     updateError,
     pendingDelete,
     retryingServerId,
     integrationError,
+    serverError,
     isProcessingCallback,
-    clearNavigationState,
+    shouldClearNavigationState,
   } = state
 
   // Web OAuth discovery/exchange share the universal proxy fetch the transport
@@ -146,17 +148,19 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const appNodeId = useAppNodeId(isIroh, deps.loadAppNodeId)
 
   // The add/edit form surfaces at most one error: a JSON import failure
-  // (advanced), an Edit save failure (Save Changes), or an OAuth authorization
-  // failure. The title is derived from the error itself — not the current mode —
-  // so a message is always labeled by its own context (switching modes clears
-  // the other sources, see `handleModeChange`).
+  // (advanced), an Add failure, an Edit save failure (Save Changes), or an
+  // OAuth authorization failure. The title is derived from the error itself —
+  // not the current mode — so a message is always labeled by its own context
+  // (switching modes clears the other sources, see `changeMode`).
   const formError = importError
     ? { title: 'Import failed', body: importError }
-    : updateError
-      ? { title: 'Save failed', body: updateError }
-      : dialogError
-        ? { title: 'Authorization error', body: dialogError }
-        : null
+    : addError
+      ? { title: 'Add failed', body: addError }
+      : updateError
+        ? { title: 'Save failed', body: updateError }
+        : dialogError
+          ? { title: 'Authorization error', body: dialogError }
+          : null
 
   const { servers, credentialsById, serverTools } = useMcpServersData(db, mcpServers)
 
@@ -190,8 +194,11 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       await reconnectServer(serverId)
     } catch (error) {
       console.error('Failed to reconnect MCP server:', error)
+      // Scoped to the server so the failure surfaces in the detail panel where
+      // the Retry button lives (on mobile the panel covers the list entirely).
       dispatch({
-        type: 'INTEGRATION_FAILED',
+        type: 'SERVER_FAILED',
+        serverId,
         error: error instanceof Error ? error.message : 'Failed to reconnect MCP server',
       })
     } finally {
@@ -262,7 +269,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const activeServer = selected?.kind === 'server' ? servers.find((s) => s.id === selected.id) : undefined
 
   const renderPanel = () => {
-    if (form.isAddDialogOpen) {
+    if (form.isAddFormOpen) {
       return (
         <DetailPanel
           title={form.editingServerId ? 'Edit MCP Server' : 'Add MCP Server'}
@@ -319,6 +326,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           server={activeServer}
           status={getConnectionStatus(activeServer)}
           connectionError={getConnectionError(activeServer)}
+          actionError={serverError?.serverId === activeServer.id ? serverError.message : null}
           oauthState={getOAuthCardState(activeServer)}
           tools={tools}
           isRetrying={retryingServerId === activeServer.id}
@@ -338,7 +346,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
 
   const closePanel = () => {
     dispatch({ type: 'INTEGRATION_ERROR_CLEARED' })
-    if (form.isAddDialogOpen) {
+    if (form.isAddFormOpen) {
       formController.cancel()
       return
     }
@@ -349,16 +357,16 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     // An integration error is scoped to the aside it happened in — don't
     // carry it over to whichever panel opens next.
     // Selecting a row supersedes an open add/edit form (same as the agents page).
-    if (form.isAddDialogOpen) {
+    if (form.isAddFormOpen) {
       formController.cancel()
     }
-    const selection = selected?.kind === next.kind && selected.id === next.id && !form.isAddDialogOpen ? null : next
+    const selection = selected?.kind === next.kind && selected.id === next.id && !form.isAddFormOpen ? null : next
     dispatch({ type: 'SELECTION_CHANGED', selection })
   }
 
   const openAddForm = () => {
     dispatch({ type: 'SELECTION_CHANGED', selection: null })
-    form.openDialog()
+    form.openAddForm()
   }
 
   return (
@@ -369,7 +377,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           integrationsReady={integrationsController.integrationsReady}
           servers={servers}
           serverStatus={rowStatus}
-          activeKey={panelOpen && selected && !form.isAddDialogOpen ? `${selected.kind}:${selected.id}` : null}
+          activeKey={panelOpen && selected && !form.isAddFormOpen ? `${selected.kind}:${selected.id}` : null}
           onAdd={openAddForm}
           onSelectIntegration={(id) => toggleSelection({ kind: 'integration', id })}
           onSelectServer={(id) => toggleSelection({ kind: 'server', id })}
@@ -393,7 +401,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>
         {panel}
       </DetailPanelSurface>
-      {clearNavigationState && location.state !== null && <Navigate to="." replace state={null} />}
+      {shouldClearNavigationState && location.state !== null && <Navigate to="." replace state={null} />}
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && dispatch({ type: 'DELETE_DISMISSED' })}
@@ -408,15 +416,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
             <AlertDialogAction
               variant="destructive"
               disabled={formController.deleteMutation.isPending}
-              onClick={async () => {
-                if (pendingDelete) {
-                  try {
-                    await formController.deleteMutation.mutateAsync(pendingDelete.id)
-                  } catch {
-                    // Mutation onError surfaces the failure in the page.
-                  }
-                }
-              }}
+              // Fire-and-forget: the mutation's onError/onSuccess own the outcome.
+              onClick={() => pendingDelete && formController.deleteMutation.mutate(pendingDelete.id)}
             >
               {formController.deleteMutation.isPending ? 'Deleting…' : 'Delete'}
             </AlertDialogAction>

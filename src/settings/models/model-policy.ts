@@ -34,10 +34,30 @@ export type ModelConnectionDraft = Pick<Model, 'model'> & {
 export const hasModelConnectionChanges = (model: Pick<Model, 'model' | 'url'>, draft: ModelConnectionDraft): boolean =>
   model.model !== draft.model || (model.url ?? '') !== (draft.url ?? '') || draft.apiKeyEdit.kind !== 'keep'
 
+/** Whether adding a model must pass Test Connection first. Thunderbolt models
+ *  are server-authenticated and preconfigured, so there is nothing to verify. */
 export const providerRequiresConnectionTest = (provider: Model['provider']): boolean => provider !== 'thunderbolt'
 
+/** Whether chatting through the provider needs a user-supplied API key.
+ *  Thunderbolt is server-authenticated; custom (OpenAI-compatible) endpoints
+ *  treat the key as optional. */
 export const providerRequiresApiKey = (provider: Model['provider']): boolean =>
   provider !== 'thunderbolt' && provider !== 'custom'
+
+/**
+ * Models that require an API key but don't have one yet need configuration.
+ * System Tinfoil rows are server-authenticated (the key is injected by the
+ * backend proxy), so they never flag as missing.
+ */
+export const needsApiKey = (model: Pick<Model, 'provider' | 'isSystem' | 'apiKey'>): boolean => {
+  if (!providerRequiresApiKey(model.provider)) {
+    return false
+  }
+  if (model.provider === 'tinfoil' && model.isSystem === 1) {
+    return false
+  }
+  return !model.apiKey
+}
 
 /**
  * Whether fetching the provider's model catalog needs a user-supplied API key.

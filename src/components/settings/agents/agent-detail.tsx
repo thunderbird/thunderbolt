@@ -100,8 +100,8 @@ export const AgentDetail = ({
       await onDelete()
     } catch (error) {
       // Keep the confirm dialog open so the failure is visible and retryable.
-      console.error('Failed to remove agent', error)
-      setRemoveError("Couldn't remove the agent. Please try again.")
+      console.error('Failed to delete agent', error)
+      setRemoveError("Couldn't delete the agent. Please try again.")
       return
     }
     setConfirmOpen(false)
@@ -112,7 +112,7 @@ export const AgentDetail = ({
     <DetailActionsMenu>
       <DropdownMenuItem onClick={() => setConfirmOpen(true)} className="cursor-pointer">
         <Trash2 />
-        Remove agent
+        Delete agent
       </DropdownMenuItem>
     </DetailActionsMenu>
   )
@@ -151,7 +151,7 @@ export const AgentDetail = ({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {agent.name}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {agent.name}?</AlertDialogTitle>
             <AlertDialogDescription>
               This removes the connection from Thunderbolt only. Nothing on the remote server is changed.
             </AlertDialogDescription>
@@ -164,7 +164,7 @@ export const AgentDetail = ({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <Button variant="destructive" onClick={() => void handleRemove()}>
-              Remove agent
+              Delete agent
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

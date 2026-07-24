@@ -50,7 +50,7 @@ export const ConnectionTestSection = ({
               Testing model…
             </>
           ) : (
-            'Test Model'
+            'Test model'
           )}
         </Button>
       )}

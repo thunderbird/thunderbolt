@@ -13,6 +13,7 @@ type SettingsEmptyStateProps = ComponentProps<'div'> & {
   action?: ReactNode
 }
 
+/** Dashed-border empty-state card for a settings list with no items yet. */
 export const SettingsEmptyState = ({
   icon,
   title,
@@ -37,6 +38,7 @@ export const SettingsEmptyState = ({
   </div>
 )
 
+/** Centered "no matches" note shown when a settings-page search filters everything out. */
 export const SettingsNoResults = ({ className, ...props }: ComponentProps<'p'>) => (
   <p
     className={cn('flex min-h-32 items-center justify-center text-center text-sm text-muted-foreground', className)}

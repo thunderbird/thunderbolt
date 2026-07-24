@@ -7,11 +7,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useTheme } from '@/lib/theme-provider'
 import { trackEvent } from '@/lib/posthog'
 
-/**
- * Three-way Light / Dark / System theme picker for the Preferences page.
- * (The sidebar footer's compact cycling icon lives in `theme-toggle.tsx`
- * and is dev-only.)
- */
+/** Three-way Light / Dark / System theme picker for the Preferences page. */
 const themeOptions = [
   { value: 'light', ariaLabel: 'Light mode', Icon: themeIcons.light, label: 'Light' },
   { value: 'dark', ariaLabel: 'Dark mode', Icon: themeIcons.dark, label: 'Dark' },

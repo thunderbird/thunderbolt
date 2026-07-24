@@ -48,6 +48,9 @@ export const ChatList = ({
   // Drives this list's own top scroll shadow; only the bottom counterpart is
   // lifted (the sidebar footer renders that shadow).
   const [hasContentAbove, setHasContentAbove] = useState(false)
+  // The list has something to show either when threads exist or when a search
+  // is active (an empty result set still renders the "no matches" note).
+  const hasListContent = chatThreads.length > 0 || Boolean(debouncedSearchQuery)
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -98,7 +101,7 @@ export const ChatList = ({
         {isMobile && (
           <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
             {mobileNavToggle}
-            {(chatThreads.length > 0 || debouncedSearchQuery) && (
+            {hasListContent && (
               <ChatActions
                 isCollapsed={isCollapsed}
                 debouncedSearchQuery={debouncedSearchQuery}
@@ -113,11 +116,9 @@ export const ChatList = ({
         {isMobile && searchInput}
         {isMobile && mobileSecondaryNavigation}
         {isMobile && !isCollapsed && (
-          <SidebarGroupLabel className="mt-1">
-            {chatThreads.length > 0 || debouncedSearchQuery ? 'Recent Chats' : 'No chats yet'}
-          </SidebarGroupLabel>
+          <SidebarGroupLabel className="mt-1">{hasListContent ? 'Recent Chats' : 'No chats yet'}</SidebarGroupLabel>
         )}
-        {!isMobile && !isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
+        {!isMobile && !isCollapsed && hasListContent && (
           <div className="flex items-center justify-between flex-shrink-0">
             <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
             <ChatActions
@@ -142,7 +143,7 @@ export const ChatList = ({
             hasContentAbove && 'shadow-[inset_0_8px_16px_-14px_rgba(0,0,0,0.35)]',
           )}
         >
-          {isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
+          {isCollapsed && hasListContent && (
             <>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={(e) => onSearchClick(e)} tooltip="Search chats" className="cursor-pointer">

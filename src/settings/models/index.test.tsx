@@ -13,6 +13,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn
 import { v7 as uuidv7 } from 'uuid'
 import ModelsPage from './index'
 import { systemModelMenuMessage } from './model-detail'
+import { useModelsPageState } from './use-models-page-state'
 import { http } from '@/lib/http'
 
 describe('ModelsPage reactivity', () => {
@@ -97,6 +98,35 @@ describe('add model form', () => {
     // button on the page behind the panel.
     const panel = screen.getByRole('complementary')
     expect(within(panel).getByRole('button', { name: 'Add Model' })).toBeDisabled()
+  })
+
+  it('clears the picked model when the provider changes', async () => {
+    // Drives the state hook directly — the regression (a stale 'custom'
+    // selection surviving a provider switch and keeping the custom-ID field
+    // rendered) lives in the hook, not the Radix widgets around it.
+    const SelectionHarness = () => {
+      const page = useModelsPageState()
+      return (
+        <div>
+          <span data-testid="selected-model">{page.addForm.selectedModelId ?? ''}</span>
+          <button onClick={() => page.addForm.onSelectModel('custom')}>select custom</button>
+          <button onClick={() => page.addForm.onProviderChange('openai')}>switch provider</button>
+        </div>
+      )
+    }
+    renderWithReactivity(<SelectionHarness />, { tables: ['models'] })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('select custom'))
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByTestId('selected-model')).toHaveTextContent('custom')
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('switch provider'))
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByTestId('selected-model')).toHaveTextContent('')
   })
 })
 

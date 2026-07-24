@@ -73,15 +73,19 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
     ]
   }, [integrationSettings.integrationsProIsEnabled.value, proStatus?.isProUser, status])
 
+  const toolConfigsByProvider: Record<Integration['provider'], { name: string; description: string }[]> = {
+    'thunderbolt-pro': proToolConfigs,
+    google: googleToolConfigs,
+    microsoft: microsoftToolConfigs,
+  }
+
   const toolsFor = (integration: Integration): ToolItem[] => {
-    const configs =
-      integration.provider === 'thunderbolt-pro'
-        ? proToolConfigs
-        : integration.provider === 'google'
-          ? googleToolConfigs
-          : microsoftToolConfigs
     const enabled = integration.isConnected && integration.isEnabled
-    return configs.map((config) => ({ name: config.name, description: config.description, enabled }))
+    return toolConfigsByProvider[integration.provider].map((config) => ({
+      name: config.name,
+      description: config.description,
+      enabled,
+    }))
   }
 
   const { processCallback } = useOAuthConnect({
@@ -122,10 +126,10 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
     }
   }
 
+  // Placeholder until the real upgrade flow exists (billing not built yet).
+  // Devs: pro status comes from getProStatus in src/integrations/thunderbolt-pro/utils.ts.
   const getPro = () => {
-    alert(
-      'Thunderbolt Pro upgrade would be handled here. For testing, toggle the IS_PRO_USER constant in src/integrations/thunderbolt-pro/utils.ts',
-    )
+    alert('Thunderbolt Pro is not available yet. Stay tuned!')
   }
 
   return { integrations, integrationsReady, toolsFor, processCallback, disconnect, toggle, getPro }

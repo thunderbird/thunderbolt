@@ -202,7 +202,7 @@
     "jsdom": "^29.1.1",
     "lint-staged": "^17.0.4",
     "msw": "^2.10.5",
-    "oauth2-mock-server": "^8.2.2",
+    "oauth2-mock-server": "^9.1.0",
     "playwright": "^1.58.2",
     "prettier": "^3.6.2",
     "rsocket-core": "1.0.0-alpha.3",

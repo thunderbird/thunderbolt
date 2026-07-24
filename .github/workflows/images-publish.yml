@@ -90,7 +90,7 @@ jobs:
       # -- Build and push Docker images --
 
       - name: Build and push frontend
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/frontend.Dockerfile
@@ -106,7 +106,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push backend
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/backend.Dockerfile
@@ -119,7 +119,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push postgres
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/postgres.Dockerfile
@@ -132,7 +132,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push keycloak
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/keycloak.Dockerfile
@@ -145,7 +145,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push powersync
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/powersync.Dockerfile
@@ -158,7 +158,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push marketing
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/marketing.Dockerfile

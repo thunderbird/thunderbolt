@@ -58,10 +58,13 @@ jobs:
       # and the caller workflow gates this job behind a maintainer-approval
       # environment. The version step below reads package.json from the checkout
       # but routes the value through a $GITHUB_OUTPUT → env var, never interpolated
-      # into a shell with ${{ }} syntax.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      # into a shell with ${{ }} syntax. checkout v7 refuses fork refs under
+      # pull_request_target without the explicit opt-in below; it is safe here
+      # because of the sandboxing and approval gating described above.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.ref }}
+          allow-unsafe-pr-checkout: true
 
       - name: Resolve version
         id: version

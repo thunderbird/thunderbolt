@@ -56,7 +56,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Explicit `ref: main` — never run a fork's version of the drop
           # script with our deploy creds. (pull_request_target defaults to

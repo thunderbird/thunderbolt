@@ -19,7 +19,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'A searchable dropdown menu component that supports flat and grouped items, custom rendering, and mobile-optimized behavior with blur backdrop.',
+          'A searchable dropdown menu component that supports flat and grouped items, custom rendering, and mobile-optimized behavior via the MobileCardMenu drawer.',
       },
     },
   },

@@ -78,12 +78,22 @@ export default function ChatUI() {
         <AnimatePresence mode="wait">
           {hasMessages ? (
             <div key="messages" className="relative flex-1 min-h-0">
+              {/* Mobile keeps the composer bottom-anchored, so there is no
+                  layout change for framer to slide on the first send (desktop
+                  gets its slide from the composer's center→bottom `layout`
+                  animation). Slide the list itself up instead, matching the
+                  composer tween, so mobile mirrors the desktop motion. */}
               <m.div
                 ref={scrollContainerRef}
                 {...scrollHandlers}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0, y: isMobile ? 24 : 0 }}
+                animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
+                transition={{
+                  type: 'tween',
+                  ease: [0.2, 0.9, 0.1, 1],
+                  duration: 0.25,
+                }}
                 className="h-full overflow-y-auto hide-scrollbar"
               >
                 {/* Scroll captures the full width; the content stays centered.
@@ -107,7 +117,10 @@ export default function ChatUI() {
               className="flex-1 flex items-center justify-center"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              // Fast exit: with `mode="wait"` the logo's fade-out gates the
+              // message list's slide-in, so a leisurely default (~0.3s) would
+              // hold the just-sent message invisible for that long.
+              exit={{ opacity: 0, transition: { duration: 0.15 } }}
             >
               <AppLogo size={88} className="opacity-60" />
             </m.div>
@@ -137,11 +150,24 @@ export default function ChatUI() {
               duration: 0.25,
             }}
           >
-            {!hasMessages && !isMobile && (
-              <m.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-24">
-                <EmptyChatGreeting />
-              </m.div>
-            )}
+            {/* Exit fade so the greeting dissolves while the composer slides
+                down on the first send — without it the greeting pops out
+                abruptly, which reads as a hitch in the otherwise-smooth
+                new-chat → real-chat transition. */}
+            <AnimatePresence>
+              {!hasMessages && !isMobile && (
+                <m.div
+                  key="greeting"
+                  layout
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                  className="mb-24"
+                >
+                  <EmptyChatGreeting />
+                </m.div>
+              )}
+            </AnimatePresence>
             <div className="w-full max-w-[696px] min-w-[268px]">
               <PermissionDialogHost />
             </div>

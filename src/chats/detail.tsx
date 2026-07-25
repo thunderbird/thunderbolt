@@ -10,6 +10,7 @@ import { useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
+import { PageFallback } from '@/loading'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   id: string
@@ -26,8 +27,13 @@ const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  // Visible feedback while an existing thread hydrates (message load +
+  // session setup): sidebar taps navigate here immediately, so this spinner —
+  // not a blank pane — is what shows while a long chat loads. New chats skip
+  // it: their hydration is a few fast reads, and flashing a second spinner
+  // right after the app-boot one reads as a glitch on first load.
   if (!isReady) {
-    return null
+    return isNew ? null : <PageFallback />
   }
 
   return (
@@ -44,11 +50,14 @@ export default function ChatDetailPage() {
 
   const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [isNew, params.chatThreadId])
 
+  // Warm the lazily-split message subtree for new chats as well as existing
+  // ones: the first send swaps the empty state for the message list mid-
+  // animation, and an unloaded chunk would leave the enter fade running over
+  // an empty Suspense shell with the messages popping in afterwards. Firing
+  // from an effect keeps the chunk out of the entry bundle either way.
   useEffect(() => {
-    if (!isNew) {
-      void loadChatMessageList()
-    }
-  }, [isNew])
+    void loadChatMessageList()
+  }, [])
 
   if (!id) {
     return null

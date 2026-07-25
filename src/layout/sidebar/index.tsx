@@ -106,39 +106,34 @@ export default function Sidebar() {
     },
   })
 
-  // On mobile, wait for the drawer's close animation to settle before
-  // navigating — rendering the target route (especially a large chat) on the
-  // main thread would otherwise jank the closing spring. Resolves immediately
-  // on desktop or when the drawer is already closed.
-  const navigateAfterSidebarClose = useCallback(
-    async (path: string) => {
-      await closeMobileSidebar()
+  // Navigate immediately and let the mobile drawer's close animation play out
+  // over the destination — waiting for the drawer to settle first read as lag.
+  // Chat threads hydrate behind a route-level spinner (see ChatHydrateHandler),
+  // so the heavy message render lands after the initial paint either way.
+  const navigateAndCloseSidebar = useCallback(
+    (path: string) => {
       navigate(path)
+      void closeMobileSidebar()
     },
     [closeMobileSidebar, navigate],
   )
 
-  // The chat row the user tapped and is still waiting on (mobile defers the
-  // navigation until the drawer settles) — its row shows a spinner meanwhile.
-  const [pendingChatThreadId, setPendingChatThreadId] = useState<string | null>(null)
-
   const createNewChat = () => {
     triggerImpact('light')
     trackEvent('chat_new_clicked')
-    void navigateAfterSidebarClose('/chats/new')
+    navigateAndCloseSidebar('/chats/new')
   }
 
   const handleChatClick = useCallback(
     (threadId: string) => {
       trackEvent('chat_select', { chat_id: threadId })
-      setPendingChatThreadId(threadId)
-      void navigateAfterSidebarClose(`/chats/${threadId}`).finally(() => setPendingChatThreadId(null))
+      navigateAndCloseSidebar(`/chats/${threadId}`)
     },
-    [navigateAfterSidebarClose],
+    [navigateAndCloseSidebar],
   )
 
   const handleNavigate = (path: string) => {
-    void navigateAfterSidebarClose(path)
+    navigateAndCloseSidebar(path)
   }
 
   const handleSearchClick = (e?: MouseEvent) => {
@@ -177,7 +172,6 @@ export default function Sidebar() {
             isCollapsed={isCollapsed}
             chatThreads={chatThreads}
             currentChatThreadId={currentChatThreadId}
-            pendingChatThreadId={pendingChatThreadId}
             searchQuery={searchQuery}
             debouncedSearchQuery={debouncedSearchQuery}
             showSearch={showSearch}

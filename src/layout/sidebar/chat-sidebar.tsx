@@ -30,6 +30,7 @@ type ChatSidebarContentProps = {
   isCollapsed: boolean
   chatThreads: ChatThread[]
   currentChatThreadId?: string
+  pendingChatThreadId?: string | null
   searchQuery: string
   debouncedSearchQuery: string
   showSearch: boolean
@@ -69,6 +70,7 @@ export const ChatSidebarContent = ({
   isCollapsed,
   chatThreads,
   currentChatThreadId,
+  pendingChatThreadId,
   searchQuery,
   debouncedSearchQuery,
   showSearch,
@@ -130,6 +132,7 @@ export const ChatSidebarContent = ({
       <ChatList
         chatThreads={chatThreads}
         currentChatThreadId={currentChatThreadId}
+        pendingChatThreadId={pendingChatThreadId}
         isCollapsed={isCollapsed}
         isMobile={isMobile}
         debouncedSearchQuery={debouncedSearchQuery}

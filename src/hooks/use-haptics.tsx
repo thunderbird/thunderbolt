@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createContext, type ReactNode, useCallback, useContext } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect } from 'react'
 import { useWebHaptics } from 'web-haptics/react'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
@@ -94,3 +94,20 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
  * If no provider exists, returns silent no-ops — safe for dumb components.
  */
 export const useHaptics = () => useContext(HapticsContext)
+
+/**
+ * Fires a light impact when the calling component mounts and again when it
+ * unmounts. Placed inside a modal/drawer content component (which only exists
+ * while open), this gives every open AND close of that surface haptic
+ * feedback from one central spot — regardless of what triggered the change
+ * (tap, swipe, Escape, programmatic).
+ */
+export const useMountHaptic = () => {
+  const { triggerImpact } = useHaptics()
+  useEffect(() => {
+    triggerImpact('light')
+    return () => triggerImpact('light')
+    // The provider's trigger is stable; run strictly on mount/unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+}

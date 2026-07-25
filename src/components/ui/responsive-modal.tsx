@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { modalAnimationClass, modalCloseClass, modalFieldSurfaceClass } from '@/components/ui/modal-styles'
 import { Scrim } from '@/components/ui/scrim'
+import { useMountHaptic } from '@/hooks/use-haptics'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -72,7 +73,7 @@ export const getResponsiveModalSurfaceStyle = (isMobile: boolean, flush = false)
 /** Returns the shared surface classes for a responsive modal viewport and API variant. */
 export const getResponsiveModalSurfaceClass = (isMobile: boolean, surfaceVariant: ResponsiveModalSurfaceVariant) => {
   if (isMobile) {
-    return 'inset-0 h-dvh w-full gap-4 overflow-auto rounded-none border-0 p-6 shadow-none'
+    return 'inset-0 h-dvh w-full gap-4 overflow-auto rounded-none border-0 p-4 shadow-none'
   }
 
   if (surfaceVariant === 'structured') {
@@ -96,6 +97,8 @@ const ResponsiveModalDialogContent = ({
   ...props
 }: ResponsiveModalDialogContentProps) => {
   const { isMobile } = useIsMobile()
+  // Content only exists while the modal is open, so this taps on open and close.
+  useMountHaptic()
 
   return (
     <ResponsiveModalContext value={{ isMobile }}>
@@ -126,9 +129,9 @@ const ResponsiveModalDialogContent = ({
           {showCloseButton && (
             <DialogClose
               data-slot="responsive-modal-close"
-              className={cn(modalCloseClass, isMobile ? 'left-4' : 'right-4')}
+              className={cn(modalCloseClass, isMobile ? 'left-2' : 'right-4')}
               style={{
-                top: isMobile ? 'calc(var(--safe-area-top-padding, 0px) + var(--modal-control-inset))' : 16,
+                top: isMobile ? 'calc(var(--header-safe-area-top) + var(--modal-control-inset))' : 16,
               }}
             >
               <XIcon className="size-[var(--icon-size-default)]" />
@@ -231,6 +234,30 @@ export const ResponsiveModalDescription = ({ className, ...props }: ResponsiveMo
   <DialogDescription className={className} {...props} />
 )
 
+/**
+ * Mobile-only pinned title bar: vertically centered with the corner controls
+ * (close top-left, actions top-right) and horizontally centered between them,
+ * so the title lives in the control row instead of consuming content space.
+ * The horizontal insets clear a corner control plus breathing room on each
+ * side; long titles truncate.
+ */
+export const ResponsiveModalPinnedHeader = ({ title, subtitle }: { title: string; subtitle?: string }) => (
+  <div
+    data-slot="responsive-modal-pinned-header"
+    className="pointer-events-none absolute inset-x-[calc(0.5rem+var(--touch-height-lg)+0.5rem)] z-10 flex h-[var(--touch-height-lg)] flex-col items-center justify-center"
+    style={{ top: 'calc(var(--header-safe-area-top) + var(--modal-control-inset))' }}
+  >
+    <ResponsiveModalTitle className="max-w-full truncate text-[length:var(--font-size-body)]">
+      {title}
+    </ResponsiveModalTitle>
+    {subtitle && (
+      <ResponsiveModalDescription className="max-w-full truncate text-[length:var(--font-size-xs)]">
+        {subtitle}
+      </ResponsiveModalDescription>
+    )}
+  </div>
+)
+
 type ResponsiveModalActionsProps = ComponentProps<'div'>
 
 /** Optional mobile toolbar actions, positioned opposite the shared close control
@@ -244,10 +271,10 @@ export const ResponsiveModalActions = ({ className, ...props }: ResponsiveModalA
       // desktop) and mobile circle shape. They also
       // pair it with mobileHeaderControlFillClass so the tap target stays
       // visible at rest, like the close control opposite them.
-      'fixed right-4 z-10 flex items-center',
+      'fixed right-2 z-10 flex items-center',
       className,
     )}
-    style={{ top: 'calc(var(--safe-area-top-padding, 0px) + var(--modal-control-inset))' }}
+    style={{ top: 'calc(var(--header-safe-area-top) + var(--modal-control-inset))' }}
     {...props}
   />
 )

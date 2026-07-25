@@ -5,6 +5,7 @@
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
 import type { ComponentProps } from 'react'
 
+import { useMountHaptic } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 
 /**
@@ -36,27 +37,33 @@ const popupClass = cn(
   'data-[starting-style]:transform-[var(--closed-transform)] data-[ending-style]:transform-[var(--closed-transform)]',
   'data-[swiping]:duration-0 data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*400ms)]',
   // Bleed: fills the gap the sheet reveals at its own edge when a swipe
-  // overshoots past the resting position.
-  'after:pointer-events-none after:absolute after:inset-x-0 after:h-12 after:bg-popover/80 after:backdrop-blur-lg',
+  // overshoots past the resting position. Sized generously (10rem) so even a
+  // hard overshoot flick never exposes the sheet's outer edge.
+  'after:pointer-events-none after:absolute after:inset-x-0 after:h-40 after:bg-popover/80 after:backdrop-blur-lg',
   'data-[swipe-direction=down]:inset-x-0 data-[swipe-direction=down]:bottom-0 data-[swipe-direction=down]:rounded-t-3xl data-[swipe-direction=down]:border-t data-[swipe-direction=down]:after:top-full data-[swipe-direction=down]:[--closed-transform:translate3d(0,calc(100%+2px),0)] data-[swipe-direction=down]:[--translate-y:var(--drawer-swipe-movement-y)]',
   'data-[swipe-direction=up]:inset-x-0 data-[swipe-direction=up]:top-0 data-[swipe-direction=up]:rounded-b-3xl data-[swipe-direction=up]:border-b data-[swipe-direction=up]:after:bottom-full data-[swipe-direction=up]:[--closed-transform:translate3d(0,calc(-100%-2px),0)] data-[swipe-direction=up]:[--translate-y:var(--drawer-swipe-movement-y)]',
 )
 
-const DrawerContent = ({ className, children, ...props }: DrawerPrimitive.Popup.Props) => (
-  <DrawerPrimitive.Portal data-slot="drawer-portal">
-    <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} />
-    <DrawerPrimitive.Viewport
-      data-slot="drawer-viewport"
-      className="pointer-events-auto fixed inset-0 z-50 select-none"
-    >
-      <DrawerPrimitive.Popup data-slot="drawer-content" className={cn(popupClass, className)} {...props}>
-        <DrawerPrimitive.Content className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit] select-text group-data-[swiping]/drawer-content:select-none">
-          {children}
-        </DrawerPrimitive.Content>
-      </DrawerPrimitive.Popup>
-    </DrawerPrimitive.Viewport>
-  </DrawerPrimitive.Portal>
-)
+const DrawerContent = ({ className, children, ...props }: DrawerPrimitive.Popup.Props) => {
+  // The sheet only exists while open, so this taps on both open and close —
+  // covering every slide-in card (add-to-chat, mode, model, agent, chip menus).
+  useMountHaptic()
+  return (
+    <DrawerPrimitive.Portal data-slot="drawer-portal">
+      <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} />
+      <DrawerPrimitive.Viewport
+        data-slot="drawer-viewport"
+        className="pointer-events-auto fixed inset-0 z-50 select-none"
+      >
+        <DrawerPrimitive.Popup data-slot="drawer-content" className={cn(popupClass, className)} {...props}>
+          <DrawerPrimitive.Content className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit] select-text group-data-[swiping]/drawer-content:select-none">
+            {children}
+          </DrawerPrimitive.Content>
+        </DrawerPrimitive.Popup>
+      </DrawerPrimitive.Viewport>
+    </DrawerPrimitive.Portal>
+  )
+}
 
 /* Base UI has no Handle part (vaul did) — the grab bar is decorative, so a
  * plain div is the intended replacement; the popup itself owns the gesture. */

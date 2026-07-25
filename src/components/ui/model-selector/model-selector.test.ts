@@ -57,8 +57,8 @@ describe('categorizeModels', () => {
     expect(available.items[0].disabled).toBe(false)
 
     const disabled = groupById(groups, 'standard-disabled')
-    expect(disabled.label).toBe('Standard Models')
-    expect(disabled.subtitle).toBe('Not available in confidential chats.')
+    expect(disabled.label).toBe('Not available in private chats.')
+    expect(disabled.subtitle).toBeUndefined()
     expect(disabled.items).toHaveLength(1)
     expect(disabled.items[0].id).toBe('std-1')
     expect(disabled.items[0].disabled).toBe(true)
@@ -72,8 +72,8 @@ describe('categorizeModels', () => {
     expect(available.items[0].id).toBe('std-1')
 
     const disabled = groupById(groups, 'confidential-disabled')
-    expect(disabled.label).toBe('Confidential Models')
-    expect(disabled.subtitle).toBe('Available only in confidential chats.')
+    expect(disabled.label).toBe('Only available in private chats.')
+    expect(disabled.subtitle).toBeUndefined()
     expect(disabled.items).toHaveLength(1)
     expect(disabled.items[0].id).toBe('conf-1')
     expect(disabled.items[0].disabled).toBe(true)

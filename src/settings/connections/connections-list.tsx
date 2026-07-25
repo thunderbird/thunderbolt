@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Plug, Plus, X } from 'lucide-react'
+import { Plug, Plus } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { EditDeleteContextMenuContent } from '@/components/settings/edit-delete-context-menu'
@@ -20,7 +20,6 @@ import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Switch } from '@/components/ui/switch'
-import { StatusCard } from '@/components/ui/status-card'
 import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName, serverMatchesQuery } from './display'
 import type { Integration } from './types'
@@ -157,7 +156,6 @@ export const ConnectionsList = ({
   onToggleServer,
   onEditServer,
   onDeleteServer,
-  error,
 }: {
   integrations: Integration[]
   /** True once the async sources behind the integrations' enabled state have
@@ -176,7 +174,6 @@ export const ConnectionsList = ({
   onToggleServer: (id: string, next: boolean) => void
   onEditServer: (id: string) => void
   onDeleteServer: (id: string) => void
-  error?: string | null
 }) => {
   const [search, setSearch] = useState('')
   const query = search.trim()
@@ -204,14 +201,6 @@ export const ConnectionsList = ({
 
         <PageSearch.Input placeholder="Search connections" onSearch={setSearch} />
       </PageSearch>
-
-      {error && (
-        <StatusCard
-          icon={<X className="h-4 w-4 text-destructive" />}
-          title="Connection update failed"
-          description={error}
-        />
-      )}
 
       <SettingsListBody>
         {filteredIntegrations.length > 0 && (

@@ -37,12 +37,14 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
   if (!isMobile) {
     return (
       <Button
-        variant="outline"
+        variant="ghost"
         size="icon"
         // PageHeader pulls general actions in by 8px to align with row controls.
         // The primary create action instead aligns its outer edge with the
         // content surface itself, so compensate for that shared inset.
-        className="-mr-2 bg-card"
+        // Ghost + bg-card: a filled, borderless tile (borders removed from the
+        // settings create actions by design).
+        className="-mr-2 bg-card hover:bg-accent"
         aria-label={label}
         onClick={onClick}
         disabled={disabled}
@@ -60,7 +62,8 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
       // removes its own footer padding and sits directly on the safe-area inset;
       // web mobile retains the footer's 8px padding. Mirroring that distinction
       // keeps this pill aligned with New Chat in both environments.
-      className="fixed right-4 z-30 rounded-full shadow-lg"
+      // border-none: the New Chat pill this mirrors is borderless.
+      className="fixed right-4 z-30 rounded-full border-none shadow-lg"
       style={{
         bottom: isNativeMobile
           ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`

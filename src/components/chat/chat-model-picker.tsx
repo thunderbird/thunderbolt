@@ -39,7 +39,9 @@ export const ChatModelPicker = () => {
       selectedModel={selectedModel ?? null}
       chatThread={chatThread ?? null}
       onModelChange={handleModelChange}
-      onAddModels={() => navigate('/settings/models')}
+      // One-shot deep link (see useConsumeNavState): lands with the Add Model
+      // panel already open instead of on the bare list.
+      onAddModels={() => navigate('/settings/models', { state: { createModel: '' } })}
       side={isMobile ? 'top' : 'bottom'}
       align="end"
     />

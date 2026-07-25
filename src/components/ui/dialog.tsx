@@ -6,6 +6,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
+import { useMountHaptic } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import {
   centeredModalSurfaceClass,
@@ -60,6 +61,8 @@ const DialogContent = ({
   useTransparentOverlay?: boolean
   fullScreen?: boolean
 }) => {
+  // Content only exists while the dialog is open, so this taps on open and close.
+  useMountHaptic()
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay useTransparentOverlay={useTransparentOverlay} />
@@ -80,7 +83,7 @@ const DialogContent = ({
           <DialogPrimitive.Close
             data-slot="dialog-close"
             className={`${modalCloseClass} right-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`}
-            style={{ top: fullScreen ? 'calc(var(--safe-area-top-padding, 0px) + 16px)' : '16px' }}
+            style={{ top: fullScreen ? 'calc(var(--header-safe-area-top) + var(--modal-control-inset))' : '16px' }}
           >
             <XIcon />
             <span className="sr-only">Close</span>

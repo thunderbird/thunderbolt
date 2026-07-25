@@ -39,7 +39,7 @@ describe('DetailPanelSurface', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('scrolls the mobile title block with the body, leaving only the corner controls pinned', () => {
+  it('pins the mobile title bar in the control row instead of scrolling it with the body', () => {
     forceMobileViewport()
 
     render(
@@ -52,9 +52,12 @@ describe('DetailPanelSurface', () => {
 
     const scrollArea = screen.getByText('Server status').parentElement
     expect(scrollArea).toHaveClass('overflow-y-auto')
-    // Title and subtitle live inside the scroller, not pinned above it.
-    expect(scrollArea).toContainElement(screen.getByRole('heading', { name: 'MCP server' }))
-    expect(scrollArea).toContainElement(screen.getByText('https://example.com/mcp'))
+    // Title and subtitle sit in the pinned header bar (centered between the
+    // corner controls), outside the scroller.
+    const pinnedHeader = screen.getByRole('heading', { name: 'MCP server' }).parentElement
+    expect(pinnedHeader).toHaveAttribute('data-slot', 'responsive-modal-pinned-header')
+    expect(pinnedHeader).toContainElement(screen.getByText('https://example.com/mcp'))
+    expect(scrollArea).not.toContainElement(screen.getByRole('heading', { name: 'MCP server' }))
   })
 
   it('keeps the desktop title block pinned above the scroller', () => {

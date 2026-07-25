@@ -58,6 +58,7 @@ export const ChatListItem = memo(
   ({
     thread,
     isActive,
+    isNavigationPending,
     isCollapsed,
     isMobile,
     deleteChatMutation,
@@ -94,6 +95,10 @@ export const ChatListItem = memo(
       onRename(thread.id, title)
     }
 
+    // One spinner slot serves both signals: an in-flight reply and a tapped
+    // row whose navigation is deferred until the mobile drawer settles.
+    const showSpinner = status === 'streaming' || isNavigationPending
+
     if (isCollapsed) {
       return (
         <SidebarMenuButton
@@ -102,7 +107,7 @@ export const ChatListItem = memo(
           className="cursor-pointer"
           tooltip={thread.title ?? undefined}
         >
-          {status === 'streaming' ? (
+          {showSpinner ? (
             <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
           ) : (
             <MessageCircle className="size-[var(--icon-size-default)] shrink-0" />
@@ -154,10 +159,14 @@ export const ChatListItem = memo(
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <AnimatePresence>
-                      {status === 'streaming' && (
+                      {showSpinner && (
                         <m.div
                           key={`${thread.id}-loading`}
-                          initial={{ opacity: 0, width: 0 }}
+                          // No enter animation: the tap-to-navigate spinner's whole
+                          // visibility window is the drawer's ~300ms close spring —
+                          // fading it in would spend that window still invisible.
+                          // Exit keeps the smooth collapse.
+                          initial={false}
                           animate={{ opacity: 1, width: 'auto' }}
                           exit={{ opacity: 0, width: 0 }}
                           className="flex-shrink-0"

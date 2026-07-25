@@ -24,9 +24,13 @@ export const modalOverlayClass = `${modalAnimationClass} fixed inset-0 z-50 bg-b
  * emits media-query utilities after plain state variants, so an unprefixed
  * `active:bg-*` would lose to the resting fill here and the tap would land with
  * no feedback at all.
+ *
+ * Dark mode halves the resting fill: dark `--muted` sits far from the page
+ * background, so the full 80% circle reads too loud there — 40% keeps the tap
+ * target visible while staying subtle.
  */
 export const mobileHeaderControlFillClass =
-  'max-md:bg-muted/80 max-md:backdrop-blur-md max-md:active:bg-muted-foreground/20'
+  'max-md:bg-muted/80 max-md:dark:bg-muted/40 max-md:backdrop-blur-md max-md:active:bg-muted-foreground/20'
 
 /**
  * Descendant-selector variant of `mobileHeaderControlFillClass` for containers
@@ -37,7 +41,7 @@ export const mobileHeaderControlFillClass =
  * mobile.
  */
 export const mobileHeaderControlFillDescendantClass =
-  '[&>button]:size-[var(--touch-height-lg)] [&>button]:bg-muted/80 [&>button]:backdrop-blur-md [&>button]:active:bg-muted-foreground/20'
+  '[&>button]:size-[var(--touch-height-lg)] [&>button]:bg-muted/80 dark:[&>button]:bg-muted/40 [&>button]:backdrop-blur-md [&>button]:active:bg-muted-foreground/20'
 
 /**
  * Ring is keyed on focus-visible, matching the Button primitive (and

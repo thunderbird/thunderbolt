@@ -15,7 +15,7 @@ import type { RequestPermissionRequest, RequestPermissionResponse } from '@agent
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SessionSideEffectSink } from '@/acp/translators/acp-to-ai-sdk'
-import type { ChatThread, Mode, Model, SaveMessagesFunction } from '@/types'
+import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
 
 /** Capabilities advertised by an ACP agent on `initialize`. Stored on the
  *  adapter so the connect logic can branch on `loadSession` and future
@@ -63,7 +63,6 @@ export type AgentAdapterContext = {
   chatThread: ChatThread | null
   acpSessionId: string | null
   saveMessages: SaveMessagesFunction
-  selectedMode: Mode
   selectedModel: Model
   mcpClients: NamedMCPClient[]
   /** Reconnect a dropped MCP client at the `tools()` boundary; returns a fresh

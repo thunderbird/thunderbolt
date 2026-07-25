@@ -19,6 +19,7 @@ import {
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { StatusCard } from '@/components/ui/status-card'
+import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { AddModelForm } from './add-model-form'
 import { EditModelForm } from './edit-model-form'
 import { ModelDetail } from './model-detail'
@@ -28,6 +29,10 @@ import { useModelsPageState } from './use-models-page-state'
 const ModelsPage = () => {
   const page = useModelsPageState()
   const { activeModel, editingModel } = page
+
+  // Deep link from the chat composer's model selector ("Add models"): open
+  // the Add Model panel directly instead of landing on the bare list.
+  useConsumeNavState('createModel', page.openAddPanel)
   // Mutation errors surface where the mutation was triggered — the delete
   // dialog, add form, and edit form each render `mutationError` themselves, so
   // the page-level card shows only when none of those surfaces is open.

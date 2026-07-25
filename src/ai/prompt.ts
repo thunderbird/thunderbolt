@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { chatPrompt } from '@/ai/prompts/chat'
 import { widgetPrompts } from '@/widgets'
 import type { ModelProfile } from '@/types'
 
@@ -9,8 +10,6 @@ import type { ModelProfile } from '@/types'
 export type PromptParams = {
   modelName: string
   profile: ModelProfile | null
-  /** Mode name for mode-specific prompt overrides (e.g. 'chat', 'search', 'research') */
-  modeName: string | null
   preferredName: string
   location: { name?: string; lat?: number; lng?: number }
   localization: {
@@ -22,8 +21,6 @@ export type PromptParams = {
   }
   /** Integration status for the model to check before showing connect widget */
   integrationStatus: string
-  /** Optional mode-specific system prompt instructions */
-  modeSystemPrompt?: string
   /** Summary of connected MCP servers (name + tool count) */
   mcpServersSummary?: string
 }
@@ -36,30 +33,14 @@ export type PromptParts = {
 
 /** Build stable assistant instructions separately from per-send date/time. */
 export const createPromptParts = (
-  {
-    modelName,
-    profile,
-    modeName,
-    preferredName,
-    location,
-    localization,
-    integrationStatus,
-    modeSystemPrompt,
-    mcpServersSummary,
-  }: PromptParams,
+  { modelName, profile, preferredName, location, localization, integrationStatus, mcpServersSummary }: PromptParams,
   currentDate: Date = new Date(),
 ): PromptParts => {
   const toolsOverride = profile?.toolsOverride ?? undefined
   const linkPreviewsOverride = profile?.linkPreviewsOverride ?? undefined
-  const modeAddendum = !profile
-    ? undefined
-    : modeName === 'chat'
-      ? profile.chatModeAddendum
-      : modeName === 'search'
-        ? profile.searchModeAddendum
-        : modeName === 'research'
-          ? profile.researchModeAddendum
-          : undefined
+  // Chat is the only conversation style now (Search/Research ship as default
+  // skills), so its per-model addendum is the only one applied.
+  const chatAddendum = profile?.chatModeAddendum ?? undefined
   // The date/time changes every send; it goes in the suffix (see the ordering
   // note on the returned template), while the stable context stays in the prefix.
   const currentDateTime = `Current date/time: ${currentDate.toLocaleString('en-US', {
@@ -149,7 +130,9 @@ Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" 
 Wrong: "Tokyo has 14 million residents." (missing [N])
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
 Format math as LaTeX with dollar delimiters: $…$ inline, $$…$$ for standalone equations. Never use \\(…\\) or \\[…\\].
-${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${modeAddendum ? `\n\n${modeAddendum}` : ''}` : ''}`
+
+# Conversation Style (follow these instructions)
+${chatPrompt}${chatAddendum ? `\n\n${chatAddendum}` : ''}`
   return {
     stablePrompt,
     volatilePrompt: currentDateTime,

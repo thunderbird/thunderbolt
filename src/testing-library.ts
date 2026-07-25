@@ -22,6 +22,7 @@ mock.module('@/hooks/use-haptics', () => ({
     triggerImpact: () => {},
     triggerNotification: () => {},
   }),
+  useMountHaptic: () => {},
   HapticsProvider: ({ children }: { children: unknown }) => children,
 }))
 

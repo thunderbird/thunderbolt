@@ -3,9 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createContext, useContext, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { Search } from 'lucide-react'
-import { Button } from './button'
+import { Button, mutedIconButtonClass } from './button'
+import { mobileHeaderControlFillClass } from './modal-styles'
 import { SearchInput, type SearchInputProps } from './search-input'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
 type PageSearchContextValue = {
@@ -50,7 +53,10 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
     const next = !open
     setOpen(next)
     if (next) {
-      requestAnimationFrame(() => inputRef.current?.focus())
+      // Focus synchronously inside the tap's event handler — the input is
+      // already in the DOM (just collapsed), and staying within the user
+      // gesture is what lets the mobile keyboard open immediately.
+      inputRef.current?.focus()
     } else {
       setSearchValue('')
       onSearch('')
@@ -64,6 +70,31 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
 
 const PageSearchButton = () => {
   const { open, toggle } = usePageSearchContext()
+  const { isMobile } = useIsMobile()
+
+  if (isMobile) {
+    // Mobile: a top-right circular header control, matching the sidebar
+    // toggle / modal close family. Portaled to `document.body` so
+    // `position: fixed` anchors to the viewport (see PageCreateAction).
+    return createPortal(
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Search"
+        className={cn(
+          mutedIconButtonClass,
+          mobileHeaderControlFillClass,
+          'fixed right-2 z-30',
+          open && 'bg-muted text-foreground',
+        )}
+        style={{ top: 'calc(var(--header-safe-area-top) + 0.5rem)' }}
+        onClick={toggle}
+      >
+        <Search />
+      </Button>,
+      document.body,
+    )
+  }
 
   return (
     <Button
@@ -110,7 +141,7 @@ const PageSearchInput = ({
         ref={inputRef}
         inputSize="lg"
         showIcon
-        className={cn('rounded-lg bg-card', className)}
+        className={cn('rounded-xl bg-card', className)}
         placeholder={placeholder}
         value={searchValue}
         onChange={handleChange}

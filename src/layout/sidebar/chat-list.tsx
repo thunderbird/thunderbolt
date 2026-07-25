@@ -43,6 +43,7 @@ const VirtualChatRow = ({ style, children, ref }: CustomItemComponentProps) => (
 export const ChatList = ({
   chatThreads,
   currentChatThreadId,
+  pendingChatThreadId,
   isCollapsed,
   isMobile,
   debouncedSearchQuery,
@@ -209,6 +210,7 @@ export const ChatList = ({
                   key={thread.id}
                   thread={thread}
                   isActive={thread.id === currentChatThreadId}
+                  isNavigationPending={thread.id === pendingChatThreadId}
                   isCollapsed={isCollapsed}
                   isMobile={isMobile}
                   deleteChatMutation={deleteChatMutation}

@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { SidebarMenuButton } from '@/components/ui/sidebar'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import type { ChatActionsProps } from './types'
@@ -25,10 +24,6 @@ export const ChatActions = ({
 
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      {/* Deliberately NO tooltip on the search button — the icon is
-          self-explanatory. Do not re-add one "for consistency" with the
-          clear-all button below (whose flame icon does need explaining);
-          review passes have re-introduced it before. */}
       <SidebarMenuButton
         onClick={(e) => onSearchClick(e)}
         aria-label="Search chats"
@@ -40,25 +35,18 @@ export const ChatActions = ({
       >
         <Search className="size-[var(--icon-size-default)]" />
       </SidebarMenuButton>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <SidebarMenuButton
-            onClick={() => deleteAllChatsDialogRef.current?.open()}
-            aria-label="Clear all chats"
-            className={actionButtonClass}
-            disabled={deleteAllChatsMutation.isPending}
-          >
-            {deleteAllChatsMutation.isPending ? (
-              <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
-            ) : (
-              <Flame className="size-[var(--icon-size-default)]" />
-            )}
-          </SidebarMenuButton>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          <p>Clear all chats</p>
-        </TooltipContent>
-      </Tooltip>
+      <SidebarMenuButton
+        onClick={() => deleteAllChatsDialogRef.current?.open()}
+        aria-label="Clear all chats"
+        className={actionButtonClass}
+        disabled={deleteAllChatsMutation.isPending}
+      >
+        {deleteAllChatsMutation.isPending ? (
+          <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
+        ) : (
+          <Flame className="size-[var(--icon-size-default)]" />
+        )}
+      </SidebarMenuButton>
     </div>
   )
 }

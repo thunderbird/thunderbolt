@@ -29,8 +29,8 @@ describe('ContentViewHeader', () => {
     )
 
     const closeButton = screen.getByRole('button', { name: 'Close' })
-    expect(closeButton).toHaveClass('left-4')
-    expect(screen.getByRole('button', { name: 'Copy' }).parentElement).toHaveClass('fixed', 'right-4')
+    expect(closeButton).toHaveClass('left-2')
+    expect(screen.getByRole('button', { name: 'Copy' }).parentElement).toHaveClass('fixed', 'right-2')
     expect(screen.getByRole('heading', { name: 'Reasoning' }).parentElement).toHaveClass(
       'pt-[calc(var(--modal-top-inset)+1rem)]',
     )

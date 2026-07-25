@@ -29,7 +29,8 @@ describe('PageCreateAction', () => {
 
     const button = screen.getByRole('button', { name: 'New Skill' })
     expect(button.textContent).toContain('New Skill')
-    expect(button).toHaveClass('border', 'border-border')
+    // Borderless like the sidebar's mobile New Chat pill it mirrors.
+    expect(button).toHaveClass('rounded-full', 'border-none')
     // Portaled so `position: fixed` anchors to the viewport, not an ancestor.
     expect(button.parentElement).toBe(document.body)
   })

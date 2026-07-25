@@ -9,15 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { eq } from 'drizzle-orm'
 import type { AnyColumn } from 'drizzle-orm'
 import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core'
-import {
-  modelProfilesTable,
-  modelsTable,
-  modesTable,
-  promptsTable,
-  settingsTable,
-  skillsTable,
-  tasksTable,
-} from '../db/tables'
+import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import {
@@ -27,7 +19,6 @@ import {
   hashModel,
   type SharedModel,
 } from '@shared/defaults/models'
-import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
@@ -1108,55 +1099,55 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     expect(preservedProfile?.temperature).toBe(0.77)
   })
 
-  // Coverage guard for `runGatedPass` (modes/tasks/skills/settings) — the
-  // models path has its own dedicated test above. Modes is a good stand-in
-  // for the loop because it has multiple rows and its own hashFn/defaults.
-  const readStoredModesVersion = async () => {
+  // Coverage guard for `runGatedPass` (tasks/skills/settings) — the models
+  // path has its own dedicated test above. Skills is a good stand-in for the
+  // loop because it has multiple rows and its own hashFn/defaults.
+  const readStoredSkillsVersion = async () => {
     const db = getDb()
-    const row = await db.select().from(settingsTable).where(eq(settingsTable.key, 'defaults_version.modes')).get()
+    const row = await db.select().from(settingsTable).where(eq(settingsTable.key, 'defaults_version.skills')).get()
     return row?.value == null ? null : Number(row.value)
   }
 
-  test('runGatedPass advances marker when every mode row is at target and mutated is false', async () => {
+  test('runGatedPass advances marker when every skill row is at target and mutated is false', async () => {
     const db = getDb()
 
-    // Seed at the current bundle so every modes row hashes to target.
+    // Seed at the current bundle so every skills row hashes to target.
     await reconcileDefaults(db)
 
-    // Wipe the modes marker to simulate the pre-THU-677 "no marker yet"
+    // Wipe the skills marker to simulate the pre-THU-677 "no marker yet"
     // state for the non-models tables. The gate opens, reconcile finds
     // every row already at target (mutated=false), and the marker must
     // still advance via the `everyBundleRowAtTarget` branch.
-    await db.delete(settingsTable).where(eq(settingsTable.key, 'defaults_version.modes'))
+    await db.delete(settingsTable).where(eq(settingsTable.key, 'defaults_version.skills'))
 
     await reconcileDefaults(db)
 
-    expect(await readStoredModesVersion()).toBe(defaultModesVersion)
+    expect(await readStoredSkillsVersion()).toBe(defaultSkillsVersion)
   })
 
-  test('runGatedPass does not advance marker when every mode row is user-edited', async () => {
+  test('runGatedPass does not advance marker when every skill row is user-edited', async () => {
     const db = getDb()
     await reconcileDefaults(db)
 
-    // Every modes row user-edited (hash mismatch) and marker rewound so the
+    // Every skills row user-edited (hash mismatch) and marker rewound so the
     // version gate opens. Reconcile skips every row → `mutated=false` AND
     // `everyBundleRowAtTarget=false` (hash-mismatch branch). Marker must
     // stay at the rewound value — mirrors the existing models-path
     // regression guard for the runGatedPass loop.
-    for (const mode of defaultModes) {
+    for (const skill of defaultSkills) {
       await db
-        .update(modesTable)
-        .set({ label: `user-edited ${mode.id}` })
-        .where(eq(modesTable.id, mode.id))
+        .update(skillsTable)
+        .set({ label: `user-edited ${skill.id}` })
+        .where(eq(skillsTable.id, skill.id))
     }
     await db
       .update(settingsTable)
-      .set({ value: String(defaultModesVersion - 1) })
-      .where(eq(settingsTable.key, 'defaults_version.modes'))
+      .set({ value: String(defaultSkillsVersion - 1) })
+      .where(eq(settingsTable.key, 'defaults_version.skills'))
 
     await reconcileDefaults(db)
 
-    expect(await readStoredModesVersion()).toBe(defaultModesVersion - 1)
+    expect(await readStoredSkillsVersion()).toBe(defaultSkillsVersion - 1)
   })
 
   test('sync-incomplete + populated table + stale stored version → skip mutations', async () => {
@@ -1579,16 +1570,6 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
     })
   }
 
-  describeGateCase({
-    table: 'modes',
-    versionKey: 'defaults_version.modes',
-    currentVersion: defaultModesVersion,
-    defaults: defaultModes,
-    hashFn: hashMode,
-    dbTable: modesTable,
-    pk: modesTable.id,
-    editableField: 'label',
-  })
   describeGateCase({
     table: 'tasks',
     versionKey: 'defaults_version.tasks',

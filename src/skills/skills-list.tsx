@@ -105,7 +105,9 @@ export const SkillsList = ({
           )}
 
           {disabledRows.length > 0 && (
-            <m.div layout="position" transition={skillRowTransition} className="flex flex-col gap-2">
+            // mt-4 visually separates the Disabled group from the enabled rows
+            // above (the body's gap alone reads as one continuous list).
+            <m.div layout="position" transition={skillRowTransition} className="mt-4 flex flex-col gap-2">
               <SettingsSectionLabel>Disabled</SettingsSectionLabel>
               <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-4">
                 {disabledRows.map((skill) => (

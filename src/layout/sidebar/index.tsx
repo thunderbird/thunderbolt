@@ -9,12 +9,13 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useHaptics } from '@/hooks/use-haptics'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useCallback, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -30,6 +31,7 @@ export default function Sidebar() {
   const location = useLocation()
   const { closeMobileSidebar, state, toggleSidebar } = useSidebar()
   const { isMobile } = useIsMobile()
+  const { triggerImpact } = useHaptics()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
@@ -48,14 +50,6 @@ export default function Sidebar() {
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
   })
-
-  useEffect(() => {
-    if (showSearch && searchInputRef.current && !isCollapsed) {
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus()
-      })
-    }
-  }, [showSearch, isCollapsed])
 
   const { data } = useQuery({
     queryKey: ['chatThreads'],
@@ -124,7 +118,12 @@ export default function Sidebar() {
     [closeMobileSidebar, navigate],
   )
 
+  // The chat row the user tapped and is still waiting on (mobile defers the
+  // navigation until the drawer settles) — its row shows a spinner meanwhile.
+  const [pendingChatThreadId, setPendingChatThreadId] = useState<string | null>(null)
+
   const createNewChat = () => {
+    triggerImpact('light')
     trackEvent('chat_new_clicked')
     void navigateAfterSidebarClose('/chats/new')
   }
@@ -132,7 +131,8 @@ export default function Sidebar() {
   const handleChatClick = useCallback(
     (threadId: string) => {
       trackEvent('chat_select', { chat_id: threadId })
-      void navigateAfterSidebarClose(`/chats/${threadId}`)
+      setPendingChatThreadId(threadId)
+      void navigateAfterSidebarClose(`/chats/${threadId}`).finally(() => setPendingChatThreadId(null))
     },
     [navigateAfterSidebarClose],
   )
@@ -153,6 +153,10 @@ export default function Sidebar() {
       })
     } else if (!showSearch) {
       setShowSearch(true)
+      // Focus synchronously inside the tap's event handler — the input is
+      // already in the DOM (just collapsed), and staying within the user
+      // gesture is what lets the mobile keyboard open immediately.
+      searchInputRef.current?.focus()
     } else {
       setShowSearch(false)
     }
@@ -173,6 +177,7 @@ export default function Sidebar() {
             isCollapsed={isCollapsed}
             chatThreads={chatThreads}
             currentChatThreadId={currentChatThreadId}
+            pendingChatThreadId={pendingChatThreadId}
             searchQuery={searchQuery}
             debouncedSearchQuery={debouncedSearchQuery}
             showSearch={showSearch}

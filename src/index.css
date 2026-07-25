@@ -235,20 +235,29 @@
   /* Minimum sizes */
   --min-touch-height: 0; /* No min on desktop */
 
+  /* Where the top-of-screen header cluster (floating header, modal
+     close/title/actions, page title, search button, drawer header) anchors
+     below the display cutout. Web and desktop use the raw safe area; the
+     .native-mobile override below pulls the cluster up a bit — the OS inset
+     leaves more room under the notch than the design needs. */
+  --header-safe-area-top: var(--safe-area-top-padding, 0px);
+
   /* The floating app header overlays the content area (main/settings layouts
      position it absolutely so pages scroll beneath it). Pages whose content
      starts at the top of the scroll area pad by this inset so nothing renders
      hidden under the header at rest. */
-  --header-inset: calc(var(--safe-area-top-padding, 0px) + var(--touch-height-xl));
+  --header-inset: calc(var(--header-safe-area-top) + var(--touch-height-xl));
 
   /* Same idea for the mobile modal shell. Its close / actions controls pin
      --modal-control-inset below the top safe area with a --touch-height-lg
      target; a modal whose content runs edge to edge (see the responsive modal's
      `flush`) pads its scroll container by these two insets, so content sits
      clear of the controls and the footer at rest and scrolls beneath them after
-     that. */
-  --modal-control-inset: 1rem;
-  --modal-top-inset: calc(var(--safe-area-top-padding, 0px) + var(--modal-control-inset) + var(--touch-height-lg));
+     that. 0.5rem matches the app/page headers' top padding (header.tsx pt-2,
+     page-header/page-search + 0.5rem) so modal controls and titles sit on the
+     same line as the screens beneath them. */
+  --modal-control-inset: 0.5rem;
+  --modal-top-inset: calc(var(--header-safe-area-top) + var(--modal-control-inset) + var(--touch-height-lg));
 
   /* Whichever of the home indicator or the keyboard is taller — an open keyboard
      already covers the indicator, so stacking them would strand dead space
@@ -367,6 +376,14 @@
   --color-sidebar-accent-foreground: #f2f1ee;
   --color-sidebar-border: #434546;
   --color-sidebar-ring: #8a8a88;
+}
+
+/* Native mobile (Tauri iOS/Android; class added in src/index.tsx): pull the
+   header cluster up toward the notch — the OS safe-area inset is more generous
+   than the design needs, leaving dead space above the header. Clamped at 0 so
+   cutout-less devices (inset 0) don't push the header off-screen. */
+.native-mobile {
+  --header-safe-area-top: max(0px, calc(var(--safe-area-top-padding, 0px) - 10px));
 }
 
 /* macOS desktop app (Tauri) vibrancy — the window is transparent with a

@@ -8,7 +8,16 @@ import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { animate, m, useMotionValue, useReducedMotion, useTransform, type PanInfo } from 'framer-motion'
-import { useEffect, useEffectEvent, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 
 type MobileSidebarProps = {
   open: boolean
@@ -58,7 +67,6 @@ export const MobileSidebar = ({
   className,
   style,
 }: MobileSidebarProps) => {
-  const [isAnimating, setIsAnimating] = useState(false)
   const [internalOpen, setInternalOpen] = useState(open)
   const x = useMotionValue(0)
   const { triggerImpact } = useHaptics()
@@ -84,63 +92,86 @@ export const MobileSidebar = ({
     side === 'left' ? [0, 1] : [1, 0],
   )
 
-  // Effect-event wrapper keeps the close-animation effect's deps free of the
-  // callback prop, so an unstable inline callback can't re-run the animation.
-  const notifyCloseComplete = useEffectEvent(() => onCloseComplete?.())
+  // Latest callback props/open state, readable from animation continuations
+  // and drag handlers without re-binding them (the callbacks may be unstable
+  // inline functions).
+  const onOpenChangeRef = useRef(onOpenChange)
+  onOpenChangeRef.current = onOpenChange
+  const onCloseCompleteRef = useRef(onCloseComplete)
+  onCloseCompleteRef.current = onCloseComplete
+  const openRef = useRef(open)
+  openRef.current = open
+
+  const notifyCloseComplete = () => onCloseCompleteRef.current?.()
+  const notifyCloseCompleteOnUnmount = useEffectEvent(notifyCloseComplete)
 
   // If the drawer unmounts mid-close (e.g. the viewport crosses to desktop
   // while the spring is running), the animation never settles and the pending
   // notification would be dropped — callers awaiting `closeMobileSidebar()`
   // would hang forever. Flush on unmount; the provider's resolver queue
   // no-ops when nothing is pending.
-  useEffect(() => () => notifyCloseComplete(), [])
+  useEffect(() => () => notifyCloseCompleteOnUnmount(), [])
+
+  const closedX = side === 'left' ? -sidebarWidth : sidebarWidth
+
+  // Monotonic token that identifies the latest close request. Grabbing the
+  // drawer mid-close bumps it, so a superseded close animation can never
+  // commit a stale "closed" state. This exists because an `animate()` promise
+  // interrupted by a drag gesture is not guaranteed to resolve — awaiting it
+  // unguarded can strand the drawer half-open with the (invisible) overlay
+  // still mounted, blocking the whole app until restart.
+  const closeTokenRef = useRef(0)
+
+  const startClose = useCallback(() => {
+    const token = ++closeTokenRef.current
+    void animate(x, closedX, transition).then(() => {
+      if (token !== closeTokenRef.current) {
+        return
+      }
+      setInternalOpen(false)
+      onOpenChangeRef.current(false)
+      onCloseCompleteRef.current?.()
+    })
+  }, [x, closedX, transition])
 
   // Handle external open/close requests
   useEffect(() => {
     if (open && !internalOpen) {
-      // Opening: set position first, then animate in
-      // Set position synchronously before rendering to avoid flicker
-      x.set(side === 'left' ? -sidebarWidth : sidebarWidth)
+      // Opening: set the off-screen position synchronously before rendering to
+      // avoid flicker, then animate in. Also invalidates any in-flight close.
+      closeTokenRef.current++
+      x.set(closedX)
       setInternalOpen(true)
-
-      // Animate to position after render
-      const animateOpen = async () => {
-        await animate(x, 0, transition)
-      }
-      animateOpen()
-    } else if (!open && internalOpen && !isAnimating) {
-      // Closing: animate first, then close
-      const animateClose = async () => {
-        setIsAnimating(true)
-        await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, transition)
-        setIsAnimating(false)
-        setInternalOpen(false)
-        notifyCloseComplete()
-      }
-      animateClose()
+      void animate(x, 0, transition)
+    } else if (!open && internalOpen) {
+      startClose()
     }
-  }, [open, internalOpen, isAnimating, x, side, sidebarWidth, transition])
+  }, [open, internalOpen, x, closedX, transition, startClose])
 
-  const handleClose = async () => {
-    if (isAnimating) {
-      return
-    }
-
+  const handleClose = () => {
     triggerImpact('light')
-    setIsAnimating(true)
-    await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, transition)
-    setIsAnimating(false)
-    setInternalOpen(false)
-    onOpenChange(false)
-    onCloseComplete?.()
+    startClose()
   }
 
-  const handleDragEnd = async (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+  const handleDragStart = () => {
+    // The user grabbed the drawer: any pending close no longer owns the
+    // outcome — the next drag end decides it.
+    closeTokenRef.current++
+  }
+
+  const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (shouldCloseOnDragEnd(side, info)) {
-      await handleClose()
-    } else {
-      // Snap back to the open position
-      await animate(x, 0, transition)
+      triggerImpact('light')
+      startClose()
+      return
+    }
+    // Snap back to the open position. If the parent already considers the
+    // drawer closed (the user caught it mid-close and kept it open), re-sync
+    // it and flush any callers awaiting the close so they aren't stranded.
+    void animate(x, 0, transition)
+    if (!openRef.current) {
+      onOpenChange(true)
+      notifyCloseComplete()
     }
   }
 
@@ -174,6 +205,7 @@ export const MobileSidebar = ({
             right: side === 'left' ? 0 : sidebarWidth,
           }}
           dragElastic={0.2}
+          onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
           style={{ x, ...style }}
           className={cn(
@@ -191,7 +223,7 @@ export const MobileSidebar = ({
               paddingBottom: isNativeMobile
                 ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
                 : 'var(--safe-area-bottom-padding)',
-              paddingTop: 'var(--safe-area-top-padding)',
+              paddingTop: 'var(--header-safe-area-top)',
             }}
           >
             <div className="flex h-full w-full flex-col">{children}</div>

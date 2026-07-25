@@ -239,7 +239,7 @@ export const ChatSkillsBar = ({
           </li>
         ))}
       </ul>
-      <div className="-mx-1 mt-1 border-t border-border px-1 pt-1">
+      <div className="-mx-1 mt-1 border-t border-border px-1 pt-1 dark:border-border/50">
         <button
           type="button"
           onClick={() => {

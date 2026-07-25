@@ -4,7 +4,15 @@
 
 import { describe, expect, it, test } from 'bun:test'
 
-import { defaultSkills, defaultSkillsVersion, hashSkill } from './skills'
+import {
+  defaultSkillImportantEmails,
+  defaultSkillResearch,
+  defaultSkills,
+  defaultSkillSearch,
+  defaultSkillsVersion,
+  defaultSkillWeather,
+  hashSkill,
+} from './skills'
 
 /**
  * Snapshot pinning the shipped defaults to their declared version. When you
@@ -23,8 +31,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 2,
-  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd',
+  version: 4,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-cz2tdq|4:01996330-0000-7000-8000-000000000005:-d0466u',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -37,26 +45,19 @@ describe('defaultSkills version snapshot', () => {
 })
 
 describe('defaultSkills', () => {
-  it('seeds every default with a pinnedOrder so new users start with pinned chips in chat', () => {
-    // Regression guard — Chris flagged that seeded skills must be pinned by
-    // default. Pinning is now manageable only from the chat composer; a new
-    // user with no pinned defaults would see the chip bar empty until they
-    // open the `+` popover and pin one manually, which loses the "starter
-    // chip is ready" affordance that the legacy automations gave them.
-    for (const skill of defaultSkills) {
-      expect(typeof skill.pinnedOrder).toBe('number')
-      expect(skill.pinnedOrder).not.toBeNull()
-    }
+  it('pins exactly Search, Research, Weather (in that order) as the starter chips for new users', () => {
+    // Regression guard — Chris chose this exact pinned starter set. Pinning is
+    // manageable only from the chat composer, so the seed decides what new
+    // users see in the chip bar.
+    const pinned = defaultSkills
+      .filter((s) => s.pinnedOrder !== null)
+      .sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0))
+    expect(pinned).toEqual([defaultSkillSearch, defaultSkillResearch, defaultSkillWeather])
   })
 
-  it('assigns each default a unique pinnedOrder so the order is stable on seed', () => {
-    const orders = defaultSkills.map((s) => s.pinnedOrder)
-    expect(new Set(orders).size).toBe(orders.length)
-  })
-
-  it('seeds every default as enabled — disabled defaults would never reach the chat resolver', () => {
+  it('seeds Important Emails disabled and everything else enabled', () => {
     for (const skill of defaultSkills) {
-      expect(skill.enabled).toBe(1)
+      expect(skill.enabled).toBe(skill === defaultSkillImportantEmails ? 0 : 1)
     }
   })
 })

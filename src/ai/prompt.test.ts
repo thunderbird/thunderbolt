@@ -37,7 +37,6 @@ const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile 
 const baseParams: PromptParams = {
   modelName: 'Test Model',
   profile: null,
-  modeName: null,
   preferredName: 'Alice',
   location: { name: 'New York', lat: 40.7, lng: -74.0 },
   localization: {
@@ -94,39 +93,16 @@ describe('createPrompt', () => {
     expect(result).toContain('CUSTOM_LINK_PREVIEWS')
   })
 
-  test('includes chatModeAddendum when modeName is chat', () => {
+  test('includes chatModeAddendum from profile', () => {
     const profile = createStubProfile({ chatModeAddendum: 'CHAT_ADDENDUM' })
-    const result = createPrompt({ ...baseParams, profile, modeName: 'chat', modeSystemPrompt: 'Chat mode active' })
+    const result = createPrompt({ ...baseParams, profile })
     expect(result).toContain('CHAT_ADDENDUM')
   })
 
-  test('includes searchModeAddendum when modeName is search', () => {
-    const profile = createStubProfile({ searchModeAddendum: 'SEARCH_ADDENDUM' })
-    const result = createPrompt({ ...baseParams, profile, modeName: 'search', modeSystemPrompt: 'Search mode' })
-    expect(result).toContain('SEARCH_ADDENDUM')
-  })
-
-  test('includes researchModeAddendum when modeName is research', () => {
-    const profile = createStubProfile({ researchModeAddendum: 'RESEARCH_ADDENDUM' })
-    const result = createPrompt({ ...baseParams, profile, modeName: 'research', modeSystemPrompt: 'Research mode' })
-    expect(result).toContain('RESEARCH_ADDENDUM')
-  })
-
-  test('does not include mode addendum when mode system prompt is absent', () => {
-    const profile = createStubProfile({ chatModeAddendum: 'SHOULD_NOT_APPEAR' })
-    const result = createPrompt({ ...baseParams, profile, modeName: 'chat' })
-    expect(result).not.toContain('SHOULD_NOT_APPEAR')
-  })
-
-  test('includes Active Mode section when modeSystemPrompt is set', () => {
-    const result = createPrompt({ ...baseParams, modeSystemPrompt: 'Mode instructions here' })
-    expect(result).toContain('# Active Mode')
-    expect(result).toContain('Mode instructions here')
-  })
-
-  test('omits Active Mode section when modeSystemPrompt is absent', () => {
+  test('always includes the Conversation Style section with the chat instructions', () => {
     const result = createPrompt(baseParams)
-    expect(result).not.toContain('# Active Mode')
+    expect(result).toContain('# Conversation Style')
+    expect(result).toContain('Make quick decisions')
   })
 
   test('includes the reuse-before-search gate', () => {
@@ -165,9 +141,9 @@ describe('createPrompt', () => {
     expect(result.indexOf('User location:')).toBeLessThan(result.indexOf('Current date/time'))
   })
 
-  test('appends the timestamp after the Active Mode block so it stays last', () => {
-    const result = createPrompt({ ...baseParams, modeSystemPrompt: 'Mode instructions' })
-    expect(result.indexOf('# Active Mode')).toBeLessThan(result.indexOf('Current date/time'))
+  test('appends the timestamp after the Conversation Style block so it stays last', () => {
+    const result = createPrompt(baseParams)
+    expect(result.indexOf('# Conversation Style')).toBeLessThan(result.indexOf('Current date/time'))
   })
 
   test('separates stable instructions from the volatile timestamp', () => {

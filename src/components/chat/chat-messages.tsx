@@ -14,8 +14,6 @@ import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
 import { isAttachmentPart } from '@/lib/attachments'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useAttachmentRemediation } from './use-attachment-remediation'
-import { getLoadingLabel } from '@/lib/loading-labels'
-import { isBuiltInAgent } from '@/defaults/agents'
 import { QuoteReplyButton } from './quote-reply-button'
 
 type ChatMessagesProps = {
@@ -31,7 +29,7 @@ type ChatMessagesProps = {
 // intended throttle cadence. It takes no props that change (`useChat` defaults
 // to the real hook), so the shallow prop compare holds across parent renders.
 export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, retryCount, retriesExhausted, selectedAgent, selectedMode } = useCurrentChatSession()
+  const { chatInstance, retryCount, retriesExhausted } = useCurrentChatSession()
 
   const {
     error: chatError,
@@ -44,13 +42,6 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     experimental_throttle: messageRenderThrottleMs,
   })
   const { triggerNotification } = useHaptics()
-
-  // Mode-aware status shown in the loading window before the first token. Pure
-  // render-time derive — search/research get a specific label, chat keeps the
-  // plain spinner (undefined). ACP agents own their conversation mode upstream
-  // and ignore `selectedMode` (mirroring ChatModePicker), so a stale built-in
-  // mode must not leak a false "Searching the web…" label onto an ACP chat.
-  const loadingMessage = isBuiltInAgent(selectedAgent) ? getLoadingLabel(selectedMode.name) : undefined
 
   const isStreaming = status === 'streaming'
   const wasStreaming = useRef(false)
@@ -143,7 +134,6 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
               isStreaming={isStreaming && isLast}
               isLastMessage={shouldApplyViewport}
               isLastAssistantMessage={message === lastAssistantMessage}
-              loadingMessage={loadingMessage}
             />
           )
         }
@@ -166,7 +156,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
 
       {/* Keep a loading indicator up while remediation re-delivers + retries, so
           the suppressed error doesn't leave a blank gap. */}
-      {(showSubmittedLoading || suppressError) && <SyntheticLoadingPart isStreaming message={loadingMessage} />}
+      {(showSubmittedLoading || suppressError) && <SyntheticLoadingPart isStreaming />}
 
       {/* Show error message if there's an error and remediation isn't taking over */}
       {hasError && !suppressError && (

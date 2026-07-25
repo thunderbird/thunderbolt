@@ -92,6 +92,7 @@ describe('ResponsiveModal', () => {
 
   describe('shared mobile surface', () => {
     it('uses the full-screen shell and touch-sized close control', () => {
+      forceMobileViewport()
       renderModal()
 
       const close = screen.getByRole('button', { name: 'Close' })
@@ -99,8 +100,10 @@ describe('ResponsiveModal', () => {
       const mobileSurfaceClass = getResponsiveModalSurfaceClass(true, 'structured')
 
       expect(mobileSurfaceClass).toContain('h-dvh')
+      expect(mobileSurfaceClass).toContain('p-4')
       expect(surface).toHaveClass('[&_[data-slot=input]]:!bg-card')
       expect(surface).toHaveClass('[&_[data-slot=combobox-trigger]]:!bg-card')
+      expect(close).toHaveClass('left-2')
       expect(close.className).toContain('size-[var(--touch-height-lg)]')
       expect(close.className).toContain('md:size-[var(--touch-height-sm)]')
     })

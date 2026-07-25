@@ -8,9 +8,8 @@ import { createSetting } from '@/dal'
 import { eq, inArray, isNull } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
+import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
@@ -32,7 +31,6 @@ const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, d
  */
 export const versionMarkerKeys = {
   models: 'defaults_version.models',
-  modes: 'defaults_version.modes',
   tasks: 'defaults_version.tasks',
   skills: 'defaults_version.skills',
   settings: 'defaults_version.settings',
@@ -457,7 +455,6 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // gone. Reading all five probes here — before any writes land in this
     // transaction — keeps every table's gate on the same pre-reconcile view.
     const hasAnyModelRow = (await tx.select({ id: modelsTable.id }).from(modelsTable).limit(1)).length > 0
-    const hasAnyModeRow = (await tx.select({ id: modesTable.id }).from(modesTable).limit(1)).length > 0
     const hasAnyTaskRow = (await tx.select({ id: tasksTable.id }).from(tasksTable).limit(1)).length > 0
     const hasAnySkillRow = (await tx.select({ id: skillsTable.id }).from(skillsTable).limit(1)).length > 0
     const hasAnySettingsRow = (await tx.select({ key: settingsTable.key }).from(settingsTable).limit(1)).length > 0
@@ -617,7 +614,6 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       }
     }
 
-    await runGatedPass(modesTable, defaultModes, hashMode, versionMarkerKeys.modes, defaultModesVersion, hasAnyModeRow)
     await runGatedPass(tasksTable, defaultTasks, hashTask, versionMarkerKeys.tasks, defaultTasksVersion, hasAnyTaskRow)
     await runGatedPass(
       skillsTable,

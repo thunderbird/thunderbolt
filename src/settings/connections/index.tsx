@@ -391,7 +391,6 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           onToggleServer={(id, enabled) => formController.toggleMutation.mutate({ id, enabled })}
           onEditServer={(id) => withServer(id, formController.edit)}
           onDeleteServer={(id) => withServer(id, (server) => dispatch({ type: 'DELETE_REQUESTED', server }))}
-          error={integrationError}
         />
       </div>
       <DetailPanelSurface open={panelOpen} onClose={closePanel}>

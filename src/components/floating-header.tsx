@@ -19,7 +19,7 @@ import { Scrim } from '@/components/ui/scrim'
 export const FloatingHeader = () => (
   <>
     <Scrim className="z-20" height="calc(var(--header-inset) + 2.5rem)" />
-    <div className="absolute inset-x-0 top-0 z-30" style={{ paddingTop: 'var(--safe-area-top-padding)' }}>
+    <div className="absolute inset-x-0 top-0 z-30" style={{ paddingTop: 'var(--header-safe-area-top)' }}>
       <Header />
     </div>
   </>

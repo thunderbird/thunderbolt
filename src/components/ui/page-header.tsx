@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+
+import { useIsMobile } from '@/hooks/use-mobile'
 
 type PageHeaderProps = {
   title: string
@@ -11,6 +14,13 @@ type PageHeaderProps = {
 
 /**
  * Consistent page header with title and optional action buttons.
+ *
+ * Desktop: an in-flow row — title left, actions right. Mobile: the title
+ * joins the floating app-header row (centered between the sidebar toggle and
+ * any top-right control, mirroring the modal shells) and the in-flow row
+ * disappears; actions place themselves (`PageCreateAction` becomes the
+ * bottom pill, `PageSearch.Button` the top-right circle). Portaled to
+ * `document.body` so `position: fixed` anchors to the viewport.
  *
  * @example
  * ```tsx
@@ -21,12 +31,33 @@ type PageHeaderProps = {
  * </PageHeader>
  * ```
  */
-export const PageHeader = ({ title, children }: PageHeaderProps) => (
-  <div className="flex min-h-[var(--touch-height-xl)] items-center justify-between">
-    <h1 className="text-2xl font-bold tracking-tight text-primary">{title}</h1>
-    {/* pr-2 pulls the actions in so icon buttons center-align with list rows'
-        trailing controls (rows carry their own horizontal inset) and sit at
-        the same x across settings pages. */}
-    <div className="flex items-center gap-2 pr-2">{children}</div>
-  </div>
-)
+export const PageHeader = ({ title, children }: PageHeaderProps) => {
+  const { isMobile } = useIsMobile()
+
+  if (isMobile) {
+    return (
+      <>
+        {createPortal(
+          <div
+            className="pointer-events-none fixed left-1/2 z-30 flex h-[var(--touch-height-lg)] max-w-[50vw] -translate-x-1/2 items-center"
+            style={{ top: 'calc(var(--header-safe-area-top) + 0.5rem)' }}
+          >
+            <h1 className="truncate text-[length:var(--font-size-body)] font-semibold text-foreground">{title}</h1>
+          </div>,
+          document.body,
+        )}
+        {children}
+      </>
+    )
+  }
+
+  return (
+    <div className="flex min-h-[var(--touch-height-xl)] items-center justify-between">
+      <h1 className="text-2xl font-bold tracking-tight text-primary">{title}</h1>
+      {/* pr-2 pulls the actions in so icon buttons center-align with list rows'
+          trailing controls (rows carry their own horizontal inset) and sit at
+          the same x across settings pages. */}
+      <div className="flex items-center gap-2 pr-2">{children}</div>
+    </div>
+  )
+}

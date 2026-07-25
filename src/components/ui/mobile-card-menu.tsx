@@ -9,9 +9,10 @@ import { cn } from '@/lib/utils'
 
 export type MobileCardMenuSide = 'top' | 'bottom'
 
-/** Touch-height action row rendered inside a `MobileCardMenu` list. */
+/** Touch-height action row rendered inside a `MobileCardMenu` list — sized at
+ *  `--touch-height-default` (44px on mobile) for comfortable tapping. */
 export const mobileCardMenuItemClass =
-  'flex min-h-[var(--min-touch-height)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent'
+  'flex min-h-[var(--touch-height-default)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent'
 
 type MobileCardMenuProps = {
   open: boolean

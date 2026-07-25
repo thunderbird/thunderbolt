@@ -9,7 +9,7 @@ import './polyfills'
 import './index.css'
 import { markBundleEvaluated } from './lib/init-timing'
 import { initializeLinkInterception } from './lib/intercept-links'
-import { isMacDesktop, isTauriDesktop } from './lib/platform'
+import { isMacDesktop, isMobile as isPlatformMobile, isTauri, isTauriDesktop } from './lib/platform'
 import { handlePostUpdateRedirect } from './lib/post-update-redirect'
 
 // The macOS desktop window is transparent with a native blur layer behind it
@@ -26,6 +26,12 @@ if (isMacDesktop()) {
 // index.css; useIsMobile (src/hooks/use-mobile.ts) handles the JS side.
 if (isTauriDesktop()) {
   document.documentElement.classList.add('force-desktop')
+}
+
+// Native mobile (Tauri iOS/Android) pulls the header cluster up toward the
+// notch — see the .native-mobile --header-safe-area-top override in index.css.
+if (isTauri() && isPlatformMobile()) {
+  document.documentElement.classList.add('native-mobile')
 }
 
 // Running here means every static import above (the whole entry bundle) has

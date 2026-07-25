@@ -7,13 +7,11 @@ import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
   composeAllAgents,
   getAllAgents,
-  getAllModes,
   getAllSystemAgents,
   getAvailableModels,
   getChatMessages,
   getChatThread,
   getDefaultModelForThread,
-  getSelectedMode,
   getSettings,
   getTriggerPromptForThread,
   isChatThreadDeleted,
@@ -143,7 +141,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   )
 
   const hydrateChatStore = async () => {
-    const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModes, setModels } =
+    const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModels } =
       useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
@@ -157,13 +155,12 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     if (sessions.has(id)) {
       setCurrentSessionId(id)
 
-      const [modes, models] = await Promise.all([getAllModes(db), getAvailableModels(db)])
+      const models = await getAvailableModels(db)
 
       // Store the provider's getter (not a snapshot) so each send reads the
       // current connected clients, including any swapped in by a reconnect.
       setGetMcpClients(getEnabledClients)
       setReconnectClient(reconnectClient)
-      setModes(modes)
       setModels(models)
 
       setIsReady(true)
@@ -178,27 +175,16 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // If the session does not exist, create it below
     const settings = await getSettings(db, { selected_model: String, selected_agent: String })
 
-    const [
-      defaultModel,
-      selectedMode,
-      chatThread,
-      initialMessages,
-      modes,
-      models,
-      triggerData,
-      customAgentRows,
-      systemAgentRows,
-    ] = await Promise.all([
-      getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
-      getSelectedMode(db),
-      getChatThread(db, id),
-      getChatMessages(db, id),
-      getAllModes(db),
-      getAvailableModels(db),
-      getTriggerPromptForThread(db, id),
-      getAllAgents(db),
-      getAllSystemAgents(db),
-    ])
+    const [defaultModel, chatThread, initialMessages, models, triggerData, customAgentRows, systemAgentRows] =
+      await Promise.all([
+        getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
+        getChatThread(db, id),
+        getChatMessages(db, id),
+        getAvailableModels(db),
+        getTriggerPromptForThread(db, id),
+        getAllAgents(db),
+        getAllSystemAgents(db),
+      ])
 
     // Built-in is implicit (lives in code); the DB rows are only customs + system.
     // Respect the deployment's `disableBuiltInAgent` flag so the resolved agent
@@ -271,7 +257,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).
       selectedAgent,
-      selectedMode,
       selectedModel: defaultModel,
       triggerData,
     })
@@ -282,7 +267,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // current connected clients, including any swapped in by a reconnect.
     setGetMcpClients(getEnabledClients)
     setReconnectClient(reconnectClient)
-    setModes(modes)
     setModels(models)
 
     setIsReady(true)

@@ -10,7 +10,6 @@ import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { defaultModelOpus48 } from '@shared/defaults/models'
-import { defaultModeChat } from '@/defaults/modes'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
@@ -35,7 +34,6 @@ const run = async () => {
   })
 
   console.log(`[2/5] Model: ${defaultModelOpus48.name} (${modelId})`)
-  console.log(`[2/5] Mode: ${defaultModeChat.name}`)
   console.log(`[2/5] Prompt: "${prompt}"\n`)
 
   const cloudUrl = getLocalSetting('cloudUrl')
@@ -51,8 +49,6 @@ const run = async () => {
   const response = await aiFetchStreamingResponse({
     init: { method: 'POST', body },
     modelId,
-    modeSystemPrompt: defaultModeChat.systemPrompt ?? undefined,
-    modeName: defaultModeChat.name,
     httpClient,
     getProxyFetch: () => proxyFetch,
   })

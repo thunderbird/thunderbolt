@@ -71,12 +71,15 @@ export const SkillForm = ({
   // Auto-focus the name input on mount for `create` mode — the user just
   // clicked "+", they're about to type a name. Edit mode skips this so we
   // don't steal focus from a user who clicked into a specific skill to
-  // change one field.
+  // change one field. The rAF defers past the responsive modal's own focus
+  // management on mobile, so this focus wins (and raises the keyboard).
   const nameInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    if (mode === 'create') {
-      nameInputRef.current?.focus()
+    if (mode !== 'create') {
+      return
     }
+    const frame = requestAnimationFrame(() => nameInputRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
   }, [mode])
 
   // Surface AgentSkills-spec violations inline as soon as the user has typed

@@ -90,16 +90,14 @@ export const categorizeModels = (
   if (disabledStandard.length > 0) {
     groups.push({
       id: 'standard-disabled',
-      label: 'Standard Models',
-      subtitle: 'Not available in confidential chats.',
+      label: 'Not available in private chats.',
       items: disabledStandard,
     })
   }
   if (disabledConfidential.length > 0) {
     groups.push({
       id: 'confidential-disabled',
-      label: 'Confidential Models',
-      subtitle: 'Available only in confidential chats.',
+      label: 'Only available in private chats.',
       items: disabledConfidential,
     })
   }
@@ -191,7 +189,7 @@ export const ModelSelector = ({
   const footer = onAddModels ? (
     <button type="button" onClick={onAddModels} className={searchableMenuFooterActionClass}>
       <Plus className="size-4" />
-      Add models
+      Add Model
     </button>
   ) : undefined
 

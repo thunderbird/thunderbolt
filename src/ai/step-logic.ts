@@ -83,16 +83,6 @@ export const nudgeMessages: NudgeMessages = {
   retry: 'Respond now with the information gathered. No more tools.',
 }
 
-/** Mode-specific nudge overrides */
-export const searchModeNudges: NudgeMessages = {
-  finalStep:
-    'RESPOND NOW with link preview widgets. Use this exact format: <widget:link-preview url="https://full-url-here" /> — each must have a url attribute with the full URL. No duplicate URLs. No homepages.',
-  preventive:
-    'You have enough results. Respond now with <widget:link-preview url="https://..." /> widgets. Each MUST include the url attribute with the full page URL.',
-  retry:
-    'Respond now. Output <widget:link-preview url="https://full-url-here" /> for each result. The url attribute is REQUIRED — without it, nothing will render. No more tools.',
-}
-
 /** Compute the prepareStep overrides for a single step of the agentic loop */
 export const buildStepOverrides = <TMessage>({
   steps,
@@ -146,23 +136,9 @@ export const inferenceDefaults = {
 } as const
 
 /** Get the appropriate nudge messages from a model profile, falling back to code defaults */
-export const getNudgeMessagesFromProfile = (profile: ModelProfile | null, modeName?: string): NudgeMessages => {
-  const isSearch = modeName === 'search'
-
+export const getNudgeMessagesFromProfile = (profile: ModelProfile | null): NudgeMessages => {
   if (!profile) {
-    return isSearch ? searchModeNudges : nudgeMessages
-  }
-
-  if (isSearch) {
-    const hasSearchOverrides = profile.nudgeSearchFinalStep || profile.nudgeSearchPreventive || profile.nudgeSearchRetry
-    if (hasSearchOverrides) {
-      return {
-        finalStep: profile.nudgeSearchFinalStep ?? searchModeNudges.finalStep,
-        preventive: profile.nudgeSearchPreventive ?? searchModeNudges.preventive,
-        retry: profile.nudgeSearchRetry ?? searchModeNudges.retry,
-      }
-    }
-    return searchModeNudges
+    return nudgeMessages
   }
 
   const hasNudgeOverrides = profile.nudgeFinalStep || profile.nudgePreventive || profile.nudgeRetry

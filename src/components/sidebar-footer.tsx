@@ -32,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SidebarFooter as ShadcnSidebarFooter, useSidebar } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
+import { useHaptics } from '@/hooks/use-haptics'
 import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
@@ -159,6 +160,12 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [isReconnecting, startReconnect] = useTransition()
+  const { triggerImpact } = useHaptics()
+
+  const handleMenuOpenChange = (open: boolean) => {
+    triggerImpact('light')
+    setMenuOpen(open)
+  }
 
   const isDesktopCollapsed = !isMobile && state === 'collapsed'
 
@@ -175,6 +182,7 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
   }
 
   const handleNewChat = () => {
+    triggerImpact('light')
     trackEvent('chat_new_clicked')
     navigate('/chats/new')
     setOpenMobile(false)
@@ -280,7 +288,7 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
   const syncNeedsAttention = syncEnabled && !isConnecting && connectionStatus !== 'connected'
 
   return (
-    <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
+    <Popover open={menuOpen} onOpenChange={handleMenuOpenChange} modal={isMobile}>
       <ShadcnSidebarFooter
         className={cn(
           '!gap-0 bg-transparent',

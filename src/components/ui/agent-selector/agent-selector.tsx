@@ -22,6 +22,11 @@ export type AgentSelectorProps = {
   onSelect: (agent: Agent) => void
   onAddAgent?: () => void
   disabled?: boolean
+  /** Collapses the trigger into a circular icon-only button (the mobile
+   *  header's top-right control, matching the sidebar toggle's muted circle).
+   *  The label and paddings transition, so toggling this mid-mount morphs the
+   *  pill smoothly instead of swapping shapes. */
+  collapsed?: boolean
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
 }
@@ -79,6 +84,7 @@ export const AgentSelector = ({
   onSelect,
   onAddAgent,
   disabled = false,
+  collapsed = false,
   side,
   align,
 }: AgentSelectorProps) => {
@@ -103,23 +109,55 @@ export const AgentSelector = ({
         data-testid="agent-selector-trigger"
         aria-disabled={disabled}
         className={cn(
-          'flex h-[var(--touch-height-sm)] max-w-[50vw] items-center gap-2 rounded-full px-3 text-[length:var(--font-size-body)] transition-colors max-md:h-[var(--touch-height-lg)] max-md:backdrop-blur-md max-md:active:bg-muted-foreground/20 md:max-w-none',
+          // Spacing between icon / label / chevron lives on the children
+          // (label `pl-2`, chevron `ml-2`) rather than a row gap, so the
+          // label's width-collapse below removes its spacing along with it.
+          'flex h-[var(--touch-height-sm)] items-center rounded-full text-[length:var(--font-size-body)] transition-[background-color,color,padding] duration-300 max-md:h-[var(--touch-height-lg)] max-md:backdrop-blur-md max-md:active:bg-muted-foreground/20',
+          // Collapsed: px + icon add up to --touch-height-lg (14+20+14 = 48px
+          // mobile) so the pill lands as a circle matching the header's other
+          // round controls.
+          collapsed ? 'px-3.5' : 'max-w-[50vw] px-3 md:max-w-none',
           disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
           // Light secondary is nearly the same shade as the page background,
           // so at 50% the hover reads as invisible — use full accent there
           // (same hover as the header's ghost buttons). Dark keeps the
-          // subtler half-secondary.
-          !disabled && isOpen ? 'bg-secondary' : 'hover:bg-accent dark:hover:bg-secondary/50',
+          // subtler half-secondary. Collapsed rests on the same frosted fill
+          // as `mobileHeaderControlFillClass` (the sidebar toggle's circle).
+          !disabled && isOpen
+            ? 'bg-secondary'
+            : collapsed
+              ? 'max-md:bg-muted/80 max-md:dark:bg-muted/40'
+              : 'hover:bg-accent dark:hover:bg-secondary/50',
         )}
       >
         <Icon
-          className={cn('text-muted-foreground shrink-0', triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5')}
+          className={cn(
+            // `max-w-none`: preflight gives <img> `max-width: 100%`, and when
+            // the collapsed label track hits 0fr, WebKit/Firefox resolve that
+            // cyclic percentage against the collapsed content box — computing
+            // the logo's width to 0 (Chrome doesn't). Opt out entirely.
+            'max-w-none text-muted-foreground shrink-0 transition-[width,height] duration-300',
+            collapsed ? 'size-[var(--icon-size-default)]' : triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5',
+          )}
         />
-        {/* Muted like the mode/model picker labels — chrome, not content. */}
-        <span className="font-medium truncate text-muted-foreground">{selected?.label ?? selectedAgent.name}</span>
+        {/* Muted like the mode/model picker labels — chrome, not content.
+            The 1fr→0fr grid track is the CSS-only way to animate a width of
+            `auto` to zero, so the collapse glides instead of snapping. */}
+        <div
+          className={cn(
+            'grid min-w-0 overflow-hidden transition-[grid-template-columns,opacity,padding] duration-300',
+            collapsed ? 'grid-cols-[0fr] pl-0 opacity-0' : 'grid-cols-[1fr] pl-2 opacity-100',
+          )}
+        >
+          <span className="min-w-0 font-medium truncate text-muted-foreground">
+            {selected?.label ?? selectedAgent.name}
+          </span>
+        </div>
+        {/* Hidden on mobile: the menu opens as an animated card there, so the
+            chevron affordance is redundant. */}
         <ChevronDown
           className={cn(
-            'size-3.5 text-muted-foreground transition-transform shrink-0',
+            'ml-2 size-3.5 text-muted-foreground transition-transform shrink-0 max-md:hidden',
             !disabled && isOpen && 'rotate-180',
           )}
         />

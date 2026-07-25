@@ -21,7 +21,6 @@ import {
   updateSettings,
 } from './settings'
 import { defaultModelsVersion } from '@shared/defaults/models'
-import { defaultModesVersion } from '../defaults/modes'
 import { defaultSettingsVersion } from '../defaults/settings'
 import { defaultSkillsVersion } from '../defaults/skills'
 import { defaultTasksVersion } from '../defaults/tasks'
@@ -67,7 +66,6 @@ describe('Settings DAL', () => {
     // the parametric "any one marker behind flips the check to false" case.
     const markerCases = [
       { key: versionMarkerKeys.models, version: defaultModelsVersion },
-      { key: versionMarkerKeys.modes, version: defaultModesVersion },
       { key: versionMarkerKeys.tasks, version: defaultTasksVersion },
       { key: versionMarkerKeys.skills, version: defaultSkillsVersion },
       { key: versionMarkerKeys.settings, version: defaultSettingsVersion },
@@ -170,7 +168,7 @@ describe('Settings DAL', () => {
       // didn't null-guard the map builder. Pin this behavior so a refactor
       // that drops the null-guard fails loudly.
       await seedAllMarkers(0)
-      await getDb().update(settingsTable).set({ value: '' }).where(eq(settingsTable.key, versionMarkerKeys.modes))
+      await getDb().update(settingsTable).set({ value: '' }).where(eq(settingsTable.key, versionMarkerKeys.skills))
       const seen = await hasCurrentDefaultsVersions(getDb(), bundledTargets)
       expect(seen).toBe(false)
     })

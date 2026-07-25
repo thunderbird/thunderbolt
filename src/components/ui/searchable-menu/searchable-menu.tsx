@@ -14,15 +14,17 @@ import { findItemById, flattenItems, isGroupedItems } from './types'
 
 /** Row shell for custom `renderItem` implementations — same geometry as the
  *  menu's default row (full-width, `--touch-height-sm`, `px-3`, `rounded-lg`)
- *  so custom rows sit flush with it. Callers append hover/selected tints. */
+ *  so custom rows sit flush with it. Callers append hover/selected tints.
+ *  Mobile steps up to `--touch-height-default` (44px) for easier tapping in
+ *  the slide-in sheets. */
 export const searchableMenuRowClass =
-  'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]'
+  'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] max-md:h-[var(--touch-height-default)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]'
 
-/** Flush, full-width footer action (e.g. "Add models"). Negative margins
- *  cancel the footer slot's px-2 py-2 so the hover fill runs edge to edge;
- *  the popover clips the rounded bottom corners. */
+/** Footer action row (e.g. "Add Model"). Same geometry as the menus' item
+ *  rows (see `searchableMenuRowClass`) so its rounded hover fill lines up with
+ *  the rows above, rather than sitting smaller inside extra padding. */
 export const searchableMenuFooterActionClass =
-  '-m-2 flex h-[var(--touch-height-default)] w-[calc(100%_+_1rem)] cursor-pointer items-center justify-start gap-2 px-4 text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+  'flex w-full cursor-pointer items-center justify-start gap-2 rounded-lg px-3 h-[var(--touch-height-sm)] max-md:h-[var(--touch-height-default)] text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
 
 type ItemButtonProps<T> = {
   item: SearchableMenuItem<T>
@@ -46,7 +48,7 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       disabled={item.disabled}
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+        'w-full flex items-center gap-2 px-3 py-2 max-md:min-h-[var(--touch-height-default)] rounded-lg transition-colors text-left cursor-pointer',
         'hover:bg-accent/50 focus:bg-accent/50 focus:outline-none',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',
@@ -255,7 +257,7 @@ export const SearchableMenu = <T,>({
         </div>
       </div>
 
-      {footer && <div className="border-t px-2 py-2">{footer}</div>}
+      {footer && <div className="border-t p-1 dark:border-border/50">{footer}</div>}
     </div>
   )
 

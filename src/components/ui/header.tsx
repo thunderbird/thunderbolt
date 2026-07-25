@@ -34,6 +34,12 @@ type HeaderAgentSelectorProps = {
   /** Omitted when the deployment forbids custom agents — the selector then hides
    *  its "Add Agent" footer. */
   onAddAgent?: () => void
+  /** Mobile-only presentation. When set, the selector renders inside its own
+   *  absolutely positioned wrapper: centered as a labeled pill on an empty new
+   *  chat, and docked top-right as a circular icon button once the thread
+   *  exists (or a send is in flight). Both states share one element, so the
+   *  submit transition animates instead of remounting. */
+  mobile?: { hasThread: boolean; dragProps: Record<string, unknown> }
 }
 
 const HeaderAgentSelector = ({
@@ -42,18 +48,49 @@ const HeaderAgentSelector = ({
   agents,
   onSelect,
   onAddAgent,
+  mobile,
 }: HeaderAgentSelectorProps) => {
   const { status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
-  const disabled = status === 'streaming' || status === 'submitted'
+  const isReplying = status === 'streaming' || status === 'submitted'
+  // `status` flips to `submitted` synchronously on send, so the collapse starts
+  // the moment the user submits — before the thread row lands in the store.
+  // Existing chats mount with `hasThread` already true, so they render docked
+  // top-right with no transition (CSS transitions don't run on first paint).
+  const collapsed = mobile !== undefined && (mobile.hasThread || isReplying)
 
-  return (
+  const selector = (
     <AgentSelector
       selectedAgent={selectedAgent}
       agents={agents}
       onSelect={onSelect}
       onAddAgent={onAddAgent}
-      disabled={disabled}
+      disabled={isReplying}
+      collapsed={collapsed}
     />
+  )
+
+  if (!mobile) {
+    return selector
+  }
+
+  return (
+    // Absolutely positioned so the macOS traffic-light clearance on the left
+    // column can't push the centered state off-center. Docked: `left-full`
+    // with a self-width translate pins the right edge 0.5rem from the header's
+    // right — the percentage translate tracks the pill's own width as it
+    // shrinks, so the slide and the collapse compose into one smooth motion.
+    <div
+      {...mobile.dragProps}
+      className={cn(
+        // Tailwind v4's translate utilities set the `translate` property (not
+        // `transform`), so that's what must be in transition-property for the
+        // slide to animate.
+        'absolute top-2 z-10 flex items-center transition-[left,translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+        collapsed ? 'left-full -translate-x-[calc(100%+0.5rem)]' : 'left-1/2 -translate-x-1/2',
+      )}
+    >
+      {selector}
+    </div>
   )
 }
 
@@ -123,7 +160,7 @@ export const Header = () => {
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
 
-  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId } = useChatStore(
+  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, hasThread } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(state.currentSessionId ?? '')
 
@@ -132,6 +169,7 @@ export const Header = () => {
         selectedAgent: session?.selectedAgent,
         setSelectedAgent: state.setSelectedAgent,
         chatThreadId: session?.id,
+        hasThread: session?.chatThread != null,
       }
     }),
   )
@@ -147,7 +185,9 @@ export const Header = () => {
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
 
   const handleAddAgent = () => {
-    navigate('/settings/agents')
+    // One-shot deep link (see useConsumeNavState): lands with the Add Custom
+    // Agent panel already open instead of on the bare list.
+    navigate('/settings/agents', { state: { createAgent: '' } })
   }
 
   const handleAgentSelect = (agent: Agent) => {
@@ -163,10 +203,13 @@ export const Header = () => {
       agents={allAgents}
       onSelect={handleAgentSelect}
       onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
+      mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )
 
-  // Mobile: 3-column layout. Center holds the agent selector.
+  // Mobile: sidebar toggle on the left; the agent selector positions itself
+  // (centered pill on an empty new chat, top-right circle once the chat has
+  // content — see HeaderAgentSelector).
   if (isMobile) {
     return (
       <header
@@ -191,19 +234,10 @@ export const Header = () => {
           </Button>
         </div>
 
-        {/* Absolutely centered so the macOS traffic-light clearance on the
-            left column can't push it off-center — flex sizing counts that
-            padding as part of the column's outer width, so symmetric flex-1
-            columns alone don't keep the middle truly centered. */}
-        <div
-          {...dragProps}
-          className="absolute left-1/2 top-2 z-10 flex -translate-x-1/2 items-center justify-center gap-2"
-        >
-          {agentSelector}
-        </div>
+        {agentSelector}
 
-        {/* Empty right column — keeps the centered agent selector balanced and
-            stays a drag surface on the Tauri desktop app. */}
+        {/* Empty right column — keeps the header row a drag surface on the
+            Tauri desktop app. */}
         <div {...dragProps} className="flex flex-1 items-center" />
       </header>
     )

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Loader2, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -92,6 +93,16 @@ export const AddModelForm = ({
   const apiKey = form.watch('apiKey')
   const url = form.watch('url')
   const model = form.watch('model')
+
+  // Auto-focus the first control (the provider picker) on mount — the user
+  // just chose "New Model" / "Add models", so land ready to pick. The rAF
+  // defers past the responsive modal's own focus management on mobile.
+  const providerTriggerRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => providerTriggerRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
   const showModelSelection =
     !catalogError &&
     (providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url)))
@@ -113,7 +124,7 @@ export const AddModelForm = ({
                   }}
                   value={field.value}
                 >
-                  <SelectTrigger className="w-full rounded-lg">
+                  <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
                     <SelectValue placeholder="Select provider" />
                   </SelectTrigger>
                   <SelectContent>

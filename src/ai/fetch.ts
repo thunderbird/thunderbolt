@@ -185,8 +185,6 @@ type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
 type AiFetchStreamingResponseOptions = {
   init: RequestInit
   modelId: string
-  modeSystemPrompt?: string
-  modeName?: string
   mcpClients?: NamedMCPClient[]
   reconnectClient?: ReconnectClient
   httpClient: HttpClient
@@ -558,8 +556,6 @@ export type PreparedAiRequestConfig = {
 
 export type PrepareAiRequestConfigOptions = {
   readonly modelId: string
-  readonly modeSystemPrompt?: string
-  readonly modeName?: string
   readonly mcpClients?: NamedMCPClient[]
   readonly reconnectClient?: ReconnectClient
   readonly httpClient: HttpClient
@@ -568,8 +564,6 @@ export type PrepareAiRequestConfigOptions = {
 /** Load model/profile/settings and build one send's app + MCP tools and prompt. */
 export const prepareAiRequestConfig = async ({
   modelId,
-  modeSystemPrompt,
-  modeName,
   mcpClients = [],
   reconnectClient = async () => null,
   httpClient,
@@ -614,7 +608,6 @@ export const prepareAiRequestConfig = async ({
   const prompt = createPromptParts({
     modelName: model.name,
     profile,
-    modeName: modeName ?? null,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,
@@ -629,7 +622,6 @@ export const prepareAiRequestConfig = async ({
       currency: settings.currency,
     },
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
-    modeSystemPrompt,
     mcpServersSummary: merged.summary,
   })
 
@@ -649,8 +641,6 @@ export const prepareAiRequestConfig = async ({
 export const aiFetchStreamingResponse = async ({
   init,
   modelId,
-  modeSystemPrompt,
-  modeName,
   mcpClients,
   reconnectClient,
   httpClient,
@@ -669,8 +659,6 @@ export const aiFetchStreamingResponse = async ({
   const { model, profile, supportsTools, sourceCollector, toolset, mcpToolsMetadata, systemPrompt } =
     await prepareAiRequestConfig({
       modelId,
-      modeSystemPrompt,
-      modeName,
       mcpClients,
       reconnectClient,
       httpClient,
@@ -679,7 +667,7 @@ export const aiFetchStreamingResponse = async ({
     console.log('Model does not support tools, skipping tool setup')
   }
 
-  const activeNudges = getNudgeMessagesFromProfile(profile, modeName)
+  const activeNudges = getNudgeMessagesFromProfile(profile)
 
   try {
     const baseModel = await createModel(model, getProxyFetch)

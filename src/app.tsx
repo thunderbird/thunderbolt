@@ -99,6 +99,27 @@ const DeviceApproval = lazy(() => import('@/components/device-approval'))
 const DevSettingsPage = import.meta.env.DEV ? lazy(() => import('@/settings/dev-settings')) : () => null
 const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools/message-simulator')) : () => null
 
+/**
+ * Prefetch every lazily routed chunk. The Tauri apps serve chunks from local
+ * disk, so warming them right after first paint makes every screen render
+ * instantly on navigation while the web build keeps true lazy loading to
+ * protect its first load. Dynamic imports are memoized, so the `lazy()`
+ * components resolve from the same in-flight module records.
+ */
+const preloadAllRouteChunks = () => {
+  void Promise.allSettled([
+    import('@/tasks'),
+    import('@/settings/index'),
+    import('@/settings/preferences'),
+    import('@/settings/models'),
+    import('@/settings/devices'),
+    import('@/settings/connections'),
+    import('@/settings/skills'),
+    import('@/routes/settings/agents'),
+    import('@/components/device-approval'),
+  ])
+}
+
 const queryClient = new QueryClient()
 
 /**
@@ -255,6 +276,7 @@ export const App = () => {
   useEffect(() => {
     if (isTauri()) {
       import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
+      preloadAllRouteChunks()
     }
   }, [])
 

@@ -12,10 +12,8 @@ import { floatingFormFooterClass } from '@/components/ui/form-footer'
 import { panelFieldSurfaceClass } from '@/components/ui/modal-styles'
 import {
   ResponsiveModalContentComposable,
-  ResponsiveModalDescription,
   ResponsiveModalActions,
-  ResponsiveModalHeader,
-  ResponsiveModalTitle,
+  ResponsiveModalPinnedHeader,
   useResponsiveModalContext,
 } from '@/components/ui/responsive-modal'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -67,9 +65,10 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
       className="relative flex h-full flex-1 flex-col overflow-hidden px-4 text-foreground md:px-6 md:pb-5"
       style={isMobile ? { maxHeight: 'calc(100% - var(--kb, 0px))' } : undefined}
     >
-      {/* Mobile pins only the two corner controls — the title block scrolls with
-          the body below, passing under them behind the shell's scrim. */}
+      {/* Mobile pins the corner controls and the title bar between them — the
+          title sits centered in the control row, freeing content space. */}
       {isMobile && actions && <ResponsiveModalActions>{actions}</ResponsiveModalActions>}
+      {isMobile && <ResponsiveModalPinnedHeader title={title} subtitle={subtitle} />}
 
       {!isMobile && (
         // mt-2.5 brings the icon tile's top gap to 24px ((64 − 36) / 2 + 10),
@@ -112,12 +111,6 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
           floatingFormFooterClass,
         )}
       >
-        {isMobile && (
-          <ResponsiveModalHeader className="mb-0">
-            <ResponsiveModalTitle>{title}</ResponsiveModalTitle>
-            {subtitle && <ResponsiveModalDescription>{subtitle}</ResponsiveModalDescription>}
-          </ResponsiveModalHeader>
-        )}
         {children}
       </div>
     </section>

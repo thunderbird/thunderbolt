@@ -19,6 +19,7 @@ import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
+import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { fireAndForgetSelfEnrollment, selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 
 type AgentsSettingsPageProps = {
@@ -58,6 +59,14 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   >(null)
   const cliOpen = activePanel?.kind === 'cli'
   const addOpen = activePanel?.kind === 'add'
+
+  // Deep link from the chat header's agent selector ("Add agent"): open the
+  // Add Custom Agent panel directly instead of landing on the bare list.
+  useConsumeNavState('createAgent', () => setActivePanel({ kind: 'add' }))
+
+  // Deep link from the chat header's agent selector ("Add agent"): open the
+  // Add Custom Agent panel directly instead of landing on the bare list.
+  useConsumeNavState('createAgent', () => setActivePanel({ kind: 'add' }))
 
   // Deriving from the live list means the panel follows sync: if the active
   // agent is deleted on another device, `activeAgent` turns undefined and the
@@ -153,7 +162,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
               aria-pressed, so they behave as the toggles they announce.
               The CLI row shares the list's row gap so it reads as one list
               (gap-4, matching the models page). */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 pt-3 md:pt-0">
             <AgentList
               agents={agents}
               selectedId={activeAgent?.id ?? null}

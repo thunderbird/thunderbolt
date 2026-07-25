@@ -283,7 +283,7 @@ const hashSecret = (value: string): string => {
 /** Fingerprint every input baked into a thread's harness at build time — the
  *  descriptor (provider / model id / api key / base url / reasoning / context
  *  window), thinking level, stable system prompt, and regeneration revision.
- *  When it changes mid-thread (a model, provider, key, mode/system-prompt,
+ *  When it changes mid-thread (a model, provider, key, system-prompt,
  *  thinking, or MCP-server switch) the cached harness is stale and
  *  {@link getOrBuildHarness} rebuilds it; an unchanged signature reuses the live
  *  harness. Tools are replaced per send, so live MCP client closures are not
@@ -351,7 +351,7 @@ const prepareHarnessForSend = async (
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it
  *  when the config {@link harnessSignature} drifts (a mid-thread model / provider /
- *  key / mode / thinking switch). On drift the stale harness is evicted and its run
+ *  key / thinking switch). On drift the stale harness is evicted and its run
  *  aborted, but its workspace is KEPT — the rebuild re-seeds history from the
  *  request body and reuses the same `threadId`-keyed workspace, so the conversation
  *  context and the agent's files both survive. Concurrent first-turns share one
@@ -429,8 +429,6 @@ const fetchViaHarness = async (
   // chat never crashes on a model Pi can't run.
   const config = await prepareConfig({
     modelId: context.selectedModel.id,
-    modeSystemPrompt: context.selectedMode.systemPrompt ?? undefined,
-    modeName: context.selectedMode.name ?? undefined,
     mcpClients: context.mcpClients,
     reconnectClient: context.reconnectClient,
     httpClient: context.httpClient,
@@ -444,7 +442,7 @@ const fetchViaHarness = async (
 
   // Build the thread's harness on its first turn (seeding `history`); reuse it on
   // every later turn whose config signature is unchanged, and rebuild it when the
-  // signature drifts (a mid-thread model / provider / key / mode / thinking / MCP switch).
+  // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
   const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
     buildHarnessRecord(agentCore, context, resolved, history, config),
@@ -501,8 +499,6 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     aiFetch({
       init,
       modelId: context.selectedModel.id,
-      modeSystemPrompt: context.selectedMode.systemPrompt ?? undefined,
-      modeName: context.selectedMode.name ?? undefined,
       mcpClients: context.mcpClients,
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,

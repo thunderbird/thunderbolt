@@ -11,10 +11,21 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
+import { MemoryRouter } from 'react-router'
 import ModelsPage from './index'
 import { systemModelMenuMessage } from './model-detail'
 import { useModelsPageState } from './use-models-page-state'
 import { http } from '@/lib/http'
+
+// The page consumes router state (the composer's "Add models" deep link), so
+// it must render inside a router.
+const renderModelsPage = () =>
+  renderWithReactivity(
+    <MemoryRouter>
+      <ModelsPage />
+    </MemoryRouter>,
+    { tables: ['models'] },
+  )
 
 describe('ModelsPage reactivity', () => {
   beforeAll(async () => {
@@ -45,9 +56,7 @@ describe('ModelsPage reactivity', () => {
       enabled: 1,
     })
 
-    const { triggerChange } = renderWithReactivity(<ModelsPage />, {
-      tables: ['models'],
-    })
+    const { triggerChange } = renderModelsPage()
 
     await waitForElement(() => screen.queryByText('First Model'))
     expect(screen.getByText('First Model')).toBeInTheDocument()
@@ -89,7 +98,7 @@ describe('add model form', () => {
   })
 
   it('disables Add Model while required fields are empty', async () => {
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'New Model' }))
     await waitForElement(() => screen.queryByRole('heading', { name: 'Add Model' }))
@@ -166,7 +175,7 @@ describe('model card action menu', () => {
       enabled: 1,
     })
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
     await waitForElement(() => screen.queryByText('User Model'))
 
     await openMenuForModel('User Model')
@@ -187,7 +196,7 @@ describe('model card action menu', () => {
       enabled: 1,
     })
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
     await waitForElement(() => screen.queryByText('Built-in Model'))
 
     await openMenuForModel('Built-in Model')
@@ -208,7 +217,7 @@ describe('model card action menu', () => {
       enabled: 1,
     })
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
     await waitForElement(() => screen.queryByText('Concise Model'))
 
     const card = screen.getByText('Concise Model').closest('[data-slot="card"]') as HTMLElement
@@ -235,7 +244,7 @@ describe('model card action menu', () => {
       isConfidential: 1,
     })
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
     await waitForElement(() => screen.queryByText('GLM 5.2'))
 
     const card = screen.getByText('GLM 5.2').closest('[data-slot="card"]') as HTMLElement
@@ -254,7 +263,7 @@ describe('model card action menu', () => {
       enabled: 1,
     })
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
     await waitForElement(() => screen.queryByText('Editable Model'))
 
     await openMenuForModel('Editable Model')
@@ -284,7 +293,7 @@ describe('model card action menu', () => {
       enabled: 1,
     })
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
     await waitForElement(() => screen.queryByText('Keyed Model'))
 
     await openMenuForModel('Keyed Model')
@@ -315,7 +324,7 @@ describe('model card action menu', () => {
     const getSpy = spyOn(http, 'get')
 
     try {
-      renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+      renderModelsPage()
       await waitForElement(() => screen.queryByText('Private Key Model'))
       await openMenuForModel('Private Key Model')
       fireEvent.click(await screen.findByText('Edit'))
@@ -340,7 +349,7 @@ describe('model card action menu', () => {
       enabled: 1,
     })
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
     await waitForElement(() => screen.queryByText('Old Name'))
     await openMenuForModel('Old Name')
     fireEvent.click(await screen.findByText('Edit'))
@@ -370,7 +379,7 @@ describe('model card action menu', () => {
       enabled: 1,
     })
 
-    renderWithReactivity(<ModelsPage />, { tables: ['models'] })
+    renderModelsPage()
     await waitForElement(() => screen.queryByText('Clearable Key'))
     await openMenuForModel('Clearable Key')
     fireEvent.click(await screen.findByText('Edit'))

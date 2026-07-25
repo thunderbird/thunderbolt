@@ -38,7 +38,6 @@ import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
-import { ChatModePicker } from './chat-mode-picker'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
@@ -591,16 +590,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       </div>
     )
 
-    // Mode/model pickers sit in the footer's right cluster, next to the send
-    // button; the connecting / connection-error status replaces them on the
-    // left, so the right side only renders them in the healthy state.
-    const footerEndElements =
-      !isConnecting && !isConnectionError ? (
-        <>
-          <ChatModePicker iconOnly={isMobile} />
-          <ChatModelPicker />
-        </>
-      ) : undefined
+    // The model picker sits in the footer's right cluster, next to the send
+    // button; the connecting / connection-error status replaces it on the
+    // left, so the right side only renders it in the healthy state.
+    const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker /> : undefined
 
     const handleAddChipFromBar = useCallback(
       (slug: string) => {
@@ -789,7 +782,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             isLoading={isStreaming || isConnecting}
             isStreaming={isStreaming}
             onStop={stop}
-            autoFocus={!isMobile}
+            // Desktop always autofocuses. The native mobile app autofocuses on a
+            // fresh chat (opening the app should land ready to type, keyboard up —
+            // programmatic focus raises the iOS keyboard via the main.mm swizzle)
+            // but not on existing chats, where popping the keyboard over the
+            // history the user came to read would be hostile. Mobile web keeps no
+            // autofocus: browsers won't show the keyboard for it anyway.
+            autoFocus={!isMobile || (isPlatformMobile() && isNewChat)}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
             className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}

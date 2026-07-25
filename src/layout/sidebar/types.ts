@@ -33,6 +33,8 @@ export type ChatActionsProps = {
 export type ChatListProps = {
   chatThreads: ChatThread[]
   currentChatThreadId?: string
+  /** Row awaiting its deferred navigation (mobile waits out the drawer close) — shows a spinner. */
+  pendingChatThreadId?: string | null
   isCollapsed: boolean
   isMobile: boolean
   debouncedSearchQuery: string
@@ -56,6 +58,8 @@ export type ChatListProps = {
 export type ChatListItemProps = {
   thread: ChatThread
   isActive: boolean
+  /** True while this row's tap is waiting on the deferred navigation. */
+  isNavigationPending?: boolean
   isCollapsed: boolean
   isMobile: boolean
   deleteChatMutation: DeleteChatMutationType

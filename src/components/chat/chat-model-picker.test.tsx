@@ -8,7 +8,6 @@ import { builtInAgent } from '@/defaults/agents'
 import {
   createMockChatInstance,
   createMockChatThread,
-  createMockMode,
   createMockModel,
   hydrateStore,
   resetStore,
@@ -62,7 +61,6 @@ const setupWithAgent = (agent: Agent, models = [gpt4, gpt5]) => {
     chatInstance: createMockChatInstance(),
     chatThread: createMockChatThread(),
     id: 'thread-1',
-    modes: [createMockMode({ id: 'mode-chat', name: 'chat', label: 'Chat', icon: 'message-square' })],
     models,
     selectedModel: models[0],
     triggerData: null,

@@ -9,13 +9,7 @@ import { getDb } from '@/db/database'
 import { builtInAgent } from '@/defaults/agents'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
-import {
-  createMockChatThread,
-  createMockMode,
-  createMockModel,
-  hydrateStore,
-  resetStore,
-} from '@/test-utils/chat-store-mocks'
+import { createMockChatThread, createMockModel, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { Agent } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
@@ -63,17 +57,17 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
 
 /** Hydrates a session on the canonical `thread-1`, then patches its
  *  `selectedAgent` directly (mirrors `chat-model-picker.test.tsx`, avoiding the
- *  DB write that `setSelectedAgent` performs). */
-const setupWithAgent = (agent: Agent) => {
+ *  DB write that `setSelectedAgent` performs). Pass `withThread: false` to
+ *  simulate an unsaved new chat (no thread row yet). */
+const setupWithAgent = (agent: Agent, { withThread = true }: { withThread?: boolean } = {}) => {
   hydrateStore({
     // A real `Chat` (not the plain-object mock) so the AI SDK's `useChat`
     // subscription inside `HeaderAgentSelector` mounts cleanly. It stays in its
     // default `ready` status — the selector only reads `status` to disable
     // itself mid-stream.
     chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-1' }),
-    chatThread: createMockChatThread({ agentId: agent.id }),
+    chatThread: withThread ? createMockChatThread({ agentId: agent.id }) : null,
     id: 'thread-1',
-    modes: [createMockMode()],
     models: [createMockModel()],
     selectedModel: createMockModel(),
     triggerData: null,
@@ -157,5 +151,26 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     expect(screen.getByText(builtInAgent.name)).toBeInTheDocument()
+  })
+
+  it('centers an expanded pill on an unsaved new chat (mobile)', () => {
+    setupWithAgent(customAgent, { withThread: false })
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
+    expect(wrapper).toHaveClass('left-1/2', '-translate-x-1/2')
+    expect(screen.getByTestId('agent-selector-trigger')).not.toHaveClass('max-md:bg-muted/80')
+  })
+
+  it('docks a collapsed circle top-right once the chat has a thread (mobile)', () => {
+    setupWithAgent(customAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
+    expect(wrapper).toHaveClass('left-full')
+    expect(wrapper).not.toHaveClass('left-1/2')
+    expect(screen.getByTestId('agent-selector-trigger')).toHaveClass('max-md:bg-muted/80')
   })
 })

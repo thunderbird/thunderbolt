@@ -111,8 +111,6 @@ export {
 } from './triggers'
 
 // Modes
-export { getAllModes, getDefaultMode, getMode, getSelectedMode } from './modes'
-
 // Model Profiles
 export {
   createDefaultModelProfile,

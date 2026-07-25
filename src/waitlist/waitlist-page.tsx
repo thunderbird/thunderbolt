@@ -64,9 +64,13 @@ export const WaitlistPage = () => {
               data-form-type="other"
               containerClassName="w-full"
             >
-              <InputOTPGroup className="w-full gap-2">
+              <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
                 {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                  <InputOTPSlot key={i} index={i} className="flex-1 rounded-lg" />
+                  <InputOTPSlot
+                    key={i}
+                    index={i}
+                    className="aspect-square h-auto w-10.5 min-w-0 shrink rounded-lg first:rounded-l-lg last:rounded-r-lg"
+                  />
                 ))}
               </InputOTPGroup>
             </InputOTP>

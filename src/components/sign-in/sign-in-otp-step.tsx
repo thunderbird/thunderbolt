@@ -86,9 +86,13 @@ export const SignInOtpStep = ({
             data-form-type="other"
             containerClassName="w-full"
           >
-            <InputOTPGroup className="w-full gap-2">
+            <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
               {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                <InputOTPSlot key={i} index={i} className="flex-1 rounded-lg" />
+                <InputOTPSlot
+                  key={i}
+                  index={i}
+                  className="aspect-square h-auto w-10.5 min-w-0 shrink rounded-lg first:rounded-l-lg last:rounded-r-lg"
+                />
               ))}
             </InputOTPGroup>
           </InputOTP>
@@ -117,82 +121,84 @@ export const SignInOtpStep = ({
 
   // --- Modal variant (existing design) ---
   return (
-    <div className="flex w-full flex-col items-center">
-      {/* Icon */}
-      {isLocalhost ? <GradientTriangleAlert className="h-12 w-12" /> : <GradientMail className="h-12 w-12" />}
+    <div className="flex h-full w-full flex-col items-center md:h-auto">
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center md:flex-none">
+        {isLocalhost ? <GradientTriangleAlert className="h-12 w-12" /> : <GradientMail className="h-12 w-12" />}
 
-      {/* Headline */}
-      <div className="mt-4 text-center">
-        <p className="text-xl font-semibold">{isLocalhost ? 'Check the backend logs' : 'Check your email'}</p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {isLocalhost ? (
-            <>
-              You appear to be using a{' '}
-              <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">localhost</code> backend. Check your
-              backend server logs for the code or magic link.
-            </>
-          ) : (
-            <>
-              We sent a code to <span className="font-medium text-foreground">{email}</span>
-            </>
+        <div className="mt-4 text-center">
+          <p className="text-xl font-semibold">{isLocalhost ? 'Check the backend logs' : 'Check your email'}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {isLocalhost ? (
+              <>
+                You appear to be using a{' '}
+                <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">localhost</code> backend. Check your
+                backend server logs for the code or magic link.
+              </>
+            ) : (
+              <>
+                We sent a code to <span className="font-medium text-foreground">{email}</span>
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="mt-6 flex w-full flex-col items-center gap-3">
+          <p className="text-sm text-muted-foreground">Or enter the 8-digit code</p>
+          <InputOTP
+            maxLength={otpLength}
+            pattern={REGEXP_ONLY_DIGITS}
+            value={otp}
+            onChange={onOtpChange}
+            onComplete={onOtpComplete}
+            disabled={isVerifying}
+            autoFocus
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
+            containerClassName="w-full"
+          >
+            <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                <InputOTPSlot
+                  key={i}
+                  index={i}
+                  className="aspect-square h-auto w-10.5 min-w-0 shrink rounded-lg first:rounded-l-lg last:rounded-r-lg"
+                />
+              ))}
+            </InputOTPGroup>
+          </InputOTP>
+
+          {isVerifying && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Verifying...
+            </div>
           )}
-        </p>
+
+          {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+
+          <ActionFeedbackButton
+            variant="ghost"
+            size="sm"
+            onClick={onResend}
+            disabled={isVerifying}
+            className="text-muted-foreground hover:text-foreground"
+            successContent={
+              <>
+                <Check className="mr-2 h-4 w-4" />
+                Sent
+              </>
+            }
+          >
+            Resend Email
+          </ActionFeedbackButton>
+
+          {!isLocalhost && <p className="text-xs text-muted-foreground">Or click the magic link in your email</p>}
+        </div>
       </div>
 
-      {/* OTP Input */}
-      <div className="mt-6 flex flex-col items-center gap-3">
-        <p className="text-sm text-muted-foreground">Or enter the 8-digit code</p>
-        <InputOTP
-          maxLength={otpLength}
-          pattern={REGEXP_ONLY_DIGITS}
-          value={otp}
-          onChange={onOtpChange}
-          onComplete={onOtpComplete}
-          disabled={isVerifying}
-          autoFocus
-          autoComplete="off"
-          data-1p-ignore
-          data-lpignore="true"
-          data-form-type="other"
-          containerClassName="w-full"
-        >
-          <InputOTPGroup className="w-full gap-2">
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-              <InputOTPSlot key={i} index={i} className="flex-1 rounded-lg" />
-            ))}
-          </InputOTPGroup>
-        </InputOTP>
-
-        {isVerifying && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Verifying...
-          </div>
-        )}
-
-        {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
-
-        <ActionFeedbackButton
-          variant="ghost"
-          size="sm"
-          onClick={onResend}
-          disabled={isVerifying}
-          className="text-muted-foreground hover:text-foreground"
-          successContent={
-            <>
-              <Check className="mr-2 h-4 w-4" />
-              Sent
-            </>
-          }
-        >
-          Resend Email
-        </ActionFeedbackButton>
-
-        {!isLocalhost && <p className="text-xs text-muted-foreground">Or click the magic link in your email</p>}
-      </div>
-
-      {/* Cancel button */}
-      <div className="mt-6 w-full">
+      <div className="mt-6 w-full shrink-0">
         <Button variant="outline" className="w-full" onClick={onCancel}>
           Cancel
         </Button>

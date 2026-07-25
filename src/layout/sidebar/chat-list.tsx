@@ -11,6 +11,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
@@ -63,6 +64,7 @@ export const ChatList = ({
 }: ChatListProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isNativeMobile = useIsNativeMobile()
+  const { forceCollapsed } = useSidebar()
   // Drives this list's own top scroll shadow; only the bottom counterpart is
   // lifted (the sidebar footer renders that shadow).
   const [hasContentAbove, setHasContentAbove] = useState(false)
@@ -156,15 +158,19 @@ export const ChatList = ({
         {!isMobile && searchInput}
         {isCollapsed && hasListContent && (
           <SidebarMenu className="flex-shrink-0">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={(e) => onSearchClick(e)}
-                tooltip="Search chats"
-                className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-              >
-                <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {/* Search works by expanding the sidebar to reveal the input, so
+                it's hidden while a narrow window pins the sidebar collapsed. */}
+            {!forceCollapsed && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={(e) => onSearchClick(e)}
+                  tooltip="Search chats"
+                  className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
+                >
+                  <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={() => deleteAllChatsDialogRef.current?.open()}

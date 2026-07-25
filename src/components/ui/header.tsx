@@ -106,7 +106,7 @@ const HistoryNavButtons = () => {
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
-  const { toggleSidebar, state: sidebarState } = useSidebar()
+  const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
   // Tauri desktop hides the OS title bar; the header row itself doubles as
   // the drag surface — including when the viewport is narrow enough to fall
@@ -217,8 +217,9 @@ export const Header = () => {
   // On the Tauri desktop app the expand toggle lives here while the sidebar is
   // collapsed to a rail — just right of the macOS traffic lights, the same
   // spot the collapse toggle occupies in the expanded sidebar's strip. On web
-  // the toggle stays inside the sidebar itself.
-  const showSidebarToggle = isTauriDesktop() && sidebarState === 'collapsed'
+  // the toggle stays inside the sidebar itself. Hidden while the collapse is
+  // forced by a narrow window — expanding is a no-op there.
+  const showSidebarToggle = isTauriDesktop() && sidebarState === 'collapsed' && !forceCollapsed
 
   return (
     <header

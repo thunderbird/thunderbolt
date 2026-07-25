@@ -30,7 +30,21 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
+
+// Below this width the desktop layout has no room for the expanded sidebar:
+// the sidebar is pinned to the collapsed icon rail and the toggle buttons
+// hide. Only reachable in the Tauri desktop app (force-desktop layout with a
+// 600px min window width) — on web, widths below 768px use the mobile drawer.
+const forceCollapseBreakpoint = 700
+const forceCollapseMql = () => window.matchMedia(`(max-width: ${forceCollapseBreakpoint - 1}px)`)
+const subscribeForceCollapse = (callback: () => void) => {
+  const mediaQuery = forceCollapseMql()
+  mediaQuery.addEventListener('change', callback)
+  return () => mediaQuery.removeEventListener('change', callback)
+}
+const getForceCollapseSnapshot = () => forceCollapseMql().matches
 
 const sidebarCookieName = 'sidebar_state'
 const sidebarCookieMaxAge = 60 * 60 * 24 * 7
@@ -55,6 +69,9 @@ type SidebarContextProps = {
   /** Internal: invoked by the mobile drawer when its close animation finishes. */
   notifyMobileSidebarClosed: () => void
   isMobile: boolean
+  /** True when the window is too narrow for the expanded sidebar (< 700px in
+   *  the desktop layout): the sidebar is pinned collapsed and toggles hide. */
+  forceCollapsed: boolean
   toggleSidebar: () => void
   //* new properties for sidebar resizing
   width: string
@@ -105,10 +122,15 @@ const SidebarProvider = forwardRef<
     //* new state for tracking is dragging rail
     const [isDraggingRail, setIsDraggingRail] = useState(false)
 
+    const isNarrow = useSyncExternalStore(subscribeForceCollapse, getForceCollapseSnapshot)
+    const forceCollapsed = isNarrow && !isMobile
+
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
+    // The stored preference survives a forced collapse, so widening the
+    // window past the threshold restores the previous state.
     const [_open, _setOpen] = useState(defaultOpen)
-    const open = openProp ?? _open
+    const open = !forceCollapsed && (openProp ?? _open)
     const setOpen = useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
         const openState = typeof value === 'function' ? value(open) : value
@@ -147,15 +169,16 @@ const SidebarProvider = forwardRef<
       })
     }, [isMobile, openMobile])
 
-    // Helper to toggle the sidebar.
+    // Helper to toggle the sidebar. No-op while the collapse is forced so the
+    // keyboard shortcut can't expand a sidebar the window can't fit.
     const toggleSidebar = useCallback(() => {
       if (isMobile) {
         triggerImpact('light')
         setOpenMobile((open) => !open)
-      } else {
+      } else if (!forceCollapsed) {
         setOpen((open) => !open)
       }
-    }, [isMobile, setOpen, triggerImpact])
+    }, [isMobile, forceCollapsed, setOpen, triggerImpact])
 
     // Adds a keyboard shortcut to toggle the sidebar.
     useEffect(() => {
@@ -184,6 +207,7 @@ const SidebarProvider = forwardRef<
         setOpenMobile,
         closeMobileSidebar,
         notifyMobileSidebarClosed,
+        forceCollapsed,
         toggleSidebar,
         //* new context for sidebar resizing
         width,
@@ -202,6 +226,7 @@ const SidebarProvider = forwardRef<
         // setOpenMobile,
         closeMobileSidebar,
         notifyMobileSidebarClosed,
+        forceCollapsed,
         toggleSidebar,
         //* add width to dependencies
         width,

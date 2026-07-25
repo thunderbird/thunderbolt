@@ -291,7 +291,9 @@ export const SearchableMenu = <T,>({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" className="flex items-center focus:outline-none">
+        {/* min-w-0 lets a truncating trigger label (e.g. the model selector's)
+            shrink and ellipsize instead of forcing the row wider. */}
+        <button type="button" className="flex min-w-0 items-center focus:outline-none">
           {triggerContent}
         </button>
       </PopoverTrigger>

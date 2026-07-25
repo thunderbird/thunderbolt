@@ -122,7 +122,7 @@ export const ModelSelector = ({
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center cursor-pointer transition-colors',
+        'flex min-w-0 items-center cursor-pointer transition-colors',
         variant === 'composer'
           ? cn(
               'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)]',
@@ -135,13 +135,16 @@ export const ModelSelector = ({
       )}
     >
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
-        <AlertTriangle className="size-3.5 text-amber-500" />
+        <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
       ) : selected?.data?.model.isConfidential === 1 ? (
-        <GradientLock className="size-3.5" />
+        <GradientLock className="size-3.5 shrink-0" />
       ) : null}
-      {/* Muted in both variants — trigger labels are chrome, not content. */}
-      <span className="font-medium text-muted-foreground">{selected?.label ?? 'Select model'}</span>
-      <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
+      {/* Muted in both variants — trigger labels are chrome, not content.
+          Truncates instead of wrapping when the composer gets narrow. */}
+      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? 'Select model'}</span>
+      <ChevronDown
+        className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
+      />
     </div>
   )
 

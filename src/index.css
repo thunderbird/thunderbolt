@@ -10,6 +10,45 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+/* Force-desktop: the Tauri desktop app always renders the desktop layout, no
+   matter how narrow the window is (the 600px min window width sits below the
+   640px sm and 768px md breakpoints). src/index.tsx adds .force-desktop to
+   <html> before first render on Tauri desktop; these overrides make the sm/md
+   variants treat that class as "breakpoint reached" and keep max-sm/max-md
+   off. lg and up stay purely viewport-based — they're progressive wide-screen
+   enhancements, not part of the mobile/desktop split. The JS half of the
+   split (useIsMobile) is gated in src/hooks/use-mobile.ts. */
+@custom-variant sm {
+  @media (width >= 40rem) {
+    @slot;
+  }
+  &:where(.force-desktop, .force-desktop *) {
+    @slot;
+  }
+}
+@custom-variant md {
+  @media (width >= 48rem) {
+    @slot;
+  }
+  &:where(.force-desktop, .force-desktop *) {
+    @slot;
+  }
+}
+@custom-variant max-sm {
+  @media (width < 40rem) {
+    &:where(:not(.force-desktop, .force-desktop *)) {
+      @slot;
+    }
+  }
+}
+@custom-variant max-md {
+  @media (width < 48rem) {
+    &:where(:not(.force-desktop, .force-desktop *)) {
+      @slot;
+    }
+  }
+}
+
 @theme {
   /* Mozilla brand font for display headings (e.g. the empty-chat greeting). */
   --font-heading: 'Mozilla Headline Variable', ui-sans-serif, system-ui, sans-serif;
@@ -137,23 +176,29 @@
 
 /* ===========================
    Responsive Touch Target System
+
+   Desktop-first: the base values below are the desktop sizing; the
+   `@media (width < 768px)` block after this one swaps in the mobile values.
+   The mobile block is guarded by :not(.force-desktop) so the Tauri desktop
+   app keeps desktop sizing at any window width (see the force-desktop
+   variants at the top of this file).
    =========================== */
 :root {
   /* Heights - Touch targets */
-  --touch-height-xl: 3.5rem; /* 56px mobile */
-  --touch-height-lg: 3rem; /* 48px mobile */
-  --touch-height-default: 2.75rem; /* 44px mobile - primary touch target */
-  --touch-height-sm: 2.5rem; /* 40px mobile */
-  --touch-height-control: 2.5rem; /* 40px mobile — prompt-area selectors/buttons; held at --min-touch-height */
+  --touch-height-xl: 3rem; /* 48px desktop */
+  --touch-height-lg: 2.5rem; /* 40px desktop */
+  --touch-height-default: 2.25rem; /* 36px desktop */
+  --touch-height-sm: 2rem; /* 32px desktop */
+  --touch-height-control: 1.75rem; /* 28px desktop — tightened prompt-area controls (THU-587) */
 
   /* Icon sizes */
-  --icon-size-default: 1.25rem; /* 20px mobile */
-  --icon-size-sm: 1rem; /* 16px mobile */
+  --icon-size-default: 1rem; /* 16px desktop */
+  --icon-size-sm: 0.875rem; /* 14px desktop */
 
   /* Font sizes */
-  --font-size-body: 1rem; /* 16px mobile */
-  --font-size-sm: 0.875rem; /* 14px mobile */
-  --font-size-xs: 0.75rem; /* 12px mobile */
+  --font-size-body: 0.875rem; /* 14px desktop */
+  --font-size-sm: 0.75rem; /* 12px desktop */
+  --font-size-xs: 0.625rem; /* 10px desktop */
 
   /* Border radius - overrides Tailwind's default --radius-* theme values.
    *
@@ -174,12 +219,12 @@
    * Corners step DOWN as you nest (outer radius − padding ≈ inner radius), so a
    * xl panel with p-1 holds md/lg items. Never hardcode px (`rounded-[12px]`) —
    * it defeats the responsive mobile→desktop step-down below. */
-  --radius-sm: 0.25rem; /* 4px mobile */
-  --radius-md: 0.5rem; /* 8px mobile */
-  --radius-lg: 0.75rem; /* 12px mobile */
-  --radius-xl: 1rem; /* 16px mobile */
-  --radius-2xl: 1.25rem; /* 20px mobile */
-  --radius-3xl: 1.5rem; /* 24px mobile */
+  --radius-sm: 0.125rem; /* 2px desktop */
+  --radius-md: 0.375rem; /* 6px desktop */
+  --radius-lg: 0.5rem; /* 8px desktop */
+  --radius-xl: 0.75rem; /* 12px desktop */
+  --radius-2xl: 1rem; /* 16px desktop */
+  --radius-3xl: 1.25rem; /* 20px desktop */
 
   /* Composer footer controls (+ / mode / model / submit): halfway between the
      lg and xl tiers — lg read too square against the composer's 3xl shell, xl
@@ -188,7 +233,7 @@
   --radius-control: calc((var(--radius-lg) + var(--radius-xl)) / 2);
 
   /* Minimum sizes */
-  --min-touch-height: 2.5rem; /* 40px mobile */
+  --min-touch-height: 0; /* No min on desktop */
 
   /* The floating app header overlays the content area (main/settings layouts
      position it absolutely so pages scroll beneath it). Pages whose content
@@ -220,49 +265,49 @@
   --modal-footer-inset: 1rem;
 
   /* Switch component specific */
-  --switch-track-height: 1.75rem; /* 28px mobile */
-  --switch-track-width: 3rem; /* 48px mobile */
+  --switch-track-height: 1.25rem; /* 20px desktop - whole-px so the thumb is round */
+  --switch-track-width: 2rem; /* 32px desktop */
   /* Track = 1px border + 2px inner padding; thumb fills exactly what's left so the
    *  2px gap to the border is identical on every side and in every state. Whole-px
    *  values only, so the dot never shifts size as it slides. */
-  --switch-thumb-size: 1.375rem; /* 22px mobile (28 - 2*border - 2*pad) */
-  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 20px */
+  --switch-thumb-size: 0.875rem; /* 14px desktop (20 - 2*border - 2*pad) */
+  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 12px */
 }
 
-@media (min-width: 768px) {
-  :root {
-    /* Heights - Desktop values */
-    --touch-height-xl: 3rem; /* 48px desktop */
-    --touch-height-lg: 2.5rem; /* 40px desktop */
-    --touch-height-default: 2.25rem; /* 36px desktop */
-    --touch-height-sm: 2rem; /* 32px desktop */
-    --touch-height-control: 1.75rem; /* 28px desktop — tightened prompt-area controls (THU-587) */
+@media (width < 768px) {
+  :root:not(.force-desktop) {
+    /* Heights - Mobile values */
+    --touch-height-xl: 3.5rem; /* 56px mobile */
+    --touch-height-lg: 3rem; /* 48px mobile */
+    --touch-height-default: 2.75rem; /* 44px mobile - primary touch target */
+    --touch-height-sm: 2.5rem; /* 40px mobile */
+    --touch-height-control: 2.5rem; /* 40px mobile — prompt-area selectors/buttons; held at --min-touch-height */
 
     /* Icon sizes */
-    --icon-size-default: 1rem; /* 16px desktop */
-    --icon-size-sm: 0.875rem; /* 14px desktop */
+    --icon-size-default: 1.25rem; /* 20px mobile */
+    --icon-size-sm: 1rem; /* 16px mobile */
 
     /* Font sizes */
-    --font-size-body: 0.875rem; /* 14px desktop */
-    --font-size-sm: 0.75rem; /* 12px desktop */
-    --font-size-xs: 0.625rem; /* 10px desktop */
+    --font-size-body: 1rem; /* 16px mobile */
+    --font-size-sm: 0.875rem; /* 14px mobile */
+    --font-size-xs: 0.75rem; /* 12px mobile */
 
     /* Border radius - overrides Tailwind's default --radius-* theme values */
-    --radius-sm: 0.125rem; /* 2px desktop */
-    --radius-md: 0.375rem; /* 6px desktop */
-    --radius-lg: 0.5rem; /* 8px desktop */
-    --radius-xl: 0.75rem; /* 12px desktop */
-    --radius-2xl: 1rem; /* 16px desktop */
-    --radius-3xl: 1.25rem; /* 20px desktop */
+    --radius-sm: 0.25rem; /* 4px mobile */
+    --radius-md: 0.5rem; /* 8px mobile */
+    --radius-lg: 0.75rem; /* 12px mobile */
+    --radius-xl: 1rem; /* 16px mobile */
+    --radius-2xl: 1.25rem; /* 20px mobile */
+    --radius-3xl: 1.5rem; /* 24px mobile */
 
     /* Minimum sizes */
-    --min-touch-height: 0; /* No min on desktop */
+    --min-touch-height: 2.5rem; /* 40px mobile */
 
     /* Switch component specific */
-    --switch-track-height: 1.25rem; /* 20px desktop - whole-px so the thumb is round */
-    --switch-track-width: 2rem; /* 32px desktop */
-    --switch-thumb-size: 0.875rem; /* 14px desktop (20 - 2*border - 2*pad) */
-    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 12px */
+    --switch-track-height: 1.75rem; /* 28px mobile */
+    --switch-track-width: 3rem; /* 48px mobile */
+    --switch-thumb-size: 1.375rem; /* 22px mobile (28 - 2*border - 2*pad) */
+    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 20px */
   }
 }
 
@@ -519,7 +564,7 @@ body {
 }
 
 @media (max-width: 768px) {
-  body {
+  :root:not(.force-desktop) body {
     width: 100%;
     height: 100%;
     overflow: hidden;

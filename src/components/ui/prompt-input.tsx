@@ -204,7 +204,9 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <div className="flex justify-between items-end w-full">
           <div className="flex items-center gap-2">{footerStartElements}</div>
 
-          <div className="flex gap-2 items-center">
+          {/* min-w-0 lets the model selector's label truncate when the composer
+              is narrow, instead of the cluster wrapping or overflowing. */}
+          <div className="flex min-w-0 gap-2 items-center">
             {footerEndElements}
             {showModelSelect && (
               <ModelSelector

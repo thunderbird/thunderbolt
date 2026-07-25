@@ -9,7 +9,7 @@
         "width": 1400,
         "height": 1000,
         "minHeight": 600,
-        "minWidth": 600,
+        "minWidth": 500,
         "visible": false,
         "transparent": true,
         "windowEffects": {

@@ -4,7 +4,7 @@
 
 import { useSyncExternalStore } from 'react'
 
-import { isMobile as isPlatformMobile } from '@/lib/platform'
+import { isMobile as isPlatformMobile, isTauriDesktop } from '@/lib/platform'
 
 const mobileBreakpoint = 768
 const mql = () => window.matchMedia(`(max-width: ${mobileBreakpoint - 1}px)`)
@@ -15,7 +15,9 @@ const subscribe = (callback: () => void) => {
   return () => mediaQuery.removeEventListener('change', callback)
 }
 
-const getSnapshot = () => mql().matches
+// The Tauri desktop app always uses the desktop layout, however narrow the
+// window — mirrors the .force-desktop CSS overrides in src/index.css.
+const getSnapshot = () => !isTauriDesktop() && mql().matches
 
 export const useIsMobile = () => {
   const isMobile = useSyncExternalStore(subscribe, getSnapshot)

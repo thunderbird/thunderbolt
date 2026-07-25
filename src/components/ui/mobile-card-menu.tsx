@@ -20,7 +20,7 @@ type MobileCardMenuProps = {
   title: string
   children: ReactNode
   className?: string
-  onOpenAutoFocus?: ComponentProps<typeof DrawerContent>['onOpenAutoFocus']
+  initialFocus?: ComponentProps<typeof DrawerContent>['initialFocus']
 }
 
 /** Floating mobile menu card with safe-area placement and directional entry. */
@@ -31,7 +31,7 @@ export const MobileCardMenu = ({
   title,
   children,
   className,
-  onOpenAutoFocus,
+  initialFocus,
 }: MobileCardMenuProps) => {
   const safeAreaStyle =
     side === 'top'
@@ -39,13 +39,8 @@ export const MobileCardMenu = ({
       : { paddingBottom: 'var(--safe-area-bottom-padding, 0px)' }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction={side}>
-      <DrawerContent
-        aria-describedby={undefined}
-        onOpenAutoFocus={onOpenAutoFocus}
-        className={cn('overflow-hidden', className)}
-        style={safeAreaStyle}
-      >
+    <Drawer open={open} onOpenChange={onOpenChange} swipeDirection={side === 'top' ? 'up' : 'down'}>
+      <DrawerContent initialFocus={initialFocus} className={cn('overflow-hidden', className)} style={safeAreaStyle}>
         {side === 'bottom' && <DrawerHandle className="mb-1 mt-2" />}
         <div className="shrink-0 px-4 pb-2 pt-2">
           <DrawerTitle className="text-[length:var(--font-size-sm)] text-muted-foreground">{title}</DrawerTitle>

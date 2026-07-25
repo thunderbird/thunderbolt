@@ -280,7 +280,7 @@ export const SearchableMenu = <T,>({
           side={mobileSide}
           title={mobileTitle}
           className={contentClassName}
-          onOpenAutoFocus={(event) => event.preventDefault()}
+          initialFocus={false}
         >
           {menuContent}
         </MobileCardMenu>

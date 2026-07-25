@@ -556,6 +556,9 @@ html,
 body {
   overscroll-behavior: none;
   overflow: hidden;
+  /* Base UI's drawer backdrop falls back to absolute positioning on iOS
+     Safari and needs a positioned body to cover the scrolled viewport. */
+  position: relative;
 }
 #root {
   overflow: hidden;

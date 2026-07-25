@@ -26,7 +26,7 @@ describe('ChatAddMenu', () => {
     const drawer = screen
       .getByText('Add to chat', { selector: '[data-slot="drawer-title"]' })
       .closest('[data-slot="drawer-content"]')
-    expect(drawer).toHaveAttribute('data-vaul-drawer-direction', 'bottom')
+    expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
 
     fireEvent.click(screen.getByRole('button', { name: 'Upload file' }))
     expect(onUploadFile).toHaveBeenCalledTimes(1)

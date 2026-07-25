@@ -21,13 +21,13 @@ describe('MobileCardMenu', () => {
     const drawer = screen.getByText('Choose model').closest('[data-slot="drawer-content"]')
     expect(drawer).toHaveClass('w-full')
     expect(drawer).toHaveClass('bg-popover/80', 'backdrop-blur-lg')
-    expect(drawer).toHaveClass('data-[vaul-drawer-direction=bottom]:rounded-t-3xl')
-    expect(drawer).toHaveAttribute('data-vaul-drawer-direction', 'bottom')
+    expect(drawer).toHaveClass('data-[swipe-direction=down]:rounded-t-3xl')
+    expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
     expect(document.querySelector('[data-slot="drawer-handle"]')).toHaveClass(
-      '!h-1',
-      '!w-10',
-      '!bg-muted-foreground/10',
-      'dark:!bg-white/5',
+      'h-1',
+      'w-10',
+      'bg-muted-foreground/10',
+      'dark:bg-white/5',
     )
   })
 
@@ -40,13 +40,16 @@ describe('MobileCardMenu', () => {
     )
 
     const drawer = screen.getByText('Choose agent').closest('[data-slot="drawer-content"]')
-    expect(drawer).toHaveAttribute('data-vaul-drawer-direction', 'top')
-    expect(drawer).toHaveClass('data-[vaul-drawer-direction=top]:rounded-b-3xl')
+    expect(drawer).toHaveAttribute('data-swipe-direction', 'up')
+    expect(drawer).toHaveClass('data-[swipe-direction=up]:rounded-b-3xl')
 
     const overlay = document.querySelector('[data-slot="drawer-overlay"]')
     expect(overlay).toBeInTheDocument()
     expect(overlay).toHaveClass('backdrop-blur-sm', 'backdrop-saturate-75')
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // Not toHaveBeenCalledWith: Base UI passes an eventDetails object as a
+    // second argument, and bun's deep-equal spins on its happy-dom internals.
+    expect(onOpenChange).toHaveBeenCalledTimes(1)
+    expect(onOpenChange.mock.calls[0]?.[0]).toBe(false)
   })
 })

@@ -16,7 +16,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'Vaul-based drawer primitive used for mobile bottom/top sheets. Higher-level surfaces like MobileCardMenu compose it.',
+          'Base UI drawer primitive used for mobile bottom/top sheets. Higher-level surfaces like MobileCardMenu compose it.',
       },
     },
   },
@@ -31,7 +31,7 @@ type Story = StoryObj<typeof meta>
 
 export const Bottom: Story = {
   render: (args) => (
-    <Drawer {...args} direction="bottom">
+    <Drawer {...args} swipeDirection="down">
       <DrawerContent>
         <DrawerHandle className="mb-1 mt-2" />
         <div className="flex flex-col gap-1 px-4 pb-6 pt-2">
@@ -45,7 +45,7 @@ export const Bottom: Story = {
 
 export const Top: Story = {
   render: (args) => (
-    <Drawer {...args} direction="top">
+    <Drawer {...args} swipeDirection="up">
       <DrawerContent>
         <div className="flex flex-col gap-1 px-4 pb-2 pt-6">
           <DrawerTitle>Top drawer</DrawerTitle>

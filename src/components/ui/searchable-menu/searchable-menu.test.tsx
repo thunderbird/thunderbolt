@@ -79,7 +79,7 @@ describe('SearchableMenu', () => {
       const drawer = screen
         .getByText('Choose an option', { selector: '[data-slot="drawer-title"]' })
         .closest('[data-slot="drawer-content"]')
-      expect(drawer).toHaveAttribute('data-vaul-drawer-direction', 'bottom')
+      expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
     })
 
     it('selects items from the drawer list', () => {

@@ -2,66 +2,74 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
 import type { ComponentProps } from 'react'
-// vaul is the de-facto shadcn drawer (gesture-driven drag-to-dismiss that the
-// Radix primitives don't provide) but is officially unmaintained — revisit
-// (e.g. Base UI's drawer) when an alternative matures.
-import { Drawer as DrawerPrimitive } from 'vaul'
 
 import { cn } from '@/lib/utils'
-import { modalAnimationClass } from '@/components/ui/modal-styles'
 
-const Drawer = (props: ComponentProps<typeof DrawerPrimitive.Root>) => (
-  <DrawerPrimitive.Root data-slot="drawer" {...props} />
+/**
+ * Gesture-driven sheet built on Base UI's Drawer (the maintained successor to
+ * vaul, which this component previously wrapped). Only vertical sheets are
+ * styled: `swipeDirection="down"` (default) is a bottom sheet, `"up"` a top
+ * sheet. Unlike vaul, Base UI animates via CSS, so the open/close transitions
+ * live in the classes below (`data-starting-style` / `data-ending-style`).
+ */
+const Drawer = (props: DrawerPrimitive.Root.Props) => <DrawerPrimitive.Root {...props} />
+
+/* Deliberately lighter than modalOverlayClass: a card drawer is a shallow,
+ * swipe-away surface, so it dims and blurs less than a blocking modal, and
+ * sits below the z-50 modal layer. Opacity tracks the swipe so the dimming
+ * releases with the gesture. `absolute` under iOS Safari (paired with
+ * `body { position: relative }` in index.css) keeps the backdrop covering the
+ * viewport after the page has been scrolled. */
+const backdropClass =
+  'fixed inset-0 z-40 min-h-dvh bg-black/30 backdrop-blur-sm backdrop-saturate-75 select-none ' +
+  'opacity-[calc(1-var(--drawer-swipe-progress,0))] transition-opacity duration-450 ease-[cubic-bezier(0.32,0.72,0,1)] ' +
+  'data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[ending-style]:pointer-events-none ' +
+  'data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*400ms)] data-[swiping]:duration-0 ' +
+  'supports-[-webkit-touch-callout:none]:absolute'
+
+const popupClass = cn(
+  'group/drawer-content pointer-events-auto fixed z-50 flex h-auto max-h-[85dvh] w-full flex-col bg-popover/80 text-popover-foreground shadow-2xl outline-none backdrop-blur-lg select-none',
+  // Swipe follows the finger; open/close slide from/to the sheet's edge.
+  'transform-[translate3d(0,var(--translate-y,0px),0)] transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform',
+  'data-[starting-style]:transform-[var(--closed-transform)] data-[ending-style]:transform-[var(--closed-transform)]',
+  'data-[swiping]:duration-0 data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*400ms)]',
+  // Bleed: fills the gap the sheet reveals at its own edge when a swipe
+  // overshoots past the resting position.
+  'after:pointer-events-none after:absolute after:inset-x-0 after:h-12 after:bg-popover/80 after:backdrop-blur-lg',
+  'data-[swipe-direction=down]:inset-x-0 data-[swipe-direction=down]:bottom-0 data-[swipe-direction=down]:rounded-t-3xl data-[swipe-direction=down]:border-t data-[swipe-direction=down]:after:top-full data-[swipe-direction=down]:[--closed-transform:translate3d(0,calc(100%+2px),0)] data-[swipe-direction=down]:[--translate-y:var(--drawer-swipe-movement-y)]',
+  'data-[swipe-direction=up]:inset-x-0 data-[swipe-direction=up]:top-0 data-[swipe-direction=up]:rounded-b-3xl data-[swipe-direction=up]:border-b data-[swipe-direction=up]:after:bottom-full data-[swipe-direction=up]:[--closed-transform:translate3d(0,calc(-100%-2px),0)] data-[swipe-direction=up]:[--translate-y:var(--drawer-swipe-movement-y)]',
 )
 
-const DrawerPortal = (props: ComponentProps<typeof DrawerPrimitive.Portal>) => (
-  <DrawerPrimitive.Portal data-slot="drawer-portal" {...props} />
+const DrawerContent = ({ className, children, ...props }: DrawerPrimitive.Popup.Props) => (
+  <DrawerPrimitive.Portal data-slot="drawer-portal">
+    <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} />
+    <DrawerPrimitive.Viewport
+      data-slot="drawer-viewport"
+      className="pointer-events-auto fixed inset-0 z-50 select-none"
+    >
+      <DrawerPrimitive.Popup data-slot="drawer-content" className={cn(popupClass, className)} {...props}>
+        <DrawerPrimitive.Content className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit] select-text group-data-[swiping]/drawer-content:select-none">
+          {children}
+        </DrawerPrimitive.Content>
+      </DrawerPrimitive.Popup>
+    </DrawerPrimitive.Viewport>
+  </DrawerPrimitive.Portal>
 )
 
-// Deliberately lighter than modalOverlayClass: a card drawer is a shallow,
-// swipe-away surface, so it dims and blurs less than a blocking modal, and
-// sits below the z-50 modal layer.
-const DrawerOverlay = ({ className, ...props }: ComponentProps<typeof DrawerPrimitive.Overlay>) => (
-  <DrawerPrimitive.Overlay
-    data-slot="drawer-overlay"
-    className={cn(
-      modalAnimationClass,
-      'fixed inset-0 z-40 bg-black/30 backdrop-blur-sm backdrop-saturate-75',
-      className,
-    )}
-    {...props}
-  />
-)
-
-const DrawerContent = ({ className, ...props }: ComponentProps<typeof DrawerPrimitive.Content>) => (
-  <DrawerPortal>
-    <DrawerOverlay />
-    <DrawerPrimitive.Content
-      data-slot="drawer-content"
-      className={cn(
-        'group/drawer-content fixed z-50 flex h-auto max-h-[85dvh] w-full flex-col bg-popover/80 text-popover-foreground shadow-2xl outline-none backdrop-blur-lg',
-        'data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:rounded-b-3xl data-[vaul-drawer-direction=top]:border-b',
-        'data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:rounded-t-3xl data-[vaul-drawer-direction=bottom]:border-t',
-        className,
-      )}
-      {...props}
-    />
-  </DrawerPortal>
-)
-
-const DrawerHandle = ({ className, ...props }: ComponentProps<typeof DrawerPrimitive.Handle>) => (
-  <DrawerPrimitive.Handle
+/* Base UI has no Handle part (vaul did) — the grab bar is decorative, so a
+ * plain div is the intended replacement; the popup itself owns the gesture. */
+const DrawerHandle = ({ className, ...props }: ComponentProps<'div'>) => (
+  <div
+    aria-hidden
     data-slot="drawer-handle"
-    className={cn(
-      'mx-auto !h-1 !w-10 shrink-0 rounded-full !bg-muted-foreground/10 !opacity-100 dark:!bg-white/5',
-      className,
-    )}
+    className={cn('mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/10 dark:bg-white/5', className)}
     {...props}
   />
 )
 
-const DrawerTitle = ({ className, ...props }: ComponentProps<typeof DrawerPrimitive.Title>) => (
+const DrawerTitle = ({ className, ...props }: DrawerPrimitive.Title.Props) => (
   <DrawerPrimitive.Title
     data-slot="drawer-title"
     className={cn('font-semibold text-foreground', className)}
@@ -69,7 +77,7 @@ const DrawerTitle = ({ className, ...props }: ComponentProps<typeof DrawerPrimit
   />
 )
 
-const DrawerDescription = ({ className, ...props }: ComponentProps<typeof DrawerPrimitive.Description>) => (
+const DrawerDescription = ({ className, ...props }: DrawerPrimitive.Description.Props) => (
   <DrawerPrimitive.Description
     data-slot="drawer-description"
     className={cn('text-sm text-muted-foreground', className)}

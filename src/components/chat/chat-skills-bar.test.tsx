@@ -133,7 +133,7 @@ describe('ChatSkillsBar', () => {
     const drawer = screen
       .getByText('Add a skill', { selector: '[data-slot="drawer-title"]' })
       .closest('[data-slot="drawer-content"]')
-    expect(drawer).toHaveAttribute('data-vaul-drawer-direction', 'bottom')
+    expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
     expect(screen.getByText('Daily Brief')).toBeInTheDocument()
   })
 

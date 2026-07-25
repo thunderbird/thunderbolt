@@ -11,7 +11,7 @@ import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
-import type { CatalogRequest } from './model-catalog'
+import { catalogDebounceMs, isFetchableCatalogUrl, type CatalogRequest } from './model-catalog'
 import {
   apiKeyEditValue,
   catalogRequiresApiKey,
@@ -65,22 +65,27 @@ export const useEditModelFormState = (model: Model) => {
     () => ({ provider: model.provider, apiKey: effectiveApiKey, url: watchedUrl }),
     [effectiveApiKey, model.provider, watchedUrl],
   )
-  const debouncedCatalogRequest = useDebounce(catalogRequest, 500)
-  const catalogInputsChanged = apiKeyEdit.kind === 'replace' || watchedUrl !== (model.url ?? '')
+  const debouncedCatalogRequest = useDebounce(catalogRequest, catalogDebounceMs)
+  // The stored key must never leave the device without an explicit user
+  // action, so the auto-fetch only arms for a freshly typed replacement key,
+  // or for URL edits when no stored secret could ride along. Stored-key
+  // catalogs load on demand when the model dropdown is opened (loadCatalog).
+  const isAutoFetchArmed = apiKeyEdit.kind === 'replace' || (!model.apiKey && watchedUrl !== (model.url ?? ''))
+  const isDebounceSettled =
+    debouncedCatalogRequest.apiKey === effectiveApiKey && debouncedCatalogRequest.url === watchedUrl
 
   useEffect(() => {
-    if (!catalogInputsChanged) {
+    if (!isAutoFetchArmed || !isDebounceSettled) {
       return
     }
-    if (
-      debouncedCatalogRequest.apiKey !== effectiveApiKey ||
-      debouncedCatalogRequest.url !== watchedUrl ||
-      (catalogRequiresApiKey(model.provider) && !debouncedCatalogRequest.apiKey)
-    ) {
+    if (catalogRequiresApiKey(model.provider) && !debouncedCatalogRequest.apiKey) {
+      return
+    }
+    if (model.provider === 'custom' && !isFetchableCatalogUrl(debouncedCatalogRequest.url)) {
       return
     }
     void fetchCatalog(debouncedCatalogRequest)
-  }, [catalogInputsChanged, debouncedCatalogRequest, effectiveApiKey, fetchCatalog, model.provider, watchedUrl])
+  }, [isAutoFetchArmed, isDebounceSettled, debouncedCatalogRequest, fetchCatalog, model.provider])
   const modelItems = useMemo((): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
     if (!catalog.models.some((available) => available.id === model.model)) {
@@ -101,6 +106,22 @@ export const useEditModelFormState = (model: Model) => {
   })
   const needsSuccessfulTest =
     hasConnectionEdits && apiKeyEdit.kind !== 'clear' && providerRequiresConnectionTest(model.provider)
+
+  // Opening the model dropdown is the explicit user action that authorizes
+  // fetching the provider catalog with the saved connection (including a
+  // stored API key) — opening the edit panel alone must not send anything.
+  const loadCatalog = () => {
+    if (catalog.isLoading || catalog.models.length > 0) {
+      return
+    }
+    if (catalogRequiresApiKey(model.provider) && !effectiveApiKey) {
+      return
+    }
+    if (model.provider === 'custom' && !isFetchableCatalogUrl(watchedUrl)) {
+      return
+    }
+    void fetchCatalog(catalogRequest)
+  }
 
   const selectModel = (id: string) => {
     if (id === 'custom') {
@@ -152,6 +173,7 @@ export const useEditModelFormState = (model: Model) => {
     isSaveDisabled:
       (!form.formState.isDirty && apiKeyEdit.kind === 'keep') ||
       (needsSuccessfulTest && connection.status !== 'success'),
+    loadCatalog,
     selectModel,
     changeUrl,
     changeApiKey,

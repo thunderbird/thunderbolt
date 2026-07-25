@@ -17,6 +17,9 @@ import { cn } from '@/lib/utils'
  */
 const Drawer = (props: DrawerPrimitive.Root.Props) => <DrawerPrimitive.Root {...props} />
 
+/** Re-exports Base UI's keyboard-inset provider, which publishes
+ *  `--drawer-keyboard-inset` so sheets (e.g. `MobileActionSheet`) can ride
+ *  above the software keyboard. */
 const DrawerVirtualKeyboardProvider = (props: DrawerPrimitive.VirtualKeyboardProvider.Props) => (
   <DrawerPrimitive.VirtualKeyboardProvider {...props} />
 )
@@ -40,6 +43,9 @@ const popupClass = cn(
   'transform-[translate3d(0,var(--translate-y,0px),0)] transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform',
   'data-[starting-style]:transform-[var(--closed-transform)] data-[ending-style]:transform-[var(--closed-transform)]',
   'data-[swiping]:duration-0 data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*400ms)]',
+  // The directional shadows below share the elevation recipe (8px offset
+  // toward the layer below, 32px blur, -12px spread, 20% black) with
+  // .mobile-sidebar-main-shadow in index.css — keep them in sync.
   // Bleed: fills the gap the sheet reveals at its own edge when a swipe
   // overshoots past the resting position. Sized generously (10rem) so even a
   // hard overshoot flick never exposes the sheet's outer edge.

@@ -16,7 +16,7 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { addModelFormSchema, type AddModelFormValues } from './add-model-form'
-import type { CatalogRequest } from './model-catalog'
+import { catalogDebounceMs, isFetchableCatalogUrl, type CatalogRequest } from './model-catalog'
 import { catalogRequiresApiKey } from './model-policy'
 import { catalogToComboboxItems, customModelItem, useModelCatalog } from './use-model-catalog'
 
@@ -27,6 +27,7 @@ type AddModelState = {
 
 type AddModelAction =
   | { type: 'MODEL_SELECTED'; modelId: string }
+  | { type: 'PANEL_OPENED' }
   | { type: 'MUTATION_STARTED' }
   | { type: 'MUTATION_FAILED' }
   | { type: 'RESET' }
@@ -41,10 +42,11 @@ const addModelReducer = (state: AddModelState, action: AddModelAction): AddModel
   switch (action.type) {
     case 'MODEL_SELECTED':
       return { ...state, selectedModelId: action.modelId }
+    case 'PANEL_OPENED':
     case 'MUTATION_STARTED':
       return { ...state, submitError: null }
     case 'MUTATION_FAILED':
-      return { ...state, submitError: 'Failed to add the model.' }
+      return { ...state, submitError: "Couldn't add the model. Please try again." }
     case 'RESET':
       return initialState
   }
@@ -93,7 +95,7 @@ export const useAddModelForm = ({ active, onClose }: UseAddModelFormOptions) => 
   const url = form.watch('url')
   const model = form.watch('model')
   const catalogRequest = useMemo<CatalogRequest>(() => ({ provider, apiKey, url }), [apiKey, provider, url])
-  const debouncedCatalogRequest = useDebounce(catalogRequest, 500)
+  const debouncedCatalogRequest = useDebounce(catalogRequest, catalogDebounceMs)
   const connection = useModelConnectionTest({ provider, model, url, apiKey })
 
   useEffect(() => {
@@ -103,7 +105,7 @@ export const useAddModelForm = ({ active, onClose }: UseAddModelFormOptions) => 
     if (catalogRequiresApiKey(provider) && !debouncedCatalogRequest.apiKey) {
       return
     }
-    if (provider === 'custom' && !debouncedCatalogRequest.url) {
+    if (provider === 'custom' && !isFetchableCatalogUrl(debouncedCatalogRequest.url)) {
       return
     }
     void fetchCatalog(debouncedCatalogRequest)
@@ -148,15 +150,21 @@ export const useAddModelForm = ({ active, onClose }: UseAddModelFormOptions) => 
     },
   })
 
+  const resolveModelId = (values: AddModelFormValues) =>
+    selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
+
   const submit = (values: AddModelFormValues) => {
-    const modelId = selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
-    addMutation.mutate({ ...values, model: modelId })
+    addMutation.mutate({ ...values, model: resolveModelId(values) })
   }
 
   const testConnection = () => {
     const values = form.getValues()
-    const modelId = selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
-    connection.test({ provider: values.provider, model: modelId, url: values.url, apiKey: values.apiKey })
+    connection.test({
+      provider: values.provider,
+      model: resolveModelId(values),
+      url: values.url,
+      apiKey: values.apiKey,
+    })
   }
 
   const selectModel = (modelId: string) => {
@@ -173,6 +181,13 @@ export const useAddModelForm = ({ active, onClose }: UseAddModelFormOptions) => 
     form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
   }
 
+  // Recomputes formState.isValid for the freshly blanked fields (the submit
+  // button keys off it) without painting error messages on a pristine form.
+  const revalidateSilently = async () => {
+    await form.trigger()
+    form.clearErrors()
+  }
+
   const changeProvider = (nextProvider: Model['provider']) => {
     catalog.invalidateCatalog()
     form.setValue('provider', nextProvider, { shouldValidate: false, shouldDirty: true })
@@ -180,12 +195,13 @@ export const useAddModelForm = ({ active, onClose }: UseAddModelFormOptions) => 
     form.setValue('name', '', { shouldValidate: false, shouldDirty: false })
     form.setValue('model', '', { shouldValidate: false, shouldDirty: false })
     form.setValue('customModel', '', { shouldValidate: false, shouldDirty: false })
+    // Ollama's default local endpoint — the most common custom provider.
     form.setValue('url', nextProvider === 'custom' ? 'http://localhost:11434/v1' : '', {
       shouldValidate: false,
       shouldDirty: false,
     })
     form.setValue('apiKey', '', { shouldValidate: false, shouldDirty: false })
-    form.clearErrors()
+    void revalidateSilently()
   }
 
   const modelItems = useMemo((): ComboboxItem[] => {
@@ -215,9 +231,10 @@ export const useAddModelForm = ({ active, onClose }: UseAddModelFormOptions) => 
     onCatalogInvalidated: catalog.invalidateCatalog,
     onSelectModel: selectModel,
     onTestConnection: testConnection,
-    prepare: () => {
+    /** Clears leftover probe/error state when the add panel opens. */
+    prepareForOpen: () => {
       connection.reset()
-      dispatch({ type: 'MUTATION_STARTED' })
+      dispatch({ type: 'PANEL_OPENED' })
     },
   }
 }

@@ -46,13 +46,12 @@ export const SkillsView = () => {
 
   // Deep-links from the chat composer. Broken-reference alerts send
   // `editSkill` (selects an existing, likely disabled skill so the user can
-  // enable it) or `createSkill` (opens the create form pre-filled with the
-  // slug the user just typed — `''` opens a blank form); the pinned chips'
-  // "Edit skill" action sends `startEditSkill`, which lands straight in the
-  // edit form. Same consume-once pattern as `runSkill` in chat-prompt-input.
+  // enable it); the pinned chips' "Edit skill" action sends `startEditSkill`,
+  // which lands straight in the edit form. Same consume-once pattern as
+  // `runSkill` in chat-prompt-input. (Skill creation no longer deep-links
+  // here — it opens the route-preserving create surface via CreateItemContext.)
   useConsumeNavState('editSkill', (id) => dispatch({ type: 'SELECT_SKILL', id }))
   useConsumeNavState('startEditSkill', (id) => dispatch({ type: 'START_EDIT', id }))
-  useConsumeNavState('createSkill', (slug) => dispatch({ type: 'START_CREATE', initialName: slug || undefined }))
 
   // No first-skill fallback: the detail panel only opens when the user
   // explicitly selects a skill (or a deep link does), matching the

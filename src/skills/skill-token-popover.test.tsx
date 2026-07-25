@@ -12,7 +12,7 @@ import { SkillTokenPopover } from './skill-token-popover'
 // inside Radix and JSDOM-incompatible pointer events. We assert the
 // trigger surface that the chat composer relies on, not the full
 // open/close cycle — that lives in manual / e2e testing.
-const renderPopover = (state: { editSkill: string } | { createSkill: string }) =>
+const renderPopover = (state: { editSkill: string }) =>
   render(
     <MemoryRouter>
       <SkillTokenPopover

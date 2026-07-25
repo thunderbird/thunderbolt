@@ -17,11 +17,8 @@ type RenameChatDialogProps = {
   onRename: (title: string) => void
 }
 
-type RenameChatFormProps = RenameChatDialogProps & {
-  isMobile: boolean
-}
-
-const RenameChatForm = ({ open, title, onOpenChange, onRename, isMobile }: RenameChatFormProps) => {
+const RenameChatForm = ({ open, title, onOpenChange, onRename }: RenameChatDialogProps) => {
+  const { isMobile } = useIsMobile()
   const initialTitle = title ?? defaultChatTitle
   const [value, setValue] = useState(initialTitle)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -34,8 +31,6 @@ const RenameChatForm = ({ open, title, onOpenChange, onRename, isMobile }: Renam
     }
   }
 
-  const handleOpenChange = (nextOpen: boolean) => onOpenChange(nextOpen)
-
   const focusInput = () => {
     inputRef.current?.focus()
     inputRef.current?.select()
@@ -47,7 +42,7 @@ const RenameChatForm = ({ open, title, onOpenChange, onRename, isMobile }: Renam
     if (newTitle !== initialTitle) {
       onRename(newTitle)
     }
-    handleOpenChange(false)
+    onOpenChange(false)
   }
 
   const input = (
@@ -67,7 +62,7 @@ const RenameChatForm = ({ open, title, onOpenChange, onRename, isMobile }: Renam
 
   const actions = (
     <>
-      <Button variant="outline" onClick={() => handleOpenChange(false)}>
+      <Button variant="outline" onClick={() => onOpenChange(false)}>
         Cancel
       </Button>
       <Button onClick={handleSave}>Save</Button>
@@ -78,7 +73,7 @@ const RenameChatForm = ({ open, title, onOpenChange, onRename, isMobile }: Renam
     return (
       <MobileActionSheet
         open={open}
-        onOpenChange={handleOpenChange}
+        onOpenChange={onOpenChange}
         title="Rename chat"
         initialFocus={() => {
           focusInput()
@@ -92,7 +87,7 @@ const RenameChatForm = ({ open, title, onOpenChange, onRename, isMobile }: Renam
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
         onOpenAutoFocus={(e) => {
@@ -112,16 +107,6 @@ const RenameChatForm = ({ open, title, onOpenChange, onRename, isMobile }: Renam
   )
 }
 
-export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: RenameChatDialogProps) => {
-  const { isMobile } = useIsMobile()
-  return (
-    <RenameChatForm
-      key={title}
-      open={open}
-      title={title}
-      onOpenChange={onOpenChange}
-      onRename={onRename}
-      isMobile={isMobile}
-    />
-  )
-}
+// The `key` remounts the form whenever the chat title changes so the draft
+// value always starts from the current title.
+export const RenameChatDialog = (props: RenameChatDialogProps) => <RenameChatForm key={props.title} {...props} />

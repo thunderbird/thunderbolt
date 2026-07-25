@@ -40,6 +40,45 @@ const VirtualChatRow = ({ style, children, ref }: CustomItemComponentProps) => (
   </li>
 )
 
+/**
+ * Measures the mobile sticky chrome (pinned header + list label) so virtua
+ * can offset its rows below the non-virtual content. Both measured elements
+ * are always mounted while `isMobile` is true, so the observer never watches
+ * a detached node.
+ */
+const useMobileListMetrics = (isMobile: boolean) => {
+  const headerRef = useRef<HTMLDivElement>(null)
+  const labelRef = useRef<HTMLDivElement>(null)
+  const [metrics, setMetrics] = useState({ headerHeight: 0, startMargin: 0 })
+
+  useLayoutEffect(() => {
+    if (!isMobile) {
+      return
+    }
+
+    const elements = [headerRef.current, labelRef.current].filter(
+      (element): element is HTMLDivElement => element !== null,
+    )
+    const updateStartMargin = () => {
+      const headerHeight = headerRef.current?.offsetHeight ?? 0
+      const startMargin = elements.reduce((height, element) => height + element.offsetHeight, 0)
+      setMetrics((currentMetrics) =>
+        currentMetrics.headerHeight === headerHeight && currentMetrics.startMargin === startMargin
+          ? currentMetrics
+          : { headerHeight, startMargin },
+      )
+    }
+    const resizeObserver = new ResizeObserver(updateStartMargin)
+
+    elements.forEach((element) => resizeObserver.observe(element))
+    updateStartMargin()
+
+    return () => resizeObserver.disconnect()
+  }, [isMobile])
+
+  return { headerRef, labelRef, metrics }
+}
+
 export const ChatList = ({
   chatThreads,
   currentChatThreadId,
@@ -62,40 +101,15 @@ export const ChatList = ({
   onSearchQueryChange,
 }: ChatListProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const mobileHeaderRef = useRef<HTMLDivElement>(null)
-  const mobileLabelRef = useRef<HTMLDivElement>(null)
   const { forceCollapsed } = useSidebar()
-  const [mobileListMetrics, setMobileListMetrics] = useState({ headerHeight: 0, startMargin: 0 })
+  const {
+    headerRef: mobileHeaderRef,
+    labelRef: mobileLabelRef,
+    metrics: mobileListMetrics,
+  } = useMobileListMetrics(isMobile)
   // The list has something to show either when threads exist or when a search
   // is active (an empty result set still renders the "no matches" note).
   const hasListContent = chatThreads.length > 0 || Boolean(debouncedSearchQuery)
-
-  // Virtua needs the height of non-virtual content before its rows so its
-  // measurements stay aligned while the mobile controls stick over the list.
-  useLayoutEffect(() => {
-    if (!isMobile) {
-      return
-    }
-
-    const elements = [mobileHeaderRef.current, mobileLabelRef.current].filter(
-      (element): element is HTMLDivElement => element !== null,
-    )
-    const updateStartMargin = () => {
-      const headerHeight = mobileHeaderRef.current?.offsetHeight ?? 0
-      const startMargin = elements.reduce((height, element) => height + element.offsetHeight, 0)
-      setMobileListMetrics((currentMetrics) =>
-        currentMetrics.headerHeight === headerHeight && currentMetrics.startMargin === startMargin
-          ? currentMetrics
-          : { headerHeight, startMargin },
-      )
-    }
-    const resizeObserver = new ResizeObserver(updateStartMargin)
-
-    elements.forEach((element) => resizeObserver.observe(element))
-    updateStartMargin()
-
-    return () => resizeObserver.disconnect()
-  }, [isMobile])
 
   const chatActions = (
     <ChatActions
@@ -129,76 +143,87 @@ export const ChatList = ({
     </div>
   )
 
+  // Mobile: a pinned, measured header floats over the list (nav toggle,
+  // actions, search, secondary nav) and the list starts below it.
+  const mobileChrome = (
+    <div
+      ref={mobileHeaderRef}
+      data-slot="mobile-sidebar-header"
+      className="absolute inset-x-0 top-0 z-10 px-2 pt-[calc(var(--header-safe-area-top)+0.5rem)]"
+    >
+      {/* The 2.5rem overhang extends the fade past the header so rows dissolve
+          before reaching it — same tint/overhang as the footer scrim in
+          sidebar-footer.tsx; keep the two in sync. */}
+      <Scrim
+        data-slot="mobile-sidebar-header-scrim"
+        height="calc(100% + 2.5rem)"
+        className="from-sidebar via-sidebar/80"
+      />
+      <div className="relative z-10">
+        <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
+          {mobileNavToggle}
+          {hasListContent && chatActions}
+        </div>
+        {searchInput}
+        {mobileSecondaryNavigation}
+      </div>
+    </div>
+  )
+
+  // Desktop: an in-flow label row while expanded, or the icon rail while
+  // collapsed.
+  const desktopChrome = isCollapsed ? (
+    hasListContent && (
+      <SidebarMenu className="flex-shrink-0">
+        {/* Search works by expanding the sidebar to reveal the input, so
+            it's hidden while a narrow window pins the sidebar collapsed. */}
+        {!forceCollapsed && (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={(e) => onSearchClick(e)}
+              tooltip="Search chats"
+              className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
+            >
+              <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            onClick={() => deleteAllChatsDialogRef.current?.open()}
+            disabled={deleteAllChatsMutation.isPending}
+            tooltip="Clear all chats"
+            className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
+          >
+            {deleteAllChatsMutation.isPending ? (
+              <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
+            ) : (
+              <Flame className="size-[var(--icon-size-default)]" />
+            )}
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
+        <li aria-hidden>
+          <RailDivider className="my-1.5" />
+        </li>
+      </SidebarMenu>
+    )
+  ) : (
+    <>
+      {hasListContent && (
+        <div className="flex items-center justify-between flex-shrink-0">
+          <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+          {chatActions}
+        </div>
+      )}
+      {searchInput}
+    </>
+  )
+
   return (
     <>
       <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0', (isMobile || isCollapsed) && 'pt-0')}>
-        {!isMobile && (
-          <>
-            {!isCollapsed && hasListContent && (
-              <div className="flex items-center justify-between flex-shrink-0">
-                <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
-                {chatActions}
-              </div>
-            )}
-            {searchInput}
-          </>
-        )}
-        {isCollapsed && hasListContent && (
-          <SidebarMenu className="flex-shrink-0">
-            {/* Search works by expanding the sidebar to reveal the input, so
-                it's hidden while a narrow window pins the sidebar collapsed. */}
-            {!forceCollapsed && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={(e) => onSearchClick(e)}
-                  tooltip="Search chats"
-                  className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-                >
-                  <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => deleteAllChatsDialogRef.current?.open()}
-                disabled={deleteAllChatsMutation.isPending}
-                tooltip="Clear all chats"
-                className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-              >
-                {deleteAllChatsMutation.isPending ? (
-                  <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
-                ) : (
-                  <Flame className="size-[var(--icon-size-default)]" />
-                )}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
-            <li aria-hidden>
-              <RailDivider className="my-1.5" />
-            </li>
-          </SidebarMenu>
-        )}
-        {isMobile && (
-          <div
-            ref={mobileHeaderRef}
-            data-slot="mobile-sidebar-header"
-            className="absolute inset-x-0 top-0 z-10 px-2 pt-[calc(var(--header-safe-area-top)+0.5rem)]"
-          >
-            <Scrim
-              data-slot="mobile-sidebar-header-scrim"
-              height="calc(100% + 2.5rem)"
-              className="from-sidebar via-sidebar/80"
-            />
-            <div className="relative z-10">
-              <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
-                {mobileNavToggle}
-                {hasListContent && chatActions}
-              </div>
-              {searchInput}
-              {mobileSecondaryNavigation}
-            </div>
-          </div>
-        )}
+        {isMobile ? mobileChrome : desktopChrome}
         <div
           ref={scrollContainerRef}
           data-slot="chat-list-scroll"
@@ -207,17 +232,20 @@ export const ChatList = ({
             isMobile && 'pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]',
           )}
         >
+          {/* The measured spacer keeps rows below the pinned header; the label
+              scrolls with the list. (The sidebar is never collapsed on mobile,
+              so no isCollapsed check here.) */}
           {isMobile && (
-            <div
-              aria-hidden="true"
-              data-slot="mobile-sidebar-header-spacer"
-              style={{ height: mobileListMetrics.headerHeight }}
-            />
-          )}
-          {isMobile && !isCollapsed && (
-            <SidebarGroupLabel ref={mobileLabelRef} className="mt-1">
-              {hasListContent ? 'Recent Chats' : 'No chats yet'}
-            </SidebarGroupLabel>
+            <>
+              <div
+                aria-hidden="true"
+                data-slot="mobile-sidebar-header-spacer"
+                style={{ height: mobileListMetrics.headerHeight }}
+              />
+              <SidebarGroupLabel ref={mobileLabelRef} className="mt-1">
+                {hasListContent ? 'Recent Chats' : 'No chats yet'}
+              </SidebarGroupLabel>
+            </>
           )}
           {/* No ssrCount here: virtua serves the unclamped [0, ssrCount) range
               until the first scroll event, so deleting rows below ssrCount

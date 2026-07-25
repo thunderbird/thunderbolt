@@ -11,9 +11,10 @@ import { DetailPanel } from '@/components/detail-panel'
 import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { createAgent } from '@/dal'
 import { fireAndForgetSelfEnrollment, selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
+import { createItemTitles } from '@/components/create-item/context'
 import { AddCustomAgentForm, type AddCustomAgentPayload } from './add-custom-agent-form'
 
-type CreateAgentPanelProps = {
+type CreateAgentDetailPanelProps = {
   onClose: () => void
   /** Test/DI override for reading this app's iroh NodeId. */
   loadAppNodeId?: () => Promise<string>
@@ -22,7 +23,7 @@ type CreateAgentPanelProps = {
 }
 
 /** Shared custom-agent creation controller used in settings and quick create. */
-export const CreateAgentPanel = ({ onClose, loadAppNodeId, enrollIroh }: CreateAgentPanelProps) => {
+export const CreateAgentDetailPanel = ({ onClose, loadAppNodeId, enrollIroh }: CreateAgentDetailPanelProps) => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const authClient = useAuth()
@@ -33,7 +34,10 @@ export const CreateAgentPanel = ({ onClose, loadAppNodeId, enrollIroh }: CreateA
 
   const handleAdd = async (payload: AddCustomAgentPayload) => {
     if (!currentUserId) {
-      return
+      // Quick-create entry points are gated on capability, not session, so
+      // this can be reached while auth is still resolving. Throwing routes it
+      // into the form's catch, which shows "Couldn't add the agent."
+      throw new Error('Cannot create an agent without an authenticated session.')
     }
     await createAgent(db, {
       id: uuidv7(),
@@ -52,7 +56,7 @@ export const CreateAgentPanel = ({ onClose, loadAppNodeId, enrollIroh }: CreateA
   }
 
   return (
-    <DetailPanel title="Add Custom Agent" onClose={onClose}>
+    <DetailPanel title={createItemTitles.agent} onClose={onClose}>
       <AddCustomAgentForm
         onClose={onClose}
         onSubmit={handleAdd}

@@ -41,46 +41,44 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
   const { trigger } = useWebHaptics({ debug: import.meta.env.DEV })
   const lastHapticAtRef = useRef<number | null>(null)
 
-  const triggerSelectionHaptic = useCallback(() => {
-    if (!hapticsEnabled) {
-      return
-    }
-    lastHapticAtRef.current = Date.now()
-    if (isTauri() && isMobile()) {
-      void triggerSelection()
-    } else {
-      void trigger('selection')
-    }
-  }, [hapticsEnabled, trigger])
-
-  const triggerImpactHaptic = useCallback(
-    (style: ImpactFeedbackStyle = 'light') => {
+  // Every haptic funnels through here so the enabled gate, the dedup
+  // timestamp, and the native-vs-web routing are decided exactly once.
+  const fireHaptic = useCallback(
+    (native: () => Promise<unknown>, web: () => unknown) => {
       if (!hapticsEnabled) {
         return
       }
       lastHapticAtRef.current = Date.now()
       if (isTauri() && isMobile()) {
-        void triggerImpact(style)
+        void native()
       } else {
-        void trigger(style)
+        void web()
       }
     },
-    [hapticsEnabled, trigger],
+    [hapticsEnabled],
+  )
+
+  const triggerSelectionHaptic = useCallback(
+    () => fireHaptic(triggerSelection, () => trigger('selection')),
+    [fireHaptic, trigger],
+  )
+
+  const triggerImpactHaptic = useCallback(
+    (style: ImpactFeedbackStyle = 'light') =>
+      fireHaptic(
+        () => triggerImpact(style),
+        () => trigger(style),
+      ),
+    [fireHaptic, trigger],
   )
 
   const triggerNotificationHaptic = useCallback(
-    (type: NotificationFeedbackType) => {
-      if (!hapticsEnabled) {
-        return
-      }
-      lastHapticAtRef.current = Date.now()
-      if (isTauri() && isMobile()) {
-        void triggerNotification(type)
-      } else {
-        void trigger(type)
-      }
-    },
-    [hapticsEnabled, trigger],
+    (type: NotificationFeedbackType) =>
+      fireHaptic(
+        () => triggerNotification(type),
+        () => trigger(type),
+      ),
+    [fireHaptic, trigger],
   )
 
   const triggerSurfaceImpactHaptic = useCallback(() => {
@@ -120,7 +118,7 @@ export const useHaptics = () => useContext(HapticsContext)
  * opens and closes from taps, swipes, Escape, and programmatic changes.
  * The provider suppresses requests that immediately follow another haptic.
  */
-export const useMountHaptic = () => {
+const useMountHaptic = () => {
   const { triggerSurfaceImpact } = useHaptics()
   // Effect event so the mount/unmount taps always use the provider's current
   // trigger (it re-binds when the user toggles haptics) without re-running

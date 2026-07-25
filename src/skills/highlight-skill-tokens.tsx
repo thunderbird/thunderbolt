@@ -51,9 +51,9 @@ export const renderHighlightedSkillTokens = (
   /** Display-title → slug map so `/Daily Brief` tokens highlight as chips.
    *  The rendered glyphs always mirror the textarea exactly (title or slug,
    *  whatever the text contains) — only the classification uses the slug. */
-  displayNameToSlug?: ReadonlyMap<string, string>,
+  displayNameToSlug: ReadonlyMap<string, string> | undefined,
   /** Opens route-preserving skill creation for an unknown committed token. */
-  onCreateSkill?: (slug: string) => void,
+  onCreateSkill: (slug: string) => void,
 ): ReactNode[] => {
   const tokens = findSkillTokens(value, displayNameToSlug)
   let key = 0
@@ -121,23 +121,13 @@ export const renderHighlightedSkillTokens = (
       )
     } else {
       parts.push(
-        onCreateSkill ? (
-          <SkillTokenPopover
-            key={key++}
-            trigger={tokenSpan}
-            message={`No skill named ${token}.`}
-            actionLabel="Create it"
-            onAction={() => onCreateSkill(slug)}
-          />
-        ) : (
-          <SkillTokenPopover
-            key={key++}
-            trigger={tokenSpan}
-            message={`No skill named ${token}.`}
-            actionLabel="Create it"
-            state={{ createSkill: slug }}
-          />
-        ),
+        <SkillTokenPopover
+          key={key++}
+          trigger={tokenSpan}
+          message={`No skill named ${token}.`}
+          actionLabel="Create it"
+          onAction={() => onCreateSkill(slug)}
+        />,
       )
     }
     cursor = end

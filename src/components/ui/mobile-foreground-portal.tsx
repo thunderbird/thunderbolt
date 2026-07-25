@@ -28,8 +28,5 @@ export const MobileForegroundPortalProvider = ({ children }: { children: ReactNo
  */
 export const useMobileForegroundPortalTarget = (): HTMLElement | null => {
   const target = useContext(MobileForegroundPortalContext)
-  if (target !== undefined) {
-    return target
-  }
-  return typeof document === 'undefined' ? null : document.body
+  return target !== undefined ? target : document.body
 }

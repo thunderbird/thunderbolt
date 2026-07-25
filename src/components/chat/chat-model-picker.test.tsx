@@ -13,12 +13,13 @@ import {
   resetStore,
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { CreateItemProvider, useCreateItem } from '@/components/create-item/context'
+import { CreateItemProvider } from '@/components/create-item/context'
+import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { MemoryRouter, useLocation } from 'react-router'
+import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { ChatModelPicker } from './chat-model-picker'
 
@@ -47,12 +48,6 @@ const gpt4 = createMockModel({ id: 'model-1', name: 'GPT-4', provider: 'thunderb
 const gpt5 = createMockModel({ id: 'model-2', name: 'GPT-5', provider: 'thunderbolt', isSystem: 1 })
 
 const QueryWrapper = createQueryTestWrapper()
-
-const CreateRequestProbe = () => {
-  const { request } = useCreateItem()
-  const location = useLocation()
-  return <div data-testid="create-request">{`${location.pathname}|${request?.kind ?? ''}`}</div>
-}
 
 /** Wraps the query/provider tree in the app-wide create context. */
 const TestWrapper = ({ children }: { children: ReactNode }) => (
@@ -189,9 +184,12 @@ describe('ChatModelPicker', () => {
 
     const trigger = screen.getByText('GPT-4').closest('button')
     fireEvent.click(trigger!)
+    expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeNull()
     fireEvent.click(await screen.findByText('Add Model'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    // The mobile card drawer must be gone before the create surface opens.
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
   })
 })

@@ -5,11 +5,10 @@
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
+import { InputOTP, OtpSlots } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
 import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
@@ -64,15 +63,7 @@ export const WaitlistPage = () => {
               data-form-type="other"
               containerClassName="w-full"
             >
-              <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
-                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                  <InputOTPSlot
-                    key={i}
-                    index={i}
-                    className="aspect-square h-auto w-10.5 min-w-0 shrink rounded-lg first:rounded-l-lg last:rounded-r-lg"
-                  />
-                ))}
-              </InputOTPGroup>
+              <OtpSlots />
             </InputOTP>
 
             {state.errorMessage && <p className="text-sm text-destructive">{state.errorMessage}</p>}
@@ -80,17 +71,12 @@ export const WaitlistPage = () => {
             <Button
               type="button"
               onClick={() => actions.handleOtpComplete(state.otp)}
-              disabled={isVerifying || state.otp.length !== otpLength}
+              isLoading={isVerifying}
+              loadingLabel="Verifying…"
+              disabled={state.otp.length !== otpLength}
               className="h-[46px] w-full rounded-xl text-base"
             >
-              {isVerifying ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verifying...
-                </>
-              ) : (
-                'Continue'
-              )}
+              Continue
             </Button>
           </div>
         </div>
@@ -126,17 +112,12 @@ export const WaitlistPage = () => {
 
             <Button
               type="submit"
-              disabled={state.status === 'joining' || !isValidEmail}
+              isLoading={state.status === 'joining'}
+              loadingLabel="Sending…"
+              disabled={!isValidEmail}
               className="h-[46px] w-full rounded-xl text-base"
             >
-              {state.status === 'joining' ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                'Continue'
-              )}
+              Continue
             </Button>
           </form>
         </div>

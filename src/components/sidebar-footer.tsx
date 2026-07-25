@@ -296,6 +296,9 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         )}
       >
         {isMobile && (
+          // The 2.5rem overhang extends the fade past the footer so rows
+          // dissolve before reaching it — same tint/overhang as the header
+          // scrim in chat-list.tsx; keep the two in sync.
           <Scrim
             data-slot="mobile-sidebar-footer-scrim"
             edge="bottom"
@@ -303,26 +306,29 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
             className="from-sidebar via-sidebar/80"
           />
         )}
-        {isDesktopCollapsed ? (
-          <div className="relative z-10 flex flex-col items-center py-1">{renderAccountControl(true)}</div>
-        ) : isMobile ? (
-          <div className="relative z-10 flex w-full min-w-0 items-center gap-1">
+        {/* z-10 lifts the controls above the mobile footer scrim. */}
+        <div className="relative z-10">
+          {isDesktopCollapsed ? (
+            <div className="flex flex-col items-center py-1">{renderAccountControl(true)}</div>
+          ) : isMobile ? (
+            <div className="flex w-full min-w-0 items-center gap-1">
+              <div className="min-w-0">{renderAccountControl()}</div>
+              <Button
+                type="button"
+                size="lg"
+                aria-label="New Chat"
+                title="New Chat"
+                onClick={handleNewChat}
+                className="ml-auto rounded-full"
+              >
+                <MessageCirclePlus className={iconSize} />
+                <span>New Chat</span>
+              </Button>
+            </div>
+          ) : (
             <div className="min-w-0">{renderAccountControl()}</div>
-            <Button
-              type="button"
-              size="lg"
-              aria-label="New Chat"
-              title="New Chat"
-              onClick={handleNewChat}
-              className="ml-auto rounded-full"
-            >
-              <MessageCirclePlus className={iconSize} />
-              <span>New Chat</span>
-            </Button>
-          </div>
-        ) : (
-          <div className="relative z-10 min-w-0">{renderAccountControl()}</div>
-        )}
+          )}
+        </div>
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
         <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />
       </ShadcnSidebarFooter>

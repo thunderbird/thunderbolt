@@ -4,7 +4,7 @@
 
 import {
   SearchableMenu,
-  searchableMenuFooterActionClass,
+  SearchableMenuFooterAction,
   searchableMenuRowClass,
   type SearchableMenuGroup,
   type SearchableMenuItem,
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 import { needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, ChevronDown, Plus } from 'lucide-react'
+import { AlertTriangle, ChevronDown } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 export type ModelSelectorProps = {
@@ -188,17 +188,7 @@ export const ModelSelector = ({
 
   const footer = onAddModels
     ? (closeMenu: () => void) => (
-        <button
-          type="button"
-          onClick={() => {
-            closeMenu()
-            onAddModels()
-          }}
-          className={searchableMenuFooterActionClass}
-        >
-          <Plus className="size-4" />
-          Add Model
-        </button>
+        <SearchableMenuFooterAction label="Add Model" onAction={onAddModels} closeMenu={closeMenu} />
       )
     : undefined
 

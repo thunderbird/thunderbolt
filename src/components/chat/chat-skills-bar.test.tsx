@@ -6,8 +6,9 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 
-import { CreateItemProvider, useCreateItem } from '@/components/create-item/context'
+import { CreateItemProvider } from '@/components/create-item/context'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Skill } from '@/types'
@@ -52,12 +53,6 @@ const fakeUseEnabledSkills = (enabledIds: ReadonlySet<string>) =>
     isEnabled: (id: string) => enabledIds.has(id),
     setEnabled: async () => undefined,
   })) as unknown as typeof import('@/skills/use-skills').useEnabledSkills
-
-const CreateRequestProbe = () => {
-  const { request } = useCreateItem()
-  const location = useLocation()
-  return <div data-testid="create-request">{`${location.pathname}|${request?.kind ?? ''}`}</div>
-}
 
 const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}, showCreateProbe = false) => {
   return render(
@@ -162,9 +157,12 @@ describe('ChatSkillsBar', () => {
 
     const trigger = screen.getByLabelText('Add a skill')
     fireEvent.click(trigger)
+    expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeNull()
     fireEvent.click(screen.getByText('New Skill'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    // The mobile card drawer must be gone before the create surface opens.
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
   })
 

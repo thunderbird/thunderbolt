@@ -22,7 +22,7 @@ export const edgeSpacing = {
 } as const
 
 /** Mobile sidebar width as a fraction of viewport width (0–1) */
-export const mobileSidebarWidthRatio = 0.8
+const mobileSidebarWidthRatio = 0.8
 
 /** Maximum mobile sidebar width in pixels */
 export const mobileSidebarMaxWidth = 360

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { edgeSpacing } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Plus, Search } from 'lucide-react'
 import { memo, type ReactNode, useMemo, useState } from 'react'
 import { flushSync } from 'react-dom'
 import type { SearchableMenuGroup, SearchableMenuItem, SearchableMenuProps } from './types'
@@ -25,6 +25,38 @@ export const searchableMenuRowClass =
  *  the rows above, rather than sitting smaller inside extra padding. */
 export const searchableMenuFooterActionClass =
   'flex w-full cursor-pointer items-center justify-start gap-2 rounded-lg px-3 h-[var(--touch-height-sm)] max-md:h-[var(--touch-height-default)] text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+
+type SearchableMenuFooterActionProps = {
+  label: string
+  onAction: () => void
+  /** The `closeMenu` argument of the `footer` render prop. */
+  closeMenu: () => void
+  icon?: ReactNode
+}
+
+/**
+ * Standard footer action row ("Add Model", "Add agent"): closes the menu
+ * synchronously before running the action, so a surface the action opens
+ * (e.g. the quick-create panel) never races the closing menu.
+ */
+export const SearchableMenuFooterAction = ({
+  label,
+  onAction,
+  closeMenu,
+  icon = <Plus className="size-[var(--icon-size-default)]" />,
+}: SearchableMenuFooterActionProps) => (
+  <button
+    type="button"
+    onClick={() => {
+      closeMenu()
+      onAction()
+    }}
+    className={searchableMenuFooterActionClass}
+  >
+    {icon}
+    {label}
+  </button>
+)
 
 type ItemButtonProps<T> = {
   item: SearchableMenuItem<T>

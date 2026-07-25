@@ -11,6 +11,14 @@ export type CreateItemRequest =
 
 export type OpenCreateItemRequest = { kind: 'skill'; initialName?: string } | { kind: 'agent' } | { kind: 'model' }
 
+/** Panel titles by kind — one source for both the loaded panels and the
+ *  host's Suspense fallback header, so they can never disagree. */
+export const createItemTitles: Record<CreateItemRequest['kind'], string> = {
+  skill: 'Create Skill',
+  agent: 'Add Custom Agent',
+  model: 'Add Model',
+}
+
 type CreateItemContextValue = {
   request: CreateItemRequest | null
   surfaceOpen: boolean
@@ -38,10 +46,14 @@ export const CreateItemProvider = ({ children }: { children: ReactNode }) => {
     setSurfaceOpen(false)
     setRequest({ ...nextRequest, id: nextRequestId.current })
     // Commit the panel once in its closed geometry before changing the open
-    // state. A transition cannot run when the panel first mounts already open.
+    // state — a transition cannot run when the panel first mounts already
+    // open. Double rAF: the first callback can still coalesce into the same
+    // paint as the closed-geometry commit, which would skip the transition.
     openFrame.current = requestAnimationFrame(() => {
-      openFrame.current = null
-      setSurfaceOpen(true)
+      openFrame.current = requestAnimationFrame(() => {
+        openFrame.current = null
+        setSurfaceOpen(true)
+      })
     })
   }, [])
 

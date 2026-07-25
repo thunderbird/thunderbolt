@@ -86,7 +86,7 @@ const Button = ({
   }) => {
   const Comp = asChild ? Slot : 'button'
   const { triggerSelection } = useHaptics()
-  const isPrimaryLoading = isLoading && (variant === undefined || variant === null || variant === 'default')
+  const isPrimaryLoading = isLoading && (variant ?? 'default') === 'default'
 
   const handleClick = useCallback(
     (e: MouseEvent<HTMLButtonElement>) => {
@@ -105,8 +105,17 @@ const Button = ({
       aria-busy={isLoading || undefined}
       {...props}
     >
-      {isLoading && <Loader2 className="animate-spin" />}
-      {isLoading && loadingLabel ? loadingLabel : children}
+      {/* Slot requires exactly one element child, so the loader can only be
+          injected when rendering a real <button>. asChild callers keep their
+          single child untouched (they don't use isLoading today). */}
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {isLoading && <Loader2 className="animate-spin" />}
+          {isLoading && loadingLabel ? loadingLabel : children}
+        </>
+      )}
     </Comp>
   )
 }

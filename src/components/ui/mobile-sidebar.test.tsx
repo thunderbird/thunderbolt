@@ -9,7 +9,12 @@ import { useState, type ReactNode } from 'react'
 
 import '@/test-utils/framer-motion-mock'
 import { getClock } from '@/testing-library'
-import { MobileSidebar, shouldOpenMobileSidebar } from './mobile-sidebar'
+import {
+  canStartSidebarDrag,
+  hasHorizontalScrollAncestor,
+  MobileSidebar,
+  shouldOpenMobileSidebar,
+} from './mobile-sidebar'
 
 /** Controlled wrapper mirroring how `Sidebar` drives the drawer (open is parent-owned). */
 const Harness = ({
@@ -110,6 +115,48 @@ describe('MobileSidebar', () => {
     expect(shouldOpenMobileSidebar(280, 300, -600)).toBe(false)
   })
 
+  it('decides drag eligibility from the touched element', () => {
+    const boundary = document.createElement('div')
+    document.body.appendChild(boundary)
+    try {
+      const plain = boundary.appendChild(document.createElement('p'))
+      expect(canStartSidebarDrag(plain, boundary)).toBe(true)
+
+      const button = boundary.appendChild(document.createElement('button'))
+      expect(canStartSidebarDrag(button, boundary)).toBe(false)
+
+      // The dedicated close surface always drags, even though it is a button.
+      const closeSurface = boundary.appendChild(document.createElement('button'))
+      closeSurface.setAttribute('data-sidebar-drag-surface', '')
+      expect(canStartSidebarDrag(closeSurface, boundary)).toBe(true)
+
+      expect(canStartSidebarDrag(null, boundary)).toBe(false)
+    } finally {
+      boundary.remove()
+    }
+  })
+
+  it('leaves nested horizontal scrollers their native swipe', () => {
+    const boundary = document.createElement('div')
+    document.body.appendChild(boundary)
+    try {
+      const scroller = boundary.appendChild(document.createElement('div'))
+      scroller.style.overflowX = 'auto'
+      Object.defineProperty(scroller, 'scrollWidth', { value: 200 })
+      Object.defineProperty(scroller, 'clientWidth', { value: 100 })
+      const chip = scroller.appendChild(document.createElement('span'))
+
+      expect(hasHorizontalScrollAncestor(chip, boundary)).toBe(true)
+      expect(canStartSidebarDrag(chip, boundary)).toBe(false)
+
+      const outside = boundary.appendChild(document.createElement('span'))
+      expect(hasHorizontalScrollAncestor(outside, boundary)).toBe(false)
+      expect(canStartSidebarDrag(outside, boundary)).toBe(true)
+    } finally {
+      boundary.remove()
+    }
+  })
+
   it('closes from the exposed foreground surface', async () => {
     const onOpenChange = mock()
     render(<Harness onOpenChange={onOpenChange} />)
@@ -132,6 +179,32 @@ describe('MobileSidebar', () => {
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(onCloseComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels an in-flight close when reopened before it settles', async () => {
+    const onCloseComplete = mock()
+    const onCloseCancel = mock()
+    const view = (open: boolean) => (
+      <MobileSidebar
+        enabled
+        open={open}
+        onOpenChange={() => {}}
+        onCloseComplete={onCloseComplete}
+        onCloseCancel={onCloseCancel}
+        sidebar={<nav aria-label="Primary navigation">sidebar content</nav>}
+      >
+        <button type="button">main content</button>
+      </MobileSidebar>
+    )
+    const { rerender } = render(view(true))
+
+    // Reopen synchronously, before the close animation's finish settles.
+    rerender(view(false))
+    rerender(view(true))
+    await flushAnimations()
+
+    expect(onCloseCancel).toHaveBeenCalledTimes(1)
+    expect(onCloseComplete).not.toHaveBeenCalled()
   })
 
   it('keeps the sidebar subtree mounted after closing', async () => {

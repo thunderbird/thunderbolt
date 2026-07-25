@@ -5,9 +5,8 @@
 import { Loader2 } from 'lucide-react'
 import { lazy, Suspense, useRef } from 'react'
 
-import { DetailPanel } from '@/components/detail-panel'
-import { CreateItemSurface } from './create-item-surface'
-import { type CreateItemRequest, useCreateItem } from './context'
+import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
+import { createItemTitles, type CreateItemRequest, useCreateItem } from './context'
 
 const CreateSkillPanel = lazy(() =>
   import('./create-skill-panel').then((module) => ({ default: module.CreateSkillPanel })),
@@ -19,12 +18,6 @@ const CreateModelPanel = lazy(() =>
   import('./create-model-panel').then((module) => ({ default: module.CreateModelPanel })),
 )
 
-const titles: Record<CreateItemRequest['kind'], string> = {
-  skill: 'Create Skill',
-  agent: 'Add Custom Agent',
-  model: 'Add Model',
-}
-
 const LoadingPanel = ({
   request,
   open,
@@ -34,13 +27,13 @@ const LoadingPanel = ({
   open: boolean
   onClose: () => void
 }) => (
-  <CreateItemSurface open={open} onClose={onClose}>
-    <DetailPanel title={titles[request.kind]} onClose={onClose}>
+  <DetailPanelSurface open={open} onClose={onClose} topInset>
+    <DetailPanel title={createItemTitles[request.kind]} onClose={onClose}>
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
       </div>
     </DetailPanel>
-  </CreateItemSurface>
+  </DetailPanelSurface>
 )
 
 /**
@@ -60,7 +53,9 @@ export const CreateItemHost = () => {
     return null
   }
 
-  const open = surfaceOpen && request?.id === renderedRequest.id
+  // The provider clears `surfaceOpen` in the same update as any request
+  // change, so `surfaceOpen` alone means "the rendered request is open".
+  const open = surfaceOpen
   const sharedProps = { open, onClose: closeCreateItem }
 
   const panel = (() => {

@@ -91,6 +91,10 @@
      The same pair serves dark mode (see .dark below). */
   --color-brand: #c12d6c;
   --color-brand-2: #ab5e17;
+  /* Muted pair: the brand stops desaturated ~10% at equal lightness — a
+     quieter gradient for persistent "on" states (the Switch checked track)
+     that shouldn't compete with primary action buttons. Re-derive from the
+     brand pair if it changes. */
   --color-brand-muted: #bd3778;
   --color-brand-2-muted: #ad681f;
   --color-brand-foreground: #faf8f5;
@@ -348,6 +352,8 @@
      filled control here. */
   --color-brand: #c12d6c;
   --color-brand-2: #ab5e17;
+  /* Muted pair: same derivation as the :root block — desaturated ~10% at
+     equal lightness for the Switch checked track. */
   --color-brand-muted: #bd3778;
   --color-brand-2-muted: #ad681f;
   --color-brand-foreground: #faf8f5;
@@ -489,7 +495,10 @@
 /* The quick-create panel pushes the current route while both surfaces fit.
    Below the panel's 440px floor + the content's 360px floor, take the panel
    out of flex flow so it slides over the unchanged route instead. A container
-   query accounts for expanded, collapsed, and user-resized sidebars alike. */
+   query accounts for expanded, collapsed, and user-resized sidebars alike.
+   The 440px floor is DetailPanelSurface's width clamp (detail-panel.tsx); the
+   360px floor is the ResizablePanel minSize (main-layout.tsx) — keep all
+   three in sync. */
 [data-slot='create-item-layout'] {
   container-name: create-item-layout;
   container-type: inline-size;
@@ -616,27 +625,35 @@ body {
 }
 
 /* Cast only toward the stationary menu so the moving app surface reads as
-   the layer above it in both themes. */
+   the layer above it in both themes. Same elevation recipe (8px offset
+   toward the layer below, 32px blur, -12px spread, 20% black) as the drawer
+   sheets' directional shadows in drawer.tsx — keep them in sync. */
 .mobile-sidebar-main-shadow {
   box-shadow: -8px 0 32px -12px rgb(0 0 0 / 20%);
 }
 
 /* The foreground owns mobile navigation motion, so Base UI's popup stays
-   anchored behind it instead of applying the drawer's default translation. */
+   anchored behind it instead of applying the drawer's default translation.
+   The !important is unavoidable: Base UI sets the transform as an inline
+   style with no prop to disable it. Timing matches `drawerTransition` in
+   mobile-sidebar.tsx — the popup fade and the foreground slide are one
+   animation; keep the two in sync. */
 .mobile-sidebar-popup {
   opacity: 1;
   transform: none !important;
   transition: opacity 300ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* 0.8, not 0: the menu only dims while covered — a subtle parallax fade so it
+   never appears to blink out behind the sliding foreground. */
 .mobile-sidebar-popup[data-starting-style],
 .mobile-sidebar-popup[data-ending-style] {
   opacity: 0.8;
 }
 
 .mobile-sidebar-popup[data-swiping] {
+  /* transform already neutralized by the base rule above. */
   opacity: 1;
-  transform: none !important;
   transition-duration: 0ms;
 }
 

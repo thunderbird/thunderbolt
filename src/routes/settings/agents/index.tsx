@@ -10,14 +10,13 @@ import { useChatStore } from '@/chats/chat-store'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
-import { CreateAgentPanel } from '@/components/settings/agents/create-agent-panel'
+import { CreateAgentDetailPanel } from '@/components/settings/agents/create-agent-panel'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
 import { SettingsListPane } from '@/components/settings/settings-list'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase } from '@/contexts'
 import { deleteAgent, updateAgent, useAllAgents } from '@/dal'
-import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 
 type AgentsSettingsPageProps = {
   /** Test/DI override for reading this app's iroh NodeId. Forwarded to the add
@@ -55,10 +54,6 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const cliOpen = activePanel?.kind === 'cli'
   const addOpen = activePanel?.kind === 'add'
 
-  // Deep link from the chat header's agent selector ("Add agent"): open the
-  // Add Custom Agent panel directly instead of landing on the bare list.
-  useConsumeNavState('createAgent', () => setActivePanel({ kind: 'add' }))
-
   // Deriving from the live list means the panel follows sync: if the active
   // agent is deleted on another device, `activeAgent` turns undefined and the
   // panel closes on its own.
@@ -73,7 +68,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
 
   const renderPanel = () => {
     if (addOpen) {
-      return <CreateAgentPanel onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
+      return <CreateAgentDetailPanel onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
     }
     if (activeAgent) {
       return (

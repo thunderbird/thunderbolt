@@ -14,8 +14,6 @@ import type { EditModelSubmission } from './edit-model-form'
 import { initialModelsPageState, modelsPageReducer } from './page-state'
 import { useAddModelForm } from './use-add-model-form'
 
-export { generateModelName } from './use-add-model-form'
-
 /** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
 export const useModelsPageState = () => {
   const db = useDatabase()
@@ -74,7 +72,7 @@ export const useModelsPageState = () => {
 
   const openAddPanel = () => {
     dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
-    addForm.prepare()
+    addForm.prepareForOpen()
   }
   const closePanel = () => {
     if (isAddPanelOpen) {

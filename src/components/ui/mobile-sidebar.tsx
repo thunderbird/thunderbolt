@@ -33,12 +33,19 @@ type MobileSidebarProps = {
   children: ReactNode
 }
 
+// Keep in sync with the .mobile-sidebar-popup opacity transition in
+// index.css — the foreground slide and the popup fade are one animation.
 const drawerTransition = { duration: 0.3, ease: [0.22, 1, 0.36, 1] } as const
 const instantTransition = { duration: 0 } as const
+/** Foreground travel in px before a touch drag counts as opening the sidebar. */
 const swipeActivationDistance = 8
+/** Release speed in px/s that decides the resting side regardless of position. */
 const swipeVelocityThreshold = 500
-const swipeIgnoredSelector = 'button,a,input,select,textarea,label,[role="button"],[data-sidebar-swipe-ignore]'
+// Interactive elements keep their own tap behavior instead of starting a drag.
+const swipeIgnoredSelector = 'button,a,input,select,textarea,label,[role="button"]'
 
+// The 300px fallback only applies off-DOM (useSyncExternalStore's server
+// snapshot); it approximates 80vw of a small phone.
 const readSidebarWidth = () => (typeof window !== 'undefined' ? getMobileSidebarWidth(window.innerWidth) : 300)
 
 const subscribeToResize = (onResize: () => void) => {
@@ -62,7 +69,7 @@ export const shouldOpenMobileSidebar = (currentX: number, sidebarWidth: number, 
 /**
  * Detects nested horizontal scrollers that should retain their native swipe.
  */
-const hasHorizontalScrollAncestor = (element: Element | null, boundary: HTMLElement): boolean => {
+export const hasHorizontalScrollAncestor = (element: Element | null, boundary: HTMLElement): boolean => {
   if (!element || element === boundary) {
     return false
   }
@@ -79,7 +86,7 @@ const hasHorizontalScrollAncestor = (element: Element | null, boundary: HTMLElem
  * Keeps taps, form controls, links, and horizontal scrollers out of the
  * navigation gesture while allowing the dedicated close surface.
  */
-const canStartSidebarDrag = (target: EventTarget | null, boundary: HTMLElement): boolean => {
+export const canStartSidebarDrag = (target: EventTarget | null, boundary: HTMLElement): boolean => {
   if (!(target instanceof Element)) {
     return false
   }
@@ -109,8 +116,7 @@ export const MobileSidebar = ({
   const effectiveOpen = enabled && open
   const x = useMotionValue(effectiveOpen ? sidebarWidth : 0)
   const dragControls = useDragControls()
-  const [presented, setPresented] = useState(effectiveOpen)
-  const [settleVersion, setSettleVersion] = useState(0)
+  const [isPresented, setIsPresented] = useState(effectiveOpen)
   const onCloseCompleteRef = useRef(onCloseComplete)
   onCloseCompleteRef.current = onCloseComplete
   const onCloseCancelRef = useRef(onCloseCancel)
@@ -118,41 +124,54 @@ export const MobileSidebar = ({
   const targetOpenRef = useRef(effectiveOpen)
   targetOpenRef.current = effectiveOpen
   const previousOpenRef = useRef(effectiveOpen)
-  const closeTokenRef = useRef(0)
+  // Bumped whenever an animation is superseded so a stale animation's finish
+  // callback can recognize itself and bail.
+  const animationTokenRef = useRef(0)
   const animationRef = useRef<ReturnType<typeof animate> | null>(null)
-  const pendingCloseRef = useRef(false)
-  const draggingRef = useRef(false)
+  const isClosePendingRef = useRef(false)
+  const isDraggingRef = useRef(false)
   const dragStartedOpenRef = useRef(open)
   const didDragRef = useRef(false)
 
+  /** Halts any in-flight animation and invalidates its finish callback. */
+  const stopAnimation = useCallback(() => {
+    animationTokenRef.current++
+    animationRef.current?.stop()
+    animationRef.current = null
+  }, [])
+
+  /** Resolves an awaited close request, if one is outstanding. */
+  const flushPendingClose = useCallback(() => {
+    if (isClosePendingRef.current) {
+      isClosePendingRef.current = false
+      onCloseCompleteRef.current?.()
+    }
+  }, [])
+
   const animateTo = useCallback(
     (nextOpen: boolean, notifyClose = false) => {
-      const token = ++closeTokenRef.current
+      stopAnimation()
+      const token = animationTokenRef.current
       const target = nextOpen ? sidebarWidth : 0
-      animationRef.current?.stop()
-      animationRef.current = null
 
       if (nextOpen) {
-        setPresented(true)
-        if (pendingCloseRef.current) {
-          pendingCloseRef.current = false
+        setIsPresented(true)
+        if (isClosePendingRef.current) {
+          isClosePendingRef.current = false
           onCloseCancelRef.current?.()
         }
       } else if (notifyClose) {
-        pendingCloseRef.current = true
+        isClosePendingRef.current = true
       }
 
       const finish = () => {
-        if (token !== closeTokenRef.current) {
+        if (token !== animationTokenRef.current) {
           return
         }
         animationRef.current = null
         if (!nextOpen) {
-          setPresented(false)
-          if (pendingCloseRef.current) {
-            pendingCloseRef.current = false
-            onCloseCompleteRef.current?.()
-          }
+          setIsPresented(false)
+          flushPendingClose()
         }
       }
 
@@ -164,42 +183,40 @@ export const MobileSidebar = ({
       animationRef.current = animation
       void animation.then(finish)
     },
-    [sidebarWidth, transition, x],
+    [flushPendingClose, sidebarWidth, stopAnimation, transition, x],
   )
 
+  // Settles the drawer after external `open`/`enabled` changes (and re-targets
+  // the resting position when a resize changes the sidebar width). Gesture
+  // handlers call `animateTo` directly for the transitions they own.
   useEffect(() => {
     const openChanged = previousOpenRef.current !== effectiveOpen
     previousOpenRef.current = effectiveOpen
     targetOpenRef.current = effectiveOpen
-    if (draggingRef.current) {
+    if (isDraggingRef.current) {
+      // Record an external close arriving mid-drag so handleDragEnd settles it
+      // (complete or cancel) instead of stranding closeMobileSidebar() callers.
+      if (openChanged && !effectiveOpen) {
+        isClosePendingRef.current = true
+      }
       return
     }
     if (!enabled) {
-      closeTokenRef.current++
-      animationRef.current?.stop()
-      animationRef.current = null
+      stopAnimation()
       x.set(0)
-      setPresented(false)
-      if (pendingCloseRef.current) {
-        pendingCloseRef.current = false
-        onCloseCompleteRef.current?.()
-      }
+      setIsPresented(false)
+      flushPendingClose()
       return
     }
     animateTo(effectiveOpen, openChanged && !effectiveOpen)
-  }, [animateTo, effectiveOpen, enabled, settleVersion, x])
+  }, [animateTo, effectiveOpen, enabled, flushPendingClose, stopAnimation, x])
 
   useEffect(
     () => () => {
-      closeTokenRef.current++
-      animationRef.current?.stop()
-      animationRef.current = null
-      if (pendingCloseRef.current) {
-        pendingCloseRef.current = false
-        onCloseCompleteRef.current?.()
-      }
+      stopAnimation()
+      flushPendingClose()
     },
-    [],
+    [flushPendingClose, stopAnimation],
   )
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -209,7 +226,7 @@ export const MobileSidebar = ({
     triggerImpact('light')
     targetOpenRef.current = nextOpen
     onOpenChange(nextOpen)
-    setSettleVersion((version) => version + 1)
+    animateTo(nextOpen, !nextOpen)
   }
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
@@ -220,10 +237,8 @@ export const MobileSidebar = ({
   }
 
   const handleDragStart = () => {
-    closeTokenRef.current++
-    animationRef.current?.stop()
-    animationRef.current = null
-    draggingRef.current = true
+    stopAnimation()
+    isDraggingRef.current = true
     didDragRef.current = true
     dragStartedOpenRef.current = targetOpenRef.current
   }
@@ -233,12 +248,12 @@ export const MobileSidebar = ({
       return
     }
     targetOpenRef.current = true
-    setPresented(true)
+    setIsPresented(true)
     onOpenChange(true)
   }
 
   const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    draggingRef.current = false
+    isDraggingRef.current = false
     const nextOpen = shouldOpenMobileSidebar(x.get(), sidebarWidth, info.velocity.x)
     const targetChanged = targetOpenRef.current !== nextOpen
     targetOpenRef.current = nextOpen
@@ -250,13 +265,16 @@ export const MobileSidebar = ({
       triggerImpact('light')
     }
 
-    setSettleVersion((version) => version + 1)
+    animateTo(nextOpen, !nextOpen)
+    // The browser synthesizes a click on the close surface right after the
+    // drag's pointerup; keep the flag up for one frame so only that ghost
+    // click is swallowed, never a deliberate later tap.
     requestAnimationFrame(() => {
       didDragRef.current = false
     })
   }
 
-  const handleBackdropClick = () => {
+  const handleCloseSurfaceClick = () => {
     if (didDragRef.current) {
       return
     }
@@ -269,7 +287,7 @@ export const MobileSidebar = ({
       ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
       : 'calc(var(--safe-area-bottom-padding, 0px) + 0.5rem)',
   } as CSSProperties
-  const drawerOpen = enabled && (open || presented)
+  const drawerOpen = enabled && (open || isPresented)
 
   return (
     <div
@@ -335,16 +353,20 @@ export const MobileSidebar = ({
         <div className="flex h-full min-w-0 flex-1 flex-col" inert={drawerOpen ? true : undefined}>
           <MobileForegroundPortalProvider>{children}</MobileForegroundPortalProvider>
         </div>
+        {/* tabIndex={-1}: keyboard users close via Escape and the drawer's
+            focus trap; this surface exists for pointer taps and swipes on
+            the exposed foreground edge. */}
         <m.button
           type="button"
           tabIndex={-1}
           aria-label="Close navigation"
           aria-hidden={!drawerOpen}
           data-sidebar-drag-surface
-          className={`absolute inset-0 z-40 cursor-default bg-transparent ${
-            drawerOpen ? 'pointer-events-auto' : 'pointer-events-none'
-          }`}
-          onClick={handleBackdropClick}
+          className={cn(
+            'absolute inset-0 z-40 cursor-default bg-transparent',
+            drawerOpen ? 'pointer-events-auto' : 'pointer-events-none',
+          )}
+          onClick={handleCloseSurfaceClick}
         />
       </m.div>
     </div>

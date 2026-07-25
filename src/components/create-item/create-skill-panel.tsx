@@ -4,14 +4,14 @@
 
 import { useReducer } from 'react'
 
-import { DetailPanel } from '@/components/detail-panel'
+import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
 import { titleCaseFromSlug } from '@/skills/display'
 import { SkillForm, type SkillFormValues } from '@/skills/skill-form'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useLibrarySkills } from '@/skills/use-skills'
-import { CreateItemSurface } from './create-item-surface'
+import { createItemTitles } from './context'
 
 type CreateSkillState = {
   isDirty: boolean
@@ -99,8 +99,8 @@ export const CreateSkillPanel = ({ open, onClose, initialName }: CreateSkillPane
 
   return (
     <>
-      <CreateItemSurface open={open} onClose={requestClose}>
-        <DetailPanel title="Create Skill" onClose={requestClose}>
+      <DetailPanelSurface open={open} onClose={requestClose} topInset>
+        <DetailPanel title={createItemTitles.skill} onClose={requestClose}>
           <SkillForm
             mode="create"
             initialValues={initialValues}
@@ -112,7 +112,7 @@ export const CreateSkillPanel = ({ open, onClose, initialName }: CreateSkillPane
             submitError={state.submitError}
           />
         </DetailPanel>
-      </CreateItemSurface>
+      </DetailPanelSurface>
       <DiscardCreateDialog
         open={state.discardOpen}
         onOpenChange={(nextOpen) => !nextOpen && dispatch({ type: 'DISCARD_CLOSED' })}

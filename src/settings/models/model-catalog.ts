@@ -50,6 +50,25 @@ const fetchAnthropicModels = async (apiKey: string): Promise<AvailableModel[]> =
   return response.data.map((model) => ({ id: model.id, name: model.display_name, supports_tools: true }))
 }
 
+/** Debounce window shared by the add/edit forms before an auto catalog fetch,
+ *  so credentials and URLs settle before they are sent anywhere. */
+export const catalogDebounceMs = 500
+
+/** True when a user-typed base URL is complete enough to send a request
+ *  (with its Authorization header) to. Guards the auto-fetch against firing
+ *  against half-typed hosts mid-keystroke. */
+export const isFetchableCatalogUrl = (url: string | undefined): boolean => {
+  if (!url) {
+    return false
+  }
+  try {
+    new URL(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Stable identity for the inputs that produced a catalog result. */
 export const catalogRequestKey = ({ provider, apiKey, url }: CatalogRequest): string =>
   JSON.stringify([provider, apiKey ?? '', url ?? ''])

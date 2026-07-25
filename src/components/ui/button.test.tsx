@@ -44,4 +44,27 @@ describe('Button', () => {
       'disabled:[background-image:var(--gradient-brand)]',
     )
   })
+
+  it('does not apply the loading state to non-primary variants', () => {
+    render(
+      <Button variant="destructive" isLoading loadingLabel="Deleting…">
+        Delete
+      </Button>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Deleting…' })).not.toHaveClass(
+      'disabled:[background-image:var(--gradient-brand)]',
+    )
+  })
+
+  it('slots onto a single anchor child with asChild', () => {
+    render(
+      <Button asChild>
+        <a href="https://example.com">Install guide</a>
+      </Button>,
+    )
+
+    const link = screen.getByRole('link', { name: 'Install guide' })
+    expect(link).toHaveAttribute('data-slot', 'button')
+  })
 })

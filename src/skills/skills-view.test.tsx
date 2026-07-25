@@ -189,38 +189,6 @@ describe('SkillsView state machine', () => {
       expect(slugInput.value).toBe('custom-slug')
     })
 
-    it('opens a blank create form for the empty-string deep link', async () => {
-      // The chat skills bar's "New skill" row navigates with
-      // `createSkill: ''` — a valid deep link that must open the form blank
-      // rather than being treated as "no link".
-      await createSkill(getDb(), { name: 'seed', label: 'Seed', description: 'desc', instruction: 'i' })
-
-      renderWithReactivity(<SkillsView />, {
-        tables: ['skills'],
-        wrapper: wrapperWithNavState({ createSkill: '' }),
-      })
-
-      const nameInput = await waitForElement(() => screen.queryByRole('textbox', { name: 'Name' }))
-      expect((nameInput as HTMLInputElement).value).toBe('')
-      expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument()
-    })
-
-    it('pre-fills the create form when the deep link carries a slug', async () => {
-      await createSkill(getDb(), { name: 'seed', label: 'Seed', description: 'desc', instruction: 'i' })
-
-      renderWithReactivity(<SkillsView />, {
-        tables: ['skills'],
-        wrapper: wrapperWithNavState({ createSkill: 'meeting-notes' }),
-      })
-
-      // Slug carries the typed token verbatim; Name gets a Title Case
-      // suggestion derived from it.
-      const slugInput = await waitForElement(() => screen.queryByRole('textbox', { name: 'Slug' }))
-      expect((slugInput as HTMLInputElement).value).toBe('meeting-notes')
-      const nameInput = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement
-      expect(nameInput.value).toBe('Meeting Notes')
-    })
-
     it('opens the edit form directly for the startEditSkill deep link', async () => {
       // The chat skills bar's chip menu "Edit skill" navigates with
       // `startEditSkill: <id>` — lands in the edit form, not the detail view.

@@ -60,6 +60,23 @@ describe('DetailPanelSurface', () => {
     expect(scrollArea).not.toContainElement(screen.getByRole('heading', { name: 'MCP server' }))
   })
 
+  it('takes desktop row width so the current content shrinks, with an optional top inset', () => {
+    const { container } = render(
+      <div className="flex">
+        <main>Current screen</main>
+        <DetailPanelSurface open onClose={() => undefined} topInset>
+          <p>Create form</p>
+        </DetailPanelSurface>
+      </div>,
+    )
+
+    const surface = container.querySelector('[data-slot="slide-in-panel"]')
+    expect(surface).toHaveClass('relative', 'shrink-0', 'overflow-hidden', 'transition-[width]', 'duration-300')
+    expect(surface).not.toHaveClass('absolute')
+    expect(surface?.firstElementChild?.firstElementChild).toHaveClass('pt-12', 'pb-12')
+    expect(screen.getByText('Current screen')).toBeInTheDocument()
+  })
+
   it('keeps the desktop title block pinned above the scroller', () => {
     render(
       <DetailPanelSurface open onClose={() => {}}>

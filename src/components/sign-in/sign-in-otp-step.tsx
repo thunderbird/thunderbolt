@@ -6,7 +6,7 @@ import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
 import { GradientMail } from '@/components/ui/gradient-mail'
 import { GradientTriangleAlert } from '@/components/ui/gradient-triangle-alert'
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
+import { InputOTP, OtpSlots } from '@/components/ui/input-otp'
 import { otpLength } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Check, Loader2 } from 'lucide-react'
@@ -86,15 +86,7 @@ export const SignInOtpStep = ({
             data-form-type="other"
             containerClassName="w-full"
           >
-            <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
-              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                <InputOTPSlot
-                  key={i}
-                  index={i}
-                  className="aspect-square h-auto w-10.5 min-w-0 shrink rounded-lg first:rounded-l-lg last:rounded-r-lg"
-                />
-              ))}
-            </InputOTPGroup>
+            <OtpSlots />
           </InputOTP>
 
           {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
@@ -103,12 +95,12 @@ export const SignInOtpStep = ({
             type="button"
             onClick={() => onOtpComplete(otp)}
             disabled={isVerifying || otp.length !== otpLength}
-            className="h-[46px] w-full rounded-lg bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
+            className="h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
             {isVerifying ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Verifying...
+                Verifying…
               </>
             ) : (
               'Continue'
@@ -158,21 +150,13 @@ export const SignInOtpStep = ({
             data-form-type="other"
             containerClassName="w-full"
           >
-            <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
-              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                <InputOTPSlot
-                  key={i}
-                  index={i}
-                  className="aspect-square h-auto w-10.5 min-w-0 shrink rounded-lg first:rounded-l-lg last:rounded-r-lg"
-                />
-              ))}
-            </InputOTPGroup>
+            <OtpSlots />
           </InputOTP>
 
           {isVerifying && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Verifying...
+              Verifying…
             </div>
           )}
 

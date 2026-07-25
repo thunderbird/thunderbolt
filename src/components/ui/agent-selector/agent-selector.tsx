@@ -4,7 +4,7 @@
 
 import {
   SearchableMenu,
-  searchableMenuFooterActionClass,
+  SearchableMenuFooterAction,
   searchableMenuRowClass,
   type SearchableMenuItem,
 } from '@/components/ui/searchable-menu'
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
 import { iconForAgent } from '@/components/agent-icon'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
-import { ChevronDown, Plus } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 export type AgentSelectorProps = {
@@ -179,17 +179,7 @@ export const AgentSelector = ({
 
   const footer = onAddAgent
     ? (closeMenu: () => void) => (
-        <button
-          type="button"
-          onClick={() => {
-            closeMenu()
-            onAddAgent()
-          }}
-          className={searchableMenuFooterActionClass}
-        >
-          <Plus className="size-4" />
-          Add agent
-        </button>
+        <SearchableMenuFooterAction label="Add agent" onAction={onAddAgent} closeMenu={closeMenu} />
       )
     : undefined
 

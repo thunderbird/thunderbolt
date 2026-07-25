@@ -20,7 +20,8 @@ describe('CreateItemProvider', () => {
     expect(result.current.request).toEqual({ id: 1, kind: 'model' })
     expect(result.current.surfaceOpen).toBe(false)
 
-    act(() => getClock().tick(16))
+    // Two frames: the open state flips on the second rAF (see openCreateItem).
+    act(() => getClock().tick(32))
     expect(result.current.surfaceOpen).toBe(true)
 
     act(() => result.current.closeCreateItem())
@@ -38,7 +39,7 @@ describe('CreateItemProvider', () => {
 
     expect(result.current.request).toEqual({ id: 2, kind: 'skill' })
     expect(result.current.request?.id).not.toBe(firstId)
-    act(() => getClock().tick(16))
+    act(() => getClock().tick(32))
     expect(result.current.surfaceOpen).toBe(true)
   })
 })

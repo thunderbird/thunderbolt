@@ -36,7 +36,7 @@ type SkillTokenPopoverProps = {
 } & (
   | {
       /** Router state payload for actions that still need the settings screen. */
-      state: { editSkill: string } | { createSkill: string }
+      state: { editSkill: string }
       onAction?: never
     }
   | {

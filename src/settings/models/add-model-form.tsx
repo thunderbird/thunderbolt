@@ -200,8 +200,8 @@ export const AddModelForm = ({
                     items={modelItems}
                     value={selectedModelId || undefined}
                     onValueChange={onSelectModel}
-                    placeholder="Select model..."
-                    searchPlaceholder="Search models..."
+                    placeholder="Select model…"
+                    searchPlaceholder="Search models…"
                     emptyMessage="No models found."
                     loading={isLoadingCatalog}
                   />

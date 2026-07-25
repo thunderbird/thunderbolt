@@ -5,6 +5,7 @@
 import { createModel, getModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { stubJsonResponse } from '@/test-utils/http'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
@@ -142,9 +143,9 @@ describe('add model form', () => {
   })
 
   it('loads the catalog after API key edits settle', async () => {
-    const getSpy = spyOn(http, 'get').mockReturnValue({
-      json: async () => ({ data: [{ id: 'gpt-test', name: 'GPT Test' }] }),
-    } as unknown as ReturnType<typeof http.get>)
+    const getSpy = spyOn(http, 'get').mockReturnValue(
+      stubJsonResponse({ data: [{ id: 'gpt-test', name: 'GPT Test' }] }),
+    )
 
     const AutoCatalogHarness = () => {
       const page = useModelsPageState()
@@ -390,6 +391,41 @@ describe('model card action menu', () => {
     }
   })
 
+  it('loads the catalog with the saved key when the model dropdown is opened', async () => {
+    const db = getDb()
+    await createModel(db, {
+      id: uuidv7(),
+      provider: 'openai',
+      name: 'Saved Key Model',
+      model: 'gpt-4',
+      apiKey: 'sk-saved',
+      isSystem: 0,
+      enabled: 1,
+    })
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'gpt-4o', name: 'GPT 4o' }] }))
+
+    try {
+      renderModelsPage()
+      await waitForElement(() => screen.queryByText('Saved Key Model'))
+      await openMenuForModel('Saved Key Model')
+      fireEvent.click(await screen.findByText('Edit'))
+      await screen.findByRole('heading', { name: 'Edit Model' })
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('combobox'))
+        await getClock().runAllAsync()
+      })
+
+      expect(getSpy).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/models',
+        expect.objectContaining({ headers: { Authorization: 'Bearer sk-saved' } }),
+      )
+      expect(await screen.findByText('GPT 4o')).toBeInTheDocument()
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
   it('refreshes the edit catalog after a replacement API key settles', async () => {
     const db = getDb()
     await createModel(db, {
@@ -401,9 +437,7 @@ describe('model card action menu', () => {
       isSystem: 0,
       enabled: 1,
     })
-    const getSpy = spyOn(http, 'get').mockReturnValue({
-      json: async () => ({ data: [{ id: 'gpt-new', name: 'GPT New' }] }),
-    } as unknown as ReturnType<typeof http.get>)
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'gpt-new', name: 'GPT New' }] }))
 
     try {
       renderModelsPage()

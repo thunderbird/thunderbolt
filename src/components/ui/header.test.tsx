@@ -16,10 +16,11 @@ import type { ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { MemoryRouter, useLocation } from 'react-router'
+import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { SidebarProvider } from '@/components/ui/sidebar'
-import { CreateItemProvider, useCreateItem } from '@/components/create-item/context'
+import { CreateItemProvider } from '@/components/create-item/context'
+import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { SignInModalProvider } from '@/contexts'
 import { Header } from './header'
 
@@ -36,12 +37,6 @@ const customAgent: Agent = {
   enabled: 1,
   deletedAt: null,
   userId: 'user-1',
-}
-
-const CreateRequestProbe = () => {
-  const { request } = useCreateItem()
-  const location = useLocation()
-  return <div data-testid="create-request">{`${location.pathname}|${request?.kind ?? ''}`}</div>
 }
 
 /** Wraps the component in everything `Header` touches: a router (it reads

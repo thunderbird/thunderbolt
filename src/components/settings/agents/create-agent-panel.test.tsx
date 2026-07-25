@@ -9,14 +9,14 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { CreateAgentPanel } from './create-agent-panel'
+import { CreateAgentDetailPanel } from './create-agent-panel'
 
 const AgentOptionsProbe = () => {
   const agents = useAllAgents()
   return <div data-testid="agent-options">{agents.map((agent) => agent.name).join('|')}</div>
 }
 
-describe('CreateAgentPanel', () => {
+describe('CreateAgentDetailPanel', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -39,7 +39,11 @@ describe('CreateAgentPanel', () => {
 
     render(
       <>
-        <CreateAgentPanel onClose={onClose} loadAppNodeId={async () => 'b'.repeat(52)} enrollIroh={async () => {}} />
+        <CreateAgentDetailPanel
+          onClose={onClose}
+          loadAppNodeId={async () => 'b'.repeat(52)}
+          enrollIroh={async () => {}}
+        />
         <AgentOptionsProbe />
       </>,
       { wrapper: TestProvider },

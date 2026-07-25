@@ -120,6 +120,10 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
 type DetailPanelSurfaceProps = {
   open: boolean
   onClose: () => void
+  /** Float the desktop card off the top window edge too — for surfaces that
+   *  overlay arbitrary routes (the quick-create panels) rather than sitting
+   *  under a settings page header that already provides the inset. */
+  topInset?: boolean
   children: ReactNode
 }
 
@@ -135,7 +139,7 @@ type DetailPanelSurfaceProps = {
  * right edge stays flush and square with only the left corners rounded. Mobile
  * uses the same full-screen fade/scale modal as other responsive views.
  */
-export const DetailPanelSurface = ({ open, onClose, children }: DetailPanelSurfaceProps) => {
+export const DetailPanelSurface = ({ open, onClose, topInset = false, children }: DetailPanelSurfaceProps) => {
   const { isMobile } = useIsMobile()
 
   if (!isMobile) {
@@ -148,7 +152,7 @@ export const DetailPanelSurface = ({ open, onClose, children }: DetailPanelSurfa
         width="clamp(440px, calc(50vw - 128px), 520px)"
         className="[filter:drop-shadow(var(--shadow-glow-strong))] dark:[filter:drop-shadow(0_0_32px_rgb(0_0_0/24%))]"
       >
-        <div className="h-full pb-12">
+        <div className={cn('h-full pb-12', topInset && 'pt-12')}>
           <div
             className={cn(
               'h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar',

@@ -62,8 +62,9 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
                     items={state.modelItems}
                     value={state.watchedModel}
                     onValueChange={state.selectModel}
-                    placeholder="Select model..."
-                    searchPlaceholder="Search models..."
+                    onOpenChange={(open) => open && state.loadCatalog()}
+                    placeholder="Select model…"
+                    searchPlaceholder="Search models…"
                     emptyMessage="No models found."
                     loading={state.isLoadingCatalog}
                   />

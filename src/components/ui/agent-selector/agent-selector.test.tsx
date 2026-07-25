@@ -168,9 +168,12 @@ describe('AgentSelector', () => {
 
     const trigger = screen.getByTestId('agent-selector-trigger').closest('button')
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeNull()
     fireEvent.click(screen.getByText('Add agent'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    // The mobile card drawer must be gone before the add flow opens.
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 

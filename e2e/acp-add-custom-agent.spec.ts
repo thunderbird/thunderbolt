@@ -46,8 +46,9 @@ test.describe('ACP add custom agent', () => {
 
     await page.getByRole('button', { name: 'New Agent' }).click()
 
-    // Scoped by the panel title: the app renders other `aside` landmarks.
-    const panel = page.getByRole('complementary').filter({ hasText: 'Add Custom Agent' })
+    // Scoped by the panel title (`createItemTitles.agent`): the app renders
+    // other `aside` landmarks.
+    const panel = page.getByRole('complementary').filter({ hasText: 'Add Agent' })
     await expect(panel).toBeVisible()
 
     await page.getByLabel('Name').fill('Test Agent')

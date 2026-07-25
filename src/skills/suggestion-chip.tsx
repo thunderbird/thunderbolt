@@ -3,12 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { File, ListOrdered, Pin, Plus, SquarePen } from 'lucide-react'
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type PointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { MobileCardMenu } from '@/components/ui/mobile-card-menu'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { ResponsiveActionMenu, type ResponsiveActionMenuAction } from '@/components/ui/responsive-action-menu'
 import { cn } from '@/lib/utils'
 
 /**
@@ -47,7 +45,6 @@ export const SuggestionChip = ({
   onUnpin: () => void
 }) => {
   const [open, setOpen] = useState(false)
-  const { isMobile } = useIsMobile()
 
   // Long-press detection for touch — opens the action menu without firing
   // the chip-insertion onClick. Mouse left-clicks fall through to onClick.
@@ -115,6 +112,8 @@ export const SuggestionChip = ({
       }}
       className={cn(
         chipSurfaceClass,
+        // select-none + touch-callout:none suppress iOS's text-selection and
+        // share-sheet callout during the long-press that opens the menu.
         'h-[var(--touch-height-sm)] select-none px-3 text-sm font-normal [-webkit-touch-callout:none]',
       )}
       aria-label={`Pinned skill ${label}`}
@@ -123,87 +122,37 @@ export const SuggestionChip = ({
     </Button>
   )
 
-  const actions: { label: string; icon: ReactNode; onSelect: () => void }[] = [
-    {
-      label: 'Add to chat',
-      icon: <Plus className="size-4" />,
-      onSelect: () => {
-        onClick()
-        setOpen(false)
-      },
-    },
+  const actions: ResponsiveActionMenuAction[] = [
+    { label: 'Add to chat', icon: <Plus className="size-[var(--icon-size-sm)]" />, onSelect: onClick },
     {
       label: 'Add instructions to chat',
-      icon: <File className="size-4" />,
-      onSelect: () => {
-        onAddInstruction()
-        setOpen(false)
-      },
+      icon: <File className="size-[var(--icon-size-sm)]" />,
+      onSelect: onAddInstruction,
     },
-    {
-      label: 'Edit skill',
-      icon: <SquarePen className="size-4" />,
-      onSelect: () => {
-        setOpen(false)
-        onEdit()
-      },
-    },
-    {
-      label: 'Reorder',
-      icon: <ListOrdered className="size-4" />,
-      onSelect: () => {
-        setOpen(false)
-        onReorder()
-      },
-    },
-    {
-      label: 'Unpin',
-      icon: <Pin className="size-4" />,
-      onSelect: () => {
-        setOpen(false)
-        onUnpin()
-      },
-    },
+    { label: 'Edit skill', icon: <SquarePen className="size-[var(--icon-size-sm)]" />, onSelect: onEdit },
+    { label: 'Reorder', icon: <ListOrdered className="size-[var(--icon-size-sm)]" />, onSelect: onReorder },
+    { label: 'Unpin', icon: <Pin className="size-[var(--icon-size-sm)]" />, onSelect: onUnpin },
   ]
 
-  if (isMobile) {
-    return (
-      <>
-        {trigger}
-        <MobileCardMenu open={open} onOpenChange={setOpen} title={label}>
-          <div className="flex flex-col gap-0.5 px-1 pb-1">
-            {actions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                onClick={action.onSelect}
-                className="flex min-h-[var(--min-touch-height)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
-              >
-                {action.icon}
-                {action.label}
-              </button>
-            ))}
-          </div>
-        </MobileCardMenu>
-      </>
-    )
-  }
-
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" sideOffset={8} collisionPadding={12} className="w-60">
-        {actions.map((action) => (
-          <DropdownMenuItem
-            key={action.label}
-            onSelect={action.onSelect}
-            className="min-h-[var(--min-touch-height)] cursor-pointer"
-          >
-            {action.icon}
-            {action.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ResponsiveActionMenu
+      open={open}
+      onOpenChange={setOpen}
+      trigger={trigger}
+      title={label}
+      actions={actions}
+      // The chip's click inserts the slash token; the menu opens via
+      // long-press / right-click handled on the trigger itself.
+      openOnTriggerClickMobile={false}
+      desktopMenu={{
+        side: 'top',
+        align: 'start',
+        // 8px matches the pb-2 gap between the chips bar and the composer;
+        // 12px keeps the panel off the screen edge on narrow desktop windows.
+        sideOffset: 8,
+        collisionPadding: 12,
+        className: 'w-60',
+      }}
+    />
   )
 }

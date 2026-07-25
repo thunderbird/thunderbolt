@@ -8,8 +8,8 @@ export const modalAnimationClass =
 export const modalOverlayClass = `${modalAnimationClass} fixed inset-0 z-50 bg-black/50 backdrop-blur-md max-md:backdrop-blur-lg max-md:backdrop-saturate-[.25]`
 
 /**
- * Resting fill for the header icon controls — the app header's hamburger, the
- * modal close X, the ⋯ actions menu — on touch viewports: with no hover to
+ * Resting fill for the header icon controls — the app header's sidebar toggle,
+ * the modal close X, the ⋯ actions menu — on touch viewports: with no hover to
  * reveal it, the filled circle is the only cue for where the tap target is, so
  * it stays painted. Desktop keeps the hover-only reveal. Pair it with
  * `mutedIconButtonClass` on anything that isn't already the shared close
@@ -28,7 +28,18 @@ export const modalOverlayClass = `${modalAnimationClass} fixed inset-0 z-50 bg-b
 export const mobileHeaderControlFillClass =
   'max-md:bg-muted/80 max-md:backdrop-blur-md max-md:active:bg-muted-foreground/20'
 
-/*
+/**
+ * Descendant-selector variant of `mobileHeaderControlFillClass` for containers
+ * whose buttons arrive as an opaque `actions` ReactNode (e.g. the content-view
+ * header's `ResponsiveModalActions`). Tailwind needs literal class names, so
+ * the fill tokens are restated with `[&>button]:` prefixes — keep the two
+ * constants in sync. No `max-md:` gate: these containers only render on
+ * mobile.
+ */
+export const mobileHeaderControlFillDescendantClass =
+  '[&>button]:size-[var(--touch-height-lg)] [&>button]:bg-muted/80 [&>button]:backdrop-blur-md [&>button]:active:bg-muted-foreground/20'
+
+/**
  * Ring is keyed on focus-visible, matching the Button primitive (and
  * mutedIconButtonClass, this control's desktop twin). A plain `focus:` ring
  * would paint whenever Radix moves focus here on mount — which happens in any

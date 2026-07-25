@@ -7,18 +7,17 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 
 import { Dialog } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { ContentViewHeader } from './header'
-
-const desktopWidth = 1024
 
 describe('ContentViewHeader', () => {
   afterEach(() => {
     cleanup()
-    window.happyDOM?.setViewport({ width: desktopWidth })
+    restoreViewport()
   })
 
   it('uses the standard modal controls on mobile', () => {
-    window.happyDOM?.setViewport({ width: 375 })
+    forceMobileViewport()
     const onClose = mock()
 
     render(

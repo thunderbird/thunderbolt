@@ -34,14 +34,14 @@ export default function Page() {
     content_view_width: Number,
   })
   const isOpen = state.type !== null
-  const desktopPanelOpen = isOpen && !isMobile
-  const prevDesktopPanelOpen = useRef(desktopPanelOpen)
+  const isDesktopPanelOpen = isOpen && !isMobile
+  const prevIsDesktopPanelOpen = useRef(isDesktopPanelOpen)
   const lastSavedWidth = useRef<number | null>(null)
 
   useEffect(() => {
     // Only animate on state changes, not on mount
-    if (prevDesktopPanelOpen.current !== desktopPanelOpen && panelRef.current) {
-      if (desktopPanelOpen) {
+    if (prevIsDesktopPanelOpen.current !== isDesktopPanelOpen && panelRef.current) {
+      if (isDesktopPanelOpen) {
         const savedWidth = contentViewWidth.value
         const hasSavedWidthAboveThreshold = savedWidth && savedWidth >= minimumWidthThreshold
         const targetWidth = hasSavedWidthAboveThreshold ? savedWidth : defaultOpenWidth
@@ -75,8 +75,8 @@ export default function Page() {
         })
       }
     }
-    prevDesktopPanelOpen.current = desktopPanelOpen
-  }, [desktopPanelOpen, contentViewWidth, panelRef])
+    prevIsDesktopPanelOpen.current = isDesktopPanelOpen
+  }, [isDesktopPanelOpen, contentViewWidth])
 
   // Persist width changes as user resizes (but not on mobile)
   const handleResize = ({ asPercentage }: { asPercentage: number }) => {
@@ -132,7 +132,7 @@ export default function Page() {
             </div>
           </div>
         </ResizablePanel>
-        {desktopPanelOpen && (
+        {isDesktopPanelOpen && (
           <div className="relative h-full flex">
             <ResizableHandle withHandle className="h-full" />
             {/* 

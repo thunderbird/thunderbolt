@@ -2,15 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { SearchableMenu } from './searchable-menu'
 import type { SearchableMenuItem } from './types'
-
-// Mock useIsMobile hook
-mock.module('@/hooks/use-mobile', () => ({
-  useIsMobile: () => ({ isMobile: false }),
-}))
 
 const mockFlatItems: SearchableMenuItem[] = [
   { id: '1', label: 'Option 1', description: 'First option' },
@@ -18,7 +14,13 @@ const mockFlatItems: SearchableMenuItem[] = [
   { id: '3', label: 'Option 3', disabled: true },
 ]
 
+// Desktop is happy-dom's default viewport; mobile tests narrow it and restore.
 describe('SearchableMenu', () => {
+  afterEach(() => {
+    cleanup()
+    restoreViewport()
+  })
+
   describe('functionality', () => {
     it('calls onValueChange when item is selected', () => {
       const handleChange = mock()
@@ -54,6 +56,47 @@ describe('SearchableMenu', () => {
 
       const disabledButton = screen.getByText('Option 3').closest('button')
       expect(disabledButton).toBeDisabled()
+    })
+  })
+
+  describe('mobile', () => {
+    it('renders as a card drawer with a dialog trigger', () => {
+      forceMobileViewport()
+      render(
+        <SearchableMenu
+          items={mockFlatItems}
+          onValueChange={() => {}}
+          open
+          onOpenChange={() => {}}
+          mobileTitle="Choose an option"
+        />,
+      )
+
+      const trigger = document.querySelector('button[aria-haspopup="dialog"]')
+      expect(trigger).toBeInTheDocument()
+      expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+      const drawer = screen
+        .getByText('Choose an option', { selector: '[data-slot="drawer-title"]' })
+        .closest('[data-slot="drawer-content"]')
+      expect(drawer).toHaveAttribute('data-vaul-drawer-direction', 'bottom')
+    })
+
+    it('selects items from the drawer list', () => {
+      forceMobileViewport()
+      const handleChange = mock()
+      render(
+        <SearchableMenu
+          items={mockFlatItems}
+          onValueChange={handleChange}
+          open
+          onOpenChange={() => {}}
+          mobileTitle="Choose an option"
+        />,
+      )
+
+      fireEvent.click(screen.getByText('Option 2'))
+      expect(handleChange).toHaveBeenCalledWith('2', mockFlatItems[1])
     })
   })
 })

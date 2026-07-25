@@ -54,8 +54,8 @@ const buttonVariants = cva(
 /** Muted icon action for panel headers and menus. Pair with
  *  `variant="ghost" size="icon"`. Mobile matches the 48px height of the
  *  floating New Chat / page-create pills; desktop remains the compact 32px
- *  size. Icons use --icon-size-default (20px / 16px), while icons carrying
- *  their own explicit `size-*` class keep it. Mobile is a circle like the
+ *  size. Icons default to --icon-size-default (20px / 16px); icons carrying
+ *  their own explicit `size-*` class keep their own size. Mobile is a circle like the
  *  responsive modal's close control; desktop's rounded-xl matches the sidebar
  *  nav toggle. */
 export const mutedIconButtonClass =

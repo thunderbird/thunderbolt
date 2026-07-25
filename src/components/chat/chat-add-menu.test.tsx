@@ -6,26 +6,17 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { ChatAddMenu } from './chat-add-menu'
 
-const setMobileViewport = (matches: boolean) => {
-  window.matchMedia = () => ({
-    matches,
-    media: '(max-width: 767px)',
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => true,
-  })
-}
-
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  restoreViewport()
+})
 
 describe('ChatAddMenu', () => {
   it('opens file and connection actions in a mobile bottom drawer', () => {
-    setMobileViewport(true)
+    forceMobileViewport()
     const onUploadFile = mock(() => {})
     const onOpenConnections = mock(() => {})
     render(<ChatAddMenu onUploadFile={onUploadFile} onOpenConnections={onOpenConnections} />)
@@ -42,7 +33,6 @@ describe('ChatAddMenu', () => {
   })
 
   it('keeps the compact anchored menu on desktop', () => {
-    setMobileViewport(false)
     render(<ChatAddMenu onUploadFile={() => {}} onOpenConnections={() => {}} />)
 
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Add to chat' }), { button: 0, ctrlKey: false })

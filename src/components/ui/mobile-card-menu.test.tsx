@@ -45,7 +45,7 @@ describe('MobileCardMenu', () => {
 
     const overlay = document.querySelector('[data-slot="drawer-overlay"]')
     expect(overlay).toBeInTheDocument()
-    expect(overlay).toHaveClass('backdrop-blur-sm', 'max-md:backdrop-saturate-75')
+    expect(overlay).toHaveClass('backdrop-blur-sm', 'backdrop-saturate-75')
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })

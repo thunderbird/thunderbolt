@@ -41,9 +41,10 @@ export const FormFooter = ({ className, ...props }: ComponentProps<'div'>) => (
  * rather than a base rule with a `md:` reset, so desktop (where the footer sits
  * in flow with nothing passing behind it) is left entirely untouched.
  *
- * The scroller keeps `--modal-bottom-inset` as bottom padding so body content
- * can clear the keyboard. The footer is absolutely positioned against the
- * panel frame, which itself ends at the keyboard boundary. It must not be fixed
+ * The scroller must pad its own bottom so body content can clear the pinned
+ * actions (see `DetailPanel`: `--touch-height-default` + `--modal-footer-inset`,
+ * plus a keyboard-height spacer). The footer is absolutely positioned against
+ * the panel frame, which itself ends at the keyboard boundary. It must not be fixed
  * inside the overflow scroller: mobile WebViews can treat that fixed descendant
  * as part of a separate viewport layer and stop handing touch scrolling to the
  * form.

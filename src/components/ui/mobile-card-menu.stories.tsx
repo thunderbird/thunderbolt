@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Paperclip, Plug } from 'lucide-react'
 import { fn } from 'storybook/test'
 
-import { MobileCardMenu } from './mobile-card-menu'
+import { MobileCardMenu, mobileCardMenuItemClass } from './mobile-card-menu'
 
 const meta = {
   title: 'UI/MobileCardMenu',
@@ -34,17 +34,11 @@ type Story = StoryObj<typeof meta>
 
 const menuItems = (
   <div className="flex flex-col gap-0.5 px-1 pb-1">
-    <button
-      type="button"
-      className="flex min-h-[var(--min-touch-height)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
-    >
+    <button type="button" className={mobileCardMenuItemClass}>
       <Paperclip className="size-[var(--icon-size-sm)] text-muted-foreground" />
       Upload file
     </button>
-    <button
-      type="button"
-      className="flex min-h-[var(--min-touch-height)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
-    >
+    <button type="button" className={mobileCardMenuItemClass}>
       <Plug className="size-[var(--icon-size-sm)] text-muted-foreground" />
       Connections
     </button>

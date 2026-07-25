@@ -9,6 +9,10 @@ import { cn } from '@/lib/utils'
 
 export type MobileCardMenuSide = 'top' | 'bottom'
 
+/** Touch-height action row rendered inside a `MobileCardMenu` list. */
+export const mobileCardMenuItemClass =
+  'flex min-h-[var(--min-touch-height)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent'
+
 type MobileCardMenuProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -35,7 +39,7 @@ export const MobileCardMenu = ({
       : { paddingBottom: 'var(--safe-area-bottom-padding, 0px)' }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction={side} dismissible>
+    <Drawer open={open} onOpenChange={onOpenChange} direction={side}>
       <DrawerContent
         aria-describedby={undefined}
         onOpenAutoFocus={onOpenAutoFocus}

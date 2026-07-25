@@ -3,25 +3,31 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ComponentProps } from 'react'
+// vaul is the de-facto shadcn drawer (gesture-driven drag-to-dismiss that the
+// Radix primitives don't provide) but is officially unmaintained — revisit
+// (e.g. Base UI's drawer) when an alternative matures.
 import { Drawer as DrawerPrimitive } from 'vaul'
 
 import { cn } from '@/lib/utils'
-import { modalOverlayClass } from '@/components/ui/modal-styles'
+import { modalAnimationClass } from '@/components/ui/modal-styles'
 
-const Drawer = ({ shouldScaleBackground = false, ...props }: ComponentProps<typeof DrawerPrimitive.Root>) => (
-  <DrawerPrimitive.Root data-slot="drawer" shouldScaleBackground={shouldScaleBackground} {...props} />
+const Drawer = (props: ComponentProps<typeof DrawerPrimitive.Root>) => (
+  <DrawerPrimitive.Root data-slot="drawer" {...props} />
 )
 
 const DrawerPortal = (props: ComponentProps<typeof DrawerPrimitive.Portal>) => (
   <DrawerPrimitive.Portal data-slot="drawer-portal" {...props} />
 )
 
+// Deliberately lighter than modalOverlayClass: a card drawer is a shallow,
+// swipe-away surface, so it dims and blurs less than a blocking modal, and
+// sits below the z-50 modal layer.
 const DrawerOverlay = ({ className, ...props }: ComponentProps<typeof DrawerPrimitive.Overlay>) => (
   <DrawerPrimitive.Overlay
     data-slot="drawer-overlay"
     className={cn(
-      modalOverlayClass,
-      'z-40 bg-black/30 backdrop-blur-sm max-md:backdrop-blur-sm max-md:backdrop-saturate-75',
+      modalAnimationClass,
+      'fixed inset-0 z-40 bg-black/30 backdrop-blur-sm backdrop-saturate-75',
       className,
     )}
     {...props}

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Plus } from 'lucide-react'
-import { lazy, Suspense, useEffect, useReducer } from 'react'
+import { lazy, Suspense, useEffect, useReducer, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 
@@ -181,6 +181,8 @@ export const ChatSkillsBar = ({
     return null
   }
 
+  const setAddOpen = (open: boolean) => dispatch({ type: 'ADD_POPOVER_TOGGLED', open })
+
   const addButton = (
     <Button
       variant="outline"
@@ -188,7 +190,7 @@ export const ChatSkillsBar = ({
       aria-label="Add a skill"
       aria-expanded={addOpen}
       disabled={addDisabled}
-      onClick={isMobile ? () => dispatch({ type: 'ADD_POPOVER_TOGGLED', open: !addOpen }) : undefined}
+      onClick={isMobile ? () => setAddOpen(!addOpen) : undefined}
       className={cn(chipSurfaceClass, 'disabled:cursor-not-allowed disabled:opacity-40')}
     >
       <Plus />
@@ -197,6 +199,8 @@ export const ChatSkillsBar = ({
 
   const addMenuContent = (
     <>
+      {/* Search only appears once the list is long enough for scanning to
+          hurt (6+ rows) — a filter box above a short list is noise. */}
       {pinnable.length > 5 && (
         <div className="p-1 pb-2">
           <SearchInput
@@ -221,7 +225,7 @@ export const ChatSkillsBar = ({
             <button
               type="button"
               onClick={() => {
-                dispatch({ type: 'ADD_POPOVER_TOGGLED', open: false })
+                setAddOpen(false)
                 void handleTogglePin(skill, 'pin')
               }}
               className="flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent"
@@ -242,35 +246,30 @@ export const ChatSkillsBar = ({
         <button
           type="button"
           onClick={() => {
-            dispatch({ type: 'ADD_POPOVER_TOGGLED', open: false })
+            setAddOpen(false)
             void navigate('/settings/skills', { state: { createSkill: '' } })
           }}
           className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <Plus className="size-4" />
-          New skill
+          New Skill
         </button>
       </div>
     </>
   )
 
-  const mobileAddControl = pinCapReached ? (
-    <Tooltip>
-      <TooltipTrigger asChild>{addButton}</TooltipTrigger>
-      <TooltipContent>{`Pin limit reached (${maxPinnedSkills}). Unpin one first.`}</TooltipContent>
-    </Tooltip>
-  ) : (
-    addButton
-  )
-  const desktopAddButton = <PopoverTrigger asChild>{addButton}</PopoverTrigger>
-  const desktopAddControl = pinCapReached ? (
-    <Tooltip>
-      <TooltipTrigger asChild>{desktopAddButton}</TooltipTrigger>
-      <TooltipContent>{`Pin limit reached (${maxPinnedSkills}). Unpin one first.`}</TooltipContent>
-    </Tooltip>
-  ) : (
-    desktopAddButton
-  )
+  const withPinCapTooltip = (control: ReactNode) =>
+    pinCapReached ? (
+      <Tooltip>
+        <TooltipTrigger asChild>{control}</TooltipTrigger>
+        <TooltipContent>{`Pin limit reached (${maxPinnedSkills}). Unpin one first.`}</TooltipContent>
+      </Tooltip>
+    ) : (
+      control
+    )
+
+  const mobileAddControl = withPinCapTooltip(addButton)
+  const desktopAddControl = withPinCapTooltip(<PopoverTrigger asChild>{addButton}</PopoverTrigger>)
 
   return (
     <>
@@ -295,16 +294,12 @@ export const ChatSkillsBar = ({
         {isMobile ? (
           <>
             {mobileAddControl}
-            <MobileCardMenu
-              open={addOpen}
-              onOpenChange={(open) => dispatch({ type: 'ADD_POPOVER_TOGGLED', open })}
-              title="Add a skill"
-            >
+            <MobileCardMenu open={addOpen} onOpenChange={setAddOpen} title="Add a skill">
               <div className="p-1">{addMenuContent}</div>
             </MobileCardMenu>
           </>
         ) : (
-          <Popover open={addOpen} onOpenChange={(open) => dispatch({ type: 'ADD_POPOVER_TOGGLED', open })}>
+          <Popover open={addOpen} onOpenChange={setAddOpen}>
             {desktopAddControl}
             <PopoverContent
               side="top"

@@ -5,21 +5,14 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { floatingFormFooterClass, FormFooter } from './ui/form-footer'
 import { DetailPanel, DetailPanelSurface } from './detail-panel'
-
-/** happy-dom's default viewport (matches the bun test preload). */
-const desktopWidth = 1024
-
-/** `DetailPanel` picks its mobile anatomy from `useIsMobile` (a `matchMedia`
- *  reader), not from the surface's prop, so the viewport has to be narrowed for
- *  the mobile branch to render. Restored after each test. */
-const forceMobileViewport = () => window.happyDOM?.setViewport({ width: 375 })
 
 describe('DetailPanelSurface', () => {
   afterEach(() => {
     cleanup()
-    window.happyDOM?.setViewport({ width: desktopWidth })
+    restoreViewport()
   })
 
   it('uses the shared responsive modal on mobile', () => {
@@ -39,7 +32,7 @@ describe('DetailPanelSurface', () => {
     expect(document.querySelector('[data-slot="responsive-modal-content"]')).toBeInTheDocument()
     expect(screen.getByText('Detail body')).toBeInTheDocument()
     const scrollArea = screen.getByText('Detail body').parentElement
-    expect(scrollArea).toHaveClass('pt-4', 'max-md:[&_[data-slot=form-footer]]:absolute')
+    expect(scrollArea).toHaveClass('md:pt-4', 'max-md:[&_[data-slot=form-footer]]:absolute')
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledTimes(1)

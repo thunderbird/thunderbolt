@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { mobileHeaderControlFillDescendantClass } from '@/components/ui/modal-styles'
 import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 import { ResponsiveModalActions, useResponsiveModalContext } from '@/components/ui/responsive-modal'
 import { useMacWindowControlsClearance } from '@/hooks/use-window-controls-safe-area'
@@ -37,21 +38,22 @@ export const ContentViewHeader = ({ title, onClose, actions, className = '' }: C
       {...dragProps}
       className={cn(
         'flex w-full flex-shrink-0 items-center',
+        // Desktop headers sit atop a scrolling panel and always draw the
+        // divider; callers only supply their surface color.
         isMobile
           ? 'min-h-[calc(var(--modal-top-inset)+3rem)] justify-center px-16 pb-3 pt-[calc(var(--modal-top-inset)+1rem)]'
-          : 'h-12 justify-between pl-4 pr-2',
+          : 'h-12 justify-between border-b border-border pl-4 pr-2',
         needsWindowControlsClearance && !isMobile && 'pl-24',
         className,
       )}
     >
       <h2 className="truncate text-lg font-semibold">{title}</h2>
-      {isMobile ? (
-        actions && (
-          <ResponsiveModalActions className="gap-1 [&>button]:size-[var(--touch-height-lg)] [&>button]:bg-muted/80 [&>button]:backdrop-blur-md [&>button]:active:bg-muted-foreground/20">
-            {actions}
-          </ResponsiveModalActions>
-        )
-      ) : (
+      {isMobile && actions && (
+        <ResponsiveModalActions className={cn('gap-1', mobileHeaderControlFillDescendantClass)}>
+          {actions}
+        </ResponsiveModalActions>
+      )}
+      {!isMobile && (
         <div className="flex items-center gap-2">
           {actions}
           <SidebarCloseButton onClick={onClose} />

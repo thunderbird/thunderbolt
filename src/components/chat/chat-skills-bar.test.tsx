@@ -8,6 +8,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Skill } from '@/types'
 import { ChatSkillsBar } from './chat-skills-bar'
 
@@ -67,24 +68,10 @@ const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}) => 
   )
 }
 
-const defaultMatchMedia = window.matchMedia
-const useMobileViewport = () => {
-  window.matchMedia = () => ({
-    matches: true,
-    media: '(max-width: 767px)',
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => true,
-  })
-}
-
 describe('ChatSkillsBar', () => {
   afterEach(() => {
     cleanup()
-    window.matchMedia = defaultMatchMedia
+    restoreViewport()
   })
 
   it('renders nothing when there are no pinned skills and nothing to pin', () => {
@@ -129,11 +116,11 @@ describe('ChatSkillsBar', () => {
 
     fireEvent.click(trigger)
     expect(screen.getByText('All skills are pinned')).toBeTruthy()
-    expect(screen.getByText('New skill')).toBeTruthy()
+    expect(screen.getByText('New Skill')).toBeTruthy()
   })
 
   it('opens the add-skill menu as a mobile bottom drawer', () => {
-    useMobileViewport()
+    forceMobileViewport()
     const a = skill('a', 'daily-brief')
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [] }),

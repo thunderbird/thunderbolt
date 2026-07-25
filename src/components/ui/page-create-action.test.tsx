@@ -5,16 +5,12 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { PageCreateAction } from './page-create-action'
-
-/** happy-dom's default viewport (matches the bun test preload). */
-const desktopWidth = 1024
-
-const setViewport = (width: number) => window.happyDOM?.setViewport({ width })
 
 afterEach(() => {
   cleanup()
-  setViewport(desktopWidth)
+  restoreViewport()
 })
 
 describe('PageCreateAction', () => {
@@ -27,14 +23,14 @@ describe('PageCreateAction', () => {
     expect(button).toHaveClass('-mr-2')
   })
 
-  it('renders a labelled pill portalled to the body on mobile', () => {
-    setViewport(375)
+  it('renders a labelled pill portaled to the body on mobile', () => {
+    forceMobileViewport()
     render(<PageCreateAction label="New Skill" onClick={() => {}} />)
 
     const button = screen.getByRole('button', { name: 'New Skill' })
     expect(button.textContent).toContain('New Skill')
     expect(button).toHaveClass('border', 'border-border')
-    // Portalled so `position: fixed` anchors to the viewport, not an ancestor.
+    // Portaled so `position: fixed` anchors to the viewport, not an ancestor.
     expect(button.parentElement).toBe(document.body)
   })
 

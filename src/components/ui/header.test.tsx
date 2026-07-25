@@ -8,6 +8,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { builtInAgent } from '@/defaults/agents'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import {
   createMockChatThread,
   createMockMode,
@@ -26,27 +27,6 @@ import type { ReactNode } from 'react'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { SignInModalProvider } from '@/contexts'
 import { Header } from './header'
-
-/** happy-dom exposes its control API on `window.happyDOM`, but the global
- *  registrator doesn't augment the DOM lib's `Window`. Declare the one method
- *  this test drives so `tsc --noEmit` stays green. */
-declare global {
-  // Global augmentation requires declaration merging, which only `interface` supports.
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-  interface Window {
-    happyDOM?: { setViewport: (viewport: { width: number }) => void }
-  }
-}
-
-/** happy-dom's default viewport (matches the bun test preload). Restored after
- *  each test so the mobile override below never leaks. */
-const desktopWidth = 1024
-
-/** Forces `useIsMobile` (a `matchMedia` reader) to report mobile so `Header`
- *  renders its mobile layout, which centers the agent selector this suite
- *  asserts on — `useIsMobile` is global and a sibling suite may `mock.module`
- *  it to report desktop. */
-const forceMobileViewport = () => window.happyDOM?.setViewport({ width: 375 })
 
 /** A custom (synced) agent the thread is pinned to. */
 const customAgent: Agent = {
@@ -134,7 +114,7 @@ describe('Header', () => {
   afterEach(async () => {
     cleanup()
     resetStore()
-    window.happyDOM?.setViewport({ width: desktopWidth })
+    restoreViewport()
     await resetTestDatabase()
   })
 

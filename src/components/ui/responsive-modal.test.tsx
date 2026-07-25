@@ -4,6 +4,7 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { FormFooter } from '@/components/ui/form-footer'
 import { fireEvent, render, screen } from '@testing-library/react'
@@ -20,13 +21,6 @@ import {
   ResponsiveModalTitle,
 } from './responsive-modal'
 
-/** happy-dom's default viewport (matches the bun test preload). */
-const desktopWidth = 1024
-
-/** The shell reads `useIsMobile` (a `matchMedia` reader), so mobile-only chrome
- *  like the top scrim needs the viewport narrowed. Restored after each test. */
-const forceMobileViewport = () => window.happyDOM?.setViewport({ width: 375 })
-
 describe('ResponsiveModal', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -37,7 +31,7 @@ describe('ResponsiveModal', () => {
   })
 
   afterEach(() => {
-    window.happyDOM?.setViewport({ width: desktopWidth })
+    restoreViewport()
   })
 
   const renderModal = (

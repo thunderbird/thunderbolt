@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { modalAnimationClass, modalCloseClass, modalFieldSurfaceClass } from '@/components/ui/modal-styles'
+import { Scrim } from '@/components/ui/scrim'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -112,20 +113,13 @@ const ResponsiveModalDialogContent = ({
           {...props}
         >
           {/* Content runs to the top of the window, so it needs the same scrim
-              the app header uses: a background fade plus a masked backdrop blur,
-              keeping content legible as it scrolls behind the pinned controls
-              with no hard blur edge. Rendered before the controls so they paint
-              on top of it. */}
+              the app header uses, keeping content legible as it scrolls behind
+              the pinned controls. */}
           {isMobile && flush && (
-            <div
+            <Scrim
               data-slot="responsive-modal-top-scrim"
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-background via-background/80 to-transparent backdrop-blur-[4px]"
-              style={{
-                height: 'calc(var(--modal-top-inset) + 2.5rem)',
-                maskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)',
-              }}
+              className="z-10"
+              height="calc(var(--modal-top-inset) + 2.5rem)"
             />
           )}
           {children}
@@ -302,8 +296,9 @@ type ResponsiveModalContentComposableProps = ComponentProps<typeof DialogPrimiti
   showCloseButton?: boolean
   /** Run mobile content corner to corner and let it scroll under the pinned
    *  controls and the footer behind their scrims, instead of sitting between
-   *  them. The content must then pad its own scroll container by
-   *  `--modal-top-inset` and `--modal-bottom-inset`. */
+   *  them. The content must then pad its own scroll container — top by
+   *  `--modal-top-inset`, bottom by enough to clear its pinned footer (see
+   *  `DetailPanel`). */
   flush?: boolean
 }
 

@@ -38,7 +38,7 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
       <ContentViewHeader
         title={data.title}
         onClose={onClose}
-        className="md:border-b md:border-border md:bg-card"
+        className="md:bg-card"
         actions={<ArtifactActions html={data.html} title={data.title} />}
       />
       {runtimeError && <ArtifactErrorStrip message={runtimeError} />}

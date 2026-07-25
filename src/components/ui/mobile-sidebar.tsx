@@ -8,7 +8,7 @@ import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { animate, m, useMotionValue, useReducedMotion, useTransform, type PanInfo } from 'framer-motion'
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 
 type MobileSidebarProps = {
   open: boolean
@@ -84,6 +84,17 @@ export const MobileSidebar = ({
     side === 'left' ? [0, 1] : [1, 0],
   )
 
+  // Effect-event wrapper keeps the close-animation effect's deps free of the
+  // callback prop, so an unstable inline callback can't re-run the animation.
+  const notifyCloseComplete = useEffectEvent(() => onCloseComplete?.())
+
+  // If the drawer unmounts mid-close (e.g. the viewport crosses to desktop
+  // while the spring is running), the animation never settles and the pending
+  // notification would be dropped — callers awaiting `closeMobileSidebar()`
+  // would hang forever. Flush on unmount; the provider's resolver queue
+  // no-ops when nothing is pending.
+  useEffect(() => () => notifyCloseComplete(), [])
+
   // Handle external open/close requests
   useEffect(() => {
     if (open && !internalOpen) {
@@ -104,11 +115,11 @@ export const MobileSidebar = ({
         await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, transition)
         setIsAnimating(false)
         setInternalOpen(false)
-        onCloseComplete?.()
+        notifyCloseComplete()
       }
       animateClose()
     }
-  }, [open, internalOpen, isAnimating, x, side, sidebarWidth, transition, onCloseComplete])
+  }, [open, internalOpen, isAnimating, x, side, sidebarWidth, transition])
 
   const handleClose = async () => {
     if (isAnimating) {

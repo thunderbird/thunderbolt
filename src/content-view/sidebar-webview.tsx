@@ -60,7 +60,7 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
   if (!isTauri()) {
     return (
       <div className="flex flex-col h-full">
-        <ContentViewHeader title="Preview" onClose={() => onClose?.()} className="md:border-b md:border-border" />
+        <ContentViewHeader title="Preview" onClose={() => onClose?.()} />
         <div className="flex-1 flex items-center justify-center p-4 text-center">
           <p className="text-muted-foreground text-sm">Preview webview is only available in the desktop app</p>
         </div>
@@ -77,7 +77,7 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
       <ContentViewHeader
         title={config.url}
         onClose={handleClose}
-        className="z-10 md:border-b md:border-border md:bg-background"
+        className="z-10 md:bg-background"
         actions={
           <>
             <Button

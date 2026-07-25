@@ -26,7 +26,7 @@ type PageCreateActionProps = {
  * as the same control. It is the only gradient button a page may show; empty
  * states pair with it using `variant="outline"`.
  *
- * Portalled to `document.body` so `position: fixed` anchors to the viewport
+ * Portaled to `document.body` so `position: fixed` anchors to the viewport
  * rather than to whichever ancestor (resizable panel, motion transform)
  * happens to establish a containing block above the page.
  */

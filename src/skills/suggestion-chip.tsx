@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { File, ListOrdered, Pin, Plus, SquarePen } from 'lucide-react'
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { MobileCardMenu } from '@/components/ui/mobile-card-menu'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -98,110 +99,110 @@ export const SuggestionChip = ({
     onClick()
   }
 
+  const trigger = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleClick}
+      onPointerDown={handleTriggerPointerDown}
+      onPointerUp={clearLongPress}
+      onPointerLeave={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        clearLongPress()
+        setOpen(true)
+      }}
+      className={cn(
+        chipSurfaceClass,
+        'h-[var(--touch-height-sm)] select-none px-3 text-sm font-normal [-webkit-touch-callout:none]',
+      )}
+      aria-label={`Pinned skill ${label}`}
+    >
+      {label}
+    </Button>
+  )
+
+  const actions: { label: string; icon: ReactNode; onSelect: () => void }[] = [
+    {
+      label: 'Add to chat',
+      icon: <Plus className="size-4" />,
+      onSelect: () => {
+        onClick()
+        setOpen(false)
+      },
+    },
+    {
+      label: 'Add instructions to chat',
+      icon: <File className="size-4" />,
+      onSelect: () => {
+        onAddInstruction()
+        setOpen(false)
+      },
+    },
+    {
+      label: 'Edit skill',
+      icon: <SquarePen className="size-4" />,
+      onSelect: () => {
+        setOpen(false)
+        onEdit()
+      },
+    },
+    {
+      label: 'Reorder',
+      icon: <ListOrdered className="size-4" />,
+      onSelect: () => {
+        setOpen(false)
+        onReorder()
+      },
+    },
+    {
+      label: 'Unpin',
+      icon: <Pin className="size-4" />,
+      onSelect: () => {
+        setOpen(false)
+        onUnpin()
+      },
+    },
+  ]
+
+  if (isMobile) {
+    return (
+      <>
+        {trigger}
+        <MobileCardMenu open={open} onOpenChange={setOpen} title={label}>
+          <div className="flex flex-col gap-0.5 px-1 pb-1">
+            {actions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                onClick={action.onSelect}
+                className="flex min-h-[var(--min-touch-height)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
+              >
+                {action.icon}
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </MobileCardMenu>
+      </>
+    )
+  }
+
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleClick}
-          onPointerDown={handleTriggerPointerDown}
-          onPointerUp={clearLongPress}
-          onPointerLeave={clearLongPress}
-          onPointerCancel={clearLongPress}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            clearLongPress()
-            setOpen(true)
-          }}
-          // `h-[var(--touch-height-sm)]` resolves to 40px on mobile, 32px on
-          // desktop — keeps the compact desktop look while meeting the
-          // 40px-min touch target the rest of the app uses on touch devices.
-          //
-          // `select-none` + `[-webkit-touch-callout:none]` suppress the OS
-          // text-selection that fires on long-press on iOS / Android. Without
-          // them the chip's label gets highlighted (and on iOS the system
-          // share/copy callout pops) while our long-press timer is waiting
-          // to open the action menu. Leaving `touch-action` at its default
-          // so the chip strip's horizontal scroll on mobile still works.
-          className={cn(
-            chipSurfaceClass,
-            'h-[var(--touch-height-sm)] select-none px-3 text-sm font-normal [-webkit-touch-callout:none]',
-          )}
-          aria-label={`Pinned skill ${label}`}
-        >
-          {label}
-        </Button>
-      </DropdownMenuTrigger>
-      {/*
-        Anchor the menu's bottom-left to the chip's top-left so the popup
-        opens upward from the chip's anchor corner. Container and item
-        styling inherit the DropdownMenu defaults (`rounded-xl` panel,
-        `rounded-md` items), minus the drop shadow — the menu should read
-        as a flat, ordinary menu over the chat screen.
-      */}
-      <DropdownMenuContent
-        side="top"
-        align="start"
-        // `sideOffset={8}` matches the `pb-2` (8px) gap between the chips bar
-        // and the chat composer below it, so the menu sits off the chip by
-        // the same distance the chip sits off the composer.
-        sideOffset={8}
-        // 12px collision padding + 100vw-1.5rem width on mobile makes the menu
-        // exactly as wide as the chat composer (which sits at px-3 insets).
-        collisionPadding={12}
-        className={isMobile ? 'w-[calc(100vw-1.5rem)] min-w-56' : 'min-w-56'}
-      >
-        <DropdownMenuItem
-          onSelect={() => {
-            onClick()
-            setOpen(false)
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <Plus />
-          Add to chat
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            onAddInstruction()
-            setOpen(false)
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <File />
-          Add instructions to chat
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            setOpen(false)
-            onEdit()
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <SquarePen />
-          Edit skill
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            setOpen(false)
-            onReorder()
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <ListOrdered />
-          Reorder
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            setOpen(false)
-            onUnpin()
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <Pin />
-          Unpin
-        </DropdownMenuItem>
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" sideOffset={8} collisionPadding={12} className="w-60">
+        {actions.map((action) => (
+          <DropdownMenuItem
+            key={action.label}
+            onSelect={action.onSelect}
+            className="min-h-[var(--min-touch-height)] cursor-pointer"
+          >
+            {action.icon}
+            {action.label}
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   )

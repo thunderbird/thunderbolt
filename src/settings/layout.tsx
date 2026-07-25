@@ -28,7 +28,10 @@ const SettingsLayout = () => {
             className="flex-1 overflow-auto"
             style={{
               paddingTop: 'var(--header-inset)',
-              paddingBottom: 'var(--safe-area-bottom-padding)',
+              // The wrapper above already gave up `--kb` to the keyboard, which
+              // covers the home indicator too — so don't reserve that inset a
+              // second time inside the scroller (THU-586).
+              paddingBottom: 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
             }}
           >
             <Suspense fallback={<PageFallback />}>

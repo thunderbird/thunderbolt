@@ -145,7 +145,7 @@ const renderAddForm = async (deps: ConnectionsPageDeps, { url, token }: { url: s
     tables: ['mcp_servers', 'mcp_secrets'],
     wrapper: McpProviderWrapper,
   })
-  const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add MCP server' }))
+  const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' }))
   fireEvent.click(openButton)
   const urlInput = await waitForElement(() => screen.queryByPlaceholderText('http://localhost:8000/mcp/'))
   if (token) {
@@ -393,7 +393,7 @@ describe('ConnectionsPage iroh add flow', () => {
       <ConnectionsPage deps={{ loadAppNodeId: async () => appNodeId, ...extraDeps }} />,
       { tables: ['mcp_servers', 'mcp_secrets'], wrapper: McpProviderWrapper },
     )
-    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add MCP server' }))
+    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' }))
     fireEvent.click(openButton)
     const urlInput = await waitForElement(() => screen.queryByPlaceholderText('http://localhost:8000/mcp/'))
     fireEvent.change(screen.getByPlaceholderText('Server name (used to prefix tools)'), {
@@ -847,7 +847,7 @@ describe('ConnectionsPage add-form error labeling', () => {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: McpProviderWrapper,
     })
-    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add MCP server' }))
+    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' }))
     fireEvent.click(openButton)
 
     // Advanced mode: paste a config with no servers, then import → error panel.

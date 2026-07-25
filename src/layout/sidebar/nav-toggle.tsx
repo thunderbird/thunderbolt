@@ -67,7 +67,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
           // rail) stay comfortable to hit and mobile meets --min-touch-height.
           'relative flex cursor-pointer items-center justify-center rounded-xl outline-hidden ring-sidebar-ring transition-colors focus-visible:ring-2 after:absolute after:inset-x-0 after:-inset-y-1 after:content-[""]',
           vertical ? 'size-8' : 'h-full aspect-square',
-          isActive ? 'text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-sidebar-foreground',
+          'text-muted-foreground hover:text-sidebar-foreground',
         )}
       >
         {isActive && (

@@ -11,7 +11,6 @@ import {
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
 import { Globe, MessageCircle, Microscope } from 'lucide-react'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { useMemo, type ReactNode } from 'react'
 
 export type ModeSelectorProps = {
@@ -52,7 +51,6 @@ const createModeGroups = (modes: Mode[]): SearchableMenuGroup<ModeItemData>[] =>
 ]
 
 export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = false }: ModeSelectorProps) => {
-  const { isMobile } = useIsMobile()
   const groupedItems = useMemo(() => createModeGroups(modes), [modes])
 
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
@@ -90,12 +88,13 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
       value={selectedMode?.id}
       onValueChange={onModeChange}
       searchable={false}
-      blurBackdrop
-      side={isMobile ? 'top' : 'bottom'}
+      mobileTitle="Choose mode"
+      mobileSide="bottom"
+      side="bottom"
       align="end"
       trigger={renderTrigger}
       renderItem={renderItem}
-      width={280}
+      width={240}
       maxHeight={300}
     />
   )

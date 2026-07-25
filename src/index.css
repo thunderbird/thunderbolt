@@ -196,6 +196,29 @@
      hidden under the header at rest. */
   --header-inset: calc(var(--safe-area-top-padding, 0px) + var(--touch-height-xl));
 
+  /* Same idea for the mobile modal shell. Its close / actions controls pin
+     --modal-control-inset below the top safe area with a --touch-height-lg
+     target; a modal whose content runs edge to edge (see the responsive modal's
+     `flush`) pads its scroll container by these two insets, so content sits
+     clear of the controls and the footer at rest and scrolls beneath them after
+     that. */
+  --modal-control-inset: 1rem;
+  --modal-top-inset: calc(var(--safe-area-top-padding, 0px) + var(--modal-control-inset) + var(--touch-height-lg));
+
+  /* Whichever of the home indicator or the keyboard is taller — an open keyboard
+     already covers the indicator, so stacking them would strand dead space
+     (THU-586). The keyboard branch adds the standard 12px mobile edge gap
+     (edgeSpacing.mobile) because it brings no inset of its own; the 24px
+     fallback matches useSafeAreaInset's, so the geometry holds on the first
+     frame before that hook sets the variable. */
+  --modal-bottom-inset: max(var(--safe-area-bottom-padding, 24px), calc(var(--kb, 0px) + 12px));
+
+  /* Sticky modal actions live inside the visual viewport, whose bottom edge is
+     already the keyboard or screen edge. Keep the same 16px gap as the panel's
+     horizontal inset; applying the device safe area here can lift the actions
+     far above that edge on Android. */
+  --modal-footer-inset: 1rem;
+
   /* Switch component specific */
   --switch-track-height: 1.75rem; /* 28px mobile */
   --switch-track-width: 3rem; /* 48px mobile */

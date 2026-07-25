@@ -4,6 +4,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -507,16 +508,7 @@ export default function TasksPage() {
               {!showEmptyState && (
                 <>
                   <PageSearch.Button />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    aria-label="Add task"
-                    className="bg-card"
-                    onClick={() => setIsAddingNew(true)}
-                    disabled={isAddingNew}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                  <PageCreateAction label="New Task" onClick={() => setIsAddingNew(true)} disabled={isAddingNew} />
                 </>
               )}
             </PageHeader>
@@ -531,7 +523,7 @@ export default function TasksPage() {
                   <CheckCircle2 className="h-12 w-12 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold mb-6">No tasks yet</h3>
-                <Button onClick={() => setIsAddingNew(true)} className="gap-2">
+                <Button variant="outline" onClick={() => setIsAddingNew(true)} className="gap-2">
                   <Plus className="h-4 w-4" />
                   Add Your First Task
                 </Button>

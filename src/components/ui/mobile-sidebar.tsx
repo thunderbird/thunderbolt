@@ -13,6 +13,10 @@ import { useEffect, useState, useSyncExternalStore, type CSSProperties, type Rea
 type MobileSidebarProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Fires once the close animation has fully settled (both the external
+   *  `open=false` path and user-initiated dismissals). Lets callers defer
+   *  heavy work — e.g. navigation — until the spring is done. */
+  onCloseComplete?: () => void
   children: ReactNode
   side?: 'left' | 'right'
   className?: string
@@ -48,6 +52,7 @@ export const shouldCloseOnDragEnd = (side: 'left' | 'right', info: PanInfo): boo
 export const MobileSidebar = ({
   open,
   onOpenChange,
+  onCloseComplete,
   children,
   side = 'left',
   className,
@@ -99,10 +104,11 @@ export const MobileSidebar = ({
         await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, transition)
         setIsAnimating(false)
         setInternalOpen(false)
+        onCloseComplete?.()
       }
       animateClose()
     }
-  }, [open, internalOpen, isAnimating, x, side, sidebarWidth, transition])
+  }, [open, internalOpen, isAnimating, x, side, sidebarWidth, transition, onCloseComplete])
 
   const handleClose = async () => {
     if (isAnimating) {
@@ -115,6 +121,7 @@ export const MobileSidebar = ({
     setIsAnimating(false)
     setInternalOpen(false)
     onOpenChange(false)
+    onCloseComplete?.()
   }
 
   const handleDragEnd = async (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -159,7 +166,7 @@ export const MobileSidebar = ({
           onDragEnd={handleDragEnd}
           style={{ x, ...style }}
           className={cn(
-            'bg-sidebar text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] shadow-lg flex flex-col will-change-transform',
+            'bg-sidebar/80 text-sidebar-foreground fixed inset-y-0 z-50 h-full w-[80vw] shadow-lg flex flex-col backdrop-blur-lg will-change-transform',
             side === 'left' ? 'left-0' : 'right-0',
             className,
           )}

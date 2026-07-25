@@ -4,6 +4,8 @@
 
 import type { ReactNode } from 'react'
 
+import type { MobileCardMenuSide } from '@/components/ui/mobile-card-menu'
+
 export type SearchableMenuItem<T = unknown> = {
   id: string
   label: string
@@ -35,8 +37,10 @@ export type SearchableMenuProps<T = unknown> = {
   searchPlaceholder?: string
   /** Message when no items match search */
   emptyMessage?: string
-  /** Show blur backdrop on mobile */
-  blurBackdrop?: boolean
+  /** Accessible heading shown on the mobile card menu */
+  mobileTitle?: string
+  /** Screen edge the mobile card menu enters from */
+  mobileSide?: MobileCardMenuSide
   /** Custom trigger content - receives selected item */
   trigger?: ReactNode | ((selected: SearchableMenuItem<T> | undefined, isOpen: boolean) => ReactNode)
   /** Custom item renderer */

@@ -1,0 +1,54 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import type { ComponentProps, ReactNode } from 'react'
+
+import { Drawer, DrawerContent, DrawerHandle, DrawerTitle } from '@/components/ui/drawer'
+import { cn } from '@/lib/utils'
+
+export type MobileCardMenuSide = 'top' | 'bottom'
+
+type MobileCardMenuProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  side?: MobileCardMenuSide
+  title: string
+  children: ReactNode
+  className?: string
+  onOpenAutoFocus?: ComponentProps<typeof DrawerContent>['onOpenAutoFocus']
+}
+
+/** Floating mobile menu card with safe-area placement and directional entry. */
+export const MobileCardMenu = ({
+  open,
+  onOpenChange,
+  side = 'bottom',
+  title,
+  children,
+  className,
+  onOpenAutoFocus,
+}: MobileCardMenuProps) => {
+  const safeAreaStyle =
+    side === 'top'
+      ? { paddingTop: 'var(--safe-area-top-padding, 0px)' }
+      : { paddingBottom: 'var(--safe-area-bottom-padding, 0px)' }
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} direction={side} dismissible>
+      <DrawerContent
+        aria-describedby={undefined}
+        onOpenAutoFocus={onOpenAutoFocus}
+        className={cn('overflow-hidden', className)}
+        style={safeAreaStyle}
+      >
+        {side === 'bottom' && <DrawerHandle className="mb-1 mt-2" />}
+        <div className="shrink-0 px-4 pb-2 pt-2">
+          <DrawerTitle className="text-[length:var(--font-size-sm)] text-muted-foreground">{title}</DrawerTitle>
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        {side === 'top' && <DrawerHandle className="mb-2 mt-1" />}
+      </DrawerContent>
+    </Drawer>
+  )
+}

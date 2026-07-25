@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -16,7 +15,7 @@ import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
 import { SettingsListPane } from '@/components/settings/settings-list'
-import { Button } from '@/components/ui/button'
+import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
@@ -148,16 +147,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
         <SettingsListPane className="gap-6 overflow-y-auto">
           <PageHeader title="Agents">
             {allowCustomAgents && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="bg-card"
-                aria-label="Add custom agent"
-                onClick={openAddPanel}
-                disabled={!currentUserId}
-              >
-                <Plus />
-              </Button>
+              <PageCreateAction label="New Agent" onClick={openAddPanel} disabled={!currentUserId} />
             )}
           </PageHeader>
 

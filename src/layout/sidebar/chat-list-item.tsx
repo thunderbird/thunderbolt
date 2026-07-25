@@ -4,7 +4,7 @@
 
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
+import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { memo, useState, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
@@ -96,20 +96,18 @@ export const ChatListItem = memo(
 
     if (isCollapsed) {
       return (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={() => onChatClick(thread.id)}
-            isActive={isActive}
-            className="cursor-pointer"
-            tooltip={thread.title ?? undefined}
-          >
-            {status === 'streaming' ? (
-              <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-            ) : (
-              <MessageCircle className="size-[var(--icon-size-default)] shrink-0" />
-            )}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        <SidebarMenuButton
+          onClick={() => onChatClick(thread.id)}
+          isActive={isActive}
+          className="cursor-pointer"
+          tooltip={thread.title ?? undefined}
+        >
+          {status === 'streaming' ? (
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
+          ) : (
+            <MessageCircle className="size-[var(--icon-size-default)] shrink-0" />
+          )}
+        </SidebarMenuButton>
       )
     }
 
@@ -139,7 +137,10 @@ export const ChatListItem = memo(
       <>
         <DropdownMenu open={openMenu === 'dropdown'} onOpenChange={handleMenuOpenChange('dropdown')}>
           <ContextMenu onOpenChange={handleMenuOpenChange('context')}>
-            <SidebarMenuItem className="group/item">
+            {/* The list `li` is provided by the virtualized row wrapper in
+                chat-list.tsx; this div carries the group classes the menu
+                button's hover/action styles key off. */}
+            <div data-sidebar="menu-item" className="group/menu-item group/item relative">
               <ContextMenuTrigger asChild>
                 <SidebarMenuButton
                   onClick={() => onChatClick(thread.id)}
@@ -203,7 +204,7 @@ export const ChatListItem = memo(
                   />
                 </DropdownMenuContent>
               )}
-            </SidebarMenuItem>
+            </div>
           </ContextMenu>
         </DropdownMenu>
         <RenameChatDialog

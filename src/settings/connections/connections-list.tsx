@@ -16,6 +16,7 @@ import {
 import { StatusIndicator, type StatusState } from '@/components/status-indicator'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Switch } from '@/components/ui/switch'
@@ -198,9 +199,7 @@ export const ConnectionsList = ({
       <PageSearch onSearch={setSearch}>
         <PageHeader title="Connections">
           <PageSearch.Button />
-          <Button variant="outline" size="icon" aria-label="Add MCP server" className="bg-card" onClick={onAdd}>
-            <Plus />
-          </Button>
+          <PageCreateAction label="New Connection" onClick={onAdd} />
         </PageHeader>
 
         <PageSearch.Input placeholder="Search connections" onSearch={setSearch} />
@@ -255,7 +254,7 @@ export const ConnectionsList = ({
             icon={<Plug className="size-8 text-muted-foreground" aria-hidden="true" />}
             description="Connect your own MCP servers to give agents more tools."
             action={
-              <Button size="sm" onClick={onAdd}>
+              <Button size="sm" variant="outline" onClick={onAdd}>
                 <Plus />
                 Add your first server
               </Button>

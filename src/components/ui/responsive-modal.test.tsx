@@ -7,16 +7,25 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { FormFooter } from '@/components/ui/form-footer'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import {
   getResponsiveModalSurfaceClass,
+  getResponsiveModalSurfaceStyle,
   ResponsiveModal,
+  ResponsiveModalCancel,
   ResponsiveModalContent,
   ResponsiveModalContentComposable,
   ResponsiveModalDescription,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from './responsive-modal'
+
+/** happy-dom's default viewport (matches the bun test preload). */
+const desktopWidth = 1024
+
+/** The shell reads `useIsMobile` (a `matchMedia` reader), so mobile-only chrome
+ *  like the top scrim needs the viewport narrowed. Restored after each test. */
+const forceMobileViewport = () => window.happyDOM?.setViewport({ width: 375 })
 
 describe('ResponsiveModal', () => {
   beforeAll(async () => {
@@ -25,6 +34,10 @@ describe('ResponsiveModal', () => {
 
   afterAll(async () => {
     await teardownTestDatabase()
+  })
+
+  afterEach(() => {
+    window.happyDOM?.setViewport({ width: desktopWidth })
   })
 
   const renderModal = (
@@ -94,7 +107,62 @@ describe('ResponsiveModal', () => {
       expect(mobileSurfaceClass).toContain('h-dvh')
       expect(surface).toHaveClass('[&_[data-slot=input]]:!bg-card')
       expect(surface).toHaveClass('[&_[data-slot=combobox-trigger]]:!bg-card')
-      expect(close.className).toContain('size-[var(--touch-height-sm)]')
+      expect(close.className).toContain('size-[var(--touch-height-lg)]')
+      expect(close.className).toContain('md:size-[var(--touch-height-sm)]')
+    })
+
+    it('reserves the keyboard inset so a covered form can still be scrolled', () => {
+      // h-dvh does not shrink for the keyboard, so without this the surface
+      // still "fits" the viewport and the scroller has nothing to hand over.
+      expect(getResponsiveModalSurfaceClass(true, 'structured')).toContain('overflow-auto')
+      expect(getResponsiveModalSurfaceStyle(true)?.paddingBottom).toBe('var(--modal-bottom-inset)')
+    })
+
+    it('leaves the desktop surface unpadded by mobile safe areas', () => {
+      expect(getResponsiveModalSurfaceStyle(false)).toBeUndefined()
+    })
+
+    it('clears the pinned controls and the bottom inset by default', () => {
+      expect(getResponsiveModalSurfaceStyle(true)?.paddingTop).toBe('var(--modal-top-inset)')
+    })
+
+    it('runs flush content corner to corner behind a masked scrim', () => {
+      expect(getResponsiveModalSurfaceStyle(true, true)).toEqual({ paddingBottom: 0, paddingTop: 0 })
+      forceMobileViewport()
+
+      render(
+        <Dialog open>
+          <ResponsiveModalContentComposable flush>
+            <ResponsiveModalHeader>
+              <ResponsiveModalTitle>Flush Title</ResponsiveModalTitle>
+            </ResponsiveModalHeader>
+          </ResponsiveModalContentComposable>
+        </Dialog>,
+        { wrapper: createTestProvider() },
+      )
+
+      const scrim = document.querySelector<HTMLElement>('[data-slot="responsive-modal-top-scrim"]')
+      expect(scrim).toBeInTheDocument()
+      // Masked, so the blur fades out instead of drawing an edge across content.
+      expect(scrim?.className).toContain('backdrop-blur-[4px]')
+      expect(scrim?.style.maskImage).toContain('linear-gradient(to bottom')
+    })
+
+    it('omits the scrim when content starts below the controls', () => {
+      forceMobileViewport()
+
+      render(
+        <Dialog open>
+          <ResponsiveModalContentComposable>
+            <ResponsiveModalHeader>
+              <ResponsiveModalTitle>Inset Title</ResponsiveModalTitle>
+            </ResponsiveModalHeader>
+          </ResponsiveModalContentComposable>
+        </Dialog>,
+        { wrapper: createTestProvider() },
+      )
+
+      expect(document.querySelector('[data-slot="responsive-modal-top-scrim"]')).not.toBeInTheDocument()
     })
 
     it('uses the same shell for the composable API', () => {
@@ -156,6 +224,15 @@ describe('ResponsiveModal', () => {
       const content = screen.getByTestId('content')
       expect(content.className).not.toContain('justify-center')
     })
+  })
+
+  it('gives the mobile cancel action a frosted fill', () => {
+    render(<ResponsiveModalCancel className="custom-class" />, { wrapper: createTestProvider() })
+
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(cancel).toHaveClass('max-md:bg-background/80')
+    expect(cancel).toHaveClass('max-md:backdrop-blur-md')
+    expect(cancel).toHaveClass('custom-class')
   })
 
   it('anchors modal actions at the bottom of the surface', () => {

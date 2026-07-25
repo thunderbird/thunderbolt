@@ -82,6 +82,7 @@ const Harness = ({ onOpenChange }: { onOpenChange: (open: boolean) => void }) =>
 }
 
 const getOverlay = () => document.querySelector('[data-slot="sidebar-overlay"]')!
+const getSidebar = () => document.querySelector('[data-slot="sidebar"]')!
 
 const flushAnimations = async () => {
   await act(async () => {
@@ -90,6 +91,12 @@ const flushAnimations = async () => {
 }
 
 describe('MobileSidebar', () => {
+  it('uses a translucent blurred surface', () => {
+    render(<Harness onOpenChange={() => {}} />)
+
+    expect(getSidebar()).toHaveClass('bg-sidebar/80', 'backdrop-blur-lg')
+  })
+
   it('dims the content without an expensive mobile backdrop filter', () => {
     render(<Harness onOpenChange={() => {}} />)
 

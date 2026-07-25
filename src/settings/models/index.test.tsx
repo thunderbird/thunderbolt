@@ -91,7 +91,7 @@ describe('add model form', () => {
   it('disables Add Model while required fields are empty', async () => {
     renderWithReactivity(<ModelsPage />, { tables: ['models'] })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add model' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New Model' }))
     await waitForElement(() => screen.queryByRole('heading', { name: 'Add Model' }))
 
     // Scope to the aside — the empty-state card renders its own "Add Model"

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { cn } from '@/lib/utils'
+import { createPortal } from 'react-dom'
 
 type MobileBlurBackdropProps = {
   onClick: () => void
@@ -10,15 +11,18 @@ type MobileBlurBackdropProps = {
 }
 
 /** Full-screen backdrop used on mobile to blur and mute content behind popovers/menus.
- *  Rendered as a button so dismissing works for keyboard and screen-reader users. */
-export const MobileBlurBackdrop = ({ onClick, className }: MobileBlurBackdropProps) => (
-  <button
-    type="button"
-    aria-label="Dismiss"
-    className={cn(
-      'fixed inset-0 z-40 cursor-default bg-white/30 backdrop-blur-md backdrop-saturate-[.25] dark:bg-black/30',
-      className,
-    )}
-    onClick={onClick}
-  />
-)
+ *  Portaled to the document body so transformed menu anchors cannot constrain
+ *  its fixed positioning. */
+export const MobileBlurBackdrop = ({ onClick, className }: MobileBlurBackdropProps) =>
+  createPortal(
+    <button
+      type="button"
+      aria-label="Dismiss"
+      className={cn(
+        'fixed inset-0 z-40 cursor-default bg-white/30 backdrop-blur-md backdrop-saturate-[.25] dark:bg-black/30',
+        className,
+      )}
+      onClick={onClick}
+    />,
+    document.body,
+  )

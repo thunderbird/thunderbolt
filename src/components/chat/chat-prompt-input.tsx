@@ -30,10 +30,10 @@ import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, Paperclip, Plug, Plus, X } from 'lucide-react'
+import { AlertCircle, Loader2, X } from 'lucide-react'
 import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
@@ -561,31 +561,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="Add to chat"
-              title="Add to chat"
-              // `hover:bg-accent/50` / open `bg-accent` match the mode and
-              // model picker triggers sitting in the same footer row.
-              className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
-            >
-              <Plus className="size-[var(--icon-size-sm)]" />
-            </button>
-          </DropdownMenuTrigger>
-          {/* Opens downward on desktop, matching the mode/model selectors. */}
-          <DropdownMenuContent side={isMobile ? 'top' : 'bottom'} align="start" className="min-w-44">
-            <DropdownMenuItem onSelect={() => fileInputRef.current?.click()} className="cursor-pointer">
-              <Paperclip className="size-[var(--icon-size-sm)]" />
-              Upload file
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => navigate('/settings/connections')} className="cursor-pointer">
-              <Plug className="size-[var(--icon-size-sm)]" />
-              Connections
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ChatAddMenu
+          onUploadFile={() => fileInputRef.current?.click()}
+          onOpenConnections={() => navigate('/settings/connections')}
+        />
         {isConnecting ? (
           <div
             role="status"

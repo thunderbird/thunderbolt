@@ -209,12 +209,13 @@ export const ModelSelector = ({
       searchable={models.length > 10}
       searchPlaceholder="Search Models"
       emptyMessage="No models found"
-      blurBackdrop
+      mobileTitle="Choose model"
+      mobileSide="bottom"
       trigger={renderTrigger}
       renderItem={renderItem}
       footer={footer}
       contentClassName="max-md:bg-sidebar"
-      width={320}
+      width={240}
       maxHeight={340}
       side={side}
       align={align}

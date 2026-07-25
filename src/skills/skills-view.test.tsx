@@ -151,7 +151,7 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'New Skill' }))
       fireEvent.click(createBtn)
       await flush()
 
@@ -171,7 +171,7 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'New Skill' }))
       fireEvent.click(createBtn)
       await flush()
 
@@ -248,7 +248,7 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'New Skill' }))
       fireEvent.click(createBtn)
       await flush()
 
@@ -289,7 +289,7 @@ describe('SkillsView state machine', () => {
 
   describe('dirty form guard', () => {
     const openCreateFormAndDirty = async () => {
-      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'New Skill' }))
       fireEvent.click(createBtn)
       await flush()
       const nameInput = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement

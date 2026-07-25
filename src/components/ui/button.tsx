@@ -18,7 +18,7 @@ const buttonVariants = cva(
         // switch ON track). bg-brand is the fallback under the image; hover
         // dims via brightness since the background is an image, not a color.
         default:
-          'bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100 disabled:brightness-100 disabled:[background-image:none]',
+          'border border-border bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100 disabled:brightness-100 disabled:[background-image:none]',
         destructive:
           'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         // Dark fill uses card (#282a2b) rather than input — input is the dark
@@ -51,15 +51,15 @@ const buttonVariants = cva(
   },
 )
 
-/** Compact muted icon action (panel-header close/X, kebab menus). Pair with
- *  `variant="ghost" size="icon"`. Sized via --touch-height-sm (40px mobile /
- *  32px desktop) and icons via --icon-size-default (20px / 16px), with the
- *  same bg-muted feedback circle as the responsive modal's shared close
- *  control (also painted while a trigger's menu is open); icons carrying
- *  their own explicit `size-*` class keep it. Mobile is a circle like that
- *  close control; desktop's rounded-xl matches the sidebar nav toggle. */
+/** Muted icon action for panel headers and menus. Pair with
+ *  `variant="ghost" size="icon"`. Mobile matches the 48px height of the
+ *  floating New Chat / page-create pills; desktop remains the compact 32px
+ *  size. Icons use --icon-size-default (20px / 16px), while icons carrying
+ *  their own explicit `size-*` class keep it. Mobile is a circle like the
+ *  responsive modal's close control; desktop's rounded-xl matches the sidebar
+ *  nav toggle. */
 export const mutedIconButtonClass =
-  "size-[var(--touch-height-sm)] rounded-full md:rounded-xl text-muted-foreground hover:bg-muted dark:hover:bg-muted hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground [&_svg:not([class*='size-'])]:size-[var(--icon-size-default)]"
+  "size-[var(--touch-height-lg)] md:size-[var(--touch-height-sm)] rounded-full md:rounded-xl text-muted-foreground hover:bg-muted dark:hover:bg-muted hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground [&_svg:not([class*='size-'])]:size-[var(--icon-size-default)]"
 
 const Button = ({
   className,

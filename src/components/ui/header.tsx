@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AgentSelector } from '@/components/ui/agent-selector'
-import { Button } from '@/components/ui/button'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
@@ -11,7 +12,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
-import { ArrowLeft, ArrowRight, Menu, MessageCirclePlus } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
@@ -149,10 +150,6 @@ export const Header = () => {
     navigate('/settings/agents')
   }
 
-  const handleNewChat = () => {
-    navigate('/chats/new')
-  }
-
   const handleAgentSelect = (agent: Agent) => {
     if (chatThreadId) {
       setSelectedAgent(chatThreadId, agent).catch(console.error)
@@ -171,20 +168,25 @@ export const Header = () => {
 
   // Mobile: 3-column layout. Center holds the agent selector.
   if (isMobile) {
-    const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
-
     return (
       <header
         {...dragProps}
-        className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
+        className="relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
       >
         <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'pl-20')}>
-          {/* In the mobile layout the sidebar opens as an overlay on top of the
-              content, so the toggle reads as a menu (burger) rather than a
-              panel collapse. On macOS the button sits right of the traffic
-              lights via the pl-20 above. */}
-          <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>
-            <Menu strokeWidth={1.5} className="size-[var(--icon-size-default)]" />
+          {/* The same panel glyph as the desktop toggle, so one icon means
+              "sidebar" across both layouts even though mobile opens it as an
+              overlay. On macOS the button sits right of the traffic lights via
+              the pl-20 above. It wears the same muted circle as the overlay's
+              own header controls (close X, ⋯), filled at rest so the tap target
+              is visible without hover. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
+            onClick={toggleSidebar}
+          >
+            <PanelLeftRounded className="size-[var(--icon-size-default)]" />
             <span className="sr-only">Toggle Sidebar</span>
           </Button>
         </div>
@@ -195,19 +197,14 @@ export const Header = () => {
             columns alone don't keep the middle truly centered. */}
         <div
           {...dragProps}
-          className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2"
+          className="absolute left-1/2 top-2 z-10 flex -translate-x-1/2 items-center justify-center gap-2"
         >
           {agentSelector}
         </div>
 
-        <div {...dragProps} className="flex flex-1 items-center gap-1 justify-end">
-          {showNewChatButton && (
-            <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={handleNewChat}>
-              <MessageCirclePlus className="size-[var(--icon-size-default)]" />
-              <span className="sr-only">New Chat</span>
-            </Button>
-          )}
-        </div>
+        {/* Empty right column — keeps the centered agent selector balanced and
+            stays a drag surface on the Tauri desktop app. */}
+        <div {...dragProps} className="flex flex-1 items-center" />
       </header>
     )
   }

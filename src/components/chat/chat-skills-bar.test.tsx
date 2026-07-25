@@ -67,8 +67,25 @@ const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}) => 
   )
 }
 
+const defaultMatchMedia = window.matchMedia
+const useMobileViewport = () => {
+  window.matchMedia = () => ({
+    matches: true,
+    media: '(max-width: 767px)',
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => true,
+  })
+}
+
 describe('ChatSkillsBar', () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    window.matchMedia = defaultMatchMedia
+  })
 
   it('renders nothing when there are no pinned skills and nothing to pin', () => {
     const { container } = renderBar()
@@ -113,6 +130,24 @@ describe('ChatSkillsBar', () => {
     fireEvent.click(trigger)
     expect(screen.getByText('All skills are pinned')).toBeTruthy()
     expect(screen.getByText('New skill')).toBeTruthy()
+  })
+
+  it('opens the add-skill menu as a mobile bottom drawer', () => {
+    useMobileViewport()
+    const a = skill('a', 'daily-brief')
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [] }),
+      useLibrarySkills: fakeUseLibrarySkills([a]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+    })
+
+    fireEvent.click(screen.getByLabelText('Add a skill'))
+
+    const drawer = screen
+      .getByText('Add a skill', { selector: '[data-slot="drawer-title"]' })
+      .closest('[data-slot="drawer-content"]')
+    expect(drawer).toHaveAttribute('data-vaul-drawer-direction', 'bottom')
+    expect(screen.getByText('Daily Brief')).toBeInTheDocument()
   })
 
   it('disables the "+ Add a skill" trigger when the pin cap is reached (even with unpinned candidates available)', () => {

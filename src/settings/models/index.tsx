@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Plus, X } from 'lucide-react'
+import { X } from 'lucide-react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { SettingsListPane } from '@/components/settings/settings-list'
@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { StatusCard } from '@/components/ui/status-card'
 import { AddModelForm } from './add-model-form'
@@ -80,15 +80,7 @@ const ModelsPage = () => {
       <div className="min-w-0 flex-1 overflow-hidden">
         <SettingsListPane className="gap-6 pb-12">
           <PageHeader title="Models">
-            <Button
-              variant="outline"
-              size="icon"
-              className="bg-card"
-              aria-label="Add model"
-              onClick={page.openAddPanel}
-            >
-              <Plus />
-            </Button>
+            <PageCreateAction label="New Model" onClick={page.openAddPanel} />
           </PageHeader>
           {showPageLevelError && (
             <StatusCard

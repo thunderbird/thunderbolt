@@ -28,7 +28,7 @@ export default function Sidebar() {
   const db = useDatabase()
   const navigate = useNavigate()
   const location = useLocation()
-  const { setOpenMobile, state, toggleSidebar } = useSidebar()
+  const { closeMobileSidebar, state, toggleSidebar } = useSidebar()
   const { isMobile } = useIsMobile()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
@@ -112,30 +112,33 @@ export default function Sidebar() {
     },
   })
 
+  // On mobile, wait for the drawer's close animation to settle before
+  // navigating — rendering the target route (especially a large chat) on the
+  // main thread would otherwise jank the closing spring. Resolves immediately
+  // on desktop or when the drawer is already closed.
+  const navigateAfterSidebarClose = useCallback(
+    async (path: string) => {
+      await closeMobileSidebar()
+      navigate(path)
+    },
+    [closeMobileSidebar, navigate],
+  )
+
   const createNewChat = () => {
     trackEvent('chat_new_clicked')
-    navigate(`/chats/new`)
-    if (isMobile) {
-      setOpenMobile(false)
-    }
+    void navigateAfterSidebarClose('/chats/new')
   }
 
   const handleChatClick = useCallback(
     (threadId: string) => {
-      navigate(`/chats/${threadId}`)
       trackEvent('chat_select', { chat_id: threadId })
-      if (isMobile) {
-        setOpenMobile(false)
-      }
+      void navigateAfterSidebarClose(`/chats/${threadId}`)
     },
-    [navigate, isMobile, setOpenMobile],
+    [navigateAfterSidebarClose],
   )
 
   const handleNavigate = (path: string) => {
-    navigate(path)
-    if (isMobile) {
-      setOpenMobile(false)
-    }
+    void navigateAfterSidebarClose(path)
   }
 
   const handleSearchClick = (e?: MouseEvent) => {

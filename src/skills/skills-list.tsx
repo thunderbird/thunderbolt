@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react'
 import { SettingsEmptyState, SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { SettingsListBody, SettingsListPane, SettingsSectionLabel } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
+import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import type { Skill } from '@/types'
@@ -66,9 +67,7 @@ export const SkillsList = ({
       <PageSearch onSearch={setSearch}>
         <PageHeader title="Skills">
           <PageSearch.Button />
-          <Button variant="outline" size="icon" aria-label="Create skill" className="bg-card" onClick={onCreate}>
-            <Plus />
-          </Button>
+          <PageCreateAction label="New Skill" onClick={onCreate} />
         </PageHeader>
 
         <PageSearch.Input placeholder="Search skills" onSearch={setSearch} />
@@ -137,7 +136,7 @@ export const SkillsList = ({
                 </>
               }
               action={
-                <Button size="sm" onClick={onCreate}>
+                <Button size="sm" variant="outline" onClick={onCreate}>
                   <Plus />
                   Create your first skill
                 </Button>

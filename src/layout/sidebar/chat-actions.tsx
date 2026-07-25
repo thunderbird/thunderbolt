@@ -8,7 +8,8 @@ import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import type { ChatActionsProps } from './types'
 
-const actionButtonClass = 'size-[var(--touch-height-lg)] md:size-8 items-center justify-center cursor-pointer'
+const actionButtonClass =
+  'size-[var(--touch-height-lg)] md:size-8 items-center justify-center cursor-pointer text-muted-foreground hover:text-sidebar-foreground'
 
 export const ChatActions = ({
   isCollapsed,

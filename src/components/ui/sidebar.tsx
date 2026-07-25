@@ -28,6 +28,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -47,6 +48,12 @@ type SidebarContextProps = {
   setOpen: (open: boolean) => void
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
+  /** Closes the mobile drawer and resolves once its close animation has fully
+   *  settled (immediately when it isn't open). Await this before kicking off
+   *  main-thread-heavy work like navigating to a large chat. */
+  closeMobileSidebar: () => Promise<void>
+  /** Internal: invoked by the mobile drawer when its close animation finishes. */
+  notifyMobileSidebarClosed: () => void
   isMobile: boolean
   toggleSidebar: () => void
   //* new properties for sidebar resizing
@@ -119,6 +126,27 @@ const SidebarProvider = forwardRef<
 
     const { triggerImpact } = useHaptics()
 
+    // Resolvers awaiting the mobile drawer's close animation. Flushed by
+    // notifyMobileSidebarClosed, which MobileSidebar calls when the spring settles.
+    const mobileCloseResolversRef = useRef<Array<() => void>>([])
+
+    const notifyMobileSidebarClosed = useCallback(() => {
+      const resolvers = mobileCloseResolversRef.current
+      mobileCloseResolversRef.current = []
+      resolvers.forEach((resolve) => resolve())
+    }, [])
+
+    const closeMobileSidebar = useCallback((): Promise<void> => {
+      if (!isMobile || !openMobile) {
+        return Promise.resolve()
+      }
+
+      return new Promise((resolve) => {
+        mobileCloseResolversRef.current.push(resolve)
+        setOpenMobile(false)
+      })
+    }, [isMobile, openMobile])
+
     // Helper to toggle the sidebar.
     const toggleSidebar = useCallback(() => {
       if (isMobile) {
@@ -154,6 +182,8 @@ const SidebarProvider = forwardRef<
         isMobile,
         openMobile,
         setOpenMobile,
+        closeMobileSidebar,
+        notifyMobileSidebarClosed,
         toggleSidebar,
         //* new context for sidebar resizing
         width,
@@ -170,6 +200,8 @@ const SidebarProvider = forwardRef<
         openMobile,
         //* remove setOpenMobile from dependencies because setOpenMobile are state setters created by useState
         // setOpenMobile,
+        closeMobileSidebar,
+        notifyMobileSidebarClosed,
         toggleSidebar,
         //* add width to dependencies
         width,
@@ -219,6 +251,7 @@ const Sidebar = forwardRef<
     state,
     openMobile,
     setOpenMobile,
+    notifyMobileSidebarClosed,
     //* new property for tracking is dragging rail
     isDraggingRail,
   } = useSidebar()
@@ -226,7 +259,10 @@ const Sidebar = forwardRef<
   if (collapsible === 'none') {
     return (
       <div
-        className={cn('flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground', className)}
+        className={cn(
+          'flex h-full w-(--sidebar-width) flex-col bg-sidebar/80 text-sidebar-foreground backdrop-blur-lg',
+          className,
+        )}
         ref={ref}
         {...props}
       >
@@ -237,7 +273,14 @@ const Sidebar = forwardRef<
 
   if (isMobile) {
     return (
-      <MobileSidebar open={openMobile} onOpenChange={setOpenMobile} side={side} className={className} {...props}>
+      <MobileSidebar
+        open={openMobile}
+        onOpenChange={setOpenMobile}
+        onCloseComplete={notifyMobileSidebarClosed}
+        side={side}
+        className={className}
+        {...props}
+      >
         {children}
       </MobileSidebar>
     )
@@ -285,7 +328,7 @@ const Sidebar = forwardRef<
       >
         <div
           data-sidebar="sidebar"
-          className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
+          className="flex h-full w-full flex-col bg-sidebar/80 backdrop-blur-lg group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
         >
           {children}
         </div>

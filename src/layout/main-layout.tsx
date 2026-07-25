@@ -5,7 +5,9 @@
 import { DownloadAppBannerDesktop } from '@/components/download-app-banner-desktop'
 import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
 import { FloatingHeader } from '@/components/floating-header'
+import { Dialog } from '@/components/ui/dialog'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { SidebarInset } from '@/components/ui/sidebar'
 import { ArtifactSidebarContent } from '@/content-view/artifact-sidebar-content'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
@@ -32,17 +34,17 @@ export default function Page() {
     content_view_width: Number,
   })
   const isOpen = state.type !== null
-  const prevIsOpen = useRef(isOpen)
+  const desktopPanelOpen = isOpen && !isMobile
+  const prevDesktopPanelOpen = useRef(desktopPanelOpen)
   const lastSavedWidth = useRef<number | null>(null)
 
   useEffect(() => {
     // Only animate on state changes, not on mount
-    if (prevIsOpen.current !== isOpen && panelRef.current) {
-      if (isOpen) {
-        // On mobile: always use 100% width. On desktop: use saved width if above threshold, otherwise use default
+    if (prevDesktopPanelOpen.current !== desktopPanelOpen && panelRef.current) {
+      if (desktopPanelOpen) {
         const savedWidth = contentViewWidth.value
         const hasSavedWidthAboveThreshold = savedWidth && savedWidth >= minimumWidthThreshold
-        const targetWidth = isMobile ? 100 : hasSavedWidthAboveThreshold ? savedWidth : defaultOpenWidth
+        const targetWidth = hasSavedWidthAboveThreshold ? savedWidth : defaultOpenWidth
 
         // Opening: animate from 0 to target width
         requestAnimationFrame(() => {
@@ -57,10 +59,9 @@ export default function Page() {
           }
         })
       } else {
-        // Closing: save current size before animating to 0 (but not on mobile)
+        // Closing: save current size before animating to 0.
         const currentSize = panelRef.current.getSize().asPercentage
-        const shouldSaveWidthOnClose = currentSize > 0 && !isMobile
-        if (shouldSaveWidthOnClose) {
+        if (currentSize > 0) {
           lastSavedWidth.current = currentSize
           contentViewWidth.setValue(currentSize)
         }
@@ -74,8 +75,8 @@ export default function Page() {
         })
       }
     }
-    prevIsOpen.current = isOpen
-  }, [isOpen, isMobile, contentViewWidth])
+    prevDesktopPanelOpen.current = desktopPanelOpen
+  }, [desktopPanelOpen, contentViewWidth, panelRef])
 
   // Persist width changes as user resizes (but not on mobile)
   const handleResize = ({ asPercentage }: { asPercentage: number }) => {
@@ -88,6 +89,15 @@ export default function Page() {
       }
     }
   }
+
+  const contentView = (
+    <>
+      {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />}
+      {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
+      {state.type === 'sideview' && <Sideview />}
+      {state.type === 'artifact' && <ArtifactSidebarContent data={state.data} onClose={close} />}
+    </>
+  )
 
   return (
     <SidebarInset className="h-full flex flex-col">
@@ -122,7 +132,7 @@ export default function Page() {
             </div>
           </div>
         </ResizablePanel>
-        {isOpen && !isMobile && (
+        {desktopPanelOpen && (
           <div className="relative h-full flex">
             <ResizableHandle withHandle className="h-full" />
             {/* 
@@ -136,41 +146,45 @@ export default function Page() {
             )}
           </div>
         )}
-        <ResizablePanel
-          panelRef={panelRef}
-          collapsible
-          defaultSize="0%"
-          minSize="0%"
-          collapsedSize="0%"
-          onResize={(panelSize, _id, prevPanelSize) => {
-            if (prevPanelSize && prevPanelSize.asPercentage > 0 && panelSize.asPercentage === 0) {
-              close()
-            }
-            handleResize(panelSize)
-          }}
-          className="overflow-hidden"
-        >
-          <AnimatePresence initial={false}>
-            {isOpen && (
-              <m.div
-                key="sidebar-content"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2, delay: 0.15 }}
-                className="h-full"
-              >
-                {state.type === 'preview' && (
-                  <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />
-                )}
-                {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
-                {state.type === 'sideview' && <Sideview />}
-                {state.type === 'artifact' && <ArtifactSidebarContent data={state.data} onClose={close} />}
-              </m.div>
-            )}
-          </AnimatePresence>
-        </ResizablePanel>
+        {!isMobile && (
+          <ResizablePanel
+            panelRef={panelRef}
+            collapsible
+            defaultSize="0%"
+            minSize="0%"
+            collapsedSize="0%"
+            onResize={(panelSize, _id, prevPanelSize) => {
+              if (prevPanelSize && prevPanelSize.asPercentage > 0 && panelSize.asPercentage === 0) {
+                close()
+              }
+              handleResize(panelSize)
+            }}
+            className="overflow-hidden"
+          >
+            <AnimatePresence initial={false}>
+              {isOpen && (
+                <m.div
+                  key="sidebar-content"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2, delay: 0.15 }}
+                  className="h-full"
+                >
+                  {contentView}
+                </m.div>
+              )}
+            </AnimatePresence>
+          </ResizablePanel>
+        )}
       </ResizablePanelGroup>
+      {isMobile && (
+        <Dialog open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
+          <ResponsiveModalContentComposable className="gap-0 p-0" flush>
+            {contentView}
+          </ResponsiveModalContentComposable>
+        </Dialog>
+      )}
     </SidebarInset>
   )
 }

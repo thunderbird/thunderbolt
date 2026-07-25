@@ -64,7 +64,7 @@ describe('AgentsSettingsPage — availability', () => {
     renderPage(authClient)
 
     expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /new agent/i })).toBeInTheDocument()
   })
 
   it('renders for authenticated users', () => {
@@ -72,7 +72,7 @@ describe('AgentsSettingsPage — availability', () => {
     renderPage(authClient)
 
     expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /new agent/i })).toBeInTheDocument()
   })
 
   it('opens the detail panel when a row is clicked and closes it again', () => {
@@ -114,11 +114,11 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
     localStorage.clear()
   })
 
-  /** Opens Add custom agent and enters a valid iroh target. */
+  /** Opens the New Agent form and enters a valid iroh target. */
   const openAddIrohAgent = (enrollIroh: () => Promise<void>) => {
     const authClient = createMockAuthClient({ session: authedSession })
     renderPage(authClient, { loadAppNodeId: async () => appNodeId, enrollIroh })
-    fireEvent.click(screen.getByRole('button', { name: /add custom agent/i }))
+    fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
     fireEvent.change(screen.getByPlaceholderText('My Agent'), { target: { value: 'Laptop Bridge' } })
     fireEvent.change(screen.getByPlaceholderText(/paste an iroh ticket/i), { target: { value: irohTarget } })
   }

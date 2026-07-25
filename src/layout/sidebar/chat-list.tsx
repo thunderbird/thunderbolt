@@ -15,11 +15,29 @@ import {
 import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
+import { Virtualizer, type CustomContainerComponentProps, type CustomItemComponentProps } from 'virtua'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
 import { RailDivider } from './rail-divider'
 import type { ChatListProps } from './types'
+
+/** Virtua's list container, rendered as the semantic `ul` the rows live in. */
+const VirtualChatMenu = ({ style, children, ref }: CustomContainerComponentProps) => (
+  <SidebarMenu ref={ref as Ref<HTMLUListElement>} style={style}>
+    {children}
+  </SidebarMenu>
+)
+
+/** Virtua's row wrapper: the inner padding restores the chat list's original
+ * 4px rhythm. It must sit inside the observed `li`: ResizeObserver's
+ * `contentRect` excludes padding on the observed element, which would make
+ * virtua position the next row before that spacing. */
+const VirtualChatRow = ({ style, children, ref }: CustomItemComponentProps) => (
+  <li ref={ref as Ref<HTMLLIElement>} style={style}>
+    <div className="pb-1">{children}</div>
+  </li>
+)
 
 export const ChatList = ({
   chatThreads,
@@ -43,7 +61,7 @@ export const ChatList = ({
   onSearchQueryChange,
   onContentBelowChange,
 }: ChatListProps) => {
-  const scrollContainerRef = useRef<HTMLUListElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isNativeMobile = useIsNativeMobile()
   // Drives this list's own top scroll shadow; only the bottom counterpart is
   // lifted (the sidebar footer renders that shadow).
@@ -136,60 +154,72 @@ export const ChatList = ({
             first chat rows. Transition is scoped to the animated properties so
             sidebar-width changes (rail collapse) don't ride along. */}
         {!isMobile && searchInput}
-        <SidebarMenu
+        {isCollapsed && hasListContent && (
+          <SidebarMenu className="flex-shrink-0">
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={(e) => onSearchClick(e)}
+                tooltip="Search chats"
+                className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
+              >
+                <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => deleteAllChatsDialogRef.current?.open()}
+                disabled={deleteAllChatsMutation.isPending}
+                tooltip="Clear all chats"
+                className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
+              >
+                {deleteAllChatsMutation.isPending ? (
+                  <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
+                ) : (
+                  <Flame className="size-[var(--icon-size-default)]" />
+                )}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
+            <li aria-hidden>
+              <RailDivider className="my-1.5" />
+            </li>
+          </SidebarMenu>
+        )}
+        <div
           ref={scrollContainerRef}
           className={cn(
-            'mt-0 -mx-2 w-[calc(100%+1rem)] flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 scrollbar-hide touch-pan-y md:mt-2 group-data-[collapsible=icon]:mt-0',
+            'mt-0 -mx-2 w-[calc(100%+1rem)] flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 scrollbar-hide touch-pan-y [overflow-anchor:none] md:mt-2 group-data-[collapsible=icon]:mt-0',
             hasContentAbove && 'shadow-[inset_0_8px_16px_-14px_rgba(0,0,0,0.35)]',
           )}
         >
-          {isCollapsed && hasListContent && (
-            <>
-              <SidebarMenuItem>
-                <SidebarMenuButton onClick={(e) => onSearchClick(e)} tooltip="Search chats" className="cursor-pointer">
-                  <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => deleteAllChatsDialogRef.current?.open()}
-                  disabled={deleteAllChatsMutation.isPending}
-                  tooltip="Clear all chats"
-                  className="cursor-pointer"
-                >
-                  {deleteAllChatsMutation.isPending ? (
-                    <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
-                  ) : (
-                    <Flame className="size-[var(--icon-size-default)]" />
-                  )}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
-              <li aria-hidden>
-                <RailDivider className="my-1.5" />
-              </li>
-            </>
+          {/* No ssrCount here: virtua serves the unclamped [0, ssrCount) range
+              until the first scroll event, so deleting rows below ssrCount
+              before scrolling crashes it. Tests stub measurement instead
+              (see test-utils/mock-virtua-measurement.ts). */}
+          {chatThreads.length > 0 && (
+            <Virtualizer scrollRef={scrollContainerRef} as={VirtualChatMenu} item={VirtualChatRow}>
+              {chatThreads.map((thread) => (
+                <ChatListItem
+                  key={thread.id}
+                  thread={thread}
+                  isActive={thread.id === currentChatThreadId}
+                  isCollapsed={isCollapsed}
+                  isMobile={isMobile}
+                  deleteChatMutation={deleteChatMutation}
+                  threadIdRef={threadIdRef}
+                  deleteChatDialogRef={deleteChatDialogRef}
+                  onChatClick={onChatClick}
+                  onRename={onRename}
+                />
+              ))}
+            </Virtualizer>
           )}
-          {chatThreads.map((thread) => (
-            <ChatListItem
-              key={thread.id}
-              thread={thread}
-              isActive={thread.id === currentChatThreadId}
-              isCollapsed={isCollapsed}
-              isMobile={isMobile}
-              deleteChatMutation={deleteChatMutation}
-              threadIdRef={threadIdRef}
-              deleteChatDialogRef={deleteChatDialogRef}
-              onChatClick={onChatClick}
-              onRename={onRename}
-            />
-          ))}
           {chatThreads.length === 0 && debouncedSearchQuery && !isCollapsed && (
             <div className="text-center text-sm py-12 px-4 text-muted-foreground">
               No matches for "{debouncedSearchQuery}"
             </div>
           )}
-        </SidebarMenu>
+        </div>
       </SidebarGroup>
 
       <DeleteAllChatsDialog onConfirm={() => deleteAllChatsMutation.mutate()} ref={deleteAllChatsDialogRef} />

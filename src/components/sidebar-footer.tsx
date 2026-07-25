@@ -282,7 +282,7 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
     <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
       <ShadcnSidebarFooter
         className={cn(
-          '!gap-0 bg-sidebar',
+          '!gap-0 bg-transparent',
           hasContentBelow && 'shadow-[0_-8px_16px_-14px_rgba(0,0,0,0.35)]',
           isDesktopCollapsed && '!p-0',
           isNativeMobile && '!pb-0',

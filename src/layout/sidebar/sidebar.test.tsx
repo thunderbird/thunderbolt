@@ -10,6 +10,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockHttpClient } from '@/test-utils/http-client'
+import { mockVirtuaMeasurement } from '@/test-utils/mock-virtua-measurement'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
@@ -21,11 +22,17 @@ import Sidebar from './index'
 import type { ReactNode } from 'react'
 
 describe('Sidebar reactivity', () => {
+  // The chat list is virtualized (virtua) — give it real-looking measurements
+  // or it renders zero rows in happy-dom.
+  let restoreVirtuaMeasurement: () => void
+
   beforeAll(async () => {
+    restoreVirtuaMeasurement = mockVirtuaMeasurement()
     await setupTestDatabase()
   })
 
   afterAll(async () => {
+    restoreVirtuaMeasurement()
     await teardownTestDatabase()
   })
 
@@ -73,6 +80,7 @@ describe('Sidebar reactivity', () => {
     await waitForElement(() => screen.queryByText('First Chat'))
     expect(screen.getByText('First Chat')).toBeInTheDocument()
     expect(screen.getByText('Second Chat')).toBeInTheDocument()
+    expect(screen.getByText('First Chat').closest('li')?.firstElementChild).toHaveClass('pb-1')
 
     await deleteChatThread(db, threadId2)
     triggerChange(['chat_threads'])

@@ -7,12 +7,19 @@ import type { ReactNode } from 'react'
 
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
+import { cn } from '@/lib/utils'
 
 /** The detail panels' shared ⋯ header menu; children are its menu items. */
 export const DetailActionsMenu = ({ children }: { children: ReactNode }) => (
   <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="More"
+        className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
+      >
         <MoreVertical />
       </Button>
     </DropdownMenuTrigger>

@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Input } from '@/components/ui/input'
+import { MobileCardMenu } from '@/components/ui/mobile-card-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { edgeSpacing } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Search } from 'lucide-react'
@@ -129,7 +129,8 @@ export const SearchableMenu = <T,>({
   searchable = true,
   searchPlaceholder = 'Search...',
   emptyMessage = 'No items found',
-  blurBackdrop = false,
+  mobileTitle = 'Choose an option',
+  mobileSide = 'bottom',
   trigger,
   renderItem,
   footer,
@@ -191,7 +192,6 @@ export const SearchableMenu = <T,>({
   }
 
   const flatFiltered = flattenItems(filteredItems)
-  const showBlur = blurBackdrop && isMobile && open
 
   const triggerContent =
     typeof trigger === 'function' ? (
@@ -202,87 +202,109 @@ export const SearchableMenu = <T,>({
       <DefaultTrigger selected={selected} isOpen={open} />
     )
 
-  const contentWidth = isMobile
-    ? `calc(100vw - ${edgeSpacing.mobile * 2}px)`
-    : typeof width === 'number'
-      ? `${width}px`
-      : width
+  const contentWidth = typeof width === 'number' ? `${width}px` : width
+  const menuContent = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-col gap-2">
+        {searchable && (
+          <div className="px-1 pt-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                placeholder={searchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="rounded-lg pl-9"
+                autoFocus={false}
+              />
+            </div>
+          </div>
+        )}
 
-  return (
-    <Popover open={open} onOpenChange={setOpen} modal={isMobile}>
-      <PopoverTrigger asChild>
-        <button type="button" className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50')}>
-          {triggerContent}
-        </button>
-      </PopoverTrigger>
-
-      {showBlur && <MobileBlurBackdrop onClick={() => setOpen(false)} />}
-
-      <PopoverContent
-        align={isMobile ? 'center' : align}
-        side={side}
-        sideOffset={5}
-        collisionPadding={isMobile ? edgeSpacing.mobile : edgeSpacing.desktop}
-        className={cn('p-0 rounded-xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
-        style={{ width: contentWidth }}
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
-        <div className="flex flex-col">
-          <div className="flex flex-col gap-2">
-            {searchable && (
-              <div className="px-1 pt-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <Input
-                    placeholder={searchPlaceholder}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 rounded-lg"
-                    autoFocus={false}
+        <div
+          className="min-h-0 overflow-y-auto"
+          style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
+        >
+          <div className={cn('flex flex-col gap-4 px-1 pb-1', !searchable && 'pt-1')}>
+            {isGroupedItems(filteredItems) ? (
+              filteredItems.map((group) => (
+                <GroupSection
+                  key={group.id}
+                  group={group}
+                  value={value}
+                  onSelect={handleSelect}
+                  renderItem={renderItem}
+                  hideLabel={filteredItems.length === 1}
+                />
+              ))
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
+                  <ItemButton
+                    key={item.id}
+                    item={item}
+                    isSelected={value === item.id}
+                    onClick={() => handleSelect(item.id, item)}
+                    renderItem={renderItem}
                   />
-                </div>
+                ))}
               </div>
             )}
 
-            <div
-              className="overflow-y-auto"
-              style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
-            >
-              <div className={cn('flex flex-col gap-4 px-1 pb-1', !searchable && 'pt-1')}>
-                {isGroupedItems(filteredItems) ? (
-                  filteredItems.map((group) => (
-                    <GroupSection
-                      key={group.id}
-                      group={group}
-                      value={value}
-                      onSelect={handleSelect}
-                      renderItem={renderItem}
-                      hideLabel={filteredItems.length === 1}
-                    />
-                  ))
-                ) : (
-                  <div className="flex flex-col gap-0.5">
-                    {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
-                      <ItemButton
-                        key={item.id}
-                        item={item}
-                        isSelected={value === item.id}
-                        onClick={() => handleSelect(item.id, item)}
-                        renderItem={renderItem}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {flatFiltered.length === 0 && (
-                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
-                )}
-              </div>
-            </div>
+            {flatFiltered.length === 0 && (
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+            )}
           </div>
-
-          {footer && <div className="border-t px-2 py-2">{footer}</div>}
         </div>
+      </div>
+
+      {footer && <div className="border-t px-2 py-2">{footer}</div>}
+    </div>
+  )
+
+  if (isMobile) {
+    return (
+      <>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className="flex items-center focus:outline-none"
+          onClick={() => setOpen(!open)}
+        >
+          {triggerContent}
+        </button>
+        <MobileCardMenu
+          open={open}
+          onOpenChange={setOpen}
+          side={mobileSide}
+          title={mobileTitle}
+          className={contentClassName}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          {menuContent}
+        </MobileCardMenu>
+      </>
+    )
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className="flex items-center focus:outline-none">
+          {triggerContent}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        side={side}
+        sideOffset={5}
+        collisionPadding={edgeSpacing.desktop}
+        className={cn('overflow-hidden rounded-xl p-0 shadow-lg duration-100', contentClassName)}
+        style={{ width: contentWidth }}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        {menuContent}
       </PopoverContent>
     </Popover>
   )

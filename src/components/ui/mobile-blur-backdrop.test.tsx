@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
 import { MobileBlurBackdrop } from './mobile-blur-backdrop'
@@ -13,11 +13,11 @@ afterEach(cleanup)
 describe('MobileBlurBackdrop', () => {
   it('blurs and mutes the colors behind mobile menus', () => {
     const onClick = mock()
-    const { container } = render(<MobileBlurBackdrop onClick={onClick} />)
-    const backdrop = container.firstElementChild
+    render(<MobileBlurBackdrop onClick={onClick} />)
+    const backdrop = screen.getByRole('button', { name: 'Dismiss' })
 
     expect(backdrop).toHaveClass('backdrop-blur-md', 'backdrop-saturate-[.25]')
-    fireEvent.click(backdrop!)
+    fireEvent.click(backdrop)
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 })

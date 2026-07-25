@@ -103,7 +103,7 @@ export const AgentSelector = ({
         data-testid="agent-selector-trigger"
         aria-disabled={disabled}
         className={cn(
-          'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full transition-colors text-[length:var(--font-size-body)] max-w-[50vw] md:max-w-none',
+          'flex h-[var(--touch-height-sm)] max-w-[50vw] items-center gap-2 rounded-full px-3 text-[length:var(--font-size-body)] transition-colors max-md:h-[var(--touch-height-lg)] max-md:backdrop-blur-md max-md:active:bg-muted-foreground/20 md:max-w-none',
           disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
           // Light secondary is nearly the same shade as the page background,
           // so at 50% the hover reads as invisible — use full accent there
@@ -162,11 +162,12 @@ export const AgentSelector = ({
       searchable={agents.length > 10}
       searchPlaceholder="Search agents"
       emptyMessage="No agents found"
-      blurBackdrop
+      mobileTitle="Choose agent"
+      mobileSide="top"
       trigger={renderTrigger}
       renderItem={renderAgentItem}
       footer={footer}
-      width={320}
+      width={240}
       maxHeight={340}
       side={side}
       align={align}

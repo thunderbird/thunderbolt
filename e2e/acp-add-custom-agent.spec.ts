@@ -44,7 +44,7 @@ test.describe('ACP add custom agent', () => {
     await page.goto('/settings/agents')
     await expect(page.getByTestId('agent-list')).toBeVisible({ timeout: 10_000 })
 
-    await page.getByRole('button', { name: 'Add custom agent' }).click()
+    await page.getByRole('button', { name: 'New Agent' }).click()
 
     // Scoped by the panel title: the app renders other `aside` landmarks.
     const panel = page.getByRole('complementary').filter({ hasText: 'Add Custom Agent' })

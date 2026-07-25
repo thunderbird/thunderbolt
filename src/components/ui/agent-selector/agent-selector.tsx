@@ -177,19 +177,21 @@ export const AgentSelector = ({
     )
   }
 
-  const footer = onAddAgent ? (
-    <button
-      type="button"
-      onClick={() => {
-        setOpen(false)
-        onAddAgent()
-      }}
-      className={searchableMenuFooterActionClass}
-    >
-      <Plus className="size-4" />
-      Add agent
-    </button>
-  ) : undefined
+  const footer = onAddAgent
+    ? (closeMenu: () => void) => (
+        <button
+          type="button"
+          onClick={() => {
+            closeMenu()
+            onAddAgent()
+          }}
+          className={searchableMenuFooterActionClass}
+        >
+          <Plus className="size-4" />
+          Add agent
+        </button>
+      )
+    : undefined
 
   return (
     <SearchableMenu

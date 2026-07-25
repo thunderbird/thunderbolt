@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
+import { useCreateItem } from '@/components/create-item/context'
 import { ModelSelector } from '@/components/ui/model-selector'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useNavigate } from 'react-router'
 
 /**
  * Model picker for the chat composer. Renders only for the built-in
@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router'
 export const ChatModelPicker = () => {
   const models = useChatStore((state) => state.models)
   const setSelectedModel = useChatStore((state) => state.setSelectedModel)
-  const navigate = useNavigate()
+  const { openCreateItem } = useCreateItem()
   const { isMobile } = useIsMobile()
   const { id: chatThreadId, selectedAgent, selectedModel, chatThread } = useCurrentChatSession()
 
@@ -37,9 +37,7 @@ export const ChatModelPicker = () => {
       selectedModel={selectedModel ?? null}
       chatThread={chatThread ?? null}
       onModelChange={handleModelChange}
-      // One-shot deep link (see useConsumeNavState): lands with the Add Model
-      // panel already open instead of on the bare list.
-      onAddModels={() => navigate('/settings/models', { state: { createModel: '' } })}
+      onAddModels={() => openCreateItem({ kind: 'model' })}
       side={isMobile ? 'top' : 'bottom'}
       align="end"
     />

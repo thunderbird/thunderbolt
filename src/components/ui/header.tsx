@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AgentSelector } from '@/components/ui/agent-selector'
+import { useCreateItem } from '@/components/create-item/context'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
@@ -166,7 +167,7 @@ export const Header = () => {
   // 48px icon rail, so nudge the header content right of the overhang with
   // some breathing room so the agent selector pill doesn't crowd the buttons.
   const needsTrafficLightClearance = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
-  const navigate = useNavigate()
+  const { openCreateItem } = useCreateItem()
   const location = useLocation()
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
@@ -196,9 +197,7 @@ export const Header = () => {
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
 
   const handleAddAgent = () => {
-    // One-shot deep link (see useConsumeNavState): lands with the Add Custom
-    // Agent panel already open instead of on the bare list.
-    navigate('/settings/agents', { state: { createAgent: '' } })
+    openCreateItem({ kind: 'agent' })
   }
 
   const handleAgentSelect = (agent: Agent) => {

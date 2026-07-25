@@ -24,6 +24,8 @@ export type SearchableMenuGroup<T = unknown> = {
   items: SearchableMenuItem<T>[]
 }
 
+export type SearchableMenuFooter = ReactNode | ((closeMenu: () => void) => ReactNode)
+
 export type SearchableMenuProps<T = unknown> = {
   /** Items to display - can be flat or grouped */
   items: SearchableMenuItem<T>[] | SearchableMenuGroup<T>[]
@@ -45,8 +47,8 @@ export type SearchableMenuProps<T = unknown> = {
   trigger?: ReactNode | ((selected: SearchableMenuItem<T> | undefined, isOpen: boolean) => ReactNode)
   /** Custom item renderer */
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
-  /** Footer content (e.g., "Add Models" button) */
-  footer?: ReactNode
+  /** Footer content, optionally rendered with an imperative close-first action. */
+  footer?: SearchableMenuFooter
   /** Popover width */
   width?: string | number
   /** Controlled open state */

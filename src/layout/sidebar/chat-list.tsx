@@ -4,6 +4,7 @@
 
 import { DeleteAllChatsDialog } from '@/components/delete-all-chats-dialog'
 import { DeleteChatDialog } from '@/components/delete-chat-dialog'
+import { Scrim } from '@/components/ui/scrim'
 import { SearchInput } from '@/components/ui/search-input'
 import {
   SidebarGroup,
@@ -15,7 +16,7 @@ import {
 } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
-import { useEffect, useRef, useState, type Ref } from 'react'
+import { useLayoutEffect, useRef, useState, type Ref } from 'react'
 import { Virtualizer, type CustomContainerComponentProps, type CustomItemComponentProps } from 'virtua'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
@@ -59,40 +60,42 @@ export const ChatList = ({
   onRename,
   onSearchClick,
   onSearchQueryChange,
-  onContentBelowChange,
 }: ChatListProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const mobileHeaderRef = useRef<HTMLDivElement>(null)
+  const mobileLabelRef = useRef<HTMLDivElement>(null)
   const { forceCollapsed } = useSidebar()
-  // Drives this list's own top scroll shadow; only the bottom counterpart is
-  // lifted (the sidebar footer renders that shadow).
-  const [hasContentAbove, setHasContentAbove] = useState(false)
+  const [mobileListMetrics, setMobileListMetrics] = useState({ headerHeight: 0, startMargin: 0 })
   // The list has something to show either when threads exist or when a search
   // is active (an empty result set still renders the "no matches" note).
   const hasListContent = chatThreads.length > 0 || Boolean(debouncedSearchQuery)
 
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current
-    if (!scrollContainer) {
+  // Virtua needs the height of non-virtual content before its rows so its
+  // measurements stay aligned while the mobile controls stick over the list.
+  useLayoutEffect(() => {
+    if (!isMobile) {
       return
     }
 
-    const updateScrollShadows = () => {
-      const remainingScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight - scrollContainer.scrollTop
-      setHasContentAbove(scrollContainer.scrollTop > 1)
-      onContentBelowChange(remainingScroll > 1)
+    const elements = [mobileHeaderRef.current, mobileLabelRef.current].filter(
+      (element): element is HTMLDivElement => element !== null,
+    )
+    const updateStartMargin = () => {
+      const headerHeight = mobileHeaderRef.current?.offsetHeight ?? 0
+      const startMargin = elements.reduce((height, element) => height + element.offsetHeight, 0)
+      setMobileListMetrics((currentMetrics) =>
+        currentMetrics.headerHeight === headerHeight && currentMetrics.startMargin === startMargin
+          ? currentMetrics
+          : { headerHeight, startMargin },
+      )
     }
+    const resizeObserver = new ResizeObserver(updateStartMargin)
 
-    updateScrollShadows()
-    scrollContainer.addEventListener('scroll', updateScrollShadows, { passive: true })
-    window.addEventListener('resize', updateScrollShadows)
+    elements.forEach((element) => resizeObserver.observe(element))
+    updateStartMargin()
 
-    return () => {
-      scrollContainer.removeEventListener('scroll', updateScrollShadows)
-      window.removeEventListener('resize', updateScrollShadows)
-    }
-    // `showSearch` isn't read in the effect but expanding/collapsing the search
-    // input changes the list height, so the shadows must be re-measured.
-  }, [chatThreads.length, debouncedSearchQuery, onContentBelowChange, showSearch])
+    return () => resizeObserver.disconnect()
+  }, [isMobile])
 
   const chatActions = (
     <ChatActions
@@ -128,20 +131,8 @@ export const ChatList = ({
 
   return (
     <>
-      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0', isCollapsed && 'pt-0')}>
-        {isMobile ? (
-          <>
-            <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
-              {mobileNavToggle}
-              {hasListContent && chatActions}
-            </div>
-            {searchInput}
-            {mobileSecondaryNavigation}
-            {!isCollapsed && (
-              <SidebarGroupLabel className="mt-1">{hasListContent ? 'Recent Chats' : 'No chats yet'}</SidebarGroupLabel>
-            )}
-          </>
-        ) : (
+      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0', (isMobile || isCollapsed) && 'pt-0')}>
+        {!isMobile && (
           <>
             {!isCollapsed && hasListContent && (
               <div className="flex items-center justify-between flex-shrink-0">
@@ -187,19 +178,58 @@ export const ChatList = ({
             </li>
           </SidebarMenu>
         )}
+        {isMobile && (
+          <div
+            ref={mobileHeaderRef}
+            data-slot="mobile-sidebar-header"
+            className="absolute inset-x-0 top-0 z-10 px-2 pt-[calc(var(--header-safe-area-top)+0.5rem)]"
+          >
+            <Scrim
+              data-slot="mobile-sidebar-header-scrim"
+              height="calc(100% + 2.5rem)"
+              className="from-sidebar via-sidebar/80"
+            />
+            <div className="relative z-10">
+              <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
+                {mobileNavToggle}
+                {hasListContent && chatActions}
+              </div>
+              {searchInput}
+              {mobileSecondaryNavigation}
+            </div>
+          </div>
+        )}
         <div
           ref={scrollContainerRef}
+          data-slot="chat-list-scroll"
           className={cn(
             'mt-0 -mx-2 w-[calc(100%+1rem)] flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 scrollbar-hide touch-pan-y [overflow-anchor:none] md:mt-2 group-data-[collapsible=icon]:mt-0',
-            hasContentAbove && 'shadow-[inset_0_8px_16px_-14px_rgba(0,0,0,0.35)]',
+            isMobile && 'pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]',
           )}
         >
+          {isMobile && (
+            <div
+              aria-hidden="true"
+              data-slot="mobile-sidebar-header-spacer"
+              style={{ height: mobileListMetrics.headerHeight }}
+            />
+          )}
+          {isMobile && !isCollapsed && (
+            <SidebarGroupLabel ref={mobileLabelRef} className="mt-1">
+              {hasListContent ? 'Recent Chats' : 'No chats yet'}
+            </SidebarGroupLabel>
+          )}
           {/* No ssrCount here: virtua serves the unclamped [0, ssrCount) range
               until the first scroll event, so deleting rows below ssrCount
               before scrolling crashes it. Tests stub measurement instead
               (see test-utils/mock-virtua-measurement.ts). */}
           {chatThreads.length > 0 && (
-            <Virtualizer scrollRef={scrollContainerRef} as={VirtualChatMenu} item={VirtualChatRow}>
+            <Virtualizer
+              scrollRef={scrollContainerRef}
+              startMargin={isMobile ? mobileListMetrics.startMargin : undefined}
+              as={VirtualChatMenu}
+              item={VirtualChatRow}
+            >
               {chatThreads.map((thread) => (
                 <ChatListItem
                   key={thread.id}

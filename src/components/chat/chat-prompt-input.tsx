@@ -6,6 +6,7 @@ import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availa
 import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
+import { useCreateItem } from '@/components/create-item/context'
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
@@ -159,6 +160,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
   ) => {
     const navigate = useNavigate()
     const location = useLocation()
+    const { openCreateItem } = useCreateItem()
 
     const { isMobile } = useIsMobile()
 
@@ -793,7 +795,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
-            renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill, displayNameToSlug)}
+            renderOverlay={(value) =>
+              renderHighlightedSkillTokens(value, classifySkill, displayNameToSlug, (initialName) =>
+                openCreateItem({ kind: 'skill', initialName }),
+              )
+            }
             popoverSlot={
               popupOpen ? (
                 <SlashPopup

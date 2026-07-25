@@ -42,9 +42,9 @@ const Harness = ({
   )
 }
 
-const getSidebar = () => document.querySelector('[data-slot="sidebar"]')!
-const getMain = () => document.querySelector('[data-slot="sidebar-main"]')!
-const getCloseSurface = () => document.querySelector('[data-sidebar-drag-surface]')!
+const getSidebar = () => document.querySelector<HTMLElement>('[data-slot="sidebar"]')!
+const getMain = () => document.querySelector<HTMLElement>('[data-slot="sidebar-main"]')!
+const getCloseSurface = () => document.querySelector<HTMLElement>('[data-sidebar-drag-surface]')!
 
 const flushAnimations = async () => {
   await act(async () => {
@@ -59,10 +59,12 @@ describe('MobileSidebar', () => {
     expect(screen.getByRole('dialog', { name: 'Navigation' })).toBeInTheDocument()
     expect(getSidebar()).toHaveClass('bg-sidebar/80', 'backdrop-blur-lg')
     expect(getSidebar()).not.toHaveClass('shadow-lg')
+    expect(getSidebar().style.getPropertyValue('--mobile-sidebar-footer-inset')).not.toBe('')
     expect(getSidebar()).toHaveAttribute('data-swipe-direction', 'left')
     expect(getMain()).toHaveClass('mobile-sidebar-main', 'bg-background', 'mobile-sidebar-main-shadow')
     expect(getMain().firstElementChild).toHaveAttribute('inert')
     expect(getCloseSurface()).toHaveClass('bg-transparent', 'pointer-events-auto')
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' }).parentElement).toHaveClass('flex', 'h-full')
   })
 
   it('configures the whole foreground for direction-locked horizontal dragging', () => {

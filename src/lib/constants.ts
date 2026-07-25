@@ -24,6 +24,16 @@ export const edgeSpacing = {
 /** Mobile sidebar width as a fraction of viewport width (0–1) */
 export const mobileSidebarWidthRatio = 0.8
 
+/** Maximum mobile sidebar width in pixels */
+export const mobileSidebarMaxWidth = 360
+
+/** Mobile sidebar width shared by CSS sizing and overlays rendered in portals. */
+export const mobileSidebarWidthCss = `min(${mobileSidebarWidthRatio * 100}vw, ${mobileSidebarMaxWidth}px)`
+
+/** Calculates the mobile sidebar width for gestures and hit testing. */
+export const getMobileSidebarWidth = (viewportWidth: number) =>
+  Math.min(viewportWidth * mobileSidebarWidthRatio, mobileSidebarMaxWidth)
+
 /** OTP code length — must match backend emailOTP config (otpLength). */
 export const otpLength = 8
 

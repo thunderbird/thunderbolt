@@ -29,18 +29,18 @@ import { Button } from '@/components/ui/button'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { NavLink } from '@/components/ui/nav-link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Scrim } from '@/components/ui/scrim'
 import { SidebarFooter as ShadcnSidebarFooter, useSidebar } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useHaptics } from '@/hooks/use-haptics'
-import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
 import { getDownloadUrl } from '@/lib/download-links'
 import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
-import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
+import { edgeSpacing, getMobileSidebarWidth, mobileSidebarWidthCss } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
@@ -49,7 +49,6 @@ const openLink = (url: string) => window.open(url, '_blank', 'noopener,noreferre
 
 type SidebarFooterProps = {
   className?: string
-  hasContentBelow?: boolean
 }
 
 type AccountMenuItem = {
@@ -151,11 +150,10 @@ export const syncStatusText = (
   return 'Connected'
 }
 
-export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFooterProps) => {
+export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const authClient = useAuth()
   const navigate = useNavigate()
   const { isMobile, setOpenMobile, state } = useSidebar()
-  const isNativeMobile = useIsNativeMobile()
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -291,17 +289,24 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
     <Popover open={menuOpen} onOpenChange={handleMenuOpenChange} modal={isMobile}>
       <ShadcnSidebarFooter
         className={cn(
-          '!gap-0 bg-transparent',
-          hasContentBelow && 'shadow-[0_-8px_16px_-14px_rgba(0,0,0,0.35)]',
+          'relative !gap-0 bg-transparent',
+          isMobile && 'z-10 pb-[var(--mobile-sidebar-footer-inset)]',
           isDesktopCollapsed && '!p-0',
-          isNativeMobile && '!pb-0',
           className,
         )}
       >
+        {isMobile && (
+          <Scrim
+            data-slot="mobile-sidebar-footer-scrim"
+            edge="bottom"
+            height="calc(100% + 2.5rem)"
+            className="from-sidebar via-sidebar/80"
+          />
+        )}
         {isDesktopCollapsed ? (
-          <div className="flex flex-col items-center py-1">{renderAccountControl(true)}</div>
+          <div className="relative z-10 flex flex-col items-center py-1">{renderAccountControl(true)}</div>
         ) : isMobile ? (
-          <div className="flex w-full min-w-0 items-center gap-1">
+          <div className="relative z-10 flex w-full min-w-0 items-center gap-1">
             <div className="min-w-0">{renderAccountControl()}</div>
             <Button
               type="button"
@@ -316,7 +321,7 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
             </Button>
           </div>
         ) : (
-          <div className="min-w-0">{renderAccountControl()}</div>
+          <div className="relative z-10 min-w-0">{renderAccountControl()}</div>
         )}
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
         <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />
@@ -338,10 +343,10 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
         collisionPadding={isMobile ? edgeSpacing.mobile : 4}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
         style={{
-          width: isMobile ? `calc(${mobileSidebarWidthRatio * 100}vw - ${edgeSpacing.mobile * 2}px)` : '17rem',
+          width: isMobile ? `calc(${mobileSidebarWidthCss} - ${edgeSpacing.mobile * 2}px)` : '17rem',
         }}
         onPointerDownOutside={(e) => {
-          if (isMobile && e.detail.originalEvent.clientX > window.innerWidth * mobileSidebarWidthRatio) {
+          if (isMobile && e.detail.originalEvent.clientX > getMobileSidebarWidth(window.innerWidth)) {
             setOpenMobile(false)
           }
         }}

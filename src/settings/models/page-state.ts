@@ -7,7 +7,6 @@ export type ModelPanel = { kind: 'add' } | { kind: 'detail' | 'edit'; modelId: s
 export type ModelsPageState = {
   panel: ModelPanel
   deleteConfirmId: string | null
-  selectedModelId: string
   /** User-facing message from the most recent failed DAL mutation. */
   mutationError: string | null
 }
@@ -16,18 +15,16 @@ export type ModelsPageAction =
   | { type: 'PANEL_CHANGED'; panel: ModelPanel }
   | { type: 'DELETE_REQUESTED'; modelId: string }
   | { type: 'DELETE_DISMISSED' }
-  | { type: 'MODEL_SELECTED'; modelId: string }
   | { type: 'MUTATION_FAILED'; error: string }
   | { type: 'MUTATION_STARTED' }
 
 export const initialModelsPageState: ModelsPageState = {
   panel: null,
   deleteConfirmId: null,
-  selectedModelId: '',
   mutationError: null,
 }
 
-/** Reducer for the Models page's panel, delete confirmation, add-form model pick, and mutation error. */
+/** Reducer for the Models page's panel, delete confirmation, and mutation error. */
 export const modelsPageReducer = (state: ModelsPageState, action: ModelsPageAction): ModelsPageState => {
   switch (action.type) {
     case 'PANEL_CHANGED':
@@ -36,8 +33,6 @@ export const modelsPageReducer = (state: ModelsPageState, action: ModelsPageActi
       return { ...state, deleteConfirmId: action.modelId, mutationError: null }
     case 'DELETE_DISMISSED':
       return { ...state, deleteConfirmId: null, mutationError: null }
-    case 'MODEL_SELECTED':
-      return { ...state, selectedModelId: action.modelId }
     case 'MUTATION_FAILED':
       return { ...state, mutationError: action.error }
     case 'MUTATION_STARTED':

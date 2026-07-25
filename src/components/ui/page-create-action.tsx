@@ -43,9 +43,9 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
         // PageHeader pulls general actions in by 8px to align with row controls.
         // The primary create action instead aligns its outer edge with the
         // content surface itself, so compensate for that shared inset.
-        // Ghost + bg-card: a filled, borderless tile (borders removed from the
-        // settings create actions by design).
-        className="-mr-2 bg-card hover:bg-accent"
+        // Match the surrounding settings cards while retaining the ghost
+        // button's hover treatment.
+        className="-mr-2 border bg-card hover:bg-accent"
         aria-label={label}
         onClick={onClick}
         disabled={disabled}
@@ -64,9 +64,9 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
       size="lg"
       // Sits below the z-50 modal layer: opening a detail panel should bury
       // the pill under the overlay, not float it above. Native mobile's sidebar
-      // removes its own footer padding and sits directly on the safe-area inset;
-      // web mobile retains the footer's 8px padding. Mirroring that distinction
-      // keeps this pill aligned with New Chat in both environments.
+      // footer sits directly on the safe-area inset; web mobile retains 8px
+      // below its footer controls. Mirroring that distinction keeps this pill
+      // aligned with New Chat in both environments.
       // border-none: the New Chat pill this mirrors is borderless.
       className="fixed right-4 z-30 rounded-full border-none shadow-lg"
       style={{

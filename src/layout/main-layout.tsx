@@ -102,7 +102,7 @@ export default function Page() {
   return (
     <SidebarInset className="h-full flex flex-col">
       <ResizablePanelGroup orientation="horizontal">
-        <ResizablePanel>
+        <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
             <FloatingHeader />
             {!isTauri() && (

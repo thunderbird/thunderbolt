@@ -4,6 +4,8 @@
 
 import { MobileSidebar } from '@/components/ui/mobile-sidebar'
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar'
+import { CreateItemHost } from '@/components/create-item/create-item-host'
+import { CreateItemProvider } from '@/components/create-item/context'
 import { useSettings } from '@/hooks/use-settings'
 import SidebarComponent from '@/layout/sidebar'
 import { Outlet } from 'react-router'
@@ -13,18 +15,23 @@ const LayoutContent = () => {
   const { isMobile, openMobile, setOpenMobile, notifyMobileSidebarCloseSettled } = useSidebar()
 
   return (
-    <MobileSidebar
-      enabled={isMobile}
-      open={openMobile}
-      onOpenChange={setOpenMobile}
-      onCloseComplete={notifyMobileSidebarCloseSettled}
-      onCloseCancel={notifyMobileSidebarCloseSettled}
-      sidebar={<SidebarComponent />}
-    >
-      <div className="flex-1 overflow-hidden">
-        <Outlet />
-      </div>
-    </MobileSidebar>
+    <CreateItemProvider>
+      <MobileSidebar
+        enabled={isMobile}
+        open={openMobile}
+        onOpenChange={setOpenMobile}
+        onCloseComplete={notifyMobileSidebarCloseSettled}
+        onCloseCancel={notifyMobileSidebarCloseSettled}
+        sidebar={<SidebarComponent />}
+      >
+        <div data-slot="create-item-layout" className="relative flex min-w-0 flex-1 overflow-hidden">
+          <div data-slot="create-item-content" className="h-full min-w-0 flex-1 overflow-hidden">
+            <Outlet />
+          </div>
+          <CreateItemHost />
+        </div>
+      </MobileSidebar>
+    </CreateItemProvider>
   )
 }
 

@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { createElement, createRef, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
+import { CreateItemProvider } from '@/components/create-item/context'
 import { getClock } from '@/testing-library'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 
@@ -58,7 +59,11 @@ const createMockUseIsMobile =
 
 const TestWrapper = ({ children }: { children: ReactNode }) => {
   const queryWrapper = createQueryTestWrapper()
-  return createElement(BrowserRouter, null, createElement(queryWrapper, null, children))
+  return createElement(
+    BrowserRouter,
+    null,
+    createElement(CreateItemProvider, null, createElement(queryWrapper, null, children)),
+  )
 }
 
 /** Hydrate the chat store with sensible defaults for testing */

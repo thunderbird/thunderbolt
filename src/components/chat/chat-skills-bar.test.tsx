@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 
+import { CreateItemProvider, useCreateItem } from '@/components/create-item/context'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -52,18 +53,27 @@ const fakeUseEnabledSkills = (enabledIds: ReadonlySet<string>) =>
     setEnabled: async () => undefined,
   })) as unknown as typeof import('@/skills/use-skills').useEnabledSkills
 
-const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}) => {
+const CreateRequestProbe = () => {
+  const { request } = useCreateItem()
+  const location = useLocation()
+  return <div data-testid="create-request">{`${location.pathname}|${request?.kind ?? ''}`}</div>
+}
+
+const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}, showCreateProbe = false) => {
   return render(
     <MemoryRouter>
-      <TooltipProvider>
-        <ChatSkillsBar
-          onAddToChat={() => undefined}
-          onAddInstruction={() => undefined}
-          usePinnedSkills={props.usePinnedSkills ?? fakeUsePinnedSkills({ pinned: [] })}
-          useLibrarySkills={props.useLibrarySkills ?? fakeUseLibrarySkills([])}
-          useEnabledSkills={props.useEnabledSkills ?? fakeUseEnabledSkills(new Set())}
-        />
-      </TooltipProvider>
+      <CreateItemProvider>
+        <TooltipProvider>
+          <ChatSkillsBar
+            onAddToChat={() => undefined}
+            onAddInstruction={() => undefined}
+            usePinnedSkills={props.usePinnedSkills ?? fakeUsePinnedSkills({ pinned: [] })}
+            useLibrarySkills={props.useLibrarySkills ?? fakeUseLibrarySkills([])}
+            useEnabledSkills={props.useEnabledSkills ?? fakeUseEnabledSkills(new Set())}
+          />
+          {showCreateProbe && <CreateRequestProbe />}
+        </TooltipProvider>
+      </CreateItemProvider>
     </MemoryRouter>,
   )
 }
@@ -119,6 +129,45 @@ describe('ChatSkillsBar', () => {
     expect(screen.getByText('New Skill')).toBeTruthy()
   })
 
+  it('opens skill creation over the current route', () => {
+    const a = skill('a', 'daily-brief')
+    renderBar(
+      {
+        usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
+        useLibrarySkills: fakeUseLibrarySkills([a]),
+        useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+      },
+      true,
+    )
+
+    const trigger = screen.getByLabelText('Add a skill')
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByText('New Skill'))
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
+  })
+
+  it('closes the mobile skill drawer before opening creation', () => {
+    forceMobileViewport()
+    const a = skill('a', 'daily-brief')
+    renderBar(
+      {
+        usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
+        useLibrarySkills: fakeUseLibrarySkills([a]),
+        useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+      },
+      true,
+    )
+
+    const trigger = screen.getByLabelText('Add a skill')
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByText('New Skill'))
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
+  })
+
   it('opens the add-skill menu as a mobile bottom drawer', () => {
     forceMobileViewport()
     const a = skill('a', 'daily-brief')
@@ -160,16 +209,18 @@ describe('ChatSkillsBar', () => {
     }
     render(
       <MemoryRouter>
-        <TooltipProvider>
-          <ChatSkillsBar
-            onAddToChat={() => undefined}
-            onAddInstruction={() => undefined}
-            usePinnedSkills={fakeUsePinnedSkills({ pinned: [a] })}
-            useLibrarySkills={fakeUseLibrarySkills([a])}
-            useEnabledSkills={fakeUseEnabledSkills(new Set(['a']))}
-          />
-          <LocationProbe />
-        </TooltipProvider>
+        <CreateItemProvider>
+          <TooltipProvider>
+            <ChatSkillsBar
+              onAddToChat={() => undefined}
+              onAddInstruction={() => undefined}
+              usePinnedSkills={fakeUsePinnedSkills({ pinned: [a] })}
+              useLibrarySkills={fakeUseLibrarySkills([a])}
+              useEnabledSkills={fakeUseEnabledSkills(new Set(['a']))}
+            />
+            <LocationProbe />
+          </TooltipProvider>
+        </CreateItemProvider>
       </MemoryRouter>,
     )
 

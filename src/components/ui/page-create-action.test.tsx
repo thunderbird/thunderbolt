@@ -20,7 +20,7 @@ describe('PageCreateAction', () => {
     const button = screen.getByRole('button', { name: 'New Skill' })
     expect(button.textContent).toBe('')
     expect(button.closest('body > button')).toBeNull()
-    expect(button).toHaveClass('-mr-2')
+    expect(button).toHaveClass('-mr-2', 'border', 'bg-card')
   })
 
   it('renders a labelled pill portaled to the body on mobile', () => {

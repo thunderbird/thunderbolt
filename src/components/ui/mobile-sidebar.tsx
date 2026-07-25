@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useHaptics } from '@/hooks/use-haptics'
-import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
+import { edgeSpacing, getMobileSidebarWidth, mobileSidebarWidthCss } from '@/lib/constants'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
@@ -39,7 +39,7 @@ const swipeActivationDistance = 8
 const swipeVelocityThreshold = 500
 const swipeIgnoredSelector = 'button,a,input,select,textarea,label,[role="button"],[data-sidebar-swipe-ignore]'
 
-const readSidebarWidth = () => (typeof window !== 'undefined' ? window.innerWidth * mobileSidebarWidthRatio : 300)
+const readSidebarWidth = () => (typeof window !== 'undefined' ? getMobileSidebarWidth(window.innerWidth) : 300)
 
 const subscribeToResize = (onResize: () => void) => {
   window.addEventListener('resize', onResize)
@@ -264,7 +264,10 @@ export const MobileSidebar = ({
   }
 
   const sidebarWidthStyle = {
-    '--mobile-sidebar-width': `${mobileSidebarWidthRatio * 100}vw`,
+    '--mobile-sidebar-width': mobileSidebarWidthCss,
+    '--mobile-sidebar-footer-inset': isNativeMobile
+      ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
+      : 'calc(var(--safe-area-bottom-padding, 0px) + 0.5rem)',
   } as CSSProperties
   const drawerOpen = enabled && (open || presented)
 
@@ -299,17 +302,7 @@ export const MobileSidebar = ({
               >
                 <DrawerPrimitive.Title className="sr-only">Navigation</DrawerPrimitive.Title>
                 <DrawerPrimitive.Content className="relative h-full select-text">
-                  <div
-                    className="relative h-full"
-                    style={{
-                      paddingBottom: isNativeMobile
-                        ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
-                        : 'var(--safe-area-bottom-padding)',
-                      paddingTop: 'var(--header-safe-area-top)',
-                    }}
-                  >
-                    <div className="flex h-full w-full flex-col">{sidebar}</div>
-                  </div>
+                  <div className="flex h-full w-full flex-col">{sidebar}</div>
                 </DrawerPrimitive.Content>
               </DrawerPrimitive.Popup>
             </DrawerPrimitive.Viewport>

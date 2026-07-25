@@ -6,6 +6,7 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
 import { AgentSelector, buildAgentItems } from './agent-selector'
 
@@ -39,6 +40,7 @@ const customAgent: Agent = {
 
 afterEach(() => {
   cleanup()
+  restoreViewport()
 })
 
 describe('buildAgentItems', () => {
@@ -145,8 +147,30 @@ describe('AgentSelector', () => {
     )
 
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    const trigger = screen.getByTestId('agent-selector-trigger').closest('button')
     fireEvent.click(screen.getByText('Add agent'))
 
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(onAddAgent).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the mobile agent drawer before invoking Add agent', () => {
+    forceMobileViewport()
+    const onAddAgent = mock(() => {})
+    render(
+      <AgentSelector
+        selectedAgent={builtInAgent}
+        agents={[builtInAgent]}
+        onSelect={() => {}}
+        onAddAgent={onAddAgent}
+      />,
+    )
+
+    const trigger = screen.getByTestId('agent-selector-trigger').closest('button')
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    fireEvent.click(screen.getByText('Add agent'))
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 

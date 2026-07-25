@@ -486,6 +486,23 @@
   background-color: #282a2b;
 }
 
+/* The quick-create panel pushes the current route while both surfaces fit.
+   Below the panel's 440px floor + the content's 360px floor, take the panel
+   out of flex flow so it slides over the unchanged route instead. A container
+   query accounts for expanded, collapsed, and user-resized sidebars alike. */
+[data-slot='create-item-layout'] {
+  container-name: create-item-layout;
+  container-type: inline-size;
+}
+
+@container create-item-layout (width < 800px) {
+  [data-slot='create-item-layout'] > [data-slot='slide-in-panel'] {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+  }
+}
+
 @keyframes accordion-down {
   from {
     height: 0;

@@ -183,14 +183,19 @@ export const SearchableMenu = <T,>({
     return items.filter(matchesQuery)
   }, [items, searchQuery])
 
-  const handleSelect = (id: string, item: SearchableMenuItem<T>) => {
+  const closeMenu = () => {
     flushSync(() => {
       setOpen(false)
     })
+  }
+
+  const handleSelect = (id: string, item: SearchableMenuItem<T>) => {
+    closeMenu()
     onValueChange(id, item)
   }
 
   const flatFiltered = flattenItems(filteredItems)
+  const footerContent = typeof footer === 'function' ? footer(closeMenu) : footer
 
   const triggerContent =
     typeof trigger === 'function' ? (
@@ -257,7 +262,7 @@ export const SearchableMenu = <T,>({
         </div>
       </div>
 
-      {footer && <div className="border-t p-1 dark:border-border/50">{footer}</div>}
+      {footerContent && <div className="border-t p-1 dark:border-border/50">{footerContent}</div>}
     </div>
   )
 

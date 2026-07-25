@@ -17,7 +17,7 @@ import {
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
 import { CheckSquare, MessageCirclePlus } from 'lucide-react'
-import { type MouseEvent, type RefObject, useState } from 'react'
+import { type MouseEvent, type RefObject } from 'react'
 import { useLocation } from 'react-router'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
@@ -90,10 +90,9 @@ export const ChatSidebarContent = ({
 }: ChatSidebarContentProps) => {
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
-  const [hasContentBelow, setHasContentBelow] = useState(false)
 
   return (
-    <SidebarContent className="flex flex-col h-full gap-0 overflow-hidden md:gap-2">
+    <SidebarContent className="relative flex h-full flex-col gap-0 overflow-hidden md:gap-2">
       <SidebarHeader
         onToggle={toggleSidebar}
         navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
@@ -153,10 +152,9 @@ export const ChatSidebarContent = ({
         onRename={onRename}
         onSearchClick={onSearchClick}
         onSearchQueryChange={onSearchQueryChange}
-        onContentBelowChange={setHasContentBelow}
       />
 
-      <SidebarFooter className="flex-shrink-0 md:-mt-2" hasContentBelow={hasContentBelow} />
+      <SidebarFooter className="flex-shrink-0 max-md:absolute max-md:inset-x-0 max-md:bottom-0 md:-mt-2" />
     </SidebarContent>
   )
 }

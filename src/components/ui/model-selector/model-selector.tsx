@@ -186,12 +186,21 @@ export const ModelSelector = ({
     return content
   }
 
-  const footer = onAddModels ? (
-    <button type="button" onClick={onAddModels} className={searchableMenuFooterActionClass}>
-      <Plus className="size-4" />
-      Add Model
-    </button>
-  ) : undefined
+  const footer = onAddModels
+    ? (closeMenu: () => void) => (
+        <button
+          type="button"
+          onClick={() => {
+            closeMenu()
+            onAddModels()
+          }}
+          className={searchableMenuFooterActionClass}
+        >
+          <Plus className="size-4" />
+          Add Model
+        </button>
+      )
+    : undefined
 
   const { triggerSelection } = useHaptics()
   const handleModelChange = useCallback(

@@ -52,6 +52,8 @@ export const renderHighlightedSkillTokens = (
    *  The rendered glyphs always mirror the textarea exactly (title or slug,
    *  whatever the text contains) — only the classification uses the slug. */
   displayNameToSlug?: ReadonlyMap<string, string>,
+  /** Opens route-preserving skill creation for an unknown committed token. */
+  onCreateSkill?: (slug: string) => void,
 ): ReactNode[] => {
   const tokens = findSkillTokens(value, displayNameToSlug)
   let key = 0
@@ -119,13 +121,23 @@ export const renderHighlightedSkillTokens = (
       )
     } else {
       parts.push(
-        <SkillTokenPopover
-          key={key++}
-          trigger={tokenSpan}
-          message={`No skill named ${token}.`}
-          actionLabel="Create it"
-          state={{ createSkill: slug }}
-        />,
+        onCreateSkill ? (
+          <SkillTokenPopover
+            key={key++}
+            trigger={tokenSpan}
+            message={`No skill named ${token}.`}
+            actionLabel="Create it"
+            onAction={() => onCreateSkill(slug)}
+          />
+        ) : (
+          <SkillTokenPopover
+            key={key++}
+            trigger={tokenSpan}
+            message={`No skill named ${token}.`}
+            actionLabel="Create it"
+            state={{ createSkill: slug }}
+          />
+        ),
       )
     }
     cursor = end

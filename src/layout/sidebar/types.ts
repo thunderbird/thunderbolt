@@ -50,7 +50,6 @@ export type ChatListProps = {
   onRename: (threadId: string, title: string) => void
   onSearchClick: (e?: MouseEvent) => void
   onSearchQueryChange: (value: string) => void
-  onContentBelowChange: (hasContentBelow: boolean) => void
 }
 
 export type ChatListItemProps = {

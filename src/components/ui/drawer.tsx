@@ -35,7 +35,7 @@ const backdropClass =
   'supports-[-webkit-touch-callout:none]:absolute'
 
 const popupClass = cn(
-  'group/drawer-content pointer-events-auto fixed z-50 flex h-auto max-h-[85dvh] w-full flex-col bg-popover/80 text-popover-foreground shadow-2xl outline-none backdrop-blur-lg select-none',
+  'group/drawer-content pointer-events-auto fixed z-50 flex h-auto max-h-[85dvh] w-full flex-col bg-popover/80 text-popover-foreground outline-none backdrop-blur-lg select-none',
   // Swipe follows the finger; open/close slide from/to the sheet's edge.
   'transform-[translate3d(0,var(--translate-y,0px),0)] transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform',
   'data-[starting-style]:transform-[var(--closed-transform)] data-[ending-style]:transform-[var(--closed-transform)]',
@@ -44,8 +44,8 @@ const popupClass = cn(
   // overshoots past the resting position. Sized generously (10rem) so even a
   // hard overshoot flick never exposes the sheet's outer edge.
   'after:pointer-events-none after:absolute after:inset-x-0 after:h-40 after:bg-popover/80 after:backdrop-blur-lg',
-  'data-[swipe-direction=down]:inset-x-0 data-[swipe-direction=down]:bottom-0 data-[swipe-direction=down]:rounded-t-3xl data-[swipe-direction=down]:border-t data-[swipe-direction=down]:after:top-full data-[swipe-direction=down]:[--closed-transform:translate3d(0,calc(100%+2px),0)] data-[swipe-direction=down]:[--translate-y:var(--drawer-swipe-movement-y)]',
-  'data-[swipe-direction=up]:inset-x-0 data-[swipe-direction=up]:top-0 data-[swipe-direction=up]:rounded-b-3xl data-[swipe-direction=up]:border-b data-[swipe-direction=up]:after:bottom-full data-[swipe-direction=up]:[--closed-transform:translate3d(0,calc(-100%-2px),0)] data-[swipe-direction=up]:[--translate-y:var(--drawer-swipe-movement-y)]',
+  'data-[swipe-direction=down]:inset-x-0 data-[swipe-direction=down]:bottom-0 data-[swipe-direction=down]:rounded-t-3xl data-[swipe-direction=down]:shadow-[0_-8px_32px_-12px_rgb(0_0_0_/_20%)] data-[swipe-direction=down]:after:top-full data-[swipe-direction=down]:[--closed-transform:translate3d(0,calc(100%+2px),0)] data-[swipe-direction=down]:[--translate-y:var(--drawer-swipe-movement-y)]',
+  'data-[swipe-direction=up]:inset-x-0 data-[swipe-direction=up]:top-0 data-[swipe-direction=up]:rounded-b-3xl data-[swipe-direction=up]:shadow-[0_8px_32px_-12px_rgb(0_0_0_/_20%)] data-[swipe-direction=up]:after:bottom-full data-[swipe-direction=up]:[--closed-transform:translate3d(0,calc(-100%-2px),0)] data-[swipe-direction=up]:[--translate-y:var(--drawer-swipe-movement-y)]',
 )
 
 type DrawerContentProps = DrawerPrimitive.Popup.Props & {

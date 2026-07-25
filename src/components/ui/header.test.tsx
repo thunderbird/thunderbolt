@@ -14,11 +14,12 @@ import { getClock } from '@/testing-library'
 import type { Agent } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import type { ReactNode } from 'react'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { CreateItemProvider, useCreateItem } from '@/components/create-item/context'
 import { SignInModalProvider } from '@/contexts'
 import { Header } from './header'
 
@@ -37,6 +38,12 @@ const customAgent: Agent = {
   userId: 'user-1',
 }
 
+const CreateRequestProbe = () => {
+  const { request } = useCreateItem()
+  const location = useLocation()
+  return <div data-testid="create-request">{`${location.pathname}|${request?.kind ?? ''}`}</div>
+}
+
 /** Wraps the component in everything `Header` touches: a router (it reads
  *  `location.pathname`), the sidebar context (`useSidebar`), the DAL/query
  *  providers so `useAllAgents` can run against the test database, and the
@@ -48,7 +55,12 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
     <MemoryRouter initialEntries={['/chats/thread-1']}>
       <Provider>
         <SignInModalProvider>
-          <SidebarProvider>{children}</SidebarProvider>
+          <SidebarProvider>
+            <CreateItemProvider>
+              {children}
+              <CreateRequestProbe />
+            </CreateItemProvider>
+          </SidebarProvider>
         </SignInModalProvider>
       </Provider>
     </MemoryRouter>
@@ -173,6 +185,16 @@ describe('Header', () => {
     // so the dock slide can run entirely on the compositor.
     expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
     expect(wrapper).not.toHaveClass('[translate:-50%_0]')
-    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'bg-muted/80')
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
+  })
+
+  it('opens agent creation over the current chat route', async () => {
+    setupWithAgent(builtInAgent)
+    render(<Header />, { wrapper: TestWrapper })
+
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    fireEvent.click(await screen.findByText('Add agent'))
+
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
   })
 })

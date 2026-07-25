@@ -21,7 +21,11 @@ describe('MobileCardMenu', () => {
     const drawer = screen.getByText('Choose model').closest('[data-slot="drawer-content"]')
     expect(drawer).toHaveClass('w-full')
     expect(drawer).toHaveClass('bg-popover/80', 'backdrop-blur-lg')
-    expect(drawer).toHaveClass('data-[swipe-direction=down]:rounded-t-3xl')
+    expect(drawer).toHaveClass(
+      'data-[swipe-direction=down]:rounded-t-3xl',
+      'data-[swipe-direction=down]:shadow-[0_-8px_32px_-12px_rgb(0_0_0_/_20%)]',
+    )
+    expect(drawer).not.toHaveClass('data-[swipe-direction=down]:border-t', 'shadow-2xl')
     expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
     expect(document.querySelector('[data-slot="drawer-handle"]')).toHaveClass(
       'h-1',
@@ -41,7 +45,11 @@ describe('MobileCardMenu', () => {
 
     const drawer = screen.getByText('Choose agent').closest('[data-slot="drawer-content"]')
     expect(drawer).toHaveAttribute('data-swipe-direction', 'up')
-    expect(drawer).toHaveClass('data-[swipe-direction=up]:rounded-b-3xl')
+    expect(drawer).toHaveClass(
+      'data-[swipe-direction=up]:rounded-b-3xl',
+      'data-[swipe-direction=up]:shadow-[0_8px_32px_-12px_rgb(0_0_0_/_20%)]',
+    )
+    expect(drawer).not.toHaveClass('data-[swipe-direction=up]:border-b', 'shadow-2xl')
 
     const overlay = document.querySelector('[data-slot="drawer-overlay"]')
     expect(overlay).toBeInTheDocument()

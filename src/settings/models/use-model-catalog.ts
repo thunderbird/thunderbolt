@@ -83,6 +83,7 @@ export const useModelCatalog = () => {
 
   return {
     models: state.models,
+    requestKey: state.requestKey,
     isLoading: state.isLoading,
     error: state.error,
     fetchCatalog,

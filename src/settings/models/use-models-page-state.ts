@@ -11,7 +11,7 @@ import { useDatabase } from '@/contexts'
 import { deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@shared/defaults/models'
 import type { EditModelSubmission } from './edit-model-form'
-import { initialModelsPageState, modelsPageReducer } from './page-state'
+import { initialModelsPageState, modelsPageReducer, type ModelPanel } from './page-state'
 import { useAddModelForm } from './use-add-model-form'
 
 /** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
@@ -27,15 +27,18 @@ export const useModelsPageState = () => {
   })
   const activeModel = models.find((model) => model.id === activeModelId)
   const editingModel = panel?.kind === 'edit' ? activeModel : undefined
+  const clearMutationError = useCallback(() => dispatch({ type: 'MUTATION_STARTED' }), [])
   const closeAddPanel = useCallback(() => dispatch({ type: 'PANEL_CHANGED', panel: null }), [])
-  const addForm = useAddModelForm({ isOpen: isAddPanelOpen, onClose: closeAddPanel })
+  const addForm = useAddModelForm({
+    isOpen: isAddPanelOpen,
+    onClose: closeAddPanel,
+    onMutationStart: clearMutationError,
+  })
 
   const failMutation = (message: string) => (error: unknown) => {
     console.error(message, error)
     dispatch({ type: 'MUTATION_FAILED', error: message })
   }
-  const clearMutationError = () => dispatch({ type: 'MUTATION_STARTED' })
-
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       updateModel(db, id, { enabled: enabled ? 1 : 0 }),
@@ -74,6 +77,14 @@ export const useModelsPageState = () => {
     dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
     addForm.prepareForOpen()
   }
+  const changePanel = (nextPanel: ModelPanel) => {
+    if (isAddPanelOpen) {
+      // Reset every add-form resource (draft fields, selected model,
+      // connection probe, and catalog) before another panel replaces it.
+      addForm.resetForm()
+    }
+    dispatch({ type: 'PANEL_CHANGED', panel: nextPanel })
+  }
   const closePanel = () => {
     if (isAddPanelOpen) {
       addForm.onCancel()
@@ -97,13 +108,9 @@ export const useModelsPageState = () => {
     addForm,
     openAddPanel,
     closePanel,
-    selectActiveModel: (modelId: string) =>
-      dispatch({
-        type: 'PANEL_CHANGED',
-        panel: activeModelId === modelId ? null : { kind: 'detail', modelId },
-      }),
+    selectActiveModel: (modelId: string) => changePanel(activeModelId === modelId ? null : { kind: 'detail', modelId }),
     toggleModel: (id: string, enabled: boolean) => toggleMutation.mutate({ id, enabled }),
-    openEditPanel: (modelId: string) => dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'edit', modelId } }),
+    openEditPanel: (modelId: string) => changePanel({ kind: 'edit', modelId }),
     closeEditPanel: (modelId: string) => dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'detail', modelId } }),
     submitEdit: (values: EditModelSubmission) => editMutation.mutate(values),
     isEditPending: editMutation.isPending,

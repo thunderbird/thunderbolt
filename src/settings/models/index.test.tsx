@@ -142,6 +142,47 @@ describe('add model form', () => {
     expect(screen.getByTestId('validation-errors')).toBeEmptyDOMElement()
   })
 
+  it('discards an abandoned add draft before replacing it with another panel', async () => {
+    const DraftHarness = () => {
+      const page = useModelsPageState()
+      return (
+        <div>
+          <span data-testid="panel-kind">{page.panel?.kind ?? ''}</span>
+          <span data-testid="provider">{page.addForm.form.watch('provider')}</span>
+          <span data-testid="api-key">{page.addForm.form.watch('apiKey')}</span>
+          <button onClick={page.openAddPanel}>open add</button>
+          <button
+            onClick={() => {
+              page.addForm.onProviderChange('openai')
+              page.addForm.form.setValue('apiKey', 'sk-abandoned')
+            }}
+          >
+            enter draft
+          </button>
+          <button onClick={() => page.selectActiveModel('another-model')}>select model</button>
+        </div>
+      )
+    }
+    renderWithReactivity(<DraftHarness />, { tables: ['models'] })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('open add'))
+      fireEvent.click(screen.getByText('enter draft'))
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByTestId('provider')).toHaveTextContent('openai')
+    expect(screen.getByTestId('api-key')).toHaveTextContent('sk-abandoned')
+
+    fireEvent.click(screen.getByText('select model'))
+    expect(screen.getByTestId('panel-kind')).toHaveTextContent('detail')
+    expect(screen.getByTestId('provider')).toHaveTextContent('thunderbolt')
+    expect(screen.getByTestId('api-key')).toBeEmptyDOMElement()
+
+    fireEvent.click(screen.getByText('open add'))
+    expect(screen.getByTestId('panel-kind')).toHaveTextContent('add')
+    expect(screen.getByTestId('api-key')).toBeEmptyDOMElement()
+  })
+
   it('loads the catalog after API key edits settle', async () => {
     const getSpy = spyOn(http, 'get').mockReturnValue(
       stubJsonResponse({ data: [{ id: 'gpt-test', name: 'GPT Test' }] }),

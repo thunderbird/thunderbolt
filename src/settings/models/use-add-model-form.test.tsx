@@ -4,11 +4,13 @@
 
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { http } from '@/lib/http'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { resetStore } from '@/test-utils/chat-store-mocks'
+import { stubJsonResponse } from '@/test-utils/http'
 import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { generateModelName, useAddModelForm } from './use-add-model-form'
 
 describe('generateModelName', () => {
@@ -48,7 +50,8 @@ describe('useAddModelForm', () => {
 
   it('refreshes the chat model list before closing after creation', async () => {
     const onClose = mock(() => {})
-    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
+    const onMutationStart = mock(() => {})
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose, onMutationStart }), {
       wrapper: createTestProvider(),
     })
 
@@ -65,6 +68,39 @@ describe('useAddModelForm', () => {
     })
 
     expect(useChatStore.getState().models.some((model) => model.name === 'New Chat Model')).toBe(true)
+    expect(onMutationStart).toHaveBeenCalledTimes(1)
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not refetch an already requested catalog when visibility alone changes', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'gpt-test' }] }))
+    const onClose = mock(() => {})
+    const { result, rerender } = renderHook(({ isOpen }: { isOpen: boolean }) => useAddModelForm({ isOpen, onClose }), {
+      initialProps: { isOpen: true },
+      wrapper: createTestProvider(),
+    })
+
+    try {
+      act(() => {
+        result.current.onProviderChange('openai')
+        result.current.form.setValue('apiKey', 'sk-test')
+        result.current.onCatalogInvalidated()
+      })
+      await act(async () => {
+        getClock().tick(500)
+        await getClock().runAllAsync()
+      })
+      expect(getSpy).toHaveBeenCalledTimes(1)
+
+      rerender({ isOpen: false })
+      rerender({ isOpen: true })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(getSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 })

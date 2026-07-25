@@ -17,6 +17,8 @@ const SkillOptionsProbe = () => {
   return <div data-testid="skill-options">{skills.map((skill) => skill.label).join('|')}</div>
 }
 
+const noopCloseComplete = () => {}
+
 describe('CreateSkillPanel', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -36,7 +38,7 @@ describe('CreateSkillPanel', () => {
 
     render(
       <>
-        <CreateSkillPanel open onClose={onClose} />
+        <CreateSkillPanel open onClose={onClose} onCloseComplete={noopCloseComplete} />
         <SkillOptionsProbe />
       </>,
       { wrapper: createTestProvider() },
@@ -63,7 +65,9 @@ describe('CreateSkillPanel', () => {
     await createSkill(getDb(), { name: 'meeting-notes', label: 'Meeting Notes', description: 'd', instruction: 'i' })
     const onClose = mock(() => {})
 
-    render(<CreateSkillPanel open onClose={onClose} />, { wrapper: createTestProvider() })
+    render(<CreateSkillPanel open onClose={onClose} onCloseComplete={noopCloseComplete} />, {
+      wrapper: createTestProvider(),
+    })
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Meeting Notes' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), { target: { value: 'dup' } })
@@ -81,7 +85,9 @@ describe('CreateSkillPanel', () => {
   it('guards a dirty close behind the discard dialog', async () => {
     const onClose = mock(() => {})
 
-    render(<CreateSkillPanel open onClose={onClose} />, { wrapper: createTestProvider() })
+    render(<CreateSkillPanel open onClose={onClose} onCloseComplete={noopCloseComplete} />, {
+      wrapper: createTestProvider(),
+    })
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Half-typed' } })
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -98,7 +104,7 @@ describe('CreateSkillPanel', () => {
   })
 
   it('pre-fills the form from an unknown token slug', () => {
-    render(<CreateSkillPanel open onClose={() => {}} initialName="daily-brief" />, {
+    render(<CreateSkillPanel open onClose={() => {}} onCloseComplete={noopCloseComplete} initialName="daily-brief" />, {
       wrapper: createTestProvider(),
     })
 

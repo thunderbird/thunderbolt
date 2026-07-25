@@ -51,4 +51,35 @@ describe('useLongPress', () => {
 
     expect(onLongPress).not.toHaveBeenCalled()
   })
+
+  it('does not suppress a later context menu when no native event followed the long-press', () => {
+    const onLongPress = mock(() => {})
+    render(<Harness onLongPress={onLongPress} />)
+    const target = screen.getByText('Long-press target')
+
+    fireEvent.touchStart(target, { touches: [{ clientX: 10, clientY: 10 }] })
+    act(() => getClock().tick(500))
+    expect(onLongPress).toHaveBeenCalledTimes(1)
+
+    act(() => getClock().tick(1001))
+    fireEvent.contextMenu(target)
+    expect(onLongPress).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores empty and multi-touch starts instead of indexing a missing touch', () => {
+    const onLongPress = mock(() => {})
+    render(<Harness onLongPress={onLongPress} />)
+    const target = screen.getByText('Long-press target')
+
+    fireEvent.touchStart(target, { touches: [] })
+    fireEvent.touchStart(target, {
+      touches: [
+        { clientX: 10, clientY: 10 },
+        { clientX: 20, clientY: 20 },
+      ],
+    })
+    act(() => getClock().tick(500))
+
+    expect(onLongPress).not.toHaveBeenCalled()
+  })
 })

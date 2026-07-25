@@ -8,13 +8,14 @@ import { CreateAgentDetailPanel } from '@/components/settings/agents/create-agen
 type CreateAgentPanelProps = {
   open: boolean
   onClose: () => void
+  onCloseComplete: () => void
 }
 
 /** Adds a custom agent over the current screen without changing routes.
  *  Thin surface wrapper only — the panel body (`CreateAgentDetailPanel`) is
  *  shared with the settings/agents route, so don't inline the form here. */
-export const CreateAgentPanel = ({ open, onClose }: CreateAgentPanelProps) => (
-  <DetailPanelSurface open={open} onClose={onClose} topInset>
+export const CreateAgentPanel = ({ open, onClose, onCloseComplete }: CreateAgentPanelProps) => (
+  <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
     <CreateAgentDetailPanel onClose={onClose} />
   </DetailPanelSurface>
 )

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Loader2 } from 'lucide-react'
-import { lazy, Suspense, useRef } from 'react'
+import { lazy, Suspense, useState } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { createItemTitles, type CreateItemRequest, useCreateItem } from './context'
@@ -22,12 +22,14 @@ const LoadingPanel = ({
   request,
   open,
   onClose,
+  onCloseComplete,
 }: {
   request: CreateItemRequest
   open: boolean
   onClose: () => void
+  onCloseComplete: () => void
 }) => (
-  <DetailPanelSurface open={open} onClose={onClose} topInset>
+  <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
     <DetailPanel title={createItemTitles[request.kind]} onClose={onClose}>
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
@@ -42,20 +44,25 @@ const LoadingPanel = ({
  */
 export const CreateItemHost = () => {
   const { request, isSurfaceOpen, closeCreateItem } = useCreateItem()
-  const lastRequest = useRef<CreateItemRequest | null>(request)
+  const [renderedRequest, setRenderedRequest] = useState<CreateItemRequest | null>(request)
 
-  if (request) {
-    lastRequest.current = request
+  if (request && request.id !== renderedRequest?.id) {
+    setRenderedRequest(request)
   }
 
-  const renderedRequest = request ?? lastRequest.current
   if (!renderedRequest) {
     return null
   }
 
+  const handleCloseComplete = () => {
+    if (!request) {
+      setRenderedRequest(null)
+    }
+  }
+
   // The provider clears `isSurfaceOpen` in the same update as any request
   // change, so it alone means "the rendered request is open".
-  const sharedProps = { open: isSurfaceOpen, onClose: closeCreateItem }
+  const sharedProps = { open: isSurfaceOpen, onClose: closeCreateItem, onCloseComplete: handleCloseComplete }
 
   const panel = (() => {
     switch (renderedRequest.kind) {
@@ -71,7 +78,14 @@ export const CreateItemHost = () => {
   return (
     <Suspense
       key={renderedRequest.id}
-      fallback={<LoadingPanel request={renderedRequest} open={isSurfaceOpen} onClose={closeCreateItem} />}
+      fallback={
+        <LoadingPanel
+          request={renderedRequest}
+          open={isSurfaceOpen}
+          onClose={closeCreateItem}
+          onCloseComplete={handleCloseComplete}
+        />
+      }
     >
       {panel}
     </Suspense>

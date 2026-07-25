@@ -58,11 +58,12 @@ const createSkillReducer = (state: CreateSkillState, action: CreateSkillAction):
 type CreateSkillPanelProps = {
   open: boolean
   onClose: () => void
+  onCloseComplete: () => void
   initialName?: string
 }
 
 /** Creates a skill over the current screen without changing routes. */
-export const CreateSkillPanel = ({ open, onClose, initialName }: CreateSkillPanelProps) => {
+export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName }: CreateSkillPanelProps) => {
   const createSkillTracked = useCreateSkillTracked()
   const [state, dispatch] = useReducer(createSkillReducer, initialState)
 
@@ -90,7 +91,7 @@ export const CreateSkillPanel = ({ open, onClose, initialName }: CreateSkillPane
 
   return (
     <>
-      <DetailPanelSurface open={open} onClose={requestClose} topInset>
+      <DetailPanelSurface open={open} onClose={requestClose} onCloseComplete={onCloseComplete} topInset>
         <DetailPanel title={createItemTitles.skill} onClose={requestClose}>
           <SkillForm
             mode="create"

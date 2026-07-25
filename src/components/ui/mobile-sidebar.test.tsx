@@ -13,6 +13,7 @@ import {
   canStartSidebarDrag,
   hasHorizontalScrollAncestor,
   MobileSidebar,
+  shouldNotifyMobileSidebarClose,
   shouldOpenMobileSidebar,
 } from './mobile-sidebar'
 
@@ -113,6 +114,13 @@ describe('MobileSidebar', () => {
     expect(shouldOpenMobileSidebar(140, 300, 0)).toBe(false)
     expect(shouldOpenMobileSidebar(20, 300, 600)).toBe(true)
     expect(shouldOpenMobileSidebar(280, 300, -600)).toBe(false)
+  })
+
+  it('reports close settlement only for a real or externally pending close', () => {
+    expect(shouldNotifyMobileSidebarClose(true, false, false)).toBe(true)
+    expect(shouldNotifyMobileSidebarClose(false, false, true)).toBe(true)
+    expect(shouldNotifyMobileSidebarClose(false, false, false)).toBe(false)
+    expect(shouldNotifyMobileSidebarClose(true, true, true)).toBe(false)
   })
 
   it('decides drag eligibility from the touched element', () => {

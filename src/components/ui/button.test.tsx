@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 
 import { Button } from './button'
 
@@ -66,5 +66,22 @@ describe('Button', () => {
 
     const link = screen.getByRole('link', { name: 'Install guide' })
     expect(link).toHaveAttribute('data-slot', 'button')
+  })
+
+  it('makes a loading slotted link inert before invoking its click handler', () => {
+    const onClick = mock(() => {})
+    render(
+      <Button asChild isLoading onClick={onClick}>
+        <a href="https://example.com">Install guide</a>
+      </Button>,
+    )
+
+    const link = screen.getByRole('link', { name: 'Install guide' })
+    fireEvent.click(link)
+
+    expect(link).toHaveAttribute('aria-disabled', 'true')
+    expect(link).toHaveAttribute('aria-busy', 'true')
+    expect(link).toHaveAttribute('tabindex', '-1')
+    expect(onClick).not.toHaveBeenCalled()
   })
 })

@@ -57,7 +57,7 @@ describe('CreateItemHost', () => {
     expect(container.querySelector('[data-slot="slide-in-panel"]')).toBeNull()
   })
 
-  it('opens the requested panel and keeps it mounted through close', async () => {
+  it('keeps the requested panel mounted through its close animation, then releases it', async () => {
     render(<CreateItemHost />, { wrapper: Wrapper })
 
     await act(async () => {
@@ -73,6 +73,13 @@ describe('CreateItemHost', () => {
       await getClock().runAllAsync()
     })
     expect(screen.getByText('Create Skill')).toBeInTheDocument()
-    expect(document.querySelector('[data-slot="slide-in-panel"]')).toHaveAttribute('aria-hidden', 'true')
+    const closingPanel = document.querySelector('[data-slot="slide-in-panel"]')
+    if (!closingPanel) {
+      throw new Error('Closing create-item panel not found')
+    }
+    expect(closingPanel).toHaveAttribute('aria-hidden', 'true')
+
+    fireEvent.transitionEnd(closingPanel, { propertyName: 'width' })
+    expect(document.querySelector('[data-slot="slide-in-panel"]')).toBeNull()
   })
 })

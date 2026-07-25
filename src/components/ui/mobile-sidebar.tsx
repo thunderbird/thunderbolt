@@ -67,6 +67,16 @@ export const shouldOpenMobileSidebar = (currentX: number, sidebarWidth: number, 
 }
 
 /**
+ * A settle callback is owed only when a real open sidebar is closing, or an
+ * external close request arrived while a drag was in progress.
+ */
+export const shouldNotifyMobileSidebarClose = (
+  dragStartedOpen: boolean,
+  nextOpen: boolean,
+  isClosePending: boolean,
+): boolean => !nextOpen && (dragStartedOpen || isClosePending)
+
+/**
  * Detects nested horizontal scrollers that should retain their native swipe.
  */
 export const hasHorizontalScrollAncestor = (element: Element | null, boundary: HTMLElement): boolean => {
@@ -279,7 +289,8 @@ const useMobileSidebarState = ({
       triggerImpact('light')
     }
 
-    animateTo(nextOpen, !nextOpen)
+    const notifyClose = shouldNotifyMobileSidebarClose(dragStartedOpenRef.current, nextOpen, isClosePendingRef.current)
+    animateTo(nextOpen, notifyClose)
     // The browser synthesizes a click on the close surface right after the
     // drag's pointerup; keep the flag up for one frame so only that ghost
     // click is swallowed, never a deliberate later tap.

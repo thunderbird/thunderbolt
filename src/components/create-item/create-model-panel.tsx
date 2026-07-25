@@ -10,14 +10,15 @@ import { createItemTitles } from './context'
 type CreateModelPanelProps = {
   open: boolean
   onClose: () => void
+  onCloseComplete: () => void
 }
 
 /** Adds a model over the current screen without changing routes. */
-export const CreateModelPanel = ({ open, onClose }: CreateModelPanelProps) => {
+export const CreateModelPanel = ({ open, onClose, onCloseComplete }: CreateModelPanelProps) => {
   const addForm = useAddModelForm({ isOpen: open, onClose })
 
   return (
-    <DetailPanelSurface open={open} onClose={addForm.onCancel} topInset>
+    <DetailPanelSurface open={open} onClose={addForm.onCancel} onCloseComplete={onCloseComplete} topInset>
       <DetailPanel title={createItemTitles.model} onClose={addForm.onCancel}>
         <AddModelForm {...addForm} />
       </DetailPanel>

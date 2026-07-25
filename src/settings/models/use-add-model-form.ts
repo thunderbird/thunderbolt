@@ -67,10 +67,12 @@ export const generateModelName = (modelId: string): string => {
 type UseAddModelFormOptions = {
   isOpen: boolean
   onClose: () => void
+  /** Clears page-level mutation feedback when an add attempt begins. */
+  onMutationStart?: () => void
 }
 
 /** Owns the reusable add-model form, catalog, connection test, and mutation. */
-export const useAddModelForm = ({ isOpen, onClose }: UseAddModelFormOptions) => {
+export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddModelFormOptions) => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(addModelReducer, initialState)
@@ -98,13 +100,14 @@ export const useAddModelForm = ({ isOpen, onClose }: UseAddModelFormOptions) => 
   const connection = useModelConnectionTest({ provider, model, url, apiKey })
 
   const isDebounceSettled = catalogRequestKey(debouncedCatalogRequest) === catalogRequestKey(catalogRequest)
+  const hasRequestedCurrentCatalog = catalog.requestKey === catalogRequestKey(debouncedCatalogRequest)
 
   useEffect(() => {
-    if (!isOpen || !isDebounceSettled || !canFetchCatalog(debouncedCatalogRequest)) {
+    if (!isOpen || !isDebounceSettled || hasRequestedCurrentCatalog || !canFetchCatalog(debouncedCatalogRequest)) {
       return
     }
     void fetchCatalog(debouncedCatalogRequest)
-  }, [isOpen, isDebounceSettled, debouncedCatalogRequest, fetchCatalog])
+  }, [isOpen, isDebounceSettled, hasRequestedCurrentCatalog, debouncedCatalogRequest, fetchCatalog])
 
   const reset = () => {
     form.reset()
@@ -133,7 +136,10 @@ export const useAddModelForm = ({ isOpen, onClose }: UseAddModelFormOptions) => 
       })
       return getAvailableModels(db)
     },
-    onMutate: () => dispatch({ type: 'MUTATION_STARTED' }),
+    onMutate: () => {
+      onMutationStart?.()
+      dispatch({ type: 'MUTATION_STARTED' })
+    },
     onSuccess: async (models) => {
       useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
@@ -226,6 +232,8 @@ export const useAddModelForm = ({ isOpen, onClose }: UseAddModelFormOptions) => 
     onCatalogInvalidated: catalog.invalidateCatalog,
     onSelectModel: selectModel,
     onTestConnection: testConnection,
+    /** Discards every form-owned resource without changing the parent panel. */
+    resetForm: reset,
     /** Clears leftover probe/error state when the add panel opens. */
     prepareForOpen: () => {
       connection.reset()

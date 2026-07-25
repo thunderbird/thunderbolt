@@ -79,6 +79,14 @@ const buttonVariants = cva(
 export const mutedIconButtonClass =
   "size-[var(--touch-height-lg)] md:size-[var(--touch-height-sm)] rounded-full md:rounded-xl text-muted-foreground hover:bg-muted dark:hover:bg-muted hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground [&_svg:not([class*='size-'])]:size-[var(--icon-size-default)]"
 
+type ButtonProps = ComponentProps<'button'> &
+  // `loading` is derived from `isLoading` — not an independent prop.
+  Omit<VariantProps<typeof buttonVariants>, 'loading'> & {
+    asChild?: boolean
+    isLoading?: boolean
+    loadingLabel?: string
+  }
+
 const Button = ({
   className,
   variant,
@@ -90,32 +98,36 @@ const Button = ({
   children,
   onClick,
   ...props
-}: ComponentProps<'button'> &
-  // `loading` is derived from `isLoading` — not an independent prop.
-  Omit<VariantProps<typeof buttonVariants>, 'loading'> & {
-    asChild?: boolean
-    isLoading?: boolean
-    loadingLabel?: string
-  }) => {
+}: ButtonProps) => {
   const Comp = asChild ? Slot : 'button'
   const { triggerSelection } = useHaptics()
+  const isDisabled = disabled || isLoading
 
   const handleClick = useCallback(
     (e: MouseEvent<HTMLButtonElement>) => {
+      // Slot can render an anchor, where the native `disabled` attribute has
+      // no effect. Cancel activation here before haptics or caller logic.
+      if (isDisabled) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
       triggerSelection()
       onClick?.(e)
     },
-    [onClick, triggerSelection],
+    [isDisabled, onClick, triggerSelection],
   )
 
   return (
     <Comp
+      {...props}
       data-slot="button"
       className={cn(buttonVariants({ variant, size, loading: isLoading, className }))}
       onClick={handleClick}
-      disabled={disabled || isLoading}
+      disabled={asChild ? undefined : isDisabled}
+      aria-disabled={asChild && isDisabled ? true : undefined}
       aria-busy={isLoading || undefined}
-      {...props}
+      tabIndex={asChild && isDisabled ? -1 : props.tabIndex}
     >
       {/* Slot requires exactly one element child, so the loader can only be
           injected when rendering a real <button>. asChild callers keep their

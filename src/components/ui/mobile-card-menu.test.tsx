@@ -52,4 +52,23 @@ describe('MobileCardMenu', () => {
     expect(onOpenChange).toHaveBeenCalledTimes(1)
     expect(onOpenChange.mock.calls[0]?.[0]).toBe(false)
   })
+
+  it('isolates pointer gestures from parent swipe areas and dismisses on outside click', () => {
+    const onOpenChange = mock<(open: boolean) => void>(() => {})
+    const onParentPointerDown = mock<() => void>(() => {})
+    render(
+      <div onPointerDown={onParentPointerDown}>
+        <MobileCardMenu open onOpenChange={onOpenChange} title="Choose model">
+          <button type="button">Model one</button>
+        </MobileCardMenu>
+      </div>,
+    )
+
+    const viewport = document.querySelector('[data-slot="drawer-viewport"]') as HTMLElement
+    fireEvent.pointerDown(viewport, { pointerType: 'mouse', button: 0 })
+    expect(onParentPointerDown).not.toHaveBeenCalled()
+    fireEvent.click(viewport)
+    expect(onOpenChange).toHaveBeenCalledTimes(1)
+    expect(onOpenChange.mock.calls[0]?.[0]).toBe(false)
+  })
 })

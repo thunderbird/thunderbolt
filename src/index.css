@@ -91,6 +91,8 @@
      The same pair serves dark mode (see .dark below). */
   --color-brand: #c12d6c;
   --color-brand-2: #ab5e17;
+  --color-brand-muted: #bd3778;
+  --color-brand-2-muted: #ad681f;
   --color-brand-foreground: #faf8f5;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #262120;
@@ -159,13 +161,10 @@
 
   /* Brand gradient — the logo's gold→magenta families as an amber→raspberry
      sweep. References the theme tokens, so the .dark overrides above flow
-     through automatically. Applied via
-     [background-image:var(--gradient-brand)] on "on" surfaces (switch ON
-     track); single-color call sites keep the solid --color-brand. Amber leads
-     (left) because the switch thumb parks on the RIGHT when checked — with
-     raspberry first, the thumb hid the amber end and the track read as plain
-     red. */
+     through automatically. Single-color call sites keep the solid
+     --color-brand. */
   --gradient-brand: linear-gradient(90deg, var(--color-brand-2), var(--color-brand));
+  --gradient-brand-muted: linear-gradient(90deg, var(--color-brand-2-muted), var(--color-brand-muted));
 }
 
 .dark {
@@ -349,6 +348,8 @@
      filled control here. */
   --color-brand: #c12d6c;
   --color-brand-2: #ab5e17;
+  --color-brand-muted: #bd3778;
+  --color-brand-2-muted: #ad681f;
   --color-brand-foreground: #faf8f5;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #252220;
@@ -587,6 +588,37 @@ body {
   overflow: hidden;
   display: flex;
   height: 100svh;
+}
+
+/* Cast only toward the stationary menu so the moving app surface reads as
+   the layer above it in both themes. */
+.mobile-sidebar-main-shadow {
+  box-shadow: -8px 0 32px -12px rgb(0 0 0 / 20%);
+}
+
+/* The foreground owns mobile navigation motion, so Base UI's popup stays
+   anchored behind it instead of applying the drawer's default translation. */
+.mobile-sidebar-popup {
+  opacity: 1;
+  transform: none !important;
+  transition: opacity 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-sidebar-popup[data-starting-style],
+.mobile-sidebar-popup[data-ending-style] {
+  opacity: 0.8;
+}
+
+.mobile-sidebar-popup[data-swiping] {
+  opacity: 1;
+  transform: none !important;
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sidebar-popup {
+    transition-duration: 0ms;
+  }
 }
 
 @media (max-width: 768px) {

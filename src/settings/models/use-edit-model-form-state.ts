@@ -3,15 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 import type { ComboboxItem } from '@/components/ui/combobox'
+import { useDebounce } from '@/hooks/use-debounce'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
+import type { CatalogRequest } from './model-catalog'
 import {
   apiKeyEditValue,
+  catalogRequiresApiKey,
   hasModelConnectionChanges,
   modelApiKeyForConnection,
   providerRequiresConnectionTest,
@@ -51,12 +54,33 @@ export const useEditModelFormState = (model: Model) => {
   const [isCustomModel, setIsCustomModel] = useState(false)
   const [apiKeyEdit, setApiKeyEdit] = useState<ApiKeyEdit>({ kind: 'keep' })
   const catalog = useModelCatalog()
+  const { fetchCatalog } = catalog
   // `apiKeyEdit` records the *kind* of edit, but a replacement token keeps
   // changing in the form field after the kind was set — substitute the live
   // watched value so probes and catalog refreshes use the latest keystroke.
   const liveApiKeyEdit: ApiKeyEdit =
     apiKeyEdit.kind === 'replace' ? { kind: 'replace', value: watchedApiKey ?? '' } : apiKeyEdit
   const effectiveApiKey = modelApiKeyForConnection(model.apiKey, liveApiKeyEdit)
+  const catalogRequest = useMemo<CatalogRequest>(
+    () => ({ provider: model.provider, apiKey: effectiveApiKey, url: watchedUrl }),
+    [effectiveApiKey, model.provider, watchedUrl],
+  )
+  const debouncedCatalogRequest = useDebounce(catalogRequest, 500)
+  const catalogInputsChanged = apiKeyEdit.kind === 'replace' || watchedUrl !== (model.url ?? '')
+
+  useEffect(() => {
+    if (!catalogInputsChanged) {
+      return
+    }
+    if (
+      debouncedCatalogRequest.apiKey !== effectiveApiKey ||
+      debouncedCatalogRequest.url !== watchedUrl ||
+      (catalogRequiresApiKey(model.provider) && !debouncedCatalogRequest.apiKey)
+    ) {
+      return
+    }
+    void fetchCatalog(debouncedCatalogRequest)
+  }, [catalogInputsChanged, debouncedCatalogRequest, effectiveApiKey, fetchCatalog, model.provider, watchedUrl])
   const modelItems = useMemo((): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
     if (!catalog.models.some((available) => available.id === model.model)) {
@@ -128,8 +152,6 @@ export const useEditModelFormState = (model: Model) => {
     isSaveDisabled:
       (!form.formState.isDirty && apiKeyEdit.kind === 'keep') ||
       (needsSuccessfulTest && connection.status !== 'success'),
-    refreshCatalog: () =>
-      void catalog.fetchCatalog({ provider: model.provider, apiKey: effectiveApiKey, url: watchedUrl }),
     selectModel,
     changeUrl,
     changeApiKey,

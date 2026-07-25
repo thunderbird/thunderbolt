@@ -58,24 +58,15 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
                 {state.isCustomModel ? (
                   <Input {...field} placeholder="e.g., gpt-4-turbo-preview" className="rounded-lg" />
                 ) : (
-                  <div className="flex gap-2">
-                    <Combobox
-                      items={state.modelItems}
-                      value={state.watchedModel}
-                      onValueChange={state.selectModel}
-                      placeholder="Select model..."
-                      searchPlaceholder="Search models..."
-                      emptyMessage="No models found."
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={state.refreshCatalog}
-                      disabled={state.isLoadingCatalog}
-                    >
-                      {state.isLoadingCatalog ? 'Refreshing…' : 'Refresh'}
-                    </Button>
-                  </div>
+                  <Combobox
+                    items={state.modelItems}
+                    value={state.watchedModel}
+                    onValueChange={state.selectModel}
+                    placeholder="Select model..."
+                    searchPlaceholder="Search models..."
+                    emptyMessage="No models found."
+                    loading={state.isLoadingCatalog}
+                  />
                 )}
               </FormControl>
               {state.catalogError && <p className="text-sm text-destructive">{state.catalogError}</p>}
@@ -142,7 +133,7 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
         )}
         <FormFooter>
           <ResponsiveModalCancel onClick={onCancel} />
-          <Button type="submit" disabled={isPending || state.isSaveDisabled}>
+          <Button type="submit" isLoading={isPending} loadingLabel="Saving…" disabled={state.isSaveDisabled}>
             Save
           </Button>
         </FormFooter>

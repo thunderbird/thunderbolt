@@ -64,8 +64,13 @@ describe('AgentSelector', () => {
     const trigger = screen.getByTestId('agent-selector-trigger')
     expect(trigger).toHaveTextContent('RAG Chat')
     expect(trigger).toHaveClass('max-md:h-[var(--touch-height-lg)]')
-    expect(trigger).not.toHaveClass('max-md:bg-muted/80')
-    expect(trigger).not.toHaveClass('max-md:backdrop-blur-md')
+    expect(screen.getByTestId('agent-selector-pill')).toHaveClass(
+      'px-4',
+      'md:px-3',
+      'max-md:bg-muted/80',
+      'max-md:dark:bg-muted/40',
+      'max-md:backdrop-blur-md',
+    )
   })
 
   it('gives the collapsed mobile control the shared frosted background', () => {

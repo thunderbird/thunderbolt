@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Info } from 'lucide-react'
+import { useTransition } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
@@ -67,6 +68,7 @@ export const SkillForm = ({
     handleDescriptionChange,
     handleInstructionChange,
   } = useSkillFormState({ mode, initialValues, resetSignal, onDirtyChange, onSlugChange })
+  const [isPending, startTransition] = useTransition()
 
   // In `create` mode the user just clicked "+" — land ready to type a name.
   // Edit mode skips this so we don't steal focus from a user who clicked
@@ -89,17 +91,19 @@ export const SkillForm = ({
     instruction.trim() !== '' &&
     localSlugError === null &&
     !slugError
-  const canSave = canSubmit && (mode === 'create' || isDirty)
+  const canSave = canSubmit && !isPending && (mode === 'create' || isDirty)
 
   const handleSubmit = () => {
     if (!canSave) {
       return
     }
-    void onSubmit({
-      name: trimmedSlug,
-      label: label.trim(),
-      description: description.trim(),
-      instruction: instruction.trim(),
+    startTransition(async () => {
+      await onSubmit({
+        name: trimmedSlug,
+        label: label.trim(),
+        description: description.trim(),
+        instruction: instruction.trim(),
+      })
     })
   }
 
@@ -183,7 +187,12 @@ export const SkillForm = ({
           </p>
         )}
         <ResponsiveModalCancel onClick={onCancel} className="dark:hover:bg-accent" />
-        <Button disabled={!canSave} onClick={handleSubmit}>
+        <Button
+          isLoading={isPending}
+          loadingLabel={mode === 'edit' ? 'Saving…' : 'Creating…'}
+          disabled={!canSave}
+          onClick={handleSubmit}
+        >
           {mode === 'edit' ? 'Save' : 'Create'}
         </Button>
       </FormFooter>

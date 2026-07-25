@@ -175,26 +175,38 @@ export const McpServerForm = ({
       return (
         <Button
           onClick={onUpdateServer}
+          isLoading={isSavePending}
+          loadingLabel="Saving…"
           // A fresh successful probe is required only when the edit touches
           // the connection and no waiver applies (see `isEditProbeWaived`):
           // iroh has no probe, and metadata-only / bearer-clear / empty-token
           // OAuth edits keep the existing credential valid.
-          disabled={!isSaveReady || (!isEditProbeWaived && testResult.kind !== 'success') || isSavePending}
+          disabled={!isSaveReady || (!isEditProbeWaived && testResult.kind !== 'success')}
         >
-          {isSavePending ? 'Saving…' : 'Save Changes'}
+          Save Changes
         </Button>
       )
     }
     if (mode === 'advanced') {
       return (
-        <Button onClick={onImportConfig} disabled={!jsonText.trim() || isImportPending}>
-          {isImportPending ? 'Importing…' : 'Import Servers'}
+        <Button
+          onClick={onImportConfig}
+          isLoading={isImportPending}
+          loadingLabel="Importing…"
+          disabled={!jsonText.trim()}
+        >
+          Import Servers
         </Button>
       )
     }
     if (!isIroh && testResult.kind === 'needs-oauth') {
       return (
-        <Button onClick={onAddAndAuthorize} disabled={!isUrlReady || isAddAuthorizePending}>
+        <Button
+          onClick={onAddAndAuthorize}
+          isLoading={isAddAuthorizePending}
+          loadingLabel="Authorizing…"
+          disabled={!isUrlReady}
+        >
           <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
           Add &amp; Authorize
         </Button>
@@ -203,9 +215,11 @@ export const McpServerForm = ({
     return (
       <Button
         onClick={onAddServer}
-        disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success') || isSavePending}
+        isLoading={isSavePending}
+        loadingLabel="Adding…"
+        disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success')}
       >
-        {isSavePending ? 'Adding…' : 'Add server'}
+        Add server
       </Button>
     )
   }

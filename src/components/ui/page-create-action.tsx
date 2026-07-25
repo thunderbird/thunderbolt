@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react'
 import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/button'
+import { useMobileForegroundPortalTarget } from '@/components/ui/mobile-foreground-portal'
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { edgeSpacing } from '@/lib/constants'
 
@@ -26,13 +27,13 @@ type PageCreateActionProps = {
  * as the same control. It is the only gradient button a page may show; empty
  * states pair with it using `variant="outline"`.
  *
- * Portaled to `document.body` so `position: fixed` anchors to the viewport
- * rather than to whichever ancestor (resizable panel, motion transform)
- * happens to establish a containing block above the page.
+ * Portaled to the mobile foreground shell so it stays viewport-anchored while
+ * moving with that shell when navigation is revealed.
  */
 export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionProps) => {
   const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
+  const portalTarget = useMobileForegroundPortalTarget()
 
   if (!isMobile) {
     return (
@@ -52,6 +53,10 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
         <Plus />
       </Button>
     )
+  }
+
+  if (!portalTarget) {
+    return null
   }
 
   return createPortal(
@@ -75,6 +80,6 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
       <Plus className="size-[var(--icon-size-default)]" />
       {label}
     </Button>,
-    document.body,
+    portalTarget,
   )
 }

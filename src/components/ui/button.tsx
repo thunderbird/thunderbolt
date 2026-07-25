@@ -4,6 +4,7 @@
 
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { Loader2 } from 'lucide-react'
 import { type MouseEvent, useCallback, type ComponentProps } from 'react'
 
 import { useHaptics } from '@/hooks/use-haptics'
@@ -14,8 +15,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary action — brand gradient (same amber→raspberry sweep as the
-        // switch ON track). bg-brand is the fallback under the image; hover
+        // Primary action — amber→raspberry brand gradient. bg-brand is the
+        // fallback under the image; hover
         // dims via brightness since the background is an image, not a color.
         default:
           'border border-border bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100 disabled:brightness-100 disabled:[background-image:none]',
@@ -61,19 +62,29 @@ const buttonVariants = cva(
 export const mutedIconButtonClass =
   "size-[var(--touch-height-lg)] md:size-[var(--touch-height-sm)] rounded-full md:rounded-xl text-muted-foreground hover:bg-muted dark:hover:bg-muted hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground [&_svg:not([class*='size-'])]:size-[var(--icon-size-default)]"
 
+const pendingPrimaryButtonClass =
+  'disabled:bg-brand disabled:text-brand-foreground/80 disabled:brightness-75 disabled:saturate-50 disabled:[background-image:var(--gradient-brand)]'
+
 const Button = ({
   className,
   variant,
   size,
   asChild = false,
+  isLoading = false,
+  loadingLabel,
+  disabled,
+  children,
   onClick,
   ...props
 }: ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    isLoading?: boolean
+    loadingLabel?: string
   }) => {
   const Comp = asChild ? Slot : 'button'
   const { triggerSelection } = useHaptics()
+  const isPrimaryLoading = isLoading && (variant === undefined || variant === null || variant === 'default')
 
   const handleClick = useCallback(
     (e: MouseEvent<HTMLButtonElement>) => {
@@ -86,10 +97,15 @@ const Button = ({
   return (
     <Comp
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, className }), isPrimaryLoading && pendingPrimaryButtonClass)}
       onClick={handleClick}
+      disabled={disabled || isLoading}
+      aria-busy={isLoading || undefined}
       {...props}
-    />
+    >
+      {isLoading && <Loader2 className="animate-spin" />}
+      {isLoading && loadingLabel ? loadingLabel : children}
+    </Comp>
   )
 }
 

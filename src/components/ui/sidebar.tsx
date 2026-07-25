@@ -9,7 +9,6 @@ import { PanelLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
-import { MobileSidebar } from '@/components/ui/mobile-sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
@@ -62,12 +61,11 @@ type SidebarContextProps = {
   setOpen: (open: boolean) => void
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
-  /** Closes the mobile drawer and resolves once its close animation has fully
-   *  settled (immediately when it isn't open). Await this before kicking off
-   *  main-thread-heavy work like navigating to a large chat. */
+  /** Closes the mobile drawer and resolves once that request completes or is
+   *  cancelled (immediately when it isn't open). */
   closeMobileSidebar: () => Promise<void>
-  /** Internal: invoked by the mobile drawer when its close animation finishes. */
-  notifyMobileSidebarClosed: () => void
+  /** Internal: resolves callers when a mobile close completes or is cancelled. */
+  notifyMobileSidebarCloseSettled: () => void
   isMobile: boolean
   /** True when the window is too narrow for the expanded sidebar (< 700px in
    *  the desktop layout): the sidebar is pinned collapsed and toggles hide. */
@@ -148,11 +146,10 @@ const SidebarProvider = forwardRef<
 
     const { triggerImpact } = useHaptics()
 
-    // Resolvers awaiting the mobile drawer's close animation. Flushed by
-    // notifyMobileSidebarClosed, which MobileSidebar calls when the spring settles.
+    // Resolvers awaiting the mobile drawer's close lifecycle.
     const mobileCloseResolversRef = useRef<Array<() => void>>([])
 
-    const notifyMobileSidebarClosed = useCallback(() => {
+    const notifyMobileSidebarCloseSettled = useCallback(() => {
       const resolvers = mobileCloseResolversRef.current
       mobileCloseResolversRef.current = []
       resolvers.forEach((resolve) => resolve())
@@ -206,7 +203,7 @@ const SidebarProvider = forwardRef<
         openMobile,
         setOpenMobile,
         closeMobileSidebar,
-        notifyMobileSidebarClosed,
+        notifyMobileSidebarCloseSettled,
         forceCollapsed,
         toggleSidebar,
         //* new context for sidebar resizing
@@ -225,7 +222,7 @@ const SidebarProvider = forwardRef<
         //* remove setOpenMobile from dependencies because setOpenMobile are state setters created by useState
         // setOpenMobile,
         closeMobileSidebar,
-        notifyMobileSidebarClosed,
+        notifyMobileSidebarCloseSettled,
         forceCollapsed,
         toggleSidebar,
         //* add width to dependencies
@@ -274,9 +271,6 @@ const Sidebar = forwardRef<
   const {
     isMobile,
     state,
-    openMobile,
-    setOpenMobile,
-    notifyMobileSidebarClosed,
     //* new property for tracking is dragging rail
     isDraggingRail,
   } = useSidebar()
@@ -298,16 +292,16 @@ const Sidebar = forwardRef<
 
   if (isMobile) {
     return (
-      <MobileSidebar
-        open={openMobile}
-        onOpenChange={setOpenMobile}
-        onCloseComplete={notifyMobileSidebarClosed}
-        side={side}
-        className={className}
+      <div
+        ref={ref}
+        className={cn('flex h-full w-full flex-col', className)}
+        data-sidebar="sidebar"
+        data-slot="sidebar-content"
+        data-mobile="true"
         {...props}
       >
         {children}
-      </MobileSidebar>
+      </div>
     )
   }
 

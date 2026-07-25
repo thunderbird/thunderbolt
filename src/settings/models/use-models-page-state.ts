@@ -6,19 +6,21 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { useMemo, useReducer } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
 import { createModel, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
+import { useDebounce } from '@/hooks/use-debounce'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
 import { addModelFormSchema, type AddModelFormValues } from './add-model-form'
 import type { EditModelSubmission } from './edit-model-form'
-import { providerAutoFetchesCatalog } from './model-policy'
+import type { CatalogRequest } from './model-catalog'
+import { catalogRequiresApiKey } from './model-policy'
 import { initialModelsPageState, modelsPageReducer } from './page-state'
 import { catalogToComboboxItems, customModelItem, useModelCatalog } from './use-model-catalog'
 
@@ -41,6 +43,7 @@ export const useModelsPageState = () => {
   const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
   const { panel, deleteConfirmId, selectedModelId, mutationError } = state
   const catalog = useModelCatalog()
+  const { fetchCatalog } = catalog
   const isAddPanelOpen = panel?.kind === 'add'
   const activeModelId = panel?.kind === 'detail' || panel?.kind === 'edit' ? panel.modelId : null
   const { data: models = [] } = useQuery({
@@ -65,7 +68,22 @@ export const useModelsPageState = () => {
   const apiKey = form.watch('apiKey')
   const url = form.watch('url')
   const model = form.watch('model')
+  const catalogRequest = useMemo<CatalogRequest>(() => ({ provider, apiKey, url }), [apiKey, provider, url])
+  const debouncedCatalogRequest = useDebounce(catalogRequest, 500)
   const connection = useModelConnectionTest({ provider, model, url, apiKey })
+
+  useEffect(() => {
+    if (!isAddPanelOpen || debouncedCatalogRequest.provider !== provider) {
+      return
+    }
+    if (catalogRequiresApiKey(provider) && !debouncedCatalogRequest.apiKey) {
+      return
+    }
+    if (provider === 'custom' && !debouncedCatalogRequest.url) {
+      return
+    }
+    void fetchCatalog(debouncedCatalogRequest)
+  }, [debouncedCatalogRequest, fetchCatalog, isAddPanelOpen, provider])
 
   const failMutation = (message: string) => (error: unknown) => {
     console.error(message, error)
@@ -138,10 +156,6 @@ export const useModelsPageState = () => {
   const openAddPanel = () => {
     dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
     connection.reset()
-    const currentProvider = form.getValues('provider')
-    if (providerAutoFetchesCatalog(currentProvider) && catalog.models.length === 0) {
-      void catalog.fetchCatalog({ provider: currentProvider })
-    }
   }
   const cancelAddPanel = () => {
     resetAddForm()
@@ -180,6 +194,7 @@ export const useModelsPageState = () => {
   }
   const changeProvider = (nextProvider: Model['provider']) => {
     catalog.invalidateCatalog()
+    form.setValue('provider', nextProvider, { shouldValidate: false, shouldDirty: true })
     // Clear the picked model too — a stale selection (especially 'custom') would
     // keep the previous provider's model/custom fields rendered against the new
     // provider's catalog.
@@ -192,10 +207,7 @@ export const useModelsPageState = () => {
       shouldDirty: false,
     })
     form.setValue('apiKey', '', { shouldValidate: false, shouldDirty: false })
-    void form.trigger()
-    if (providerAutoFetchesCatalog(nextProvider)) {
-      void catalog.fetchCatalog({ provider: nextProvider })
-    }
+    form.clearErrors()
   }
   const modelItems = useMemo((): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
@@ -231,7 +243,6 @@ export const useModelsPageState = () => {
       onCancel: cancelAddPanel,
       onProviderChange: changeProvider,
       onCatalogInvalidated: catalog.invalidateCatalog,
-      onRefreshCatalog: () => void catalog.fetchCatalog({ provider, apiKey, url }),
       onSelectModel: selectModel,
       onTestConnection: testConnection,
     },

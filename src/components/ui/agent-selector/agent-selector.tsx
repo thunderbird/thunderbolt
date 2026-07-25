@@ -119,8 +119,10 @@ export const AgentSelector = ({
             layout work and truncation artifacts. It remains in flow (and
             therefore keeps the trigger width stable) while transparent. */}
         <div
+          data-testid="agent-selector-pill"
           className={cn(
-            'relative z-10 flex h-full items-center rounded-full px-3 transition-[opacity,background-color,color] duration-150',
+            'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 md:px-3',
+            mobileHeaderControlFillClass,
             collapsed ? 'opacity-0' : 'opacity-100',
             !disabled && isOpen
               ? 'bg-secondary'

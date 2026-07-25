@@ -6,6 +6,7 @@ import { createContext, useContext, useRef, useState, type ChangeEvent, type Rea
 import { createPortal } from 'react-dom'
 import { Search } from 'lucide-react'
 import { Button, mutedIconButtonClass } from './button'
+import { useMobileForegroundPortalTarget } from './mobile-foreground-portal'
 import { mobileHeaderControlFillClass } from './modal-styles'
 import { SearchInput, type SearchInputProps } from './search-input'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -71,11 +72,15 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
 const PageSearchButton = () => {
   const { open, toggle } = usePageSearchContext()
   const { isMobile } = useIsMobile()
+  const portalTarget = useMobileForegroundPortalTarget()
 
   if (isMobile) {
+    if (!portalTarget) {
+      return null
+    }
+
     // Mobile: a top-right circular header control, matching the sidebar
-    // toggle / modal close family. Portaled to `document.body` so
-    // `position: fixed` anchors to the viewport (see PageCreateAction).
+    // toggle / modal close family and moving with the foreground shell.
     return createPortal(
       <Button
         variant="ghost"
@@ -92,7 +97,7 @@ const PageSearchButton = () => {
       >
         <Search />
       </Button>,
-      document.body,
+      portalTarget,
     )
   }
 

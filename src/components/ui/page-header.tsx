@@ -5,6 +5,7 @@
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
+import { useMobileForegroundPortalTarget } from '@/components/ui/mobile-foreground-portal'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 type PageHeaderProps = {
@@ -19,8 +20,8 @@ type PageHeaderProps = {
  * joins the floating app-header row (centered between the sidebar toggle and
  * any top-right control, mirroring the modal shells) and the in-flow row
  * disappears; actions place themselves (`PageCreateAction` becomes the
- * bottom pill, `PageSearch.Button` the top-right circle). Portaled to
- * `document.body` so `position: fixed` anchors to the viewport.
+ * bottom pill, `PageSearch.Button` the top-right circle). The mobile chrome
+ * portal belongs to the movable foreground shell.
  *
  * @example
  * ```tsx
@@ -33,19 +34,21 @@ type PageHeaderProps = {
  */
 export const PageHeader = ({ title, children }: PageHeaderProps) => {
   const { isMobile } = useIsMobile()
+  const portalTarget = useMobileForegroundPortalTarget()
 
   if (isMobile) {
     return (
       <>
-        {createPortal(
-          <div
-            className="pointer-events-none fixed left-1/2 z-30 flex h-[var(--touch-height-lg)] max-w-[50vw] -translate-x-1/2 items-center"
-            style={{ top: 'var(--header-control-top)' }}
-          >
-            <h1 className="truncate text-[length:var(--font-size-body)] font-semibold text-foreground">{title}</h1>
-          </div>,
-          document.body,
-        )}
+        {portalTarget &&
+          createPortal(
+            <div
+              className="pointer-events-none fixed left-1/2 z-30 flex h-[var(--touch-height-lg)] max-w-[50vw] -translate-x-1/2 items-center"
+              style={{ top: 'var(--header-control-top)' }}
+            >
+              <h1 className="truncate text-[length:var(--font-size-body)] font-semibold text-foreground">{title}</h1>
+            </div>,
+            portalTarget,
+          )}
         {children}
       </>
     )

@@ -107,9 +107,10 @@ describe('add model form', () => {
     // button on the page behind the panel.
     const panel = screen.getByRole('complementary')
     expect(within(panel).getByRole('button', { name: 'Add Model' })).toBeDisabled()
+    expect(within(panel).queryByRole('button', { name: 'Refresh model catalog' })).not.toBeInTheDocument()
   })
 
-  it('clears the picked model when the provider changes', async () => {
+  it('clears the picked model without validating untouched fields when the provider changes', async () => {
     // Drives the state hook directly — the regression (a stale 'custom'
     // selection surviving a provider switch and keeping the custom-ID field
     // rendered) lives in the hook, not the Radix widgets around it.
@@ -118,6 +119,7 @@ describe('add model form', () => {
       return (
         <div>
           <span data-testid="selected-model">{page.addForm.selectedModelId ?? ''}</span>
+          <span data-testid="validation-errors">{Object.keys(page.addForm.form.formState.errors).join(',')}</span>
           <button onClick={() => page.addForm.onSelectModel('custom')}>select custom</button>
           <button onClick={() => page.addForm.onProviderChange('openai')}>switch provider</button>
         </div>
@@ -136,6 +138,57 @@ describe('add model form', () => {
       await getClock().runAllAsync()
     })
     expect(screen.getByTestId('selected-model')).toHaveTextContent('')
+    expect(screen.getByTestId('validation-errors')).toBeEmptyDOMElement()
+  })
+
+  it('loads the catalog after API key edits settle', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue({
+      json: async () => ({ data: [{ id: 'gpt-test', name: 'GPT Test' }] }),
+    } as unknown as ReturnType<typeof http.get>)
+
+    const AutoCatalogHarness = () => {
+      const page = useModelsPageState()
+      return (
+        <div>
+          <span data-testid="catalog-models">{page.addForm.modelItems.map((item) => item.label).join(',')}</span>
+          <button onClick={page.openAddPanel}>open</button>
+          <button onClick={() => page.addForm.onProviderChange('openai')}>select OpenAI</button>
+          <button
+            onClick={() => {
+              page.addForm.form.setValue('apiKey', 'sk-test', { shouldValidate: false })
+              page.addForm.onCatalogInvalidated()
+            }}
+          >
+            enter API key
+          </button>
+        </div>
+      )
+    }
+
+    try {
+      renderWithReactivity(<AutoCatalogHarness />, { tables: ['models'] })
+      fireEvent.click(screen.getByText('open'))
+      fireEvent.click(screen.getByText('select OpenAI'))
+      fireEvent.click(screen.getByText('enter API key'))
+
+      await act(async () => {
+        getClock().tick(499)
+      })
+      expect(getSpy).not.toHaveBeenCalled()
+
+      await act(async () => {
+        getClock().tick(1)
+        await getClock().runAllAsync()
+      })
+
+      expect(getSpy).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/models',
+        expect.objectContaining({ headers: { Authorization: 'Bearer sk-test' } }),
+      )
+      expect(screen.getByTestId('catalog-models')).toHaveTextContent('GPT Test')
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 })
 
@@ -308,6 +361,7 @@ describe('model card action menu', () => {
     // The model field is a dropdown seeded with the stored model id.
     const modelTrigger = screen.getByRole('combobox')
     expect(modelTrigger).toHaveTextContent('gpt-4')
+    expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument()
   })
 
   it('does not request a provider catalog merely by opening edit', async () => {
@@ -331,6 +385,47 @@ describe('model card action menu', () => {
       await screen.findByRole('heading', { name: 'Edit Model' })
 
       expect(getSpy).not.toHaveBeenCalled()
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it('refreshes the edit catalog after a replacement API key settles', async () => {
+    const db = getDb()
+    await createModel(db, {
+      id: uuidv7(),
+      provider: 'openai',
+      name: 'Editable Key Model',
+      model: 'gpt-4',
+      apiKey: 'sk-saved',
+      isSystem: 0,
+      enabled: 1,
+    })
+    const getSpy = spyOn(http, 'get').mockReturnValue({
+      json: async () => ({ data: [{ id: 'gpt-new', name: 'GPT New' }] }),
+    } as unknown as ReturnType<typeof http.get>)
+
+    try {
+      renderModelsPage()
+      await waitForElement(() => screen.queryByText('Editable Key Model'))
+      await openMenuForModel('Editable Key Model')
+      fireEvent.click(await screen.findByText('Edit'))
+      fireEvent.change(await screen.findByLabelText('API Key'), { target: { value: 'sk-replacement' } })
+
+      await act(async () => {
+        getClock().tick(499)
+      })
+      expect(getSpy).not.toHaveBeenCalled()
+
+      await act(async () => {
+        getClock().tick(1)
+        await getClock().runAllAsync()
+      })
+
+      expect(getSpy).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/models',
+        expect.objectContaining({ headers: { Authorization: 'Bearer sk-replacement' } }),
+      )
     } finally {
       getSpy.mockRestore()
     }

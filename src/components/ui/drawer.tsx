@@ -48,12 +48,17 @@ const DrawerContent = ({ className, children, ...props }: DrawerPrimitive.Popup.
   // The sheet only exists while open, so this taps on both open and close —
   // covering every slide-in card (add-to-chat, mode, model, agent, chip menus).
   useMountHaptic()
+
   return (
     <DrawerPrimitive.Portal data-slot="drawer-portal">
       <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} />
+      {/* Portaled events still bubble through the React tree. Isolate this
+          drawer from an enclosing drawer's SwipeArea, which otherwise
+          prevents desktop clicks while listening for swipe-open gestures. */}
       <DrawerPrimitive.Viewport
         data-slot="drawer-viewport"
         className="pointer-events-auto fixed inset-0 z-50 select-none"
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <DrawerPrimitive.Popup data-slot="drawer-content" className={cn(popupClass, className)} {...props}>
           <DrawerPrimitive.Content className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit] select-text group-data-[swiping]/drawer-content:select-none">

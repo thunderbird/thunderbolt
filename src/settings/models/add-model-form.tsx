@@ -17,7 +17,7 @@ import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
-import { catalogRequiresApiKey, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
+import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
 import { providerLabels } from './model-presentation'
 
 /** Provider picker options, derived from the exhaustive labels Record so a new
@@ -63,7 +63,6 @@ type AddModelFormProps = {
   onCancel: () => void
   onProviderChange: (provider: Model['provider']) => void
   onCatalogInvalidated: () => void
-  onRefreshCatalog: () => void
   onSelectModel: (id: string) => void
   onTestConnection: () => void
 }
@@ -85,7 +84,6 @@ export const AddModelForm = ({
   onCancel,
   onProviderChange,
   onCatalogInvalidated,
-  onRefreshCatalog,
   onSelectModel,
   onTestConnection,
 }: AddModelFormProps) => {
@@ -114,7 +112,6 @@ export const AddModelForm = ({
               <FormControl>
                 <Select
                   onValueChange={(value: Model['provider']) => {
-                    field.onChange(value)
                     onProviderChange(value)
                   }}
                   value={field.value}
@@ -191,14 +188,6 @@ export const AddModelForm = ({
             )}
           />
         )}
-        <Button
-          type="button"
-          variant="outline"
-          disabled={isLoadingCatalog || (catalogRequiresApiKey(provider) && !apiKey) || (provider === 'custom' && !url)}
-          onClick={onRefreshCatalog}
-        >
-          {isLoadingCatalog ? 'Refreshing models…' : 'Refresh model catalog'}
-        </Button>
         {showModelSelection && (
           <FormField
             control={form.control}
@@ -287,6 +276,8 @@ export const AddModelForm = ({
           <ResponsiveModalCancel onClick={onCancel} />
           <Button
             type="submit"
+            isLoading={isPending}
+            loadingLabel="Adding…"
             disabled={shouldDisableAddModel({
               isPending,
               isFormValid: form.formState.isValid,
@@ -294,7 +285,7 @@ export const AddModelForm = ({
               connectionStatus,
             })}
           >
-            {isPending ? 'Adding…' : 'Add Model'}
+            Add Model
           </Button>
         </FormFooter>
       </form>

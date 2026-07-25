@@ -83,8 +83,11 @@ const useStableMotionValue = (initial: unknown): MockMotionValue => {
  */
 export const animateSpy = mock((value: MockMotionValue, target: unknown, _transition?: unknown) => {
   value.set(target)
-  return Promise.resolve()
+  return Object.assign(Promise.resolve(), { stop: () => {} })
 })
+
+/** Spy for gestures started through Framer Motion's external drag controls. */
+export const dragControlsStartSpy = mock(() => {})
 
 let reducedMotion = false
 
@@ -102,6 +105,7 @@ mock.module('framer-motion', () => ({
   m: motionTagProxy,
   motion: motionTagProxy,
   animate: animateSpy,
+  useDragControls: () => ({ start: dragControlsStartSpy }),
   useMotionValue: (initial: unknown) => useStableMotionValue(initial),
   useReducedMotion: () => reducedMotion,
   useTransform: () => useStableMotionValue(0),

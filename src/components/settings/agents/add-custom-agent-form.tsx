@@ -263,7 +263,7 @@ export const AddCustomAgentForm = ({
           </p>
         )}
         <ResponsiveModalCancel onClick={onClose} />
-        <Button onClick={handleSubmit} disabled={!canSubmit}>
+        <Button onClick={handleSubmit} isLoading={state.submitting} loadingLabel="Adding…" disabled={!canSubmit}>
           Add agent
         </Button>
       </FormFooter>

@@ -63,12 +63,9 @@ describe('AgentSelector', () => {
 
     const trigger = screen.getByTestId('agent-selector-trigger')
     expect(trigger).toHaveTextContent('RAG Chat')
-    expect(trigger).toHaveClass(
-      'max-md:h-[var(--touch-height-lg)]',
-      'max-md:backdrop-blur-md',
-      'max-md:active:bg-muted-foreground/20',
-    )
+    expect(trigger).toHaveClass('max-md:h-[var(--touch-height-lg)]')
     expect(trigger).not.toHaveClass('max-md:bg-muted/80')
+    expect(trigger).not.toHaveClass('max-md:backdrop-blur-md')
   })
 
   it('opens the dropdown and exposes all agents when enabled', () => {

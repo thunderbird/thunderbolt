@@ -52,7 +52,7 @@ const HeaderAgentSelector = ({
 }: HeaderAgentSelectorProps) => {
   const { status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
   const isReplying = status === 'streaming' || status === 'submitted'
-  // `status` flips to `submitted` synchronously on send, so the collapse starts
+  // `status` flips to `submitted` synchronously on send, so the transition starts
   // the moment the user submits — before the thread row lands in the store.
   // Existing chats mount with `hasThread` already true, so they render docked
   // top-right with no transition (CSS transitions don't run on first paint).
@@ -75,18 +75,25 @@ const HeaderAgentSelector = ({
 
   return (
     // Absolutely positioned so the macOS traffic-light clearance on the left
-    // column can't push the centered state off-center. Docked: `left-full`
-    // with a self-width translate pins the right edge 0.5rem from the header's
-    // right — the percentage translate tracks the pill's own width as it
-    // shrinks, so the slide and the collapse compose into one smooth motion.
+    // column can't push the centered state off-center. Docked: a translate of
+    // half the header width (50cqw — the header is a size container) minus the
+    // pill's own width pins the right edge flush with the content edge (cqw is
+    // content-box based, so the header's px-2 padding provides the gap).
+    //
+    // Only `translate` transitions — `left` stays fixed. Animating `left`
+    // re-runs layout on the main thread every frame, and this slide fires at
+    // the busiest main-thread moment in the app (first send mounts the message
+    // list), which made it visibly stutter. A translate-only transition runs
+    // on the compositor and stays smooth regardless of main-thread load.
+    //
+    // The trigger width stays fixed throughout. Its labeled pill and logo-only
+    // circle crossfade internally (see AgentSelector), so this wrapper only
+    // animates translate and both directions remain compositor-driven.
     <div
       {...mobile.dragProps}
       className={cn(
-        // Tailwind v4's translate utilities set the `translate` property (not
-        // `transform`), so that's what must be in transition-property for the
-        // slide to animate.
-        'absolute top-2 z-10 flex items-center transition-[left,translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-        collapsed ? 'left-full -translate-x-[calc(100%+0.5rem)]' : 'left-1/2 -translate-x-1/2',
+        'absolute top-2 left-1/2 z-10 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+        collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
       )}
     >
       {selector}
@@ -214,7 +221,9 @@ export const Header = () => {
     return (
       <header
         {...dragProps}
-        className="relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
+        // `@container` lets the agent pill's docked translate use 50cqw (half
+        // the header width) so its slide can be translate-only (see above).
+        className="@container relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
       >
         <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'pl-20')}>
           {/* The same panel glyph as the desktop toggle, so one icon means

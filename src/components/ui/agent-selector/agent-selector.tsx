@@ -109,70 +109,65 @@ export const AgentSelector = ({
         data-testid="agent-selector-trigger"
         aria-disabled={disabled}
         className={cn(
-          // Spacing between icon / label / chevron lives on the children
-          // (label `pl-2`, chevron `ml-2`) rather than a row gap, so the
-          // label's width-collapse below removes its spacing along with it.
-          'flex h-[var(--touch-height-sm)] items-center rounded-full text-[length:var(--font-size-body)] transition-[background-color,color,padding] duration-300 max-md:h-[var(--touch-height-lg)] max-md:backdrop-blur-md max-md:active:bg-muted-foreground/20',
-          // Collapsed: px + icon add up to --touch-height-lg (14+20+14 = 48px
-          // mobile) so the pill lands as a circle matching the header's other
-          // round controls.
-          collapsed ? 'px-3.5' : 'max-w-[50vw] px-3 md:max-w-none',
+          'group relative h-[var(--touch-height-sm)] max-w-[50vw] text-[length:var(--font-size-body)] max-md:h-[var(--touch-height-lg)] md:max-w-none',
           disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-          // Light secondary is nearly the same shade as the page background,
-          // so at 50% the hover reads as invisible — use full accent there
-          // (same hover as the header's ghost buttons). Dark keeps the
-          // subtler half-secondary. Collapsed rests on the same frosted fill
-          // as `mobileHeaderControlFillClass` (the sidebar toggle's circle).
-          !disabled && isOpen
-            ? 'bg-secondary'
-            : collapsed
-              ? 'max-md:bg-muted/80 max-md:dark:bg-muted/40'
-              : 'hover:bg-accent dark:hover:bg-secondary/50',
         )}
       >
-        <Icon
-          className={cn(
-            // `max-w-none`: preflight gives <img> `max-width: 100%`, and when
-            // the collapsed label track hits 0fr, WebKit/Firefox resolve that
-            // cyclic percentage against the collapsed content box — computing
-            // the logo's width to 0 (Chrome doesn't). Opt out entirely.
-            'max-w-none text-muted-foreground shrink-0 transition-[width,height] duration-300',
-            collapsed ? 'size-[var(--icon-size-default)]' : triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5',
-          )}
-        />
-        {/* Muted like the mode/model picker labels — chrome, not content.
-            The 1fr→0fr grid track is the CSS-only way to animate a width of
-            `auto` to zero, so the collapse glides instead of snapping. */}
+        {/* The fixed-width labeled pill is never resized. On mobile it simply
+            fades away while its parent slides right, avoiding all per-frame
+            layout work and truncation artifacts. It remains in flow (and
+            therefore keeps the trigger width stable) while transparent. */}
         <div
           className={cn(
-            'grid min-w-0 overflow-hidden transition-[grid-template-columns,opacity,padding] duration-300',
-            collapsed ? 'grid-cols-[0fr] pl-0 opacity-0' : 'grid-cols-[1fr] pl-2 opacity-100',
+            'relative z-10 flex h-full items-center rounded-full px-3 transition-[opacity,background-color,color] duration-150',
+            collapsed ? 'opacity-0' : 'opacity-100',
+            !disabled && isOpen
+              ? 'bg-secondary'
+              : !collapsed && 'hover:bg-accent max-md:group-active:bg-muted-foreground/20 dark:hover:bg-secondary/50',
           )}
         >
-          <span className="min-w-0 font-medium truncate text-muted-foreground">
+          <Icon
+            className={cn(
+              'max-w-none shrink-0 text-muted-foreground',
+              triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5',
+            )}
+          />
+          <span className="min-w-0 truncate pl-2 font-medium text-muted-foreground">
             {selected?.label ?? selectedAgent.name}
           </span>
+          {/* Hidden on mobile: the menu opens as an animated card there, so the
+              chevron affordance is redundant. */}
+          <ChevronDown
+            className={cn(
+              'ml-2 size-3.5 shrink-0 text-muted-foreground transition-transform max-md:hidden',
+              !disabled && isOpen && 'rotate-180',
+            )}
+          />
         </div>
-        {/* Hidden on mobile: the menu opens as an animated card there, so the
-            chevron affordance is redundant. */}
-        <ChevronDown
+
+        {/* Independent logo-only circle beneath the pill. Crossfading these
+            layers means the moving element never changes width; only opacity
+            and the header wrapper's translate animate. */}
+        <div
+          aria-hidden="true"
+          data-testid="agent-selector-collapsed-circle"
           className={cn(
-            'ml-2 size-3.5 text-muted-foreground transition-transform shrink-0 max-md:hidden',
-            !disabled && isOpen && 'rotate-180',
+            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full bg-muted/80 transition-opacity duration-150 group-active:bg-muted-foreground/20 dark:bg-muted/40 md:hidden',
+            collapsed ? 'opacity-100' : 'opacity-0',
           )}
-        />
+        >
+          <Icon className="max-w-none size-[var(--icon-size-default)] text-muted-foreground" />
+        </div>
       </div>
     )
 
-    if (!disabled) {
-      return triggerInner
-    }
-
+    // Keep the wrapper mounted when `disabled` changes on send; remounting the
+    // trigger would cancel its slide and crossfade.
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{triggerInner}</TooltipTrigger>
-          <TooltipContent side="bottom">Cannot change agent during reply</TooltipContent>
+          {disabled && <TooltipContent side="bottom">Cannot change agent during reply</TooltipContent>}
         </Tooltip>
       </TooltipProvider>
     )

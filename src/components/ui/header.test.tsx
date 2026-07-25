@@ -159,8 +159,8 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
-    expect(wrapper).toHaveClass('left-1/2', '-translate-x-1/2')
-    expect(screen.getByTestId('agent-selector-trigger')).not.toHaveClass('max-md:bg-muted/80')
+    expect(wrapper).toHaveClass('left-1/2', '[translate:-50%_0]')
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-0')
   })
 
   it('docks a collapsed circle top-right once the chat has a thread (mobile)', () => {
@@ -169,8 +169,10 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
-    expect(wrapper).toHaveClass('left-full')
-    expect(wrapper).not.toHaveClass('left-1/2')
-    expect(screen.getByTestId('agent-selector-trigger')).toHaveClass('max-md:bg-muted/80')
+    // `left` stays fixed — only `translate` differs between the two states,
+    // so the dock slide can run entirely on the compositor.
+    expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
+    expect(wrapper).not.toHaveClass('[translate:-50%_0]')
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'bg-muted/80')
   })
 })

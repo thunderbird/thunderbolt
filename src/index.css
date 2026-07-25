@@ -493,10 +493,10 @@
 }
 
 /* The quick-create panel pushes the current route while both surfaces fit.
-   Below the panel's 440px floor + the content's 360px floor, take the panel
+   Below the panel's 480px floor + the content's 360px floor, take the panel
    out of flex flow so it slides over the unchanged route instead. A container
    query accounts for expanded, collapsed, and user-resized sidebars alike.
-   The 440px floor is DetailPanelSurface's width clamp (detail-panel.tsx); the
+   The 480px floor is DetailPanelSurface's width clamp (detail-panel.tsx); the
    360px floor is the ResizablePanel minSize (main-layout.tsx) — keep all
    three in sync. */
 [data-slot='create-item-layout'] {
@@ -504,7 +504,7 @@
   container-type: inline-size;
 }
 
-@container create-item-layout (width < 800px) {
+@container create-item-layout (width < 840px) {
   [data-slot='create-item-layout'] > [data-slot='slide-in-panel'] {
     position: absolute;
     inset-block: 0;

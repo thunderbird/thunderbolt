@@ -149,7 +149,7 @@ export const DetailPanelSurface = ({ open, onClose, topInset = false, children }
       // a slightly stronger black ink at the same blur radius.
       <SlideInPanel
         open={open}
-        width="clamp(440px, calc(50vw - 128px), 520px)"
+        width="clamp(480px, calc(50vw - 128px), 540px)"
         className="[filter:drop-shadow(var(--shadow-glow-strong))] dark:[filter:drop-shadow(0_0_32px_rgb(0_0_0/24%))]"
       >
         <div className={cn('h-full pb-12', topInset && 'pt-12')}>

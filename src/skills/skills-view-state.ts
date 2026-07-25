@@ -85,7 +85,7 @@ export type SkillsViewAction =
   /** User opened the edit form for a specific skill. */
   | { type: 'START_EDIT'; id: string }
   /** Leave the form (confirmed) and apply the parked intent. */
-  | { type: 'PERFORM_LEAVE'; leave: LeaveIntent; isMobile: boolean }
+  | { type: 'PERFORM_LEAVE'; leave: LeaveIntent }
   /** User asked to leave but the form is dirty — park the intent for the
    *  discard-changes dialog. */
   | { type: 'REQUEST_LEAVE'; leave: LeaveIntent }
@@ -143,17 +143,10 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       // land in detail.
       const nextMode: Mode = leave.type === 'edit' || leave.type === 'create' ? leave.type : 'detail'
       // `edit`/`create` need the panel open — they can be triggered from a
-      // list-row action while panelView is still 'list'. On mobile a `cancel`
-      // drops the user back to the list. Driving this here (not in the form's
-      // onCancel) means the panel stays visible while the discard-confirmation
-      // dialog is open — if the user picks "Keep editing" the form remains
-      // accessible.
-      const nextPanelView =
-        leave.type === 'edit' || leave.type === 'create'
-          ? 'panel'
-          : action.isMobile && leave.type === 'cancel'
-            ? 'list'
-            : state.panelView
+      // list-row action while panelView is still 'list'. Cancel returns to the
+      // selected item's detail view on both mobile and desktop; closing the
+      // detail view is a separate action.
+      const nextPanelView = leave.type === 'edit' || leave.type === 'create' ? 'panel' : state.panelView
       return {
         ...state,
         activeId: nextActiveId,

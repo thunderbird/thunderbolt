@@ -107,10 +107,10 @@ export const SkillsView = () => {
       if ((mode === 'create' || mode === 'edit') && isDirty) {
         dispatch({ type: 'REQUEST_LEAVE', leave })
       } else {
-        dispatch({ type: 'PERFORM_LEAVE', leave, isMobile })
+        dispatch({ type: 'PERFORM_LEAVE', leave })
       }
     },
-    [mode, isDirty, isMobile],
+    [mode, isDirty],
   )
 
   const onSelectSkill = (id: string) => {
@@ -123,7 +123,7 @@ export const SkillsView = () => {
 
   const onConfirmDiscard = () => {
     if (pendingLeave) {
-      dispatch({ type: 'PERFORM_LEAVE', leave: pendingLeave, isMobile })
+      dispatch({ type: 'PERFORM_LEAVE', leave: pendingLeave })
     }
   }
 

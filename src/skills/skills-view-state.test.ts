@@ -97,7 +97,6 @@ describe('skillsViewReducer', () => {
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
         leave: { type: 'cancel' },
-        isMobile: false,
       })
       expect(next.mode).toBe('detail')
       expect(next.isDirty).toBe(false)
@@ -116,7 +115,6 @@ describe('skillsViewReducer', () => {
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
         leave: { type: 'cancel' },
-        isMobile: false,
       })
       expect(next.panelView).toBe('panel')
     })
@@ -132,7 +130,6 @@ describe('skillsViewReducer', () => {
       const next = skillsViewReducer(creating, {
         type: 'PERFORM_LEAVE',
         leave: { type: 'edit', id: 'b' },
-        isMobile: false,
       })
       expect(next.mode).toBe('edit')
       expect(next.activeId).toBe('b')
@@ -153,7 +150,6 @@ describe('skillsViewReducer', () => {
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
         leave: { type: 'create' },
-        isMobile: false,
       })
       expect(next.mode).toBe('create')
       // The prior edit target stays active — SUBMIT_SUCCESS overwrites it.
@@ -168,11 +164,11 @@ describe('skillsViewReducer', () => {
         mode: 'create',
         createInitialName: 'meeting-notes',
       }
-      const next = skillsViewReducer(editing, { type: 'PERFORM_LEAVE', leave: { type: 'cancel' }, isMobile: false })
+      const next = skillsViewReducer(editing, { type: 'PERFORM_LEAVE', leave: { type: 'cancel' } })
       expect(next.createInitialName).toBeNull()
     })
 
-    it('on mobile cancel, also slides back to the list', () => {
+    it('on mobile cancel, keeps the panel open to show the detail view', () => {
       const editing: SkillsViewState = {
         ...initialSkillsViewState,
         mode: 'edit',
@@ -182,9 +178,8 @@ describe('skillsViewReducer', () => {
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
         leave: { type: 'cancel' },
-        isMobile: true,
       })
-      expect(next.panelView).toBe('list')
+      expect(next.panelView).toBe('panel')
     })
 
     it('on mobile select, stays on the panel (the user is jumping skills, not leaving)', () => {
@@ -197,7 +192,6 @@ describe('skillsViewReducer', () => {
       const next = skillsViewReducer(editing, {
         type: 'PERFORM_LEAVE',
         leave: { type: 'select', id: 'b' },
-        isMobile: true,
       })
       expect(next.activeId).toBe('b')
       expect(next.panelView).toBe('panel')
@@ -315,9 +309,7 @@ describe('skillsViewReducer', () => {
     it('SUBMIT_SUCCESS and PERFORM_LEAVE clear a stale submit error', () => {
       const failed = skillsViewReducer(initialSkillsViewState, { type: 'SUBMIT_FAILED', message: 'save failed' })
       expect(skillsViewReducer(failed, { type: 'SUBMIT_SUCCESS', activeId: 'a' }).submitError).toBeNull()
-      expect(
-        skillsViewReducer(failed, { type: 'PERFORM_LEAVE', leave: { type: 'cancel' }, isMobile: false }).submitError,
-      ).toBeNull()
+      expect(skillsViewReducer(failed, { type: 'PERFORM_LEAVE', leave: { type: 'cancel' } }).submitError).toBeNull()
     })
 
     it('CLEAR_SLUG_ERROR drops a stale slug error', () => {

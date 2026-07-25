@@ -160,7 +160,7 @@ export const ModelSelector = ({
           item.disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
-        <span className="font-medium truncate">{item.label}</span>
+        <span className="truncate font-normal">{item.label}</span>
         {/* ml-auto pushes the trailing indicator (missing-key warning or the
             confidential "Private" badge) to the row's right edge. */}
         {showMissingKeyHint ? (

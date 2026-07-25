@@ -10,7 +10,19 @@ import { Button } from './button'
 
 afterEach(cleanup)
 
-describe('Button loading state', () => {
+describe('Button', () => {
+  it('reserves matching border geometry for gradient and outlined buttons', () => {
+    render(
+      <>
+        <Button>Save</Button>
+        <Button variant="outline">Cancel</Button>
+      </>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('border', 'border-transparent')
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('border')
+  })
+
   it('disables the button and exposes a busy state with its loading label', () => {
     render(
       <Button isLoading loadingLabel="Saving…">

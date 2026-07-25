@@ -7,7 +7,7 @@ import { type MouseEvent, type TouchEvent, useCallback, useEffect, useRef } from
 const longPressDuration = 500
 
 /**
- * Returns touch event handlers that trigger a callback after a sustained press.
+ * Returns event handlers that trigger a callback after a sustained press or context-menu request.
  * Cancels if the touch moves beyond a small threshold or ends early.
  */
 export const useLongPress = (onLongPress: () => void, duration = longPressDuration) => {
@@ -20,6 +20,7 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
+    startPos.current = null
   }, [])
 
   useEffect(() => {
@@ -32,16 +33,18 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
 
   const onTouchStart = useCallback(
     (e: TouchEvent) => {
+      clear()
       firedRef.current = false
       const touch = e.touches[0]
       startPos.current = { x: touch.clientX, y: touch.clientY }
       timerRef.current = setTimeout(() => {
         timerRef.current = null
+        startPos.current = null
         firedRef.current = true
         onLongPress()
       }, duration)
     },
-    [onLongPress, duration],
+    [clear, onLongPress, duration],
   )
 
   const onTouchMove = useCallback(
@@ -64,14 +67,21 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
   const onContextMenu = useCallback(
     (e: MouseEvent) => {
       e.preventDefault()
+      clear()
       if (firedRef.current) {
+        firedRef.current = false
         return
       }
-      firedRef.current = true
       onLongPress()
     },
-    [onLongPress],
+    [clear, onLongPress],
   )
 
-  return { onTouchStart, onTouchMove, onTouchEnd, onContextMenu }
+  return {
+    onTouchStart,
+    onTouchMove,
+    onTouchEnd,
+    onTouchCancel: clear,
+    onContextMenu,
+  }
 }

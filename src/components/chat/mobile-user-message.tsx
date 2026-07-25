@@ -31,7 +31,7 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
 
   return (
     <div data-message-id={message.id}>
-      <div {...longPressHandlers} className={isMenuOpen ? 'relative z-50 select-none' : 'select-none'}>
+      <div {...longPressHandlers} className={isMenuOpen ? 'relative z-50' : undefined}>
         <div className={isMenuOpen ? 'transition-transform scale-[1.02]' : undefined}>
           <MessageBubbles message={message} onResendAttachment={onResendAttachment} />
         </div>
@@ -49,7 +49,15 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
           </div>
         )}
       </div>
-      {isMenuOpen && <MobileBlurBackdrop className="bg-black/40 dark:bg-black/40" onClick={handleClose} />}
+      {isMenuOpen && (
+        <MobileBlurBackdrop
+          className="bg-black/40 dark:bg-black/40"
+          onClick={handleClose}
+          // Keep the backdrop in the message scroller's stacking context so
+          // the selected message and its action remain above it.
+          portal={false}
+        />
+      )}
     </div>
   )
 }

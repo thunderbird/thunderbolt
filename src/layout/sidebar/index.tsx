@@ -9,7 +9,6 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
-import { useHaptics } from '@/hooks/use-haptics'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
@@ -31,7 +30,6 @@ export default function Sidebar() {
   const location = useLocation()
   const { closeMobileSidebar, state, toggleSidebar } = useSidebar()
   const { isMobile } = useIsMobile()
-  const { triggerImpact } = useHaptics()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
@@ -119,7 +117,6 @@ export default function Sidebar() {
   )
 
   const createNewChat = () => {
-    triggerImpact('light')
     trackEvent('chat_new_clicked')
     navigateAndCloseSidebar('/chats/new')
   }

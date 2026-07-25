@@ -303,16 +303,17 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
         ) : isMobile ? (
           <div className="flex w-full min-w-0 items-center gap-1">
             <div className="min-w-0">{renderAccountControl()}</div>
-            <button
+            <Button
               type="button"
+              size="lg"
               aria-label="New Chat"
               title="New Chat"
               onClick={handleNewChat}
-              className="ml-auto flex h-[var(--touch-height-lg)] shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-brand px-4 text-brand-foreground shadow-sm [background-image:var(--gradient-brand)] transition-[filter] hover:brightness-[1.06] active:brightness-95"
+              className="ml-auto rounded-full"
             >
               <MessageCirclePlus className={iconSize} />
               <span>New Chat</span>
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="min-w-0">{renderAccountControl()}</div>

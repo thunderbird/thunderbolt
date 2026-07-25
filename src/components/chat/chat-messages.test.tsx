@@ -282,6 +282,51 @@ describe('ChatMessages', () => {
   })
 
   describe('streaming state', () => {
+    const setupMultiTurnThread = (status: 'ready' | 'streaming') => {
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'First question' }] }),
+        createTestMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'First response' }],
+        }),
+        createTestMessage({ id: 'user-2', role: 'user', parts: [{ type: 'text', text: 'Second question' }] }),
+        createTestMessage({
+          id: 'assistant-2',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Second response' }],
+        }),
+      ]
+      const mockChatInstance = createMockChatInstance(messages, status)
+      const mockUseChat = createMockUseChat(mockChatInstance)
+
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+
+      return render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+    }
+
+    it('reserves viewport space for the active streaming response', () => {
+      const { container } = setupMultiTurnThread('streaming')
+
+      const lastAssistantMessage = container.querySelector<HTMLElement>('[data-message-id="assistant-2"]')
+      expect(lastAssistantMessage?.style.minHeight).toBe('72dvh')
+    })
+
+    it('returns settled responses to their natural height', () => {
+      const { container } = setupMultiTurnThread('ready')
+
+      const lastAssistantMessage = container.querySelector<HTMLElement>('[data-message-id="assistant-2"]')
+      expect(lastAssistantMessage?.style.minHeight).toBe('')
+    })
+
     it('should pass isStreaming to last assistant message when streaming', () => {
       const messages: ThunderboltUIMessage[] = [
         createTestMessage({

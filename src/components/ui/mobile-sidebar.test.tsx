@@ -132,6 +132,17 @@ describe('MobileSidebar', () => {
     expect(onCloseComplete).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the sidebar subtree mounted after closing', async () => {
+    render(<Harness onOpenChange={() => {}} />)
+    const sidebarContent = screen.getByRole('navigation', { name: 'Primary navigation' })
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await flushAnimations()
+
+    expect(sidebarContent).toBeInTheDocument()
+    expect(sidebarContent.closest('[role="presentation"]')).toHaveAttribute('hidden')
+  })
+
   it('provides a portal inside the movable foreground', () => {
     render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
 

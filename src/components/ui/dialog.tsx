@@ -6,7 +6,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
-import { useMountHaptic } from '@/hooks/use-haptics'
+import { HapticMountBoundary } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import {
   centeredModalSurfaceClass,
@@ -24,8 +24,13 @@ const DialogTrigger = ({ ...props }: ComponentProps<typeof DialogPrimitive.Trigg
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
 }
 
-const DialogPortal = ({ ...props }: ComponentProps<typeof DialogPrimitive.Portal>) => {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+const DialogPortal = ({ children, ...props }: ComponentProps<typeof DialogPrimitive.Portal>) => {
+  return (
+    <DialogPrimitive.Portal data-slot="dialog-portal" {...props}>
+      <HapticMountBoundary />
+      {children}
+    </DialogPrimitive.Portal>
+  )
 }
 
 const DialogClose = ({ ...props }: ComponentProps<typeof DialogPrimitive.Close>) => {
@@ -61,8 +66,6 @@ const DialogContent = ({
   useTransparentOverlay?: boolean
   fullScreen?: boolean
 }) => {
-  // Content only exists while the dialog is open, so this taps on open and close.
-  useMountHaptic()
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay useTransparentOverlay={useTransparentOverlay} />

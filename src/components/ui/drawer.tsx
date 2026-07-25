@@ -5,7 +5,7 @@
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
 import type { ComponentProps } from 'react'
 
-import { useMountHaptic } from '@/hooks/use-haptics'
+import { HapticMountBoundary } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 
 /**
@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils'
  */
 const Drawer = (props: DrawerPrimitive.Root.Props) => <DrawerPrimitive.Root {...props} />
 
+const DrawerVirtualKeyboardProvider = (props: DrawerPrimitive.VirtualKeyboardProvider.Props) => (
+  <DrawerPrimitive.VirtualKeyboardProvider {...props} />
+)
+
 /* Deliberately lighter than modalOverlayClass: a card drawer is a shallow,
  * swipe-away surface, so it dims and blurs less than a blocking modal, and
  * sits below the z-50 modal layer. Opacity tracks the swipe so the dimming
@@ -24,7 +28,7 @@ const Drawer = (props: DrawerPrimitive.Root.Props) => <DrawerPrimitive.Root {...
  * `body { position: relative }` in index.css) keeps the backdrop covering the
  * viewport after the page has been scrolled. */
 const backdropClass =
-  'fixed inset-0 z-40 min-h-dvh bg-black/30 backdrop-blur-sm backdrop-saturate-75 select-none ' +
+  'fixed inset-0 z-40 min-h-dvh bg-black/30 backdrop-blur-xs backdrop-saturate-75 select-none ' +
   'opacity-[calc(1-var(--drawer-swipe-progress,0))] transition-opacity duration-450 ease-[cubic-bezier(0.32,0.72,0,1)] ' +
   'data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[ending-style]:pointer-events-none ' +
   'data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*400ms)] data-[swiping]:duration-0 ' +
@@ -44,14 +48,19 @@ const popupClass = cn(
   'data-[swipe-direction=up]:inset-x-0 data-[swipe-direction=up]:top-0 data-[swipe-direction=up]:rounded-b-3xl data-[swipe-direction=up]:border-b data-[swipe-direction=up]:after:bottom-full data-[swipe-direction=up]:[--closed-transform:translate3d(0,calc(-100%-2px),0)] data-[swipe-direction=up]:[--translate-y:var(--drawer-swipe-movement-y)]',
 )
 
-const DrawerContent = ({ className, children, ...props }: DrawerPrimitive.Popup.Props) => {
-  // The sheet only exists while open, so this taps on both open and close —
-  // covering every slide-in card (add-to-chat, mode, model, agent, chip menus).
-  useMountHaptic()
+type DrawerContentProps = DrawerPrimitive.Popup.Props & {
+  /** Render the backdrop even when this drawer is nested in another drawer. */
+  forceBackdrop?: boolean
+}
 
+const DrawerContent = ({ className, children, forceBackdrop = false, ...props }: DrawerContentProps) => {
   return (
     <DrawerPrimitive.Portal data-slot="drawer-portal">
-      <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} />
+      {/* Portal children mount when opening begins and unmount after the close
+          transition. DrawerContent itself stays mounted while the drawer is
+          closed, so the haptic must live inside the portal lifecycle. */}
+      <HapticMountBoundary />
+      <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} forceRender={forceBackdrop} />
       {/* Portaled events still bubble through the React tree. Isolate this
           drawer from an enclosing drawer's SwipeArea, which otherwise
           prevents desktop clicks while listening for swipe-open gestures. */}
@@ -97,4 +106,4 @@ const DrawerDescription = ({ className, ...props }: DrawerPrimitive.Description.
   />
 )
 
-export { Drawer, DrawerContent, DrawerDescription, DrawerHandle, DrawerTitle }
+export { Drawer, DrawerContent, DrawerDescription, DrawerHandle, DrawerTitle, DrawerVirtualKeyboardProvider }

@@ -30,7 +30,9 @@ type AssistantMessageProps = {
   isLastAssistantMessage?: boolean
 }
 
-// Viewport positioning constant - ensures enough space for scrolling user message to top
+// While an answer streams, reserve enough room to keep the preceding user
+// message pinned near the top. Settled answers return to their natural height
+// so short threads do not retain artificial overflow.
 const lastMessageMinHeight = '72dvh'
 
 // Stable empty default so a message without reasoning timings keeps a constant
@@ -190,7 +192,7 @@ export const AssistantMessage = memo(
         data-message-id={message.id}
         data-quotable-message-id={message.id}
         className={showCopyOnHover ? 'group' : undefined}
-        style={isLastMessage && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
+        style={isLastMessage && isStreaming && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
       >
         {partElements.map((partElement, index) => (
           // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation

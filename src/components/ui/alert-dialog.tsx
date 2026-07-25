@@ -6,7 +6,7 @@ import { type ComponentProps, type MouseEvent, useCallback } from 'react'
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 import type { VariantProps } from 'class-variance-authority'
 
-import { useHaptics, useMountHaptic } from '@/hooks/use-haptics'
+import { HapticMountBoundary, useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { centeredModalSurfaceClass, modalOverlayClass } from '@/components/ui/modal-styles'
@@ -19,8 +19,13 @@ const AlertDialogTrigger = ({ ...props }: ComponentProps<typeof AlertDialogPrimi
   return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
 }
 
-const AlertDialogPortal = ({ ...props }: ComponentProps<typeof AlertDialogPrimitive.Portal>) => {
-  return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
+const AlertDialogPortal = ({ children, ...props }: ComponentProps<typeof AlertDialogPrimitive.Portal>) => {
+  return (
+    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props}>
+      <HapticMountBoundary />
+      {children}
+    </AlertDialogPrimitive.Portal>
+  )
 }
 
 const AlertDialogOverlay = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Overlay>) => {
@@ -34,8 +39,6 @@ const AlertDialogOverlay = ({ className, ...props }: ComponentProps<typeof Alert
 }
 
 const AlertDialogContent = ({ className, ...props }: ComponentProps<typeof AlertDialogPrimitive.Content>) => {
-  // Content only exists while the dialog is open, so this taps on open and close.
-  useMountHaptic()
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />

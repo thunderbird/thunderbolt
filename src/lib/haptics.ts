@@ -7,6 +7,16 @@ import { impactFeedback, notificationFeedback, selectionFeedback } from '@tauri-
 export type ImpactFeedbackStyle = 'light' | 'medium' | 'heavy' | 'soft' | 'rigid'
 export type NotificationFeedbackType = 'success' | 'warning' | 'error'
 
+export const surfaceHapticDeduplicationMs = 500
+
+/**
+ * Returns whether a modal or drawer lifecycle should emit its own haptic.
+ * Suppresses lifecycle feedback shortly after any other haptic so one
+ * interaction does not produce multiple taps.
+ */
+export const shouldTriggerSurfaceHaptic = (lastHapticAt: number | null, now: number) =>
+  lastHapticAt === null || now - lastHapticAt >= surfaceHapticDeduplicationMs
+
 /**
  * Thin wrappers around @tauri-apps/plugin-haptics.
  * Callers (HapticsProvider) are responsible for platform checks.

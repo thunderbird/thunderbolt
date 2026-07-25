@@ -564,6 +564,14 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+  /* A sustained press is an app gesture on these surfaces, so suppress the
+     browser's competing text selection and iOS callout UI. */
+  [data-slot='context-menu-trigger'],
+  [data-long-press] {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 /* Global scrollbar hiding for consistent cross-platform appearance */

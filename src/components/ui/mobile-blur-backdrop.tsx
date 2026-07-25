@@ -8,13 +8,13 @@ import { createPortal } from 'react-dom'
 type MobileBlurBackdropProps = {
   onClick: () => void
   className?: string
+  portal?: boolean
 }
 
 /** Full-screen backdrop used on mobile to blur and mute content behind popovers/menus.
- *  Portaled to the document body so transformed menu anchors cannot constrain
- *  its fixed positioning. */
-export const MobileBlurBackdrop = ({ onClick, className }: MobileBlurBackdropProps) =>
-  createPortal(
+ *  Portals by default so transformed menu anchors cannot constrain its fixed positioning. */
+export const MobileBlurBackdrop = ({ onClick, className, portal = true }: MobileBlurBackdropProps) => {
+  const backdrop = (
     <button
       type="button"
       aria-label="Dismiss"
@@ -23,6 +23,8 @@ export const MobileBlurBackdrop = ({ onClick, className }: MobileBlurBackdropPro
         className,
       )}
       onClick={onClick}
-    />,
-    document.body,
+    />
   )
+
+  return portal ? createPortal(backdrop, document.body) : backdrop
+}

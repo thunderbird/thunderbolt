@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
-import { memo, useState, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
+import { memo, useRef, useState, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
@@ -79,6 +79,7 @@ export const ChatListItem = memo(
     const [openMenu, setOpenMenu] = useState<'dropdown' | 'context' | null>(null)
     const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null)
     const [prevTitle, setPrevTitle] = useState(thread.title)
+    const isOpeningDialogRef = useRef(false)
 
     if (thread.title !== prevTitle) {
       setPrevTitle(thread.title)
@@ -113,8 +114,12 @@ export const ChatListItem = memo(
       )
     }
 
-    const startRename = () => setRenameDialogOpen(true)
+    const startRename = () => {
+      isOpeningDialogRef.current = true
+      setRenameDialogOpen(true)
+    }
     const startDelete = () => {
+      isOpeningDialogRef.current = true
       threadIdRef.current = thread.id
       deleteChatDialogRef.current?.open()
     }
@@ -134,6 +139,15 @@ export const ChatListItem = memo(
     // clear it.
     const handleMenuOpenChange = (menu: 'dropdown' | 'context') => (open: boolean) =>
       setOpenMenu((current) => (open ? menu : current === menu ? null : current))
+    // A closing menu normally restores focus to its trigger after the newly
+    // opened rename surface has focused its input, which would hide the keyboard.
+    const handleMenuCloseAutoFocus = (event: Event) => {
+      if (!isOpeningDialogRef.current) {
+        return
+      }
+      event.preventDefault()
+      isOpeningDialogRef.current = false
+    }
 
     return (
       <>
@@ -185,7 +199,7 @@ export const ChatListItem = memo(
 
               {/* Right-click / touch long-press: a true context menu at the
                   cursor position. */}
-              <ContextMenuContent className="min-w-56">
+              <ContextMenuContent className="min-w-56" onCloseAutoFocus={handleMenuCloseAutoFocus}>
                 <ChatItemActions
                   Item={ContextMenuItem}
                   onRename={startRename}
@@ -196,7 +210,13 @@ export const ChatListItem = memo(
               </ContextMenuContent>
 
               {!isMobile && (
-                <DropdownMenuContent side="right" align="start" alignOffset={-8} className="min-w-56">
+                <DropdownMenuContent
+                  side="right"
+                  align="start"
+                  alignOffset={-8}
+                  className="min-w-56"
+                  onCloseAutoFocus={handleMenuCloseAutoFocus}
+                >
                   <ChatItemActions
                     Item={DropdownMenuItem}
                     onRename={startRename}

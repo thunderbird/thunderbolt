@@ -45,7 +45,7 @@ describe('MobileCardMenu', () => {
 
     const overlay = document.querySelector('[data-slot="drawer-overlay"]')
     expect(overlay).toBeInTheDocument()
-    expect(overlay).toHaveClass('backdrop-blur-sm', 'backdrop-saturate-75')
+    expect(overlay).toHaveClass('backdrop-blur-xs', 'backdrop-saturate-75')
     fireEvent.keyDown(document, { key: 'Escape' })
     // Not toHaveBeenCalledWith: Base UI passes an eventDetails object as a
     // second argument, and bun's deep-equal spins on its happy-dom internals.

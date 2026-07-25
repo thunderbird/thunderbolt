@@ -105,17 +105,13 @@ export const SuggestionChip = ({
       onPointerUp={clearLongPress}
       onPointerLeave={clearLongPress}
       onPointerCancel={clearLongPress}
+      data-long-press=""
       onContextMenu={(event) => {
         event.preventDefault()
         clearLongPress()
         setOpen(true)
       }}
-      className={cn(
-        chipSurfaceClass,
-        // select-none + touch-callout:none suppress iOS's text-selection and
-        // share-sheet callout during the long-press that opens the menu.
-        'h-[var(--touch-height-sm)] select-none px-3 text-sm font-normal [-webkit-touch-callout:none]',
-      )}
+      className={cn(chipSurfaceClass, 'h-[var(--touch-height-sm)] px-3 text-sm font-normal')}
       aria-label={`Pinned skill ${label}`}
     >
       {label}

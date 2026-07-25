@@ -286,7 +286,7 @@ export const MobileSidebar = ({
           disablePointerDismissal
           swipeDirection="left"
         >
-          <DrawerPrimitive.Portal>
+          <DrawerPrimitive.Portal keepMounted>
             <DrawerPrimitive.Viewport className="pointer-events-auto fixed inset-0 z-10 select-none">
               <DrawerPrimitive.Popup
                 data-base-ui-swipe-ignore

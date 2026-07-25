@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { useChat as useChat_default } from '@ai-sdk/react'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -41,12 +43,43 @@ const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps 
   ...overrides,
 })
 
+afterEach(() => {
+  restoreViewport()
+})
+
 describe('ChatListItem', () => {
   it('shows Rename and Delete options in the right-click context menu', async () => {
     renderWithProviders(createProps())
     fireEvent.contextMenu(screen.getByText('My Chat'))
     expect(await waitForElement(() => screen.queryByText('Rename'))).toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
+  })
+
+  it('keeps the rename input focused after the mobile context menu closes', async () => {
+    forceMobileViewport()
+    renderWithProviders(createProps({ isMobile: true }))
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    const rename = await waitForElement(() => screen.queryByText('Rename'))
+
+    fireEvent.click(rename)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByRole('textbox', { name: 'Chat name' })).toHaveFocus()
+  })
+
+  it('keeps the rename input focused after the desktop context menu closes', async () => {
+    renderWithProviders(createProps())
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    const rename = await waitForElement(() => screen.queryByText('Rename'))
+
+    fireEvent.click(rename)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByRole('textbox', { name: 'Chat name' })).toHaveFocus()
   })
 
   it('displays the chat title', () => {

@@ -6,6 +6,7 @@ import * as SheetPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
+import { HapticMountBoundary } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { modalCloseClass, modalOverlayClass } from './modal-styles'
 
@@ -21,8 +22,13 @@ const SheetClose = ({ ...props }: ComponentProps<typeof SheetPrimitive.Close>) =
   return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
 }
 
-const SheetPortal = ({ ...props }: ComponentProps<typeof SheetPrimitive.Portal>) => {
-  return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
+const SheetPortal = ({ children, ...props }: ComponentProps<typeof SheetPrimitive.Portal>) => {
+  return (
+    <SheetPrimitive.Portal data-slot="sheet-portal" {...props}>
+      <HapticMountBoundary />
+      {children}
+    </SheetPrimitive.Portal>
+  )
 }
 
 const SheetOverlay = ({ className, ...props }: ComponentProps<typeof SheetPrimitive.Overlay>) => {

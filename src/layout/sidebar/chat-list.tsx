@@ -13,7 +13,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import { useEffect, useRef, useState, type Ref } from 'react'
@@ -63,7 +62,6 @@ export const ChatList = ({
   onContentBelowChange,
 }: ChatListProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const isNativeMobile = useIsNativeMobile()
   const { forceCollapsed } = useSidebar()
   // Drives this list's own top scroll shadow; only the bottom counterpart is
   // lifted (the sidebar footer renders that shadow).
@@ -130,9 +128,7 @@ export const ChatList = ({
 
   return (
     <>
-      <SidebarGroup
-        className={cn('flex-1 flex flex-col min-h-0 pb-0', isCollapsed && 'pt-0', isNativeMobile && 'pt-1')}
-      >
+      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0', isCollapsed && 'pt-0')}>
         {isMobile ? (
           <>
             <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">

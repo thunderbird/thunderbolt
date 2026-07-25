@@ -19,7 +19,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { modalAnimationClass, modalCloseClass, modalFieldSurfaceClass } from '@/components/ui/modal-styles'
 import { Scrim } from '@/components/ui/scrim'
-import { useMountHaptic } from '@/hooks/use-haptics'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -97,8 +96,6 @@ const ResponsiveModalDialogContent = ({
   ...props
 }: ResponsiveModalDialogContentProps) => {
   const { isMobile } = useIsMobile()
-  // Content only exists while the modal is open, so this taps on open and close.
-  useMountHaptic()
 
   return (
     <ResponsiveModalContext value={{ isMobile }}>

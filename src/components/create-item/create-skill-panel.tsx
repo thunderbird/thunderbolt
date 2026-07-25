@@ -4,7 +4,6 @@
 
 import { useReducer } from 'react'
 
-import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
 import { SkillForm, type SkillFormValues } from '@/skills/skill-form'
 import {
@@ -13,7 +12,7 @@ import {
   skillSaveFailedMessage,
   useCreateSkillTracked,
 } from '@/skills/skill-save'
-import { createItemTitles } from './context'
+import { CreateItemPanelShell } from './create-item-panel-shell'
 
 type CreateSkillState = {
   isDirty: boolean
@@ -91,20 +90,18 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName }
 
   return (
     <>
-      <DetailPanelSurface open={open} onClose={requestClose} onCloseComplete={onCloseComplete} topInset>
-        <DetailPanel title={createItemTitles.skill} onClose={requestClose}>
-          <SkillForm
-            mode="create"
-            initialValues={initialValues}
-            onCancel={requestClose}
-            onSubmit={handleSubmit}
-            onDirtyChange={(dirty) => dispatch({ type: 'DIRTY_CHANGED', dirty })}
-            onSlugChange={() => dispatch({ type: 'SLUG_CHANGED' })}
-            slugError={state.slugError}
-            submitError={state.submitError}
-          />
-        </DetailPanel>
-      </DetailPanelSurface>
+      <CreateItemPanelShell kind="skill" open={open} onClose={requestClose} onCloseComplete={onCloseComplete}>
+        <SkillForm
+          mode="create"
+          initialValues={initialValues}
+          onCancel={requestClose}
+          onSubmit={handleSubmit}
+          onDirtyChange={(dirty) => dispatch({ type: 'DIRTY_CHANGED', dirty })}
+          onSlugChange={() => dispatch({ type: 'SLUG_CHANGED' })}
+          slugError={state.slugError}
+          submitError={state.submitError}
+        />
+      </CreateItemPanelShell>
       <DiscardCreateDialog
         open={state.isDiscardOpen}
         onOpenChange={(nextOpen) => !nextOpen && dispatch({ type: 'DISCARD_CLOSED' })}

@@ -56,16 +56,14 @@ const useMobileListMetrics = (isMobile: boolean) => {
       return
     }
 
-    const elements = [headerRef.current, labelRef.current].map((element) => {
-      if (!element) {
-        throw new Error('useMobileListMetrics: measured mobile chrome is not mounted')
-      }
-      return element
-    })
-    const [header] = elements
+    const header = headerRef.current
+    const label = labelRef.current
+    if (!header || !label) {
+      throw new Error('useMobileListMetrics: measured mobile chrome is not mounted')
+    }
     const updateStartMargin = () => {
       const headerHeight = header.offsetHeight
-      const startMargin = elements.reduce((height, element) => height + element.offsetHeight, 0)
+      const startMargin = header.offsetHeight + label.offsetHeight
       setMetrics((currentMetrics) =>
         currentMetrics.headerHeight === headerHeight && currentMetrics.startMargin === startMargin
           ? currentMetrics
@@ -74,7 +72,8 @@ const useMobileListMetrics = (isMobile: boolean) => {
     }
     const resizeObserver = new ResizeObserver(updateStartMargin)
 
-    elements.forEach((element) => resizeObserver.observe(element))
+    resizeObserver.observe(header)
+    resizeObserver.observe(label)
     updateStartMargin()
 
     return () => resizeObserver.disconnect()
@@ -282,12 +281,25 @@ export const ChatList = ({
         </div>
       </SidebarGroup>
 
-      <DeleteAllChatsDialog onConfirm={() => deleteAllChatsMutation.mutate()} ref={deleteAllChatsDialogRef} />
+      <DeleteAllChatsDialog
+        isPending={deleteAllChatsMutation.isPending}
+        onConfirm={() => deleteAllChatsMutation.mutate()}
+        ref={deleteAllChatsDialogRef}
+      />
       <DeleteChatDialog
+        isPending={deleteChatMutation.isPending}
         onCancel={() => {
           threadIdRef.current = null
         }}
-        onConfirm={() => threadIdRef.current && deleteChatMutation.mutate({ id: threadIdRef.current })}
+        onConfirm={() => {
+          const threadId = threadIdRef.current
+          // The ref is always set before the dialog opens, so a missing id is
+          // a programming error — fail loudly rather than no-op.
+          if (!threadId) {
+            throw new Error('DeleteChatDialog confirmed without a target thread id')
+          }
+          deleteChatMutation.mutate({ id: threadId })
+        }}
         ref={deleteChatDialogRef}
       />
     </>

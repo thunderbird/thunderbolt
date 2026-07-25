@@ -352,11 +352,11 @@ describe('ConnectionsPage ordinary add', () => {
 
   afterEach(cleanup)
 
-  it('creates one row when Add server is activated twice before the first write settles', async () => {
+  it('creates one row when Add Server is activated twice before the first write settles', async () => {
     const db = getDb()
     await renderAddForm({ probeMcpServerTools: async () => ['search'] }, { url: 'https://tools.example.com/mcp' })
     await flushAutoProbe()
-    const addButton = screen.getByRole('button', { name: 'Add server' })
+    const addButton = screen.getByRole('button', { name: 'Add Server' })
 
     await act(async () => {
       fireEvent.click(addButton)
@@ -417,7 +417,7 @@ describe('ConnectionsPage iroh add flow', () => {
     await openIrohForm()
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add Server' }))
       await getClock().runAllAsync()
     })
 
@@ -433,7 +433,7 @@ describe('ConnectionsPage iroh add flow', () => {
     await openIrohForm({ enrollIroh })
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add Server' }))
       await getClock().runAllAsync()
     })
 
@@ -450,7 +450,7 @@ describe('ConnectionsPage iroh add flow', () => {
     expect(screen.getByTestId('iroh-pairing-panel')).toBeInTheDocument()
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add Server' }))
       await getClock().runAllAsync()
     })
 
@@ -465,7 +465,7 @@ describe('ConnectionsPage iroh add flow', () => {
     await openIrohForm({ enrollIroh })
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add Server' }))
       await getClock().runAllAsync()
     })
 

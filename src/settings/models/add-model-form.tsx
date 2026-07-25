@@ -4,7 +4,6 @@
 
 import { Loader2, X } from 'lucide-react'
 import type { UseFormReturn } from 'react-hook-form'
-import { z } from 'zod'
 
 import { Button } from '@/components/ui/button'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
@@ -19,33 +18,11 @@ import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
 import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
 import { providerLabels } from './model-presentation'
+import type { AddModelFormValues } from './use-add-model-form'
 
 /** Provider picker options, derived from the exhaustive labels Record so a new
  *  provider added to `Model['provider']` shows up here by construction. */
 const providerOptions = Object.keys(providerLabels) as Model['provider'][]
-
-export const addModelFormSchema = z
-  .object({
-    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
-    name: z.string().min(1, { message: 'Name is required.' }),
-    model: z.string().min(1, { message: 'Model name is required.' }),
-    customModel: z.string().optional(),
-    url: z.string().optional(),
-    apiKey: z.string().optional(),
-  })
-  .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
-    message: 'URL is required for Custom providers',
-    path: ['url'],
-  })
-  .refine(
-    (data) =>
-      data.provider === 'thunderbolt' ||
-      data.provider === 'custom' ||
-      (data.apiKey !== undefined && data.apiKey.length > 0),
-    { message: 'API Key is required for this provider', path: ['apiKey'] },
-  )
-
-export type AddModelFormValues = z.infer<typeof addModelFormSchema>
 
 type AddModelFormProps = {
   form: UseFormReturn<AddModelFormValues>

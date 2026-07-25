@@ -17,15 +17,18 @@ type RenameChatDialogProps = {
   onRename: (title: string) => void
 }
 
-const RenameChatForm = ({ open, title, onOpenChange, onRename }: RenameChatDialogProps) => {
+export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: RenameChatDialogProps) => {
   const { isMobile } = useIsMobile()
   const initialTitle = title ?? defaultChatTitle
   const [value, setValue] = useState(initialTitle)
   const inputRef = useRef<HTMLInputElement>(null)
-  const previousOpenRef = useRef(open)
 
-  if (open !== previousOpenRef.current) {
-    previousOpenRef.current = open
+  // Reset the draft to the current title on each open (the sanctioned
+  // previous-value-in-state pattern, so a discarded StrictMode/concurrent
+  // render can't lose the reset).
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open && value !== initialTitle) {
       setValue(initialTitle)
     }
@@ -106,7 +109,3 @@ const RenameChatForm = ({ open, title, onOpenChange, onRename }: RenameChatDialo
     </Dialog>
   )
 }
-
-// The `key` remounts the form whenever the chat title changes so the draft
-// value always starts from the current title.
-export const RenameChatDialog = (props: RenameChatDialogProps) => <RenameChatForm key={props.title} {...props} />

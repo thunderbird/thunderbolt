@@ -46,4 +46,16 @@ describe('DeleteAllChatsDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete All Chats' }))
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
+
+  it('disables the confirm button while the delete is pending', () => {
+    const ref = createRef<DeleteAllChatsDialogRef>()
+    const onConfirm = mock(() => {})
+    render(<DeleteAllChatsDialog ref={ref} isPending onConfirm={onConfirm} />)
+    act(() => ref.current?.open())
+
+    const confirmButton = screen.getByRole('button', { name: 'Delete All Chats' })
+    expect(confirmButton).toBeDisabled()
+    fireEvent.click(confirmButton)
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
 })

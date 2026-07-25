@@ -4,19 +4,18 @@
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
-export type CreateItemRequest =
-  | { id: number; kind: 'skill'; initialName?: string }
-  | { id: number; kind: 'agent' }
-  | { id: number; kind: 'model' }
-
 /** The id-less input to `openCreateItem`; the provider assigns the id. */
 type CreateItemRequestInput = { kind: 'skill'; initialName?: string } | { kind: 'agent' } | { kind: 'model' }
+
+// Derived from the input so a new kind is added in exactly one place; the
+// intersection distributes over the union, keeping `kind` narrowing intact.
+export type CreateItemRequest = CreateItemRequestInput & { id: number }
 
 /** Panel titles by kind — one source for both the loaded panels and the
  *  host's Suspense fallback header, so they can never disagree. */
 export const createItemTitles: Record<CreateItemRequest['kind'], string> = {
   skill: 'Create Skill',
-  agent: 'Add Custom Agent',
+  agent: 'Add Agent',
   model: 'Add Model',
 }
 
@@ -36,16 +35,16 @@ const CreateItemContext = createContext<CreateItemContextValue | null>(null)
 export const CreateItemProvider = ({ children }: { children: ReactNode }) => {
   const [request, setRequest] = useState<CreateItemRequest | null>(null)
   const [isSurfaceOpen, setIsSurfaceOpen] = useState(false)
-  const nextRequestId = useRef(0)
+  const requestIdCounter = useRef(0)
   const openFrameId = useRef<number | null>(null)
 
   const openCreateItem = useCallback((nextRequest: CreateItemRequestInput) => {
     if (openFrameId.current !== null) {
       cancelAnimationFrame(openFrameId.current)
     }
-    nextRequestId.current += 1
+    requestIdCounter.current += 1
     setIsSurfaceOpen(false)
-    setRequest({ ...nextRequest, id: nextRequestId.current })
+    setRequest({ ...nextRequest, id: requestIdCounter.current })
     // Commit the panel once in its closed geometry before changing the open
     // state — a transition cannot run when the panel first mounts already
     // open. Double rAF: the first callback can still coalesce into the same

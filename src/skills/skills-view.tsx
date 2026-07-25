@@ -13,12 +13,7 @@ import { skillDisplayName } from './display'
 import { findDependents } from './find-dependents'
 import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
-import {
-  handleSkillSaveError,
-  skillCreateInitialValues,
-  skillSaveFailedMessage,
-  useCreateSkillTracked,
-} from './skill-save'
+import { handleSkillSaveError, skillSaveFailedMessage, useCreateSkillTracked } from './skill-save'
 import { initialSkillsViewState, skillsViewReducer, type LeaveIntent } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { useSkillTelemetry } from './telemetry'
@@ -47,7 +42,6 @@ export const SkillsView = () => {
     pendingDependents,
     slugError,
     submitError,
-    createInitialName,
   } = state
 
   // Deep-links from the chat composer. Broken-reference alerts send
@@ -195,7 +189,7 @@ export const SkillsView = () => {
       // input intact — tell them why nothing happened instead of failing
       // silently as an unhandled rejection.
       handleSkillSaveError(error, {
-        onSlugRejected: (message) => dispatch({ type: 'SET_SLUG_ERROR', message }),
+        onSlugRejected: (message) => dispatch({ type: 'SLUG_REJECTED', message }),
         onFailed: () => dispatch({ type: 'SUBMIT_FAILED', message: skillSaveFailedMessage }),
       })
     }
@@ -206,7 +200,7 @@ export const SkillsView = () => {
   const sharedFormProps = {
     onCancel: () => requestLeave({ type: 'cancel' }),
     onSubmit: handleSubmit,
-    onDirtyChange: (dirty: boolean) => dispatch({ type: 'SET_DIRTY', dirty }),
+    onDirtyChange: (dirty: boolean) => dispatch({ type: 'DIRTY_CHANGED', dirty }),
     onSlugChange: () => dispatch({ type: 'CLEAR_SLUG_ERROR' }),
     resetSignal,
     slugError,
@@ -216,14 +210,7 @@ export const SkillsView = () => {
   const createForm = (
     // The panel's close X behaves as Cancel, including the dirty guard.
     <DetailPanel title="Create Skill" onClose={sharedFormProps.onCancel}>
-      <SkillForm
-        // Keying on the pre-filled slug forces a fresh form mount when the
-        // user clicks "Create it" for a different slug back-to-back.
-        key={createInitialName ? `create:${createInitialName}` : 'create'}
-        mode="create"
-        initialValues={skillCreateInitialValues(createInitialName)}
-        {...sharedFormProps}
-      />
+      <SkillForm key="create" mode="create" {...sharedFormProps} />
     </DetailPanel>
   )
 

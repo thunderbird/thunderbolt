@@ -53,7 +53,9 @@ const buttonVariants = cva(
     },
     compoundVariants: [
       // A loading primary button keeps its brand gradient (dimmed) instead of
-      // the flat disabled treatment — it is busy, not unavailable.
+      // the flat disabled treatment — it is busy, not unavailable. Non-primary
+      // variants intentionally have no loading override and fall back to their
+      // regular disabled treatment (pinned by button.test.tsx).
       {
         variant: 'default',
         loading: true,

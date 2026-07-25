@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useHaptics } from '@/hooks/use-haptics'
-import { edgeSpacing, getMobileSidebarWidth, mobileSidebarWidthCss } from '@/lib/constants'
+import { getMobileBottomInset, getMobileSidebarWidth, mobileSidebarWidthCss } from '@/lib/constants'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
@@ -77,19 +77,20 @@ export const shouldNotifyMobileSidebarClose = (
 ): boolean => !nextOpen && (dragStartedOpen || isClosePending)
 
 /**
- * Detects nested horizontal scrollers that should retain their native swipe.
+ * Detects whether the element itself, or any ancestor up to (but excluding)
+ * the boundary, is a horizontal scroller that should retain its native swipe.
  */
-export const hasHorizontalScrollAncestor = (element: Element | null, boundary: HTMLElement): boolean => {
-  if (!element || element === boundary) {
-    return false
-  }
-  if (element instanceof HTMLElement) {
-    const overflowX = window.getComputedStyle(element).overflowX
-    if (/(auto|scroll)/.test(overflowX) && element.scrollWidth > element.clientWidth) {
+export const isInHorizontalScroller = (element: Element | null, boundary: HTMLElement): boolean => {
+  for (let node = element; node && node !== boundary; node = node.parentElement) {
+    if (!(node instanceof HTMLElement)) {
+      continue
+    }
+    const overflowX = window.getComputedStyle(node).overflowX
+    if (/(auto|scroll)/.test(overflowX) && node.scrollWidth > node.clientWidth) {
       return true
     }
   }
-  return hasHorizontalScrollAncestor(element.parentElement, boundary)
+  return false
 }
 
 /**
@@ -106,7 +107,7 @@ export const canStartSidebarDrag = (target: EventTarget | null, boundary: HTMLEl
   if (target.closest(swipeIgnoredSelector)) {
     return false
   }
-  return !hasHorizontalScrollAncestor(target, boundary)
+  return !isInHorizontalScroller(target, boundary)
 }
 
 type UseMobileSidebarStateOptions = {
@@ -121,9 +122,10 @@ type UseMobileSidebarStateOptions = {
  * Owns the open/close/drag lifecycle of the mobile sidebar: the foreground
  * motion value, the interruptible settle animation, mid-drag open-state
  * changes, and close-settlement notifications. The component consumes its
- * returned handlers and renders pure layout.
+ * returned handlers and renders pure layout. Exported so tests can drive the
+ * drag lifecycle, which cannot be produced through the DOM.
  */
-const useMobileSidebarState = ({
+export const useMobileSidebarState = ({
   enabled,
   open,
   onOpenChange,
@@ -152,6 +154,9 @@ const useMobileSidebarState = ({
   // callback can recognize itself and bail.
   const animationTokenRef = useRef(0)
   const animationRef = useRef<ReturnType<typeof animate> | null>(null)
+  // The pixel position the in-flight animation is heading toward, so the
+  // settle effect can recognize a redundant restart (see below).
+  const animationTargetRef = useRef<number | null>(null)
   const isClosePendingRef = useRef(false)
   const isDraggingRef = useRef(false)
   const dragStartedOpenRef = useRef(open)
@@ -173,7 +178,7 @@ const useMobileSidebarState = ({
   }, [])
 
   const animateTo = useCallback(
-    (nextOpen: boolean, notifyClose = false) => {
+    (nextOpen: boolean, shouldNotifyClose = false) => {
       stopAnimation()
       const token = animationTokenRef.current
       const target = nextOpen ? sidebarWidth : 0
@@ -184,7 +189,7 @@ const useMobileSidebarState = ({
           isClosePendingRef.current = false
           onCloseCancelRef.current?.()
         }
-      } else if (notifyClose) {
+      } else if (shouldNotifyClose) {
         isClosePendingRef.current = true
       }
 
@@ -205,6 +210,7 @@ const useMobileSidebarState = ({
       }
       const animation = animate(x, target, transition)
       animationRef.current = animation
+      animationTargetRef.current = target
       void animation.then(finish)
     },
     [flushPendingClose, sidebarWidth, stopAnimation, transition, x],
@@ -232,8 +238,18 @@ const useMobileSidebarState = ({
       flushPendingClose()
       return
     }
+    // When a gesture or open-change handler already started an animation
+    // toward this exact resting position (the `open` prop round-trip lands
+    // here one render later), restarting it would reset the easing mid-flight.
+    // Only the close-settlement bookkeeping still applies.
+    if (animationRef.current && animationTargetRef.current === (effectiveOpen ? sidebarWidth : 0)) {
+      if (openChanged && !effectiveOpen) {
+        isClosePendingRef.current = true
+      }
+      return
+    }
     animateTo(effectiveOpen, openChanged && !effectiveOpen)
-  }, [animateTo, effectiveOpen, enabled, flushPendingClose, stopAnimation, x])
+  }, [animateTo, effectiveOpen, enabled, flushPendingClose, sidebarWidth, stopAnimation, x])
 
   useEffect(
     () => () => {
@@ -254,6 +270,14 @@ const useMobileSidebarState = ({
   }
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    // Portaled overlays (e.g. the account popover opened from the sidebar
+    // footer) bubble their synthetic pointerdown through the React tree even
+    // though their DOM lives elsewhere; canStartSidebarDrag would then walk
+    // the portal's DOM and never meet this boundary, wrongly allowing a drag
+    // to start underneath the open overlay.
+    if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) {
+      return
+    }
     if (!enabled || event.pointerType !== 'touch' || !canStartSidebarDrag(event.target, event.currentTarget)) {
       return
     }
@@ -289,8 +313,12 @@ const useMobileSidebarState = ({
       triggerImpact('light')
     }
 
-    const notifyClose = shouldNotifyMobileSidebarClose(dragStartedOpenRef.current, nextOpen, isClosePendingRef.current)
-    animateTo(nextOpen, notifyClose)
+    const shouldNotifyClose = shouldNotifyMobileSidebarClose(
+      dragStartedOpenRef.current,
+      nextOpen,
+      isClosePendingRef.current,
+    )
+    animateTo(nextOpen, shouldNotifyClose)
     // The browser synthesizes a click on the close surface right after the
     // drag's pointerup; keep the flag up for one frame so only that ghost
     // click is swallowed, never a deliberate later tap.
@@ -310,7 +338,7 @@ const useMobileSidebarState = ({
     x,
     dragControls,
     sidebarWidth,
-    drawerOpen: enabled && (open || isPresented),
+    isDrawerOpen: enabled && (open || isPresented),
     handleOpenChange,
     handlePointerDown,
     handleDragStart,
@@ -334,7 +362,7 @@ export const MobileSidebar = ({
     x,
     dragControls,
     sidebarWidth,
-    drawerOpen,
+    isDrawerOpen,
     handleOpenChange,
     handlePointerDown,
     handleDragStart,
@@ -345,29 +373,26 @@ export const MobileSidebar = ({
 
   const mobileSidebarCssVars = {
     '--mobile-sidebar-width': mobileSidebarWidthCss,
-    // Native mobile pins the footer above the home indicator; web mobile
-    // retains an extra 8px breathing room (same convention as the floating
-    // controls in page-create-action.tsx).
-    '--mobile-sidebar-footer-inset': isNativeMobile
-      ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
-      : 'calc(var(--safe-area-bottom-padding, 0px) + 0.5rem)',
+    // Same footer convention as the floating create pill (page-create-action.tsx).
+    '--mobile-sidebar-footer-inset': getMobileBottomInset(isNativeMobile),
   } as CSSProperties
+
+  // Disabled (desktop) renders a plain flex row with an inert foreground; the
+  // drag/animation wiring only attaches while the mobile drawer is enabled.
+  const layoutClass = enabled ? 'pointer-events-none relative z-20 isolate' : 'flex-row'
+  const dragAxis = enabled ? ('x' as const) : false
+  const foregroundClass = enabled && 'mobile-sidebar-main-shadow z-20 will-change-transform'
+  const foregroundStyle = enabled ? { x, touchAction: 'pan-y' as const } : { x: 0, touchAction: 'auto' as const }
 
   // Stacking scheme while enabled (the wrapper isolates its own z context):
   // stationary menu viewport z-10 < foreground z-20 < close surface z-40
   // (above the foreground's own content, below the z-50 modal layer).
   return (
-    <div
-      data-slot="mobile-sidebar-layout"
-      className={cn(
-        'flex h-full w-full overflow-hidden',
-        enabled ? 'pointer-events-none relative z-20 isolate' : 'flex-row',
-      )}
-    >
+    <div data-slot="mobile-sidebar-layout" className={cn('flex h-full w-full overflow-hidden', layoutClass)}>
       {enabled ? (
         <DrawerPrimitive.Root
           key="mobile-sidebar"
-          open={drawerOpen}
+          open={isDrawerOpen}
           onOpenChange={handleOpenChange}
           modal="trap-focus"
           disablePointerDismissal
@@ -376,6 +401,9 @@ export const MobileSidebar = ({
           <DrawerPrimitive.Portal keepMounted>
             <DrawerPrimitive.Viewport className="pointer-events-auto fixed inset-0 z-10 select-none">
               <DrawerPrimitive.Popup
+                // Suppresses Base UI's built-in swipe-to-dismiss for touches
+                // starting on the popup — the framer-motion foreground drag
+                // owns all horizontal navigation gestures.
                 data-base-ui-swipe-ignore
                 data-sidebar="sidebar"
                 data-slot="sidebar"
@@ -398,7 +426,7 @@ export const MobileSidebar = ({
 
       <m.div
         key="mobile-foreground"
-        drag={enabled ? 'x' : false}
+        drag={dragAxis}
         dragControls={dragControls}
         dragConstraints={{ left: 0, right: sidebarWidth }}
         dragDirectionLock
@@ -412,11 +440,11 @@ export const MobileSidebar = ({
         data-slot="sidebar-main"
         className={cn(
           'pointer-events-auto relative flex h-full min-w-0 flex-1 flex-col bg-background',
-          enabled && 'mobile-sidebar-main-shadow z-20 will-change-transform',
+          foregroundClass,
         )}
-        style={{ x: enabled ? x : 0, touchAction: enabled ? 'pan-y' : 'auto' }}
+        style={foregroundStyle}
       >
-        <div className="flex h-full min-w-0 flex-1 flex-col" inert={drawerOpen ? true : undefined}>
+        <div className="flex h-full min-w-0 flex-1 flex-col" inert={isDrawerOpen ? true : undefined}>
           <MobileForegroundPortalProvider>{children}</MobileForegroundPortalProvider>
         </div>
         {/* Doubles as the drag surface (see canStartSidebarDrag) and the
@@ -428,11 +456,11 @@ export const MobileSidebar = ({
           type="button"
           tabIndex={-1}
           aria-label="Close navigation"
-          aria-hidden={!drawerOpen}
+          aria-hidden={!isDrawerOpen}
           data-sidebar-drag-surface
           className={cn(
             'absolute inset-0 z-40 cursor-default bg-transparent',
-            drawerOpen ? 'pointer-events-auto' : 'pointer-events-none',
+            isDrawerOpen ? 'pointer-events-auto' : 'pointer-events-none',
           )}
           onClick={handleCloseSurfaceClick}
         />

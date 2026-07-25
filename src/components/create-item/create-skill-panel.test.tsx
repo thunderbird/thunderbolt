@@ -2,14 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import * as dal from '@/dal'
 import { createSkill } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { skillSaveFailedMessage } from '@/skills/skill-save'
 import { useLibrarySkills } from '@/skills/use-skills'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { CreateSkillPanel } from './create-skill-panel'
 
 const SkillOptionsProbe = () => {
@@ -80,6 +82,34 @@ describe('CreateSkillPanel', () => {
 
     expect(screen.getByText('A skill named "meeting-notes" already exists.')).toBeInTheDocument()
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('shows the generic save-failed message and keeps the panel open when creation fails unexpectedly', async () => {
+    // handleSkillSaveError logs the unexpected failure; muted to keep test output clean.
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const createSkillSpy = spyOn(dal, 'createSkill').mockRejectedValue(new Error('disk full'))
+    const onClose = mock(() => {})
+
+    try {
+      render(<CreateSkillPanel open onClose={onClose} onCloseComplete={noopCloseComplete} />, {
+        wrapper: createTestProvider(),
+      })
+
+      fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Doomed Skill' } })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), { target: { value: 'd' } })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Instructions' }), { target: { value: 'i' } })
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+        await getClock().runAllAsync()
+      })
+
+      expect(screen.getByText(skillSaveFailedMessage)).toBeInTheDocument()
+      expect(onClose).not.toHaveBeenCalled()
+    } finally {
+      createSkillSpy.mockRestore()
+      consoleError.mockRestore()
+    }
   })
 
   it('guards a dirty close behind the discard dialog', async () => {

@@ -4,20 +4,42 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useReducer } from 'react'
+import { useMemo, useReducer } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
+import { z } from 'zod'
 
 import { useChatStore } from '@/chats/chat-store'
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
 import { createModel, getAvailableModels } from '@/dal'
-import { useDebounce } from '@/hooks/use-debounce'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
-import { addModelFormSchema, type AddModelFormValues } from './add-model-form'
-import { canFetchCatalog, catalogDebounceMs, catalogRequestKey, type CatalogRequest } from './model-catalog'
-import { catalogToComboboxItems, customModelItem, useModelCatalog } from './use-model-catalog'
+import type { CatalogRequest } from './model-catalog'
+import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
+
+export const addModelFormSchema = z
+  .object({
+    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
+    name: z.string().min(1, { message: 'Name is required.' }),
+    model: z.string().min(1, { message: 'Model name is required.' }),
+    customModel: z.string().optional(),
+    url: z.string().optional(),
+    apiKey: z.string().optional(),
+  })
+  .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
+    message: 'URL is required for Custom providers',
+    path: ['url'],
+  })
+  .refine(
+    (data) =>
+      data.provider === 'thunderbolt' ||
+      data.provider === 'custom' ||
+      (data.apiKey !== undefined && data.apiKey.length > 0),
+    { message: 'API Key is required for this provider', path: ['apiKey'] },
+  )
+
+export type AddModelFormValues = z.infer<typeof addModelFormSchema>
 
 type AddModelState = {
   selectedModelId: string
@@ -29,7 +51,7 @@ type AddModelAction =
   | { type: 'PANEL_OPENED' }
   | { type: 'MUTATION_STARTED' }
   | { type: 'MUTATION_FAILED' }
-  | { type: 'RESET' }
+  | { type: 'FORM_DISCARDED' }
 
 const initialState: AddModelState = {
   selectedModelId: '',
@@ -46,7 +68,7 @@ const addModelReducer = (state: AddModelState, action: AddModelAction): AddModel
       return { ...state, submitError: null }
     case 'MUTATION_FAILED':
       return { ...state, submitError: "Couldn't add the model. Please try again." }
-    case 'RESET':
+    case 'FORM_DISCARDED':
       return initialState
   }
 }
@@ -78,7 +100,6 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
   const catalog = useModelCatalog()
-  const { fetchCatalog } = catalog
   const form = useForm<AddModelFormValues>({
     resolver: zodResolver(addModelFormSchema),
     mode: 'onChange',
@@ -96,25 +117,16 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   const url = form.watch('url')
   const model = form.watch('model')
   const catalogRequest = useMemo<CatalogRequest>(() => ({ provider, apiKey, url }), [apiKey, provider, url])
-  const debouncedCatalogRequest = useDebounce(catalogRequest, catalogDebounceMs)
   const connection = useModelConnectionTest({ provider, model, url, apiKey })
 
-  const isDebounceSettled = catalogRequestKey(debouncedCatalogRequest) === catalogRequestKey(catalogRequest)
-  const hasRequestedCurrentCatalog = catalog.requestKey === catalogRequestKey(debouncedCatalogRequest)
-
-  useEffect(() => {
-    if (!isOpen || !isDebounceSettled || hasRequestedCurrentCatalog || !canFetchCatalog(debouncedCatalogRequest)) {
-      return
-    }
-    void fetchCatalog(debouncedCatalogRequest)
-  }, [isOpen, isDebounceSettled, hasRequestedCurrentCatalog, debouncedCatalogRequest, fetchCatalog])
+  useAutoCatalogFetch({ armed: isOpen, request: catalogRequest, catalog })
 
   const reset = () => {
     form.reset()
     form.clearErrors()
     connection.reset()
     catalog.invalidateCatalog()
-    dispatch({ type: 'RESET' })
+    dispatch({ type: 'FORM_DISCARDED' })
   }
 
   const close = () => {
@@ -193,15 +205,14 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     catalog.invalidateCatalog()
     form.setValue('provider', nextProvider, { shouldValidate: false, shouldDirty: true })
     dispatch({ type: 'MODEL_SELECTED', modelId: '' })
-    form.setValue('name', '', { shouldValidate: false, shouldDirty: false })
-    form.setValue('model', '', { shouldValidate: false, shouldDirty: false })
-    form.setValue('customModel', '', { shouldValidate: false, shouldDirty: false })
+    for (const field of ['name', 'model', 'customModel', 'apiKey'] as const) {
+      form.setValue(field, '', { shouldValidate: false, shouldDirty: false })
+    }
     // Ollama's default local endpoint — the most common custom provider.
     form.setValue('url', nextProvider === 'custom' ? 'http://localhost:11434/v1' : '', {
       shouldValidate: false,
       shouldDirty: false,
     })
-    form.setValue('apiKey', '', { shouldValidate: false, shouldDirty: false })
     void revalidateSilently()
   }
 

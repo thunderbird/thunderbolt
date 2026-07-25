@@ -4,6 +4,7 @@
 
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { http } from '@/lib/http'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { resetStore } from '@/test-utils/chat-store-mocks'
@@ -69,6 +70,66 @@ describe('useAddModelForm', () => {
 
     expect(useChatStore.getState().models.some((model) => model.name === 'New Chat Model')).toBe(true)
     expect(onMutationStart).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('surfaces the submit error and stays open when the create mutation fails', async () => {
+    // The mutation's onError logs the failure; muted so the test output stays clean.
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const transactionSpy = spyOn(getDb(), 'transaction').mockImplementation(() => {
+      throw new Error('insert failed')
+    })
+    const onClose = mock(() => {})
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
+      wrapper: createTestProvider(),
+    })
+
+    try {
+      await act(async () => {
+        result.current.onSubmit({
+          provider: 'thunderbolt',
+          name: 'Broken Model',
+          model: 'broken-model',
+          customModel: '',
+          url: '',
+          apiKey: '',
+        })
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.submitError).toBe("Couldn't add the model. Please try again.")
+      expect(consoleError).toHaveBeenCalledWith('Failed to add the model.', expect.any(Error))
+      expect(onClose).not.toHaveBeenCalled()
+    } finally {
+      transactionSpy.mockRestore()
+      consoleError.mockRestore()
+    }
+  })
+
+  it('substitutes the typed custom model id on submit when Custom is selected', async () => {
+    const onClose = mock(() => {})
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
+      wrapper: createTestProvider(),
+    })
+
+    act(() => {
+      result.current.onSelectModel('custom')
+    })
+
+    await act(async () => {
+      result.current.onSubmit({
+        provider: 'thunderbolt',
+        name: 'My Custom Model',
+        model: 'ignored-model',
+        customModel: 'gpt-4-turbo-preview',
+        url: '',
+        apiKey: '',
+      })
+      await getClock().runAllAsync()
+    })
+
+    const created = useChatStore.getState().models.find((candidate) => candidate.name === 'My Custom Model')
+    expect(created?.model).toBe('gpt-4-turbo-preview')
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 

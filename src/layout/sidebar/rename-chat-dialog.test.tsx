@@ -74,6 +74,29 @@ describe('RenameChatDialog', () => {
     expect(screen.getByRole('textbox', { name: 'Chat name' })).toHaveValue('Unsaved title')
   })
 
+  it('keeps the dialog mounted when the title prop updates while open', () => {
+    const { onOpenChange, onRename, rerender } = setup()
+
+    const input = screen.getByRole('textbox', { name: 'Chat name' })
+    fireEvent.change(input, { target: { value: 'Draft title' } })
+    // e.g. the rename mutation lands while the dialog is animating — the
+    // form must not remount (which would cut the close animation) and the
+    // draft must survive.
+    rerender(<RenameChatDialog open title="Renamed elsewhere" onOpenChange={onOpenChange} onRename={onRename} />)
+
+    expect(screen.getByRole('textbox', { name: 'Chat name' })).toBe(input)
+    expect(input).toHaveValue('Draft title')
+  })
+
+  it('resets to the latest title on reopen after the title changed', () => {
+    const { onOpenChange, onRename, rerender } = setup()
+
+    rerender(<RenameChatDialog open={false} title="Renamed" onOpenChange={onOpenChange} onRename={onRename} />)
+    rerender(<RenameChatDialog open title="Renamed" onOpenChange={onOpenChange} onRename={onRename} />)
+
+    expect(screen.getByRole('textbox', { name: 'Chat name' })).toHaveValue('Renamed')
+  })
+
   it('renders with the current title in the input', () => {
     setup()
     expect(screen.getByDisplayValue('My Chat')).toBeInTheDocument()

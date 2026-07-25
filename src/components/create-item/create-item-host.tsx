@@ -5,8 +5,8 @@
 import { Loader2 } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
 
-import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
-import { createItemTitles, type CreateItemRequest, useCreateItem } from './context'
+import { type CreateItemRequest, useCreateItem } from './context'
+import { CreateItemPanelShell } from './create-item-panel-shell'
 
 const CreateSkillPanel = lazy(() =>
   import('./create-skill-panel').then((module) => ({ default: module.CreateSkillPanel })),
@@ -29,13 +29,11 @@ const LoadingPanel = ({
   onClose: () => void
   onCloseComplete: () => void
 }) => (
-  <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
-    <DetailPanel title={createItemTitles[request.kind]} onClose={onClose}>
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-      </div>
-    </DetailPanel>
-  </DetailPanelSurface>
+  <CreateItemPanelShell kind={request.kind} open={open} onClose={onClose} onCloseComplete={onCloseComplete}>
+    <div className="flex flex-1 items-center justify-center">
+      <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
+    </div>
+  </CreateItemPanelShell>
 )
 
 /**
@@ -72,6 +70,8 @@ export const CreateItemHost = () => {
         return <CreateAgentPanel {...sharedProps} />
       case 'model':
         return <CreateModelPanel {...sharedProps} />
+      default:
+        throw new Error(`Unhandled create-item kind: ${JSON.stringify(renderedRequest satisfies never)}`)
     }
   })()
 

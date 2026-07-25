@@ -37,8 +37,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { AppVersionSection } from './app-version-section'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
@@ -65,6 +65,8 @@ type PreferencesState = {
   importError: string | null
   importSuccess: string | null
   pendingImport: PendingImport | null
+  resetDialogOpen: boolean
+  deleteAccountDialogOpen: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
 }
@@ -78,6 +80,8 @@ type PreferencesAction =
   | { type: 'SET_IMPORT_ERROR'; payload: string | null }
   | { type: 'SET_IMPORT_SUCCESS'; payload: string | null }
   | { type: 'SET_PENDING_IMPORT'; payload: PendingImport | null }
+  | { type: 'SET_RESET_DIALOG_OPEN'; payload: boolean }
+  | { type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN'; payload: boolean }
   | { type: 'CLEAR_IMPORT_FEEDBACK' }
   | { type: 'RESET_STATE' }
   | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
@@ -92,6 +96,8 @@ const initialState: PreferencesState = {
   importError: null,
   importSuccess: null,
   pendingImport: null,
+  resetDialogOpen: false,
+  deleteAccountDialogOpen: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
 }
@@ -114,6 +120,10 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, importSuccess: action.payload }
     case 'SET_PENDING_IMPORT':
       return { ...state, pendingImport: action.payload }
+    case 'SET_RESET_DIALOG_OPEN':
+      return { ...state, resetDialogOpen: action.payload }
+    case 'SET_DELETE_ACCOUNT_DIALOG_OPEN':
+      return { ...state, deleteAccountDialogOpen: action.payload }
     case 'CLEAR_IMPORT_FEEDBACK':
       return { ...state, importError: null, importSuccess: null }
     case 'RESET_STATE':
@@ -138,6 +148,8 @@ export default function PreferencesSettingsPage() {
     importError,
     importSuccess,
     pendingImport,
+    resetDialogOpen,
+    deleteAccountDialogOpen,
     localizationDialogOpen,
     pendingCountryUnits,
   } = state
@@ -978,28 +990,25 @@ export default function PreferencesSettingsPage() {
 
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Delete All Local Data</label>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="secondary" disabled={isResetting}>
-                      {isResetting ? 'Resetting...' : 'Reset Database'}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Reset Local Database?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete all of your local data including settings, chat history, and cached
-                        information. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleResetDatabase} variant="destructive">
-                        Reset Database
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <Button
+                  variant="secondary"
+                  disabled={isResetting}
+                  onClick={() => dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: true })}
+                >
+                  {isResetting ? 'Resetting...' : 'Reset Database'}
+                </Button>
+                <ConfirmActionDialog
+                  open={resetDialogOpen}
+                  title="Reset Local Database?"
+                  description="This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
+                  confirmLabel="Reset Database"
+                  isPending={isResetting}
+                  onConfirm={() => {
+                    dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: false })
+                    void handleResetDatabase()
+                  }}
+                  onCancel={() => dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: false })}
+                />
               </div>
             </>
           )}
@@ -1018,30 +1027,27 @@ export default function PreferencesSettingsPage() {
                     {deleteAccountError}
                   </p>
                 )}
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    {/* Secondary on the page; the red danger styling lives on the
-                        confirm button inside the dialog. */}
-                    <Button variant="secondary" disabled={isDeletingAccount}>
-                      {isDeletingAccount ? 'Deleting...' : 'Delete My Account'}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete your account?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete your account and all of your data on our servers and on this
-                        device, including settings, chat history, and cached information. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeleteAccount} variant="destructive">
-                        Delete account
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                {/* Secondary on the page; the red danger styling lives on the
+                    confirm button inside the dialog. */}
+                <Button
+                  variant="secondary"
+                  disabled={isDeletingAccount}
+                  onClick={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: true })}
+                >
+                  {isDeletingAccount ? 'Deleting...' : 'Delete My Account'}
+                </Button>
+                <ConfirmActionDialog
+                  open={deleteAccountDialogOpen}
+                  title="Delete your account?"
+                  description="This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
+                  confirmLabel="Delete account"
+                  isPending={isDeletingAccount}
+                  onConfirm={() => {
+                    dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })
+                    void handleDeleteAccount()
+                  }}
+                  onCancel={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })}
+                />
               </div>
             </>
           )}

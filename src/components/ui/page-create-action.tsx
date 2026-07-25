@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { useMobileForegroundPortalTarget } from '@/components/ui/mobile-foreground-portal'
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
-import { edgeSpacing } from '@/lib/constants'
+import { getMobileBottomInset } from '@/lib/constants'
 
 type PageCreateActionProps = {
   /** Doubles as the mobile pill's visible text and the desktop button's accessible name. */
@@ -63,17 +63,12 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
     <Button
       size="lg"
       // Sits below the z-50 modal layer: opening a detail panel should bury
-      // the pill under the overlay, not float it above. Native mobile's sidebar
-      // footer sits directly on the safe-area inset; web mobile retains 8px
-      // below its footer controls. Mirroring that distinction keeps this pill
-      // aligned with New Chat in both environments.
+      // the pill under the overlay, not float it above. The bottom inset uses
+      // the same formula as the sidebar footer (see getMobileBottomInset) so
+      // this pill stays aligned with New Chat in both environments.
       // border-none: the New Chat pill this mirrors is borderless.
       className="fixed right-4 z-30 rounded-full border-none shadow-lg"
-      style={{
-        bottom: isNativeMobile
-          ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
-          : 'calc(var(--safe-area-bottom-padding, 0px) + 0.5rem)',
-      }}
+      style={{ bottom: getMobileBottomInset(isNativeMobile) }}
       onClick={onClick}
       disabled={disabled}
     >

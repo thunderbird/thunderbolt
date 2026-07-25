@@ -76,6 +76,12 @@ const InputOTPSeparator = ({ ...props }: ComponentProps<'div'>) => {
 const InputOTPSlots = () => (
   <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
     {Array.from({ length: otpLength }, (_, i) => (
+      // w-10.5 (42px) keeps all slots plus gaps within a 320px viewport while
+      // staying close to the 44px touch target (`shrink` absorbs the rest).
+      // `first:rounded-l-lg last:rounded-r-lg` is required, not redundant: the
+      // base slot ships `first:rounded-l-md last:rounded-r-md`, and the
+      // unprefixed `rounded-lg` cannot override those variant classes under
+      // tailwind-merge.
       <InputOTPSlot
         key={i}
         index={i}

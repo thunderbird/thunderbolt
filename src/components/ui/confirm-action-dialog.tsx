@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useRef } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 
 import {
   AlertDialog,
@@ -23,6 +23,9 @@ type ConfirmActionDialogProps = {
   description: string
   confirmLabel: string
   cancelLabel?: string
+  /** Disables the confirm button (with a spinner) while the caller's action
+   *  is in flight, so a double-tap can't fire `onConfirm` twice. */
+  isPending?: boolean
   onConfirm: () => void
   /** Fires on every non-confirm dismissal: Cancel, Escape, and backdrop. */
   onCancel: () => void
@@ -40,6 +43,7 @@ export const ConfirmActionDialog = ({
   description,
   confirmLabel,
   cancelLabel = 'Cancel',
+  isPending = false,
   onConfirm,
   onCancel,
 }: ConfirmActionDialogProps) => {
@@ -64,7 +68,7 @@ export const ConfirmActionDialog = ({
           <Button ref={cancelButtonRef} variant="outline" onClick={onCancel}>
             {cancelLabel}
           </Button>
-          <Button variant="destructive" onClick={onConfirm}>
+          <Button variant="destructive" isLoading={isPending} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </MobileActionSheetFooter>
@@ -83,7 +87,7 @@ export const ConfirmActionDialog = ({
           {/* Radix's Cancel closes the dialog itself; onCancel arrives once
               via onOpenChange(false), so no onClick here. */}
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
-          <Button variant="destructive" onClick={onConfirm}>
+          <Button variant="destructive" isLoading={isPending} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </AlertDialogFooter>
@@ -91,3 +95,42 @@ export const ConfirmActionDialog = ({
     </AlertDialog>
   )
 }
+
+export type ConfirmActionDialogRef = {
+  open: () => void
+  close: () => void
+}
+
+type ImperativeConfirmActionDialogProps = Omit<ConfirmActionDialogProps, 'open' | 'onCancel'> & {
+  onCancel?: () => void
+}
+
+/**
+ * ConfirmActionDialog that owns its open state and exposes it through an
+ * imperative `{ open, close }` ref — for callers that open the prompt from a
+ * menu action and close it from a mutation callback. Every dismissal closes
+ * the dialog itself before invoking the optional `onCancel` cleanup.
+ */
+export const ImperativeConfirmActionDialog = forwardRef<ConfirmActionDialogRef, ImperativeConfirmActionDialogProps>(
+  ({ onCancel, ...props }, ref) => {
+    const [open, setOpen] = useState(false)
+
+    useImperativeHandle(ref, () => ({
+      open: () => setOpen(true),
+      close: () => setOpen(false),
+    }))
+
+    return (
+      <ConfirmActionDialog
+        {...props}
+        open={open}
+        onCancel={() => {
+          setOpen(false)
+          onCancel?.()
+        }}
+      />
+    )
+  },
+)
+
+ImperativeConfirmActionDialog.displayName = 'ImperativeConfirmActionDialog'

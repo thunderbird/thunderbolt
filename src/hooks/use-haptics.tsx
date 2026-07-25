@@ -2,7 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useEffectEvent, useRef } from 'react'
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+} from 'react'
 import { useWebHaptics } from 'web-haptics/react'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
@@ -44,18 +53,15 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
   // Every haptic funnels through here so the enabled gate, the dedup
   // timestamp, and the native-vs-web routing are decided exactly once.
   const fireHaptic = useCallback(
-    (native: () => Promise<unknown>, web: () => unknown) => {
+    (triggerNative: () => Promise<unknown>, triggerWeb: () => unknown) => {
       if (!hapticsEnabled) {
         return
       }
       lastHapticAtRef.current = Date.now()
-      if (isTauri() && isMobile()) {
-        // Haptics are best-effort; a failing plugin call must not surface as
-        // an unhandled rejection, but should still be visible in dev.
-        native().catch((error: unknown) => console.warn('Haptic feedback failed', error))
-      } else {
-        void web()
-      }
+      const trigger = isTauri() && isMobile() ? triggerNative : triggerWeb
+      // Haptics are best-effort; a failing call must not surface as an
+      // unhandled rejection, but should still be visible in dev.
+      void Promise.resolve(trigger()).catch((error: unknown) => console.warn('Haptic feedback failed', error))
     },
     [hapticsEnabled],
   )
@@ -91,18 +97,19 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
     triggerImpactHaptic()
   }, [triggerImpactHaptic])
 
-  return (
-    <HapticsContext.Provider
-      value={{
-        triggerSelection: triggerSelectionHaptic,
-        triggerImpact: triggerImpactHaptic,
-        triggerNotification: triggerNotificationHaptic,
-        triggerSurfaceImpact: triggerSurfaceImpactHaptic,
-      }}
-    >
-      {children}
-    </HapticsContext.Provider>
+  // Memoized so app-shell re-renders don't invalidate every consumer (chat
+  // composer, sidebar, and surface boundaries all read this context).
+  const value = useMemo(
+    () => ({
+      triggerSelection: triggerSelectionHaptic,
+      triggerImpact: triggerImpactHaptic,
+      triggerNotification: triggerNotificationHaptic,
+      triggerSurfaceImpact: triggerSurfaceImpactHaptic,
+    }),
+    [triggerSelectionHaptic, triggerImpactHaptic, triggerNotificationHaptic, triggerSurfaceImpactHaptic],
   )
+
+  return <HapticsContext.Provider value={value}>{children}</HapticsContext.Provider>
 }
 
 /**

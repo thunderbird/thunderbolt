@@ -21,6 +21,17 @@ export const edgeSpacing = {
   desktop: 16,
 } as const
 
+/**
+ * CSS `bottom`/inset expression for controls floating at the bottom edge of
+ * the mobile viewport (sidebar footer, floating create pill). Native mobile
+ * pins to the home-indicator safe area with an `edgeSpacing.mobile` (12px)
+ * floor; web mobile adds 8px of breathing room above the safe area.
+ */
+export const getMobileBottomInset = (isNativeMobile: boolean): string =>
+  isNativeMobile
+    ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
+    : 'calc(var(--safe-area-bottom-padding, 0px) + 0.5rem)'
+
 /** Mobile sidebar width as a fraction of viewport width (0–1) */
 const mobileSidebarWidthRatio = 0.8
 

@@ -46,12 +46,6 @@ export type SkillsViewState = {
   slugError: string | null
   /** Generic save-failure message shown near the form's submit button. */
   submitError: string | null
-  /**
-   * Optional initial name for the create form — set when a "create it" deep
-   * link arrives from the chat composer's broken-reference alert. `null`
-   * for an empty form. Cleared on submit / leave.
-   */
-  createInitialName: string | null
 }
 
 export const initialSkillsViewState: SkillsViewState = {
@@ -65,7 +59,6 @@ export const initialSkillsViewState: SkillsViewState = {
   pendingDependents: null,
   slugError: null,
   submitError: null,
-  createInitialName: null,
 }
 
 /**
@@ -78,10 +71,8 @@ export const initialSkillsViewState: SkillsViewState = {
 export type SkillsViewAction =
   /** User selected a skill in the list while in `detail` mode. */
   | { type: 'SELECT_SKILL'; id: string }
-  /** User opened the create form. Side effect: panel slides in on mobile.
-   * `initialName` pre-fills the form when arriving from a "create it" deep
-   * link out of the chat composer. */
-  | { type: 'START_CREATE'; initialName?: string }
+  /** User opened the create form. Side effect: panel slides in on mobile. */
+  | { type: 'START_CREATE' }
   /** User opened the edit form for a specific skill. */
   | { type: 'START_EDIT'; id: string }
   /** Leave the form (confirmed) and apply the parked intent. */
@@ -102,11 +93,11 @@ export type SkillsViewAction =
   /** User clicked a row in the dependents dialog — jump to edit that skill. */
   | { type: 'JUMP_TO_DEPENDENT'; id: string }
   /** Form reports its dirty state changed. */
-  | { type: 'SET_DIRTY'; dirty: boolean }
+  | { type: 'DIRTY_CHANGED'; dirty: boolean }
   /** Form submit succeeded — return to detail mode on the (possibly new) skill. */
   | { type: 'SUBMIT_SUCCESS'; activeId: string }
   /** Inline slug error from the form's local validator or the DAL. */
-  | { type: 'SET_SLUG_ERROR'; message: string }
+  | { type: 'SLUG_REJECTED'; message: string }
   /** User edited the slug — clear any stale uniqueness error. */
   | { type: 'CLEAR_SLUG_ERROR' }
   /** Form submit hit an unexpected persistence failure — keep the form open
@@ -127,9 +118,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         slugError: null,
         submitError: null,
         panelView: 'panel',
-        createInitialName: action.initialName ?? null,
-        // Bump the reset signal so SkillForm remounts with the new initial
-        // values when the user clicks "Create it" twice for different slugs.
+        // Bump the reset signal so SkillForm remounts with a blank form.
         resetSignal: state.resetSignal + 1,
       }
 
@@ -157,7 +146,6 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         submitError: null,
         pendingLeave: null,
         panelView: nextPanelView,
-        createInitialName: null,
       }
     }
 
@@ -212,7 +200,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         panelView: 'panel',
       }
 
-    case 'SET_DIRTY':
+    case 'DIRTY_CHANGED':
       return { ...state, isDirty: action.dirty }
 
     case 'SUBMIT_SUCCESS':
@@ -224,10 +212,9 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         resetSignal: state.resetSignal + 1,
         slugError: null,
         submitError: null,
-        createInitialName: null,
       }
 
-    case 'SET_SLUG_ERROR':
+    case 'SLUG_REJECTED':
       return { ...state, slugError: action.message, submitError: null }
 
     case 'CLEAR_SLUG_ERROR':

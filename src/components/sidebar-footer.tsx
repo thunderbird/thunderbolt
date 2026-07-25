@@ -295,14 +295,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
       return (
         <div className="flex w-full min-w-0 items-center gap-1">
           <div className="min-w-0">{renderAccountControl()}</div>
-          <Button
-            type="button"
-            size="lg"
-            aria-label="New Chat"
-            title="New Chat"
-            onClick={handleNewChat}
-            className="ml-auto rounded-full"
-          >
+          <Button type="button" size="lg" onClick={handleNewChat} className="ml-auto rounded-full">
             <MessageCirclePlus className={iconSize} />
             <span>New Chat</span>
           </Button>
@@ -312,9 +305,9 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     return <div className="min-w-0">{renderAccountControl()}</div>
   })()
 
-  // Popover placement differs wholesale between mobile (centered over the
-  // sidebar) and desktop (anchored to the pill) — named once, spread below.
-  const popoverPlacement = isMobile
+  // Popover layout (placement + width) differs wholesale between mobile
+  // (centered over the sidebar) and desktop (anchored to the pill).
+  const popoverLayout = isMobile
     ? {
         sideOffset: 8,
         align: 'center' as const,
@@ -351,11 +344,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
       <PopoverContent
         side="top"
-        sideOffset={popoverPlacement.sideOffset}
-        align={popoverPlacement.align}
-        collisionPadding={popoverPlacement.collisionPadding}
+        sideOffset={popoverLayout.sideOffset}
+        align={popoverLayout.align}
+        collisionPadding={popoverLayout.collisionPadding}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
-        style={{ width: popoverPlacement.width }}
+        style={{ width: popoverLayout.width }}
         onPointerDownOutside={(e) => {
           if (isMobile && e.detail.originalEvent.clientX > getMobileSidebarWidth(window.innerWidth)) {
             setOpenMobile(false)

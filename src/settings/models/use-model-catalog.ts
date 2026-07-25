@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useReducer } from 'react'
+import { useCallback, useEffect, useReducer } from 'react'
 
 import type { ComboboxItem } from '@/components/ui/combobox'
+import { useDebounce } from '@/hooks/use-debounce'
 import {
+  canFetchCatalog,
+  catalogDebounceMs,
   catalogRequestKey,
   describeModelFetchError,
   fetchModelsForProvider,
@@ -89,4 +92,32 @@ export const useModelCatalog = () => {
     fetchCatalog,
     invalidateCatalog,
   }
+}
+
+type UseAutoCatalogFetchOptions = {
+  /** The caller's arming condition (e.g. panel open, or a fresh key edit). */
+  armed: boolean
+  request: CatalogRequest
+  catalog: Pick<ReturnType<typeof useModelCatalog>, 'requestKey' | 'fetchCatalog'>
+}
+
+/**
+ * Auto-fetches the provider catalog once the request inputs stop changing.
+ * Shared by the add/edit model forms: the request is debounced so
+ * credentials and URLs settle before they are sent anywhere, the fetch only
+ * fires while `armed` is true and `canFetchCatalog` allows it, and a catalog
+ * already requested for the same inputs is never re-fetched.
+ */
+export const useAutoCatalogFetch = ({ armed, request, catalog }: UseAutoCatalogFetchOptions) => {
+  const { requestKey, fetchCatalog } = catalog
+  const debouncedRequest = useDebounce(request, catalogDebounceMs)
+  const isDebounceSettled = catalogRequestKey(debouncedRequest) === catalogRequestKey(request)
+  const hasRequestedCurrentCatalog = requestKey === catalogRequestKey(debouncedRequest)
+
+  useEffect(() => {
+    if (!armed || !isDebounceSettled || hasRequestedCurrentCatalog || !canFetchCatalog(debouncedRequest)) {
+      return
+    }
+    void fetchCatalog(debouncedRequest)
+  }, [armed, isDebounceSettled, hasRequestedCurrentCatalog, debouncedRequest, fetchCatalog])
 }

@@ -39,7 +39,7 @@ describe('skillsViewReducer', () => {
 
   describe('START_CREATE / START_EDIT', () => {
     it('enters create mode and clears any prior slug error', () => {
-      const next = run([{ type: 'SET_SLUG_ERROR', message: 'old' }, { type: 'START_CREATE' }])
+      const next = run([{ type: 'SLUG_REJECTED', message: 'old' }, { type: 'START_CREATE' }])
       expect(next.mode).toBe('create')
       expect(next.slugError).toBeNull()
       expect(next.panelView).toBe('panel')
@@ -51,18 +51,7 @@ describe('skillsViewReducer', () => {
       expect(next.activeId).toBe('b')
     })
 
-    it('START_CREATE without initialName leaves createInitialName null', () => {
-      const next = skillsViewReducer(initialSkillsViewState, { type: 'START_CREATE' })
-      expect(next.createInitialName).toBeNull()
-    })
-
-    it('START_CREATE with initialName stores it for the form', () => {
-      const next = skillsViewReducer(initialSkillsViewState, { type: 'START_CREATE', initialName: 'meeting-notes' })
-      expect(next.mode).toBe('create')
-      expect(next.createInitialName).toBe('meeting-notes')
-    })
-
-    it('START_CREATE bumps resetSignal so the form re-mounts on back-to-back deep links', () => {
+    it('START_CREATE bumps resetSignal so the form re-mounts on back-to-back opens', () => {
       const next = skillsViewReducer({ ...initialSkillsViewState, resetSignal: 4 }, { type: 'START_CREATE' })
       expect(next.resetSignal).toBe(5)
     })
@@ -144,7 +133,6 @@ describe('skillsViewReducer', () => {
         mode: 'edit',
         activeId: 'a',
         isDirty: true,
-        createInitialName: 'stale',
         panelView: 'panel',
       }
       const next = skillsViewReducer(editing, {
@@ -154,18 +142,7 @@ describe('skillsViewReducer', () => {
       expect(next.mode).toBe('create')
       // The prior edit target stays active — SUBMIT_SUCCESS overwrites it.
       expect(next.activeId).toBe('a')
-      expect(next.createInitialName).toBeNull()
       expect(next.panelView).toBe('panel')
-    })
-
-    it('clears createInitialName so the next START_CREATE starts blank again', () => {
-      const editing: SkillsViewState = {
-        ...initialSkillsViewState,
-        mode: 'create',
-        createInitialName: 'meeting-notes',
-      }
-      const next = skillsViewReducer(editing, { type: 'PERFORM_LEAVE', leave: { type: 'cancel' } })
-      expect(next.createInitialName).toBeNull()
     })
 
     it('on mobile cancel, keeps the panel open to show the detail view', () => {
@@ -251,9 +228,9 @@ describe('skillsViewReducer', () => {
     })
   })
 
-  describe('SET_DIRTY / SUBMIT_SUCCESS', () => {
-    it('SET_DIRTY updates the form dirty flag', () => {
-      const next = skillsViewReducer(initialSkillsViewState, { type: 'SET_DIRTY', dirty: true })
+  describe('DIRTY_CHANGED / SUBMIT_SUCCESS', () => {
+    it('DIRTY_CHANGED updates the form dirty flag', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'DIRTY_CHANGED', dirty: true })
       expect(next.isDirty).toBe(true)
     })
 
@@ -273,27 +250,17 @@ describe('skillsViewReducer', () => {
       expect(next.slugError).toBeNull()
       expect(next.resetSignal).toBe(2)
     })
-
-    it('SUBMIT_SUCCESS clears createInitialName so subsequent creates start blank', () => {
-      const creating: SkillsViewState = {
-        ...initialSkillsViewState,
-        mode: 'create',
-        createInitialName: 'meeting-notes',
-      }
-      const next = skillsViewReducer(creating, { type: 'SUBMIT_SUCCESS', activeId: 'new-id' })
-      expect(next.createInitialName).toBeNull()
-    })
   })
 
   describe('error states', () => {
-    it('SET_SLUG_ERROR stores the message', () => {
-      const next = skillsViewReducer(initialSkillsViewState, { type: 'SET_SLUG_ERROR', message: 'bad name' })
+    it('SLUG_REJECTED stores the message', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'SLUG_REJECTED', message: 'bad name' })
       expect(next.slugError).toBe('bad name')
     })
 
-    it('SET_SLUG_ERROR replaces a stale generic submit error', () => {
+    it('SLUG_REJECTED replaces a stale generic submit error', () => {
       const failed = skillsViewReducer(initialSkillsViewState, { type: 'SUBMIT_FAILED', message: 'save failed' })
-      const next = skillsViewReducer(failed, { type: 'SET_SLUG_ERROR', message: 'taken' })
+      const next = skillsViewReducer(failed, { type: 'SLUG_REJECTED', message: 'taken' })
       expect(next.slugError).toBe('taken')
       expect(next.submitError).toBeNull()
     })
@@ -313,7 +280,7 @@ describe('skillsViewReducer', () => {
     })
 
     it('CLEAR_SLUG_ERROR drops a stale slug error', () => {
-      const withName = skillsViewReducer(initialSkillsViewState, { type: 'SET_SLUG_ERROR', message: 'taken' })
+      const withName = skillsViewReducer(initialSkillsViewState, { type: 'SLUG_REJECTED', message: 'taken' })
       const cleared = skillsViewReducer(withName, { type: 'CLEAR_SLUG_ERROR' })
       expect(cleared.slugError).toBeNull()
     })

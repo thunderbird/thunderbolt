@@ -30,9 +30,8 @@ type FooterActionRowProps = SearchableMenuFooterAction & {
   closeMenu: () => void
 }
 
-/** Renders `footerAction`: closes the menu synchronously before running the
- *  action, so a surface the action opens (e.g. the quick-create panel) never
- *  races the closing menu. */
+/** Renders `footerAction`. Close-before-action ordering is an invariant —
+ *  see `SearchableMenuFooterAction` in `./types` for the rationale. */
 const FooterActionRow = ({
   label,
   onAction,

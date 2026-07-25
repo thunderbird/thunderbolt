@@ -98,8 +98,10 @@ export default function ChatUI() {
                 className="h-full overflow-y-auto hide-scrollbar"
               >
                 {/* Scroll captures the full width; the content stays centered.
-                    Top padding clears the floating header (the layout's scrim
-                    keeps scrolled messages legible behind it). */}
+                    Top padding clears the floating header (--header-inset)
+                    plus 1.5rem of breathing room so the first message doesn't
+                    sit flush against the header's scrim (which keeps scrolled
+                    messages legible behind it). */}
                 <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-[calc(var(--header-inset)+1.5rem)] pb-0 md:px-4">
                   <Suspense fallback={null}>
                     <ChatMessageList scrollTargetRef={scrollTargetRef} />

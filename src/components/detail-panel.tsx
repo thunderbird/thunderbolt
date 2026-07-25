@@ -158,7 +158,11 @@ export const DetailPanelSurface = ({
       <SlideInPanel
         open={open}
         onCloseComplete={onCloseComplete}
-        width="clamp(480px, calc(50vw - 128px), 540px)"
+        // The clamp floor is --create-panel-min-width (480px, index.css
+        // :root). It plus the 360px ResizablePanel minSize in main-layout.tsx
+        // derive the 840px create-item-layout container breakpoint in
+        // index.css — re-derive that literal if either floor changes.
+        width="clamp(var(--create-panel-min-width), calc(50vw - 128px), 540px)"
         className="[filter:drop-shadow(var(--shadow-glow-strong))] dark:[filter:drop-shadow(0_0_32px_rgb(0_0_0/24%))]"
       >
         <div className={cn('h-full pb-12', topInset && 'pt-12')}>

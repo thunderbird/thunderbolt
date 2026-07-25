@@ -103,7 +103,9 @@ export default function Page() {
     <SidebarInset className="h-full flex flex-col">
       <ResizablePanelGroup orientation="horizontal">
         {/* 360px is the content floor the create-item container query in
-            index.css derives its 840px breakpoint from — keep them in sync. */}
+            index.css derives its 840px breakpoint from (480px
+            --create-panel-min-width + this 360px = 840px) — if this changes,
+            re-derive that literal. */}
         <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
             <FloatingHeader />

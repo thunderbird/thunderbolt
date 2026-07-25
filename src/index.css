@@ -163,10 +163,27 @@
   --elevation-medium: rgb(0 0 0 / 0.06);
   --elevation-strong: rgb(0 0 0 / 0.15);
 
+  /* Directional sheet/edge elevation — one recipe (8px offset toward the
+     layer below, 32px blur, -12px spread, 20% black) cast three ways. Single
+     source for the drawer sheets (drawer.tsx) and .mobile-sidebar-main-shadow
+     below; the -drawer names match the sheet's swipe-direction attribute. */
+  --shadow-drawer-down: 0 -8px 32px -12px rgb(0 0 0 / 20%);
+  --shadow-drawer-up: 0 8px 32px -12px rgb(0 0 0 / 20%);
+  --shadow-sidebar-edge: -8px 0 32px -12px rgb(0 0 0 / 20%);
+
+  /* Floor width of the create-item detail panel — the clamp() minimum in
+     DetailPanelSurface (detail-panel.tsx). Together with the 360px content
+     floor (ResizablePanel minSize in main-layout.tsx) it derives the 840px
+     create-item-layout container breakpoint below (480 + 360 = 840), which
+     must stay a literal because container queries can't read var(). */
+  --create-panel-min-width: 480px;
+
   /* Brand gradient — the logo's gold→magenta families as an amber→raspberry
      sweep. References the theme tokens, so the .dark overrides above flow
      through automatically. Single-color call sites keep the solid
-     --color-brand. */
+     --color-brand. Amber leads (left) because the switch thumb parks on the
+     RIGHT when checked — with raspberry first, the thumb hid the amber end
+     and the track read as plain red. */
   --gradient-brand: linear-gradient(90deg, var(--color-brand-2), var(--color-brand));
   --gradient-brand-muted: linear-gradient(90deg, var(--color-brand-2-muted), var(--color-brand-muted));
 }
@@ -496,9 +513,10 @@
    Below the panel's 480px floor + the content's 360px floor, take the panel
    out of flex flow so it slides over the unchanged route instead. A container
    query accounts for expanded, collapsed, and user-resized sidebars alike.
-   The 480px floor is DetailPanelSurface's width clamp (detail-panel.tsx); the
-   360px floor is the ResizablePanel minSize (main-layout.tsx) — keep all
-   three in sync. */
+   The 840px below is --create-panel-min-width (480px, :root above — consumed
+   by DetailPanelSurface's width clamp in detail-panel.tsx) + the 360px
+   ResizablePanel minSize (main-layout.tsx). Container queries can't read
+   var(), so if either floor changes, re-derive this literal. */
 [data-slot='create-item-layout'] {
   container-name: create-item-layout;
   container-type: inline-size;
@@ -625,11 +643,11 @@ body {
 }
 
 /* Cast only toward the stationary menu so the moving app surface reads as
-   the layer above it in both themes. Same elevation recipe (8px offset
-   toward the layer below, 32px blur, -12px spread, 20% black) as the drawer
-   sheets' directional shadows in drawer.tsx — keep them in sync. */
+   the layer above it in both themes. Same elevation recipe as the drawer
+   sheets — see the --shadow-drawer-down/up and --shadow-sidebar-edge tokens
+   in :root. */
 .mobile-sidebar-main-shadow {
-  box-shadow: -8px 0 32px -12px rgb(0 0 0 / 20%);
+  box-shadow: var(--shadow-sidebar-edge);
 }
 
 /* The foreground owns mobile navigation motion, so Base UI's popup stays

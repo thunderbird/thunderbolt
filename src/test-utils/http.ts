@@ -5,11 +5,16 @@
 import type { ResponsePromise } from '@/lib/http'
 
 /**
- * Minimal stand-in for an `HttpClient` `ResponsePromise` whose JSON body is
- * already known, for `spyOn(http, 'get').mockReturnValue(...)` in tests. The
- * cast is unavoidable — `ResponsePromise` is a full `Promise<Response>` the
- * code under test never awaits directly — so it lives here once instead of
- * in every test file.
+ * Stand-in for an `HttpClient` `ResponsePromise` whose JSON body is already
+ * known, for `spyOn(http, 'get').mockReturnValue(...)` in tests. Built the
+ * same way as the production `makeResponsePromise`: a genuine
+ * `Promise<Response>` widened with the `json`/`text` helpers, so code that
+ * awaits the promise directly works too.
  */
-export const stubJsonResponse = (payload: unknown): ResponsePromise =>
-  ({ json: async () => payload }) as unknown as ResponsePromise
+export const stubJsonResponse = (payload: unknown): ResponsePromise => {
+  const body = JSON.stringify(payload)
+  const promise = Promise.resolve(new Response(body)) as ResponsePromise
+  promise.json = <T>() => Promise.resolve(payload as T)
+  promise.text = () => Promise.resolve(body)
+  return promise
+}

@@ -54,6 +54,18 @@ describe('DeleteChatDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
+  it('disables the confirm button while the delete is pending', () => {
+    const ref = createRef<DeleteChatDialogRef>()
+    const onConfirm = mock(() => {})
+    render(<DeleteChatDialog ref={ref} isPending onConfirm={onConfirm} />)
+    act(() => ref.current?.open())
+
+    const confirmButton = screen.getByRole('button', { name: 'Delete Chat' })
+    expect(confirmButton).toBeDisabled()
+    fireEvent.click(confirmButton)
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
   it('runs cancellation cleanup when the mobile sheet is dismissed', () => {
     forceMobileViewport()
     const { onCancel } = setup()

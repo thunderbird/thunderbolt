@@ -219,7 +219,7 @@ export const McpServerForm = ({
         loadingLabel="Adding…"
         disabled={!isSaveReady || (!isIroh && testResult.kind !== 'success')}
       >
-        Add server
+        Add Server
       </Button>
     )
   }

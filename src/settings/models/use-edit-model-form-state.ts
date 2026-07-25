@@ -3,15 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 import type { ComboboxItem } from '@/components/ui/combobox'
-import { useDebounce } from '@/hooks/use-debounce'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
-import { canFetchCatalog, catalogDebounceMs, catalogRequestKey, type CatalogRequest } from './model-catalog'
+import { canFetchCatalog, type CatalogRequest } from './model-catalog'
 import {
   apiKeyEditValue,
   hasModelConnectionChanges,
@@ -19,7 +18,7 @@ import {
   providerRequiresConnectionTest,
   type ApiKeyEdit,
 } from './model-policy'
-import { catalogToComboboxItems, customModelItem, useModelCatalog } from './use-model-catalog'
+import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
 
 const editModelFormSchema = z.object({
   name: z.string().min(1, { message: 'Name is required.' }),
@@ -64,20 +63,13 @@ export const useEditModelFormState = (model: Model) => {
     () => ({ provider: model.provider, apiKey: effectiveApiKey, url: watchedUrl }),
     [effectiveApiKey, model.provider, watchedUrl],
   )
-  const debouncedCatalogRequest = useDebounce(catalogRequest, catalogDebounceMs)
   // The stored key must never leave the device without an explicit user
   // action, so the auto-fetch only arms for a freshly typed replacement key,
   // or for URL edits when no stored secret could ride along. Stored-key
   // catalogs load on demand when the model dropdown is opened (loadCatalog).
   const isAutoFetchArmed = apiKeyEdit.kind === 'replace' || (!model.apiKey && watchedUrl !== (model.url ?? ''))
-  const isDebounceSettled = catalogRequestKey(debouncedCatalogRequest) === catalogRequestKey(catalogRequest)
 
-  useEffect(() => {
-    if (!isAutoFetchArmed || !isDebounceSettled || !canFetchCatalog(debouncedCatalogRequest)) {
-      return
-    }
-    void fetchCatalog(debouncedCatalogRequest)
-  }, [isAutoFetchArmed, isDebounceSettled, debouncedCatalogRequest, fetchCatalog])
+  useAutoCatalogFetch({ armed: isAutoFetchArmed, request: catalogRequest, catalog })
   const modelItems = useMemo((): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
     if (!catalog.models.some((available) => available.id === model.model)) {

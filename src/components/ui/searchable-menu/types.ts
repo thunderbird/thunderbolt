@@ -26,7 +26,8 @@ export type SearchableMenuGroup<T = unknown> = {
 
 /** Declarative footer action row ("Add Model", "Add Agent"). The menu renders
  *  the row itself and closes synchronously before running the action, so a
- *  surface the action opens never races the closing menu. */
+ *  surface the action opens (e.g. the quick-create panel) never races the
+ *  closing menu. */
 export type SearchableMenuFooterAction = {
   label: string
   onAction: () => void

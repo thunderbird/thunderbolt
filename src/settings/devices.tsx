@@ -24,6 +24,7 @@ import { useRemoveDevice } from '@/hooks/use-remove-device'
 import { useSetDeviceNodeId } from '@/hooks/use-set-device-node-id'
 import { useDevicePairing } from '@/hooks/use-device-pairing'
 import { encodePairingTicket } from '@/lib/pairing-ticket'
+import { SettingsPageShell } from '@/components/settings/settings-list'
 
 const DeviceQrCode = lazy(() => import('@/components/device-qr-code'))
 const SetNodeIdDialog = lazy(() => import('@/components/set-node-id-dialog'))
@@ -97,7 +98,7 @@ export default function DevicesSettingsPage() {
   const hasPendingDevices = pendingDevices.length > 0
 
   return (
-    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
+    <SettingsPageShell className="gap-6 pb-12">
       <PageHeader title="Devices" />
 
       {removeMutation.error && (
@@ -111,8 +112,8 @@ export default function DevicesSettingsPage() {
           <SectionCard title="Pending Approvals">
             <div className="flex flex-col gap-3">
               {pendingDevices.map((device) => (
-                <Card key={device.id} className="bg-secondary/50">
-                  <CardContent>
+                <Card key={device.id} className="bg-secondary/50 py-3">
+                  <CardContent className="px-4">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex min-w-0 flex-1 items-center gap-3">
                         <Smartphone className="size-5 shrink-0 text-muted-foreground" />
@@ -169,8 +170,8 @@ export default function DevicesSettingsPage() {
             const isRevoked = device.revokedAt != null
             const isBridge = device.deviceType === 'bridge'
             return (
-              <Card key={device.id}>
-                <CardContent>
+              <Card key={device.id} className="py-3">
+                <CardContent className="px-4">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       {isBridge ? (
@@ -309,6 +310,6 @@ export default function DevicesSettingsPage() {
           />
         </Suspense>
       )}
-    </div>
+    </SettingsPageShell>
   )
 }

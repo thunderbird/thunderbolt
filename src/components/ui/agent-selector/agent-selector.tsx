@@ -13,6 +13,7 @@ import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
 import { iconForAgent } from '@/components/agent-icon'
+import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { ChevronDown, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
@@ -152,7 +153,8 @@ export const AgentSelector = ({
           aria-hidden="true"
           data-testid="agent-selector-collapsed-circle"
           className={cn(
-            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full bg-muted/80 transition-opacity duration-150 group-active:bg-muted-foreground/20 dark:bg-muted/40 md:hidden',
+            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 max-md:group-active:bg-muted-foreground/20 md:hidden',
+            mobileHeaderControlFillClass,
             collapsed ? 'opacity-100' : 'opacity-0',
           )}
         >

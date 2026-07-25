@@ -190,7 +190,7 @@ export const ChatSkillsBar = ({
       disabled={addDisabled}
       className={cn(chipSurfaceClass, 'disabled:cursor-not-allowed disabled:opacity-40')}
     >
-      <Plus />
+      <Plus className="size-[var(--icon-size-default)]" />
     </Button>
   )
 

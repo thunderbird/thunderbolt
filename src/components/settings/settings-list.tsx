@@ -7,15 +7,20 @@ import type { ComponentProps, ReactNode } from 'react'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
-/** The scrollable list column of a settings page: centered, width-capped shell. */
-export const SettingsListPane = ({ className, ...props }: ComponentProps<'section'>) => (
+/** Shared width and responsive padding for every settings page. */
+export const SettingsPageShell = ({ className, ...props }: ComponentProps<'section'>) => (
   <section
     className={cn(
-      'mx-auto flex h-full w-full max-w-[760px] flex-col gap-3 bg-background p-4 text-foreground md:min-w-[360px] md:px-5',
+      'mx-auto flex w-full max-w-[760px] flex-col bg-background p-4 text-foreground md:px-5 md:pt-1',
       className,
     )}
     {...props}
   />
+)
+
+/** The scrollable list column of a settings page: centered, width-capped shell. */
+export const SettingsListPane = ({ className, ...props }: ComponentProps<'section'>) => (
+  <SettingsPageShell className={cn('h-full gap-3 md:min-w-[360px]', className)} {...props} />
 )
 
 /** The scrolling region inside `SettingsListPane` (header stays pinned above it). */

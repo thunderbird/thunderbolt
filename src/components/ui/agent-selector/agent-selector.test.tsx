@@ -68,6 +68,18 @@ describe('AgentSelector', () => {
     expect(trigger).not.toHaveClass('max-md:backdrop-blur-md')
   })
 
+  it('gives the collapsed mobile control the shared frosted background', () => {
+    const onSelect = mock(() => {})
+    render(
+      <AgentSelector selectedAgent={systemAgent} agents={[builtInAgent, systemAgent]} onSelect={onSelect} collapsed />,
+    )
+
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass(
+      'max-md:bg-muted/80',
+      'max-md:backdrop-blur-md',
+    )
+  })
+
   it('opens the dropdown and exposes all agents when enabled', () => {
     const onSelect = mock(() => {})
     render(

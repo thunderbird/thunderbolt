@@ -52,6 +52,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePostHogClient } from '@/lib/posthog'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
+import { SettingsPageShell } from '@/components/settings/settings-list'
 
 type PendingImport = { payload: unknown } & ExportSummary
 
@@ -507,7 +508,7 @@ export default function PreferencesSettingsPage() {
   }, [unitsOptionsData?.currencies, currency.value])
 
   return (
-    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
+    <SettingsPageShell className="gap-6 pb-12">
       <PageHeader title="Preferences" />
 
       <SectionCard title="User Experience">
@@ -1114,6 +1115,6 @@ export default function PreferencesSettingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SettingsPageShell>
   )
 }

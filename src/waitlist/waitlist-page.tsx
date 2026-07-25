@@ -77,7 +77,7 @@ export const WaitlistPage = () => {
               type="button"
               onClick={() => actions.handleOtpComplete(state.otp)}
               disabled={isVerifying || state.otp.length !== otpLength}
-              className="h-[46px] w-full rounded-lg text-base"
+              className="h-[46px] w-full rounded-xl text-base"
             >
               {isVerifying ? (
                 <>
@@ -101,7 +101,7 @@ export const WaitlistPage = () => {
 
         <div className="flex w-full flex-col items-center gap-8">
           <div className="text-center font-sans">
-            <p className="text-[28px] font-medium leading-normal text-foreground">Wanna try the beta?</p>
+            <p className="text-[28px] font-medium leading-normal text-foreground">Want early access?</p>
           </div>
 
           <form onSubmit={actions.handleSubmit} className="flex w-full flex-col gap-4">
@@ -123,7 +123,7 @@ export const WaitlistPage = () => {
             <Button
               type="submit"
               disabled={state.status === 'joining' || !isValidEmail}
-              className="h-[46px] w-full rounded-lg text-base"
+              className="h-[46px] w-full rounded-xl text-base"
             >
               {state.status === 'joining' ? (
                 <>

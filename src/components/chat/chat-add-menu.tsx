@@ -48,7 +48,7 @@ export const ChatAddMenu = ({ onUploadFile, onOpenConnections }: ChatAddMenuProp
           // mobile, Radix's DropdownMenuTrigger sets it on desktop.
           className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-control)] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground"
         >
-          <Plus className="size-[var(--icon-size-sm)]" />
+          <Plus className="size-[var(--icon-size-default)]" />
         </button>
       }
     />

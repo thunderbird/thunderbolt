@@ -99,11 +99,7 @@ const ModelsPage = () => {
         </SettingsListPane>
       </div>
 
-      <DetailPanelSurface
-        open={page.isAddPanelOpen || activeModel !== undefined}
-        isMobile={page.isMobile}
-        onClose={page.closePanel}
-      >
+      <DetailPanelSurface open={page.isAddPanelOpen || activeModel !== undefined} onClose={page.closePanel}>
         {renderPanel()}
       </DetailPanelSurface>
 

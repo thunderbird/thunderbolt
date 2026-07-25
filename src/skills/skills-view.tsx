@@ -7,7 +7,6 @@ import { useCallback, useReducer } from 'react'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
@@ -21,7 +20,6 @@ import { useSkillTelemetry } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
 export const SkillsView = () => {
-  const { isMobile } = useIsMobile()
   const { skills, createSkill, updateSkill, softDeleteSkill } = useLibrarySkills()
   // Pinning is managed entirely from the chat composer; we only read
   // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be
@@ -299,7 +297,7 @@ export const SkillsView = () => {
           onDeleteSkill={onDelete}
         />
       </div>
-      <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>
+      <DetailPanelSurface open={panelOpen} onClose={closePanel}>
         {panel}
       </DetailPanelSurface>
       {pendingDependents && (

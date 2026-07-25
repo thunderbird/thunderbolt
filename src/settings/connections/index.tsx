@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useDatabase, useHttpClient } from '@/contexts'
 import { useAddServerForm } from '@/hooks/use-add-server-form'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { useMcpServerOAuth, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import { getAuthToken } from '@/lib/auth-token'
 import { deriveOAuthCardDecision } from '@/lib/mcp-auth/auth-decision'
@@ -88,7 +87,6 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   // would re-run the reconciliation effect and double-register servers.
   const { servers: mcpServers, reconnectServer, updateServer } = useMCP()
   const location = useLocation()
-  const { isMobile } = useIsMobile()
 
   const initialCallback = getConnectionsOAuthCallback(location.state)
   const [state, dispatch] = useReducer(
@@ -396,7 +394,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           error={integrationError}
         />
       </div>
-      <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>
+      <DetailPanelSurface open={panelOpen} onClose={closePanel}>
         {panel}
       </DetailPanelSurface>
       {shouldClearNavigationState && location.state !== null && <Navigate to="." replace state={null} />}

@@ -18,6 +18,7 @@ import {
   ResponsiveModalTitle,
   useResponsiveModalContext,
 } from '@/components/ui/responsive-modal'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
 /**
@@ -125,7 +126,6 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
 
 type DetailPanelSurfaceProps = {
   open: boolean
-  isMobile: boolean
   onClose: () => void
   children: ReactNode
 }
@@ -142,7 +142,9 @@ type DetailPanelSurfaceProps = {
  * right edge stays flush and square with only the left corners rounded. Mobile
  * uses the same full-screen fade/scale modal as other responsive views.
  */
-export const DetailPanelSurface = ({ open, isMobile, onClose, children }: DetailPanelSurfaceProps) => {
+export const DetailPanelSurface = ({ open, onClose, children }: DetailPanelSurfaceProps) => {
+  const { isMobile } = useIsMobile()
+
   if (!isMobile) {
     return (
       // The warm 6% glow is invisible on the dark background (same rationale

@@ -16,10 +16,11 @@ describe('DetailPanelSurface', () => {
   })
 
   it('uses the shared responsive modal on mobile', () => {
+    forceMobileViewport()
     const onClose = mock()
 
     render(
-      <DetailPanelSurface open isMobile onClose={onClose}>
+      <DetailPanelSurface open onClose={onClose}>
         <DetailPanel title="Detail title" onClose={onClose}>
           <p>Detail body</p>
           <FormFooter>
@@ -42,7 +43,7 @@ describe('DetailPanelSurface', () => {
     forceMobileViewport()
 
     render(
-      <DetailPanelSurface open isMobile onClose={() => {}}>
+      <DetailPanelSurface open onClose={() => {}}>
         <DetailPanel title="MCP server" subtitle="https://example.com/mcp" onClose={() => {}}>
           <p>Server status</p>
         </DetailPanel>
@@ -58,7 +59,7 @@ describe('DetailPanelSurface', () => {
 
   it('keeps the desktop title block pinned above the scroller', () => {
     render(
-      <DetailPanelSurface open isMobile={false} onClose={() => {}}>
+      <DetailPanelSurface open onClose={() => {}}>
         <DetailPanel title="MCP server" subtitle="https://example.com/mcp" onClose={() => {}}>
           <p>Server status</p>
         </DetailPanel>
@@ -70,8 +71,9 @@ describe('DetailPanelSurface', () => {
   })
 
   it('floats the mobile footer over the body behind a gradually faded blur', () => {
+    forceMobileViewport()
     render(
-      <DetailPanelSurface open isMobile onClose={() => {}}>
+      <DetailPanelSurface open onClose={() => {}}>
         <DetailPanel title="Detail title" onClose={() => {}}>
           <p>Detail body</p>
           <FormFooter>
@@ -101,7 +103,7 @@ describe('DetailPanelSurface', () => {
     forceMobileViewport()
 
     render(
-      <DetailPanelSurface open isMobile onClose={() => {}}>
+      <DetailPanelSurface open onClose={() => {}}>
         <DetailPanel title="Detail title" onClose={() => {}}>
           <p>Detail body</p>
         </DetailPanel>
@@ -122,7 +124,7 @@ describe('DetailPanelSurface', () => {
     const onClose = mock()
 
     render(
-      <DetailPanelSurface open isMobile={false} onClose={onClose}>
+      <DetailPanelSurface open onClose={onClose}>
         <DetailPanel title="Agent Name" subtitle="Your agent" onClose={onClose}>
           <p>Detail body</p>
         </DetailPanel>

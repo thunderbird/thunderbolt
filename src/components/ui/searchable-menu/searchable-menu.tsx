@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Input } from '@/components/ui/input'
-import { MobileCardMenu } from '@/components/ui/mobile-card-menu'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { edgeSpacing } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Search } from 'lucide-react'
@@ -144,7 +142,6 @@ export const SearchableMenu = <T,>({
 }: SearchableMenuProps<T>) => {
   const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const { isMobile } = useIsMobile()
 
   const isControlled = controlledOpen !== undefined
   const open = isControlled ? controlledOpen : internalOpen
@@ -262,52 +259,30 @@ export const SearchableMenu = <T,>({
     </div>
   )
 
-  if (isMobile) {
-    return (
-      <>
-        <button
-          type="button"
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          className="flex items-center focus:outline-none"
-          onClick={() => setOpen(!open)}
-        >
-          {triggerContent}
-        </button>
-        <MobileCardMenu
-          open={open}
-          onOpenChange={setOpen}
-          side={mobileSide}
-          title={mobileTitle}
-          className={contentClassName}
-          initialFocus={false}
-        >
-          {menuContent}
-        </MobileCardMenu>
-      </>
-    )
-  }
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        {/* min-w-0 lets a truncating trigger label (e.g. the model selector's)
-            shrink and ellipsize instead of forcing the row wider. */}
+    <ResponsivePopover
+      open={open}
+      onOpenChange={setOpen}
+      title={mobileTitle}
+      trigger={
+        // min-w-0 lets a truncating trigger label (e.g. the model selector's)
+        // shrink and ellipsize instead of forcing the row wider.
         <button type="button" className="flex min-w-0 items-center focus:outline-none">
           {triggerContent}
         </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align={align}
-        side={side}
-        sideOffset={5}
-        collisionPadding={edgeSpacing.desktop}
-        className={cn('overflow-hidden rounded-xl p-0 shadow-lg duration-100', contentClassName)}
-        style={{ width: contentWidth }}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-      >
-        {menuContent}
-      </PopoverContent>
-    </Popover>
+      }
+      mobileMenu={{ side: mobileSide, className: contentClassName, initialFocus: false }}
+      desktopMenu={{
+        align,
+        side,
+        sideOffset: 5,
+        collisionPadding: edgeSpacing.desktop,
+        className: cn('overflow-hidden rounded-xl p-0 shadow-lg duration-100', contentClassName),
+        style: { width: contentWidth },
+        onOpenAutoFocus: (event) => event.preventDefault(),
+      }}
+    >
+      {menuContent}
+    </ResponsivePopover>
   )
 }

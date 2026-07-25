@@ -96,6 +96,21 @@ export const ChatList = ({
     // input changes the list height, so the shadows must be re-measured.
   }, [chatThreads.length, debouncedSearchQuery, onContentBelowChange, showSearch])
 
+  const chatActions = (
+    <ChatActions
+      isCollapsed={isCollapsed}
+      debouncedSearchQuery={debouncedSearchQuery}
+      showSearch={showSearch}
+      deleteAllChatsMutation={deleteAllChatsMutation}
+      deleteAllChatsDialogRef={deleteAllChatsDialogRef}
+      onSearchClick={onSearchClick}
+    />
+  )
+
+  // overflow-hidden in BOTH states: while max-height animates, the input
+  // would otherwise escape the shrinking/growing box and paint over the
+  // first chat rows. Transition is scoped to the animated properties so
+  // sidebar-width changes (rail collapse) don't ride along.
   const searchInput = (
     <div
       className={`overflow-hidden transition-[max-height,opacity,margin-top] duration-300 ease-in-out flex-shrink-0 ${
@@ -118,44 +133,29 @@ export const ChatList = ({
       <SidebarGroup
         className={cn('flex-1 flex flex-col min-h-0 pb-0', isCollapsed && 'pt-0', isNativeMobile && 'pt-1')}
       >
-        {isMobile && (
-          <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
-            {mobileNavToggle}
-            {hasListContent && (
-              <ChatActions
-                isCollapsed={isCollapsed}
-                debouncedSearchQuery={debouncedSearchQuery}
-                showSearch={showSearch}
-                deleteAllChatsMutation={deleteAllChatsMutation}
-                deleteAllChatsDialogRef={deleteAllChatsDialogRef}
-                onSearchClick={onSearchClick}
-              />
+        {isMobile ? (
+          <>
+            <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
+              {mobileNavToggle}
+              {hasListContent && chatActions}
+            </div>
+            {searchInput}
+            {mobileSecondaryNavigation}
+            {!isCollapsed && (
+              <SidebarGroupLabel className="mt-1">{hasListContent ? 'Recent Chats' : 'No chats yet'}</SidebarGroupLabel>
             )}
-          </div>
+          </>
+        ) : (
+          <>
+            {!isCollapsed && hasListContent && (
+              <div className="flex items-center justify-between flex-shrink-0">
+                <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+                {chatActions}
+              </div>
+            )}
+            {searchInput}
+          </>
         )}
-        {isMobile && searchInput}
-        {isMobile && mobileSecondaryNavigation}
-        {isMobile && !isCollapsed && (
-          <SidebarGroupLabel className="mt-1">{hasListContent ? 'Recent Chats' : 'No chats yet'}</SidebarGroupLabel>
-        )}
-        {!isMobile && !isCollapsed && hasListContent && (
-          <div className="flex items-center justify-between flex-shrink-0">
-            <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
-            <ChatActions
-              isCollapsed={isCollapsed}
-              debouncedSearchQuery={debouncedSearchQuery}
-              showSearch={showSearch}
-              deleteAllChatsMutation={deleteAllChatsMutation}
-              deleteAllChatsDialogRef={deleteAllChatsDialogRef}
-              onSearchClick={onSearchClick}
-            />
-          </div>
-        )}
-        {/* overflow-hidden in BOTH states: while max-height animates, the input
-            would otherwise escape the shrinking/growing box and paint over the
-            first chat rows. Transition is scoped to the animated properties so
-            sidebar-width changes (rail collapse) don't ride along. */}
-        {!isMobile && searchInput}
         {isCollapsed && hasListContent && (
           <SidebarMenu className="flex-shrink-0">
             {/* Search works by expanding the sidebar to reveal the input, so

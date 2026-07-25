@@ -225,18 +225,33 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
       menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
     )
 
-  const renderAccountControl = () => {
+  const collapsedButtonClass =
+    'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent'
+
+  /**
+   * The footer's one account affordance: a spinner while the session loads,
+   * a sign-in button when logged out, the account-menu trigger when logged
+   * in. `collapsed` renders the icon-only circle for the desktop rail; the
+   * default is the labeled pill.
+   */
+  const renderAccountControl = (collapsed = false) => {
     if (isPending) {
-      return (
+      return collapsed ? (
+        <div className="flex size-[var(--touch-height-default)] items-center justify-center">
+          <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />
+        </div>
+      ) : (
         <div className={cn(pillClassName(true), 'cursor-default hover:bg-transparent')}>
           <Loader2 className={cn(iconSize, 'shrink-0 animate-spin text-muted-foreground')} />
           <span className="truncate text-muted-foreground">Loading...</span>
         </div>
       )
     }
+    const showLabel = !collapsed && accountLabel.length > 0
+    const controlClass = collapsed ? collapsedButtonClass : pillClassName(showLabel)
     if (!user) {
       return (
-        <button type="button" aria-label="Sign in" className={pillClassName(false)} onClick={handleSignInClick}>
+        <button type="button" aria-label="Sign in" className={controlClass} onClick={handleSignInClick}>
           {stateIcon}
         </button>
       )
@@ -246,32 +261,18 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
         <button
           type="button"
           aria-label="Account menu"
-          className={cn(pillClassName(accountLabel.length > 0), isMobile && menuOpen && 'relative z-50')}
+          className={cn(
+            controlClass,
+            collapsed && menuOpen && 'bg-sidebar-accent',
+            !collapsed && isMobile && menuOpen && 'relative z-50',
+          )}
         >
           {stateIcon}
-          {accountLabel.length > 0 && <span className="truncate">{accountLabel}</span>}
+          {showLabel && <span className="truncate">{accountLabel}</span>}
         </button>
       </PopoverTrigger>
     )
   }
-
-  const collapsedButtonClass =
-    'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent'
-  const collapsedControl = !user ? (
-    <button type="button" aria-label="Sign in" className={collapsedButtonClass} onClick={handleSignInClick}>
-      {stateIcon}
-    </button>
-  ) : (
-    <PopoverTrigger asChild>
-      <button
-        type="button"
-        aria-label="Account menu"
-        className={cn(collapsedButtonClass, menuOpen && 'bg-sidebar-accent')}
-      >
-        {stateIcon}
-      </button>
-    </PopoverTrigger>
-  )
 
   const isConnecting = connectionStatus === 'connecting'
   // Sync is on but not connected (and not mid-connect): show the Retry button
@@ -290,15 +291,7 @@ export const SidebarFooter = ({ className, hasContentBelow = false }: SidebarFoo
         )}
       >
         {isDesktopCollapsed ? (
-          <div className="flex flex-col items-center py-1">
-            {isPending ? (
-              <div className="flex size-[var(--touch-height-default)] items-center justify-center">
-                <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />
-              </div>
-            ) : (
-              collapsedControl
-            )}
-          </div>
+          <div className="flex flex-col items-center py-1">{renderAccountControl(true)}</div>
         ) : isMobile ? (
           <div className="flex w-full min-w-0 items-center gap-1">
             <div className="min-w-0">{renderAccountControl()}</div>

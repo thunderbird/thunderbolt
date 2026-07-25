@@ -3,14 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Plus } from 'lucide-react'
-import { lazy, Suspense, useEffect, useReducer, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useReducer } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
-import { MobileCardMenu } from '@/components/ui/mobile-card-menu'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { SearchInput } from '@/components/ui/search-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
@@ -188,9 +187,7 @@ export const ChatSkillsBar = ({
       variant="outline"
       size="icon-sm"
       aria-label="Add a skill"
-      aria-expanded={addOpen}
       disabled={addDisabled}
-      onClick={isMobile ? () => setAddOpen(!addOpen) : undefined}
       className={cn(chipSurfaceClass, 'disabled:cursor-not-allowed disabled:opacity-40')}
     >
       <Plus />
@@ -258,18 +255,34 @@ export const ChatSkillsBar = ({
     </>
   )
 
-  const withPinCapTooltip = (control: ReactNode) =>
-    pinCapReached ? (
-      <Tooltip>
-        <TooltipTrigger asChild>{control}</TooltipTrigger>
-        <TooltipContent>{`Pin limit reached (${maxPinnedSkills}). Unpin one first.`}</TooltipContent>
-      </Tooltip>
-    ) : (
-      control
-    )
+  const addMenu = (
+    <ResponsivePopover
+      open={addOpen}
+      onOpenChange={setAddOpen}
+      title="Add a skill"
+      // TooltipTrigger sits between the menu trigger slot and the button so
+      // both Radix roots merge their props onto the one real element.
+      trigger={pinCapReached ? <TooltipTrigger asChild>{addButton}</TooltipTrigger> : addButton}
+      desktopMenu={{
+        side: 'top',
+        align: 'start',
+        sideOffset: 8,
+        collisionPadding: 12,
+        className: 'w-60 max-w-[calc(100vw-1.5rem)] p-0',
+      }}
+    >
+      <div className="p-1">{addMenuContent}</div>
+    </ResponsivePopover>
+  )
 
-  const mobileAddControl = withPinCapTooltip(addButton)
-  const desktopAddControl = withPinCapTooltip(<PopoverTrigger asChild>{addButton}</PopoverTrigger>)
+  const addControl = pinCapReached ? (
+    <Tooltip>
+      {addMenu}
+      <TooltipContent>{`Pin limit reached (${maxPinnedSkills}). Unpin one first.`}</TooltipContent>
+    </Tooltip>
+  ) : (
+    addMenu
+  )
 
   return (
     <>
@@ -291,27 +304,7 @@ export const ChatSkillsBar = ({
             onUnpin={() => handleTogglePin(skill, 'unpin')}
           />
         ))}
-        {isMobile ? (
-          <>
-            {mobileAddControl}
-            <MobileCardMenu open={addOpen} onOpenChange={setAddOpen} title="Add a skill">
-              <div className="p-1">{addMenuContent}</div>
-            </MobileCardMenu>
-          </>
-        ) : (
-          <Popover open={addOpen} onOpenChange={setAddOpen}>
-            {desktopAddControl}
-            <PopoverContent
-              side="top"
-              align="start"
-              sideOffset={8}
-              collisionPadding={12}
-              className="w-60 max-w-[calc(100vw-1.5rem)] p-1"
-            >
-              {addMenuContent}
-            </PopoverContent>
-          </Popover>
-        )}
+        {addControl}
         {actionError && (
           <p role="alert" className="shrink-0 text-[length:var(--font-size-sm)] text-destructive">
             {actionError}

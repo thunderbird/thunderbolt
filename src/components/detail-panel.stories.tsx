@@ -18,7 +18,6 @@ const meta = {
   },
   args: {
     open: true,
-    isMobile: false,
     onClose: fn(),
     children: null,
   },
@@ -72,9 +71,6 @@ export const DesktopSplitView: Story = {
 }
 
 export const MobileModal: Story = {
-  args: {
-    isMobile: true,
-  },
   render: (args) => <DetailPanelSurface {...args}>{detailContents(args.onClose)}</DetailPanelSurface>,
   parameters: {
     viewport: { defaultViewport: 'mobile1' },

@@ -13,7 +13,6 @@ import { v7 as uuidv7 } from 'uuid'
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
 import { createModel, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
@@ -39,7 +38,6 @@ export const generateModelName = (modelId: string): string => {
 /** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
 export const useModelsPageState = () => {
   const db = useDatabase()
-  const { isMobile } = useIsMobile()
   const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
   const { panel, deleteConfirmId, selectedModelId, mutationError } = state
   const catalog = useModelCatalog()
@@ -209,7 +207,6 @@ export const useModelsPageState = () => {
     catalog.models.find((candidate) => candidate.id === selectedModelId)?.supports_tools === true
 
   return {
-    isMobile,
     panel,
     deleteConfirmId,
     models,

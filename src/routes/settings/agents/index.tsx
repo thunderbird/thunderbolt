@@ -19,7 +19,6 @@ import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { fireAndForgetSelfEnrollment, selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 
 type AgentsSettingsPageProps = {
@@ -49,7 +48,6 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const currentUserId = session?.user?.id ?? null
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
   const runEnroll = enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId ?? irohClientNodeId))
-  const { isMobile } = useIsMobile()
 
   // The add form, the CLI install card, and the agent rows all share the one
   // slide-in panel slot, so the selection is a single union — the panels are
@@ -167,7 +165,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
         </SettingsListPane>
       </div>
 
-      <DetailPanelSurface open={panelOpen} isMobile={isMobile} onClose={closePanel}>
+      <DetailPanelSurface open={panelOpen} onClose={closePanel}>
         {renderPanel()}
       </DetailPanelSurface>
     </div>

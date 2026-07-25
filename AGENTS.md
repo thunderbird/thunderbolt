@@ -84,6 +84,7 @@ When adding a new route, default to lazy unless the route is on the chat/landing
 
 - Create test files as `<file>.test.ts` next to source files
 - Test likely edge cases, aiming for useful 80% coverage
+- **Never run bare `bun test` at the repo root** — it discovers every `*.test.*` file in the repo, including `backend/` tests that open real connections (test DB, WebSocket e2e) and hang forever without their services running, and it applies no timeout. Use `bun run test` (scoped to `src/` + `shared/` with a 5s per-test timeout, finishes in ~15s), `bun test <path> --timeout 5000` for a specific file/folder, or `bun run test:backend` for backend tests
 
 ## After Each Task
 

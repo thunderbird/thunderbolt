@@ -4,7 +4,7 @@
 
 import { DeleteAllChatsDialog } from '@/components/delete-all-chats-dialog'
 import { DeleteChatDialog } from '@/components/delete-chat-dialog'
-import { Scrim } from '@/components/ui/scrim'
+import { MobileSidebarScrim } from '@/components/ui/scrim'
 import { SearchInput } from '@/components/ui/search-input'
 import {
   SidebarGroup,
@@ -56,11 +56,15 @@ const useMobileListMetrics = (isMobile: boolean) => {
       return
     }
 
-    const elements = [headerRef.current, labelRef.current].filter(
-      (element): element is HTMLDivElement => element !== null,
-    )
+    const elements = [headerRef.current, labelRef.current].map((element) => {
+      if (!element) {
+        throw new Error('useMobileListMetrics: measured mobile chrome is not mounted')
+      }
+      return element
+    })
+    const [header] = elements
     const updateStartMargin = () => {
-      const headerHeight = headerRef.current?.offsetHeight ?? 0
+      const headerHeight = header.offsetHeight
       const startMargin = elements.reduce((height, element) => height + element.offsetHeight, 0)
       setMetrics((currentMetrics) =>
         currentMetrics.headerHeight === headerHeight && currentMetrics.startMargin === startMargin
@@ -151,14 +155,7 @@ export const ChatList = ({
       data-slot="mobile-sidebar-header"
       className="absolute inset-x-0 top-0 z-10 px-2 pt-[calc(var(--header-safe-area-top)+0.5rem)]"
     >
-      {/* The 2.5rem overhang extends the fade past the header so rows dissolve
-          before reaching it — same tint/overhang as the footer scrim in
-          sidebar-footer.tsx; keep the two in sync. */}
-      <Scrim
-        data-slot="mobile-sidebar-header-scrim"
-        height="calc(100% + 2.5rem)"
-        className="from-sidebar via-sidebar/80"
-      />
+      <MobileSidebarScrim data-slot="mobile-sidebar-header-scrim" />
       <div className="relative z-10">
         <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
           {mobileNavToggle}
@@ -229,6 +226,9 @@ export const ChatList = ({
           data-slot="chat-list-scroll"
           className={cn(
             'mt-0 -mx-2 w-[calc(100%+1rem)] flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 scrollbar-hide touch-pan-y [overflow-anchor:none] md:mt-2 group-data-[collapsible=icon]:mt-0',
+            // Bottom padding = footer control height + the footer's 0.5rem
+            // gap above it + the safe-area inset, so the last row clears the
+            // pinned footer.
             isMobile && 'pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]',
           )}
         >

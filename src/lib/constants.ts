@@ -24,8 +24,9 @@ export const edgeSpacing = {
 /** Mobile sidebar width as a fraction of viewport width (0–1) */
 const mobileSidebarWidthRatio = 0.8
 
-/** Maximum mobile sidebar width in pixels */
-export const mobileSidebarMaxWidth = 360
+/** Maximum mobile sidebar width in pixels. Matches the 360px desktop content
+ *  floor in main-layout.tsx so the sidebar never outgrows a usable pane. */
+const mobileSidebarMaxWidth = 360
 
 /** Mobile sidebar width shared by CSS sizing and overlays rendered in portals. */
 export const mobileSidebarWidthCss = `min(${mobileSidebarWidthRatio * 100}vw, ${mobileSidebarMaxWidth}px)`

@@ -99,17 +99,28 @@ export const canStartSidebarDrag = (target: EventTarget | null, boundary: HTMLEl
   return !hasHorizontalScrollAncestor(target, boundary)
 }
 
-export const MobileSidebar = ({
-  enabled = true,
+type UseMobileSidebarStateOptions = {
+  enabled: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCloseComplete?: () => void
+  onCloseCancel?: () => void
+}
+
+/**
+ * Owns the open/close/drag lifecycle of the mobile sidebar: the foreground
+ * motion value, the interruptible settle animation, mid-drag open-state
+ * changes, and close-settlement notifications. The component consumes its
+ * returned handlers and renders pure layout.
+ */
+const useMobileSidebarState = ({
+  enabled,
   open,
   onOpenChange,
   onCloseComplete,
   onCloseCancel,
-  sidebar,
-  children,
-}: MobileSidebarProps) => {
+}: UseMobileSidebarStateOptions) => {
   const { triggerImpact } = useHaptics()
-  const isNativeMobile = isPlatformMobile()
   const reducedMotion = useReducedMotion()
   const transition = reducedMotion ? instantTransition : drawerTransition
   const sidebarWidth = useSyncExternalStore(subscribeToResize, readSidebarWidth, readSidebarWidth)
@@ -117,6 +128,9 @@ export const MobileSidebar = ({
   const x = useMotionValue(effectiveOpen ? sidebarWidth : 0)
   const dragControls = useDragControls()
   const [isPresented, setIsPresented] = useState(effectiveOpen)
+  // Ref-mirrored so animation continuations always see the latest callbacks.
+  // Not `useEffectEvent`: these fire from gesture handlers and animation
+  // `finish` callbacks, which effect events are not allowed to serve.
   const onCloseCompleteRef = useRef(onCloseComplete)
   onCloseCompleteRef.current = onCloseComplete
   const onCloseCancelRef = useRef(onCloseCancel)
@@ -281,14 +295,56 @@ export const MobileSidebar = ({
     handleOpenChange(false)
   }
 
-  const sidebarWidthStyle = {
+  return {
+    x,
+    dragControls,
+    sidebarWidth,
+    drawerOpen: enabled && (open || isPresented),
+    handleOpenChange,
+    handlePointerDown,
+    handleDragStart,
+    handleDrag,
+    handleDragEnd,
+    handleCloseSurfaceClick,
+  }
+}
+
+export const MobileSidebar = ({
+  enabled = true,
+  open,
+  onOpenChange,
+  onCloseComplete,
+  onCloseCancel,
+  sidebar,
+  children,
+}: MobileSidebarProps) => {
+  const isNativeMobile = isPlatformMobile()
+  const {
+    x,
+    dragControls,
+    sidebarWidth,
+    drawerOpen,
+    handleOpenChange,
+    handlePointerDown,
+    handleDragStart,
+    handleDrag,
+    handleDragEnd,
+    handleCloseSurfaceClick,
+  } = useMobileSidebarState({ enabled, open, onOpenChange, onCloseComplete, onCloseCancel })
+
+  const mobileSidebarCssVars = {
     '--mobile-sidebar-width': mobileSidebarWidthCss,
+    // Native mobile pins the footer above the home indicator; web mobile
+    // retains an extra 8px breathing room (same convention as the floating
+    // controls in page-create-action.tsx).
     '--mobile-sidebar-footer-inset': isNativeMobile
       ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
       : 'calc(var(--safe-area-bottom-padding, 0px) + 0.5rem)',
   } as CSSProperties
-  const drawerOpen = enabled && (open || isPresented)
 
+  // Stacking scheme while enabled (the wrapper isolates its own z context):
+  // stationary menu viewport z-10 < foreground z-20 < close surface z-40
+  // (above the foreground's own content, below the z-50 modal layer).
   return (
     <div
       data-slot="mobile-sidebar-layout"
@@ -296,7 +352,6 @@ export const MobileSidebar = ({
         'flex h-full w-full overflow-hidden',
         enabled ? 'pointer-events-none relative z-20 isolate' : 'flex-row',
       )}
-      style={sidebarWidthStyle}
     >
       {enabled ? (
         <DrawerPrimitive.Root
@@ -315,7 +370,7 @@ export const MobileSidebar = ({
                 data-slot="sidebar"
                 data-mobile="true"
                 className="mobile-sidebar-popup pointer-events-auto fixed inset-y-0 left-0 flex h-full w-[var(--mobile-sidebar-width)] flex-col bg-sidebar/80 text-sidebar-foreground outline-none backdrop-blur-lg motion-reduce:transition-none"
-                style={sidebarWidthStyle}
+                style={mobileSidebarCssVars}
                 onPointerDown={handlePointerDown}
               >
                 <DrawerPrimitive.Title className="sr-only">Navigation</DrawerPrimitive.Title>
@@ -345,7 +400,7 @@ export const MobileSidebar = ({
         onDragEnd={handleDragEnd}
         data-slot="sidebar-main"
         className={cn(
-          'mobile-sidebar-main pointer-events-auto relative flex h-full min-w-0 flex-1 flex-col bg-background',
+          'pointer-events-auto relative flex h-full min-w-0 flex-1 flex-col bg-background',
           enabled && 'mobile-sidebar-main-shadow z-20 will-change-transform',
         )}
         style={{ x: enabled ? x : 0, touchAction: enabled ? 'pan-y' : 'auto' }}
@@ -353,9 +408,11 @@ export const MobileSidebar = ({
         <div className="flex h-full min-w-0 flex-1 flex-col" inert={drawerOpen ? true : undefined}>
           <MobileForegroundPortalProvider>{children}</MobileForegroundPortalProvider>
         </div>
-        {/* tabIndex={-1}: keyboard users close via Escape and the drawer's
-            focus trap; this surface exists for pointer taps and swipes on
-            the exposed foreground edge. */}
+        {/* Doubles as the drag surface (see canStartSidebarDrag) and the
+            tap-to-close surface while the drawer is open. tabIndex={-1}:
+            keyboard users close via Escape and the drawer's focus trap; this
+            surface exists for pointer taps and swipes on the exposed
+            foreground edge. */}
         <m.button
           type="button"
           tabIndex={-1}

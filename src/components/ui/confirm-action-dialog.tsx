@@ -22,6 +22,7 @@ type ConfirmActionDialogProps = {
   title: string
   description: string
   confirmLabel: string
+  cancelLabel?: string
   onConfirm: () => void
   /** Fires on every non-confirm dismissal: Cancel, Escape, and backdrop. */
   onCancel: () => void
@@ -38,6 +39,7 @@ export const ConfirmActionDialog = ({
   title,
   description,
   confirmLabel,
+  cancelLabel = 'Cancel',
   onConfirm,
   onCancel,
 }: ConfirmActionDialogProps) => {
@@ -49,14 +51,18 @@ export const ConfirmActionDialog = ({
       <MobileActionSheet
         open={open}
         onOpenChange={(nextOpen) => !nextOpen && onCancel()}
-        initialFocusRef={cancelButtonRef}
+        // Cancel-first focus so a stray Enter can't destroy anything.
+        initialFocus={() => {
+          cancelButtonRef.current?.focus()
+          return false
+        }}
         title={title}
         description={description}
         role="alertdialog"
       >
         <MobileActionSheetFooter>
           <Button ref={cancelButtonRef} variant="outline" onClick={onCancel}>
-            Cancel
+            {cancelLabel}
           </Button>
           <Button variant="destructive" onClick={onConfirm}>
             {confirmLabel}
@@ -76,7 +82,7 @@ export const ConfirmActionDialog = ({
         <AlertDialogFooter>
           {/* Radix's Cancel closes the dialog itself; onCancel arrives once
               via onOpenChange(false), so no onClick here. */}
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <Button variant="destructive" onClick={onConfirm}>
             {confirmLabel}
           </Button>

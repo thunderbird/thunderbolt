@@ -87,7 +87,7 @@ export const animateSpy = mock((value: MockMotionValue, target: unknown, _transi
 })
 
 /** Spy for gestures started through Framer Motion's external drag controls. */
-export const dragControlsStartSpy = mock(() => {})
+const dragControlsStartSpy = mock(() => {})
 
 let reducedMotion = false
 

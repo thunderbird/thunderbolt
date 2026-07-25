@@ -161,6 +161,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const navigate = useNavigate()
     const location = useLocation()
     const { openCreateItem } = useCreateItem()
+    /** Opens route-preserving skill creation pre-filled with an unknown token's slug. */
+    const openCreateSkill = (initialName: string) => openCreateItem({ kind: 'skill', initialName })
 
     const { isMobile } = useIsMobile()
 
@@ -796,9 +798,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
             renderOverlay={(value) =>
-              renderHighlightedSkillTokens(value, classifySkill, displayNameToSlug, (initialName) =>
-                openCreateItem({ kind: 'skill', initialName }),
-              )
+              renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
             }
             popoverSlot={
               popupOpen ? (

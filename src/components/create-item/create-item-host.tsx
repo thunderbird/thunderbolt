@@ -41,7 +41,7 @@ const LoadingPanel = ({
  * request id remounts its form so reopening always starts clean.
  */
 export const CreateItemHost = () => {
-  const { request, surfaceOpen, closeCreateItem } = useCreateItem()
+  const { request, isSurfaceOpen, closeCreateItem } = useCreateItem()
   const lastRequest = useRef<CreateItemRequest | null>(request)
 
   if (request) {
@@ -53,10 +53,9 @@ export const CreateItemHost = () => {
     return null
   }
 
-  // The provider clears `surfaceOpen` in the same update as any request
-  // change, so `surfaceOpen` alone means "the rendered request is open".
-  const open = surfaceOpen
-  const sharedProps = { open, onClose: closeCreateItem }
+  // The provider clears `isSurfaceOpen` in the same update as any request
+  // change, so it alone means "the rendered request is open".
+  const sharedProps = { open: isSurfaceOpen, onClose: closeCreateItem }
 
   const panel = (() => {
     switch (renderedRequest.kind) {
@@ -72,7 +71,7 @@ export const CreateItemHost = () => {
   return (
     <Suspense
       key={renderedRequest.id}
-      fallback={<LoadingPanel request={renderedRequest} open={open} onClose={closeCreateItem} />}
+      fallback={<LoadingPanel request={renderedRequest} open={isSurfaceOpen} onClose={closeCreateItem} />}
     >
       {panel}
     </Suspense>

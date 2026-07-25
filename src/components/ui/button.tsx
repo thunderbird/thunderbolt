@@ -46,10 +46,25 @@ const buttonVariants = cva(
         'icon-lg': 'size-[var(--touch-height-lg)]',
         'icon-xs': 'size-7',
       },
+      loading: {
+        true: '',
+        false: '',
+      },
     },
+    compoundVariants: [
+      // A loading primary button keeps its brand gradient (dimmed) instead of
+      // the flat disabled treatment — it is busy, not unavailable.
+      {
+        variant: 'default',
+        loading: true,
+        class:
+          'disabled:bg-brand disabled:text-brand-foreground/80 disabled:brightness-75 disabled:saturate-50 disabled:[background-image:var(--gradient-brand)]',
+      },
+    ],
     defaultVariants: {
       variant: 'default',
       size: 'default',
+      loading: false,
     },
   },
 )
@@ -64,9 +79,6 @@ const buttonVariants = cva(
 export const mutedIconButtonClass =
   "size-[var(--touch-height-lg)] md:size-[var(--touch-height-sm)] rounded-full md:rounded-xl text-muted-foreground hover:bg-muted dark:hover:bg-muted hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground [&_svg:not([class*='size-'])]:size-[var(--icon-size-default)]"
 
-const pendingPrimaryButtonClass =
-  'disabled:bg-brand disabled:text-brand-foreground/80 disabled:brightness-75 disabled:saturate-50 disabled:[background-image:var(--gradient-brand)]'
-
 const Button = ({
   className,
   variant,
@@ -79,14 +91,14 @@ const Button = ({
   onClick,
   ...props
 }: ComponentProps<'button'> &
-  VariantProps<typeof buttonVariants> & {
+  // `loading` is derived from `isLoading` — not an independent prop.
+  Omit<VariantProps<typeof buttonVariants>, 'loading'> & {
     asChild?: boolean
     isLoading?: boolean
     loadingLabel?: string
   }) => {
   const Comp = asChild ? Slot : 'button'
   const { triggerSelection } = useHaptics()
-  const isPrimaryLoading = isLoading && (variant ?? 'default') === 'default'
 
   const handleClick = useCallback(
     (e: MouseEvent<HTMLButtonElement>) => {
@@ -99,7 +111,7 @@ const Button = ({
   return (
     <Comp
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }), isPrimaryLoading && pendingPrimaryButtonClass)}
+      className={cn(buttonVariants({ variant, size, loading: isLoading, className }))}
       onClick={handleClick}
       disabled={disabled || isLoading}
       aria-busy={isLoading || undefined}

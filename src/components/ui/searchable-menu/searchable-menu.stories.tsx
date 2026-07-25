@@ -143,11 +143,7 @@ export const WithFooter: Story = {
     items: flatItems,
     value: '1',
     onValueChange: (id) => console.log('Selected:', id),
-    footer: (
-      <button type="button" className="w-full text-sm text-primary hover:underline">
-        + Add new item
-      </button>
-    ),
+    footerAction: { label: 'Add new item', onAction: () => console.log('Add new item') },
   },
   parameters: {
     docs: {
@@ -224,11 +220,7 @@ const InteractiveGroupedTemplate = () => {
       value={value}
       onValueChange={(id) => setValue(id)}
       searchPlaceholder="Search models..."
-      footer={
-        <button type="button" className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
-          Manage models →
-        </button>
-      }
+      footerAction={{ label: 'Manage models', onAction: () => {} }}
     />
   )
 }

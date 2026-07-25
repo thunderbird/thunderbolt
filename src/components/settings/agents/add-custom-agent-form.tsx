@@ -109,7 +109,7 @@ export const AddCustomAgentForm = ({
 }: AddCustomAgentFormProps) => {
   const [state, dispatch] = useReducer(agentFormReducer, emptyState)
 
-  // The user just chose "Add agent" — land ready to type a name (same idiom
+  // The user just chose "Add Agent" — land ready to type a name (same idiom
   // as SkillForm).
   const nameInputRef = useAutofocusOnMount<HTMLInputElement>()
 
@@ -264,7 +264,7 @@ export const AddCustomAgentForm = ({
         )}
         <ResponsiveModalCancel onClick={onClose} />
         <Button onClick={handleSubmit} isLoading={state.submitting} loadingLabel="Adding…" disabled={!canSubmit}>
-          Add agent
+          Add Agent
         </Button>
       </FormFooter>
     </div>

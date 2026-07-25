@@ -45,15 +45,19 @@ export type SkillStatusClassifier = (slug: string) => { status: SkillTokenStatus
  * The trailing zero-width space preserves a final newline; without it the
  * overlay collapses and falls one row behind the textarea.
  */
-export const renderHighlightedSkillTokens = (
-  value: string,
-  classify: SkillStatusClassifier,
+type RenderSkillTokensOptions = {
   /** Display-title → slug map so `/Daily Brief` tokens highlight as chips.
    *  The rendered glyphs always mirror the textarea exactly (title or slug,
    *  whatever the text contains) — only the classification uses the slug. */
-  displayNameToSlug: ReadonlyMap<string, string> | undefined,
+  displayNameToSlug?: ReadonlyMap<string, string>
   /** Opens route-preserving skill creation for an unknown committed token. */
-  onCreateSkill: (slug: string) => void,
+  onCreateSkill: (slug: string) => void
+}
+
+export const renderHighlightedSkillTokens = (
+  value: string,
+  classify: SkillStatusClassifier,
+  { displayNameToSlug, onCreateSkill }: RenderSkillTokensOptions,
 ): ReactNode[] => {
   const tokens = findSkillTokens(value, displayNameToSlug)
   let key = 0

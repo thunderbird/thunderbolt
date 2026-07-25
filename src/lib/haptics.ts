@@ -7,6 +7,10 @@ import { impactFeedback, notificationFeedback, selectionFeedback } from '@tauri-
 export type ImpactFeedbackStyle = 'light' | 'medium' | 'heavy' | 'soft' | 'rigid'
 export type NotificationFeedbackType = 'success' | 'warning' | 'error'
 
+/** Window in which a surface (modal/drawer) lifecycle haptic is suppressed
+ *  after any other haptic — sized to one perceptual UI transition (matches
+ *  the longest surface open/close animation) so a tap that opens a surface
+ *  produces one tap, not two. */
 export const surfaceHapticDeduplicationMs = 500
 
 /**

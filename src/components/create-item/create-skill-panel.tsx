@@ -5,17 +5,19 @@
 import { useReducer } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
-import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
-import { titleCaseFromSlug } from '@/skills/display'
 import { SkillForm, type SkillFormValues } from '@/skills/skill-form'
-import { useSkillTelemetry } from '@/skills/telemetry'
-import { useLibrarySkills } from '@/skills/use-skills'
+import {
+  handleSkillSaveError,
+  skillCreateInitialValues,
+  skillSaveFailedMessage,
+  useCreateSkillTracked,
+} from '@/skills/skill-save'
 import { createItemTitles } from './context'
 
 type CreateSkillState = {
   isDirty: boolean
-  discardOpen: boolean
+  isDiscardOpen: boolean
   slugError: string | null
   submitError: string | null
 }
@@ -30,7 +32,7 @@ type CreateSkillAction =
 
 const initialState: CreateSkillState = {
   isDirty: false,
-  discardOpen: false,
+  isDiscardOpen: false,
   slugError: null,
   submitError: null,
 }
@@ -41,15 +43,15 @@ const createSkillReducer = (state: CreateSkillState, action: CreateSkillAction):
     case 'DIRTY_CHANGED':
       return { ...state, isDirty: action.dirty }
     case 'DISCARD_OPENED':
-      return { ...state, discardOpen: true }
+      return { ...state, isDiscardOpen: true }
     case 'DISCARD_CLOSED':
-      return { ...state, discardOpen: false }
+      return { ...state, isDiscardOpen: false }
     case 'SLUG_CHANGED':
       return { ...state, slugError: null }
     case 'SLUG_REJECTED':
       return { ...state, slugError: action.message, submitError: null }
     case 'SUBMIT_FAILED':
-      return { ...state, submitError: "Couldn't save the skill. Please try again." }
+      return { ...state, submitError: skillSaveFailedMessage }
   }
 }
 
@@ -61,8 +63,7 @@ type CreateSkillPanelProps = {
 
 /** Creates a skill over the current screen without changing routes. */
 export const CreateSkillPanel = ({ open, onClose, initialName }: CreateSkillPanelProps) => {
-  const { createSkill } = useLibrarySkills()
-  const trackSkillEvent = useSkillTelemetry()
+  const createSkillTracked = useCreateSkillTracked()
   const [state, dispatch] = useReducer(createSkillReducer, initialState)
 
   const requestClose = () => {
@@ -75,27 +76,17 @@ export const CreateSkillPanel = ({ open, onClose, initialName }: CreateSkillPane
 
   const handleSubmit = async (values: SkillFormValues) => {
     try {
-      const created = await createSkill(values)
-      trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
+      await createSkillTracked(values)
       onClose()
     } catch (error) {
-      if (error instanceof SkillNameTakenError || error instanceof SkillNameInvalidError) {
-        dispatch({ type: 'SLUG_REJECTED', message: error.message })
-        return
-      }
-      console.error('Failed to save skill', error)
-      dispatch({ type: 'SUBMIT_FAILED' })
+      handleSkillSaveError(error, {
+        onSlugRejected: (message) => dispatch({ type: 'SLUG_REJECTED', message }),
+        onFailed: () => dispatch({ type: 'SUBMIT_FAILED' }),
+      })
     }
   }
 
-  const initialValues = initialName
-    ? {
-        name: initialName,
-        label: titleCaseFromSlug(initialName),
-        description: '',
-        instruction: '',
-      }
-    : undefined
+  const initialValues = skillCreateInitialValues(initialName)
 
   return (
     <>
@@ -114,7 +105,7 @@ export const CreateSkillPanel = ({ open, onClose, initialName }: CreateSkillPane
         </DetailPanel>
       </DetailPanelSurface>
       <DiscardCreateDialog
-        open={state.discardOpen}
+        open={state.isDiscardOpen}
         onOpenChange={(nextOpen) => !nextOpen && dispatch({ type: 'DISCARD_CLOSED' })}
         onConfirm={() => {
           dispatch({ type: 'DISCARD_CLOSED' })

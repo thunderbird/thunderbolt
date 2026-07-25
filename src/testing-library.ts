@@ -10,6 +10,8 @@ import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, mock } from 'bun:test'
 
+/** Global spy for web-haptics' `trigger` — assert on it to verify haptic
+ *  calls (see surface-haptics.test.tsx). Cleared automatically in beforeEach. */
 export const webHapticsTriggerMock = mock(() => Promise.resolve())
 
 // Mock web-haptics/react globally — no vibration API in test environment

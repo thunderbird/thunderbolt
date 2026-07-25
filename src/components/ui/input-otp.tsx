@@ -73,7 +73,7 @@ const InputOTPSeparator = ({ ...props }: ComponentProps<'div'>) => {
  * shrinkable slot per digit of `otpLength`, centered in its container.
  * Render inside an `InputOTP`.
  */
-const OtpSlots = () => (
+const InputOTPSlots = () => (
   <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
     {Array.from({ length: otpLength }, (_, i) => (
       <InputOTPSlot
@@ -85,4 +85,4 @@ const OtpSlots = () => (
   </InputOTPGroup>
 )
 
-export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator, OtpSlots }
+export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator, InputOTPSlots }

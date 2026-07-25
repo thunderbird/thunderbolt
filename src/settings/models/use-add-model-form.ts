@@ -16,8 +16,7 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { addModelFormSchema, type AddModelFormValues } from './add-model-form'
-import { catalogDebounceMs, isFetchableCatalogUrl, type CatalogRequest } from './model-catalog'
-import { catalogRequiresApiKey } from './model-policy'
+import { canFetchCatalog, catalogDebounceMs, catalogRequestKey, type CatalogRequest } from './model-catalog'
 import { catalogToComboboxItems, customModelItem, useModelCatalog } from './use-model-catalog'
 
 type AddModelState = {
@@ -66,12 +65,12 @@ export const generateModelName = (modelId: string): string => {
 }
 
 type UseAddModelFormOptions = {
-  active: boolean
+  isOpen: boolean
   onClose: () => void
 }
 
 /** Owns the reusable add-model form, catalog, connection test, and mutation. */
-export const useAddModelForm = ({ active, onClose }: UseAddModelFormOptions) => {
+export const useAddModelForm = ({ isOpen, onClose }: UseAddModelFormOptions) => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(addModelReducer, initialState)
@@ -98,18 +97,14 @@ export const useAddModelForm = ({ active, onClose }: UseAddModelFormOptions) => 
   const debouncedCatalogRequest = useDebounce(catalogRequest, catalogDebounceMs)
   const connection = useModelConnectionTest({ provider, model, url, apiKey })
 
+  const isDebounceSettled = catalogRequestKey(debouncedCatalogRequest) === catalogRequestKey(catalogRequest)
+
   useEffect(() => {
-    if (!active || debouncedCatalogRequest.provider !== provider) {
-      return
-    }
-    if (catalogRequiresApiKey(provider) && !debouncedCatalogRequest.apiKey) {
-      return
-    }
-    if (provider === 'custom' && !isFetchableCatalogUrl(debouncedCatalogRequest.url)) {
+    if (!isOpen || !isDebounceSettled || !canFetchCatalog(debouncedCatalogRequest)) {
       return
     }
     void fetchCatalog(debouncedCatalogRequest)
-  }, [active, debouncedCatalogRequest, fetchCatalog, provider])
+  }, [isOpen, isDebounceSettled, debouncedCatalogRequest, fetchCatalog])
 
   const reset = () => {
     form.reset()

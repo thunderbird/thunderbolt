@@ -49,7 +49,9 @@ const gpt5 = createMockModel({ id: 'model-2', name: 'GPT-5', provider: 'thunderb
 
 const QueryWrapper = createQueryTestWrapper()
 
-/** Wraps the query/provider tree in the app-wide create context. */
+/** Wraps the query/provider tree in the app-wide create context, plus a
+ *  router for the probe's `useLocation` (the picker itself no longer
+ *  navigates). */
 const TestWrapper = ({ children }: { children: ReactNode }) => (
   <MemoryRouter>
     <CreateItemProvider>
@@ -80,6 +82,15 @@ const setupWithAgent = (agent: Agent, models = [gpt4, gpt5]) => {
     nextSessions.set('thread-1', { ...session, selectedAgent: agent })
     return { sessions: nextSessions }
   })
+}
+
+/** The selector's trigger button, located from its visible label. */
+const getModelTrigger = () => {
+  const trigger = screen.getByText('GPT-4').closest('button')
+  if (!trigger) {
+    throw new Error('Model trigger button not found')
+  }
+  return trigger
 }
 
 describe('ChatModelPicker', () => {
@@ -163,8 +174,8 @@ describe('ChatModelPicker', () => {
       { wrapper: TestWrapper },
     )
 
-    const trigger = screen.getByText('GPT-4').closest('button')
-    fireEvent.click(trigger!)
+    const trigger = getModelTrigger()
+    fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Add Model'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
@@ -182,8 +193,8 @@ describe('ChatModelPicker', () => {
       { wrapper: TestWrapper },
     )
 
-    const trigger = screen.getByText('GPT-4').closest('button')
-    fireEvent.click(trigger!)
+    const trigger = getModelTrigger()
+    fireEvent.click(trigger)
     expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeNull()
     fireEvent.click(await screen.findByText('Add Model'))
 

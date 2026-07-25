@@ -9,7 +9,7 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { CreateAgentDetailPanel } from './create-agent-panel'
+import { CreateAgentDetailPanel } from './create-agent-detail-panel'
 
 const AgentOptionsProbe = () => {
   const agents = useAllAgents()
@@ -55,7 +55,7 @@ describe('CreateAgentDetailPanel', () => {
     })
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add agent' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
       await getClock().runAllAsync()
     })
 

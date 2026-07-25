@@ -14,7 +14,7 @@ type CreateModelPanelProps = {
 
 /** Adds a model over the current screen without changing routes. */
 export const CreateModelPanel = ({ open, onClose }: CreateModelPanelProps) => {
-  const addForm = useAddModelForm({ active: open, onClose })
+  const addForm = useAddModelForm({ isOpen: open, onClose })
 
   return (
     <DetailPanelSurface open={open} onClose={addForm.onCancel} topInset>

@@ -5,22 +5,28 @@
 import { useCallback, useReducer } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
-import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
-import { skillDisplayName, titleCaseFromSlug } from './display'
+import { skillDisplayName } from './display'
 import { findDependents } from './find-dependents'
 import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
+import {
+  handleSkillSaveError,
+  skillCreateInitialValues,
+  skillSaveFailedMessage,
+  useCreateSkillTracked,
+} from './skill-save'
 import { initialSkillsViewState, skillsViewReducer, type LeaveIntent } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { useSkillTelemetry } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
 export const SkillsView = () => {
-  const { skills, createSkill, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const { skills, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const createSkillTracked = useCreateSkillTracked()
   // Pinning is managed entirely from the chat composer; we only read
   // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be
   // summoned from the chat pinned bar, so keeping its slot would waste
@@ -176,8 +182,7 @@ export const SkillsView = () => {
   const handleSubmit = async (values: SkillFormValues) => {
     try {
       if (mode === 'create') {
-        const created = await createSkill(values)
-        trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
+        const created = await createSkillTracked(values)
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
       } else if (activeSkill) {
         const renamed = values.name !== activeSkill.name
@@ -186,15 +191,13 @@ export const SkillsView = () => {
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: activeSkill.id })
       }
     } catch (error) {
-      if (error instanceof SkillNameTakenError || error instanceof SkillNameInvalidError) {
-        dispatch({ type: 'SET_SLUG_ERROR', message: error.message })
-        return
-      }
       // Unexpected persistence failure: the form stays open with the user's
       // input intact — tell them why nothing happened instead of failing
       // silently as an unhandled rejection.
-      console.error('Failed to save skill', error)
-      dispatch({ type: 'SUBMIT_FAILED', message: "Couldn't save the skill. Please try again." })
+      handleSkillSaveError(error, {
+        onSlugRejected: (message) => dispatch({ type: 'SET_SLUG_ERROR', message }),
+        onFailed: () => dispatch({ type: 'SUBMIT_FAILED', message: skillSaveFailedMessage }),
+      })
     }
   }
 
@@ -218,17 +221,7 @@ export const SkillsView = () => {
         // user clicks "Create it" for a different slug back-to-back.
         key={createInitialName ? `create:${createInitialName}` : 'create'}
         mode="create"
-        initialValues={
-          createInitialName
-            ? {
-                name: createInitialName,
-                // Suggest a Title Case name from the slug the user typed in chat.
-                label: titleCaseFromSlug(createInitialName),
-                description: '',
-                instruction: '',
-              }
-            : undefined
-        }
+        initialValues={skillCreateInitialValues(createInitialName)}
         {...sharedFormProps}
       />
     </DetailPanel>

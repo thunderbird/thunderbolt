@@ -64,17 +64,12 @@ describe('SearchableMenu', () => {
         <SearchableMenu
           items={mockFlatItems}
           onValueChange={() => {}}
-          footer={(closeMenu) => (
-            <button
-              type="button"
-              onClick={() => {
-                closeMenu()
-                expandedStates.push(screen.getByRole('button', { name: /select/i }).getAttribute('aria-expanded'))
-              }}
-            >
-              Add option
-            </button>
-          )}
+          footerAction={{
+            label: 'Add option',
+            onAction: () => {
+              expandedStates.push(screen.getByRole('button', { name: /select/i }).getAttribute('aria-expanded'))
+            },
+          }}
         />,
       )
 

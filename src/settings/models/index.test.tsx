@@ -465,6 +465,40 @@ describe('model card action menu', () => {
     }
   })
 
+  it('never auto-sends a stored API key when only the URL is edited', async () => {
+    const db = getDb()
+    await createModel(db, {
+      id: uuidv7(),
+      provider: 'custom',
+      name: 'Stored Key Custom Model',
+      model: 'llama3',
+      url: 'http://localhost:11434/v1',
+      apiKey: 'sk-stored-secret',
+      isSystem: 0,
+      enabled: 1,
+    })
+    const getSpy = spyOn(http, 'get')
+
+    try {
+      renderModelsPage()
+      await waitForElement(() => screen.queryByText('Stored Key Custom Model'))
+      await openMenuForModel('Stored Key Custom Model')
+      fireEvent.click(await screen.findByText('Edit'))
+      fireEvent.change(await screen.findByLabelText('URL'), { target: { value: 'http://attacker.example/v1' } })
+
+      // Even after the debounce settles, a URL-only edit on a model with a
+      // stored key must not arm the auto-fetch — the key would ride along.
+      await act(async () => {
+        getClock().tick(1000)
+        await getClock().runAllAsync()
+      })
+
+      expect(getSpy).not.toHaveBeenCalled()
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
   it('saves name-only edits without requiring a new connection test', async () => {
     const db = getDb()
     const id = uuidv7()

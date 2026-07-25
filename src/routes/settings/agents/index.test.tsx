@@ -128,7 +128,7 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
     openAddIrohAgent(enrollIroh)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add agent' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
       await getClock().runAllAsync()
     })
 
@@ -145,7 +145,7 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
     expect(screen.getByTestId('iroh-pairing-panel')).toBeInTheDocument()
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add agent' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
       await getClock().runAllAsync()
     })
 
@@ -157,7 +157,7 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
     openAddIrohAgent(enrollIroh)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add agent' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
       await getClock().runAllAsync()
     })
 

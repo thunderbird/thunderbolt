@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { ChevronDown, Plus, Search } from 'lucide-react'
 import { memo, type ReactNode, useMemo, useState } from 'react'
 import { flushSync } from 'react-dom'
-import type { SearchableMenuGroup, SearchableMenuItem, SearchableMenuProps } from './types'
+import type { SearchableMenuFooterAction, SearchableMenuGroup, SearchableMenuItem, SearchableMenuProps } from './types'
 import { findItemById, flattenItems, isGroupedItems } from './types'
 
 /** Row shell for custom `renderItem` implementations — same geometry as the
@@ -23,35 +23,29 @@ export const searchableMenuRowClass =
 /** Footer action row (e.g. "Add Model"). Same geometry as the menus' item
  *  rows (see `searchableMenuRowClass`) so its rounded hover fill lines up with
  *  the rows above, rather than sitting smaller inside extra padding. */
-export const searchableMenuFooterActionClass =
+const footerActionClass =
   'flex w-full cursor-pointer items-center justify-start gap-2 rounded-lg px-3 h-[var(--touch-height-sm)] max-md:h-[var(--touch-height-default)] text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
 
-type SearchableMenuFooterActionProps = {
-  label: string
-  onAction: () => void
-  /** The `closeMenu` argument of the `footer` render prop. */
+type FooterActionRowProps = SearchableMenuFooterAction & {
   closeMenu: () => void
-  icon?: ReactNode
 }
 
-/**
- * Standard footer action row ("Add Model", "Add agent"): closes the menu
- * synchronously before running the action, so a surface the action opens
- * (e.g. the quick-create panel) never races the closing menu.
- */
-export const SearchableMenuFooterAction = ({
+/** Renders `footerAction`: closes the menu synchronously before running the
+ *  action, so a surface the action opens (e.g. the quick-create panel) never
+ *  races the closing menu. */
+const FooterActionRow = ({
   label,
   onAction,
   closeMenu,
   icon = <Plus className="size-[var(--icon-size-default)]" />,
-}: SearchableMenuFooterActionProps) => (
+}: FooterActionRowProps) => (
   <button
     type="button"
     onClick={() => {
       closeMenu()
       onAction()
     }}
-    className={searchableMenuFooterActionClass}
+    className={footerActionClass}
   >
     {icon}
     {label}
@@ -165,7 +159,7 @@ export const SearchableMenu = <T,>({
   mobileSide = 'bottom',
   trigger,
   renderItem,
-  footer,
+  footerAction,
   width = 320,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
@@ -227,7 +221,6 @@ export const SearchableMenu = <T,>({
   }
 
   const flatFiltered = flattenItems(filteredItems)
-  const footerContent = typeof footer === 'function' ? footer(closeMenu) : footer
 
   const triggerContent =
     typeof trigger === 'function' ? (
@@ -294,7 +287,11 @@ export const SearchableMenu = <T,>({
         </div>
       </div>
 
-      {footerContent && <div className="border-t p-1 dark:border-border/50">{footerContent}</div>}
+      {footerAction && (
+        <div className="border-t p-1 dark:border-border/50">
+          <FooterActionRow {...footerAction} closeMenu={closeMenu} />
+        </div>
+      )}
     </div>
   )
 

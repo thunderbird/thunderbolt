@@ -11,10 +11,9 @@ import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
-import { catalogDebounceMs, isFetchableCatalogUrl, type CatalogRequest } from './model-catalog'
+import { canFetchCatalog, catalogDebounceMs, catalogRequestKey, type CatalogRequest } from './model-catalog'
 import {
   apiKeyEditValue,
-  catalogRequiresApiKey,
   hasModelConnectionChanges,
   modelApiKeyForConnection,
   providerRequiresConnectionTest,
@@ -71,21 +70,14 @@ export const useEditModelFormState = (model: Model) => {
   // or for URL edits when no stored secret could ride along. Stored-key
   // catalogs load on demand when the model dropdown is opened (loadCatalog).
   const isAutoFetchArmed = apiKeyEdit.kind === 'replace' || (!model.apiKey && watchedUrl !== (model.url ?? ''))
-  const isDebounceSettled =
-    debouncedCatalogRequest.apiKey === effectiveApiKey && debouncedCatalogRequest.url === watchedUrl
+  const isDebounceSettled = catalogRequestKey(debouncedCatalogRequest) === catalogRequestKey(catalogRequest)
 
   useEffect(() => {
-    if (!isAutoFetchArmed || !isDebounceSettled) {
-      return
-    }
-    if (catalogRequiresApiKey(model.provider) && !debouncedCatalogRequest.apiKey) {
-      return
-    }
-    if (model.provider === 'custom' && !isFetchableCatalogUrl(debouncedCatalogRequest.url)) {
+    if (!isAutoFetchArmed || !isDebounceSettled || !canFetchCatalog(debouncedCatalogRequest)) {
       return
     }
     void fetchCatalog(debouncedCatalogRequest)
-  }, [isAutoFetchArmed, isDebounceSettled, debouncedCatalogRequest, fetchCatalog, model.provider])
+  }, [isAutoFetchArmed, isDebounceSettled, debouncedCatalogRequest, fetchCatalog])
   const modelItems = useMemo((): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
     if (!catalog.models.some((available) => available.id === model.model)) {
@@ -111,13 +103,7 @@ export const useEditModelFormState = (model: Model) => {
   // fetching the provider catalog with the saved connection (including a
   // stored API key) — opening the edit panel alone must not send anything.
   const loadCatalog = () => {
-    if (catalog.isLoading || catalog.models.length > 0) {
-      return
-    }
-    if (catalogRequiresApiKey(model.provider) && !effectiveApiKey) {
-      return
-    }
-    if (model.provider === 'custom' && !isFetchableCatalogUrl(watchedUrl)) {
+    if (catalog.isLoading || catalog.models.length > 0 || !canFetchCatalog(catalogRequest)) {
       return
     }
     void fetchCatalog(catalogRequest)

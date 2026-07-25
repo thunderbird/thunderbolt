@@ -188,7 +188,7 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
-    fireEvent.click(await screen.findByText('Add agent'))
+    fireEvent.click(await screen.findByText('Add Agent'))
 
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
   })

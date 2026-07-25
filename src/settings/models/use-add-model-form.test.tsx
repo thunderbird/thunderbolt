@@ -48,7 +48,7 @@ describe('useAddModelForm', () => {
 
   it('refreshes the chat model list before closing after creation', async () => {
     const onClose = mock(() => {})
-    const { result } = renderHook(() => useAddModelForm({ active: false, onClose }), {
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
       wrapper: createTestProvider(),
     })
 

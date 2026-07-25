@@ -66,7 +66,7 @@ describe('MobileSidebar', () => {
     expect(getSidebar()).not.toHaveClass('shadow-lg')
     expect(getSidebar().style.getPropertyValue('--mobile-sidebar-footer-inset')).not.toBe('')
     expect(getSidebar()).toHaveAttribute('data-swipe-direction', 'left')
-    expect(getMain()).toHaveClass('mobile-sidebar-main', 'bg-background', 'mobile-sidebar-main-shadow')
+    expect(getMain()).toHaveClass('bg-background', 'mobile-sidebar-main-shadow')
     expect(getMain().firstElementChild).toHaveAttribute('inert')
     expect(getCloseSurface()).toHaveClass('bg-transparent', 'pointer-events-auto')
     expect(screen.getByRole('navigation', { name: 'Primary navigation' }).parentElement).toHaveClass('flex', 'h-full')

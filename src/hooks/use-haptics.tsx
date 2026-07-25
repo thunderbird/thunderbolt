@@ -50,7 +50,9 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
       }
       lastHapticAtRef.current = Date.now()
       if (isTauri() && isMobile()) {
-        void native()
+        // Haptics are best-effort; a failing plugin call must not surface as
+        // an unhandled rejection, but should still be visible in dev.
+        native().catch((error: unknown) => console.warn('Haptic feedback failed', error))
       } else {
         void web()
       }
@@ -81,16 +83,13 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
     [fireHaptic, trigger],
   )
 
+  // The enabled gate lives in fireHaptic; this only adds the dedup window.
   const triggerSurfaceImpactHaptic = useCallback(() => {
-    if (!hapticsEnabled) {
-      return
-    }
-    const now = Date.now()
-    if (!shouldTriggerSurfaceHaptic(lastHapticAtRef.current, now)) {
+    if (!shouldTriggerSurfaceHaptic(lastHapticAtRef.current, Date.now())) {
       return
     }
     triggerImpactHaptic()
-  }, [hapticsEnabled, triggerImpactHaptic])
+  }, [triggerImpactHaptic])
 
   return (
     <HapticsContext.Provider

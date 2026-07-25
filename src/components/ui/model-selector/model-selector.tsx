@@ -4,7 +4,6 @@
 
 import {
   SearchableMenu,
-  SearchableMenuFooterAction,
   searchableMenuRowClass,
   type SearchableMenuGroup,
   type SearchableMenuItem,
@@ -186,11 +185,7 @@ export const ModelSelector = ({
     return content
   }
 
-  const footer = onAddModels
-    ? (closeMenu: () => void) => (
-        <SearchableMenuFooterAction label="Add Model" onAction={onAddModels} closeMenu={closeMenu} />
-      )
-    : undefined
+  const footerAction = onAddModels ? { label: 'Add Model', onAction: onAddModels } : undefined
 
   const { triggerSelection } = useHaptics()
   const handleModelChange = useCallback(
@@ -213,7 +208,7 @@ export const ModelSelector = ({
       mobileSide="bottom"
       trigger={renderTrigger}
       renderItem={renderItem}
-      footer={footer}
+      footerAction={footerAction}
       contentClassName="max-md:bg-sidebar"
       width={240}
       maxHeight={340}

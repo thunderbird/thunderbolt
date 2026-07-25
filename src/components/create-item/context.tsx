@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 export type CreateItemRequest =
   | { id: number; kind: 'skill'; initialName?: string }
   | { id: number; kind: 'agent' }
   | { id: number; kind: 'model' }
 
-export type OpenCreateItemRequest = { kind: 'skill'; initialName?: string } | { kind: 'agent' } | { kind: 'model' }
+/** The id-less input to `openCreateItem`; the provider assigns the id. */
+type CreateItemRequestInput = { kind: 'skill'; initialName?: string } | { kind: 'agent' } | { kind: 'model' }
 
 /** Panel titles by kind — one source for both the loaded panels and the
  *  host's Suspense fallback header, so they can never disagree. */
@@ -21,8 +22,8 @@ export const createItemTitles: Record<CreateItemRequest['kind'], string> = {
 
 type CreateItemContextValue = {
   request: CreateItemRequest | null
-  surfaceOpen: boolean
-  openCreateItem: (request: OpenCreateItemRequest) => void
+  isSurfaceOpen: boolean
+  openCreateItem: (request: CreateItemRequestInput) => void
   closeCreateItem: () => void
 }
 
@@ -34,52 +35,55 @@ const CreateItemContext = createContext<CreateItemContextValue | null>(null)
  */
 export const CreateItemProvider = ({ children }: { children: ReactNode }) => {
   const [request, setRequest] = useState<CreateItemRequest | null>(null)
-  const [surfaceOpen, setSurfaceOpen] = useState(false)
+  const [isSurfaceOpen, setIsSurfaceOpen] = useState(false)
   const nextRequestId = useRef(0)
-  const openFrame = useRef<number | null>(null)
+  const openFrameId = useRef<number | null>(null)
 
-  const openCreateItem = useCallback((nextRequest: OpenCreateItemRequest) => {
-    if (openFrame.current !== null) {
-      cancelAnimationFrame(openFrame.current)
+  const openCreateItem = useCallback((nextRequest: CreateItemRequestInput) => {
+    if (openFrameId.current !== null) {
+      cancelAnimationFrame(openFrameId.current)
     }
     nextRequestId.current += 1
-    setSurfaceOpen(false)
+    setIsSurfaceOpen(false)
     setRequest({ ...nextRequest, id: nextRequestId.current })
     // Commit the panel once in its closed geometry before changing the open
     // state — a transition cannot run when the panel first mounts already
     // open. Double rAF: the first callback can still coalesce into the same
     // paint as the closed-geometry commit, which would skip the transition.
-    openFrame.current = requestAnimationFrame(() => {
-      openFrame.current = requestAnimationFrame(() => {
-        openFrame.current = null
-        setSurfaceOpen(true)
+    openFrameId.current = requestAnimationFrame(() => {
+      openFrameId.current = requestAnimationFrame(() => {
+        openFrameId.current = null
+        setIsSurfaceOpen(true)
       })
     })
   }, [])
 
   const closeCreateItem = useCallback(() => {
-    if (openFrame.current !== null) {
-      cancelAnimationFrame(openFrame.current)
-      openFrame.current = null
+    if (openFrameId.current !== null) {
+      cancelAnimationFrame(openFrameId.current)
+      openFrameId.current = null
     }
-    setSurfaceOpen(false)
+    setIsSurfaceOpen(false)
     setRequest(null)
   }, [])
 
   useEffect(
     () => () => {
-      if (openFrame.current !== null) {
-        cancelAnimationFrame(openFrame.current)
+      if (openFrameId.current !== null) {
+        cancelAnimationFrame(openFrameId.current)
       }
     },
     [],
   )
 
-  return (
-    <CreateItemContext.Provider value={{ request, surfaceOpen, openCreateItem, closeCreateItem }}>
-      {children}
-    </CreateItemContext.Provider>
+  // Memoized so sidebar/layout re-renders don't invalidate every consumer
+  // (the chat composer and header both read this context).
+  const value = useMemo(
+    () => ({ request, isSurfaceOpen, openCreateItem, closeCreateItem }),
+    [request, isSurfaceOpen, openCreateItem, closeCreateItem],
   )
+
+  return <CreateItemContext.Provider value={value}>{children}</CreateItemContext.Provider>
 }
 
 /** Access the app-wide route-preserving create surface. */

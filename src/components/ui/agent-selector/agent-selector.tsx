@@ -2,12 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  SearchableMenu,
-  SearchableMenuFooterAction,
-  searchableMenuRowClass,
-  type SearchableMenuItem,
-} from '@/components/ui/searchable-menu'
+import { SearchableMenu, searchableMenuRowClass, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
@@ -177,11 +172,7 @@ export const AgentSelector = ({
     )
   }
 
-  const footer = onAddAgent
-    ? (closeMenu: () => void) => (
-        <SearchableMenuFooterAction label="Add agent" onAction={onAddAgent} closeMenu={closeMenu} />
-      )
-    : undefined
+  const footerAction = onAddAgent ? { label: 'Add Agent', onAction: onAddAgent } : undefined
 
   return (
     <SearchableMenu
@@ -195,7 +186,7 @@ export const AgentSelector = ({
       mobileSide="top"
       trigger={renderTrigger}
       renderItem={renderAgentItem}
-      footer={footer}
+      footerAction={footerAction}
       width={240}
       maxHeight={340}
       side={side}

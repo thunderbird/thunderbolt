@@ -4,7 +4,7 @@
 
 import { MobileSidebar } from '@/components/ui/mobile-sidebar'
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar'
-import { CreateItemHost } from '@/components/create-item/create-item-host'
+import { LazyCreateItemHost } from '@/components/create-item/lazy-create-item-host'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { useSettings } from '@/hooks/use-settings'
 import SidebarComponent from '@/layout/sidebar'
@@ -25,10 +25,10 @@ const LayoutContent = () => {
         sidebar={<SidebarComponent />}
       >
         <div data-slot="create-item-layout" className="relative flex min-w-0 flex-1 overflow-hidden">
-          <div data-slot="create-item-content" className="h-full min-w-0 flex-1 overflow-hidden">
+          <div className="h-full min-w-0 flex-1 overflow-hidden">
             <Outlet />
           </div>
-          <CreateItemHost />
+          <LazyCreateItemHost />
         </div>
       </MobileSidebar>
     </CreateItemProvider>

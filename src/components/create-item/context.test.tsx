@@ -18,15 +18,15 @@ describe('CreateItemProvider', () => {
 
     act(() => result.current.openCreateItem({ kind: 'model' }))
     expect(result.current.request).toEqual({ id: 1, kind: 'model' })
-    expect(result.current.surfaceOpen).toBe(false)
+    expect(result.current.isSurfaceOpen).toBe(false)
 
     // Two frames: the open state flips on the second rAF (see openCreateItem).
     act(() => getClock().tick(32))
-    expect(result.current.surfaceOpen).toBe(true)
+    expect(result.current.isSurfaceOpen).toBe(true)
 
     act(() => result.current.closeCreateItem())
     expect(result.current.request).toBeNull()
-    expect(result.current.surfaceOpen).toBe(false)
+    expect(result.current.isSurfaceOpen).toBe(false)
   })
 
   it('assigns a new id when the same form is reopened', () => {
@@ -40,6 +40,6 @@ describe('CreateItemProvider', () => {
     expect(result.current.request).toEqual({ id: 2, kind: 'skill' })
     expect(result.current.request?.id).not.toBe(firstId)
     act(() => getClock().tick(32))
-    expect(result.current.surfaceOpen).toBe(true)
+    expect(result.current.isSurfaceOpen).toBe(true)
   })
 })

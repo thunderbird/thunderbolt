@@ -39,4 +39,19 @@ describe('SkillTokenPopover', () => {
     const trigger = container.querySelector('[tabindex="0"]')
     expect(trigger?.textContent).toBe('/some-token')
   })
+
+  it('renders the onAction variant (create-it) with the same interactive trigger surface', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <SkillTokenPopover
+          trigger={<span className="text-red-500">/unknown-token</span>}
+          message="No skill named /unknown-token."
+          actionLabel="Create it"
+          onAction={() => {}}
+        />
+      </MemoryRouter>,
+    )
+    const trigger = container.querySelector('.pointer-events-auto')
+    expect(trigger?.textContent).toBe('/unknown-token')
+  })
 })

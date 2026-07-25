@@ -245,6 +245,10 @@ export const ChatSkillsBar = ({
         <button
           type="button"
           onClick={() => {
+            // Close the menu synchronously before opening the create surface
+            // so the two never race — same invariant SearchableMenu's
+            // footerAction enforces (this menu is a bespoke ResponsivePopover
+            // row, so it can't reuse that component).
             flushSync(() => setAddOpen(false))
             openCreateItem({ kind: 'skill' })
           }}

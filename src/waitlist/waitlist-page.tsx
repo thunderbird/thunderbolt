@@ -5,7 +5,7 @@
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { InputOTP, OtpSlots } from '@/components/ui/input-otp'
+import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
 import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
@@ -63,7 +63,7 @@ export const WaitlistPage = () => {
               data-form-type="other"
               containerClassName="w-full"
             >
-              <OtpSlots />
+              <InputOTPSlots />
             </InputOTP>
 
             {state.errorMessage && <p className="text-sm text-destructive">{state.errorMessage}</p>}

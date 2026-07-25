@@ -8,6 +8,7 @@ import { http } from '@/lib/http'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
+import { catalogRequiresApiKey } from './model-policy'
 
 export type AvailableModel = {
   id: string
@@ -54,19 +55,30 @@ const fetchAnthropicModels = async (apiKey: string): Promise<AvailableModel[]> =
  *  so credentials and URLs settle before they are sent anywhere. */
 export const catalogDebounceMs = 500
 
-/** True when a user-typed base URL is complete enough to send a request
- *  (with its Authorization header) to. Guards the auto-fetch against firing
- *  against half-typed hosts mid-keystroke. */
+/** True when a user-typed base URL is complete enough to receive a request
+ *  (with its Authorization header). Guards the auto-fetch from firing at
+ *  half-typed hosts mid-keystroke. Requires an http(s) scheme — bare
+ *  `host:port` input parses as a URL with `host:` as its scheme. */
 export const isFetchableCatalogUrl = (url: string | undefined): boolean => {
   if (!url) {
     return false
   }
   try {
-    new URL(url)
-    return true
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
   } catch {
     return false
   }
+}
+
+/** True when a catalog request carries everything its provider needs, so it is
+ *  safe to send credentials anywhere. Single gate shared by the add/edit-form
+ *  auto-fetch effects and the on-demand dropdown load. */
+export const canFetchCatalog = ({ provider, apiKey, url }: CatalogRequest): boolean => {
+  if (catalogRequiresApiKey(provider) && !apiKey) {
+    return false
+  }
+  return provider !== 'custom' || isFetchableCatalogUrl(url)
 }
 
 /** Stable identity for the inputs that produced a catalog result. */

@@ -6,8 +6,9 @@ import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
 import { GradientMail } from '@/components/ui/gradient-mail'
 import { GradientTriangleAlert } from '@/components/ui/gradient-triangle-alert'
-import { InputOTP, OtpSlots } from '@/components/ui/input-otp'
+import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { otpLength } from '@/lib/constants'
+import { cn } from '@/lib/utils'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Check, Loader2 } from 'lucide-react'
 
@@ -44,6 +45,49 @@ export const SignInOtpStep = ({
 }: SignInOtpStepProps) => {
   const isVerifying = status === 'verifying'
 
+  // Shared building blocks — the page and modal variants are pure layout
+  // around these, so the OTP wiring and copy can't drift between them.
+  // `autoComplete` differs: the page invites the OS code suggestion, the
+  // modal opts out because its input sits beside magic-link instructions.
+  const renderOtpInput = (autoComplete: 'one-time-code' | 'off') => (
+    <InputOTP
+      maxLength={otpLength}
+      pattern={REGEXP_ONLY_DIGITS}
+      value={otp}
+      onChange={onOtpChange}
+      onComplete={onOtpComplete}
+      disabled={isVerifying}
+      autoFocus
+      autoComplete={autoComplete}
+      data-1p-ignore
+      data-lpignore="true"
+      data-form-type="other"
+      containerClassName="w-full"
+    >
+      <InputOTPSlots />
+    </InputOTP>
+  )
+
+  const errorLine = errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null
+
+  const renderResendButton = (className?: string) => (
+    <ActionFeedbackButton
+      variant="ghost"
+      size="sm"
+      onClick={onResend}
+      disabled={isVerifying}
+      className={cn('text-muted-foreground hover:text-foreground', className)}
+      successContent={
+        <>
+          <Check className="mr-2 h-4 w-4" />
+          Sent
+        </>
+      }
+    >
+      Resend Email
+    </ActionFeedbackButton>
+  )
+
   if (variant === 'page') {
     return (
       <div className="flex h-full w-full flex-col items-center">
@@ -53,58 +97,27 @@ export const SignInOtpStep = ({
           <p className="mt-2 text-base text-foreground">
             If you have access, we&apos;ve sent an 8-digit code to <span className="font-bold">{email}</span>
           </p>
-          <ActionFeedbackButton
-            variant="ghost"
-            size="sm"
-            onClick={onResend}
-            disabled={isVerifying}
-            className="mt-1 text-muted-foreground hover:text-foreground"
-            successContent={
-              <>
-                <Check className="mr-2 h-4 w-4" />
-                Sent
-              </>
-            }
-          >
-            Resend Email
-          </ActionFeedbackButton>
+          {renderResendButton('mt-1')}
         </div>
 
         {/* OTP input + feedback at bottom */}
         <div className="flex w-full flex-col items-center gap-4">
-          <InputOTP
-            maxLength={otpLength}
-            pattern={REGEXP_ONLY_DIGITS}
-            value={otp}
-            onChange={onOtpChange}
-            onComplete={onOtpComplete}
-            disabled={isVerifying}
-            autoFocus
-            autoComplete="one-time-code"
-            data-1p-ignore
-            data-lpignore="true"
-            data-form-type="other"
-            containerClassName="w-full"
-          >
-            <OtpSlots />
-          </InputOTP>
+          {renderOtpInput('one-time-code')}
 
-          {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+          {errorLine}
 
           <Button
             type="button"
             onClick={() => onOtpComplete(otp)}
-            disabled={isVerifying || otp.length !== otpLength}
+            isLoading={isVerifying}
+            loadingLabel="Verifying…"
+            disabled={otp.length !== otpLength}
+            // Deliberate hero-CTA treatment for the auth flows (taller than
+            // the standard button and rounded-xl instead of the usual
+            // rounded-lg atom tier) — matches waitlist-page.tsx.
             className="h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
-            {isVerifying ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Verifying…
-              </>
-            ) : (
-              'Continue'
-            )}
+            Continue
           </Button>
         </div>
       </div>
@@ -136,22 +149,7 @@ export const SignInOtpStep = ({
 
         <div className="mt-6 flex w-full flex-col items-center gap-3">
           <p className="text-sm text-muted-foreground">Or enter the 8-digit code</p>
-          <InputOTP
-            maxLength={otpLength}
-            pattern={REGEXP_ONLY_DIGITS}
-            value={otp}
-            onChange={onOtpChange}
-            onComplete={onOtpComplete}
-            disabled={isVerifying}
-            autoFocus
-            autoComplete="off"
-            data-1p-ignore
-            data-lpignore="true"
-            data-form-type="other"
-            containerClassName="w-full"
-          >
-            <OtpSlots />
-          </InputOTP>
+          {renderOtpInput('off')}
 
           {isVerifying && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -160,23 +158,9 @@ export const SignInOtpStep = ({
             </div>
           )}
 
-          {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+          {errorLine}
 
-          <ActionFeedbackButton
-            variant="ghost"
-            size="sm"
-            onClick={onResend}
-            disabled={isVerifying}
-            className="text-muted-foreground hover:text-foreground"
-            successContent={
-              <>
-                <Check className="mr-2 h-4 w-4" />
-                Sent
-              </>
-            }
-          >
-            Resend Email
-          </ActionFeedbackButton>
+          {renderResendButton()}
 
           {!isLocalhost && <p className="text-xs text-muted-foreground">Or click the magic link in your email</p>}
         </div>

@@ -36,7 +36,7 @@ export const CreateAgentDetailPanel = ({ onClose, loadAppNodeId, enrollIroh }: C
     if (!currentUserId) {
       // Quick-create entry points are gated on capability, not session, so
       // this can be reached while auth is still resolving. Throwing routes it
-      // into the form's catch, which shows "Couldn't add the agent."
+      // into the form's catch, which shows the submit-failed error.
       throw new Error('Cannot create an agent without an authenticated session.')
     }
     await createAgent(db, {

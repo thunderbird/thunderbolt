@@ -45,3 +45,16 @@ export const Scrim = ({ height, edge = 'top', className, ...props }: ScrimProps)
     />
   )
 }
+
+/**
+ * The mobile sidebar's pinned-edge scrim (header and footer): sidebar tint
+ * with a 2.5rem overhang that extends the fade past the pinned controls so
+ * rows dissolve before reaching them. One component so the header
+ * (chat-list.tsx) and footer (sidebar-footer.tsx) can never drift apart.
+ */
+export const MobileSidebarScrim = ({
+  edge = 'top',
+  ...props
+}: Omit<ScrimProps, 'height' | 'className'> & { edge?: 'top' | 'bottom' }) => (
+  <Scrim edge={edge} height="calc(100% + 2.5rem)" className="from-sidebar via-sidebar/80" {...props} />
+)

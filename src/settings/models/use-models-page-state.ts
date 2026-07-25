@@ -28,7 +28,7 @@ export const useModelsPageState = () => {
   const activeModel = models.find((model) => model.id === activeModelId)
   const editingModel = panel?.kind === 'edit' ? activeModel : undefined
   const closeAddPanel = useCallback(() => dispatch({ type: 'PANEL_CHANGED', panel: null }), [])
-  const addForm = useAddModelForm({ active: isAddPanelOpen, onClose: closeAddPanel })
+  const addForm = useAddModelForm({ isOpen: isAddPanelOpen, onClose: closeAddPanel })
 
   const failMutation = (message: string) => (error: unknown) => {
     console.error(message, error)

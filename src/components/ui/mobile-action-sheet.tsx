@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ComponentProps, ReactNode, RefObject } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 
 import {
   Drawer,
@@ -22,9 +22,6 @@ type MobileActionSheetProps = {
   description?: string
   children: ReactNode
   initialFocus?: ComponentProps<typeof DrawerContent>['initialFocus']
-  /** Element to focus when the sheet opens (e.g. the Cancel button of a
-   *  destructive prompt). Shorthand for the common `initialFocus` closure. */
-  initialFocusRef?: RefObject<HTMLElement | null>
   role?: 'dialog' | 'alertdialog'
 }
 
@@ -39,21 +36,13 @@ export const MobileActionSheet = ({
   description,
   children,
   initialFocus,
-  initialFocusRef,
   role = 'dialog',
 }: MobileActionSheetProps) => (
   <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down">
     <DrawerVirtualKeyboardProvider>
       <DrawerContent
         forceBackdrop
-        initialFocus={
-          initialFocusRef
-            ? () => {
-                initialFocusRef.current?.focus()
-                return false
-              }
-            : initialFocus
-        }
+        initialFocus={initialFocus}
         role={role}
         // Keyboard-following: --drawer-keyboard-inset comes from
         // DrawerVirtualKeyboardProvider; --kb is the app-wide keyboard inset

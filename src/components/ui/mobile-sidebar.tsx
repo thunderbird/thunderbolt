@@ -11,7 +11,6 @@ import { animate, m, useMotionValue, useReducedMotion, useTransform, type PanInf
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
   useSyncExternalStore,
@@ -92,25 +91,21 @@ export const MobileSidebar = ({
     side === 'left' ? [0, 1] : [1, 0],
   )
 
-  // Latest callback props/open state, readable from animation continuations
-  // and drag handlers without re-binding them (the callbacks may be unstable
-  // inline functions).
+  // Latest callback props, readable from animation continuations (which
+  // outlive the render that started them) without re-binding — the callbacks
+  // may be unstable inline functions. Event handlers don't need this: they
+  // are re-created each render, so they already see the current props.
   const onOpenChangeRef = useRef(onOpenChange)
   onOpenChangeRef.current = onOpenChange
   const onCloseCompleteRef = useRef(onCloseComplete)
   onCloseCompleteRef.current = onCloseComplete
-  const openRef = useRef(open)
-  openRef.current = open
-
-  const notifyCloseComplete = () => onCloseCompleteRef.current?.()
-  const notifyCloseCompleteOnUnmount = useEffectEvent(notifyCloseComplete)
 
   // If the drawer unmounts mid-close (e.g. the viewport crosses to desktop
   // while the spring is running), the animation never settles and the pending
   // notification would be dropped — callers awaiting `closeMobileSidebar()`
   // would hang forever. Flush on unmount; the provider's resolver queue
   // no-ops when nothing is pending.
-  useEffect(() => () => notifyCloseCompleteOnUnmount(), [])
+  useEffect(() => () => onCloseCompleteRef.current?.(), [])
 
   const closedX = side === 'left' ? -sidebarWidth : sidebarWidth
 
@@ -169,9 +164,9 @@ export const MobileSidebar = ({
     // drawer closed (the user caught it mid-close and kept it open), re-sync
     // it and flush any callers awaiting the close so they aren't stranded.
     void animate(x, 0, transition)
-    if (!openRef.current) {
+    if (!open) {
       onOpenChange(true)
-      notifyCloseComplete()
+      onCloseComplete?.()
     }
   }
 

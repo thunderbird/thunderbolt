@@ -253,11 +253,13 @@
      target; a modal whose content runs edge to edge (see the responsive modal's
      `flush`) pads its scroll container by these two insets, so content sits
      clear of the controls and the footer at rest and scrolls beneath them after
-     that. 0.5rem matches the app/page headers' top padding (header.tsx pt-2,
-     page-header/page-search + 0.5rem) so modal controls and titles sit on the
-     same line as the screens beneath them. */
+     that. 0.5rem matches the app header's top padding (header.tsx pt-2), so
+     everything anchored to --header-control-top — modal close/title/actions,
+     page titles, the page search button — sits on the same line as the
+     header controls beneath it. */
   --modal-control-inset: 0.5rem;
-  --modal-top-inset: calc(var(--header-safe-area-top) + var(--modal-control-inset) + var(--touch-height-lg));
+  --header-control-top: calc(var(--header-safe-area-top) + var(--modal-control-inset));
+  --modal-top-inset: calc(var(--header-control-top) + var(--touch-height-lg));
 
   /* Whichever of the home indicator or the keyboard is taller — an open keyboard
      already covers the indicator, so stacking them would strand dead space
@@ -267,11 +269,15 @@
      frame before that hook sets the variable. */
   --modal-bottom-inset: max(var(--safe-area-bottom-padding, 24px), calc(var(--kb, 0px) + 12px));
 
-  /* Sticky modal actions live inside the visual viewport, whose bottom edge is
-     already the keyboard or screen edge. Keep the same 16px gap as the panel's
-     horizontal inset; applying the device safe area here can lift the actions
-     far above that edge on Android. */
-  --modal-footer-inset: 1rem;
+  /* Sticky modal actions live inside the visual viewport. When the keyboard is
+     closed that bottom edge is the physical screen edge, so the actions must
+     clear the home indicator / rounded corners: use the device safe area (or
+     the 16px panel gap, whichever is larger). When the keyboard is open the
+     edge is the keyboard itself — no safe area applies there, and adding one
+     would strand the actions above the keyboard. Subtracting --kb makes the
+     safe-area term collapse below 1rem the moment the keyboard opens (keyboard
+     heights dwarf any inset), so the max() degrades to the plain 16px gap. */
+  --modal-footer-inset: max(1rem, calc(var(--safe-area-bottom-padding, 24px) - var(--kb, 0px)));
 
   /* Switch component specific */
   --switch-track-height: 1.25rem; /* 20px desktop - whole-px so the thumb is round */

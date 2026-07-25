@@ -131,7 +131,7 @@ const ResponsiveModalDialogContent = ({
               data-slot="responsive-modal-close"
               className={cn(modalCloseClass, isMobile ? 'left-2' : 'right-4')}
               style={{
-                top: isMobile ? 'calc(var(--header-safe-area-top) + var(--modal-control-inset))' : 16,
+                top: isMobile ? 'var(--header-control-top)' : 16,
               }}
             >
               <XIcon className="size-[var(--icon-size-default)]" />
@@ -245,7 +245,7 @@ export const ResponsiveModalPinnedHeader = ({ title, subtitle }: { title: string
   <div
     data-slot="responsive-modal-pinned-header"
     className="pointer-events-none absolute inset-x-[calc(0.5rem+var(--touch-height-lg)+0.5rem)] z-10 flex h-[var(--touch-height-lg)] flex-col items-center justify-center"
-    style={{ top: 'calc(var(--header-safe-area-top) + var(--modal-control-inset))' }}
+    style={{ top: 'var(--header-control-top)' }}
   >
     <ResponsiveModalTitle className="max-w-full truncate text-[length:var(--font-size-body)]">
       {title}
@@ -274,7 +274,7 @@ export const ResponsiveModalActions = ({ className, ...props }: ResponsiveModalA
       'fixed right-2 z-10 flex items-center',
       className,
     )}
-    style={{ top: 'calc(var(--header-safe-area-top) + var(--modal-control-inset))' }}
+    style={{ top: 'var(--header-control-top)' }}
     {...props}
   />
 )

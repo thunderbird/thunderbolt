@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { UseAddServerFormResult } from '@/hooks/use-add-server-form'
 import type { TestConnectionResult } from '@/lib/mcp-auth/auth-decision'
 import type { MCPTransportType } from '@/lib/mcp-transport'
@@ -159,6 +160,10 @@ export const McpServerForm = ({
     handleUrlBlur,
   } = form
 
+  // Adding a server — land ready to type its name. Edits keep focus free so
+  // the user can go straight to the field they came to change.
+  const nameInputRef = useAutofocusOnMount<HTMLInputElement>(!form.editingServerId)
+
   const failurePanel =
     testResult.kind !== 'success' && testResult.kind !== 'idle' ? testResultPanels[testResult.kind] : null
 
@@ -237,6 +242,7 @@ export const McpServerForm = ({
               <Label htmlFor="name">Name</Label>
               <Input
                 id="name"
+                ref={nameInputRef}
                 placeholder="Server name (used to prefix tools)"
                 value={newServerName}
                 onChange={(e) => form.changeName(e.target.value)}

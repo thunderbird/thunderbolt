@@ -137,17 +137,13 @@ export const inferenceDefaults = {
 
 /** Get the appropriate nudge messages from a model profile, falling back to code defaults */
 export const getNudgeMessagesFromProfile = (profile: ModelProfile | null): NudgeMessages => {
-  if (!profile) {
+  const hasNudgeOverrides = profile && (profile.nudgeFinalStep || profile.nudgePreventive || profile.nudgeRetry)
+  if (!hasNudgeOverrides) {
     return nudgeMessages
   }
-
-  const hasNudgeOverrides = profile.nudgeFinalStep || profile.nudgePreventive || profile.nudgeRetry
-  if (hasNudgeOverrides) {
-    return {
-      finalStep: profile.nudgeFinalStep ?? nudgeMessages.finalStep,
-      preventive: profile.nudgePreventive ?? nudgeMessages.preventive,
-      retry: profile.nudgeRetry ?? nudgeMessages.retry,
-    }
+  return {
+    finalStep: profile.nudgeFinalStep ?? nudgeMessages.finalStep,
+    preventive: profile.nudgePreventive ?? nudgeMessages.preventive,
+    retry: profile.nudgeRetry ?? nudgeMessages.retry,
   }
-  return nudgeMessages
 }

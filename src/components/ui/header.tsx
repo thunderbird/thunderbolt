@@ -23,6 +23,10 @@ import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
 
+/** Marks an element as part of the Tauri desktop window's drag surface (empty
+ *  on web/mobile where no custom title bar exists). */
+type TauriDragProps = { 'data-tauri-drag-region'?: boolean }
+
 /** Subscribes to the active chat instance's status to disable the agent
  *  selector while a reply is streaming. Pulled into its own component so
  *  `useChat` is only mounted when a session exists. */
@@ -39,7 +43,7 @@ type HeaderAgentSelectorProps = {
    *  chat, and docked top-right as a circular icon button once the thread
    *  exists (or a send is in flight). Both states share one element, so the
    *  submit transition animates instead of remounting. */
-  mobile?: { hasThread: boolean; dragProps: Record<string, unknown> }
+  mobile?: { hasThread: boolean; dragProps: TauriDragProps }
 }
 
 const HeaderAgentSelector = ({
@@ -157,7 +161,7 @@ export const Header = () => {
   // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
   // buttons inline on the right (self-nulls on macOS/web).
   const isDragRegionEnabled = isTauriDesktop()
-  const dragProps = isDragRegionEnabled ? { 'data-tauri-drag-region': true } : {}
+  const dragProps: TauriDragProps = isDragRegionEnabled ? { 'data-tauri-drag-region': true } : {}
   // The macOS traffic lights (ending at ~x=68) are wider than the collapsed
   // 48px icon rail, so nudge the header content right of the overhang with
   // some breathing room so the agent selector pill doesn't crowd the buttons.

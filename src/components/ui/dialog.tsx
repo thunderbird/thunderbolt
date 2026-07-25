@@ -83,7 +83,7 @@ const DialogContent = ({
           <DialogPrimitive.Close
             data-slot="dialog-close"
             className={`${modalCloseClass} right-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`}
-            style={{ top: fullScreen ? 'calc(var(--header-safe-area-top) + var(--modal-control-inset))' : '16px' }}
+            style={{ top: fullScreen ? 'var(--header-control-top)' : '16px' }}
           >
             <XIcon />
             <span className="sr-only">Close</span>

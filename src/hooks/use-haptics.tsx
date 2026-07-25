@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useEffectEvent } from 'react'
 import { useWebHaptics } from 'web-haptics/react'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
@@ -104,10 +104,12 @@ export const useHaptics = () => useContext(HapticsContext)
  */
 export const useMountHaptic = () => {
   const { triggerImpact } = useHaptics()
+  // Effect event so the mount/unmount taps always use the provider's current
+  // trigger (it re-binds when the user toggles haptics) without re-running
+  // the effect — a settings toggle mid-open must not fire phantom taps.
+  const tap = useEffectEvent(() => triggerImpact('light'))
   useEffect(() => {
-    triggerImpact('light')
-    return () => triggerImpact('light')
-    // The provider's trigger is stable; run strictly on mount/unmount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    tap()
+    return () => tap()
   }, [])
 }

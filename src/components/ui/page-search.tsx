@@ -87,7 +87,7 @@ const PageSearchButton = () => {
           'fixed right-2 z-30',
           open && 'bg-muted text-foreground',
         )}
-        style={{ top: 'calc(var(--header-safe-area-top) + 0.5rem)' }}
+        style={{ top: 'var(--header-control-top)' }}
         onClick={toggle}
       >
         <Search />

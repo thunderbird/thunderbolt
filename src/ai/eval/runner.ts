@@ -40,7 +40,7 @@ const cyan = '\x1b[36m'
 const yellow = '\x1b[33m'
 const reset = '\x1b[0m'
 
-const logVerbosePrompt = async (scenario: EvalScenario) => {
+const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
   const { verbose } = await import('./run')
   if (!verbose) {
     return
@@ -84,7 +84,8 @@ const logVerbosePrompt = async (scenario: EvalScenario) => {
   console.log(`\n${cyan}--- SYSTEM PROMPT (${scenario.id}) ---${reset}`)
   console.log(`${dim}${systemPrompt}${reset}`)
   console.log(`${cyan}--- USER PROMPT ---${reset}`)
-  console.log(`${dim}${scenario.prompt}${reset}`)
+  // Include the skill token so the log shows the message exactly as sent.
+  console.log(`${dim}${skillToken}${scenario.prompt}${reset}`)
   console.log(`${cyan}--- END PROMPT ---${reset}\n`)
 }
 
@@ -112,7 +113,7 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
     // to the skill instruction by the production send path.
     const skillToken = scenario.modeName === 'chat' ? '' : `/${scenario.modeName} `
 
-    await logVerbosePrompt(scenario)
+    await logVerbosePrompt(scenario, skillToken)
 
     const httpClient = await getEvalHttpClient()
 

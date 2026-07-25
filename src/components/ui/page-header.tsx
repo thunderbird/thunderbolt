@@ -40,7 +40,7 @@ export const PageHeader = ({ title, children }: PageHeaderProps) => {
         {createPortal(
           <div
             className="pointer-events-none fixed left-1/2 z-30 flex h-[var(--touch-height-lg)] max-w-[50vw] -translate-x-1/2 items-center"
-            style={{ top: 'calc(var(--header-safe-area-top) + 0.5rem)' }}
+            style={{ top: 'var(--header-control-top)' }}
           >
             <h1 className="truncate text-[length:var(--font-size-body)] font-semibold text-foreground">{title}</h1>
           </div>,

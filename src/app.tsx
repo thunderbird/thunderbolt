@@ -77,22 +77,38 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // Pages below ship in their own async chunk; the layouts that host them are
 // static so route navigation only swaps the inner content. ChatLayout and
 // ChatDetailPage stay in the entry bundle so the landing page is instant.
-const TasksPage = lazy(() => import('@/tasks'))
-const Settings = lazy(() => import('@/settings/index'))
-const PreferencesSettingsPage = lazy(() => import('@/settings/preferences'))
-const ModelsPage = lazy(() => import('@/settings/models'))
-const DevicesSettingsPage = lazy(() => import('@/settings/devices'))
-const ConnectionsPage = lazy(() => import('@/settings/connections'))
-const SkillsPage = lazy(() => import('@/settings/skills'))
-const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
+//
+// Every loader in this map is both the `lazy()` source for its route and part
+// of `preloadAllRouteChunks`, so a new lazy route added here is warmed on the
+// Tauri apps automatically. Deliberately-cold chunks (SSO, dev-only routes)
+// live outside the map.
+const routeChunkLoaders = {
+  tasks: () => import('@/tasks'),
+  settings: () => import('@/settings/index'),
+  preferences: () => import('@/settings/preferences'),
+  models: () => import('@/settings/models'),
+  devices: () => import('@/settings/devices'),
+  connections: () => import('@/settings/connections'),
+  skills: () => import('@/settings/skills'),
+  agents: () => import('@/routes/settings/agents'),
+  // The CLI device-authorization approval page is off the chat/landing
+  // critical path (only reached via a QR/link).
+  deviceApproval: () => import('@/components/device-approval'),
+}
+
+const TasksPage = lazy(routeChunkLoaders.tasks)
+const Settings = lazy(routeChunkLoaders.settings)
+const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
+const ModelsPage = lazy(routeChunkLoaders.models)
+const DevicesSettingsPage = lazy(routeChunkLoaders.devices)
+const ConnectionsPage = lazy(routeChunkLoaders.connections)
+const SkillsPage = lazy(routeChunkLoaders.skills)
+const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
+const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
 const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
-
-// The CLI device-authorization approval page is off the chat/landing critical
-// path (only reached via a QR/link), so it ships in its own async chunk.
-const DeviceApproval = lazy(() => import('@/components/device-approval'))
 
 // Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates
 // both the lazy() call and the dynamic import() from production builds.
@@ -107,17 +123,7 @@ const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools
  * components resolve from the same in-flight module records.
  */
 const preloadAllRouteChunks = () => {
-  void Promise.allSettled([
-    import('@/tasks'),
-    import('@/settings/index'),
-    import('@/settings/preferences'),
-    import('@/settings/models'),
-    import('@/settings/devices'),
-    import('@/settings/connections'),
-    import('@/settings/skills'),
-    import('@/routes/settings/agents'),
-    import('@/components/device-approval'),
-  ])
+  void Promise.allSettled(Object.values(routeChunkLoaders).map((load) => load()))
 }
 
 const queryClient = new QueryClient()

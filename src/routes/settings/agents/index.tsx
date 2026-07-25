@@ -64,10 +64,6 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   // Add Custom Agent panel directly instead of landing on the bare list.
   useConsumeNavState('createAgent', () => setActivePanel({ kind: 'add' }))
 
-  // Deep link from the chat header's agent selector ("Add agent"): open the
-  // Add Custom Agent panel directly instead of landing on the bare list.
-  useConsumeNavState('createAgent', () => setActivePanel({ kind: 'add' }))
-
   // Deriving from the live list means the panel follows sync: if the active
   // agent is deleted on another device, `activeAgent` turns undefined and the
   // panel closes on its own.

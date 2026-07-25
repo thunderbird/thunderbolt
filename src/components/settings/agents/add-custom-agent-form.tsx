@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useReducer, useRef } from 'react'
+import { useReducer } from 'react'
 import { Check, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
+import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
@@ -108,14 +109,9 @@ export const AddCustomAgentForm = ({
 }: AddCustomAgentFormProps) => {
   const [state, dispatch] = useReducer(agentFormReducer, emptyState)
 
-  // Auto-focus the name input on mount — the user just chose "Add agent",
-  // they're about to type a name (same idiom as SkillForm). The rAF defers
-  // past the responsive modal's own focus management on mobile.
-  const nameInputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => nameInputRef.current?.focus())
-    return () => cancelAnimationFrame(frame)
-  }, [])
+  // The user just chose "Add agent" — land ready to type a name (same idiom
+  // as SkillForm).
+  const nameInputRef = useAutofocusOnMount<HTMLInputElement>()
 
   const trimmedName = state.name.trim()
   const trimmedUrl = state.url.trim()

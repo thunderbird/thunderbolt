@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Info } from 'lucide-react'
-import { useEffect, useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
@@ -11,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import { validateSkillName } from '@/dal'
 import { useSkillFormState, type SkillFormMode, type SkillFormValues } from './use-skill-form-state'
 
@@ -68,19 +68,10 @@ export const SkillForm = ({
     handleInstructionChange,
   } = useSkillFormState({ mode, initialValues, resetSignal, onDirtyChange, onSlugChange })
 
-  // Auto-focus the name input on mount for `create` mode — the user just
-  // clicked "+", they're about to type a name. Edit mode skips this so we
-  // don't steal focus from a user who clicked into a specific skill to
-  // change one field. The rAF defers past the responsive modal's own focus
-  // management on mobile, so this focus wins (and raises the keyboard).
-  const nameInputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (mode !== 'create') {
-      return
-    }
-    const frame = requestAnimationFrame(() => nameInputRef.current?.focus())
-    return () => cancelAnimationFrame(frame)
-  }, [mode])
+  // In `create` mode the user just clicked "+" — land ready to type a name.
+  // Edit mode skips this so we don't steal focus from a user who clicked
+  // into a specific skill to change one field.
+  const nameInputRef = useAutofocusOnMount<HTMLInputElement>(mode === 'create')
 
   // Surface AgentSkills-spec violations inline as soon as the user has typed
   // something, but don't shout at an empty initial state. Validate against the

@@ -4,7 +4,7 @@
 
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-import { AnimatePresence, m } from 'framer-motion'
+import { AnimatePresence, m, type Transition } from 'framer-motion'
 import { lazy, Suspense, useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { loadChatMessageList } from './chat-messages-loader'
@@ -19,6 +19,11 @@ import { AppLogo } from '../app-logo'
 import { getGreeting } from './chat-ui-greeting'
 
 const ChatMessageList = lazy(() => loadChatMessageList().then((module) => ({ default: module.ChatMessageList })))
+
+// One tween drives the whole first-send choreography — the composer's
+// center→bottom slide and the message list's entrance — so every moving
+// surface follows the same curve and settles together.
+const firstSendTween: Transition = { type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }
 
 const EmptyChatGreeting = () => {
   return (
@@ -89,11 +94,7 @@ export default function ChatUI() {
                 initial={{ opacity: 0, y: isMobile ? 24 : 0 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{
-                  type: 'tween',
-                  ease: [0.2, 0.9, 0.1, 1],
-                  duration: 0.25,
-                }}
+                transition={firstSendTween}
                 className="h-full overflow-y-auto hide-scrollbar"
               >
                 {/* Scroll captures the full width; the content stays centered.
@@ -135,21 +136,9 @@ export default function ChatUI() {
           )}
           initial={false}
           layout
-          transition={{
-            type: 'tween',
-            ease: [0.2, 0.9, 0.1, 1],
-            duration: 0.25,
-          }}
+          transition={firstSendTween}
         >
-          <m.div
-            className="flex flex-col items-center w-full"
-            layout
-            transition={{
-              type: 'tween',
-              ease: [0.2, 0.9, 0.1, 1],
-              duration: 0.25,
-            }}
-          >
+          <m.div className="flex flex-col items-center w-full" layout transition={firstSendTween}>
             {/* Exit fade so the greeting dissolves while the composer slides
                 down on the first send — without it the greeting pops out
                 abruptly, which reads as a hitch in the otherwise-smooth
@@ -171,15 +160,7 @@ export default function ChatUI() {
             <div className="w-full max-w-[696px] min-w-[268px]">
               <PermissionDialogHost />
             </div>
-            <m.div
-              className="w-full max-w-[696px] min-w-[268px] rounded-2xl"
-              layout
-              transition={{
-                type: 'tween',
-                ease: [0.2, 0.9, 0.1, 1],
-                duration: 0.25,
-              }}
-            >
+            <m.div className="w-full max-w-[696px] min-w-[268px] rounded-2xl" layout transition={firstSendTween}>
               <ChatPromptInput />
             </m.div>
           </m.div>

@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Loader2, X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -15,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
+import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
 import { catalogRequiresApiKey, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
@@ -94,14 +94,9 @@ export const AddModelForm = ({
   const url = form.watch('url')
   const model = form.watch('model')
 
-  // Auto-focus the first control (the provider picker) on mount — the user
-  // just chose "New Model" / "Add models", so land ready to pick. The rAF
-  // defers past the responsive modal's own focus management on mobile.
-  const providerTriggerRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => providerTriggerRef.current?.focus())
-    return () => cancelAnimationFrame(frame)
-  }, [])
+  // The user just chose "New Model" / "Add Model" — land ready to pick a
+  // provider (the form's first control).
+  const providerTriggerRef = useAutofocusOnMount<HTMLButtonElement>()
 
   const showModelSelection =
     !catalogError &&

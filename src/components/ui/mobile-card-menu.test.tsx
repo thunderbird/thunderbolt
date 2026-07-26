@@ -27,8 +27,21 @@ describe('MobileCardMenu', () => {
       'data-[swipe-direction=down]:bottom-[var(--drawer-effective-keyboard-inset)]',
       'data-[swipe-direction=down]:after:h-[calc(10rem+var(--drawer-effective-keyboard-inset))]',
     )
+    expect((drawer as HTMLElement).style.getPropertyValue('--mobile-card-menu-bottom-padding')).toBe(
+      'max(var(--safe-area-bottom-padding, 0px) - var(--drawer-effective-keyboard-inset, 0px), 0px)',
+    )
+    expect(drawer).toHaveClass('pb-[var(--mobile-card-menu-bottom-padding)]')
     expect(drawer).not.toHaveClass('overflow-hidden')
     expect(drawer).not.toHaveClass('data-[swipe-direction=down]:border-t', 'shadow-2xl')
+    // Bounded flex column: children with min-h-0 scroll regions must shrink
+    // (not clip) when the keyboard inset reduces the drawer's max height.
+    expect(screen.getByText('Model one').parentElement).toHaveClass(
+      'flex',
+      'min-h-0',
+      'flex-1',
+      'flex-col',
+      'overflow-hidden',
+    )
     expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
     expect(document.querySelector('[data-slot="drawer-handle"]')).toHaveClass(
       'h-1',

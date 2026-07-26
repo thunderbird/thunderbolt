@@ -198,6 +198,26 @@ describe('ChatSkillsBar', () => {
     expect(screen.getByRole('textbox', { name: 'Search skills' })).toHaveClass('h-[var(--touch-height-default)]')
   })
 
+  it('keeps the New Skill action reachable when the keyboard shrinks the mobile drawer', () => {
+    forceMobileViewport()
+    const skills = Array.from({ length: 12 }, (_, index) => skill(`skill-${index}`, `skill-${index}`))
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [] }),
+      useLibrarySkills: fakeUseLibrarySkills(skills),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(skills.map(({ id }) => id))),
+    })
+
+    fireEvent.click(screen.getByLabelText('Add a skill'))
+
+    // Only the list scrolls; search and the New Skill footer stay pinned
+    // inside the drawer's bounded flex column instead of clipping.
+    const list = screen.getByRole('list')
+    expect(list).toHaveClass('min-h-0', 'overflow-y-auto', 'overscroll-contain')
+    expect(list.parentElement).toHaveClass('flex', 'min-h-0', 'flex-col')
+    expect(screen.getByText('New Skill').parentElement).toHaveClass('shrink-0')
+    expect(screen.getByRole('textbox', { name: 'Search skills' }).closest('.shrink-0')).toBeInTheDocument()
+  })
+
   it('opens reorder as a mobile bottom drawer', async () => {
     forceMobileViewport()
     const a = skill('a', 'daily-brief')

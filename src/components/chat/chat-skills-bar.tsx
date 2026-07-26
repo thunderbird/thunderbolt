@@ -200,7 +200,7 @@ export const ChatSkillsBar = ({
       {/* Search only appears once the list is long enough for scanning to
           hurt (6+ rows) — a filter box above a short list is noise. */}
       {pinnable.length > 5 && (
-        <div className="p-1 pb-2">
+        <div className="shrink-0 p-1 pb-2">
           <SearchInput
             value={addQuery}
             onChange={(event) => dispatch({ type: 'ADD_QUERY_CHANGED', value: event.target.value })}
@@ -210,7 +210,10 @@ export const ChatSkillsBar = ({
           />
         </div>
       )}
-      <ul className="max-h-64 overflow-y-auto">
+      {/* The list is the only region that scrolls: on desktop it caps at
+          16rem; on mobile the drawer (shrunk by the keyboard inset) bounds it,
+          keeping the search field and "New Skill" row pinned and visible. */}
+      <ul className="min-h-0 overflow-y-auto overscroll-contain md:max-h-64">
         {pinnable.length === 0 && (
           <li className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">All skills are pinned</li>
         )}
@@ -239,7 +242,7 @@ export const ChatSkillsBar = ({
           </li>
         ))}
       </ul>
-      <div className="-mx-1 mt-1 border-t border-border px-1 pt-1 dark:border-border/50">
+      <div className="-mx-1 mt-1 shrink-0 border-t border-border px-1 pt-1 dark:border-border/50">
         <button
           type="button"
           onClick={() => {
@@ -276,7 +279,7 @@ export const ChatSkillsBar = ({
       }}
       mobileMenu={{ initialFocus: false }}
     >
-      <div className="p-1">{addMenuContent}</div>
+      <div className="flex min-h-0 flex-col p-1">{addMenuContent}</div>
     </ResponsivePopover>
   )
 

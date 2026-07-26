@@ -3,13 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Plus } from 'lucide-react'
-import { lazy, Suspense, useEffect, useReducer } from 'react'
-import { createPortal, flushSync } from 'react-dom'
-import { useNavigate } from 'react-router'
+import { lazy, Suspense, useReducer } from 'react'
+import { flushSync } from 'react-dom'
 
 import { useCreateItem } from '@/components/create-item/context'
 import { Button } from '@/components/ui/button'
-import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
+import { MobileCardMenu } from '@/components/ui/mobile-card-menu'
 import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { SearchInput } from '@/components/ui/search-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -66,8 +65,8 @@ const barReducer = (state: BarState, action: BarAction): BarState => {
 }
 
 type ChatSkillsBarProps = {
-  /** Insert `"/slug "` into the chat input at the cursor. */
-  onAddToChat: (slug: string) => void
+  /** Insert the skill's display token into the chat input at the cursor. */
+  onAddToChat: (skill: Skill) => void
   /** Insert the resolved skill's instruction prose into the chat input. */
   onAddInstruction: (instruction: string) => void
   /**
@@ -105,7 +104,6 @@ export const ChatSkillsBar = ({
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
   const trackSkillEvent = useSkillTelemetry()
-  const navigate = useNavigate()
   const { openCreateItem } = useCreateItem()
 
   const [{ reorderMode, addOpen, addQuery, actionError }, dispatch] = useReducer(barReducer, initialBarState)
@@ -132,32 +130,33 @@ export const ChatSkillsBar = ({
     return null
   }
 
-  if (reorderMode) {
-    return (
-      <>
-        {isMobile && <MobileOverlay onDismiss={() => dispatch({ type: 'REORDER_CLOSED' })} />}
-        <Suspense fallback={null}>
-          <ReorderPanel
-            pinned={pinned}
-            onReorder={async (ids, move) => {
-              // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
-              // even for adjacent swaps, where a diff-based heuristic can't tell
-              // which side the user actually dragged. Await the mutation before
-              // firing telemetry so a rejection doesn't record a phantom event.
-              dispatch({ type: 'MUTATION_STARTED' })
-              try {
-                await reorderPins(ids)
-                trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
-              } catch (error) {
-                console.error('reorderPins failed:', error)
-                dispatch({ type: 'MUTATION_FAILED', message: "Couldn't save the new order." })
-              }
-            }}
-            onClose={() => dispatch({ type: 'REORDER_CLOSED' })}
-          />
-        </Suspense>
-      </>
-    )
+  const closeReorder = () => dispatch({ type: 'REORDER_CLOSED' })
+  const reorderPanel = (
+    <Suspense fallback={null}>
+      <ReorderPanel
+        pinned={pinned}
+        embedded={isMobile}
+        onReorder={async (ids, move) => {
+          // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
+          // even for adjacent swaps, where a diff-based heuristic can't tell
+          // which side the user actually dragged. Await the mutation before
+          // firing telemetry so a rejection doesn't record a phantom event.
+          dispatch({ type: 'MUTATION_STARTED' })
+          try {
+            await reorderPins(ids)
+            trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
+          } catch (error) {
+            console.error('reorderPins failed:', error)
+            dispatch({ type: 'MUTATION_FAILED', message: "Couldn't save the new order." })
+          }
+        }}
+        onClose={closeReorder}
+      />
+    </Suspense>
+  )
+
+  if (reorderMode && !isMobile) {
+    return reorderPanel
   }
 
   // Pinnable = enabled and not already pinned. The popover only ever lists
@@ -205,7 +204,6 @@ export const ChatSkillsBar = ({
           <SearchInput
             value={addQuery}
             onChange={(event) => dispatch({ type: 'ADD_QUERY_CHANGED', value: event.target.value })}
-            inputSize="sm"
             placeholder="Search skills"
             aria-label="Search skills"
             autoFocus={!isMobile}
@@ -276,6 +274,7 @@ export const ChatSkillsBar = ({
         collisionPadding: 12,
         className: 'w-60 max-w-[calc(100vw-1.5rem)] p-0',
       }}
+      mobileMenu={{ initialFocus: false }}
     >
       <div className="p-1">{addMenuContent}</div>
     </ResponsivePopover>
@@ -300,9 +299,9 @@ export const ChatSkillsBar = ({
           <SuggestionChip
             key={skill.id}
             label={skillDisplayName(skill)}
-            onClick={() => onAddToChat(skill.name)}
+            onClick={() => onAddToChat(skill)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
-            onEdit={() => void navigate('/settings/skills', { state: { startEditSkill: skill.id } })}
+            onEdit={() => openCreateItem({ kind: 'skill', skillId: skill.id })}
             onReorder={() => {
               void loadReorderPanel()
               dispatch({ type: 'REORDER_OPENED' })
@@ -317,34 +316,11 @@ export const ChatSkillsBar = ({
           </p>
         )}
       </div>
+      {isMobile && (
+        <MobileCardMenu open={reorderMode} onOpenChange={(open) => !open && closeReorder()} title="Reorder skills">
+          {reorderPanel}
+        </MobileCardMenu>
+      )}
     </>
-  )
-}
-
-/**
- * Backdrop shown behind the reorder panel on mobile.
- * A `<button>` rather than a `<div>` so keyboard users can `Escape` /
- * `Enter` / `Space` to dismiss; the document-level Escape listener is the
- * primary path, but the button keeps the dismiss target focusable for
- * screen readers and assistive tech.
- */
-const MobileOverlay = ({ onDismiss }: { onDismiss: () => void }) => {
-  // Document-level Escape so users don't have to focus the backdrop first.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onDismiss()
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onDismiss])
-
-  return createPortal(
-    <MobileBlurBackdrop
-      className="z-[5] bg-black/30 backdrop-blur-sm backdrop-saturate-100 max-md:backdrop-blur-md max-md:backdrop-saturate-[.25] dark:bg-black/30"
-      onClick={onDismiss}
-    />,
-    document.body,
   )
 }

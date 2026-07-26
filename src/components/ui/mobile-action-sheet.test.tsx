@@ -31,7 +31,10 @@ describe('MobileActionSheet', () => {
 
     const sheet = screen.getByRole('alertdialog', { name: 'Delete this chat?' })
     expect(sheet).toHaveAttribute('data-swipe-direction', 'down')
-    expect(sheet).toHaveClass('data-[swipe-direction=down]:bottom-[var(--drawer-keyboard-inset,var(--kb,0px))]')
+    expect(sheet).toHaveClass(
+      'data-[swipe-direction=down]:bottom-[var(--drawer-effective-keyboard-inset)]',
+      'data-[swipe-direction=down]:after:h-[calc(10rem+var(--drawer-effective-keyboard-inset))]',
+    )
     expect(sheet).toHaveClass('[&_[data-slot=input]]:!bg-card', 'dark:[&_[data-slot=input]]:!bg-input')
     expect(screen.getByText('This will permanently delete this chat.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' }).parentElement).toHaveClass('flex-col-reverse')

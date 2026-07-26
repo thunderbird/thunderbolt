@@ -9,6 +9,7 @@ import { getDb } from '@/db/database'
 import { skillSaveFailedMessage } from '@/skills/skill-save'
 import { useLibrarySkills } from '@/skills/use-skills'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -139,5 +140,34 @@ describe('CreateSkillPanel', () => {
     })
 
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Daily Brief')
+  })
+
+  it('edits an existing skill', async () => {
+    const created = await createSkill(getDb(), {
+      name: 'create-panel-edit-target',
+      label: 'Create Panel Edit Target',
+      description: 'Original description',
+      instruction: 'Original instructions',
+    })
+    const onClose = mock(() => {})
+
+    render(
+      <>
+        <CreateSkillPanel open skillId={created.id} onClose={onClose} onCloseComplete={noopCloseComplete} />
+        <SkillOptionsProbe />
+      </>,
+      { wrapper: createTestProvider() },
+    )
+
+    const nameInput = await waitForElement(() => screen.queryByDisplayValue('Create Panel Edit Target'))
+    fireEvent.change(nameInput, { target: { value: 'Morning Brief' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByTestId('skill-options')).toHaveTextContent('Morning Brief')
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

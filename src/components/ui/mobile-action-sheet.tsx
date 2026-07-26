@@ -4,14 +4,7 @@
 
 import type { ComponentProps, ReactNode } from 'react'
 
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHandle,
-  DrawerTitle,
-  DrawerVirtualKeyboardProvider,
-} from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerDescription, DrawerHandle, DrawerTitle } from '@/components/ui/drawer'
 import { modalFieldSurfaceClass } from '@/components/ui/modal-styles'
 import { cn } from '@/lib/utils'
 
@@ -39,31 +32,18 @@ export const MobileActionSheet = ({
   role = 'dialog',
 }: MobileActionSheetProps) => (
   <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down">
-    <DrawerVirtualKeyboardProvider>
-      <DrawerContent
-        forceBackdrop
-        initialFocus={initialFocus}
-        role={role}
-        // Keyboard-following: --drawer-keyboard-inset comes from
-        // DrawerVirtualKeyboardProvider; --kb is the app-wide keyboard inset
-        // maintained by use-keyboard-inset.ts, as a fallback outside it.
-        className={cn(
-          modalFieldSurfaceClass,
-          'data-[swipe-direction=down]:bottom-[var(--drawer-keyboard-inset,var(--kb,0px))] overflow-hidden',
-        )}
-      >
-        <DrawerHandle className="mb-1 mt-2" />
-        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-[var(--modal-footer-inset)] pt-2">
-          <div className="flex shrink-0 flex-col gap-2">
-            <DrawerTitle className="text-lg leading-none">{title}</DrawerTitle>
-            {description && (
-              <DrawerDescription className="text-[length:var(--font-size-sm)]">{description}</DrawerDescription>
-            )}
-          </div>
-          {children}
+    <DrawerContent forceBackdrop initialFocus={initialFocus} role={role} className={modalFieldSurfaceClass}>
+      <DrawerHandle className="mb-1 mt-2" />
+      <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-[var(--modal-footer-inset)] pt-2">
+        <div className="flex shrink-0 flex-col gap-2">
+          <DrawerTitle className="text-lg leading-none">{title}</DrawerTitle>
+          {description && (
+            <DrawerDescription className="text-[length:var(--font-size-sm)]">{description}</DrawerDescription>
+          )}
         </div>
-      </DrawerContent>
-    </DrawerVirtualKeyboardProvider>
+        {children}
+      </div>
+    </DrawerContent>
   </Drawer>
 )
 

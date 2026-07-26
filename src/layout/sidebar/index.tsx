@@ -104,33 +104,35 @@ export default function Sidebar() {
     },
   })
 
-  // Navigate immediately and let the mobile drawer's close animation play out
-  // over the destination — waiting for the drawer to settle first read as lag.
-  // Chat threads hydrate behind a route-level spinner (see ChatHydrateHandler),
-  // so the heavy message render lands after the initial paint either way.
+  // Keep the current chat mounted until the mobile sidebar has fully covered
+  // it. Hydrating and mounting a long destination chat during the 300ms close
+  // animation competes for the main thread and makes the gesture visibly jank.
+  // Desktop navigation remains synchronous.
   const navigateAndCloseSidebar = useCallback(
-    (path: string) => {
+    async (path: string) => {
+      if (isMobile) {
+        await closeMobileSidebar()
+      }
       navigate(path)
-      void closeMobileSidebar()
     },
-    [closeMobileSidebar, navigate],
+    [closeMobileSidebar, isMobile, navigate],
   )
 
   const createNewChat = () => {
     trackEvent('chat_new_clicked')
-    navigateAndCloseSidebar('/chats/new')
+    void navigateAndCloseSidebar('/chats/new')
   }
 
   const handleChatClick = useCallback(
     (threadId: string) => {
       trackEvent('chat_select', { chat_id: threadId })
-      navigateAndCloseSidebar(`/chats/${threadId}`)
+      void navigateAndCloseSidebar(`/chats/${threadId}`)
     },
     [navigateAndCloseSidebar],
   )
 
   const handleNavigate = (path: string) => {
-    navigateAndCloseSidebar(path)
+    void navigateAndCloseSidebar(path)
   }
 
   const handleSearchClick = (e?: MouseEvent) => {

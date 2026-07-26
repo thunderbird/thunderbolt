@@ -12,7 +12,7 @@ import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { CreateAgentDetailPanel } from '@/components/settings/agents/create-agent-detail-panel'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
-import { SettingsListPane } from '@/components/settings/settings-list'
+import { SettingsListBody, SettingsListPane } from '@/components/settings/settings-list'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase } from '@/contexts'
@@ -105,7 +105,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             is open on a narrow window: the list stops shrinking and slides
             under the panel (the column's overflow-hidden clips it at the
             panel edge). */}
-        <SettingsListPane className="gap-6 overflow-y-auto">
+        <SettingsListPane className="gap-6">
           <PageHeader title="Agents">
             {allowCustomAgents && (
               <PageCreateAction label="New Agent" onClick={openAddPanel} disabled={!currentUserId} />
@@ -116,7 +116,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
               aria-pressed, so they behave as the toggles they announce.
               The CLI row shares the list's row gap so it reads as one list
               (gap-4, matching the models page). */}
-          <div className="flex flex-col gap-4 pt-3 md:pt-0">
+          <SettingsListBody className="gap-4 max-md:pt-[calc(var(--header-inset)+0.75rem)] md:pt-0">
             <AgentList
               agents={agents}
               selectedId={activeAgent?.id ?? null}
@@ -124,7 +124,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             />
 
             <ThunderboltCliRow isSelected={cliOpen} onOpen={toggleCliPanel} />
-          </div>
+          </SettingsListBody>
         </SettingsListPane>
       </div>
 

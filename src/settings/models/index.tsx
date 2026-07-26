@@ -79,7 +79,7 @@ const ModelsPage = () => {
   return (
     <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
-        <SettingsListPane className="gap-6 pb-12">
+        <SettingsListPane className="gap-6 md:pb-12">
           <PageHeader title="Models">
             <PageCreateAction label="New Model" onClick={page.openAddPanel} />
           </PageHeader>

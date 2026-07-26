@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { modalAnimationClass, modalCloseClass, modalFieldSurfaceClass } from '@/components/ui/modal-styles'
 import { Scrim } from '@/components/ui/scrim'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { collapseAutoFocusedTextSelection } from '@/lib/focus'
 import { cn } from '@/lib/utils'
 
 // =============================================================================
@@ -93,9 +94,14 @@ const ResponsiveModalDialogContent = ({
   showCloseButton = true,
   surfaceVariant,
   flush = false,
+  onOpenAutoFocus,
   ...props
 }: ResponsiveModalDialogContentProps) => {
   const { isMobile } = useIsMobile()
+  const handleOpenAutoFocus = (event: Event) => {
+    onOpenAutoFocus?.(event)
+    collapseAutoFocusedTextSelection(event)
+  }
 
   return (
     <ResponsiveModalContext value={{ isMobile }}>
@@ -110,6 +116,7 @@ const ResponsiveModalDialogContent = ({
             className,
           )}
           style={getResponsiveModalSurfaceStyle(isMobile, flush)}
+          onOpenAutoFocus={handleOpenAutoFocus}
           {...props}
         >
           {/* Content runs to the top of the window, so it needs the same scrim

@@ -24,7 +24,10 @@ describe('MobileCardMenu', () => {
     expect(drawer).toHaveClass(
       'data-[swipe-direction=down]:rounded-t-3xl',
       'data-[swipe-direction=down]:shadow-[var(--shadow-drawer-down)]',
+      'data-[swipe-direction=down]:bottom-[var(--drawer-effective-keyboard-inset)]',
+      'data-[swipe-direction=down]:after:h-[calc(10rem+var(--drawer-effective-keyboard-inset))]',
     )
+    expect(drawer).not.toHaveClass('overflow-hidden')
     expect(drawer).not.toHaveClass('data-[swipe-direction=down]:border-t', 'shadow-2xl')
     expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
     expect(document.querySelector('[data-slot="drawer-handle"]')).toHaveClass(

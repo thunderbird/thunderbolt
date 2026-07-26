@@ -5,7 +5,7 @@
 import { Loader2 } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
 
-import { type CreateItemRequest, useCreateItem } from './context'
+import { createItemTitle, type CreateItemRequest, useCreateItem } from './context'
 import { CreateItemPanelShell } from './create-item-panel-shell'
 
 const CreateSkillPanel = lazy(() =>
@@ -29,7 +29,13 @@ const LoadingPanel = ({
   onClose: () => void
   onCloseComplete: () => void
 }) => (
-  <CreateItemPanelShell kind={request.kind} open={open} onClose={onClose} onCloseComplete={onCloseComplete}>
+  <CreateItemPanelShell
+    kind={request.kind}
+    title={createItemTitle(request)}
+    open={open}
+    onClose={onClose}
+    onCloseComplete={onCloseComplete}
+  >
     <div className="flex flex-1 items-center justify-center">
       <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
     </div>
@@ -65,7 +71,13 @@ export const CreateItemHost = () => {
   const panel = (() => {
     switch (renderedRequest.kind) {
       case 'skill':
-        return <CreateSkillPanel {...sharedProps} initialName={renderedRequest.initialName} />
+        return (
+          <CreateSkillPanel
+            {...sharedProps}
+            initialName={renderedRequest.initialName}
+            skillId={renderedRequest.skillId}
+          />
+        )
       case 'agent':
         return <CreateAgentPanel {...sharedProps} />
       case 'model':

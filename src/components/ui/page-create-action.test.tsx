@@ -33,6 +33,7 @@ describe('PageCreateAction', () => {
     expect(button).toHaveClass('rounded-full', 'border-none')
     // Portaled so `position: fixed` anchors to the viewport, not an ancestor.
     expect(button.parentElement).toBe(document.body)
+    expect(document.querySelector('[data-slot="page-create-action-scrim"]')).toHaveClass('fixed', 'z-20')
   })
 
   it('forwards clicks and the disabled state in both layouts', () => {

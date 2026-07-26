@@ -12,12 +12,13 @@ import { MemoryRouter } from 'react-router'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 
 // Per docs/development/testing.md: do NOT mock app-internal modules. Real implementations
 // are used via createTestProvider + SignInModalProvider + SidebarProvider. Modal components
 // only render their dialog when `open={true}`, so leaving them real is harmless here.
 
-import { SidebarProvider } from '@/components/ui/sidebar'
+import { SidebarProvider, useSidebar } from '@/components/ui/sidebar'
 import { SignInModalProvider } from '@/contexts'
 import type { AuthClient } from '@/contexts'
 import { getDatabaseInstance } from '@/db/database'
@@ -35,9 +36,22 @@ afterAll(async () => {
 
 afterEach(() => {
   cleanup()
+  restoreViewport()
 })
 
-const renderWithProviders = (authClient: AuthClient) => {
+const MobileSidebarStateProbe = () => {
+  const { openMobile, setOpenMobile } = useSidebar()
+  return (
+    <>
+      <button type="button" onClick={() => setOpenMobile(true)}>
+        Open test sidebar
+      </button>
+      <output data-testid="mobile-sidebar-open">{String(openMobile)}</output>
+    </>
+  )
+}
+
+const renderWithProviders = (authClient: AuthClient, children?: ReactNode) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter>
@@ -48,7 +62,13 @@ const renderWithProviders = (authClient: AuthClient) => {
       </TestProvider>
     </MemoryRouter>
   )
-  return render(<SidebarFooter />, { wrapper: Wrapper })
+  return render(
+    <>
+      <SidebarFooter />
+      {children}
+    </>,
+    { wrapper: Wrapper },
+  )
 }
 
 describe('SidebarFooter', () => {
@@ -120,6 +140,19 @@ describe('SidebarFooter', () => {
       renderWithProviders(authClient)
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
       expect(screen.queryByText('Sign in')).toBeNull()
+    })
+
+    it('keeps the mobile sidebar open behind the sign-in modal', () => {
+      forceMobileViewport()
+      const authClient = createMockAuthClient({ session: null })
+      renderWithProviders(authClient, <MobileSidebarStateProbe />)
+      fireEvent.click(screen.getByRole('button', { name: 'Open test sidebar' }))
+      expect(screen.getByTestId('mobile-sidebar-open')).toHaveTextContent('true')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+      expect(screen.getByRole('dialog', { name: 'Sign In' })).toBeInTheDocument()
+      expect(screen.getByTestId('mobile-sidebar-open')).toHaveTextContent('true')
     })
   })
 

@@ -4,7 +4,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { PageCreateAction } from '@/components/ui/page-create-action'
+import { PageCreateAction, pageCreateActionClearanceClass } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -13,7 +13,7 @@ import { createTask, deleteTask, getIncompleteTasks, getIncompleteTasksCount, up
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { Task } from '@/types'
-import type { DropAnimation } from '@dnd-kit/core'
+import type { DropAnimation, Modifier } from '@dnd-kit/core'
 import {
   closestCenter,
   DndContext,
@@ -37,8 +37,27 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { CheckCircle2, GripVertical, Plus } from 'lucide-react'
-import { type KeyboardEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type KeyboardEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react'
 import { v7 as uuidv7 } from 'uuid'
+
+/** Keeps task reordering on the list's vertical track. */
+export const lockTaskReorderToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 })
+
+const taskReorderModifiers = [lockTaskReorderToVerticalAxis]
+const taskDropAnimation: DropAnimation = {
+  duration: 80,
+  easing: 'ease-out',
+}
 
 /**
  * Whether the referenced element's content overflows horizontally — i.e. the
@@ -62,24 +81,28 @@ const useIsTruncated = (text: string) => {
   return { ref, isTruncated }
 }
 
+export type TaskListItem = Pick<Task, 'id' | 'item' | 'order' | 'isComplete'>
+
 // Task Item Component - Memoized for performance
 type TaskItemProps = {
-  task: Task
+  task: TaskListItem
   isCompleting: boolean
+  isPending?: boolean
   onComplete: (id: string) => void
   onEdit: (id: string, value: string) => void
   onDelete: (id: string) => void
 }
 
-const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: TaskItemProps) => {
+const TaskItem = memo(({ task, isCompleting, isPending = false, onComplete, onEdit, onDelete }: TaskItemProps) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(task.item)
   const inputRef = useRef<HTMLInputElement>(null)
   const { ref: taskTextRef, isTruncated } = useIsTruncated(task.item)
+  const interactionsDisabled = isEditing || isCompleting || isPending
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
-    disabled: isEditing || isCompleting,
+    disabled: interactionsDisabled,
   })
 
   const style = {
@@ -132,6 +155,8 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
   return (
     <div
       ref={setNodeRef}
+      data-task-id={task.id}
+      data-pending={isPending ? '' : undefined}
       style={{
         ...style,
         opacity: isCompleting ? 0 : isDragging ? 0.5 : 1,
@@ -147,19 +172,23 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
         isDragging ? 'z-20 shadow-lg' : 'hover:z-10 focus-within:z-10',
       )}
     >
-      <button
-        className={cn(
-          'touch-none p-1 text-muted-foreground',
-          'hover:text-foreground transition-colors',
-          'cursor-grab active:cursor-grabbing',
-          (isEditing || isCompleting) && 'opacity-50 cursor-not-allowed',
-        )}
-        {...attributes}
-        {...listeners}
-        disabled={isEditing || isCompleting}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
+      {isPending ? (
+        <div aria-hidden className="h-6 w-6 p-1" />
+      ) : (
+        <button
+          className={cn(
+            'touch-none p-1 text-muted-foreground',
+            'hover:text-foreground transition-colors',
+            'cursor-grab active:cursor-grabbing',
+            interactionsDisabled && 'opacity-50 cursor-not-allowed',
+          )}
+          {...attributes}
+          {...listeners}
+          disabled={interactionsDisabled}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
 
       <div className="flex-1 min-w-0">
         {isEditing ? (
@@ -181,7 +210,7 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
         ) : (
           <button
             onClick={handleStartEdit}
-            disabled={isCompleting}
+            disabled={isCompleting || isPending}
             className={cn(
               'group/task-text relative block h-5 w-full select-none text-left text-sm leading-5',
               'p-0 m-0',
@@ -209,7 +238,7 @@ const TaskItem = memo(({ task, isCompleting, onComplete, onEdit, onDelete }: Tas
       <Checkbox
         aria-label={`Complete ${task.item}`}
         checked={isCompleting}
-        disabled={isEditing || isCompleting}
+        disabled={interactionsDisabled}
         onCheckedChange={(checked) => {
           if (checked) {
             onComplete(task.id)
@@ -257,7 +286,10 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-background px-3 py-2 hover:bg-muted/50">
+    <div
+      data-slot="new-task-input"
+      className="flex items-center gap-3 rounded-lg bg-background px-3 py-2 hover:bg-muted/50"
+    >
       <div className="w-6 h-6 p-1" /> {/* Spacer for drag handle */}
       <div className="flex-1 min-w-0">
         <input
@@ -276,24 +308,101 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
   )
 }
 
-// Main Tasks Page Component
-export default function TasksPage() {
+type TasksPageState = {
+  isAddingNew: boolean
+  completingTasks: Set<string>
+  activeId: string | null
+  optimisticOrder: string[]
+  searchQuery: string
+  optimisticTask: TaskListItem | null
+}
+
+type TasksPageAction =
+  | { type: 'START_ADD' }
+  | { type: 'CANCEL_ADD' }
+  | { type: 'SUBMIT_ADD'; task: TaskListItem }
+  | { type: 'ADD_FAILED'; id: string }
+  | { type: 'ADD_RECONCILED'; id: string }
+  | { type: 'SEARCH_CHANGED'; query: string }
+  | { type: 'COMPLETE_STARTED'; id: string }
+  | { type: 'COMPLETE_FINISHED'; id: string }
+  | { type: 'DRAG_STARTED'; id: string }
+  | { type: 'DRAG_ENDED' }
+  | { type: 'ORDER_CHANGED'; order: string[] }
+  | { type: 'ORDER_RESET' }
+
+/** Normalizes task search once so optimistic and database filtering stay aligned. */
+export const normalizeTaskSearchQuery = (query: string) => query.trim()
+
+export const initialTasksPageState: TasksPageState = {
+  isAddingNew: false,
+  completingTasks: new Set(),
+  activeId: null,
+  optimisticOrder: [],
+  searchQuery: '',
+  optimisticTask: null,
+}
+
+/** Applies task-list interaction state transitions without coupling them to the database. */
+export const tasksPageReducer = (state: TasksPageState, action: TasksPageAction): TasksPageState => {
+  switch (action.type) {
+    case 'START_ADD':
+      return { ...state, isAddingNew: true }
+    case 'CANCEL_ADD':
+      return { ...state, isAddingNew: false }
+    case 'SUBMIT_ADD':
+      return { ...state, isAddingNew: false, optimisticTask: action.task }
+    case 'ADD_FAILED':
+    case 'ADD_RECONCILED':
+      return state.optimisticTask?.id === action.id ? { ...state, optimisticTask: null } : state
+    case 'SEARCH_CHANGED':
+      return { ...state, searchQuery: normalizeTaskSearchQuery(action.query) }
+    case 'COMPLETE_STARTED':
+      return { ...state, completingTasks: new Set(state.completingTasks).add(action.id) }
+    case 'COMPLETE_FINISHED': {
+      const completingTasks = new Set(state.completingTasks)
+      completingTasks.delete(action.id)
+      return { ...state, completingTasks }
+    }
+    case 'DRAG_STARTED':
+      return { ...state, activeId: action.id }
+    case 'DRAG_ENDED':
+      return { ...state, activeId: null }
+    case 'ORDER_CHANGED':
+      return { ...state, optimisticOrder: action.order }
+    case 'ORDER_RESET':
+      return { ...state, optimisticOrder: [] }
+  }
+}
+
+/** Keeps a submitted task visible until the reactive query contains the same row. */
+export const getVisibleOptimisticTask = (
+  optimisticTask: TaskListItem | null,
+  tasks: TaskListItem[],
+  searchQuery: string,
+): TaskListItem | null => {
+  if (!optimisticTask || tasks.some((task) => task.id === optimisticTask.id)) {
+    return null
+  }
+  const query = normalizeTaskSearchQuery(searchQuery).toLowerCase()
+  return !query || optimisticTask.item.toLowerCase().includes(query) ? optimisticTask : null
+}
+
+const useTasksPageState = () => {
   const db = useDatabase()
 
-  // State
-  const [isAddingNew, setIsAddingNew] = useState(false)
-  const [completingTasks, setCompletingTasks] = useState<Set<string>>(new Set())
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [optimisticOrder, setOptimisticOrder] = useState<string[]>([])
+  const [state, dispatch] = useReducer(tasksPageReducer, initialTasksPageState)
+  const { isAddingNew, completingTasks, activeId, optimisticOrder, searchQuery, optimisticTask } = state
 
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
-
-  const handleSearch = (value: string) => {
-    setDebouncedSearchQuery(value)
-    if (value.trim()) {
-      trackEvent('task_search', { query_length: value.length })
+  const handleSearch = useCallback((value: string) => {
+    const query = normalizeTaskSearchQuery(value)
+    dispatch({ type: 'SEARCH_CHANGED', query })
+    if (query) {
+      trackEvent('task_search', { query_length: query.length })
     }
-  }
+  }, [])
+  const startAddingTask = useCallback(() => dispatch({ type: 'START_ADD' }), [])
+  const cancelAddingTask = useCallback(() => dispatch({ type: 'CANCEL_ADD' }), [])
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -307,26 +416,24 @@ export default function TasksPage() {
     }),
   )
 
-  // Faster drop animation configuration for DragOverlay
-  const dropAnimation: DropAnimation = {
-    duration: 80, // nearly instant
-    easing: 'ease-out',
-  }
-
   // Fetch tasks via PowerSync for reactive/live updates
   const {
     data: tasks = [],
     isLoading,
     isPlaceholderData,
   } = useQuery({
-    queryKey: ['tasks', debouncedSearchQuery],
-    query: toCompilableQuery(getIncompleteTasks(db, debouncedSearchQuery)),
+    queryKey: ['tasks', searchQuery],
+    query: toCompilableQuery(getIncompleteTasks(db, searchQuery)),
     placeholderData: (previousData) => previousData,
   })
 
+  if (optimisticTask && tasks.some((task) => task.id === optimisticTask.id)) {
+    dispatch({ type: 'ADD_RECONCILED', id: optimisticTask.id })
+  }
+
   // Reset optimistic order when tasks change significantly (render-time check)
   if (!activeId && optimisticOrder.length > 0 && optimisticOrder.length !== tasks.length) {
-    setOptimisticOrder([])
+    dispatch({ type: 'ORDER_RESET' })
   }
 
   // Create ordered tasks
@@ -349,18 +456,14 @@ export default function TasksPage() {
 
   // Mutations
   const addTaskMutation = useMutation({
-    mutationFn: async (item: string) => {
-      const order = tasks.length > 0 ? Math.min(...tasks.map((t) => t.order)) - 100 : 1000
-
-      await createTask(db, {
-        id: uuidv7(),
-        item,
-        order,
-        isComplete: 0,
-      })
+    mutationFn: async (task: TaskListItem) => {
+      await createTask(db, task)
     },
-    onSuccess: (_, item) => {
-      trackEvent('task_add', { task_length: item.length })
+    onSuccess: (_, task) => {
+      trackEvent('task_add', { task_length: task.item.length })
+    },
+    onError: (_, task) => {
+      dispatch({ type: 'ADD_FAILED', id: task.id })
     },
   })
 
@@ -401,10 +504,17 @@ export default function TasksPage() {
   // Handlers
   const handleAddTask = useCallback(
     (item: string) => {
-      addTaskMutation.mutate(item)
-      setIsAddingNew(false)
+      const order = tasks.length > 0 ? Math.min(...tasks.map((task) => task.order)) - 100 : 1000
+      const task: TaskListItem = {
+        id: uuidv7(),
+        item,
+        order,
+        isComplete: 0,
+      }
+      dispatch({ type: 'SUBMIT_ADD', task })
+      addTaskMutation.mutate(task)
     },
-    [addTaskMutation],
+    [addTaskMutation, tasks],
   )
 
   const handleEditTask = useCallback(
@@ -423,22 +533,18 @@ export default function TasksPage() {
 
   const handleCompleteTask = useCallback(
     (id: string) => {
-      setCompletingTasks((prev) => new Set(prev).add(id))
+      dispatch({ type: 'COMPLETE_STARTED', id })
 
       setTimeout(() => {
         completeTaskMutation.mutate(id)
-        setCompletingTasks((prev) => {
-          const newSet = new Set(prev)
-          newSet.delete(id)
-          return newSet
-        })
+        dispatch({ type: 'COMPLETE_FINISHED', id })
       }, 1000)
     },
     [completeTaskMutation],
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveId(event.active.id as string)
+    dispatch({ type: 'DRAG_STARTED', id: event.active.id as string })
   }, [])
 
   const handleDragEnd = useCallback(
@@ -453,7 +559,7 @@ export default function TasksPage() {
 
         if (oldIndex !== -1 && newIndex !== -1) {
           const newOrder = arrayMove(currentOrder, oldIndex, newIndex)
-          setOptimisticOrder(newOrder)
+          dispatch({ type: 'ORDER_CHANGED', order: newOrder })
 
           // Calculate order updates
           const updates: { id: string; order: number }[] = []
@@ -488,32 +594,95 @@ export default function TasksPage() {
         }
       }
 
-      setActiveId(null)
+      dispatch({ type: 'DRAG_ENDED' })
     },
     [optimisticOrder, tasks, updateOrderMutation],
   )
 
   const activeTask = useMemo(() => tasks.find((t) => t.id === activeId), [tasks, activeId])
+  const visibleOptimisticTask = getVisibleOptimisticTask(optimisticTask, tasks, searchQuery)
+  const visibleTasks: TaskListItem[] = visibleOptimisticTask ? [visibleOptimisticTask, ...orderedTasks] : orderedTasks
+  const taskCreationSettling = addTaskMutation.isPending || visibleOptimisticTask !== null
 
   // Check if we should show empty state
-  const showEmptyState = !isLoading && !isPlaceholderData && totalCount === 0 && !debouncedSearchQuery && !isAddingNew
+  const showEmptyState = !isLoading && !isPlaceholderData && visibleTasks.length === 0 && !searchQuery && !isAddingNew
+
+  return {
+    activeTask,
+    cancelAddingTask,
+    completingTasks,
+    handleAddTask,
+    handleCompleteTask,
+    handleDeleteTask,
+    handleDragEnd,
+    handleDragStart,
+    handleEditTask,
+    handleSearch,
+    isAddingNew,
+    isLoading,
+    orderedTasks,
+    searchQuery,
+    sensors,
+    showEmptyState,
+    startAddingTask,
+    taskCreationSettling,
+    totalCount,
+    visibleOptimisticTask,
+    visibleTasks,
+  }
+}
+
+// Main Tasks Page Component
+const TasksPage = () => {
+  const {
+    activeTask,
+    cancelAddingTask,
+    completingTasks,
+    handleAddTask,
+    handleCompleteTask,
+    handleDeleteTask,
+    handleDragEnd,
+    handleDragStart,
+    handleEditTask,
+    handleSearch,
+    isAddingNew,
+    isLoading,
+    orderedTasks,
+    searchQuery,
+    sensors,
+    showEmptyState,
+    startAddingTask,
+    taskCreationSettling,
+    totalCount,
+    visibleOptimisticTask,
+    visibleTasks,
+  } = useTasksPageState()
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* pt clears the floating header; scrolled rows pass beneath it. */}
       <div className="flex-1 overflow-y-auto pt-[var(--header-inset)]">
-        <div className="flex flex-col gap-3 px-8 py-4 md:px-12 w-full max-w-[1200px] mx-auto">
+        <div
+          className={cn(
+            'mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-4 py-4 md:px-12',
+            pageCreateActionClearanceClass,
+          )}
+        >
           <PageSearch onSearch={handleSearch}>
             <PageHeader title="Tasks">
               {!showEmptyState && (
                 <>
                   <PageSearch.Button />
-                  <PageCreateAction label="New Task" onClick={() => setIsAddingNew(true)} disabled={isAddingNew} />
+                  <PageCreateAction
+                    label="New Task"
+                    onClick={startAddingTask}
+                    disabled={isAddingNew || taskCreationSettling}
+                  />
                 </>
               )}
             </PageHeader>
 
-            <PageSearch.Input placeholder="Search tasks..." onSearch={handleSearch} wrapperClassName="pr-2" />
+            <PageSearch.Input placeholder="Search tasks..." onSearch={handleSearch} />
           </PageSearch>
 
           {showEmptyState ? (
@@ -523,7 +692,7 @@ export default function TasksPage() {
                   <CheckCircle2 className="h-12 w-12 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold mb-6">No tasks yet</h3>
-                <Button variant="outline" onClick={() => setIsAddingNew(true)} className="gap-2">
+                <Button variant="outline" onClick={startAddingTask} className="gap-2">
                   <Plus className="h-4 w-4" />
                   Add Your First Task
                 </Button>
@@ -545,13 +714,25 @@ export default function TasksPage() {
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
+                  modifiers={taskReorderModifiers}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                 >
-                  <SortableContext items={orderedTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-                    <div className="space-y-2">
-                      {isAddingNew && <NewTaskInput onAdd={handleAddTask} onCancel={() => setIsAddingNew(false)} />}
+                  <div className="space-y-2">
+                    {isAddingNew && <NewTaskInput onAdd={handleAddTask} onCancel={cancelAddingTask} />}
 
+                    {visibleOptimisticTask && (
+                      <TaskItem
+                        task={visibleOptimisticTask}
+                        isPending
+                        isCompleting={false}
+                        onComplete={handleCompleteTask}
+                        onEdit={handleEditTask}
+                        onDelete={handleDeleteTask}
+                      />
+                    )}
+
+                    <SortableContext items={orderedTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
                       {orderedTasks.map((task) => (
                         <TaskItem
                           key={task.id}
@@ -562,22 +743,22 @@ export default function TasksPage() {
                           onDelete={handleDeleteTask}
                         />
                       ))}
+                    </SortableContext>
 
-                      {tasks.length === 0 && debouncedSearchQuery && (
-                        <div className="text-center py-12 text-muted-foreground">
-                          No tasks found matching "{debouncedSearchQuery}"
-                        </div>
-                      )}
+                    {visibleTasks.length === 0 && searchQuery && (
+                      <div className="text-center py-12 text-muted-foreground">
+                        No tasks found matching "{searchQuery}"
+                      </div>
+                    )}
 
-                      {totalCount > 50 && (
-                        <div className="text-center py-4 text-sm text-muted-foreground">
-                          Showing 50 of {totalCount} tasks
-                        </div>
-                      )}
-                    </div>
-                  </SortableContext>
+                    {totalCount > 50 && (
+                      <div className="text-center py-4 text-sm text-muted-foreground">
+                        Showing 50 of {totalCount} tasks
+                      </div>
+                    )}
+                  </div>
 
-                  <DragOverlay dropAnimation={dropAnimation}>
+                  <DragOverlay dropAnimation={taskDropAnimation}>
                     {activeTask && (
                       <div className="flex items-center gap-3 rounded-lg bg-background px-3 py-2 shadow-lg border">
                         <GripVertical className="h-4 w-4 text-muted-foreground" />
@@ -598,3 +779,5 @@ export default function TasksPage() {
     </div>
   )
 }
+
+export default TasksPage

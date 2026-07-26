@@ -5,9 +5,10 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { FormFooter } from '@/components/ui/form-footer'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import {
   getResponsiveModalSurfaceClass,
@@ -192,6 +193,43 @@ describe('ResponsiveModal', () => {
       const surface = document.querySelector('[data-slot="dialog-content"]')
       expect(surface).toHaveClass('[&_[data-slot=input]]:!bg-card')
       expect(surface).toHaveClass('dark:[&_[data-slot=input]]:!bg-input')
+    })
+
+    it('collapses the default autofocus selection at the end of text inputs', () => {
+      render(
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Autofocus Dialog</DialogTitle>
+            <input aria-label="Existing value" defaultValue="Existing value" />
+          </DialogContent>
+        </Dialog>,
+      )
+
+      act(() => getClock().tick(16))
+
+      const input = screen.getByRole('textbox', { name: 'Existing value' }) as HTMLInputElement
+      expect(input).toHaveFocus()
+      expect(input.selectionStart).toBe(input.value.length)
+      expect(input.selectionEnd).toBe(input.value.length)
+    })
+
+    it('collapses autofocus selection in the responsive modal shell', () => {
+      render(
+        <Dialog open>
+          <ResponsiveModalContentComposable>
+            <ResponsiveModalTitle>Responsive Autofocus Dialog</ResponsiveModalTitle>
+            <input aria-label="Responsive value" defaultValue="Responsive value" />
+          </ResponsiveModalContentComposable>
+        </Dialog>,
+        { wrapper: createTestProvider() },
+      )
+
+      act(() => getClock().tick(16))
+
+      const input = screen.getByRole('textbox', { name: 'Responsive value' }) as HTMLInputElement
+      expect(input).toHaveFocus()
+      expect(input.selectionStart).toBe(input.value.length)
+      expect(input.selectionEnd).toBe(input.value.length)
     })
   })
 

@@ -5,13 +5,15 @@
 import type { ComponentProps, ReactNode } from 'react'
 
 import { Card } from '@/components/ui/card'
+import { pageCreateActionClearanceClass } from '@/components/ui/page-create-action'
 import { cn } from '@/lib/utils'
 
-/** Shared width and responsive padding for every settings page. */
+/** Shared width and padding; mobile pages reserve the floating header at rest. */
 export const SettingsPageShell = ({ className, ...props }: ComponentProps<'section'>) => (
   <section
     className={cn(
-      'mx-auto flex w-full max-w-[760px] flex-col bg-background p-4 text-foreground md:px-5 md:pt-1',
+      'mx-auto flex w-full max-w-[760px] flex-col bg-background p-4 text-foreground max-md:pt-[calc(var(--header-inset)+1rem)] md:px-5 md:pt-1',
+      pageCreateActionClearanceClass,
       className,
     )}
     {...props}
@@ -20,12 +22,22 @@ export const SettingsPageShell = ({ className, ...props }: ComponentProps<'secti
 
 /** The scrollable list column of a settings page: centered, width-capped shell. */
 export const SettingsListPane = ({ className, ...props }: ComponentProps<'section'>) => (
-  <SettingsPageShell className={cn('h-full gap-3 md:min-w-[360px]', className)} {...props} />
+  <SettingsPageShell className={cn('h-full gap-3 max-md:pb-0 md:min-w-[360px]', className)} {...props} />
 )
 
-/** The scrolling region inside `SettingsListPane` (header stays pinned above it). */
+/**
+ * The scrolling region inside `SettingsListPane`. On mobile it extends beneath
+ * the floating header while equivalent padding keeps its resting position.
+ */
 export const SettingsListBody = ({ className, ...props }: ComponentProps<'div'>) => (
-  <div className={cn('flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto', className)} {...props} />
+  <div
+    className={cn(
+      'flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto max-md:-mt-[var(--header-inset)] max-md:pt-[var(--header-inset)]',
+      pageCreateActionClearanceClass,
+      className,
+    )}
+    {...props}
+  />
 )
 
 /** Uppercase section heading between groups of settings rows. */

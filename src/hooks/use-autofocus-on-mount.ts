@@ -4,6 +4,8 @@
 
 import { useEffect, useRef } from 'react'
 
+import { collapseTextSelectionToEnd } from '@/lib/focus'
+
 /**
  * Returns a ref that focuses its element on mount, deferred one animation
  * frame. Create-style forms attach it to their first field so the user lands
@@ -25,7 +27,11 @@ export const useAutofocusOnMount = <T extends HTMLElement>(enabled = true) => {
     if (!enabled) {
       return
     }
-    const frame = requestAnimationFrame(() => ref.current?.focus())
+    const frame = requestAnimationFrame(() => {
+      const element = ref.current
+      element?.focus()
+      collapseTextSelectionToEnd(element)
+    })
     return () => cancelAnimationFrame(frame)
   }, [enabled])
 

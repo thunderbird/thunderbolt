@@ -24,7 +24,7 @@ type ModelsListProps = {
 
 /** Presentational list of configured models with enable toggles and the add affordance. */
 export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }: ModelsListProps) => (
-  <SettingsListBody className="gap-4 pt-3 md:pt-0">
+  <SettingsListBody className="gap-4 max-md:pt-[calc(var(--header-inset)+0.75rem)] md:pt-0">
     {models.map((model) => {
       const isEnabled = model.enabled === 1
       return (

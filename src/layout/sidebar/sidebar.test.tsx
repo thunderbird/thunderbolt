@@ -15,7 +15,7 @@ import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-rea
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
-import { act, cleanup, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
@@ -135,5 +135,12 @@ describe('Sidebar reactivity', () => {
     )
     expect(scrollArea?.className).not.toContain('shadow-[')
     expect(sidebarFooter?.className).not.toContain('shadow-[')
+
+    const headerSpacer = scrollArea?.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header-spacer"]')
+    const spacerHeight = headerSpacer?.style.height
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }))
+
+    expect(document.querySelector('[data-slot="mobile-chat-search"]')).toHaveClass('absolute', 'pointer-events-auto')
+    expect(headerSpacer?.style.height).toBe(spacerHeight)
   })
 })

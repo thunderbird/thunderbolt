@@ -12,8 +12,6 @@ import { RemoveBridgeDialog } from '@/components/remove-bridge-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import dayjs from 'dayjs'
-import { SectionCard } from '@/components/ui/section-card'
-import { CheckCircle2, Link2, Loader2, QrCode, Smartphone, Trash2, Waypoints } from 'lucide-react'
 import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -24,8 +22,7 @@ import { useRemoveDevice } from '@/hooks/use-remove-device'
 import { useSetDeviceNodeId } from '@/hooks/use-set-device-node-id'
 import { useDevicePairing } from '@/hooks/use-device-pairing'
 import { encodePairingTicket } from '@/lib/pairing-ticket'
-import { SettingsPageShell } from '@/components/settings/settings-list'
-import { cn } from '@/lib/utils'
+import { SettingsPageShell, SettingsSectionLabel } from '@/components/settings/settings-list'
 
 const DeviceQrCode = lazy(() => import('@/components/device-qr-code'))
 const SetNodeIdDialog = lazy(() => import('@/components/set-node-id-dialog'))
@@ -36,9 +33,9 @@ type ConfirmationTarget = {
 }
 
 /** Compact card shell shared by the pending and trusted device rows. */
-const DeviceCard = ({ className, children }: { className?: string; children: ReactNode }) => (
-  <Card className={cn('py-3', className)}>
-    <CardContent className="px-4">{children}</CardContent>
+const DeviceCard = ({ children }: { children: ReactNode }) => (
+  <Card className="gap-0 border-border py-0">
+    <CardContent className="px-4 py-3">{children}</CardContent>
   </Card>
 )
 
@@ -57,6 +54,7 @@ type PendingDeviceRowProps = {
   isApprovePending: boolean
   isApprovingThisDevice: boolean
   isDenyPending: boolean
+  isDenyingThisDevice: boolean
   onApprove: () => void
   onDeny: () => void
 }
@@ -67,29 +65,36 @@ const PendingDeviceRow = ({
   isApprovePending,
   isApprovingThisDevice,
   isDenyPending,
+  isDenyingThisDevice,
   onApprove,
   onDeny,
 }: PendingDeviceRowProps) => (
-  <DeviceCard className="bg-secondary/50">
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <Smartphone className="size-5 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <span className="font-medium truncate">{device.name}</span>
-          <p className="text-sm text-muted-foreground">Waiting for approval</p>
-        </div>
+  <DeviceCard>
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium">{device.name}</p>
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">Waiting for approval</p>
       </div>
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={onDeny} disabled={isDenyPending}>
-          <Trash2 className="size-4 mr-1" />
+      <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={`Deny ${device.name}`}
+          onClick={onDeny}
+          disabled={isDenyPending}
+          isLoading={isDenyingThisDevice}
+          loadingLabel="Denying…"
+        >
           Deny
         </Button>
-        <Button variant="default" size="sm" onClick={onApprove} disabled={isApprovePending}>
-          {isApprovingThisDevice ? (
-            <Loader2 className="size-4 mr-1 animate-spin" />
-          ) : (
-            <CheckCircle2 className="size-4 mr-1" />
-          )}
+        <Button
+          size="sm"
+          aria-label={`Approve ${device.name}`}
+          onClick={onApprove}
+          disabled={isApprovePending}
+          isLoading={isApprovingThisDevice}
+          loadingLabel="Approving…"
+        >
           Approve
         </Button>
       </div>
@@ -102,7 +107,9 @@ type TrustedDeviceRowProps = {
   isCurrent: boolean
   isQrVisible: boolean
   isRevokePending: boolean
+  isRevokingThisDevice: boolean
   isRemovePending: boolean
+  isRemovingThisDevice: boolean
   onRevoke: () => void
   onRemove: () => void
   onToggleQr: () => void
@@ -115,7 +122,9 @@ const TrustedDeviceRow = ({
   isCurrent,
   isQrVisible,
   isRevokePending,
+  isRevokingThisDevice,
   isRemovePending,
+  isRemovingThisDevice,
   onRevoke,
   onRemove,
   onToggleQr,
@@ -123,76 +132,100 @@ const TrustedDeviceRow = ({
 }: TrustedDeviceRowProps) => {
   const isRevoked = device.revokedAt != null
   const isBridge = device.deviceType === 'bridge'
+  const pairingPanelId = `device-pairing-${device.id}`
   return (
     <DeviceCard>
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          {isBridge ? (
-            <Waypoints className="size-5 shrink-0 text-muted-foreground" />
-          ) : (
-            <Smartphone className="size-5 shrink-0 text-muted-foreground" />
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium truncate">{device.name}</span>
-              {isBridge && (
-                <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">Bridge</span>
-              )}
-              {isCurrent && (
-                <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-                  This Device
-                </span>
-              )}
-              {isRevoked && (
-                <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">Revoked</span>
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {isBridge ? 'Accepts connections from your devices' : `Last seen: ${formatLastSeen(device.lastSeen)}`}
-            </p>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="min-w-0 truncate font-medium">{device.name}</p>
+            {isBridge && (
+              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">Bridge</span>
+            )}
+            {isCurrent && (
+              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
+                This device
+              </span>
+            )}
+            {isRevoked && (
+              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">Revoked</span>
+            )}
           </div>
+          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+            {isRevoked && isBridge
+              ? 'No longer accepts device connections'
+              : isBridge
+                ? 'Accepts connections from your devices'
+                : `Last seen ${formatLastSeen(device.lastSeen)}`}
+          </p>
         </div>
-        {!isRevoked && !isCurrent && (
-          <Button variant="ghost" size="sm" onClick={onRevoke} disabled={isRevokePending}>
-            <Trash2 className="size-4 mr-1" />
-            Revoke
-          </Button>
-        )}
-        {isRevoked && isBridge && (
-          <Button variant="ghost" size="sm" onClick={onRemove} disabled={isRemovePending}>
-            <Trash2 className="size-4 mr-1" />
-            Remove
-          </Button>
-        )}
+        <div className="grid grid-cols-1 md:shrink-0">
+          {!isRevoked && !isCurrent && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`Revoke ${device.name}`}
+              onClick={onRevoke}
+              disabled={isRevokePending}
+              isLoading={isRevokingThisDevice}
+              loadingLabel="Revoking…"
+            >
+              Revoke
+            </Button>
+          )}
+          {isRevoked && isBridge && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRemove}
+              disabled={isRemovePending}
+              isLoading={isRemovingThisDevice}
+              loadingLabel="Removing…"
+            >
+              Remove
+            </Button>
+          )}
+        </div>
       </div>
 
       {!isRevoked && (
         <div className="mt-3 flex flex-col gap-2 border-t pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <Link2 className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate font-mono text-[length:var(--font-size-xs)] text-muted-foreground">
-                {device.nodeId ? device.nodeId : 'No pairing identity'}
-              </span>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {device.nodeId && (
-                <Button variant="ghost" size="sm" onClick={onToggleQr}>
-                  <QrCode className="size-4 mr-1" />
-                  {isQrVisible ? 'Hide' : 'Show'}
-                </Button>
-              )}
-              <Button variant="ghost" size="sm" onClick={onOpenPairingDialog}>
-                {device.nodeId ? 'Update' : 'Set node ID'}
+          <p className="text-[length:var(--font-size-xs)] font-medium uppercase tracking-wide text-muted-foreground">
+            Pairing identity
+          </p>
+          <p className="break-all font-mono text-[length:var(--font-size-xs)] text-muted-foreground">
+            {device.nodeId ?? 'Not configured'}
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:flex md:justify-end">
+            {device.nodeId && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`${isQrVisible ? 'Hide' : 'Show'} QR code for ${device.name}`}
+                aria-expanded={isQrVisible}
+                aria-controls={pairingPanelId}
+                onClick={onToggleQr}
+              >
+                {isQrVisible ? 'Hide QR' : 'Show QR'}
               </Button>
-            </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`${device.nodeId ? 'Update' : 'Set up'} pairing for ${device.name}`}
+              onClick={onOpenPairingDialog}
+            >
+              {device.nodeId ? 'Update pairing' : 'Set up pairing'}
+            </Button>
           </div>
           {device.nodeId && isQrVisible && (
-            <Suspense
-              fallback={<p className="text-[length:var(--font-size-xs)] text-muted-foreground">Loading code…</p>}
-            >
-              <DeviceQrCode value={encodePairingTicket({ nodeId: device.nodeId, name: device.name })} />
-            </Suspense>
+            <div id={pairingPanelId} className="flex justify-center pt-2 md:justify-start">
+              <Suspense
+                fallback={<p className="text-[length:var(--font-size-xs)] text-muted-foreground">Loading code…</p>}
+              >
+                <DeviceQrCode value={encodePairingTicket({ nodeId: device.nodeId, name: device.name })} />
+              </Suspense>
+            </div>
           )}
         </div>
       )}
@@ -254,7 +287,7 @@ export default function DevicesSettingsPage() {
   const hasPendingDevices = pendingDevices.length > 0
 
   return (
-    <SettingsPageShell className="gap-6 pb-12">
+    <SettingsPageShell className="gap-6 md:pb-12">
       <PageHeader title="Devices" />
 
       {removeMutation.error && (
@@ -264,50 +297,53 @@ export default function DevicesSettingsPage() {
       )}
 
       {hasPendingDevices && (
-        <>
-          <SectionCard title="Pending Approvals">
-            <div className="flex flex-col gap-3">
-              {pendingDevices.map((device) => (
+        <section className="flex flex-col gap-2">
+          <SettingsSectionLabel>Pending approvals</SettingsSectionLabel>
+          <ul className="flex flex-col gap-4">
+            {pendingDevices.map((device) => (
+              <li key={device.id}>
                 <PendingDeviceRow
-                  key={device.id}
                   device={device}
                   isApprovePending={approveMutation.isPending}
                   isApprovingThisDevice={approveMutation.isPending && approveMutation.variables === device.id}
                   isDenyPending={denyMutation.isPending}
+                  isDenyingThisDevice={denyMutation.isPending && denyMutation.variables === device.id}
                   onApprove={() => setConfirmationTarget({ action: 'approve', deviceId: device.id })}
                   onDeny={() => setConfirmationTarget({ action: 'deny', deviceId: device.id })}
                 />
-              ))}
-            </div>
-          </SectionCard>
-
-          <div className="h-px bg-border" />
-        </>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
-
-      {hasPendingDevices && <h3 className="text-lg font-semibold -mb-2">Trusted Devices</h3>}
 
       {isLoading ? (
         <p className="text-muted-foreground py-4">Loading devices…</p>
       ) : visibleDevices.length === 0 ? (
         <p className="text-muted-foreground py-4">No devices yet. Sign in with sync to see devices here.</p>
       ) : (
-        <div className="flex flex-col gap-4">
-          {visibleDevices.map((device) => (
-            <TrustedDeviceRow
-              key={device.id}
-              device={device}
-              isCurrent={device.id === currentDeviceId}
-              isQrVisible={pairing.qrFor === device.id}
-              isRevokePending={revokeMutation.isPending}
-              isRemovePending={removeMutation.isPending}
-              onRevoke={() => setConfirmationTarget({ action: 'revoke', deviceId: device.id })}
-              onRemove={() => setConfirmationTarget({ action: 'remove', deviceId: device.id })}
-              onToggleQr={() => pairing.toggleQr(device.id)}
-              onOpenPairingDialog={() => pairing.openDialog(device.id)}
-            />
-          ))}
-        </div>
+        <section className="flex flex-col gap-2">
+          {hasPendingDevices && <SettingsSectionLabel>Trusted devices</SettingsSectionLabel>}
+          <ul className="flex flex-col gap-4">
+            {visibleDevices.map((device) => (
+              <li key={device.id}>
+                <TrustedDeviceRow
+                  device={device}
+                  isCurrent={device.id === currentDeviceId}
+                  isQrVisible={pairing.qrFor === device.id}
+                  isRevokePending={revokeMutation.isPending}
+                  isRevokingThisDevice={revokeMutation.isPending && revokeMutation.variables === device.id}
+                  isRemovePending={removeMutation.isPending}
+                  isRemovingThisDevice={removeMutation.isPending && removeMutation.variables === device.id}
+                  onRevoke={() => setConfirmationTarget({ action: 'revoke', deviceId: device.id })}
+                  onRemove={() => setConfirmationTarget({ action: 'remove', deviceId: device.id })}
+                  onToggleQr={() => pairing.toggleQr(device.id)}
+                  onOpenPairingDialog={() => pairing.openDialog(device.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <ApproveDeviceDialog

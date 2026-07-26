@@ -87,6 +87,7 @@ describe('MobileSidebar', () => {
     expect(getSidebar()).toHaveAttribute('data-swipe-direction', 'left')
     expect(getMain()).toHaveClass('bg-background', 'mobile-sidebar-main-shadow')
     expect(getMain().firstElementChild).toHaveAttribute('inert')
+    expect(getMain().firstElementChild).toHaveStyle('--kb: 0px')
     expect(getCloseSurface()).toHaveClass('bg-transparent', 'pointer-events-auto')
     expect(screen.getByRole('navigation', { name: 'Primary navigation' }).parentElement).toHaveClass('flex', 'h-full')
   })
@@ -97,6 +98,7 @@ describe('MobileSidebar', () => {
     expect(getMain()).toHaveStyle('touch-action: pan-y')
     expect(getMain().firstElementChild).toHaveClass('flex', 'h-full', 'flex-1', 'flex-col')
     expect(getMain().firstElementChild).not.toHaveAttribute('inert')
+    expect((getMain().firstElementChild as HTMLElement).style.getPropertyValue('--kb')).toBe('')
     expect(screen.getByRole('button', { name: 'main content' })).toBeInTheDocument()
   })
 
@@ -191,10 +193,12 @@ describe('MobileSidebar', () => {
 
     fireEvent.click(getCloseSurface())
     fireEvent.click(getCloseSurface())
+    expect(getMain().firstElementChild).toHaveStyle('--kb: 0px')
     await flushAnimations()
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(onOpenChange).toHaveBeenCalledTimes(1)
+    expect((getMain().firstElementChild as HTMLElement).style.getPropertyValue('--kb')).toBe('')
   })
 
   it('supports Escape dismissal and reports when closing settles', async () => {

@@ -5,6 +5,7 @@
 import { useReducer } from 'react'
 
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
+import { skillDisplayName } from '@/skills/display'
 import { SkillForm, type SkillFormValues } from '@/skills/skill-form'
 import {
   handleSkillSaveError,
@@ -12,6 +13,9 @@ import {
   skillSaveFailedMessage,
   useCreateSkillTracked,
 } from '@/skills/skill-save'
+import { useSkillTelemetry } from '@/skills/telemetry'
+import { useLibrarySkills } from '@/skills/use-skills'
+import { Loader2 } from 'lucide-react'
 import { CreateItemPanelShell } from './create-item-panel-shell'
 
 type CreateSkillState = {
@@ -59,12 +63,37 @@ type CreateSkillPanelProps = {
   onClose: () => void
   onCloseComplete: () => void
   initialName?: string
+  skillId?: string
 }
 
-/** Creates a skill over the current screen without changing routes. */
-export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName }: CreateSkillPanelProps) => {
+/** Creates or edits a skill over the current screen without changing routes. */
+export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, skillId }: CreateSkillPanelProps) => {
   const createSkillTracked = useCreateSkillTracked()
+  const { skills, isLoading, updateSkill } = useLibrarySkills()
+  const trackSkillEvent = useSkillTelemetry()
   const [state, dispatch] = useReducer(createSkillReducer, initialState)
+  const activeSkill = skillId ? skills.find((skill) => skill.id === skillId) : undefined
+  const isEditing = skillId !== undefined
+
+  if (isEditing && !activeSkill && !isLoading) {
+    throw new Error(`CreateSkillPanel could not find skill ${skillId}`)
+  }
+
+  if (isEditing && !activeSkill) {
+    return (
+      <CreateItemPanelShell
+        kind="skill"
+        title="Edit Skill"
+        open={open}
+        onClose={onClose}
+        onCloseComplete={onCloseComplete}
+      >
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
+        </div>
+      </CreateItemPanelShell>
+    )
+  }
 
   const requestClose = () => {
     if (state.isDirty) {
@@ -76,7 +105,12 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName }
 
   const handleSubmit = async (values: SkillFormValues) => {
     try {
-      await createSkillTracked(values)
+      if (activeSkill) {
+        await updateSkill({ id: activeSkill.id, patch: values })
+        trackSkillEvent('skill_edited', activeSkill.id, { renamed: values.name !== activeSkill.name })
+      } else {
+        await createSkillTracked(values)
+      }
       onClose()
     } catch (error) {
       handleSkillSaveError(error, {
@@ -86,13 +120,27 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName }
     }
   }
 
-  const initialValues = skillCreateInitialValues(initialName)
+  const initialValues = activeSkill
+    ? {
+        name: activeSkill.name,
+        label: skillDisplayName(activeSkill),
+        description: activeSkill.description,
+        instruction: activeSkill.instruction,
+      }
+    : skillCreateInitialValues(initialName)
 
   return (
     <>
-      <CreateItemPanelShell kind="skill" open={open} onClose={requestClose} onCloseComplete={onCloseComplete}>
+      <CreateItemPanelShell
+        kind="skill"
+        title={isEditing ? 'Edit Skill' : undefined}
+        open={open}
+        onClose={requestClose}
+        onCloseComplete={onCloseComplete}
+      >
         <SkillForm
-          mode="create"
+          key={activeSkill ? `edit:${activeSkill.id}` : 'create'}
+          mode={isEditing ? 'edit' : 'create'}
           initialValues={initialValues}
           onCancel={requestClose}
           onSubmit={handleSubmit}
@@ -105,6 +153,8 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName }
       <DiscardCreateDialog
         open={state.isDiscardOpen}
         onOpenChange={(nextOpen) => !nextOpen && dispatch({ type: 'DISCARD_CLOSED' })}
+        title={isEditing ? 'Leave without saving?' : undefined}
+        description={isEditing ? "Your changes won't be saved." : undefined}
         onConfirm={() => {
           dispatch({ type: 'DISCARD_CLOSED' })
           onClose()

@@ -10,7 +10,7 @@ import { useAutofocusOnMount } from './use-autofocus-on-mount'
 
 const TestInput = ({ enabled }: { enabled?: boolean }) => {
   const ref = useAutofocusOnMount<HTMLInputElement>(enabled)
-  return <input ref={ref} aria-label="target" />
+  return <input ref={ref} aria-label="target" defaultValue="Existing text" />
 }
 
 // The global harness fakes requestAnimationFrame (sinon), so the deferred
@@ -24,11 +24,13 @@ const flushAnimationFrame = () => {
 describe('useAutofocusOnMount', () => {
   it('focuses the element one frame after mount', () => {
     const { getByLabelText } = render(<TestInput />)
-    const input = getByLabelText('target')
+    const input = getByLabelText('target') as HTMLInputElement
 
     expect(document.activeElement).not.toBe(input)
     flushAnimationFrame()
     expect(document.activeElement).toBe(input)
+    expect(input.selectionStart).toBe(input.value.length)
+    expect(input.selectionEnd).toBe(input.value.length)
   })
 
   it('does not focus when disabled', () => {

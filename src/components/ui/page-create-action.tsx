@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/button'
 import { useMobileForegroundPortalTarget } from '@/components/ui/mobile-foreground-portal'
+import { Scrim } from '@/components/ui/scrim'
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { getMobileBottomInset } from '@/lib/constants'
 
@@ -16,6 +17,10 @@ type PageCreateActionProps = {
   onClick: () => void
   disabled?: boolean
 }
+
+/** Scroll runway needed to lift a final row above the floating mobile action. */
+export const pageCreateActionClearanceClass =
+  'max-md:pb-[calc(var(--touch-height-lg)+var(--page-create-action-clearance-inset,0px)+4rem)]'
 
 /**
  * A list page's primary create action, rendered where each viewport expects
@@ -60,21 +65,29 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
   }
 
   return createPortal(
-    <Button
-      size="lg"
-      // Sits below the z-50 modal layer: opening a detail panel should bury
-      // the pill under the overlay, not float it above. The bottom inset uses
-      // the same formula as the sidebar footer (see getMobileBottomInset) so
-      // this pill stays aligned with New Chat in both environments.
-      // border-none: the New Chat pill this mirrors is borderless.
-      className="fixed right-4 z-30 rounded-full border-none shadow-lg"
-      style={{ bottom: getMobileBottomInset(isNativeMobile) }}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      <Plus className="size-[var(--icon-size-default)]" />
-      {label}
-    </Button>,
+    <>
+      <div
+        data-slot="page-create-action-scrim"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-20 h-[calc(var(--touch-height-lg)+var(--safe-area-bottom-padding,0px)+4rem)]"
+      >
+        <Scrim edge="bottom" height="100%" />
+      </div>
+      <Button
+        size="lg"
+        // Sits below the z-50 modal layer: opening a detail panel should bury
+        // the pill under the overlay, not float it above. The bottom inset uses
+        // the same formula as the sidebar footer (see getMobileBottomInset) so
+        // this pill stays aligned with New Chat in both environments.
+        // border-none: the New Chat pill this mirrors is borderless.
+        className="fixed right-4 z-30 rounded-full border-none shadow-lg"
+        style={{ bottom: getMobileBottomInset(isNativeMobile) }}
+        onClick={onClick}
+        disabled={disabled}
+      >
+        <Plus className="size-[var(--icon-size-default)]" />
+        {label}
+      </Button>
+    </>,
     portalTarget,
   )
 }

@@ -18,10 +18,17 @@ type MobileUserMessageProps = {
 
 export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMessageProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isPressing, setIsPressing] = useState(false)
   const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
   const { copy } = useCopyToClipboard()
 
-  const longPressHandlers = useLongPress(() => setIsMenuOpen(true))
+  const longPressHandlers = useLongPress(
+    () => {
+      window.getSelection()?.removeAllRanges()
+      setIsMenuOpen(true)
+    },
+    { onPressChange: setIsPressing },
+  )
 
   const handleClose = useCallback(() => setIsMenuOpen(false), [])
   const handleCopy = useCallback(async () => {
@@ -31,7 +38,11 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
 
   return (
     <div data-message-id={message.id}>
-      <div {...longPressHandlers} className={isMenuOpen ? 'relative z-50' : undefined}>
+      <div
+        {...longPressHandlers}
+        data-long-press={isPressing || isMenuOpen ? '' : undefined}
+        className={isMenuOpen ? 'relative z-50' : undefined}
+      >
         <div className={isMenuOpen ? 'transition-transform scale-[1.02]' : undefined}>
           <MessageBubbles message={message} onResendAttachment={onResendAttachment} />
         </div>

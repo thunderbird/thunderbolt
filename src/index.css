@@ -611,10 +611,13 @@
   /* A sustained press is an app gesture on these surfaces, so suppress the
      browser's competing text selection and iOS callout UI. */
   [data-slot='context-menu-trigger'],
-  [data-long-press] {
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
+  [data-long-press],
+  [data-long-press] * {
+    /* Message text carries Tailwind's explicit `select-text` utility. This
+       transient gesture state must outrank it until the press ends. */
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
   }
 }
 

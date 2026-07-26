@@ -26,7 +26,7 @@ import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
 } from '@/skills/use-skills'
-import { type AttachmentData, type Model } from '@/types'
+import { type AttachmentData, type Model, type Skill } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
@@ -298,15 +298,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     })
 
     const addSkillChip = useCallback(
-      (slug: string) => {
+      (skillOrSlug: Skill | string) => {
         // Read the latest input from a ref so deferred callers (e.g. the
         // `runSkill` microtask) don't operate on a stale closure value.
         // Insert the display title, not the slug — the user only ever sees
         // titles in chat; send-time normalization restores the slug.
         // `tokenForSkill` falls back to the slug for ambiguous display names
         // so the token stays resolvable at send time.
-        const skill = skillBySlug.get(slug)
-        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : slug)
+        const skill = typeof skillOrSlug === 'string' ? skillBySlug.get(skillOrSlug) : skillOrSlug
+        const fallbackSlug = typeof skillOrSlug === 'string' ? skillOrSlug : skillOrSlug.name
+        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug)
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -600,14 +601,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker /> : undefined
 
     const handleAddChipFromBar = useCallback(
-      (slug: string) => {
-        addSkillChip(slug)
-        const resolved = skillBySlug.get(slug)
-        if (resolved) {
-          trackSkillEvent('skill_used', resolved.id, { via: 'chip' })
-        }
+      (skill: Skill) => {
+        addSkillChip(skill)
+        trackSkillEvent('skill_used', skill.id, { via: 'chip' })
       },
-      [addSkillChip, skillBySlug, trackSkillEvent],
+      [addSkillChip, trackSkillEvent],
     )
 
     // Backspace treats a display-title chip (`/Daily Brief`) as atomic: one

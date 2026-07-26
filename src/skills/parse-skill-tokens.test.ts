@@ -203,12 +203,16 @@ describe('deleteSkillTokenAt', () => {
     expect(deleteSkillTokenAt(text, 4, titles)).toBeNull()
   })
 
-  it('returns null when the caret is past the token (e.g. after the trailing space)', () => {
-    expect(deleteSkillTokenAt(text, 17, titles)).toBeNull()
+  it('deletes the token and separator when the caret is after its trailing space', () => {
+    expect(deleteSkillTokenAt(text, 17, titles)).toEqual({ text: 'run now', caret: 4 })
   })
 
   it('leaves hand-typed slug tokens alone (letter-by-letter editing)', () => {
     expect(deleteSkillTokenAt('run /daily-brief now', 16, titles)).toBeNull()
+  })
+
+  it('deletes a committed slug fallback badge from after its separator', () => {
+    expect(deleteSkillTokenAt('run /daily-brief now', 17, titles)).toEqual({ text: 'run now', caret: 4 })
   })
 
   it('returns null in plain text', () => {

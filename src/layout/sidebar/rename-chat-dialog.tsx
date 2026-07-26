@@ -48,6 +48,11 @@ export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: Rename
     onOpenChange(false)
   }
 
+  const handleCancel = () => {
+    inputRef.current?.blur()
+    onOpenChange(false)
+  }
+
   const input = (
     <Input
       ref={inputRef}
@@ -65,7 +70,16 @@ export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: Rename
 
   const actions = (
     <>
-      <Button variant="outline" onClick={() => onOpenChange(false)}>
+      <Button
+        variant="outline"
+        onPointerDown={(event) => {
+          if (event.pointerType === 'touch') {
+            event.preventDefault()
+            handleCancel()
+          }
+        }}
+        onClick={handleCancel}
+      >
         Cancel
       </Button>
       <Button onClick={handleSave}>Save</Button>
@@ -79,8 +93,9 @@ export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: Rename
         onOpenChange={onOpenChange}
         title="Rename chat"
         initialFocus={() => {
-          focusInput()
-          return false
+          const input = inputRef.current
+          requestAnimationFrame(() => input?.select())
+          return input
         }}
       >
         {input}

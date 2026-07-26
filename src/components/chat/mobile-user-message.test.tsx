@@ -32,13 +32,31 @@ describe('MobileUserMessage', () => {
     expect(messageText.closest('.cursor-text')).toHaveClass('select-text')
     expect(gestureTarget).not.toHaveAttribute('data-long-press')
 
+    fireEvent.touchStart(messageText, { touches: [{ clientX: 10, clientY: 10 }] })
+    expect(gestureTarget).toHaveAttribute('data-long-press')
+    fireEvent.touchEnd(messageText)
+    expect(gestureTarget).not.toHaveAttribute('data-long-press')
+
+    const range = document.createRange()
+    range.selectNodeContents(messageText)
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    expect(selection?.rangeCount).toBe(1)
+
     fireEvent.contextMenu(messageText)
 
+    expect(selection?.rangeCount).toBe(0)
     const copyAction = screen.getByRole('button', { name: 'Copy' })
     const backdrop = screen.getByRole('button', { name: 'Dismiss' })
     expect(gestureTarget).toHaveClass('z-50')
+    expect(gestureTarget).toHaveAttribute('data-long-press')
     expect(gestureTarget).toContainElement(copyAction)
     expect(backdrop).toHaveClass('z-40')
     expect(container).toContainElement(backdrop)
+
+    fireEvent.click(backdrop)
+    expect(gestureTarget).not.toHaveAttribute('data-long-press')
+    expect(messageText.closest('.cursor-text')).toHaveClass('select-text')
   })
 })

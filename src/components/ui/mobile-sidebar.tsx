@@ -383,6 +383,10 @@ export const MobileSidebar = ({
   const dragAxis = enabled ? ('x' as const) : false
   const foregroundClass = enabled && 'mobile-sidebar-main-shadow z-20 will-change-transform'
   const foregroundStyle = enabled ? { x, touchAction: 'pan-y' as const } : { x: 0, touchAction: 'auto' as const }
+  // The sidebar is portaled outside this subtree and keeps the real keyboard
+  // inset. Freeze the inert foreground so focusing sidebar search cannot
+  // reflow the partially visible chat composer behind it.
+  const foregroundContentStyle = isDrawerOpen ? ({ '--kb': '0px' } as CSSProperties) : undefined
 
   // Stacking scheme while enabled (the wrapper isolates its own z context):
   // stationary menu viewport z-10 < foreground z-20 < close surface z-40
@@ -430,7 +434,7 @@ export const MobileSidebar = ({
         dragControls={dragControls}
         dragConstraints={{ left: 0, right: sidebarWidth }}
         dragDirectionLock
-        dragElastic={0.08}
+        dragElastic={{ left: 0, right: 0.08 }}
         dragListener={false}
         dragMomentum={false}
         onPointerDown={handlePointerDown}
@@ -444,7 +448,12 @@ export const MobileSidebar = ({
         )}
         style={foregroundStyle}
       >
-        <div className="flex h-full min-w-0 flex-1 flex-col" inert={isDrawerOpen ? true : undefined}>
+        <div
+          data-slot="mobile-foreground-content"
+          className="flex h-full min-w-0 flex-1 flex-col"
+          style={foregroundContentStyle}
+          inert={isDrawerOpen ? true : undefined}
+        >
           <MobileForegroundPortalProvider>{children}</MobileForegroundPortalProvider>
         </div>
         {/* Doubles as the drag surface (see canStartSidebarDrag) and the

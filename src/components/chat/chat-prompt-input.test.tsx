@@ -305,6 +305,14 @@ describe('ChatPromptInput', () => {
       expect(textarea.value).toBe('run  now')
     })
 
+    it('deletes the whole badge and separator from the insertion caret position', () => {
+      const textarea = setupWithToken(17)
+      const event = pressBackspace(textarea)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(textarea.value).toBe('run now')
+    })
+
     it('does not delete atomically when Backspace carries a modifier', () => {
       for (const modifiers of [{ metaKey: true }, { ctrlKey: true }, { altKey: true }]) {
         cleanup()

@@ -39,7 +39,7 @@ export const SuggestionChip = ({
   label: string
   onClick: () => void
   onAddInstruction: () => void
-  /** Jump to the skill's edit form in `/settings/skills`. */
+  /** Open the route-preserving skill editor. */
   onEdit: () => void
   onReorder: () => void
   onUnpin: () => void

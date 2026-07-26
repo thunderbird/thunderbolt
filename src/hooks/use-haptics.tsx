@@ -9,6 +9,7 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
 } from 'react'
@@ -119,9 +120,27 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
 export const useHaptics = () => useContext(HapticsContext)
 
 /**
+ * Requests surface feedback when an open state changes. Close feedback fires
+ * when the closing state is committed, before the exit animation completes.
+ */
+export const useSurfaceHaptics = (open: boolean) => {
+  const { triggerSurfaceImpact } = useHaptics()
+  const previousOpenRef = useRef(false)
+  const tap = useEffectEvent(() => triggerSurfaceImpact())
+
+  useLayoutEffect(() => {
+    if (open === previousOpenRef.current) {
+      return
+    }
+    previousOpenRef.current = open
+    tap()
+  }, [open])
+}
+
+/**
  * Requests a light impact when the calling component mounts and unmounts.
- * Placed inside a modal/drawer's portal or presence boundary, this covers
- * opens and closes from taps, swipes, Escape, and programmatic changes.
+ * Placed inside a conditionally mounted portal or presence boundary, this
+ * covers opens and closes from taps, Escape, and programmatic changes.
  * The provider suppresses requests that immediately follow another haptic.
  */
 const useMountHaptic = () => {

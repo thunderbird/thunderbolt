@@ -11,6 +11,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type Modifier,
 } from '@dnd-kit/core'
 import {
   arrayMove,
@@ -23,7 +24,11 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, X } from 'lucide-react'
 
 import type { Skill } from '@/types'
+import { cn } from '@/lib/utils'
 import { skillDisplayName } from './display'
+
+/** Keeps sortable skills on their vertical track while preserving DnD scale data. */
+export const lockSkillReorderToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
 const SortableRow = ({ skill }: { skill: Skill }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: skill.id })
@@ -64,10 +69,12 @@ export const ReorderPanel = ({
   pinned,
   onReorder,
   onClose,
+  embedded = false,
 }: {
   pinned: Skill[]
   onReorder: (ids: string[], move: ReorderMove) => void
   onClose: () => void
+  embedded?: boolean
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -93,19 +100,32 @@ export const ReorderPanel = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-md">
-      <div className="flex h-8 items-center gap-2 px-2">
-        <span className="flex-1 text-[length:var(--font-size-sm)] text-muted-foreground">Reorder skills</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close reorder"
-          className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <X size={16} />
-        </button>
-      </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <div
+      data-base-ui-swipe-ignore
+      className={cn(
+        'flex flex-col gap-2',
+        embedded ? 'px-1 pb-2' : 'rounded-xl border border-border bg-card p-2 shadow-md',
+      )}
+    >
+      {!embedded && (
+        <div className="flex h-8 items-center gap-2 px-2">
+          <span className="flex-1 text-[length:var(--font-size-sm)] text-muted-foreground">Reorder skills</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close reorder"
+            className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[lockSkillReorderToVerticalAxis]}
+        onDragEnd={handleDragEnd}
+      >
         <SortableContext items={pinned.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           {pinned.map((skill) => (
             <SortableRow key={skill.id} skill={skill} />

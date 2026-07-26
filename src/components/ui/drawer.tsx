@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
-import type { ComponentProps } from 'react'
+import { type ComponentProps, useState } from 'react'
 
-import { HapticMountBoundary } from '@/hooks/use-haptics'
+import { useSurfaceHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 
 /**
@@ -15,14 +15,23 @@ import { cn } from '@/lib/utils'
  * sheet. Unlike vaul, Base UI animates via CSS, so the open/close transitions
  * live in the classes below (`data-starting-style` / `data-ending-style`).
  */
-const Drawer = (props: DrawerPrimitive.Root.Props) => <DrawerPrimitive.Root {...props} />
+const Drawer = ({ open: controlledOpen, defaultOpen = false, onOpenChange, ...props }: DrawerPrimitive.Root.Props) => {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen)
+  const open = controlledOpen ?? uncontrolledOpen
+  useSurfaceHaptics(open)
 
-/** Re-exports Base UI's keyboard-inset provider, which publishes
- *  `--drawer-keyboard-inset` so sheets (e.g. `MobileActionSheet`) can ride
- *  above the software keyboard. */
-const DrawerVirtualKeyboardProvider = (props: DrawerPrimitive.VirtualKeyboardProvider.Props) => (
-  <DrawerPrimitive.VirtualKeyboardProvider {...props} />
-)
+  return (
+    <DrawerPrimitive.Root
+      {...props}
+      open={controlledOpen}
+      defaultOpen={defaultOpen}
+      onOpenChange={(nextOpen, eventDetails) => {
+        setUncontrolledOpen(nextOpen)
+        onOpenChange?.(nextOpen, eventDetails)
+      }}
+    />
+  )
+}
 
 /* Deliberately lighter than modalOverlayClass: a card drawer is a shallow,
  * swipe-away surface, so it dims and blurs less than a blocking modal, and
@@ -49,9 +58,9 @@ const popupClass = cn(
   // Bleed: fills the gap the sheet reveals at its own edge when a swipe
   // overshoots past the resting position. Sized generously (10rem) so even a
   // hard overshoot flick never exposes the sheet's outer edge.
-  'after:pointer-events-none after:absolute after:inset-x-0 after:h-40 after:bg-popover/80 after:backdrop-blur-lg',
-  'data-[swipe-direction=down]:inset-x-0 data-[swipe-direction=down]:bottom-0 data-[swipe-direction=down]:rounded-t-3xl data-[swipe-direction=down]:border-t data-[swipe-direction=down]:shadow-[var(--shadow-drawer-down)] data-[swipe-direction=down]:after:top-full data-[swipe-direction=down]:[--closed-transform:translate3d(0,calc(100%+2px),0)] data-[swipe-direction=down]:[--translate-y:var(--drawer-swipe-movement-y)]',
-  'data-[swipe-direction=up]:inset-x-0 data-[swipe-direction=up]:top-0 data-[swipe-direction=up]:rounded-b-3xl data-[swipe-direction=up]:border-b data-[swipe-direction=up]:shadow-[var(--shadow-drawer-up)] data-[swipe-direction=up]:after:bottom-full data-[swipe-direction=up]:[--closed-transform:translate3d(0,calc(-100%-2px),0)] data-[swipe-direction=up]:[--translate-y:var(--drawer-swipe-movement-y)]',
+  'after:pointer-events-none after:absolute after:inset-x-0 after:bg-popover/80 after:backdrop-blur-lg',
+  'data-[swipe-direction=down]:inset-x-0 data-[swipe-direction=down]:bottom-[var(--drawer-effective-keyboard-inset)] data-[swipe-direction=down]:max-h-[calc(85dvh-var(--drawer-effective-keyboard-inset))] data-[swipe-direction=down]:rounded-t-3xl data-[swipe-direction=down]:border-t data-[swipe-direction=down]:shadow-[var(--shadow-drawer-down)] data-[swipe-direction=down]:after:top-full data-[swipe-direction=down]:after:h-[calc(10rem+var(--drawer-effective-keyboard-inset))] data-[swipe-direction=down]:[--closed-transform:translate3d(0,calc(100%+2px),0)] data-[swipe-direction=down]:[--drawer-effective-keyboard-inset:max(var(--drawer-keyboard-inset,0px),var(--kb,0px))] data-[swipe-direction=down]:[--translate-y:var(--drawer-swipe-movement-y)]',
+  'data-[swipe-direction=up]:inset-x-0 data-[swipe-direction=up]:top-0 data-[swipe-direction=up]:rounded-b-3xl data-[swipe-direction=up]:border-b data-[swipe-direction=up]:shadow-[var(--shadow-drawer-up)] data-[swipe-direction=up]:after:bottom-full data-[swipe-direction=up]:after:h-40 data-[swipe-direction=up]:[--closed-transform:translate3d(0,calc(-100%-2px),0)] data-[swipe-direction=up]:[--translate-y:var(--drawer-swipe-movement-y)]',
 )
 
 type DrawerContentProps = DrawerPrimitive.Popup.Props & {
@@ -61,30 +70,28 @@ type DrawerContentProps = DrawerPrimitive.Popup.Props & {
 
 const DrawerContent = ({ className, children, forceBackdrop = false, ...props }: DrawerContentProps) => {
   return (
-    <DrawerPrimitive.Portal data-slot="drawer-portal">
-      {/* Portal children mount when opening begins and unmount after the close
-          transition. DrawerContent itself stays mounted while the drawer is
-          closed, so the haptic must live inside the portal lifecycle. */}
-      <HapticMountBoundary />
-      <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} forceRender={forceBackdrop} />
-      {/* Portaled events still bubble through the React tree, so this
-          deliberately stops ALL parent pointerdown handling — not just the
-          sidebar SwipeArea. The motivating case is an enclosing drawer's
-          SwipeArea, which otherwise prevents desktop clicks while listening
-          for swipe-open gestures, but any ancestor pointerdown handler is
-          blocked while this drawer is open. */}
-      <DrawerPrimitive.Viewport
-        data-slot="drawer-viewport"
-        className="pointer-events-auto fixed inset-0 z-50 select-none"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <DrawerPrimitive.Popup data-slot="drawer-content" className={cn(popupClass, className)} {...props}>
-          <DrawerPrimitive.Content className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit] select-text group-data-[swiping]/drawer-content:select-none">
-            {children}
-          </DrawerPrimitive.Content>
-        </DrawerPrimitive.Popup>
-      </DrawerPrimitive.Viewport>
-    </DrawerPrimitive.Portal>
+    <DrawerPrimitive.VirtualKeyboardProvider>
+      <DrawerPrimitive.Portal data-slot="drawer-portal">
+        <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} forceRender={forceBackdrop} />
+        {/* Portaled events still bubble through the React tree, so this
+            deliberately stops ALL parent pointerdown handling — not just the
+            sidebar SwipeArea. The motivating case is an enclosing drawer's
+            SwipeArea, which otherwise prevents desktop clicks while listening
+            for swipe-open gestures, but any ancestor pointerdown handler is
+            blocked while this drawer is open. */}
+        <DrawerPrimitive.Viewport
+          data-slot="drawer-viewport"
+          className="pointer-events-auto fixed inset-0 z-50 select-none"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <DrawerPrimitive.Popup data-slot="drawer-content" className={cn(popupClass, className)} {...props}>
+            <DrawerPrimitive.Content className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit] select-text group-data-[swiping]/drawer-content:select-none">
+              {children}
+            </DrawerPrimitive.Content>
+          </DrawerPrimitive.Popup>
+        </DrawerPrimitive.Viewport>
+      </DrawerPrimitive.Portal>
+    </DrawerPrimitive.VirtualKeyboardProvider>
   )
 }
 
@@ -115,4 +122,4 @@ const DrawerDescription = ({ className, ...props }: DrawerPrimitive.Description.
   />
 )
 
-export { Drawer, DrawerContent, DrawerDescription, DrawerHandle, DrawerTitle, DrawerVirtualKeyboardProvider }
+export { Drawer, DrawerContent, DrawerDescription, DrawerHandle, DrawerTitle }

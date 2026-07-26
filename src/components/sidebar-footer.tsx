@@ -174,8 +174,6 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     useSyncEnabledToggle()
 
   const handleSignInClick = () => {
-    // Close mobile sidebar first so modal is visible
-    setOpenMobile(false)
     openSignInModal()
   }
 
@@ -241,9 +239,15 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
    * default is the labeled pill.
    */
   const renderAccountControl = (collapsed = false) => {
+    const iconOnly = collapsed || isMobile
     if (isPending) {
-      return collapsed ? (
-        <div className="flex size-[var(--touch-height-default)] items-center justify-center">
+      return iconOnly ? (
+        <div
+          className={cn(
+            'flex items-center justify-center rounded-full',
+            isMobile ? 'size-[var(--touch-height-lg)] bg-sidebar-accent' : 'size-[var(--touch-height-default)]',
+          )}
+        >
           <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />
         </div>
       ) : (
@@ -253,8 +257,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         </div>
       )
     }
-    const showLabel = !collapsed && accountLabel.length > 0
-    const controlClass = collapsed ? collapsedButtonClass : pillClassName(showLabel)
+    const showLabel = !iconOnly && accountLabel.length > 0
+    const controlClass = cn(
+      collapsed ? collapsedButtonClass : pillClassName(showLabel),
+      isMobile && 'bg-sidebar-accent',
+    )
     if (!user) {
       return (
         <button type="button" aria-label="Sign in" className={controlClass} onClick={handleSignInClick}>

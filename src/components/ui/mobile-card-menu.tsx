@@ -5,14 +5,13 @@
 import type { ComponentProps, ReactNode } from 'react'
 
 import { Drawer, DrawerContent, DrawerHandle, DrawerTitle } from '@/components/ui/drawer'
-import { cn } from '@/lib/utils'
 
 export type MobileCardMenuSide = 'top' | 'bottom'
 
 /** Touch-height action row rendered inside a `MobileCardMenu` list — sized at
  *  `--touch-height-default` (44px on mobile) for comfortable tapping. */
 export const mobileCardMenuItemClass =
-  'flex min-h-[var(--touch-height-default)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent'
+  'flex min-h-[var(--touch-height-default)] w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-[length:var(--font-size-body)] outline-none transition-colors hover:bg-accent focus-visible:bg-accent disabled:pointer-events-none disabled:opacity-50'
 
 type MobileCardMenuProps = {
   open: boolean
@@ -41,7 +40,7 @@ export const MobileCardMenu = ({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection={side === 'top' ? 'up' : 'down'}>
-      <DrawerContent initialFocus={initialFocus} className={cn('overflow-hidden', className)} style={safeAreaStyle}>
+      <DrawerContent initialFocus={initialFocus} className={className} style={safeAreaStyle}>
         {side === 'bottom' && <DrawerHandle className="mb-1 mt-2" />}
         <div className="shrink-0 px-4 pb-2 pt-2">
           <DrawerTitle className="text-[length:var(--font-size-sm)] text-muted-foreground">{title}</DrawerTitle>

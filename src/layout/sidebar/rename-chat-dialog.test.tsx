@@ -37,7 +37,10 @@ describe('RenameChatDialog', () => {
     await act(async () => {
       await getClock().runAllAsync()
     })
-    expect(screen.getByDisplayValue('My Chat')).toHaveFocus()
+    const input = screen.getByDisplayValue('My Chat') as HTMLInputElement
+    expect(input).toHaveFocus()
+    expect(input.selectionStart).toBe(0)
+    expect(input.selectionEnd).toBe(input.value.length)
     expect(document.querySelector('[data-slot="dialog-content"]')).not.toBeInTheDocument()
   })
 
@@ -132,6 +135,18 @@ describe('RenameChatDialog', () => {
     fireEvent.click(screen.getByText('Cancel'))
 
     expect(onRename).not.toHaveBeenCalled()
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('blurs and closes on the first mobile cancel touch', () => {
+    forceMobileViewport()
+    const { onOpenChange } = setup()
+    const input = screen.getByRole('textbox', { name: 'Chat name' })
+    input.focus()
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Cancel' }), { pointerType: 'touch' })
+
+    expect(input).not.toHaveFocus()
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 

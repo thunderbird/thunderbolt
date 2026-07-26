@@ -15,5 +15,10 @@ import { useCreateItem } from '@/components/create-item/context'
 export const CreateRequestProbe = () => {
   const { request } = useCreateItem()
   const location = useLocation()
-  return <div data-testid="create-request">{`${location.pathname}|${request?.kind ?? ''}`}</div>
+  const skillId = request?.kind === 'skill' ? request.skillId : undefined
+  return (
+    <div data-testid="create-request" data-skill-id={skillId}>
+      {`${location.pathname}|${request?.kind ?? ''}`}
+    </div>
+  )
 }

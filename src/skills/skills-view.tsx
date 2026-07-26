@@ -44,12 +44,10 @@ export const SkillsView = () => {
     submitError,
   } = state
 
-  // Deep-links from the chat composer. Broken-reference alerts send
-  // `editSkill` (selects an existing, likely disabled skill so the user can
-  // enable it); the pinned chips' "Edit skill" action sends `startEditSkill`,
-  // which lands straight in the edit form. Same consume-once pattern as
-  // `runSkill` in chat-prompt-input. (Skill creation no longer deep-links
-  // here — it opens the route-preserving create surface via CreateItemContext.)
+  // Route-state deep links retained for settings integrations.
+  // `editSkill` selects an existing skill; `startEditSkill` lands directly in
+  // its edit form. Composer create/edit actions use the route-preserving
+  // CreateItemContext surface instead.
   useConsumeNavState('editSkill', (id) => dispatch({ type: 'SELECT_SKILL', id }))
   useConsumeNavState('startEditSkill', (id) => dispatch({ type: 'START_EDIT', id }))
 

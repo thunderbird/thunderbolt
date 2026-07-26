@@ -520,7 +520,7 @@ export default function PreferencesSettingsPage() {
   }, [unitsOptionsData?.currencies, currency.value])
 
   return (
-    <SettingsPageShell className="gap-6 pb-12">
+    <SettingsPageShell className="gap-6 md:pb-12">
       <PageHeader title="Preferences" />
 
       <SectionCard title="User Experience">

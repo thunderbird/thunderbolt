@@ -9,8 +9,14 @@ import { describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { useLongPress } from './use-long-press'
 
-const Harness = ({ onLongPress }: { onLongPress: () => void }) => {
-  const handlers = useLongPress(onLongPress)
+const Harness = ({
+  onLongPress,
+  onPressChange,
+}: {
+  onLongPress: () => void
+  onPressChange?: (isPressing: boolean) => void
+}) => {
+  const handlers = useLongPress(onLongPress, { onPressChange })
   return <div {...handlers}>Long-press target</div>
 }
 
@@ -23,6 +29,20 @@ describe('useLongPress', () => {
     fireEvent.touchStart(target, { touches: [{ clientX: 10, clientY: 10 }] })
     act(() => getClock().tick(500))
 
+    expect(onLongPress).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports the active touch before the native long-press callout can open', () => {
+    const onLongPress = mock(() => {})
+    const onPressChange = mock(() => {})
+    render(<Harness onLongPress={onLongPress} onPressChange={onPressChange} />)
+    const target = screen.getByText('Long-press target')
+
+    fireEvent.touchStart(target, { touches: [{ clientX: 10, clientY: 10 }] })
+    expect(onPressChange).toHaveBeenLastCalledWith(true)
+
+    act(() => getClock().tick(500))
+    expect(onPressChange).toHaveBeenLastCalledWith(false)
     expect(onLongPress).toHaveBeenCalledTimes(1)
   })
 

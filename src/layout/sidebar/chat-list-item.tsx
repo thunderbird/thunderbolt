@@ -4,10 +4,12 @@
 
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ResponsiveActionMenu } from '@/components/ui/responsive-action-menu'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
+import { useLongPress } from '@/hooks/use-long-press'
 import { cn } from '@/lib/utils'
 import { Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
-import { memo, useRef, useState, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
+import { memo, useReducer, useRef, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
@@ -19,6 +21,55 @@ import { RenameChatDialog } from './rename-chat-dialog'
  *  `mock.module('@ai-sdk/react')` (which leaks across files under `--randomize`). */
 type ChatListItemComponentProps = ChatListItemProps & {
   useChat?: typeof useChat_default
+}
+
+type ChatItemMenu = 'dropdown' | 'context' | 'mobile'
+
+type ChatListItemState = {
+  renameDialogOpen: boolean
+  openMenu: ChatItemMenu | null
+  optimisticTitle: string | null
+  observedTitle: string | null
+}
+
+type ChatListItemAction =
+  | { type: 'MENU_CHANGED'; menu: ChatItemMenu; open: boolean }
+  | { type: 'RENAME_DIALOG_CHANGED'; open: boolean }
+  | { type: 'RENAMED'; title: string }
+  | { type: 'THREAD_TITLE_CHANGED'; title: string | null }
+
+const createChatListItemState = (title: string | null): ChatListItemState => ({
+  renameDialogOpen: false,
+  openMenu: null,
+  optimisticTitle: null,
+  observedTitle: title,
+})
+
+const chatListItemReducer = (state: ChatListItemState, action: ChatListItemAction): ChatListItemState => {
+  switch (action.type) {
+    case 'MENU_CHANGED':
+      return {
+        ...state,
+        openMenu: action.open ? action.menu : state.openMenu === action.menu ? null : state.openMenu,
+      }
+    case 'RENAME_DIALOG_CHANGED':
+      return { ...state, renameDialogOpen: action.open }
+    case 'RENAMED':
+      return { ...state, optimisticTitle: action.title }
+    case 'THREAD_TITLE_CHANGED':
+      return { ...state, observedTitle: action.title, optimisticTitle: null }
+  }
+}
+
+/** Centralizes a chat row's menu, rename, and optimistic-title state. */
+const useChatListItemState = (threadTitle: string | null) => {
+  const [state, dispatch] = useReducer(chatListItemReducer, threadTitle, createChatListItemState)
+
+  if (threadTitle !== state.observedTitle) {
+    dispatch({ type: 'THREAD_TITLE_CHANGED', title: threadTitle })
+  }
+
+  return [state, dispatch] as const
 }
 
 type MenuItemComponent = ComponentType<{
@@ -72,26 +123,18 @@ export const ChatListItem = memo(
     const { status } = useChat(
       chatInstance ? { chat: chatInstance, experimental_throttle: statusOnlyThrottleMs } : undefined,
     )
-    const [renameDialogOpen, setRenameDialogOpen] = useState(false)
-    // One value for both action surfaces — they're mutually exclusive (Radix
-    // closes one before the other opens), and the row highlight just needs
-    // "is any menu open".
-    const [openMenu, setOpenMenu] = useState<'dropdown' | 'context' | null>(null)
-    const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null)
-    const [prevTitle, setPrevTitle] = useState(thread.title)
+    const [{ renameDialogOpen, openMenu, optimisticTitle }, dispatch] = useChatListItemState(thread.title)
     const isOpeningDialogRef = useRef(false)
-
-    if (thread.title !== prevTitle) {
-      setPrevTitle(thread.title)
-      if (optimisticTitle !== null && thread.title === optimisticTitle) {
-        setOptimisticTitle(null)
-      }
-    }
+    const longPressFiredRef = useRef(false)
+    const mobileLongPressHandlers = useLongPress(() => {
+      longPressFiredRef.current = true
+      dispatch({ type: 'MENU_CHANGED', menu: 'mobile', open: true })
+    })
 
     const displayTitle = optimisticTitle ?? thread.title
 
     const handleRename = (title: string) => {
-      setOptimisticTitle(title)
+      dispatch({ type: 'RENAMED', title })
       onRename(thread.id, title)
     }
 
@@ -116,7 +159,7 @@ export const ChatListItem = memo(
 
     const startRename = () => {
       isOpeningDialogRef.current = true
-      setRenameDialogOpen(true)
+      dispatch({ type: 'RENAME_DIALOG_CHANGED', open: true })
     }
     const startDelete = () => {
       isOpeningDialogRef.current = true
@@ -138,7 +181,7 @@ export const ChatListItem = memo(
     // slot (opening one dismisses the other), so only the current owner may
     // clear it.
     const handleMenuOpenChange = (menu: 'dropdown' | 'context') => (open: boolean) =>
-      setOpenMenu((current) => (open ? menu : current === menu ? null : current))
+      dispatch({ type: 'MENU_CHANGED', menu, open })
     // A closing menu normally restores focus to its trigger after the newly
     // opened rename surface has focused its input, which would hide the keyboard.
     const handleMenuCloseAutoFocus = (event: Event) => {
@@ -147,6 +190,69 @@ export const ChatListItem = memo(
       }
       event.preventDefault()
       isOpeningDialogRef.current = false
+    }
+
+    if (isMobile) {
+      const trigger = (
+        <SidebarMenuButton
+          {...mobileLongPressHandlers}
+          data-long-press=""
+          onClick={() => {
+            if (longPressFiredRef.current) {
+              longPressFiredRef.current = false
+              return
+            }
+            onChatClick(thread.id)
+          }}
+          isActive={isActive}
+          className={cn(
+            'flex cursor-pointer items-center gap-2',
+            anyMenuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
+          )}
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {showSpinner && (
+              <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin text-muted-foreground" />
+            )}
+            <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
+          </div>
+        </SidebarMenuButton>
+      )
+
+      return (
+        <>
+          <ResponsiveActionMenu
+            open={openMenu === 'mobile'}
+            onOpenChange={(open) => dispatch({ type: 'MENU_CHANGED', menu: 'mobile', open })}
+            trigger={trigger}
+            title={displayTitle ?? 'Chat actions'}
+            openOnTriggerClickMobile={false}
+            actions={[
+              {
+                label: 'Rename',
+                icon: <Pencil className="size-4" />,
+                onSelect: startRename,
+              },
+              {
+                label: 'Delete',
+                icon: deleteChatMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Trash2 className="size-4" />
+                ),
+                onSelect: startDelete,
+                disabled: deleteChatMutation.isPending,
+              },
+            ]}
+          />
+          <RenameChatDialog
+            open={renameDialogOpen}
+            title={thread.title}
+            onOpenChange={(open) => dispatch({ type: 'RENAME_DIALOG_CHANGED', open })}
+            onRename={handleRename}
+          />
+        </>
+      )
     }
 
     return (
@@ -232,7 +338,7 @@ export const ChatListItem = memo(
         <RenameChatDialog
           open={renameDialogOpen}
           title={thread.title}
-          onOpenChange={setRenameDialogOpen}
+          onOpenChange={(open) => dispatch({ type: 'RENAME_DIALOG_CHANGED', open })}
           onRename={handleRename}
         />
       </>

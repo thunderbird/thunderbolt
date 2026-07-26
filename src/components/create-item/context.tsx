@@ -4,8 +4,12 @@
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
+type SkillPanelRequestInput =
+  | { kind: 'skill'; initialName?: string; skillId?: never }
+  | { kind: 'skill'; skillId: string; initialName?: never }
+
 /** The id-less input to `openCreateItem`; the provider assigns the id. */
-type CreateItemRequestInput = { kind: 'skill'; initialName?: string } | { kind: 'agent' } | { kind: 'model' }
+type CreateItemRequestInput = SkillPanelRequestInput | { kind: 'agent' } | { kind: 'model' }
 
 // Derived from the input so a new kind is added in exactly one place; the
 // intersection distributes over the union, keeping `kind` narrowing intact.
@@ -18,6 +22,10 @@ export const createItemTitles: Record<CreateItemRequest['kind'], string> = {
   agent: 'Add Agent',
   model: 'Add Model',
 }
+
+/** Returns the route-preserving panel title for create and edit requests. */
+export const createItemTitle = (request: CreateItemRequest): string =>
+  request.kind === 'skill' && request.skillId ? 'Edit Skill' : createItemTitles[request.kind]
 
 type CreateItemContextValue = {
   request: CreateItemRequest | null

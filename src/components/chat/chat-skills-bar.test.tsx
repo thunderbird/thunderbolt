@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { MemoryRouter } from 'react-router'
 
 import { CreateItemProvider } from '@/components/create-item/context'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -60,8 +60,8 @@ const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}, sho
       <CreateItemProvider>
         <TooltipProvider>
           <ChatSkillsBar
-            onAddToChat={() => undefined}
-            onAddInstruction={() => undefined}
+            onAddToChat={props.onAddToChat ?? (() => undefined)}
+            onAddInstruction={props.onAddInstruction ?? (() => undefined)}
             usePinnedSkills={props.usePinnedSkills ?? fakeUsePinnedSkills({ pinned: [] })}
             useLibrarySkills={props.useLibrarySkills ?? fakeUseLibrarySkills([])}
             useEnabledSkills={props.useEnabledSkills ?? fakeUseEnabledSkills(new Set())}
@@ -184,6 +184,54 @@ describe('ChatSkillsBar', () => {
     expect(screen.getByText('Daily Brief')).toBeInTheDocument()
   })
 
+  it('uses the normal mobile input size when the skill list is searchable', () => {
+    forceMobileViewport()
+    const skills = Array.from({ length: 6 }, (_, index) => skill(`skill-${index}`, `skill-${index}`))
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [] }),
+      useLibrarySkills: fakeUseLibrarySkills(skills),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(skills.map(({ id }) => id))),
+    })
+
+    fireEvent.click(screen.getByLabelText('Add a skill'))
+
+    expect(screen.getByRole('textbox', { name: 'Search skills' })).toHaveClass('h-[var(--touch-height-default)]')
+  })
+
+  it('opens reorder as a mobile bottom drawer', async () => {
+    forceMobileViewport()
+    const a = skill('a', 'daily-brief')
+    const b = skill('b', 'important-emails')
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [a, b] }),
+      useLibrarySkills: fakeUseLibrarySkills([a, b]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(['a', 'b'])),
+    })
+
+    fireEvent.contextMenu(screen.getByText('Daily Brief'))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Reorder')))
+
+    const drawer = screen
+      .getByText('Reorder skills', { selector: '[data-slot="drawer-title"]' })
+      .closest('[data-slot="drawer-content"]')
+    expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
+    expect(await waitForElement(() => drawer?.querySelector('[data-base-ui-swipe-ignore]') ?? null)).toBeInTheDocument()
+  })
+
+  it('passes the full skill to preserve display-name casing', () => {
+    const onAddToChat = mock<(skill: Skill) => void>(() => {})
+    const a = { ...skill('a', 'hello'), label: 'Hello' }
+    renderBar({
+      onAddToChat,
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
+      useLibrarySkills: fakeUseLibrarySkills([a]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+    })
+
+    fireEvent.click(screen.getByText('Hello'))
+    expect(onAddToChat).toHaveBeenCalledWith(a)
+  })
+
   it('disables the "+ Add a skill" trigger when the pin cap is reached (even with unpinned candidates available)', () => {
     // 10 pinned + 1 unpinned candidate → cap reached. Without this guard the
     // popover would show the candidate but clicking would silently fail
@@ -199,33 +247,22 @@ describe('ChatSkillsBar', () => {
     expect(trigger.disabled).toBe(true)
   })
 
-  it('navigates to the skill\'s edit form when choosing "Edit skill" from a chip menu', async () => {
+  it('opens skill editing over the current route when choosing "Edit skill" from a chip menu', async () => {
     const a = { ...skill('a', 'daily-brief'), label: 'Daily Brief' }
-    const LocationProbe = () => {
-      const location = useLocation()
-      return <div data-testid="location">{`${location.pathname}|${JSON.stringify(location.state)}`}</div>
-    }
-    render(
-      <MemoryRouter>
-        <CreateItemProvider>
-          <TooltipProvider>
-            <ChatSkillsBar
-              onAddToChat={() => undefined}
-              onAddInstruction={() => undefined}
-              usePinnedSkills={fakeUsePinnedSkills({ pinned: [a] })}
-              useLibrarySkills={fakeUseLibrarySkills([a])}
-              useEnabledSkills={fakeUseEnabledSkills(new Set(['a']))}
-            />
-            <LocationProbe />
-          </TooltipProvider>
-        </CreateItemProvider>
-      </MemoryRouter>,
+    renderBar(
+      {
+        usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
+        useLibrarySkills: fakeUseLibrarySkills([a]),
+        useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+      },
+      true,
     )
 
     fireEvent.contextMenu(screen.getByText('Daily Brief'))
     fireEvent.click(await waitForElement(() => screen.queryByText('Edit skill')))
 
-    expect(screen.getByTestId('location').textContent).toBe('/settings/skills|{"startEditSkill":"a"}')
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
+    expect(screen.getByTestId('create-request')).toHaveAttribute('data-skill-id', 'a')
   })
 
   // The chip's click → onAddToChat path is exercised end-to-end at the

@@ -125,29 +125,47 @@ export const ChatList = ({
     />
   )
 
-  // overflow-hidden in BOTH states: while max-height animates, the input
-  // would otherwise escape the shrinking/growing box and paint over the
-  // first chat rows. Transition is scoped to the animated properties so
-  // sidebar-width changes (rail collapse) don't ride along.
-  const searchInput = (
+  const searchField = (
+    <SearchInput
+      ref={searchInputRef}
+      containerClassName={isMobile ? undefined : 'mb-1'}
+      className="rounded-xl border-transparent bg-sidebar-accent focus-visible:border-border dark:bg-sidebar-accent"
+      placeholder="Search chats..."
+      value={searchQuery}
+      onChange={(e) => onSearchQueryChange(e.target.value)}
+    />
+  )
+
+  // Desktop search remains in flow. On mobile the field is positioned below
+  // the measured fixed chrome, so opening it overlays recent chats instead of
+  // changing Virtua's start margin and pushing every row down.
+  const desktopSearchInput = (
     <div
       className={`overflow-hidden transition-[max-height,opacity,margin-top] duration-300 ease-in-out flex-shrink-0 ${
         showSearch && !isCollapsed && hasListContent ? 'max-h-12 opacity-100 mt-2' : 'max-h-0 opacity-0'
       }`}
     >
-      <SearchInput
-        ref={searchInputRef}
-        containerClassName="mb-1"
-        className="rounded-xl border-transparent bg-sidebar-accent focus-visible:border-border dark:bg-sidebar-accent"
-        placeholder="Search chats..."
-        value={searchQuery}
-        onChange={(e) => onSearchQueryChange(e.target.value)}
-      />
+      {searchField}
+    </div>
+  )
+
+  const mobileSearchInput = (
+    <div
+      data-slot="mobile-chat-search"
+      className={cn(
+        'absolute inset-x-2 z-20 pt-2 transition-[opacity,transform] duration-200',
+        showSearch && hasListContent
+          ? 'pointer-events-auto translate-y-0 opacity-100'
+          : 'pointer-events-none -translate-y-1 opacity-0',
+      )}
+      style={{ top: mobileListMetrics.headerHeight }}
+    >
+      {searchField}
     </div>
   )
 
   // Mobile: a pinned, measured header floats over the list (nav toggle,
-  // actions, search, secondary nav) and the list starts below it.
+  // actions and secondary nav) and the list starts below it.
   const mobileChrome = (
     <div
       ref={mobileHeaderRef}
@@ -160,7 +178,6 @@ export const ChatList = ({
           {mobileNavToggle}
           {hasListContent && chatActions}
         </div>
-        {searchInput}
         {mobileSecondaryNavigation}
       </div>
     </div>
@@ -212,7 +229,7 @@ export const ChatList = ({
           {chatActions}
         </div>
       )}
-      {searchInput}
+      {desktopSearchInput}
     </>
   )
 
@@ -220,6 +237,7 @@ export const ChatList = ({
     <>
       <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0', (isMobile || isCollapsed) && 'pt-0')}>
         {isMobile ? mobileChrome : desktopChrome}
+        {isMobile && mobileSearchInput}
         <div
           ref={scrollContainerRef}
           data-slot="chat-list-scroll"

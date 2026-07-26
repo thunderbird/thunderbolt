@@ -10,11 +10,19 @@ const longPressDuration = 500
 // never leave a later mouse right-click suppressed indefinitely.
 const contextMenuSuppressionDuration = 1000
 
+type UseLongPressOptions = {
+  duration?: number
+  onPressChange?: (isPressing: boolean) => void
+}
+
 /**
  * Returns event handlers that trigger a callback after a sustained press or context-menu request.
  * Cancels if the touch moves beyond a small threshold or ends early.
  */
-export const useLongPress = (onLongPress: () => void, duration = longPressDuration) => {
+export const useLongPress = (
+  onLongPress: () => void,
+  { duration = longPressDuration, onPressChange }: UseLongPressOptions = {},
+) => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressContextMenuUntilRef = useRef(0)
   const startPos = useRef<{ x: number; y: number } | null>(null)
@@ -25,7 +33,8 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
       timerRef.current = null
     }
     startPos.current = null
-  }, [])
+    onPressChange?.(false)
+  }, [onPressChange])
 
   useEffect(() => {
     return () => {
@@ -46,15 +55,17 @@ export const useLongPress = (onLongPress: () => void, duration = longPressDurati
       if (!touch) {
         return
       }
+      onPressChange?.(true)
       startPos.current = { x: touch.clientX, y: touch.clientY }
       timerRef.current = setTimeout(() => {
         timerRef.current = null
         startPos.current = null
         suppressContextMenuUntilRef.current = Date.now() + contextMenuSuppressionDuration
+        onPressChange?.(false)
         onLongPress()
       }, duration)
     },
-    [clear, onLongPress, duration],
+    [clear, duration, onLongPress, onPressChange],
   )
 
   const onTouchMove = useCallback(

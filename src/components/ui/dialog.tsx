@@ -7,6 +7,7 @@ import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
 import { HapticMountBoundary } from '@/hooks/use-haptics'
+import { collapseAutoFocusedTextSelection } from '@/lib/focus'
 import { cn } from '@/lib/utils'
 import {
   centeredModalSurfaceClass,
@@ -60,12 +61,18 @@ const DialogContent = ({
   showCloseButton = true,
   useTransparentOverlay = true,
   fullScreen = false,
+  onOpenAutoFocus,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
   useTransparentOverlay?: boolean
   fullScreen?: boolean
 }) => {
+  const handleOpenAutoFocus = (event: Event) => {
+    onOpenAutoFocus?.(event)
+    collapseAutoFocusedTextSelection(event)
+  }
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay useTransparentOverlay={useTransparentOverlay} />
@@ -79,6 +86,7 @@ const DialogContent = ({
             : `${centeredModalSurfaceClass} sm:max-w-lg`,
           className,
         )}
+        onOpenAutoFocus={handleOpenAutoFocus}
         {...props}
       >
         {children}

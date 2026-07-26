@@ -9,6 +9,7 @@ import { createItemTitles, type CreateItemRequest } from './context'
 
 type CreateItemPanelShellProps = {
   kind: CreateItemRequest['kind']
+  title?: string
   open: boolean
   onClose: () => void
   onCloseComplete: () => void
@@ -20,9 +21,16 @@ type CreateItemPanelShellProps = {
  * plus a `DetailPanel` titled from `createItemTitles`, so every kind (and the
  * host's loading fallback) presents the same header and close behavior.
  */
-export const CreateItemPanelShell = ({ kind, open, onClose, onCloseComplete, children }: CreateItemPanelShellProps) => (
+export const CreateItemPanelShell = ({
+  kind,
+  title = createItemTitles[kind],
+  open,
+  onClose,
+  onCloseComplete,
+  children,
+}: CreateItemPanelShellProps) => (
   <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
-    <DetailPanel title={createItemTitles[kind]} onClose={onClose}>
+    <DetailPanel title={title} onClose={onClose}>
       {children}
     </DetailPanel>
   </DetailPanelSurface>

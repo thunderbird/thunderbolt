@@ -135,23 +135,27 @@ export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<st
 }
 
 /**
- * Chip-style backspace: when `caret` sits inside or immediately after a
- * display-title token (`/Daily Brief`), return `text` with the whole token
- * removed and the caret collapsed to where the token began. Hand-typed slug
- * tokens are left alone — they were typed letter by letter, so they stay
- * editable letter by letter. Returns `null` when the caret doesn't touch a
- * display token (caller falls through to the default backspace).
+ * Chip-style backspace: when `caret` sits inside a display-title token or
+ * immediately after a committed token's separator, return `text` with the
+ * whole token removed. The latter also covers slug fallback badges, whose
+ * display names are ambiguous. Uncommitted hand-typed slugs remain editable
+ * letter by letter.
  */
 export const deleteSkillTokenAt = (
   text: string,
   caret: number,
   displayNameToSlug: ReadonlyMap<string, string>,
 ): { text: string; caret: number } | null => {
-  const token = findSkillTokens(text, displayNameToSlug).find((t) => t.isDisplay && caret > t.start && caret <= t.end)
+  const token = findSkillTokens(text, displayNameToSlug).find(
+    (candidate) =>
+      (candidate.isDisplay && caret > candidate.start && caret <= candidate.end) ||
+      (candidate.committed && caret === candidate.end + 1 && text[candidate.end] === ' '),
+  )
   if (!token) {
     return null
   }
-  return { text: text.slice(0, token.start) + text.slice(token.end), caret: token.start }
+  const removalEnd = caret === token.end + 1 ? token.end + 1 : token.end
+  return { text: text.slice(0, token.start) + text.slice(removalEnd), caret: token.start }
 }
 
 /**

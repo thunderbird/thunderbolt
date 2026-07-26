@@ -4,6 +4,7 @@
 
 import { Slot } from '@radix-ui/react-slot'
 import type { ComponentProps, ReactElement, ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { MobileCardMenu, mobileCardMenuItemClass } from '@/components/ui/mobile-card-menu'
@@ -13,6 +14,7 @@ export type ResponsiveActionMenuAction = {
   label: string
   icon: ReactNode
   onSelect: () => void
+  disabled?: boolean
 }
 
 type ResponsiveActionMenuProps = {
@@ -73,8 +75,9 @@ export const ResponsiveActionMenu = ({
                 key={action.label}
                 type="button"
                 className={mobileCardMenuItemClass}
+                disabled={action.disabled}
                 onClick={() => {
-                  onOpenChange(false)
+                  flushSync(() => onOpenChange(false))
                   action.onSelect()
                 }}
               >
@@ -96,6 +99,7 @@ export const ResponsiveActionMenu = ({
           <DropdownMenuItem
             key={action.label}
             onSelect={action.onSelect}
+            disabled={action.disabled}
             className="min-h-[var(--min-touch-height)] cursor-pointer"
           >
             {action.icon}

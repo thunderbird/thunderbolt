@@ -26,6 +26,12 @@ export const SettingsListPane = ({ className, ...props }: ComponentProps<'sectio
 )
 
 /**
+ * `SettingsListBody` variant for row lists (models, agents): wider row gap and
+ * an extra 0.75rem of mobile runway below the floating header.
+ */
+export const settingsListBodyRowsClass = 'gap-4 max-md:pt-[calc(var(--header-inset)+0.75rem)] md:pt-0'
+
+/**
  * The scrolling region inside `SettingsListPane`. On mobile it extends beneath
  * the floating header while equivalent padding keeps its resting position.
  */

@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Loader2 } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
 
 import { createItemTitle, type CreateItemRequest, useCreateItem } from './context'
-import { CreateItemPanelShell } from './create-item-panel-shell'
+import { CreateItemLoadingPanel } from './create-item-panel-shell'
 
 const CreateSkillPanel = lazy(() =>
   import('./create-skill-panel').then((module) => ({ default: module.CreateSkillPanel })),
@@ -16,30 +15,6 @@ const CreateAgentPanel = lazy(() =>
 )
 const CreateModelPanel = lazy(() =>
   import('./create-model-panel').then((module) => ({ default: module.CreateModelPanel })),
-)
-
-const LoadingPanel = ({
-  request,
-  open,
-  onClose,
-  onCloseComplete,
-}: {
-  request: CreateItemRequest
-  open: boolean
-  onClose: () => void
-  onCloseComplete: () => void
-}) => (
-  <CreateItemPanelShell
-    kind={request.kind}
-    title={createItemTitle(request)}
-    open={open}
-    onClose={onClose}
-    onCloseComplete={onCloseComplete}
-  >
-    <div className="flex flex-1 items-center justify-center">
-      <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-    </div>
-  </CreateItemPanelShell>
 )
 
 /**
@@ -91,8 +66,9 @@ export const CreateItemHost = () => {
     <Suspense
       key={renderedRequest.id}
       fallback={
-        <LoadingPanel
-          request={renderedRequest}
+        <CreateItemLoadingPanel
+          kind={renderedRequest.kind}
+          title={createItemTitle(renderedRequest)}
           open={isSurfaceOpen}
           onClose={closeCreateItem}
           onCloseComplete={handleCloseComplete}

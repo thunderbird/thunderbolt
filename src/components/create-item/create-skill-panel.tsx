@@ -15,8 +15,8 @@ import {
 } from '@/skills/skill-save'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useLibrarySkills } from '@/skills/use-skills'
-import { Loader2 } from 'lucide-react'
-import { CreateItemPanelShell } from './create-item-panel-shell'
+import { editSkillTitle } from './context'
+import { CreateItemLoadingPanel, CreateItemPanelShell } from './create-item-panel-shell'
 
 type CreateSkillState = {
   isDirty: boolean
@@ -74,6 +74,7 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
   const [state, dispatch] = useReducer(createSkillReducer, initialState)
   const activeSkill = skillId ? skills.find((skill) => skill.id === skillId) : undefined
   const isEditing = skillId !== undefined
+  const title = isEditing ? editSkillTitle : undefined
 
   if (isEditing && !activeSkill && !isLoading) {
     throw new Error(`CreateSkillPanel could not find skill ${skillId}`)
@@ -81,17 +82,13 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
 
   if (isEditing && !activeSkill) {
     return (
-      <CreateItemPanelShell
+      <CreateItemLoadingPanel
         kind="skill"
-        title="Edit Skill"
+        title={title}
         open={open}
         onClose={onClose}
         onCloseComplete={onCloseComplete}
-      >
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-        </div>
-      </CreateItemPanelShell>
+      />
     )
   }
 
@@ -133,7 +130,7 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
     <>
       <CreateItemPanelShell
         kind="skill"
-        title={isEditing ? 'Edit Skill' : undefined}
+        title={title}
         open={open}
         onClose={requestClose}
         onCloseComplete={onCloseComplete}

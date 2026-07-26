@@ -173,10 +173,6 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
     useSyncEnabledToggle()
 
-  const handleSignInClick = () => {
-    openSignInModal()
-  }
-
   const handleNewChat = () => {
     triggerImpact('light')
     trackEvent('chat_new_clicked')
@@ -264,7 +260,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     )
     if (!user) {
       return (
-        <button type="button" aria-label="Sign in" className={controlClass} onClick={handleSignInClick}>
+        <button type="button" aria-label="Sign in" className={controlClass} onClick={openSignInModal}>
           {stateIcon}
         </button>
       )

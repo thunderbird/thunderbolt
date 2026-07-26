@@ -14,7 +14,6 @@ import { getClock } from '@/testing-library'
 import TasksPage, {
   getVisibleOptimisticTask,
   initialTasksPageState,
-  lockTaskReorderToVerticalAxis,
   normalizeTaskSearchQuery,
   tasksPageReducer,
   type TaskListItem,
@@ -39,16 +38,6 @@ const flush = async () => {
     await getClock().runAllAsync()
   })
 }
-
-describe('task reordering', () => {
-  it('removes horizontal drag movement', () => {
-    const result = lockTaskReorderToVerticalAxis({
-      transform: { x: 42, y: 18, scaleX: 0.9, scaleY: 0.95 },
-    } as Parameters<typeof lockTaskReorderToVerticalAxis>[0])
-
-    expect(result).toEqual({ x: 0, y: 18, scaleX: 0.9, scaleY: 0.95 })
-  })
-})
 
 describe('optimistic task creation', () => {
   const task: TaskListItem = {

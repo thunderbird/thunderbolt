@@ -11,7 +11,6 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-  type Modifier,
 } from '@dnd-kit/core'
 import {
   arrayMove,
@@ -24,11 +23,9 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, X } from 'lucide-react'
 
 import type { Skill } from '@/types'
+import { verticalAxisModifiers } from '@/lib/dnd'
 import { cn } from '@/lib/utils'
 import { skillDisplayName } from './display'
-
-/** Keeps sortable skills on their vertical track while preserving DnD scale data. */
-export const lockSkillReorderToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
 const SortableRow = ({ skill }: { skill: Skill }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: skill.id })
@@ -123,7 +120,7 @@ export const ReorderPanel = ({
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        modifiers={[lockSkillReorderToVerticalAxis]}
+        modifiers={verticalAxisModifiers}
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={pinned.map((s) => s.id)} strategy={verticalListSortingStrategy}>

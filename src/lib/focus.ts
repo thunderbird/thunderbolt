@@ -22,7 +22,7 @@ export const collapseTextSelectionToEnd = (element: Element | null) => {
  * Prevented autofocus events are left untouched for explicit behaviors such
  * as rename fields that intentionally select all text.
  */
-export const collapseAutoFocusedTextSelection = (event: Event) => {
+const collapseAutoFocusedTextSelection = (event: Event) => {
   if (event.defaultPrevented) {
     return
   }
@@ -32,4 +32,13 @@ export const collapseAutoFocusedTextSelection = (event: Event) => {
       collapseTextSelectionToEnd(document.activeElement)
     }
   })
+}
+
+/**
+ * Wraps a modal content's `onOpenAutoFocus` so the default autofocus lands
+ * with a collapsed selection. The caller's own handler always runs first.
+ */
+export const withCollapsedAutoFocusSelection = (onOpenAutoFocus?: (event: Event) => void) => (event: Event) => {
+  onOpenAutoFocus?.(event)
+  collapseAutoFocusedTextSelection(event)
 }

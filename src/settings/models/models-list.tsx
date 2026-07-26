@@ -5,7 +5,7 @@
 import { AlertTriangle, Cpu, Plus } from 'lucide-react'
 
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
-import { SettingsListBody, SettingsSelectableRow } from '@/components/settings/settings-list'
+import { SettingsListBody, settingsListBodyRowsClass, SettingsSelectableRow } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
 import { needsApiKey } from './model-policy'
 import { PrivateBadge } from '@/components/ui/private-badge'
@@ -24,7 +24,7 @@ type ModelsListProps = {
 
 /** Presentational list of configured models with enable toggles and the add affordance. */
 export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }: ModelsListProps) => (
-  <SettingsListBody className="gap-4 max-md:pt-[calc(var(--header-inset)+0.75rem)] md:pt-0">
+  <SettingsListBody className={settingsListBodyRowsClass}>
     {models.map((model) => {
       const isEnabled = model.enabled === 1
       return (

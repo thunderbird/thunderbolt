@@ -3,13 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { lockSkillReorderToVerticalAxis } from './reorder-panel'
+import { lockToVerticalAxis } from './dnd'
 
-describe('lockSkillReorderToVerticalAxis', () => {
+describe('lockToVerticalAxis', () => {
   it('removes horizontal movement while preserving vertical movement and scale', () => {
-    const result = lockSkillReorderToVerticalAxis({
+    const result = lockToVerticalAxis({
       transform: { x: 42, y: 18, scaleX: 0.9, scaleY: 0.95 },
-    } as Parameters<typeof lockSkillReorderToVerticalAxis>[0])
+    } as Parameters<typeof lockToVerticalAxis>[0])
 
     expect(result).toEqual({ x: 0, y: 18, scaleX: 0.9, scaleY: 0.95 })
   })

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
@@ -34,4 +35,16 @@ export const CreateItemPanelShell = ({
       {children}
     </DetailPanel>
   </DetailPanelSurface>
+)
+
+/**
+ * The shell with a centered spinner body — shared by the host's Suspense
+ * fallback and panels that are still loading the data they edit.
+ */
+export const CreateItemLoadingPanel = (props: Omit<CreateItemPanelShellProps, 'children'>) => (
+  <CreateItemPanelShell {...props}>
+    <div className="flex flex-1 items-center justify-center">
+      <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
+    </div>
+  </CreateItemPanelShell>
 )

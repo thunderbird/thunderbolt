@@ -10,10 +10,11 @@ import { PageSearch } from '@/components/ui/page-search'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDatabase } from '@/contexts'
 import { createTask, deleteTask, getIncompleteTasks, getIncompleteTasksCount, updateTask } from '@/dal'
+import { verticalAxisModifiers } from '@/lib/dnd'
 import { trackEvent } from '@/lib/posthog'
 import { cn } from '@/lib/utils'
 import type { Task } from '@/types'
-import type { DropAnimation, Modifier } from '@dnd-kit/core'
+import type { DropAnimation } from '@dnd-kit/core'
 import {
   closestCenter,
   DndContext,
@@ -50,10 +51,6 @@ import {
 } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
-/** Keeps task reordering on the list's vertical track. */
-export const lockTaskReorderToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 })
-
-const taskReorderModifiers = [lockTaskReorderToVerticalAxis]
 const taskDropAnimation: DropAnimation = {
   duration: 80,
   easing: 'ease-out',
@@ -714,7 +711,7 @@ const TasksPage = () => {
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
-                  modifiers={taskReorderModifiers}
+                  modifiers={verticalAxisModifiers}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                 >

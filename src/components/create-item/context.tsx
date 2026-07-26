@@ -23,9 +23,12 @@ export const createItemTitles: Record<CreateItemRequest['kind'], string> = {
   model: 'Add Model',
 }
 
+/** Title for the skill panel's edit mode, which the kind map can't express. */
+export const editSkillTitle = 'Edit Skill'
+
 /** Returns the route-preserving panel title for create and edit requests. */
 export const createItemTitle = (request: CreateItemRequest): string =>
-  request.kind === 'skill' && request.skillId ? 'Edit Skill' : createItemTitles[request.kind]
+  request.kind === 'skill' && request.skillId ? editSkillTitle : createItemTitles[request.kind]
 
 type CreateItemContextValue = {
   request: CreateItemRequest | null

@@ -7,7 +7,7 @@ import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 import type { VariantProps } from 'class-variance-authority'
 
 import { HapticMountBoundary, useHaptics } from '@/hooks/use-haptics'
-import { collapseAutoFocusedTextSelection } from '@/lib/focus'
+import { withCollapsedAutoFocusSelection } from '@/lib/focus'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { centeredModalSurfaceClass, modalOverlayClass } from '@/components/ui/modal-styles'
@@ -44,18 +44,13 @@ const AlertDialogContent = ({
   onOpenAutoFocus,
   ...props
 }: ComponentProps<typeof AlertDialogPrimitive.Content>) => {
-  const handleOpenAutoFocus = (event: Event) => {
-    onOpenAutoFocus?.(event)
-    collapseAutoFocusedTextSelection(event)
-  }
-
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         className={cn(centeredModalSurfaceClass, 'grid gap-4 p-6 sm:max-w-lg', className)}
-        onOpenAutoFocus={handleOpenAutoFocus}
+        onOpenAutoFocus={withCollapsedAutoFocusSelection(onOpenAutoFocus)}
         {...props}
       />
     </AlertDialogPortal>

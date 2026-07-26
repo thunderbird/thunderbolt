@@ -12,7 +12,7 @@ import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { CreateAgentDetailPanel } from '@/components/settings/agents/create-agent-detail-panel'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
-import { SettingsListBody, SettingsListPane } from '@/components/settings/settings-list'
+import { SettingsListBody, settingsListBodyRowsClass, SettingsListPane } from '@/components/settings/settings-list'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase } from '@/contexts'
@@ -116,7 +116,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
               aria-pressed, so they behave as the toggles they announce.
               The CLI row shares the list's row gap so it reads as one list
               (gap-4, matching the models page). */}
-          <SettingsListBody className="gap-4 max-md:pt-[calc(var(--header-inset)+0.75rem)] md:pt-0">
+          <SettingsListBody className={settingsListBodyRowsClass}>
             <AgentList
               agents={agents}
               selectedId={activeAgent?.id ?? null}

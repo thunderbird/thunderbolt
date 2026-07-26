@@ -39,6 +39,15 @@ const DeviceCard = ({ children }: { children: ReactNode }) => (
   </Card>
 )
 
+/** Muted status pill next to a device name (Bridge / This device / Revoked). */
+const DeviceBadge = ({ children }: { children: ReactNode }) => (
+  <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{children}</span>
+)
+
+/** Whether a device-id mutation is currently in flight for this specific device. */
+const isMutatingDevice = (mutation: { isPending: boolean; variables: string | undefined }, deviceId: string) =>
+  mutation.isPending && mutation.variables === deviceId
+
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) {
     return '—'
@@ -139,17 +148,9 @@ const TrustedDeviceRow = ({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 truncate font-medium">{device.name}</p>
-            {isBridge && (
-              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">Bridge</span>
-            )}
-            {isCurrent && (
-              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-                This device
-              </span>
-            )}
-            {isRevoked && (
-              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">Revoked</span>
-            )}
+            {isBridge && <DeviceBadge>Bridge</DeviceBadge>}
+            {isCurrent && <DeviceBadge>This device</DeviceBadge>}
+            {isRevoked && <DeviceBadge>Revoked</DeviceBadge>}
           </div>
           <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
             {isRevoked && isBridge
@@ -305,9 +306,9 @@ export default function DevicesSettingsPage() {
                 <PendingDeviceRow
                   device={device}
                   isApprovePending={approveMutation.isPending}
-                  isApprovingThisDevice={approveMutation.isPending && approveMutation.variables === device.id}
+                  isApprovingThisDevice={isMutatingDevice(approveMutation, device.id)}
                   isDenyPending={denyMutation.isPending}
-                  isDenyingThisDevice={denyMutation.isPending && denyMutation.variables === device.id}
+                  isDenyingThisDevice={isMutatingDevice(denyMutation, device.id)}
                   onApprove={() => setConfirmationTarget({ action: 'approve', deviceId: device.id })}
                   onDeny={() => setConfirmationTarget({ action: 'deny', deviceId: device.id })}
                 />
@@ -332,9 +333,9 @@ export default function DevicesSettingsPage() {
                   isCurrent={device.id === currentDeviceId}
                   isQrVisible={pairing.qrFor === device.id}
                   isRevokePending={revokeMutation.isPending}
-                  isRevokingThisDevice={revokeMutation.isPending && revokeMutation.variables === device.id}
+                  isRevokingThisDevice={isMutatingDevice(revokeMutation, device.id)}
                   isRemovePending={removeMutation.isPending}
-                  isRemovingThisDevice={removeMutation.isPending && removeMutation.variables === device.id}
+                  isRemovingThisDevice={isMutatingDevice(removeMutation, device.id)}
                   onRevoke={() => setConfirmationTarget({ action: 'revoke', deviceId: device.id })}
                   onRemove={() => setConfirmationTarget({ action: 'remove', deviceId: device.id })}
                   onToggleQr={() => pairing.toggleQr(device.id)}

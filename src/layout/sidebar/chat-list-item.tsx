@@ -167,8 +167,13 @@ export const ChatListItem = memo(
       deleteChatDialogRef.current?.open()
     }
 
-    const deleteLabel = deleteChatMutation.isPending ? (
+    const deleteIcon = deleteChatMutation.isPending ? (
       <Loader2 className="size-4 animate-spin" />
+    ) : (
+      <Trash2 className="size-4" />
+    )
+    const deleteLabel = deleteChatMutation.isPending ? (
+      deleteIcon
     ) : (
       <>
         <Trash2 className="size-4 mr-2" />
@@ -180,7 +185,7 @@ export const ChatListItem = memo(
     // A close event may arrive after the *other* menu already claimed the
     // slot (opening one dismisses the other), so only the current owner may
     // clear it.
-    const handleMenuOpenChange = (menu: 'dropdown' | 'context') => (open: boolean) =>
+    const handleMenuOpenChange = (menu: ChatItemMenu) => (open: boolean) =>
       dispatch({ type: 'MENU_CHANGED', menu, open })
     // A closing menu normally restores focus to its trigger after the newly
     // opened rename surface has focused its input, which would hide the keyboard.
@@ -191,6 +196,15 @@ export const ChatListItem = memo(
       event.preventDefault()
       isOpeningDialogRef.current = false
     }
+
+    const renameDialog = (
+      <RenameChatDialog
+        open={renameDialogOpen}
+        title={thread.title}
+        onOpenChange={(open) => dispatch({ type: 'RENAME_DIALOG_CHANGED', open })}
+        onRename={handleRename}
+      />
+    )
 
     if (isMobile) {
       const trigger = (
@@ -223,7 +237,7 @@ export const ChatListItem = memo(
         <>
           <ResponsiveActionMenu
             open={openMenu === 'mobile'}
-            onOpenChange={(open) => dispatch({ type: 'MENU_CHANGED', menu: 'mobile', open })}
+            onOpenChange={handleMenuOpenChange('mobile')}
             trigger={trigger}
             title={displayTitle ?? 'Chat actions'}
             openOnTriggerClickMobile={false}
@@ -235,22 +249,13 @@ export const ChatListItem = memo(
               },
               {
                 label: 'Delete',
-                icon: deleteChatMutation.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Trash2 className="size-4" />
-                ),
+                icon: deleteIcon,
                 onSelect: startDelete,
                 disabled: deleteChatMutation.isPending,
               },
             ]}
           />
-          <RenameChatDialog
-            open={renameDialogOpen}
-            title={thread.title}
-            onOpenChange={(open) => dispatch({ type: 'RENAME_DIALOG_CHANGED', open })}
-            onRename={handleRename}
-          />
+          {renameDialog}
         </>
       )
     }
@@ -290,16 +295,14 @@ export const ChatListItem = memo(
                     </AnimatePresence>
                     <span className="truncate flex-1 min-w-0">{displayTitle}</span>
                   </div>
-                  {!isMobile && (
-                    <DropdownMenuTrigger asChild>
-                      <MoreHorizontal
-                        className={cn(
-                          'shrink-0 size-4',
-                          !anyMenuOpen && 'opacity-0 group-hover/item:opacity-100 transition-opacity',
-                        )}
-                      />
-                    </DropdownMenuTrigger>
-                  )}
+                  <DropdownMenuTrigger asChild>
+                    <MoreHorizontal
+                      className={cn(
+                        'shrink-0 size-4',
+                        !anyMenuOpen && 'opacity-0 group-hover/item:opacity-100 transition-opacity',
+                      )}
+                    />
+                  </DropdownMenuTrigger>
                 </SidebarMenuButton>
               </ContextMenuTrigger>
 
@@ -315,32 +318,25 @@ export const ChatListItem = memo(
                 />
               </ContextMenuContent>
 
-              {!isMobile && (
-                <DropdownMenuContent
-                  side="right"
-                  align="start"
-                  alignOffset={-8}
-                  className="min-w-56"
-                  onCloseAutoFocus={handleMenuCloseAutoFocus}
-                >
-                  <ChatItemActions
-                    Item={DropdownMenuItem}
-                    onRename={startRename}
-                    onDelete={startDelete}
-                    deleteLabel={deleteLabel}
-                    isDeletePending={deleteChatMutation.isPending}
-                  />
-                </DropdownMenuContent>
-              )}
+              <DropdownMenuContent
+                side="right"
+                align="start"
+                alignOffset={-8}
+                className="min-w-56"
+                onCloseAutoFocus={handleMenuCloseAutoFocus}
+              >
+                <ChatItemActions
+                  Item={DropdownMenuItem}
+                  onRename={startRename}
+                  onDelete={startDelete}
+                  deleteLabel={deleteLabel}
+                  isDeletePending={deleteChatMutation.isPending}
+                />
+              </DropdownMenuContent>
             </div>
           </ContextMenu>
         </DropdownMenu>
-        <RenameChatDialog
-          open={renameDialogOpen}
-          title={thread.title}
-          onOpenChange={(open) => dispatch({ type: 'RENAME_DIALOG_CHANGED', open })}
-          onRename={handleRename}
-        />
+        {renameDialog}
       </>
     )
   },

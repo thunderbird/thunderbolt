@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { encodeWavUpload } from './audio-engine'
+import { type AudioTransport, createAudioEngine, encodeWavUpload } from './audio-engine'
 
 describe('encodeWavUpload', () => {
   test('emits an explicit boundary that matches the Content-Type header', async () => {
@@ -43,5 +43,40 @@ describe('encodeWavUpload', () => {
     const needle = [0xde, 0xad, 0xbe, 0xef]
     const found = hay.some((_, i) => needle.every((b, j) => hay[i + j] === b))
     expect(found).toBe(true)
+  })
+})
+
+describe('transcribe (regression guard for the prod 422)', () => {
+  const oneFrame = async function* (): AsyncIterable<Float32Array> {
+    yield new Float32Array([0.1, -0.1, 0.2, -0.2])
+  }
+
+  test('forwards a multipart/form-data content-type to the transport', async () => {
+    let capturedPath = ''
+    let capturedContentType: string | undefined
+    const transport: AudioTransport = async (path, _body, headers) => {
+      capturedPath = path
+      capturedContentType = headers?.['content-type']
+      return new Response(JSON.stringify({ text: 'hello there' }), { status: 200 })
+    }
+    const engine = createAudioEngine({
+      id: 'test',
+      transport,
+      sttModel: 'whisper-large-v3-turbo',
+      ttsModel: 'tts',
+      ttsVoice: 'v',
+    })
+
+    const out: string[] = []
+    for await (const t of engine.transcribe(oneFrame())) {
+      out.push(t.text)
+    }
+
+    // The actual prod regression was the enclave receiving no usable multipart
+    // Content-Type; assert transcribe hands the transport one (a FormData revert
+    // or a dropped header would fail here even if encodeWavUpload stayed correct).
+    expect(capturedPath).toBe('/audio/transcriptions')
+    expect(capturedContentType).toMatch(/^multipart\/form-data; boundary=/)
+    expect(out).toEqual(['hello there'])
   })
 })

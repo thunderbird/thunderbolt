@@ -3,6 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
+ * The webview doesn't expose the media-capture API at all — `navigator.mediaDevices`
+ * is undefined, so we can't even call `getUserMedia`. Distinct from a getUserMedia
+ * rejection: WKWebView only exposes `mediaDevices` in a secure context (https or a
+ * bundle-loaded app), so a Tauri *dev* build served over `http://localhost` hits
+ * this, while a packaged build does not.
+ */
+export class MediaDevicesUnavailableError extends Error {
+  constructor() {
+    super('navigator.mediaDevices is unavailable in this context')
+    this.name = 'MediaDevicesUnavailableError'
+  }
+}
+
+/**
  * Map a voice-session failure to a human message (THU-689).
  *
  * `getUserMedia` rejects with `DOMException`s whose `.name` says what went wrong
@@ -11,6 +25,9 @@
  * through verbatim so provider error bodies stay debuggable.
  */
 export const toVoiceErrorMessage = (error: unknown): string => {
+  if (error instanceof MediaDevicesUnavailableError) {
+    return 'Microphone isn’t available in this window. Voice mode needs a secure context — try again over https, or use the packaged desktop app rather than the dev server.'
+  }
   const name = error instanceof DOMException ? error.name : ''
   switch (name) {
     case 'NotAllowedError':

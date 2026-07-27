@@ -17,6 +17,7 @@
  * trigger (unused while half-duplex, but kept for when full-duplex returns).
  */
 import { concatFrames } from '@/voice/engine/audio-engine'
+import { MediaDevicesUnavailableError } from '@/voice/voice-error'
 
 export type VadHandlers = {
   onSpeechStart?: () => void
@@ -111,6 +112,12 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
   }
 
   const start = async () => {
+    // WKWebView hides `navigator.mediaDevices` outside a secure context (a Tauri
+    // dev build over http://localhost), so guard before dereferencing it — a raw
+    // "undefined is not an object" TypeError isn't actionable.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new MediaDevicesUnavailableError()
+    }
     stream = await navigator.mediaDevices.getUserMedia(AEC_CONSTRAINTS)
     // Native mic rate (can't connect a MediaStreamSource across rates); the
     // worklet resamples to 16 kHz.

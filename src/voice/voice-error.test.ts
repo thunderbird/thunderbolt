@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { toVoiceErrorMessage } from './voice-error'
+import { MediaDevicesUnavailableError, toVoiceErrorMessage } from './voice-error'
 
 describe('toVoiceErrorMessage', () => {
   test('explains a blocked microphone', () => {
@@ -17,6 +17,12 @@ describe('toVoiceErrorMessage', () => {
 
   test('explains a microphone in use', () => {
     expect(toVoiceErrorMessage(new DOMException('busy', 'NotReadableError'))).toContain('being used by another app')
+  })
+
+  test('explains an unavailable media API (insecure webview context)', () => {
+    const message = toVoiceErrorMessage(new MediaDevicesUnavailableError())
+    expect(message).toContain('isn’t available in this window')
+    expect(message).toContain('secure context')
   })
 
   test('passes other errors through verbatim (keeps provider bodies debuggable)', () => {

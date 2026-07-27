@@ -80,6 +80,37 @@ export const concatFrames = (frames: PcmFrame[]): Float32Array => {
   return merged
 }
 
+/**
+ * Build a `multipart/form-data` STT upload as fixed-length bytes with an explicit
+ * boundary, returning the body AND the matching `Content-Type`.
+ *
+ * We deliberately avoid `FormData`: its boundary is generated implicitly by the
+ * browser only as it streams the request, and that Content-Type doesn't reliably
+ * reach the server on every path — notably desktop-browser → prod, where the
+ * request crosses the Tinfoil transport (EHBP rebuilds the request and seals the
+ * body separately from the plaintext headers) plus the prod edge. On the affected
+ * path the enclave receives body bytes with no usable boundary and rejects the
+ * upload as `file`/`model` missing (422). Materializing the body and setting the
+ * header ourselves — exactly like the JSON TTS path, which works everywhere —
+ * makes the upload deterministic across browsers and proxies.
+ */
+export const encodeWavUpload = (wav: ArrayBuffer, model: string): { body: Uint8Array; contentType: string } => {
+  const boundary = `----thunderbolt-voice-${crypto.randomUUID()}`
+  const encoder = new TextEncoder()
+  const head = encoder.encode(
+    `--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${model}\r\n` +
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="utterance.wav"\r\n` +
+      `Content-Type: audio/wav\r\n\r\n`,
+  )
+  const tail = encoder.encode(`\r\n--${boundary}--\r\n`)
+  const wavBytes = new Uint8Array(wav)
+  const body = new Uint8Array(head.length + wavBytes.length + tail.length)
+  body.set(head, 0)
+  body.set(wavBytes, head.length)
+  body.set(tail, head.length + wavBytes.length)
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` }
+}
+
 const errorText = async (res: Response): Promise<string> => `${res.status} ${await res.text().catch(() => '')}`.trim()
 
 export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
@@ -104,10 +135,9 @@ export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
     // The session feeds one already-merged utterance frame; skip the redundant
     // full-length copy in that common case.
     const merged = frames.length === 1 ? frames[0] : concatFrames(frames)
-    const form = new FormData()
-    form.append('file', encodeWav(merged, sttSampleRate), 'utterance.wav')
-    form.append('model', opts.sttModel)
-    const res = await opts.transport('/audio/transcriptions', form, undefined, signal)
+    const wav = await encodeWav(merged, sttSampleRate).arrayBuffer()
+    const { body, contentType } = encodeWavUpload(wav, opts.sttModel)
+    const res = await opts.transport('/audio/transcriptions', body, { 'content-type': contentType }, signal)
     if (!res.ok) {
       throw new Error(`STT failed: ${await errorText(res)}`)
     }

@@ -22,7 +22,9 @@ const stripTrailingSlash = (url: string): string => url.replace(/\/+$/, '')
 
 const withAuth = (apiKey: string, headers?: Record<string, string>): Record<string, string> => {
   const merged: Record<string, string> = { ...headers }
-  if (apiKey) merged.Authorization = `Bearer ${apiKey}`
+  if (apiKey) {
+    merged.Authorization = `Bearer ${apiKey}`
+  }
   return merged
 }
 
@@ -39,7 +41,9 @@ export const createOpenAiCompatibleEngine = (config: VoiceProviderConfig): Voice
     } catch (err) {
       // The http client throws on non-2xx; hand the Response back so the engine
       // can surface the server's error body (bad voice/model, etc.).
-      if (err instanceof HttpError) return err.response
+      if (err instanceof HttpError) {
+        return err.response
+      }
       throw err
     }
   }
@@ -96,8 +100,8 @@ export type DiscoveredModels = {
   tts: Array<{ id: string; voices: string[] }>
 }
 
-const TASK_STT = 'automatic-speech-recognition'
-const TASK_TTS = 'text-to-speech'
+const taskStt = 'automatic-speech-recognition'
+const taskTts = 'text-to-speech'
 
 /**
  * Partition raw `/v1/models` entries into STT and TTS lists using each model's
@@ -110,9 +114,11 @@ export const classifyModels = (models: RawModel[]): DiscoveredModels => {
   const tts: DiscoveredModels['tts'] = []
   for (const model of models) {
     const voices = (model.voices ?? []).map((voice) => voice.id)
-    if (model.task === TASK_TTS) tts.push({ id: model.id, voices })
-    else if (model.task === TASK_STT) stt.push(model.id)
-    else {
+    if (model.task === taskTts) {
+      tts.push({ id: model.id, voices })
+    } else if (model.task === taskStt) {
+      stt.push(model.id)
+    } else {
       stt.push(model.id)
       tts.push({ id: model.id, voices })
     }

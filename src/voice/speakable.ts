@@ -15,8 +15,11 @@
  */
 import type { ContentPart } from '@/ai/widget-parser'
 
-/** Emoji, pictographs, variation selectors, ZWJ, regional indicators. */
-const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu
+// Emoji, pictographs, regional indicators, plus the variation selector (FE0F),
+// ZWJ (200D) and combining enclosing keycap (20E3). The combining/joining code
+// points live in alternation branches, not the character class, to avoid the
+// no-misleading-character-class rule (combining marks inside `[...]` are flagged).
+const emoji = /\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]|\u{FE0F}|\u{200D}|\u{20E3}/gu
 
 /**
  * Widget tags (`<widget:NAME .../>`) render as rich UI, so reading the raw tag
@@ -24,7 +27,7 @@ const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{2
  * the on-screen UI; inline-reference widgets (citation, link-preview) and their
  * bracket markers are dropped — they're visual footnotes, not speech.
  */
-const WIDGET_ANNOUNCEMENT: Record<string, string> = {
+const widgetAnnouncement: Record<string, string> = {
   'weather-forecast': 'Take a look at the weather forecast on screen.',
   map: 'Take a look at the map on screen.',
   'connect-integration': 'Use the connection prompt on screen to continue.',
@@ -33,7 +36,7 @@ const WIDGET_ANNOUNCEMENT: Record<string, string> = {
 }
 
 /** Spoken pointer for a widget, or '' for reference-only widgets (citation, link-preview). */
-export const announceWidget = (name: string): string => WIDGET_ANNOUNCEMENT[name.toLowerCase()] ?? ''
+export const announceWidget = (name: string): string => widgetAnnouncement[name.toLowerCase()] ?? ''
 
 /**
  * Flatten parsed content parts into clean speech source: text verbatim, widgets
@@ -92,7 +95,7 @@ export const toSpeakable = (input: string): string => {
   text = text.replace(/^\s*[-*_]{3,}\s*$/gm, ' ')
   text = text.replace(/\|/g, ' ')
   // Emoji + stray symbol noise.
-  text = text.replace(EMOJI, '')
+  text = text.replace(emoji, '')
   // Collapse whitespace, then close up any space left before punctuation
   // (e.g. from a removed citation marker: "today [1]." → "today .").
   text = text.replace(/\s+/g, ' ')

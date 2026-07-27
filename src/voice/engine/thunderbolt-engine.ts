@@ -17,22 +17,22 @@ import { getAuthToken } from '@/lib/auth-token'
 import { type AudioTransport, createAudioEngine } from './audio-engine'
 import type { VoiceEngine } from './types'
 
-const STT_MODEL = 'whisper-large-v3-turbo' // batch transcription; voxtral-realtime (streaming) is a follow-up
+const sttModel = 'whisper-large-v3-turbo' // batch transcription; voxtral-realtime (streaming) is a follow-up
 
 type TtsProfile = { model: string; voice: string }
 // TTS model + its preset voice. voxtral-tts + casual_male is the verified-working
 // combo; qwen3-tts is steadier/less improvisational. qwen3 voices on this enclave
 // (from /audio/speech error bodies): aiden, dylan, eric, ono_anna, ryan, serena,
-// sohee, uncle_fu, vivian. Flip TTS to A/B; user-selectable engines land in the
-// voice settings (THU-718) via createOpenAiCompatibleEngine.
-const TTS_PROFILES = {
+// sohee, uncle_fu, vivian. Flip ttsProfile to A/B; user-selectable engines land in
+// the voice settings (THU-718) via createOpenAiCompatibleEngine.
+const ttsProfiles = {
   voxtral: { model: 'voxtral-tts', voice: 'casual_male' },
   qwen3: { model: 'qwen3-tts', voice: 'aiden' },
 } satisfies Record<string, TtsProfile>
-const TTS: TtsProfile = TTS_PROFILES.qwen3
+const ttsProfile: TtsProfile = ttsProfiles.qwen3
 // Expressive models improvise emphasis/pacing/laughter; steer delivery via the
 // `instructions` style control (honored by qwen3-tts / voxtral-tts).
-const TTS_INSTRUCTIONS =
+const ttsInstructions =
   'Speak naturally and conversationally, like a warm, helpful friend. Relaxed and ' +
   'clear, with an even, moderate pace. Sound genuinely engaged but never theatrical ' +
   '— no shouting, exaggerated emphasis, or laughter.'
@@ -50,7 +50,9 @@ const tinfoilTransport: AudioTransport = async (path, body, headers, signal) => 
   const attempt = async (): Promise<Response> => {
     const client = await getSystemTinfoilClient() // awaits attestation (`ready()`)
     const baseUrl = client.getBaseURL()
-    if (!baseUrl) throw new Error('Tinfoil client has no base URL')
+    if (!baseUrl) {
+      throw new Error('Tinfoil client has no base URL')
+    }
     const reqHeaders = new Headers(headers)
     const init: RequestInit = { method: 'POST', body, headers: reqHeaders, signal }
     if (sso && !token) {
@@ -71,7 +73,9 @@ const tinfoilTransport: AudioTransport = async (path, body, headers, signal) => 
     }
     return res
   } catch (err) {
-    if (!isKeyConfigMismatchError(err)) throw err
+    if (!isKeyConfigMismatchError(err)) {
+      throw err
+    }
     evictSystemTinfoilClient()
     return attempt()
   }
@@ -84,9 +88,9 @@ export const createThunderboltEngine = (): VoiceEngine =>
     warm: async () => {
       await getSystemTinfoilClient() // prime attestation
     },
-    sttModel: STT_MODEL,
-    ttsModel: TTS.model,
-    ttsVoice: TTS.voice,
-    ttsInstructions: TTS_INSTRUCTIONS,
+    sttModel,
+    ttsModel: ttsProfile.model,
+    ttsVoice: ttsProfile.voice,
+    ttsInstructions,
     ttsSpeed: 1,
   })

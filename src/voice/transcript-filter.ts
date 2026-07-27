@@ -19,7 +19,7 @@
  * occasionally replying to a noise-triggered "thank you".
  */
 
-const NOISE_PHRASES = [
+const noisePhrases = [
   'thanks for watching',
   'thank you for watching',
   'thank you for your watching',
@@ -32,7 +32,7 @@ const NOISE_PHRASES = [
 
 // Longest first, so "thank you for watching" is removed before "thank you"
 // leaves an orphaned "for watching".
-const NOISE_PHRASES_BY_LENGTH = [...NOISE_PHRASES].sort((a, b) => b.length - a.length)
+const noisePhrasesByLength = [...noisePhrases].sort((a, b) => b.length - a.length)
 
 const normalize = (text: string): string =>
   text
@@ -48,12 +48,16 @@ const normalize = (text: string): string =>
  */
 export const isHallucinatedTranscript = (text: string): boolean => {
   const normalized = normalize(text)
-  if (!normalized) return true
+  if (!normalized) {
+    return true
+  }
   let rest = ` ${normalized} `
   let prev = ''
   while (rest !== prev) {
     prev = rest
-    for (const phrase of NOISE_PHRASES_BY_LENGTH) rest = rest.split(` ${phrase} `).join(' ')
+    for (const phrase of noisePhrasesByLength) {
+      rest = rest.split(` ${phrase} `).join(' ')
+    }
   }
   return rest.trim().length === 0
 }

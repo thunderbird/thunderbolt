@@ -9,7 +9,9 @@ import { SentenceAggregator } from './aggregator'
 const runStreamed = (text: string): string[] => {
   const agg = new SentenceAggregator()
   const chunks: string[] = []
-  for (const ch of text) chunks.push(...agg.push(ch))
+  for (const ch of text) {
+    chunks.push(...agg.push(ch))
+  }
   chunks.push(...agg.flush())
   return chunks
 }

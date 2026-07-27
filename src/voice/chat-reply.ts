@@ -24,14 +24,18 @@ export type ReplyChat = {
   stop: () => Promise<void>
 }
 
-const POLL_MS = 40
+const pollMs = 40
 
 /** Text of the assistant message for the turn that started at `baseline`, or ''. */
 const turnAssistantText = (chat: ReplyChat, baseline: number): string => {
   const { messages } = chat
-  if (messages.length <= baseline) return '' // no new messages yet
+  if (messages.length <= baseline) {
+    return ''
+  } // no new messages yet
   const last = messages[messages.length - 1]
-  if (last.role !== 'assistant') return '' // user message added, assistant not started
+  if (last.role !== 'assistant') {
+    return ''
+  } // user message added, assistant not started
   return last.parts.reduce((text, part) => (part.type === 'text' ? text + (part.text ?? '') : text), '')
 }
 
@@ -66,14 +70,18 @@ export const createChatReply = (chat: ReplyChat, wait: (ms: number) => Promise<v
         }
         if (done) {
           const finalText = turnAssistantText(chat, baseline)
-          if (finalText.length > emitted) yield finalText.slice(emitted)
+          if (finalText.length > emitted) {
+            yield finalText.slice(emitted)
+          }
           // Surface a send failure so the session hits its error state instead of
           // returning a silent empty turn (no audio, no error). Skipped on abort —
           // there the rejection is our own chat.stop(), not a real failure.
-          if (sendError && !signal.aborted) throw sendError
+          if (sendError && !signal.aborted) {
+            throw sendError
+          }
           return
         }
-        await wait(POLL_MS)
+        await wait(pollMs)
       }
     } finally {
       signal.removeEventListener('abort', onAbort)

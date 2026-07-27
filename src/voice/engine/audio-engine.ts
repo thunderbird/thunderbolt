@@ -14,7 +14,7 @@
 import type { AudioChunk, PcmFrame, Transcript, VoiceEngine } from './types'
 
 /** Sample rate the capture worklet emits and STT expects. */
-export const STT_SAMPLE_RATE = 16000
+export const sttSampleRate = 16000
 
 /** Sends one request to an `/audio/*` path and returns the raw Response (does
  *  NOT throw on non-2xx — the factory inspects status + body itself). The
@@ -48,7 +48,9 @@ export const encodeWav = (samples: Float32Array, sampleRate: number): Blob => {
   const buffer = new ArrayBuffer(44 + samples.length * 2)
   const view = new DataView(buffer)
   const writeStr = (offset: number, s: string) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i))
+    for (let i = 0; i < s.length; i++) {
+      view.setUint8(offset + i, s.charCodeAt(i))
+    }
   }
   writeStr(0, 'RIFF')
   view.setUint32(4, 36 + samples.length * 2, true)
@@ -91,47 +93,67 @@ export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
   const transcribe = async function* (audio: AsyncIterable<PcmFrame>, signal?: AbortSignal): AsyncIterable<Transcript> {
     const frames: PcmFrame[] = []
     for await (const frame of audio) {
-      if (signal?.aborted) return
+      if (signal?.aborted) {
+        return
+      }
       frames.push(frame)
     }
-    if (frames.length === 0) return
+    if (frames.length === 0) {
+      return
+    }
     // The session feeds one already-merged utterance frame; skip the redundant
     // full-length copy in that common case.
     const merged = frames.length === 1 ? frames[0] : concatFrames(frames)
     const form = new FormData()
-    form.append('file', encodeWav(merged, STT_SAMPLE_RATE), 'utterance.wav')
+    form.append('file', encodeWav(merged, sttSampleRate), 'utterance.wav')
     form.append('model', opts.sttModel)
     const res = await opts.transport('/audio/transcriptions', form, undefined, signal)
-    if (!res.ok) throw new Error(`STT failed: ${await errorText(res)}`)
+    if (!res.ok) {
+      throw new Error(`STT failed: ${await errorText(res)}`)
+    }
     const data = (await res.json()) as { text?: string }
-    if (signal?.aborted) return
+    if (signal?.aborted) {
+      return
+    }
     yield { text: (data.text ?? '').trim(), isFinal: true }
   }
 
   const synthesize = async function* (text: AsyncIterable<string>, signal?: AbortSignal): AsyncIterable<AudioChunk> {
     decodeCtx ??= new AudioContext()
     for await (const chunk of text) {
-      if (signal?.aborted) return
+      if (signal?.aborted) {
+        return
+      }
       const payload: Record<string, unknown> = {
         model: opts.ttsModel,
         input: chunk,
         voice: opts.ttsVoice,
         response_format: ttsFormat,
       }
-      if (opts.ttsSpeed !== undefined) payload.speed = opts.ttsSpeed
-      if (opts.ttsInstructions) payload.instructions = opts.ttsInstructions
+      if (opts.ttsSpeed !== undefined) {
+        payload.speed = opts.ttsSpeed
+      }
+      if (opts.ttsInstructions) {
+        payload.instructions = opts.ttsInstructions
+      }
       const res = await opts.transport(
         '/audio/speech',
         JSON.stringify(payload),
         { 'content-type': 'application/json' },
         signal,
       )
-      if (!res.ok) throw new Error(`TTS failed: ${await errorText(res)}`)
+      if (!res.ok) {
+        throw new Error(`TTS failed: ${await errorText(res)}`)
+      }
       // Re-check before decoding: a response that resolved right as the turn was
       // aborted must not be decoded, and dispose() nulls decodeCtx concurrently.
-      if (signal?.aborted || !decodeCtx) return
+      if (signal?.aborted || !decodeCtx) {
+        return
+      }
       const decoded = await decodeCtx.decodeAudioData(await res.arrayBuffer())
-      if (signal?.aborted) return
+      if (signal?.aborted) {
+        return
+      }
       yield { pcm: decoded.getChannelData(0).slice(), sampleRate: decoded.sampleRate }
     }
   }

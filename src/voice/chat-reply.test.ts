@@ -34,7 +34,9 @@ const makeFakeChat = (tokens: string[]) => {
       const part = { type: 'text', text: '' }
       state.messages.push({ role: 'assistant', parts: [part] })
       for (const token of tokens) {
-        if (state.stopped) break
+        if (state.stopped) {
+          break
+        }
         await microtask()
         part.text += token
       }
@@ -45,7 +47,9 @@ const makeFakeChat = (tokens: string[]) => {
 
 const collect = async (iter: AsyncIterable<string>): Promise<string[]> => {
   const out: string[] = []
-  for await (const chunk of iter) out.push(chunk)
+  for await (const chunk of iter) {
+    out.push(chunk)
+  }
   return out
 }
 
@@ -95,7 +99,9 @@ describe('createChatReply', () => {
     const reply = createChatReply(chat, microtask)
     // Aborting rejects the in-flight send via chat.stop(); that must not surface
     // as a turn error.
-    for await (const _ of reply('go', ac.signal)) ac.abort()
+    for await (const _ of reply('go', ac.signal)) {
+      ac.abort()
+    }
     // Reaching here without throwing is the assertion.
   })
 })

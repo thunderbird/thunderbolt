@@ -14,16 +14,16 @@ import type { SessionState } from '@/voice/session'
 import { m } from 'framer-motion'
 import { type CSSProperties, useEffect, useRef } from 'react'
 
-const BAR_COUNT = 40
-const MIN_HEIGHT = 12 // % of track — the resting line
+const barCount = 40
+const minHeight = 12 // % of track — the resting line
 
-/** Per-state peak amplitude (fraction of track added on top of MIN_HEIGHT). */
-const AMPLITUDE: Record<SessionState, number> = { idle: 0, listening: 0.45, thinking: 0, speaking: 0.85 }
-const DURATIONS: Record<SessionState, number> = { idle: 1.2, listening: 1.0, thinking: 1.1, speaking: 0.42 }
+/** Per-state peak amplitude (fraction of track added on top of minHeight). */
+const amplitude: Record<SessionState, number> = { idle: 0, listening: 0.45, thinking: 0, speaking: 0.85 }
+const durations: Record<SessionState, number> = { idle: 1.2, listening: 1.0, thinking: 1.1, speaking: 0.42 }
 
 /** Deterministic 0..1 shape for bar `i`: a center hump plus fine wiggle. */
 const barPeak = (i: number): number => {
-  const hump = Math.sin(((i + 0.5) / BAR_COUNT) * Math.PI) // taller toward the middle
+  const hump = Math.sin(((i + 0.5) / barCount) * Math.PI) // taller toward the middle
   const wiggle = 0.5 + 0.5 * Math.sin(i * 1.7) // stable per-bar detail
   return 0.4 * hump + 0.6 * wiggle
 }
@@ -61,7 +61,7 @@ const ReactiveBars = ({ levelRef, className }: { levelRef: LevelRef; className: 
   }, [levelRef])
   return (
     <div ref={ref} className={`flex h-full w-full items-center justify-between ${className}`} aria-hidden>
-      {Array.from({ length: BAR_COUNT }, (_, i) => (
+      {Array.from({ length: barCount }, (_, i) => (
         <span
           key={i}
           className="h-full w-[3px] shrink-0 origin-center rounded-full bg-primary"
@@ -81,19 +81,19 @@ const CannedBars = ({ state, className }: { state: SessionState; className: stri
   const isFlat = state === 'idle' || state === 'thinking'
   return (
     <div className={`flex h-full w-full items-center justify-between ${className}`} aria-hidden>
-      {Array.from({ length: BAR_COUNT }, (_, i) => {
-        const high = Math.round(MIN_HEIGHT + AMPLITUDE[state] * barPeak(i) * (100 - MIN_HEIGHT))
+      {Array.from({ length: barCount }, (_, i) => {
+        const high = Math.round(minHeight + amplitude[state] * barPeak(i) * (100 - minHeight))
         return (
           <m.span
             key={i}
             className="w-[3px] shrink-0 rounded-full bg-primary"
             animate={
               isFlat
-                ? { height: `${MIN_HEIGHT}%`, opacity: state === 'thinking' ? [0.3, 1, 0.3] : 0.5 }
-                : { height: [`${MIN_HEIGHT}%`, `${high}%`, `${Math.round(high * 0.55)}%`] }
+                ? { height: `${minHeight}%`, opacity: state === 'thinking' ? [0.3, 1, 0.3] : 0.5 }
+                : { height: [`${minHeight}%`, `${high}%`, `${Math.round(high * 0.55)}%`] }
             }
             transition={{
-              duration: DURATIONS[state],
+              duration: durations[state],
               repeat: Number.POSITIVE_INFINITY,
               repeatType: 'mirror',
               ease: 'easeInOut',

@@ -60,6 +60,11 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
   let state: SessionState = 'idle'
   let turn: AbortController | null = null
   let vadGate: Awaited<ReturnType<typeof createVadGate>> | null = null
+  // Guards a stop() that lands mid-startup: start() awaits engine.load() and gate
+  // creation before assigning vadGate, so a stop during 'Starting…' would no-op
+  // (vadGate still null) and then start() would resume and open an orphaned mic
+  // with no session reference. start() checks this after each await and tears down.
+  let stopped = false
 
   const setState = (next: SessionState) => {
     state = next
@@ -79,8 +84,12 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
       setState('thinking')
 
       let userText = ''
-      for await (const t of engine.transcribe(singleFrame(audio), ac.signal)) userText = t.text
-      if (ac.signal.aborted) return
+      for await (const t of engine.transcribe(singleFrame(audio), ac.signal)) {
+        userText = t.text
+      }
+      if (ac.signal.aborted) {
+        return
+      }
       userText = userText.trim()
       // Drop empty turns and Whisper silence-hallucinations ("Thank you", "Bye")
       // so background noise the VAD misfired on never becomes a phantom turn.
@@ -120,14 +129,20 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
           }
           const delta = full.slice(emitted.length)
           emitted = full
-          if (!delta) return
+          if (!delta) {
+            return
+          }
           for (const chunk of aggregator.push(delta)) {
             const speakable = toSpeakable(chunk)
-            if (speakable) yield speakable
+            if (speakable) {
+              yield speakable
+            }
           }
         }
         for await (const token of reply(userText, ac.signal)) {
-          if (ac.signal.aborted) return
+          if (ac.signal.aborted) {
+            return
+          }
           assistantText += token
           accumulated += token
           yield* pushClean(speechSoFar())
@@ -135,38 +150,67 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
         yield* pushClean(speechSoFar())
         for (const chunk of aggregator.flush()) {
           const speakable = toSpeakable(chunk)
-          if (speakable) yield speakable
+          if (speakable) {
+            yield speakable
+          }
         }
       })()
 
       setState('speaking')
       for await (const audioChunk of engine.synthesize(chunks, ac.signal)) {
-        if (ac.signal.aborted) return
+        if (ac.signal.aborted) {
+          return
+        }
         playback.enqueue(audioChunk)
       }
-      if (ac.signal.aborted) return
-      if (assistantText.trim().length > 0) onTranscript?.(assistantText.trim(), 'assistant')
+      if (ac.signal.aborted) {
+        return
+      }
+      if (assistantText.trim().length > 0) {
+        onTranscript?.(assistantText.trim(), 'assistant')
+      }
       // Stay in `speaking` until the queued audio has actually finished playing —
       // synthesis enqueues faster than playback drains, and flipping to `listening`
       // early makes the VAD treat the assistant's own audio as a user turn.
-      while (playback.isPlaying && !ac.signal.aborted) await tick(80)
-      if (ac.signal.aborted) return
+      while (playback.isPlaying && !ac.signal.aborted) {
+        await tick(80)
+      }
+      if (ac.signal.aborted) {
+        return
+      }
       setState('listening')
     } catch (error) {
-      if (ac.signal.aborted) return
+      if (ac.signal.aborted) {
+        return
+      }
       onError?.(error)
       setState('listening')
     }
   }
 
   const start = async () => {
+    stopped = false
     await engine.load()
-    vadGate = await createVadGate({ onUtterance, onLevel })
+    if (stopped) {
+      return
+    }
+    const gate = await createVadGate({ onUtterance, onLevel })
+    if (stopped) {
+      await gate.destroy()
+      return
+    }
+    vadGate = gate
     await vadGate.start()
+    if (stopped) {
+      await vadGate.destroy()
+      vadGate = null
+      return
+    }
     setState('listening')
   }
 
   const stop = async () => {
+    stopped = true
     turn?.abort()
     // Release every audio resource: VAD mic/ctx, the playback ctx, and the
     // engine's decode ctx. Missing any leaks an AudioContext per start/stop and

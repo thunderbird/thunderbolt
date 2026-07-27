@@ -14,7 +14,7 @@ import { VoiceWaveform } from '@/voice/ui/voice-waveform'
 import { m } from 'framer-motion'
 import { MicOff, X } from 'lucide-react'
 
-const STATUS_LABEL: Record<SessionState, string> = {
+const statusLabel: Record<SessionState, string> = {
   idle: 'Starting…',
   listening: 'Listening',
   thinking: 'Thinking',
@@ -38,7 +38,7 @@ export const VoiceModeComposer = ({ state, error, levelRef, onClose }: VoiceMode
     // same composer, just in voice mode. z-20 sits above the PromptInput (z-10).
     className="absolute inset-0 z-20 flex items-center gap-3 rounded-2xl border bg-card py-2 pl-4 pr-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
     role="status"
-    aria-label={`Voice mode: ${STATUS_LABEL[state]}`}
+    aria-label={`Voice mode: ${statusLabel[state]}`}
   >
     {error ? (
       <div className="flex min-w-0 flex-1 items-center gap-2 text-destructive">
@@ -51,7 +51,7 @@ export const VoiceModeComposer = ({ state, error, levelRef, onClose }: VoiceMode
       <>
         <VoiceWaveform state={state} levelRef={levelRef} className="min-w-0 flex-1" />
         <span className="shrink-0 text-[length:var(--font-size-xs)] font-medium text-muted-foreground">
-          {STATUS_LABEL[state]}
+          {statusLabel[state]}
         </span>
       </>
     )}

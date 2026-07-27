@@ -70,8 +70,9 @@ const ComboField = ({
   options: string[]
   onChange: (value: string) => void
 }) => {
-  if (options.length === 0)
+  if (options.length === 0) {
     return <Field id={id} label={label} hint={hint} value={value} placeholder={placeholder} onChange={onChange} />
+  }
   const items = value && !options.includes(value) ? [value, ...options] : options
   return (
     <div className="flex flex-col gap-1.5">

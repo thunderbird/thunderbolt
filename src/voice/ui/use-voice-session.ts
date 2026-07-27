@@ -45,7 +45,9 @@ export const useVoiceSession = () => {
   )
 
   const start = async () => {
-    if (sessionRef.current) return // already running — never stack a second session
+    if (sessionRef.current) {
+      return
+    } // already running — never stack a second session
     patch({ active: true, error: null, state: 'idle' })
     try {
       // Read the flag authoritatively from the DB at start time (not via a

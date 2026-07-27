@@ -60,10 +60,14 @@ export const createPlaybackQueue = (audioContext?: AudioContext): PlaybackQueue 
   }
 
   const close = () => {
-    if (closed) return // ctx.close() throws if called twice
+    if (closed) {
+      return
+    } // ctx.close() throws if called twice
     closed = true
     flush()
-    if (ownsCtx) void ctx.close()
+    if (ownsCtx) {
+      void ctx.close()
+    }
   }
 
   return {

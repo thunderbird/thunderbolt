@@ -39,21 +39,23 @@ export type VadGate = {
 }
 
 /** Frames are 512 samples (~32 ms) — set by the capture worklet. */
-const SPEECH_RMS_THRESHOLD = 0.015 // normalized [-1,1] amplitude; tune for the mic
-const MIN_SPEECH_FRAMES = 8 // ~256 ms — shorter is a misfire
+const speechRmsThreshold = 0.015 // normalized [-1,1] amplitude; tune for the mic
+const minSpeechFrames = 8 // ~256 ms — shorter is a misfire
 // ~1.4 s of trailing silence ends the turn. Long enough to think mid-sentence
 // without it firing on a natural pause; a streaming STT with semantic
 // endpointing would let us shorten this later.
-const END_SILENCE_FRAMES = 45
-const PREROLL_FRAMES = 4 // keep a little audio before onset so we don't clip it
+const endSilenceFrames = 45
+const prerollFrames = 4 // keep a little audio before onset so we don't clip it
 
-const AEC_CONSTRAINTS: MediaStreamConstraints = {
+const aecConstraints: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
 }
 
 const rms = (frame: Float32Array): number => {
   let sum = 0
-  for (let i = 0; i < frame.length; i++) sum += frame[i] * frame[i]
+  for (let i = 0; i < frame.length; i++) {
+    sum += frame[i] * frame[i]
+  }
   return Math.sqrt(sum / frame.length)
 }
 
@@ -82,7 +84,7 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
     reset()
     // Gate on real speech only — `collected` also holds preroll + the ~1.4 s of
     // trailing silence, so counting frames.length would never detect a misfire.
-    if (speech < MIN_SPEECH_FRAMES) {
+    if (speech < minSpeechFrames) {
       handlers.onMisfire?.()
       return
     }
@@ -92,7 +94,7 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
   const processFrame = (frame: Float32Array) => {
     const level = rms(frame)
     handlers.onLevel?.(level)
-    if (level >= SPEECH_RMS_THRESHOLD) {
+    if (level >= speechRmsThreshold) {
       if (!speaking) {
         speaking = true
         collected = [...preroll]
@@ -104,10 +106,14 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
     } else if (speaking) {
       collected.push(frame)
       silenceRun++
-      if (silenceRun >= END_SILENCE_FRAMES) endUtterance()
+      if (silenceRun >= endSilenceFrames) {
+        endUtterance()
+      }
     } else {
       preroll.push(frame)
-      if (preroll.length > PREROLL_FRAMES) preroll.shift()
+      if (preroll.length > prerollFrames) {
+        preroll.shift()
+      }
     }
   }
 
@@ -118,33 +124,43 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new MediaDevicesUnavailableError()
     }
-    stream = await navigator.mediaDevices.getUserMedia(AEC_CONSTRAINTS)
+    stream = await navigator.mediaDevices.getUserMedia(aecConstraints)
     // Native mic rate (can't connect a MediaStreamSource across rates); the
     // worklet resamples to 16 kHz.
     ctx = new AudioContext()
     // Mobile webviews create the context suspended even inside a gesture; resume
     // so the capture graph actually pulls frames.
-    if (ctx.state === 'suspended') await ctx.resume()
+    if (ctx.state === 'suspended') {
+      await ctx.resume()
+    }
     await ctx.audioWorklet.addModule('/voice/capture-worklet.js')
     node = new AudioWorkletNode(ctx, 'capture-processor')
     ctx.createMediaStreamSource(stream).connect(node)
     node.connect(ctx.destination) // worklet has no output; keeps the graph pulling
     node.port.onmessage = (event: MessageEvent<Float32Array>) => {
-      if (listening) processFrame(event.data)
+      if (listening) {
+        processFrame(event.data)
+      }
     }
   }
 
   const pause = async () => {
-    if (node) node.port.onmessage = null
+    if (node) {
+      node.port.onmessage = null
+    }
     node?.disconnect()
     await ctx?.suspend()
   }
 
   const destroy = async () => {
-    if (node) node.port.onmessage = null
+    if (node) {
+      node.port.onmessage = null
+    }
     node?.disconnect()
     node = null
-    for (const track of stream?.getTracks() ?? []) track.stop()
+    for (const track of stream?.getTracks() ?? []) {
+      track.stop()
+    }
     stream = null
     await ctx?.close()
     ctx = null

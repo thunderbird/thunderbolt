@@ -14,14 +14,14 @@
  */
 
 /** Emit the first chunk once it reaches this length and hits a clause break. */
-const FIRST_MIN_CHARS = 20
+const firstMinChars = 20
 /** Hard cap on the first chunk — flush at the last word boundary by here. */
-const FIRST_MAX_CHARS = 48
+const firstMaxChars = 48
 
-const CLAUSE_PUNCT = new Set([',', ';', ':', '—', '–'])
-const SENTENCE_PUNCT = new Set(['.', '!', '?'])
+const clausePunct = new Set([',', ';', ':', '—', '–'])
+const sentencePunct = new Set(['.', '!', '?'])
 /** Lowercased tokens that end in a period but don't end a sentence. */
-const ABBREVIATIONS = new Set([
+const abbreviations = new Set([
   'mr',
   'mrs',
   'ms',
@@ -50,9 +50,11 @@ const isDigit = (ch: string): boolean => ch >= '0' && ch <= '9'
 /** True if the word ending at `dotIndex` (exclusive) is a known abbreviation. */
 const precededByAbbreviation = (buffer: string, dotIndex: number): boolean => {
   let start = dotIndex
-  while (start > 0 && /[A-Za-z]/.test(buffer[start - 1])) start--
+  while (start > 0 && /[A-Za-z]/.test(buffer[start - 1])) {
+    start--
+  }
   const word = buffer.slice(start, dotIndex).toLowerCase()
-  return word.length > 0 && ABBREVIATIONS.has(word)
+  return word.length > 0 && abbreviations.has(word)
 }
 
 export class SentenceAggregator {
@@ -65,7 +67,9 @@ export class SentenceAggregator {
     const chunks: string[] = []
     for (;;) {
       const end = this.nextBoundary()
-      if (end < 0) break
+      if (end < 0) {
+        break
+      }
       const chunk = this.buffer.slice(0, end).trim()
       this.buffer = this.buffer.slice(end)
       if (chunk.length > 0) {
@@ -80,7 +84,9 @@ export class SentenceAggregator {
   flush(): string[] {
     const rest = this.buffer.trim()
     this.buffer = ''
-    if (rest.length === 0) return []
+    if (rest.length === 0) {
+      return []
+    }
     this.firstEmitted = true
     return [rest]
   }
@@ -97,24 +103,38 @@ export class SentenceAggregator {
     let inCode = false
     for (let i = 0; i < buf.length; i++) {
       const ch = buf[i]
-      if (ch === '`') inCode = !inCode
-      if (inCode) continue
-      if (isWhitespace(ch)) lastWordBreak = i
+      if (ch === '`') {
+        inCode = !inCode
+      }
+      if (inCode) {
+        continue
+      }
+      if (isWhitespace(ch)) {
+        lastWordBreak = i
+      }
 
       if (!this.firstEmitted) {
         // First chunk: earliest clause/sentence break past the floor, else a
         // hard cap at the last word boundary — bounds time-to-first-audio.
-        if (i + 1 >= FIRST_MIN_CHARS) {
-          if (CLAUSE_PUNCT.has(ch)) return i + 1
+        if (i + 1 >= firstMinChars) {
+          if (clausePunct.has(ch)) {
+            return i + 1
+          }
           const end = this.sentenceEnd(buf, i)
-          if (end > 0) return end
+          if (end > 0) {
+            return end
+          }
         }
-        if (i + 1 >= FIRST_MAX_CHARS && lastWordBreak > 0) return lastWordBreak + 1
+        if (i + 1 >= firstMaxChars && lastWordBreak > 0) {
+          return lastWordBreak + 1
+        }
         continue
       }
 
       const end = this.sentenceEnd(buf, i)
-      if (end > 0) return end
+      if (end > 0) {
+        return end
+      }
     }
     return -1
   }
@@ -125,15 +145,25 @@ export class SentenceAggregator {
    * abbreviations, and URLs so they don't split mid-thought.
    */
   private sentenceEnd(buf: string, i: number): number {
-    if (!SENTENCE_PUNCT.has(buf[i])) return -1
+    if (!sentencePunct.has(buf[i])) {
+      return -1
+    }
     // Consume any run of terminators / closing quotes+brackets.
     let j = i
-    while (j + 1 < buf.length && (SENTENCE_PUNCT.has(buf[j + 1]) || `")']`.includes(buf[j + 1]))) j++
+    while (j + 1 < buf.length && (sentencePunct.has(buf[j + 1]) || `")']`.includes(buf[j + 1]))) {
+      j++
+    }
     // Must be followed by whitespace — excludes decimals (3.14) and URLs (a.com).
-    if (j + 1 >= buf.length || !isWhitespace(buf[j + 1])) return -1
+    if (j + 1 >= buf.length || !isWhitespace(buf[j + 1])) {
+      return -1
+    }
     if (buf[i] === '.') {
-      if (i > 0 && isDigit(buf[i - 1]) && i + 1 < buf.length && isDigit(buf[i + 1])) return -1
-      if (precededByAbbreviation(buf, i)) return -1
+      if (i > 0 && isDigit(buf[i - 1]) && i + 1 < buf.length && isDigit(buf[i + 1])) {
+        return -1
+      }
+      if (precededByAbbreviation(buf, i)) {
+        return -1
+      }
     }
     return j + 1
   }

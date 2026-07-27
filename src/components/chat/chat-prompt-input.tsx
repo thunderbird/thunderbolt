@@ -832,6 +832,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                 state={voice.state}
                 error={voice.error}
                 levelRef={voice.levelRef}
+                outputLevelRef={voice.outputLevelRef}
                 onClose={voice.stop}
               />
             )}

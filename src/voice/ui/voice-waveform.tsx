@@ -5,10 +5,11 @@
 /**
  * Animated voice waveform (THU-689) — a full-width equalizer that makes it
  * obvious you're in voice mode. Bars stretch edge-to-edge and behave per session
- * state. While listening it reacts to your real mic level; the other states play
- * a canned animation (a traveling "thinking" shimmer, a lively speaking
- * equalizer, a calm idle line). Bar shapes are derived deterministically from the
- * index (no per-render randomness) so the animation is stable across re-renders.
+ * state. While listening it reacts to your real mic level, and while speaking to
+ * the assistant's actual TTS output level; idle/thinking play a canned animation
+ * (a traveling "thinking" shimmer, a calm idle line). Bar shapes are derived
+ * deterministically from the index (no per-render randomness) so the animation is
+ * stable across re-renders.
  */
 import type { SessionState } from '@/voice/session'
 import { m } from 'framer-motion'
@@ -30,14 +31,22 @@ const barPeak = (i: number): number => {
 
 type LevelRef = { readonly current: number }
 
-type VoiceWaveformProps = { state: SessionState; levelRef?: LevelRef; className?: string }
+type VoiceWaveformProps = {
+  state: SessionState
+  levelRef?: LevelRef
+  outputLevelRef?: LevelRef
+  className?: string
+}
 
-export const VoiceWaveform = ({ state, levelRef, className = '' }: VoiceWaveformProps) =>
-  state === 'listening' && levelRef ? (
-    <ReactiveBars levelRef={levelRef} className={className} />
-  ) : (
-    <CannedBars state={state} className={className} />
-  )
+export const VoiceWaveform = ({ state, levelRef, outputLevelRef, className = '' }: VoiceWaveformProps) => {
+  if (state === 'listening' && levelRef) {
+    return <ReactiveBars levelRef={levelRef} className={className} />
+  }
+  if (state === 'speaking' && outputLevelRef) {
+    return <ReactiveBars levelRef={outputLevelRef} className={className} />
+  }
+  return <CannedBars state={state} className={className} />
+}
 
 /**
  * Mic-reactive bars. A single rAF loop smooths the level and writes ONE CSS

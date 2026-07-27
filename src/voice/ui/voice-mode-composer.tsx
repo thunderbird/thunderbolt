@@ -25,10 +25,11 @@ type VoiceModeComposerProps = {
   state: SessionState
   error?: string | null
   levelRef?: { readonly current: number }
+  outputLevelRef?: { readonly current: number }
   onClose: () => void
 }
 
-export const VoiceModeComposer = ({ state, error, levelRef, onClose }: VoiceModeComposerProps) => (
+export const VoiceModeComposer = ({ state, error, levelRef, outputLevelRef, onClose }: VoiceModeComposerProps) => (
   <m.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
@@ -50,7 +51,7 @@ export const VoiceModeComposer = ({ state, error, levelRef, onClose }: VoiceMode
       </div>
     ) : (
       <>
-        <VoiceWaveform state={state} levelRef={levelRef} className="min-w-0 flex-1" />
+        <VoiceWaveform state={state} levelRef={levelRef} outputLevelRef={outputLevelRef} className="min-w-0 flex-1" />
         <span className="shrink-0 text-[length:var(--font-size-xs)] font-medium text-muted-foreground">
           {statusLabel[state]}
         </span>

@@ -46,6 +46,8 @@ export type VoiceSession = {
   start: () => Promise<void>
   stop: () => Promise<void>
   readonly state: SessionState
+  /** Current TTS output RMS (~[0,1]) for the speaking-state waveform. */
+  getOutputLevel: () => number
 }
 
 const singleFrame = async function* (audio: Float32Array): AsyncIterable<Float32Array> {
@@ -228,5 +230,6 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
     get state() {
       return state
     },
+    getOutputLevel: () => playback.getLevel(),
   }
 }

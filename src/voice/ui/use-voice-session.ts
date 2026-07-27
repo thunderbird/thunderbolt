@@ -14,7 +14,7 @@ import type { ThunderboltUIMessage } from '@/types'
 import type { ReplyChat } from '@/voice/chat-reply'
 import type { SessionState, VoiceSession } from '@/voice/session'
 import type { Chat } from '@ai-sdk/react'
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useMemo, useReducer, useRef } from 'react'
 
 /**
  * Adapt the AI SDK `Chat` to the structural `ReplyChat` slice the voice session
@@ -46,6 +46,17 @@ export const useVoiceSession = () => {
   // Live mic level, updated ~30×/s. A ref (not state) so the waveform can read it
   // in a rAF loop without re-rendering the composer on every frame.
   const levelRef = useRef(0)
+  // Live TTS output level for the speaking-state waveform. A stable object whose
+  // getter pulls from the current session's playback analyser on each rAF read
+  // (pull, not push — mirrors how `levelRef` carries the mic level via onLevel).
+  const outputLevelRef = useMemo<{ readonly current: number }>(
+    () => ({
+      get current() {
+        return sessionRef.current?.getOutputLevel() ?? 0
+      },
+    }),
+    [],
+  )
 
   // Tear the session down when the composer unmounts (chat navigation, HMR).
   // Without this the mic/VAD/AudioContext survive as an orphan bound to the old
@@ -112,5 +123,5 @@ export const useVoiceSession = () => {
     patch({ active: false, state: 'idle' })
   }
 
-  return { ...ui, start, stop, levelRef }
+  return { ...ui, start, stop, levelRef, outputLevelRef }
 }

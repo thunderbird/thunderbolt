@@ -47,6 +47,7 @@ mock.module('@/voice/audio/playback', () => ({
       enqueue: (chunk: AudioChunk) => enqueued.push(chunk),
       flush: () => {},
       close: () => {},
+      getLevel: () => 0,
       // Always drained so the session's "wait for playback" loop exits at once
       // (the real loop polls a timer we don't want to run in tests).
       get isPlaying() {

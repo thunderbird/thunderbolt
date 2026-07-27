@@ -20,6 +20,9 @@ export type PlaybackQueue = {
   flush: () => void
   /** Permanently release the audio graph — closes the owned AudioContext. */
   close: () => void
+  /** Current output RMS (~[0,1]) of what's playing, for the reactive waveform;
+   *  0 when nothing is queued. */
+  getLevel: () => number
   readonly isPlaying: boolean
   readonly audioContext: AudioContext
 }
@@ -28,6 +31,14 @@ export const createPlaybackQueue = (audioContext?: AudioContext): PlaybackQueue 
   const ctx = audioContext ?? new AudioContext()
   const ownsCtx = !audioContext // only close a context we created
   const active = new Set<AudioBufferSourceNode>()
+  // Tap the output so the waveform can react to the assistant's actual voice.
+  // Sources route through the analyser to `destination`, which passes audio
+  // through unchanged — so the browser/OS AEC still sees our playout as its echo
+  // reference (see the module note), it just also feeds level readings.
+  const analyser = ctx.createAnalyser()
+  analyser.fftSize = 256
+  analyser.connect(ctx.destination)
+  const levelBuf = new Float32Array(analyser.fftSize)
   let nextStartTime = 0
   let closed = false
 
@@ -37,12 +48,24 @@ export const createPlaybackQueue = (audioContext?: AudioContext): PlaybackQueue 
     buffer.copyToChannel(new Float32Array(chunk.pcm), 0)
     const source = ctx.createBufferSource()
     source.buffer = buffer
-    source.connect(ctx.destination)
+    source.connect(analyser)
     const startAt = Math.max(ctx.currentTime, nextStartTime)
     source.start(startAt)
     nextStartTime = startAt + buffer.duration
     active.add(source)
     source.onended = () => active.delete(source)
+  }
+
+  const getLevel = (): number => {
+    if (active.size === 0) {
+      return 0 // nothing playing — don't report residual analyser data
+    }
+    analyser.getFloatTimeDomainData(levelBuf)
+    let sum = 0
+    for (let i = 0; i < levelBuf.length; i++) {
+      sum += levelBuf[i] * levelBuf[i]
+    }
+    return Math.sqrt(sum / levelBuf.length)
   }
 
   const flush = () => {
@@ -74,6 +97,7 @@ export const createPlaybackQueue = (audioContext?: AudioContext): PlaybackQueue 
     enqueue,
     flush,
     close,
+    getLevel,
     get isPlaying() {
       return active.size > 0
     },

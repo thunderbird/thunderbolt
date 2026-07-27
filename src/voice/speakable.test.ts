@@ -73,6 +73,11 @@ describe('toSpeakable', () => {
     expect(toSpeakable('So $x$ equals the value \\(y\\) we found.')).toBe('So equals the value we found.')
     expect(toSpeakable('Use \\frac{a}{b} for the ratio.')).toBe('Use for the ratio.')
   })
+
+  test('keeps dollar-sign currency amounts (not mistaken for inline math)', () => {
+    expect(toSpeakable('it costs $5 and $10 apiece')).toBe('it costs $5 and $10 apiece')
+    expect(toSpeakable('the total was $1,234.56 today')).toBe('the total was $1,234.56 today')
+  })
 })
 
 describe('partsToSpeech', () => {

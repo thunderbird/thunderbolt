@@ -79,7 +79,10 @@ export const toSpeakable = (input: string): string => {
   text = text.replace(/\$\$[\s\S]*?\$\$/g, ' See the equation on screen. ')
   text = text.replace(/\\\[[\s\S]*?\\\]/g, ' See the equation on screen. ')
   text = text.replace(/\\\([\s\S]*?\\\)/g, ' ')
-  text = text.replace(/\$[^$\n]+\$/g, ' ')
+  // Inline math `$…$` → dropped. The negative lookahead skips a `$` that opens a
+  // currency amount ("it costs $5 and $10 apiece"), which would otherwise be
+  // mis-read as one math span and mangled; TTS speaks a bare "$5" correctly.
+  text = text.replace(/\$(?![\s\d])[^$\n]+\$/g, ' ')
   text = text.replace(/\\[a-zA-Z]+\s*(?:\{[^{}]*\})*/g, ' ')
   // Images: ![alt](url) → drop. Links: [text](url) → text.
   text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')

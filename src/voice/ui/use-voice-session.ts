@@ -11,10 +11,8 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { useDatabase } from '@/contexts'
 import { getSettings } from '@/dal'
 import type { ThunderboltUIMessage } from '@/types'
-import { type ReplyChat, createChatReply } from '@/voice/chat-reply'
-import { createVoiceEngine } from '@/voice/engine/router'
-import { type SessionState, type VoiceSession, createVoiceSession } from '@/voice/session'
-import { toVoiceErrorMessage } from '@/voice/voice-error'
+import type { ReplyChat } from '@/voice/chat-reply'
+import type { SessionState, VoiceSession } from '@/voice/session'
 import type { Chat } from '@ai-sdk/react'
 import { useEffect, useReducer, useRef } from 'react'
 
@@ -66,10 +64,19 @@ export const useVoiceSession = () => {
     } // already running — never stack a second session
     patch({ active: true, error: null, state: 'idle' })
     try {
-      // Read the flag authoritatively from the DB at start time (not via a
+      // Lazy-load the voice runtime (session + engines + VAD/playback/aggregator
+      // graph) only when the user actually starts voice — it's a non-critical
+      // feature and must stay out of the always-mounted chat composer's entry
+      // bundle. Read the flag authoritatively from the DB here too (not via a
       // reactive hook that returns `false` until its query resolves) so a custom
       // provider is never bypassed for the hardwired engine on a cold start.
-      const { experimentalFeatureVoice } = await getSettings(db, { experimental_feature_voice: false })
+      const [{ createVoiceSession }, { createVoiceEngine }, { createChatReply }, { experimentalFeatureVoice }] =
+        await Promise.all([
+          import('@/voice/session'),
+          import('@/voice/engine/router'),
+          import('@/voice/chat-reply'),
+          getSettings(db, { experimental_feature_voice: false }),
+        ])
       const voice = createVoiceSession({
         engine: createVoiceEngine(experimentalFeatureVoice),
         // The transcript + reply render as normal chat bubbles via sendMessage, so
@@ -94,6 +101,7 @@ export const useVoiceSession = () => {
       console.error('[voice]', error)
       await sessionRef.current?.stop()
       sessionRef.current = null
+      const { toVoiceErrorMessage } = await import('@/voice/voice-error')
       patch({ error: toVoiceErrorMessage(error) })
     }
   }

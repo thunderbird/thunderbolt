@@ -154,7 +154,7 @@ export const runSystemModelPrewarm = async (model: Pick<Model, 'provider' | 'isS
  *  a new attestation context. Use when a key-config error keeps repeating
  *  inside the SDK's own reset+retry — the cached client's transport is wedged
  *  and only a brand-new instance breaks the cycle. */
-const evictSystemTinfoilClient = (): void => {
+export const evictSystemTinfoilClient = (): void => {
   const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
   systemTinfoilClients.delete(cloudUrl)
 }
@@ -175,7 +175,7 @@ const evictUserTinfoilClient = (): void => {
 /** A KeyConfigMismatchError that survives the SDK's internal reset+retry means
  *  our cached `SecureClient` has a wedged transport. Evict it so the next call
  *  builds a fresh instance with a brand-new attestation context. */
-const isKeyConfigMismatchError = (err: unknown): boolean =>
+export const isKeyConfigMismatchError = (err: unknown): boolean =>
   err instanceof Error && err.name === 'KeyConfigMismatchError'
 
 /** Reconnect a dropped MCP client; returns a fresh client or null. Supplied by

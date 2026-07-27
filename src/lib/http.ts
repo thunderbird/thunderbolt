@@ -25,6 +25,8 @@ export type RequestOptions = {
   searchParams?: Record<string, string | number | boolean | undefined> | URLSearchParams
   timeout?: number
   json?: unknown
+  /** Raw request body (e.g. FormData, Blob) for non-JSON posts. Ignored if `json` is set. */
+  body?: BodyInit
   credentials?: RequestCredentials
   signal?: AbortSignal
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -100,6 +102,10 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
     if (options.json !== undefined) {
       headers.set('Content-Type', 'application/json')
       body = JSON.stringify(options.json)
+    } else if (options.body !== undefined) {
+      // Raw body (FormData/Blob/…) — leave Content-Type to the caller/browser
+      // (e.g. FormData needs the auto-generated multipart boundary).
+      body = options.body
     }
 
     const fetchFn = options.fetch ?? config.fetch ?? globalThis.fetch

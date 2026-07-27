@@ -36,11 +36,18 @@ type PromptInputProps = {
   className?: string
   submitOnEnter?: boolean
   noForm?: boolean
+  /** Makes the whole composer non-interactive (blocks focus/Tab/Enter) — e.g.
+   *  while voice mode covers it with an overlay. */
+  inert?: boolean
   isStreaming?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
   /** Rendered in the footer's right cluster, just before the submit button. */
   footerEndElements?: ReactNode
+  /** Rendered in place of the (disabled) submit button when the composer is
+   *  empty and idle (nothing to send, not streaming) — e.g. the voice-mode
+   *  button that occupies the send slot until the user types or attaches. */
+  emptyStateAction?: ReactNode
   // Model selection props - optional, only used in automation modal
   chatThread?: ChatThread | null
   models?: Model[]
@@ -89,10 +96,12 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       className = 'flex flex-col w-full gap-0 p-2',
       submitOnEnter = false,
       noForm = false,
+      inert = false,
       isStreaming = false,
       onStop,
       footerStartElements,
       footerEndElements,
+      emptyStateAction,
       chatThread = null,
       models,
       selectedModel,
@@ -157,6 +166,8 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         >
           <Square className="size-[var(--icon-size-default)]" />
         </Button>
+      ) : !submittable && emptyStateAction ? (
+        emptyStateAction
       ) : (
         <Button
           type="submit"
@@ -226,9 +237,11 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     )
 
     const formElement = noForm ? (
-      <div className={className}>{content}</div>
+      <div className={className} inert={inert}>
+        {content}
+      </div>
     ) : (
-      <form ref={ref} onSubmit={handleSubmit} className={className}>
+      <form ref={ref} onSubmit={handleSubmit} className={className} inert={inert}>
         {content}
       </form>
     )

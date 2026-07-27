@@ -35,6 +35,7 @@ export type InitData = {
   posthogClient: PostHog | null
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
+  experimentalFeatureVoice: boolean
 }
 
 /**
@@ -245,6 +246,7 @@ export type PreferencesSettings = {
   preferredName: string
   dataCollection: boolean
   experimentalFeatureTasks: boolean
+  experimentalFeatureVoice: boolean
   distanceUnit: string
   temperatureUnit: string
   dateFormat: string

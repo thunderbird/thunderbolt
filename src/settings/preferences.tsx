@@ -194,6 +194,7 @@ export default function PreferencesSettingsPage() {
     locationLng,
     dataCollection,
     experimentalFeatureTasks,
+    experimentalFeatureVoice,
     distanceUnit,
     temperatureUnit,
     dateFormat,
@@ -206,6 +207,7 @@ export default function PreferencesSettingsPage() {
     location_lng: '',
     data_collection: false,
     experimental_feature_tasks: false,
+    experimental_feature_voice: false,
     distance_unit: 'imperial',
     temperature_unit: 'f',
     date_format: 'MM/DD/YYYY',
@@ -804,6 +806,24 @@ export default function PreferencesSettingsPage() {
                 checked={experimentalFeatureTasks.value}
                 onCheckedChange={handleExperimentalFeaturesToggle}
                 aria-label="Tasks"
+              />
+            </div>
+
+            <div className="flex-row flex items-center gap-4">
+              <div className="flex-1">
+                <ModificationIndicator
+                  as="label"
+                  className="text-sm font-medium"
+                  hasModifications={experimentalFeatureVoice.isModified}
+                  onReset={experimentalFeatureVoice.reset}
+                >
+                  Custom voice provider
+                </ModificationIndicator>
+              </div>
+              <Switch
+                checked={experimentalFeatureVoice.value}
+                onCheckedChange={(value) => experimentalFeatureVoice.setValue(value)}
+                aria-label="Custom voice provider"
               />
             </div>
           </div>

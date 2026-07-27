@@ -288,9 +288,10 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 5: Get cloud url and experimental feature tasks
   const cloudUrl = getLocalSetting('cloudUrl')
-  const { experimentalFeatureTasks } = await time('step5_get_settings', () =>
+  const { experimentalFeatureTasks, experimentalFeatureVoice } = await time('step5_get_settings', () =>
     getSettings(db, {
       experimental_feature_tasks: false,
+      experimental_feature_voice: false,
     }),
   )
 
@@ -343,6 +344,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       db,
       cloudUrl,
       experimentalFeatureTasks,
+      experimentalFeatureVoice,
       posthogClient,
       httpClient: client,
       ...tray,

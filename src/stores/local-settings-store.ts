@@ -5,6 +5,31 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+/**
+ * Voice engine selection (THU-718). `thunderbolt` uses the hosted enclave STT/TTS
+ * (via the /tinfoil proxy); `openai-compatible` points at any OpenAI-shaped
+ * `/v1/audio/*` endpoint — another provider or a self-hosted local server.
+ * Device-local (not synced): holds a key and a machine-specific URL.
+ */
+export type VoiceProviderConfig = {
+  kind: 'thunderbolt' | 'openai-compatible'
+  /** Base URL including the version prefix, e.g. http://localhost:8000/v1. */
+  baseUrl: string
+  apiKey: string
+  sttModel: string
+  ttsModel: string
+  ttsVoice: string
+}
+
+export const defaultVoiceProvider: VoiceProviderConfig = {
+  kind: 'thunderbolt',
+  baseUrl: '',
+  apiKey: '',
+  sttModel: 'whisper-large-v3-turbo',
+  ttsModel: 'qwen3-tts',
+  ttsVoice: 'aiden',
+}
+
 type LocalSettingsState = {
   cloudUrl: string
   debugPosthog: boolean
@@ -12,6 +37,7 @@ type LocalSettingsState = {
   hapticsEnabled: boolean
   syncEnabled: boolean
   theme: 'light' | 'dark' | 'system'
+  voiceProvider: VoiceProviderConfig
 }
 
 type LocalSettingsActions = {
@@ -27,6 +53,7 @@ export const initialLocalSettings: LocalSettingsState = {
   hapticsEnabled: true,
   syncEnabled: false,
   theme: 'system',
+  voiceProvider: defaultVoiceProvider,
 }
 
 export const useLocalSettingsStore = create<LocalSettingsStore>()(
@@ -47,6 +74,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
         hapticsEnabled: s.hapticsEnabled,
         syncEnabled: s.syncEnabled,
         theme: s.theme,
+        voiceProvider: s.voiceProvider,
       }),
     },
   ),

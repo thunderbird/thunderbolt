@@ -13,8 +13,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useSettings } from '@/hooks/use-settings'
 import { cn } from '@/lib/utils'
-import { Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import { AudioLines, Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
@@ -41,6 +42,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: '/settings/skills', label: 'Skills', icon: Zap },
       { path: '/settings/connections', label: 'Connections', icon: Plug },
       { path: '/settings/models', label: 'Models', icon: Cpu, matchPrefix: true },
+      { path: '/settings/voice', label: 'Voice', icon: AudioLines },
     ],
   },
   {
@@ -65,9 +67,16 @@ export const SettingsSidebarContent = ({
 }: SettingsSidebarContentProps) => {
   const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
+  const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
 
   const isItemActive = ({ path, matchPrefix }: NavItem) =>
     matchPrefix ? location.pathname.startsWith(path) : location.pathname === path
+
+  // Voice settings only exist to configure a custom (non-Thunderbolt) provider,
+  // which is gated behind the experimental flag — hide the nav item otherwise.
+  const groups = experimentalFeatureVoice.value
+    ? navGroups
+    : navGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.path !== '/settings/voice') }))
 
   return (
     <SidebarContent className="flex flex-col h-full">
@@ -87,7 +96,7 @@ export const SettingsSidebarContent = ({
         </SidebarGroup>
       )}
 
-      {navGroups.map((group, index) => (
+      {groups.map((group, index) => (
         <Fragment key={group.label}>
           {/* Collapsed rail: the group labels are hidden, so a hairline
               divider takes over as the section boundary. */}
@@ -97,7 +106,7 @@ export const SettingsSidebarContent = ({
               it. The last group keeps its bottom padding against the footer. */}
           <SidebarGroup
             className={cn(
-              isCollapsed ? (index === navGroups.length - 1 ? 'pt-0' : 'py-0') : undefined,
+              isCollapsed ? (index === groups.length - 1 ? 'pt-0' : 'py-0') : undefined,
               isMobile && index === 0 && 'pt-[calc(var(--header-safe-area-top)+0.5rem)]',
             )}
           >

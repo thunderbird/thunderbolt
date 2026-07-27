@@ -44,6 +44,9 @@ import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
+import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
+import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
+import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
 
@@ -563,6 +566,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    const voice = useVoiceSession()
+
     const footerStartElements = (
       <div className="flex items-center gap-2">
         <ChatAddMenu
@@ -792,9 +797,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // autofocus: browsers won't show the keyboard for it anyway.
             autoFocus={!isMobile || (isPlatformMobile() && isNewChat)}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
+            // Voice mode covers the composer with an overlay; make the underlying
+            // input non-interactive so Tab/Enter can't reach the hidden textarea.
+            inert={voice.active}
             className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
+            // Empty + idle composer shows the voice-mode trigger in the send
+            // slot; it swaps back to Send as soon as there's text or an attachment.
+            emptyStateAction={<VoiceModeButton onStart={voice.start} />}
             renderOverlay={(value) =>
               renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
             }
@@ -813,6 +824,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
             onTextareaPaste={handlePaste}
           />
+          {/* Voice mode morphs the composer in-place: the overlay covers the
+              PromptInput box while a session is active. */}
+          <AnimatePresence>
+            {voice.active && (
+              <VoiceModeComposer
+                state={voice.state}
+                error={voice.error}
+                levelRef={voice.levelRef}
+                onClose={voice.stop}
+              />
+            )}
+          </AnimatePresence>
         </div>
         <ContextOverflowModal
           isOpen={showOverflowModal}

@@ -106,6 +106,10 @@ const SkillsPage = lazy(routeChunkLoaders.skills)
 const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
 const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
 
+// Voice settings is feature-flagged and hidden by default, so it's a
+// deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
+const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
+
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
 const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
@@ -203,8 +207,9 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   usePageTracking()
   useDeepLinkListener()
 
-  const { experimentalFeatureTasks } = useSettings({
+  const { experimentalFeatureTasks, experimentalFeatureVoice } = useSettings({
     experimental_feature_tasks: initData.experimentalFeatureTasks,
+    experimental_feature_voice: initData.experimentalFeatureVoice,
   })
 
   const ssoMode = isSsoMode()
@@ -247,6 +252,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route index element={<Settings />} />
               <Route path="preferences" element={<PreferencesSettingsPage />} />
               <Route path="models" element={<ModelsPage />} />
+              {experimentalFeatureVoice.value && <Route path="voice" element={<VoiceSettingsPage />} />}
               <Route path="devices" element={<DevicesSettingsPage />} />
               <Route path="connections" element={<ConnectionsPage />} />
               {/* Legacy routes — MCP servers and integrations merged into Connections. */}

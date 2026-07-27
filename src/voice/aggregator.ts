@@ -99,7 +99,11 @@ export class SentenceAggregator {
     const buf = this.buffer
     let lastWordBreak = -1
     // Reset per scan: the buffer always begins outside a code span, because we
-    // never cut at a boundary found while inside one.
+    // never cut at a boundary found while inside one. This relies on backticks
+    // being balanced within the reply — a lone/unmatched backtick would flip
+    // `inCode` and suppress all further splitting until `flush()`, delaying
+    // time-to-audio for the rest of the turn. LLM inline code is reliably
+    // balanced, so this is an accepted edge case rather than a guarded one.
     let inCode = false
     for (let i = 0; i < buf.length; i++) {
       const ch = buf[i]

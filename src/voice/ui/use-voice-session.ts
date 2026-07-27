@@ -10,11 +10,27 @@
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useDatabase } from '@/contexts'
 import { getSettings } from '@/dal'
+import type { ThunderboltUIMessage } from '@/types'
 import { type ReplyChat, createChatReply } from '@/voice/chat-reply'
 import { createVoiceEngine } from '@/voice/engine/router'
 import { type SessionState, type VoiceSession, createVoiceSession } from '@/voice/session'
 import { toVoiceErrorMessage } from '@/voice/voice-error'
+import type { Chat } from '@ai-sdk/react'
 import { useEffect, useReducer, useRef } from 'react'
+
+/**
+ * Adapt the AI SDK `Chat` to the structural `ReplyChat` slice the voice session
+ * needs. `Chat` provides `sendMessage`/`messages`/`stop`, but its broader method
+ * signatures mean TS won't infer the match — an explicit adapter keeps chat-reply
+ * decoupled from the SDK and avoids an `as unknown as` cast at the call site.
+ */
+const toReplyChat = (chat: Chat<ThunderboltUIMessage>): ReplyChat => ({
+  sendMessage: (message) => chat.sendMessage(message),
+  get messages() {
+    return chat.messages
+  },
+  stop: () => chat.stop(),
+})
 
 type VoiceUiState = {
   active: boolean
@@ -56,10 +72,9 @@ export const useVoiceSession = () => {
       const { experimentalFeatureVoice } = await getSettings(db, { experimental_feature_voice: false })
       const voice = createVoiceSession({
         engine: createVoiceEngine(experimentalFeatureVoice),
-        // The AI SDK Chat structurally satisfies ReplyChat (sendMessage/messages/stop).
         // The transcript + reply render as normal chat bubbles via sendMessage, so
         // the UI itself only needs the session state.
-        reply: createChatReply(session.chatInstance as unknown as ReplyChat),
+        reply: createChatReply(toReplyChat(session.chatInstance)),
         onState: (state) => patch({ state }),
         onError: (error) => {
           console.error('[voice]', error)

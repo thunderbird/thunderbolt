@@ -34,9 +34,10 @@ export const VoiceModeComposer = ({ state, error, levelRef, onClose }: VoiceMode
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
     transition={{ duration: 0.18, ease: 'easeOut' }}
-    // Mirror the PromptInput box (rounded-2xl border bg-card …) so it reads as the
-    // same composer, just in voice mode. z-20 sits above the PromptInput (z-10).
-    className="absolute inset-0 z-20 flex items-center gap-3 rounded-2xl border bg-card py-2 pl-4 pr-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
+    // Mirror the PromptInput box (rounded-3xl border bg-sidebar) so it reads as the
+    // same composer, just in voice mode — same radius/fill means no corners peek
+    // out underneath. z-20 sits above the PromptInput (z-10).
+    className="absolute inset-0 z-20 flex items-center gap-3 rounded-3xl border bg-sidebar py-2 pl-4 pr-2 dark:border-input"
     role="status"
     aria-label={`Voice mode: ${statusLabel[state]}`}
   >

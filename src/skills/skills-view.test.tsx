@@ -91,7 +91,6 @@ describe('SkillsView state machine', () => {
       await flush()
       const disabledWeather = await getSkill(getDb(), defaultSkillWeather.id)
       expect(disabledWeather?.enabled).toBe(0)
-      expect(disabledWeather?.pinnedOrder).toBe(defaultSkillWeather.pinnedOrder)
     })
   })
 
@@ -117,6 +116,20 @@ describe('SkillsView state machine', () => {
       await flush()
 
       const after = await getSkill(getDb(), skill.id)
+      expect(after?.enabled).toBe(0)
+      expect(after?.pinnedOrder).toBeNull()
+    })
+
+    it('unpins a legacy-pinned widget skill when disabled', async () => {
+      await getDb().insert(skillsTable).values(defaultSkillWeather)
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+
+      const switchEl = await waitForElement(() => screen.queryByRole('switch', { name: /Disable Weather/ }))
+      fireEvent.click(switchEl)
+      await flush()
+
+      const after = await getSkill(getDb(), defaultSkillWeather.id)
       expect(after?.enabled).toBe(0)
       expect(after?.pinnedOrder).toBeNull()
     })

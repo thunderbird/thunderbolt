@@ -57,12 +57,11 @@ export const SkillsView = () => {
   // slide-in-from-the-right behavior. `undefined` means "nothing selected".
   const activeSkill = skills.find((s) => s.id === activeId)
 
-  // Disabling an editable pinned skill auto-unpins it. Widget contracts keep
-  // their shipped pin state because enabled is their only mutable field.
+  // Disabling a pinned skill auto-unpins it so no inert chip remains.
   const disableSkill = useCallback(
     async (id: string) => {
       await setEnabled(id, false)
-      if (pinnedSet.has(id) && !isWidgetSkillId(id)) {
+      if (pinnedSet.has(id)) {
         await togglePin(id)
       }
     },

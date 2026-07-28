@@ -79,6 +79,21 @@ export const buildSkillCatalog = (skills: readonly SkillDefinition[]): string | 
 }
 
 /**
+ * Build complete inline skill guidance for agents without skill-loading support.
+ *
+ * @param skills - enabled skills available to current agent
+ * @returns compact catalog plus full instruction bodies, or undefined when empty
+ */
+export const buildFallbackSkillDisclosure = (skills: readonly SkillDefinition[]): string | undefined => {
+  const catalog = buildSkillCatalog(skills)
+  if (!catalog) {
+    return undefined
+  }
+  const instructions = skills.map(({ name, instruction }) => `### ${name}\n${instruction}`).join('\n\n')
+  return `## Skills\n${catalog}\n\nFull skill instructions:\n\n${instructions}`
+}
+
+/**
  * Build compact system-prompt guidance for available skills.
  *
  * @param skills - enabled skills available to the current agent

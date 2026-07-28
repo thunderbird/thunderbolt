@@ -135,9 +135,10 @@ describe('createPrompt', () => {
     expect(result).toContain('never state facts without verifying them first')
   })
 
-  test('lists enabled skill names and descriptions without instruction bodies', () => {
+  test('tool-capable models get the skill listing without instruction bodies', () => {
     const result = createPrompt({
       ...baseParams,
+      supportsTools: true,
       skills: [
         {
           name: 'daily-brief',
@@ -148,8 +149,28 @@ describe('createPrompt', () => {
     })
 
     expect(result).toContain('## Skills')
+    expect(result).toContain('Use the `skill` tool')
     expect(result).toContain('- daily-brief: Use for a daily rundown.')
     expect(result).not.toContain('Gather private full instructions here.')
+  })
+
+  test('non-tool models get the skill catalog and full instruction bodies inline', () => {
+    const result = createPrompt({
+      ...baseParams,
+      supportsTools: false,
+      skills: [
+        {
+          name: 'weather',
+          description: 'Use for weather forecasts.',
+          instruction: 'Emit the weather widget contract.',
+        },
+      ],
+    })
+
+    expect(result).toContain('- weather: Use for weather forecasts.')
+    expect(result).toContain('Full skill instructions:')
+    expect(result).toContain('### weather\nEmit the weather widget contract.')
+    expect(result).not.toContain('Use the `skill` tool')
   })
 
   test('does not inject widget instruction bodies into every prompt', () => {

@@ -49,7 +49,7 @@ import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientpr
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
 import {
-  buildSkillCatalog,
+  buildFallbackSkillDisclosure,
   buildWireSkillsMeta,
   supportsWireSkills,
   type SkillDefinition,
@@ -291,16 +291,6 @@ const extractPriorTranscript = (init: RequestInit): string | undefined => {
     .map((turn) => `${turn.role}: ${turn.text}`)
     .join('\n\n')
   return transcript.length > 0 ? transcript : undefined
-}
-
-/** Build one complete skill disclosure for an ACP agent without wire support. */
-const buildFallbackSkillDisclosure = (skills: readonly SkillDefinition[]): string | undefined => {
-  const catalog = buildSkillCatalog(skills)
-  if (!catalog) {
-    return undefined
-  }
-  const instructions = skills.map(({ name, instruction }) => `### ${name}\n${instruction}`).join('\n\n')
-  return `## Skills\n${catalog}\n\nFull skill instructions:\n\n${instructions}`
 }
 
 /** Fold session skill disclosure, forced user-skill instructions, and fallback

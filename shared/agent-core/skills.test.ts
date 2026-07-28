@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  buildFallbackSkillDisclosure,
   buildSkillCatalog,
   buildSkillListing,
   buildWireSkillsMeta,
@@ -52,6 +53,21 @@ describe('buildSkillCatalog', () => {
         '- meeting-notes: Use when summarizing meetings.',
     )
     expect(buildSkillCatalog([])).toBeUndefined()
+  })
+})
+
+describe('buildFallbackSkillDisclosure', () => {
+  it('includes compact catalog plus every full instruction body', () => {
+    const disclosure = buildFallbackSkillDisclosure(skills)
+
+    expect(disclosure).toContain('- daily-brief: Use for a daily rundown. Includes weather and calendar.')
+    expect(disclosure).toContain('- meeting-notes: Use when summarizing meetings.')
+    expect(disclosure).toContain('### daily-brief\nGather current weather, news, email, and calendar details.')
+    expect(disclosure).toContain('### meeting-notes\nExtract decisions and action items.')
+  })
+
+  it('omits the section when no skills are available', () => {
+    expect(buildFallbackSkillDisclosure([])).toBeUndefined()
   })
 })
 

@@ -564,6 +564,18 @@ export type PrepareAiRequestConfigOptions = {
   readonly httpClient: HttpClient
 }
 
+/** Register progressive skill loading only for models that support tools. */
+export const addSkillTool = (
+  toolset: Record<string, Tool>,
+  skills: readonly SkillDefinition[],
+  supportsTools: boolean,
+): Record<string, Tool> => {
+  if (supportsTools) {
+    toolset.skill = createSkillTool(skills)
+  }
+  return toolset
+}
+
 /** Load model/profile/settings and build one send's app + MCP tools and prompt. */
 export const prepareAiRequestConfig = async ({
   modelId,
@@ -599,11 +611,8 @@ export const prepareAiRequestConfig = async ({
   const availableTools = supportsTools
     ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
     : []
-  const appToolset = createToolset(availableTools, toolCallCache)
+  const appToolset = addSkillTool(createToolset(availableTools, toolCallCache), skills, supportsTools)
   const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
-  if (supportsTools) {
-    appToolset.skill = createSkillTool(skills)
-  }
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
     : { toolset: appToolset, summary: undefined, mcpTools: undefined }
@@ -632,7 +641,8 @@ export const prepareAiRequestConfig = async ({
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
     hasWebTools,
     mcpServersSummary: merged.summary,
-    skills: supportsTools ? skills : [],
+    skills,
+    supportsTools,
   })
 
   return {

@@ -8,7 +8,7 @@ import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import type { Tool } from 'ai'
-import { mergeMcpTools, resolveOpenAiCompatConnection, sanitizeToolPrefix } from './fetch'
+import { addSkillTool, mergeMcpTools, resolveOpenAiCompatConnection, sanitizeToolPrefix } from './fetch'
 
 /** Mirror the `MCPClientError` the SDK throws after a transport drop. The
  *  runtime instance `name` is `'MCPClientError'` (the `AI_MCPClientError`
@@ -48,6 +48,21 @@ describe('sanitizeToolPrefix', () => {
 
   it.each(cases)('sanitizes %p → %p', (input, expected) => {
     expect(sanitizeToolPrefix(input)).toBe(expected)
+  })
+})
+
+describe('addSkillTool', () => {
+  const skills = [
+    {
+      name: 'weather',
+      description: 'Use for weather forecasts.',
+      instruction: 'Emit the weather widget contract.',
+    },
+  ]
+
+  it('registers the skill tool only for tool-capable models', () => {
+    expect(Object.keys(addSkillTool({}, skills, true))).toEqual(['skill'])
+    expect(addSkillTool({}, skills, false)).toEqual({})
   })
 })
 

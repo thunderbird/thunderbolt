@@ -236,11 +236,11 @@ export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promi
 
 /**
  * Pin or unpin a skill. Pass `null` to unpin. Pass a number to set the pin position.
- * Throws `Error` for widget contracts or {@link PinLimitExceededError} if
- * pinning would exceed {@link maxPinnedSkills}.
+ * Throws `Error` when pinning a widget contract or {@link PinLimitExceededError}
+ * if pinning would exceed {@link maxPinnedSkills}. Widget contracts may be unpinned.
  */
 export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {
-  if (isWidgetSkillId(id)) {
+  if (order !== null && isWidgetSkillId(id)) {
     throw new Error(`setPinned: refusing to pin widget skill "${id}"`)
   }
   if (order !== null) {
@@ -252,7 +252,7 @@ export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: numbe
   await db.update(skillsTable).set({ pinnedOrder: order }).where(eq(skillsTable.id, id))
 }
 
-/** Toggle `enabled`. SkillsView auto-unpins editable skills on disable at the call site. */
+/** Toggle `enabled`. SkillsView auto-unpins pinned skills on disable at the call site. */
 export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boolean): Promise<void> => {
   await db
     .update(skillsTable)
@@ -262,8 +262,8 @@ export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boole
 
 /**
  * Rewrite the `pinned_order` of the supplied ids in a single transaction (index = position).
- * Ids not in the list keep their existing order. Widget ids may appear only
- * at their existing positions. Bounded by the 10-pin cap.
+ * Ids not in the list keep their existing order. Widget ids must keep their
+ * positions relative to the other pinned skills. Bounded by the 10-pin cap.
  */
 export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promise<void> => {
   if (ids.length === 0) {
@@ -272,18 +272,30 @@ export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promis
   if (ids.length > maxPinnedSkills) {
     throw new PinLimitExceededError()
   }
-  const widgetIds = ids.filter(isWidgetSkillId)
   await db.transaction(async (tx) => {
-    if (widgetIds.length > 0) {
-      const pinnedWidgets = await tx
-        .select({ id: skillsTable.id, pinnedOrder: skillsTable.pinnedOrder })
-        .from(skillsTable)
-        .where(inArray(skillsTable.id, widgetIds))
-      const pinnedOrderById = new Map(pinnedWidgets.map((skill) => [skill.id, skill.pinnedOrder]))
-      const movesWidgetSkill = widgetIds.some((id) => pinnedOrderById.get(id) !== ids.indexOf(id))
-      if (movesWidgetSkill) {
-        throw new Error('reorderPins: refusing to move widget skills')
+    const storedPinned = await tx
+      .select({ id: skillsTable.id, pinnedOrder: skillsTable.pinnedOrder })
+      .from(skillsTable)
+      .where(and(isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder)))
+      .orderBy(asc(skillsTable.pinnedOrder))
+    const storedPinnedIds = new Set(storedPinned.map(({ id }) => id))
+    const submittedIndexById = new Map(ids.map((id, index) => [id, index]))
+    const pinsWidgetSkill = ids.some((id) => isWidgetSkillId(id) && !storedPinnedIds.has(id))
+    const movesWidgetSkill = storedPinned.some((widget, widgetStoredIndex) => {
+      if (!isWidgetSkillId(widget.id)) {
+        return false
       }
+      const widgetFinalOrder = submittedIndexById.get(widget.id) ?? widget.pinnedOrder!
+      return storedPinned.some((skill, skillStoredIndex) => {
+        if (skill.id === widget.id) {
+          return false
+        }
+        const skillFinalOrder = submittedIndexById.get(skill.id) ?? skill.pinnedOrder!
+        return Math.sign(skillStoredIndex - widgetStoredIndex) !== Math.sign(skillFinalOrder - widgetFinalOrder)
+      })
+    })
+    if (pinsWidgetSkill || movesWidgetSkill) {
+      throw new Error('reorderPins: refusing to move widget skills')
     }
     // Two-phase update to avoid hitting the (id, pinned_order) collision space
     // mid-rewrite: stage everything to negative ordinals first, then settle.

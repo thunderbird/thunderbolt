@@ -5,7 +5,7 @@
 import { chatPrompt } from '@/ai/prompts/chat'
 import { webToolsPrompt } from '@/ai/prompts/web-tools'
 import type { ModelProfile } from '@/types'
-import { buildSkillListing, type SkillDefinition } from '@shared/agent-core/skills'
+import { buildFallbackSkillDisclosure, buildSkillListing, type SkillDefinition } from '@shared/agent-core/skills'
 
 /** Parameters to build the system prompt */
 export type PromptParams = {
@@ -26,8 +26,10 @@ export type PromptParams = {
   hasWebTools: boolean
   /** Summary of connected MCP servers (name + tool count) */
   mcpServersSummary?: string
-  /** Enabled skills available through progressive disclosure */
+  /** Enabled skills available to the model */
   skills?: readonly SkillDefinition[]
+  /** Whether the model can load skill instructions through tools */
+  supportsTools?: boolean
 }
 
 export type PromptParts = {
@@ -48,6 +50,7 @@ export const createPromptParts = (
     hasWebTools,
     mcpServersSummary,
     skills = [],
+    supportsTools = true,
   }: PromptParams,
   currentDate: Date = new Date(),
 ): PromptParts => {
@@ -78,7 +81,7 @@ export const createPromptParts = (
   ]
     .filter(Boolean)
     .join('\n')
-  const skillListing = buildSkillListing(skills)
+  const skillDisclosure = supportsTools ? buildSkillListing(skills) : buildFallbackSkillDisclosure(skills)
 
   // Output Format asks models to format math as `$…$` / `$$…$$` only (never
   // `\(…\)` / `\[…\]`). The chat renderer (src/components/chat/memoized-markdown.tsx)
@@ -129,7 +132,7 @@ Don't mention tool names unless asked.
 ${hasWebTools ? `\n${webToolsPrompt}` : ''}
 ${toolsOverride ? `\n${toolsOverride}` : ''}
 ${mcpServersSummary ? `\n## Connected MCP Servers\nYou have tools from these external services (tool names prefixed by server name):\n${mcpServersSummary}\nUse these when the user asks about these services.` : ''}
-${skillListing ? `\n${skillListing}` : ''}
+${skillDisclosure ? `\n${skillDisclosure}` : ''}
 
 ## Link Previews
 • Aggregate pages (listicles, "Top 10") are for DISCOVERY ONLY

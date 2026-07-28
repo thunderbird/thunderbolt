@@ -1,7 +1,7 @@
 {
   "name": "thunderbolt",
   "private": true,
-  "version": "0.1.116",
+  "version": "0.1.116-nightly.20260728",
   "description": "Thunderbolt",
   "type": "module",
   "license": "MPL-2.0",

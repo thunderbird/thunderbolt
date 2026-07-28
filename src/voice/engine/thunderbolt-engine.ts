@@ -14,7 +14,6 @@
 import { evictSystemTinfoilClient, getSystemTinfoilClient, isKeyConfigMismatchError } from '@/ai/fetch'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
-import { getLocalSetting } from '@/stores/local-settings-store'
 import { type AudioTransport, createAudioEngine } from './audio-engine'
 import type { VoiceEngine } from './types'
 
@@ -28,7 +27,7 @@ type TtsProfile = { model: string; voice: string }
 // the voice settings (THU-718) via createOpenAiCompatibleEngine.
 const ttsProfiles = {
   voxtral: { model: 'voxtral-tts', voice: 'casual_male' },
-  qwen3: { model: 'qwen3-tts', voice: 'aiden' },
+  qwen3: { model: 'qwen3-tts', voice: 'ryan' },
 } satisfies Record<string, TtsProfile>
 const ttsProfile: TtsProfile = ttsProfiles.qwen3
 // Expressive models improvise emphasis/pacing/laughter; steer delivery via the
@@ -91,10 +90,7 @@ export const createThunderboltEngine = (): VoiceEngine =>
     },
     sttModel,
     ttsModel: ttsProfile.model,
-    // TEMPORARY (THU-683): honor the Preferences voice picker for quick A/B; falls
-    // back to the profile default. Read at session start, so it applies next turn.
-    // Remove this once we lock a default voice and drop the selector.
-    ttsVoice: getLocalSetting('experimentalTtsVoice') || ttsProfile.voice,
+    ttsVoice: ttsProfile.voice,
     ttsInstructions,
     ttsSpeed: 1,
   })

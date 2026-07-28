@@ -217,8 +217,6 @@ export default function PreferencesSettingsPage() {
 
   const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
-  // TEMPORARY (THU-683): hosted TTS voice A/B — remove with the picker below.
-  const experimentalTtsVoice = useLocalSettingsStore((s) => s.experimentalTtsVoice)
 
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
   const [nameInput, setNameInput] = useState('')
@@ -827,27 +825,6 @@ export default function PreferencesSettingsPage() {
                 onCheckedChange={(value) => experimentalFeatureVoice.setValue(value)}
                 aria-label="Custom voice provider"
               />
-            </div>
-
-            {/* TEMPORARY (THU-683): quick A/B of the hosted qwen3-tts voices.
-                Remove once we lock a default in thunderbolt-engine.ts and delete
-                the `experimentalTtsVoice` local setting. */}
-            <div className="flex-row flex items-center gap-4">
-              <label htmlFor="tts-voice" className="flex-1 text-sm font-medium">
-                Voice (experimental)
-              </label>
-              <Select value={experimentalTtsVoice} onValueChange={(v) => setLocalSetting('experimentalTtsVoice', v)}>
-                <SelectTrigger id="tts-voice" className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {['aiden', 'dylan', 'eric', 'ono_anna', 'ryan', 'serena', 'sohee', 'uncle_fu', 'vivian'].map((v) => (
-                    <SelectItem key={v} value={v}>
-                      {v}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
 

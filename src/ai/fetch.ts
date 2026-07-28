@@ -14,6 +14,7 @@ import {
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
 import { getMessage } from '@/dal/chat-messages'
+import { isWidgetSkillId } from '@/defaults/skills'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { createSkillTool, selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
@@ -28,7 +29,7 @@ import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
-import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import type { Model, ModelProfile, Skill, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -576,6 +577,15 @@ export const addSkillTool = (
   return toolset
 }
 
+/**
+ * Select skills disclosed in the built-in model's system prompt.
+ *
+ * Tool-capable models receive every enabled skill, while non-tool models only
+ * receive widget rendering contracts inline.
+ */
+export const selectPromptSkillDefinitions = (skills: readonly Skill[], supportsTools: boolean): SkillDefinition[] =>
+  selectEnabledSkillDefinitions(supportsTools ? skills : skills.filter(({ id }) => isWidgetSkillId(id)))
+
 /** Load model/profile/settings and build one send's app + MCP tools and prompt. */
 export const prepareAiRequestConfig = async ({
   modelId,
@@ -604,7 +614,8 @@ export const prepareAiRequestConfig = async ({
     throw new Error('Model not found')
   }
   const profile = await getModelProfile(db, modelId)
-  const skills = selectEnabledSkillDefinitions(await getAllSkills(db))
+  const storedSkills = await getAllSkills(db)
+  const skills = selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
   const sourceCollector: SourceMetadata[] = []
   const toolCallCache: ToolCallCache = new Map()
@@ -641,7 +652,7 @@ export const prepareAiRequestConfig = async ({
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
     hasWebTools,
     mcpServersSummary: merged.summary,
-    skills,
+    skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
     supportsTools,
   })
 

@@ -14,7 +14,7 @@ COMPOSE ?= $(shell command -v podman-compose > /dev/null 2>&1 && podman info > /
 # override with `COMPOSE_PROJECT_NAME=foo make up` if you want a fixed name.
 # Sanitize each segment so paths with spaces or other special characters (e.g. "~/My Projects/thunderbolt")
 # produce a valid Docker Compose project name.
-COMPOSE_PROJECT_NAME ?= $(shell basename "$$(cd .. && pwd)" | sed 's/[^a-zA-Z0-9._-]/-/g')-$(shell basename "$$(pwd)" | sed 's/[^a-zA-Z0-9._-]/-/g')
+COMPOSE_PROJECT_NAME ?= $(shell basename "$$(cd .. && pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')-$(shell basename "$$(pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
 export COMPOSE_PROJECT_NAME
 
 # Default target

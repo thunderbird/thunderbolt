@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { chatPrompt } from '@/ai/prompts/chat'
+import { webToolsPrompt } from '@/ai/prompts/web-tools'
 import type { ModelProfile } from '@/types'
 import { buildSkillListing, type SkillDefinition } from '@shared/agent-core/skills'
 
@@ -21,6 +22,8 @@ export type PromptParams = {
   }
   /** Integration status for the model to check before showing connect widget */
   integrationStatus: string
+  /** Whether the built-in web tools (`search`, `fetch_content`) are available for this request */
+  hasWebTools: boolean
   /** Summary of connected MCP servers (name + tool count) */
   mcpServersSummary?: string
   /** Enabled skills available through progressive disclosure */
@@ -42,6 +45,7 @@ export const createPromptParts = (
     location,
     localization,
     integrationStatus,
+    hasWebTools,
     mcpServersSummary,
     skills = [],
   }: PromptParams,
@@ -122,6 +126,7 @@ If you're unsure whether to search and nothing in the conversation answers it: S
 Wait for tool results before responding—never state facts without verifying them first.
 Think about what widget components to show the user, then work backwards to the tools you need.
 Don't mention tool names unless asked.
+${hasWebTools ? `\n${webToolsPrompt}` : ''}
 ${toolsOverride ? `\n${toolsOverride}` : ''}
 ${mcpServersSummary ? `\n## Connected MCP Servers\nYou have tools from these external services (tool names prefixed by server name):\n${mcpServersSummary}\nUse these when the user asks about these services.` : ''}
 ${skillListing ? `\n${skillListing}` : ''}

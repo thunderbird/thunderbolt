@@ -9,7 +9,7 @@ import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
-import type { ChatThread, Mode } from '@/types'
+import type { ChatThread } from '@/types'
 import {
   createMockAutomationRun,
   createMockChatInstanceWithValidation,
@@ -109,7 +109,6 @@ describe('chat-store', () => {
 
       // Create session without selected model - need to manually set up
       useChatStore.getState().setModels([])
-      useChatStore.getState().setModes([])
       useChatStore.setState((state) => ({
         ...state,
         sessions: new Map([
@@ -123,7 +122,6 @@ describe('chat-store', () => {
               id: 'test-id',
               pendingPermission: null,
               selectedAgent: builtInAgent,
-              selectedMode: null as unknown as Mode,
               retryCount: 0,
               retriesExhausted: false,
               selectedModel: null as unknown as Model,

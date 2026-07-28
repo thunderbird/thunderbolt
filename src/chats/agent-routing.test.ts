@@ -21,7 +21,7 @@ import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
-import type { ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
+import type { ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import type { Chat } from '@ai-sdk/react'
 import { createAgentRoutingFetch } from './chat-instance'
 
@@ -44,16 +44,6 @@ const otherRemoteAgent: Agent = {
   id: 'remote-bar',
   name: 'Remote Bar',
 }
-
-const mockMode: Mode = {
-  id: 'mode-chat',
-  name: 'chat',
-  label: 'Chat',
-  icon: 'message-square',
-  systemPrompt: null,
-  isDefault: 1,
-  order: 0,
-} as Mode
 
 const mockModel: Model = {
   id: 'model-1',
@@ -99,14 +89,12 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
     retryCount: 0,
     retriesExhausted: false,
     selectedAgent: agent,
-    selectedMode: mockMode,
     selectedModel: mockModel,
     triggerData: null,
   }
   useChatStore.setState({
     currentSessionId: id,
     getMcpClients: () => [],
-    modes: [mockMode],
     models: [mockModel],
     sessions: new Map([[id, session]]),
   })

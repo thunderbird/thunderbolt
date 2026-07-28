@@ -6,8 +6,7 @@ import { File, ListOrdered, Pin, Plus, SquarePen } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { ResponsiveActionMenu, type ResponsiveActionMenuAction } from '@/components/ui/responsive-action-menu'
 import { cn } from '@/lib/utils'
 
 /**
@@ -24,8 +23,8 @@ export const chipSurfaceClass =
 /**
  * Pinned-skill chip shown above the chat input. Click → adds the slash
  * token to the input (does not auto-submit). Right-click / long-press on
- * mobile → context menu with add-to-chat / add-instructions / edit /
- * reorder / unpin.
+ * mobile → context menu with add-to-chat / add-instructions plus optional
+ * edit / reorder / unpin actions for mutable skills.
  */
 export const SuggestionChip = ({
   label,
@@ -40,13 +39,12 @@ export const SuggestionChip = ({
   label: string
   onClick: () => void
   onAddInstruction: () => void
-  /** Jump to the skill's edit form in `/settings/skills`. */
-  onEdit: () => void
-  onReorder: () => void
-  onUnpin: () => void
+  /** Open the route-preserving skill editor. */
+  onEdit?: () => void
+  onReorder?: () => void
+  onUnpin?: () => void
 }) => {
   const [open, setOpen] = useState(false)
-  const { isMobile } = useIsMobile()
 
   // Long-press detection for touch — opens the action menu without firing
   // the chip-insertion onClick. Mouse left-clicks fall through to onClick.
@@ -98,111 +96,63 @@ export const SuggestionChip = ({
     onClick()
   }
 
+  const trigger = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleClick}
+      onPointerDown={handleTriggerPointerDown}
+      onPointerUp={clearLongPress}
+      onPointerLeave={clearLongPress}
+      onPointerCancel={clearLongPress}
+      data-long-press=""
+      onContextMenu={(event) => {
+        event.preventDefault()
+        clearLongPress()
+        setOpen(true)
+      }}
+      className={cn(chipSurfaceClass, 'h-[var(--touch-height-sm)] px-3 text-sm font-normal')}
+      aria-label={`Pinned skill ${label}`}
+    >
+      {label}
+    </Button>
+  )
+
+  const actions: ResponsiveActionMenuAction[] = [
+    { label: 'Add to chat', icon: <Plus className="size-[var(--icon-size-sm)]" />, onSelect: onClick },
+    {
+      label: 'Add instructions to chat',
+      icon: <File className="size-[var(--icon-size-sm)]" />,
+      onSelect: onAddInstruction,
+    },
+    ...(onEdit
+      ? [{ label: 'Edit skill', icon: <SquarePen className="size-[var(--icon-size-sm)]" />, onSelect: onEdit }]
+      : []),
+    ...(onReorder
+      ? [{ label: 'Reorder', icon: <ListOrdered className="size-[var(--icon-size-sm)]" />, onSelect: onReorder }]
+      : []),
+    ...(onUnpin ? [{ label: 'Unpin', icon: <Pin className="size-[var(--icon-size-sm)]" />, onSelect: onUnpin }] : []),
+  ]
+
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleClick}
-          onPointerDown={handleTriggerPointerDown}
-          onPointerUp={clearLongPress}
-          onPointerLeave={clearLongPress}
-          onPointerCancel={clearLongPress}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            clearLongPress()
-            setOpen(true)
-          }}
-          // `h-[var(--touch-height-sm)]` resolves to 40px on mobile, 32px on
-          // desktop — keeps the compact desktop look while meeting the
-          // 40px-min touch target the rest of the app uses on touch devices.
-          //
-          // `select-none` + `[-webkit-touch-callout:none]` suppress the OS
-          // text-selection that fires on long-press on iOS / Android. Without
-          // them the chip's label gets highlighted (and on iOS the system
-          // share/copy callout pops) while our long-press timer is waiting
-          // to open the action menu. Leaving `touch-action` at its default
-          // so the chip strip's horizontal scroll on mobile still works.
-          className={cn(
-            chipSurfaceClass,
-            'h-[var(--touch-height-sm)] select-none px-3 text-sm font-normal [-webkit-touch-callout:none]',
-          )}
-          aria-label={`Pinned skill ${label}`}
-        >
-          {label}
-        </Button>
-      </DropdownMenuTrigger>
-      {/*
-        Anchor the menu's bottom-left to the chip's top-left so the popup
-        opens upward from the chip's anchor corner. Container and item
-        styling inherit the DropdownMenu defaults (`rounded-xl` panel,
-        `rounded-md` items), minus the drop shadow — the menu should read
-        as a flat, ordinary menu over the chat screen.
-      */}
-      <DropdownMenuContent
-        side="top"
-        align="start"
-        // `sideOffset={8}` matches the `pb-2` (8px) gap between the chips bar
-        // and the chat composer below it, so the menu sits off the chip by
-        // the same distance the chip sits off the composer.
-        sideOffset={8}
-        // 12px collision padding + 100vw-1.5rem width on mobile makes the menu
-        // exactly as wide as the chat composer (which sits at px-3 insets).
-        collisionPadding={12}
-        className={isMobile ? 'w-[calc(100vw-1.5rem)] min-w-56' : 'min-w-56'}
-      >
-        <DropdownMenuItem
-          onSelect={() => {
-            onClick()
-            setOpen(false)
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <Plus />
-          Add to chat
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            onAddInstruction()
-            setOpen(false)
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <File />
-          Add instructions to chat
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            setOpen(false)
-            onEdit()
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <SquarePen />
-          Edit skill
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            setOpen(false)
-            onReorder()
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <ListOrdered />
-          Reorder
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            setOpen(false)
-            onUnpin()
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
-        >
-          <Pin />
-          Unpin
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ResponsiveActionMenu
+      open={open}
+      onOpenChange={setOpen}
+      trigger={trigger}
+      title={label}
+      actions={actions}
+      // The chip's click inserts the slash token; the menu opens via
+      // long-press / right-click handled on the trigger itself.
+      openOnTriggerClickMobile={false}
+      desktopMenu={{
+        side: 'top',
+        align: 'start',
+        // 8px matches the pb-2 gap between the chips bar and the composer;
+        // 12px keeps the panel off the screen edge on narrow desktop windows.
+        sideOffset: 8,
+        collisionPadding: 12,
+        className: 'w-60',
+      }}
+    />
   )
 }

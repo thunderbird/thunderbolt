@@ -4,7 +4,6 @@
 
 import {
   SearchableMenu,
-  searchableMenuFooterActionClass,
   searchableMenuRowClass,
   type SearchableMenuGroup,
   type SearchableMenuItem,
@@ -14,9 +13,10 @@ import { GradientLock } from '@/components/ui/gradient-lock'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
+import { needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, ChevronDown, Plus } from 'lucide-react'
+import { AlertTriangle, ChevronDown } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 export type ModelSelectorProps = {
@@ -36,22 +36,6 @@ export type ModelSelectorProps = {
 type ModelItemData = {
   model: Model
   disabledByEncryption: boolean
-}
-
-/**
- * Models that require an API key but don't have one yet need configuration.
- * Thunderbolt is server-authenticated; custom (OpenAI-compatible) endpoints treat
- * the key as optional; system Tinfoil rows are also server-authenticated (the key
- * is injected by the backend proxy) — none of those flag as missing.
- */
-export const needsApiKey = (model: Model) => {
-  if (model.provider === 'thunderbolt' || model.provider === 'custom') {
-    return false
-  }
-  if (model.provider === 'tinfoil' && model.isSystem === 1) {
-    return false
-  }
-  return !model.apiKey
 }
 
 const toMenuItem = (
@@ -105,16 +89,14 @@ export const categorizeModels = (
   if (disabledStandard.length > 0) {
     groups.push({
       id: 'standard-disabled',
-      label: 'Standard Models',
-      subtitle: 'Not available in confidential chats.',
+      label: 'Not available in private chats.',
       items: disabledStandard,
     })
   }
   if (disabledConfidential.length > 0) {
     groups.push({
       id: 'confidential-disabled',
-      label: 'Confidential Models',
-      subtitle: 'Available only in confidential chats.',
+      label: 'Only available in private chats.',
       items: disabledConfidential,
     })
   }
@@ -137,7 +119,7 @@ export const ModelSelector = ({
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center cursor-pointer transition-colors',
+        'flex min-w-0 items-center cursor-pointer transition-colors',
         variant === 'composer'
           ? cn(
               'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)]',
@@ -150,13 +132,16 @@ export const ModelSelector = ({
       )}
     >
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
-        <AlertTriangle className="size-3.5 text-amber-500" />
+        <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
       ) : selected?.data?.model.isConfidential === 1 ? (
-        <GradientLock className="size-3.5" />
+        <GradientLock className="size-3.5 shrink-0" />
       ) : null}
-      {/* Muted in both variants — trigger labels are chrome, not content. */}
-      <span className="font-medium text-muted-foreground">{selected?.label ?? 'Select model'}</span>
-      <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
+      {/* Muted in both variants — trigger labels are chrome, not content.
+          Truncates instead of wrapping when the composer gets narrow. */}
+      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? 'Select model'}</span>
+      <ChevronDown
+        className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
+      />
     </div>
   )
 
@@ -175,7 +160,7 @@ export const ModelSelector = ({
           item.disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
-        <span className="font-medium truncate">{item.label}</span>
+        <span className="truncate font-normal">{item.label}</span>
         {/* ml-auto pushes the trailing indicator (missing-key warning or the
             confidential "Private" badge) to the row's right edge. */}
         {showMissingKeyHint ? (
@@ -200,12 +185,7 @@ export const ModelSelector = ({
     return content
   }
 
-  const footer = onAddModels ? (
-    <button type="button" onClick={onAddModels} className={searchableMenuFooterActionClass}>
-      <Plus className="size-4" />
-      Add models
-    </button>
-  ) : undefined
+  const footerAction = onAddModels ? { label: 'Add Model', onAction: onAddModels } : undefined
 
   const { triggerSelection } = useHaptics()
   const handleModelChange = useCallback(
@@ -224,11 +204,13 @@ export const ModelSelector = ({
       searchable={models.length > 10}
       searchPlaceholder="Search Models"
       emptyMessage="No models found"
-      blurBackdrop
+      mobileTitle="Choose model"
+      mobileSide="bottom"
       trigger={renderTrigger}
       renderItem={renderItem}
-      footer={footer}
-      width={320}
+      footerAction={footerAction}
+      contentClassName="max-md:bg-sidebar"
+      width={240}
       maxHeight={340}
       side={side}
       align={align}

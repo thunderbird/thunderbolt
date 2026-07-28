@@ -140,12 +140,12 @@ describe('AgentDetail — custom agents', () => {
     await act(async () => {
       fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0 })
     })
-    const removeItem = await waitForElement(() => screen.queryByRole('menuitem', { name: /remove agent/i }))
+    const removeItem = await waitForElement(() => screen.queryByRole('menuitem', { name: /delete agent/i }))
     await act(async () => {
       fireEvent.click(removeItem)
       await getClock().runAllAsync()
     })
-    const confirmButton = await waitForElement(() => screen.queryByRole('button', { name: 'Remove agent' }))
+    const confirmButton = await waitForElement(() => screen.queryByRole('button', { name: 'Delete agent' }))
     await act(async () => {
       fireEvent.click(confirmButton)
     })

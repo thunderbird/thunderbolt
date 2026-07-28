@@ -20,6 +20,8 @@ type RemoveBridgeDialogProps = {
   isPending: boolean
 }
 
+/** Confirms permanent removal of a revoked bridge device — the one frontend flow
+ *  that hard-deletes (a sanctioned device-removal exception to soft-delete). */
 export const RemoveBridgeDialog = ({ open, onOpenChange, onConfirm, isPending }: RemoveBridgeDialogProps) => (
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent>

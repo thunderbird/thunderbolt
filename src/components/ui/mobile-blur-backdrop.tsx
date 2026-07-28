@@ -3,16 +3,31 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { cn } from '@/lib/utils'
+import { createPortal } from 'react-dom'
 
 type MobileBlurBackdropProps = {
   onClick: () => void
   className?: string
+  /** Render in place instead of portaling to document.body — for callers that
+   *  already sit in a portal and need the backdrop inside their own stacking
+   *  context. */
+  disablePortal?: boolean
 }
 
-/** Full-screen blurred backdrop used on mobile to dim content behind popovers/menus. */
-export const MobileBlurBackdrop = ({ onClick, className }: MobileBlurBackdropProps) => (
-  <div
-    className={cn('fixed inset-0 z-40 backdrop-blur-sm bg-white/30 dark:bg-black/30', className)}
-    onClick={onClick}
-  />
-)
+/** Full-screen backdrop used on mobile to blur and mute content behind popovers/menus.
+ *  Portals by default so transformed menu anchors cannot constrain its fixed positioning. */
+export const MobileBlurBackdrop = ({ onClick, className, disablePortal = false }: MobileBlurBackdropProps) => {
+  const backdrop = (
+    <button
+      type="button"
+      aria-label="Dismiss"
+      className={cn(
+        'fixed inset-0 z-40 cursor-default bg-white/30 backdrop-blur-md backdrop-saturate-[.25] dark:bg-black/30',
+        className,
+      )}
+      onClick={onClick}
+    />
+  )
+
+  return disablePortal ? backdrop : createPortal(backdrop, document.body)
+}

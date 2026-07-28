@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
+import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
 import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { Clock } from '@sinonjs/fake-timers'
@@ -10,19 +10,13 @@ import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, mock } from 'bun:test'
 
+/** Global spy for web-haptics' `trigger` — assert on it to verify haptic
+ *  calls (see surface-haptics.test.tsx). Cleared automatically in beforeEach. */
+export const webHapticsTriggerMock = mock(() => Promise.resolve())
+
 // Mock web-haptics/react globally — no vibration API in test environment
 mock.module('web-haptics/react', () => ({
-  useWebHaptics: () => ({ trigger: () => {} }),
-}))
-
-// Mock useHaptics globally — the real provider depends on useSettings (QueryClient) and web-haptics
-mock.module('@/hooks/use-haptics', () => ({
-  useHaptics: () => ({
-    triggerSelection: () => {},
-    triggerImpact: () => {},
-    triggerNotification: () => {},
-  }),
-  HapticsProvider: ({ children }: { children: unknown }) => children,
+  useWebHaptics: () => ({ trigger: webHapticsTriggerMock }),
 }))
 
 // Mock posthog-js globally to prevent browser detection errors in tests
@@ -109,6 +103,7 @@ const existingJest = (globalThis as any).jest || {}
 
 beforeEach(() => {
   globalClock = installFakeTimers()
+  webHapticsTriggerMock.mockClear()
   // Ensure console is suppressed for each test
   suppressConsole()
   // Clear memoized values to prevent pollution between tests
@@ -128,6 +123,7 @@ afterEach(() => {
   // get-session call against the next file's HTTP client.
   clearAuthToken()
   clearDeviceId()
+  clearUserCacheSecret()
 })
 
 /**

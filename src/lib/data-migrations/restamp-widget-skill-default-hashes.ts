@@ -17,11 +17,13 @@ import type { DataMigration } from './index'
  *
  * Idempotent: rows already stamped with the content-only hash are skipped.
  *
- * Note on ordering: data migrations run after `reconcileDefaults` in app init,
- * so a pending widget contract update lands on the boot after the re-stamp.
+ * Reconciliation invokes this migration immediately before its skills pass so
+ * shipped full-row hashes are recognized on the same boot as a contract
+ * update. The normal post-reconcile migration runner invokes it again as an
+ * idempotent no-op.
  *
  * DELETE ME: once telemetry shows the active population has upgraded past the
- * first release containing defaults v4, this migration can be removed.
+ * first release containing defaults v5, this migration can be removed.
  */
 export const restampWidgetSkillDefaultHashes: DataMigration = {
   id: 'restamp-widget-skill-default-hashes',

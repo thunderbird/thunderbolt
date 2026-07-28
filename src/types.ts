@@ -20,7 +20,6 @@ import type {
   mcpServersTable,
   modelProfilesTable,
   modelsTable,
-  modesTable,
   promptsTable,
   settingsTable,
   skillsTable,
@@ -36,6 +35,7 @@ export type InitData = {
   posthogClient: PostHog | null
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
+  experimentalFeatureVoice: boolean
 }
 
 /**
@@ -108,7 +108,6 @@ export type ChatMessageRow = InferSelectModel<typeof chatMessagesTable>
 export type ChatThreadRow = InferSelectModel<typeof chatThreadsTable>
 export type Setting = InferSelectModel<typeof settingsTable>
 export type ModelRow = InferSelectModel<typeof modelsTable>
-export type ModeRow = InferSelectModel<typeof modesTable>
 export type TaskRow = InferSelectModel<typeof tasksTable>
 export type McpServerRow = InferSelectModel<typeof mcpServersTable>
 export type PromptRow = InferSelectModel<typeof promptsTable>
@@ -141,7 +140,6 @@ export type Model = WithRequired<
  * so `noUnusedLocals` doesn't strip the guard.
  */
 export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey'> => model
-export type Mode = WithRequired<ModeRow, 'name' | 'label' | 'icon' | 'order'>
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
@@ -248,6 +246,7 @@ export type PreferencesSettings = {
   preferredName: string
   dataCollection: boolean
   experimentalFeatureTasks: boolean
+  experimentalFeatureVoice: boolean
   distanceUnit: string
   temperatureUnit: string
   dateFormat: string

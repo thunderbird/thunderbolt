@@ -22,8 +22,8 @@ const computeSnapshotHash = () =>
   defaultSettings.map((setting, index) => `${index}:${setting.key}:${hashSetting(setting)}`).join('|')
 
 const expected = {
-  version: 1,
-  hash: '0:data_collection:9xnigq|1:is_triggers_enabled:eonvmh|2:experimental_feature_tasks:-zg8zmz|3:preferred_name:-5w6dil|4:location_name:27rtqf|5:location_lat:-tpss8p|6:location_lng:-tpsiwv|7:distance_unit:-3esuvm|8:temperature_unit:-dmzg9f|9:date_format:52oyc|10:time_format:we6fw3|11:currency:avihzf|12:integrations_pro_is_enabled:bbnpv0|13:user_has_completed_onboarding:-hxwxxt|14:content_view_width:8pnzc5|15:integrations_do_not_ask_again:yv9tj5',
+  version: 2,
+  hash: '0:data_collection:9xnigq|1:is_triggers_enabled:eonvmh|2:experimental_feature_tasks:-zg8zmz|3:experimental_feature_voice:6l2ce1|4:preferred_name:-5w6dil|5:location_name:27rtqf|6:location_lat:-tpss8p|7:location_lng:-tpsiwv|8:distance_unit:-3esuvm|9:temperature_unit:-dmzg9f|10:date_format:52oyc|11:time_format:we6fw3|12:currency:avihzf|13:integrations_pro_is_enabled:bbnpv0|14:user_has_completed_onboarding:-hxwxxt|15:content_view_width:8pnzc5|16:integrations_do_not_ask_again:yv9tj5',
 }
 
 describe('defaultSettings version snapshot', () => {

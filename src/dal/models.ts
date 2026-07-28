@@ -145,11 +145,13 @@ export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: P
 
     // PowerSync exposes local-only tables as SQLite views, which don't support
     // INSERT...ON CONFLICT DO UPDATE. Emulate UPSERT with SELECT-then-INSERT/UPDATE.
-    if (apiKey !== undefined) {
+    if (apiKey === null) {
+      await tx.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id))
+    } else if (apiKey !== undefined) {
       const existing = await tx.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
       if (existing) {
         await tx.update(modelsSecretsTable).set({ apiKey }).where(eq(modelsSecretsTable.modelId, id))
-      } else if (apiKey != null) {
+      } else {
         await tx.insert(modelsSecretsTable).values({ modelId: id, apiKey })
       }
     }

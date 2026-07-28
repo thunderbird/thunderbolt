@@ -4,26 +4,25 @@
 
 import { useCallback, useReducer } from 'react'
 
-import { DetailPanelSurface } from '@/components/detail-panel'
-import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
+import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { isWidgetSkillId } from '@/defaults/skills'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
-import { skillDisplayName, titleCaseFromSlug } from './display'
+import { skillDisplayName } from './display'
 import { findDependents } from './find-dependents'
 import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
+import { handleSkillSaveError, skillSaveFailedMessage, useCreateSkillTracked } from './skill-save'
 import { initialSkillsViewState, skillsViewReducer, type LeaveIntent } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { useSkillTelemetry } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
 export const SkillsView = () => {
-  const { isMobile } = useIsMobile()
-  const { skills, createSkill, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const { skills, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const createSkillTracked = useCreateSkillTracked()
   // Pinning is managed entirely from the chat composer; we only read
   // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be
   // summoned from the chat pinned bar, so keeping its slot would waste
@@ -44,31 +43,26 @@ export const SkillsView = () => {
     pendingDependents,
     slugError,
     submitError,
-    createInitialName,
   } = state
 
-  // Deep-links from the chat composer. Broken-reference alerts send
-  // `editSkill` (selects an existing, likely disabled skill so the user can
-  // enable it) or `createSkill` (opens the create form pre-filled with the
-  // slug the user just typed — `''` opens a blank form); the pinned chips'
-  // "Edit skill" action sends `startEditSkill`, which opens an edit form or
-  // read-only widget detail. Same consume-once pattern as `runSkill` in
-  // chat-prompt-input.
+  // Route-state deep links retained for settings integrations.
+  // `editSkill` selects an existing skill; `startEditSkill` lands directly in
+  // its edit form, except widget contracts remain on read-only detail.
+  // Composer create/edit actions use route-preserving CreateItemContext.
   useConsumeNavState('editSkill', (id) => dispatch({ type: 'SELECT_SKILL', id }))
   useConsumeNavState('startEditSkill', (id) => dispatch({ type: 'START_EDIT', id }))
-  useConsumeNavState('createSkill', (slug) => dispatch({ type: 'START_CREATE', initialName: slug || undefined }))
 
   // No first-skill fallback: the detail panel only opens when the user
   // explicitly selects a skill (or a deep link does), matching the
   // slide-in-from-the-right behavior. `undefined` means "nothing selected".
   const activeSkill = skills.find((s) => s.id === activeId)
 
-  // Disabling a pinned skill auto-unpins it. Re-enabling does NOT auto-repin;
-  // the user pins again deliberately from the chat composer.
+  // Disabling an editable pinned skill auto-unpins it. Widget contracts keep
+  // their shipped pin state because enabled is their only mutable field.
   const disableSkill = useCallback(
     async (id: string) => {
       await setEnabled(id, false)
-      if (pinnedSet.has(id)) {
+      if (pinnedSet.has(id) && !isWidgetSkillId(id)) {
         await togglePin(id)
       }
     },
@@ -109,10 +103,10 @@ export const SkillsView = () => {
       if ((mode === 'create' || mode === 'edit') && isDirty) {
         dispatch({ type: 'REQUEST_LEAVE', leave })
       } else {
-        dispatch({ type: 'PERFORM_LEAVE', leave, isMobile })
+        dispatch({ type: 'PERFORM_LEAVE', leave })
       }
     },
-    [mode, isDirty, isMobile],
+    [mode, isDirty],
   )
 
   const onSelectSkill = (id: string) => {
@@ -125,7 +119,7 @@ export const SkillsView = () => {
 
   const onConfirmDiscard = () => {
     if (pendingLeave) {
-      dispatch({ type: 'PERFORM_LEAVE', leave: pendingLeave, isMobile })
+      dispatch({ type: 'PERFORM_LEAVE', leave: pendingLeave })
     }
   }
 
@@ -181,8 +175,7 @@ export const SkillsView = () => {
   const handleSubmit = async (values: SkillFormValues) => {
     try {
       if (mode === 'create') {
-        const created = await createSkill(values)
-        trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
+        const created = await createSkillTracked(values)
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
       } else if (activeSkill) {
         const renamed = values.name !== activeSkill.name
@@ -191,15 +184,13 @@ export const SkillsView = () => {
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: activeSkill.id })
       }
     } catch (error) {
-      if (error instanceof SkillNameTakenError || error instanceof SkillNameInvalidError) {
-        dispatch({ type: 'SET_SLUG_ERROR', message: error.message })
-        return
-      }
       // Unexpected persistence failure: the form stays open with the user's
       // input intact — tell them why nothing happened instead of failing
       // silently as an unhandled rejection.
-      console.error('Failed to save skill', error)
-      dispatch({ type: 'SUBMIT_FAILED', message: "Couldn't save the skill. Please try again." })
+      handleSkillSaveError(error, {
+        onSlugRejected: (message) => dispatch({ type: 'SLUG_REJECTED', message }),
+        onFailed: () => dispatch({ type: 'SUBMIT_FAILED', message: skillSaveFailedMessage }),
+      })
     }
   }
 
@@ -208,7 +199,7 @@ export const SkillsView = () => {
   const sharedFormProps = {
     onCancel: () => requestLeave({ type: 'cancel' }),
     onSubmit: handleSubmit,
-    onDirtyChange: (dirty: boolean) => dispatch({ type: 'SET_DIRTY', dirty }),
+    onDirtyChange: (dirty: boolean) => dispatch({ type: 'DIRTY_CHANGED', dirty }),
     onSlugChange: () => dispatch({ type: 'CLEAR_SLUG_ERROR' }),
     resetSignal,
     slugError,
@@ -216,24 +207,10 @@ export const SkillsView = () => {
   }
 
   const createForm = (
-    <SkillForm
-      // Keying on the pre-filled slug forces a fresh form mount when the
-      // user clicks "Create it" for a different slug back-to-back.
-      key={createInitialName ? `create:${createInitialName}` : 'create'}
-      mode="create"
-      initialValues={
-        createInitialName
-          ? {
-              name: createInitialName,
-              // Suggest a Title Case name from the slug the user typed in chat.
-              label: titleCaseFromSlug(createInitialName),
-              description: '',
-              instruction: '',
-            }
-          : undefined
-      }
-      {...sharedFormProps}
-    />
+    // The panel's close X behaves as Cancel, including the dirty guard.
+    <DetailPanel title="Create Skill" onClose={sharedFormProps.onCancel}>
+      <SkillForm key="create" mode="create" {...sharedFormProps} />
+    </DetailPanel>
   )
 
   const renderPanel = () => {
@@ -257,24 +234,33 @@ export const SkillsView = () => {
       )
     }
     return (
-      <SkillForm
-        key={`edit:${activeSkill.id}`}
-        mode="edit"
-        initialValues={{
-          name: activeSkill.name,
-          // Legacy rows without a label get a Title Case suggestion so the
-          // required Name field doesn't start empty.
-          label: skillDisplayName(activeSkill),
-          description: activeSkill.description,
-          instruction: activeSkill.instruction,
-        }}
-        {...sharedFormProps}
-      />
+      <DetailPanel title="Edit Skill" onClose={sharedFormProps.onCancel}>
+        <SkillForm
+          key={`edit:${activeSkill.id}`}
+          mode="edit"
+          initialValues={{
+            name: activeSkill.name,
+            // Legacy rows without a label get a Title Case suggestion so the
+            // required Name field doesn't start empty.
+            label: skillDisplayName(activeSkill),
+            description: activeSkill.description,
+            instruction: activeSkill.instruction,
+          }}
+          {...sharedFormProps}
+        />
+      </DetailPanel>
     )
   }
 
   const panel = renderPanel()
   const panelOpen = panelView === 'panel' && panel !== null
+  const closePanel = () => {
+    if (mode === 'detail') {
+      dispatch({ type: 'BACK_TO_LIST' })
+      return
+    }
+    requestLeave({ type: 'cancel' })
+  }
 
   return (
     <div className="relative flex h-full">
@@ -290,7 +276,7 @@ export const SkillsView = () => {
           onDeleteSkill={onDelete}
         />
       </div>
-      <DetailPanelSurface open={panelOpen} isMobile={isMobile}>
+      <DetailPanelSurface open={panelOpen} onClose={closePanel}>
         {panel}
       </DetailPanelSurface>
       {pendingDependents && (

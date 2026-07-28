@@ -12,6 +12,18 @@ import { Elysia } from 'elysia'
 import type OpenAI from 'openai'
 import * as inferenceClient from './client'
 import { createInferenceRoutes, supportedModels } from './routes'
+import { defaultModels } from '@shared/defaults/models'
+
+describe('Thunderbolt model catalog parity', () => {
+  it('routes every Thunderbolt model shipped in frontend defaults', () => {
+    const shippedModelIds = defaultModels
+      .filter((model) => model.provider === 'thunderbolt')
+      .map((model) => model.model)
+
+    expect(shippedModelIds).not.toHaveLength(0)
+    expect(shippedModelIds.every((modelId) => supportedModels[modelId] !== undefined)).toBe(true)
+  })
+})
 
 describe('Inference Routes', () => {
   let app: { handle: Elysia['handle'] }

@@ -12,7 +12,7 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 
 ## Who it's for today
 
-Right now, Thunderbolt targets **enterprise customers deploying on-prem**. The backend currently requires authentication and search to function (web search can be disabled under *Settings → Integrations*). Individual users can self-host and sign up against their own backend.
+Right now, Thunderbolt targets **enterprise customers deploying on-prem**. The backend currently requires authentication and search to function (web search can be disabled under *Settings → Connections*). Individual users can self-host and sign up against their own backend.
 
 A hosted version for consumers is planned but does not yet have a release date.
 

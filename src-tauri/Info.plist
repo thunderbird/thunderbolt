@@ -11,5 +11,9 @@
         <true />
         <key>ITSAppUsesNonExemptEncryption</key>
         <false />
+        <!-- Voice mode: capture the microphone for speech-to-text. Required by
+             macOS/iOS TCC — without it the OS blocks (and can crash) mic access. -->
+        <key>NSMicrophoneUsageDescription</key>
+        <string>Thunderbolt uses your microphone for voice mode, so you can talk to the assistant.</string>
     </dict>
 </plist>

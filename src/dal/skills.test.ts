@@ -4,7 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { defaultSkillDailyBrief, defaultSkillWeatherForecast } from '@/defaults/skills'
+import { defaultSkillDailyBrief, defaultSkillWeather } from '@/defaults/skills'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import {
@@ -51,8 +51,8 @@ const seed = async (input: { name: string; label?: string; description?: string;
 
 /** Insert one stable widget contract for DAL mutation tests. */
 const seedWidgetSkill = async () => {
-  await getDb().insert(skillsTable).values(defaultSkillWeatherForecast)
-  return defaultSkillWeatherForecast
+  await getDb().insert(skillsTable).values(defaultSkillWeather)
+  return defaultSkillWeather
 }
 
 describe('validateSkillName (AgentSkills spec)', () => {
@@ -207,7 +207,7 @@ describe('skills DAL', () => {
 
       const after = await getSkill(getDb(), widget.id)
       expect(after?.enabled).toBe(0)
-      expect(after?.pinnedOrder).toBeNull()
+      expect(after?.pinnedOrder).toBe(defaultSkillWeather.pinnedOrder)
     })
 
     it('rejects locked-field patches for widget skills', async () => {
@@ -227,7 +227,7 @@ describe('skills DAL', () => {
 
       const after = await getSkill(getDb(), widget.id)
       expect(after?.enabled).toBe(1)
-      expect(after?.description).toBe(defaultSkillWeatherForecast.description)
+      expect(after?.description).toBe(defaultSkillWeather.description)
     })
   })
 
@@ -280,7 +280,7 @@ describe('skills DAL', () => {
       await expect(setPinned(getDb(), widget.id, 0)).rejects.toThrow(/widget skill/i)
       await setPinned(getDb(), task.id, 0)
 
-      expect((await getSkill(getDb(), widget.id))?.pinnedOrder).toBeNull()
+      expect((await getSkill(getDb(), widget.id))?.pinnedOrder).toBe(defaultSkillWeather.pinnedOrder)
       expect((await getSkill(getDb(), task.id))?.pinnedOrder).toBe(0)
     })
 
@@ -342,6 +342,20 @@ describe('skills DAL', () => {
     it(`rejects more than ${maxPinnedSkills} ids`, async () => {
       const ids = Array.from({ length: maxPinnedSkills + 1 }, () => crypto.randomUUID())
       await expect(reorderPins(getDb(), ids)).rejects.toBeInstanceOf(PinLimitExceededError)
+    })
+
+    it('rejects moving a pinned widget skill but permits reordering around its fixed slot', async () => {
+      const a = await seed({ name: 'a' })
+      const b = await seed({ name: 'b' })
+      await setPinned(getDb(), a.id, 0)
+      await setPinned(getDb(), b.id, 1)
+      await getDb().insert(skillsTable).values(defaultSkillWeather)
+
+      await expect(reorderPins(getDb(), [a.id, defaultSkillWeather.id, b.id])).rejects.toThrow(/widget skill/i)
+      await reorderPins(getDb(), [b.id, a.id, defaultSkillWeather.id])
+
+      const pinned = await getPinnedSkills(getDb())
+      expect(pinned.map((skill) => skill.id)).toEqual([b.id, a.id, defaultSkillWeather.id])
     })
   })
 

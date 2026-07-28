@@ -8,7 +8,7 @@ import { getDb } from '@/db/database'
 import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { Agent } from '@/types/acp'
-import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
+import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
 import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
@@ -49,7 +49,6 @@ export type ChatSession = {
   retryCount: number
   retriesExhausted: boolean
   selectedAgent: Agent
-  selectedMode: Mode
   selectedModel: Model
   triggerData: AutomationRun | null
 }
@@ -60,7 +59,6 @@ type ChatStoreState = {
   currentSessionId: string | null
   getMcpClients: () => NamedMCPClient[]
   reconnectClient: ReconnectClient
-  modes: Mode[]
   models: Model[]
   sessions: Map<string, ChatSession>
 }
@@ -74,12 +72,10 @@ type ChatStoreActions = {
   setCurrentSessionId(id: string): void
   setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
   setReconnectClient(reconnectClient: ReconnectClient): void
-  setModes(modes: Mode[]): void
   setModels(models: Model[]): void
   setPendingPermission(id: string, permission: PendingPermission | null): void
   resolvePendingPermission(id: string, response: RequestPermissionResponse): void
   setSelectedAgent(id: string, agent: Agent): Promise<void>
-  setSelectedMode(id: string, modeId: string | null): Promise<void>
   setSelectedModel(id: string, modelId: string | null): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
 }
@@ -99,7 +95,6 @@ const initialState: ChatStoreState = {
   // no-op (returns null) makes `mergeMcpTools` skip a dropped server rather than
   // reconnect — correct for the pre-hydration / no-provider case.
   reconnectClient: async () => null,
-  modes: [],
   models: [],
   sessions: new Map(),
 }
@@ -171,10 +166,6 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ reconnectClient })
   },
 
-  setModes: (modes) => {
-    set({ modes })
-  },
-
   setModels: (models) => {
     set({ models })
   },
@@ -235,37 +226,11 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     }
 
     // Persist the global last-used agent so new chats default to it (mirrors
-    // `setSelectedModel`/`setSelectedMode`). The per-thread write above keeps
-    // existing chats pinned to their own agent.
+    // `setSelectedModel`). The per-thread write above keeps existing chats
+    // pinned to their own agent.
     await updateSettings(db, { selected_agent: agent.id })
 
     trackEvent('agent_select', { agent: agent.id })
-  },
-
-  setSelectedMode: async (id, modeId) => {
-    const { modes, sessions } = get()
-
-    const mode = modes.find((m) => m.id === modeId)
-
-    if (!mode) {
-      throw new Error('Mode not found')
-    }
-
-    const session = sessions.get(id)
-
-    if (!session) {
-      throw new Error('No session found')
-    }
-
-    const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, selectedMode: mode })
-
-    set({ sessions: nextSessions })
-
-    const db = getDb()
-    await updateSettings(db, { selected_mode: mode.id })
-
-    trackEvent('mode_select', { mode: mode.id })
   },
 
   setSelectedModel: async (id, modelId) => {

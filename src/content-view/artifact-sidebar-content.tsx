@@ -32,13 +32,13 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
   }
   return (
     <div
-      className="flex flex-col h-dvh"
-      style={{ paddingBottom: 'var(--safe-area-bottom-padding)', paddingTop: 'var(--safe-area-top-padding)' }}
+      className="flex h-dvh flex-col md:pt-[var(--safe-area-top-padding)]"
+      style={{ paddingBottom: 'var(--safe-area-bottom-padding)' }}
     >
       <ContentViewHeader
         title={data.title}
         onClose={onClose}
-        className="bg-card border-b border-border"
+        className="md:bg-card"
         actions={<ArtifactActions html={data.html} title={data.title} />}
       />
       {runtimeError && <ArtifactErrorStrip message={runtimeError} />}

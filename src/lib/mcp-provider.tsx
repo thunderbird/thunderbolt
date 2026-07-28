@@ -14,7 +14,15 @@ import { isUnauthorizedError } from './mcp-errors'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mcp-transport'
 import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
 
-type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
+type SdkMcpClient = Awaited<ReturnType<typeof createMCPClient>>
+type MCPTools = Awaited<ReturnType<SdkMcpClient['tools']>>
+
+/** The application-facing MCP client contract; keep it narrower than the SDK
+ * client so consumers and tests depend only on capabilities Thunderbolt uses. */
+type MCPClient = {
+  tools: () => Promise<MCPTools>
+  close: () => void | Promise<void>
+}
 
 type MCPServer = {
   id: string
@@ -24,7 +32,7 @@ type MCPServer = {
   enabled: boolean
 }
 
-type MCPServerConnection = MCPServer & {
+export type MCPServerConnection = MCPServer & {
   client: MCPClient | null
   isConnected: boolean
   error: Error | null

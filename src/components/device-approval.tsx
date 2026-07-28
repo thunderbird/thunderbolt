@@ -31,12 +31,12 @@ type State = {
 }
 
 type Action =
-  | { type: 'setCode'; userCode: string }
-  | { type: 'verifyStart'; userCode: string }
-  | { type: 'settled'; status: 'confirming' | 'approved' | 'denied' }
-  | { type: 'submitStart'; action: 'approve' | 'deny' }
-  | { type: 'fail'; error: DeviceGrantFailure }
-  | { type: 'reset' }
+  | { type: 'CODE_CHANGED'; userCode: string }
+  | { type: 'VERIFY_STARTED'; userCode: string }
+  | { type: 'SETTLED'; status: 'confirming' | 'approved' | 'denied' }
+  | { type: 'SUBMIT_STARTED'; action: 'approve' | 'deny' }
+  | { type: 'FAILED'; error: DeviceGrantFailure }
+  | { type: 'RESET' }
 
 const init = (initialCode: string): State => ({
   status: initialCode ? 'verifying' : 'enteringCode',
@@ -47,18 +47,18 @@ const init = (initialCode: string): State => ({
 
 const reducer = (state: State, action: Action): State => {
   switch (action.type) {
-    case 'setCode':
+    case 'CODE_CHANGED':
       return { ...state, userCode: action.userCode }
-    case 'verifyStart':
+    case 'VERIFY_STARTED':
       // Persist the canonical (normalized) code so approve/deny post exactly what was verified.
       return { ...state, status: 'verifying', userCode: action.userCode, error: null }
-    case 'settled':
+    case 'SETTLED':
       return { ...state, status: action.status, pendingAction: null }
-    case 'submitStart':
+    case 'SUBMIT_STARTED':
       return { ...state, status: 'submitting', pendingAction: action.action, error: null }
-    case 'fail':
+    case 'FAILED':
       return { ...state, status: 'failed', pendingAction: null, error: action.error }
-    case 'reset':
+    case 'RESET':
       return { status: 'enteringCode', userCode: '', pendingAction: null, error: null }
   }
 }
@@ -72,13 +72,13 @@ const useDeviceApproval = (authClient: AuthClient, initialCode: string) => {
   const [state, dispatch] = useReducer(reducer, initialCode, init)
 
   const verify = async (code: string) => {
-    dispatch({ type: 'verifyStart', userCode: code })
+    dispatch({ type: 'VERIFY_STARTED', userCode: code })
     const result = await verifyDeviceCode(authClient, code)
     if (!result.ok) {
-      dispatch({ type: 'fail', error: result })
+      dispatch({ type: 'FAILED', error: result })
       return
     }
-    dispatch({ type: 'settled', status: result.status === 'pending' ? 'confirming' : result.status })
+    dispatch({ type: 'SETTLED', status: result.status === 'pending' ? 'confirming' : result.status })
   }
 
   // Verify-on-mount when the code arrived via the QR/link. Ref-guarded so Strict Mode's
@@ -103,27 +103,27 @@ const useDeviceApproval = (authClient: AuthClient, initialCode: string) => {
   }
 
   const runAction = async (action: 'approve' | 'deny') => {
-    dispatch({ type: 'submitStart', action })
+    dispatch({ type: 'SUBMIT_STARTED', action })
     const call = action === 'approve' ? approveDeviceCode : denyDeviceCode
     const result = await call(authClient, state.userCode)
     if (!result.ok) {
-      dispatch({ type: 'fail', error: result })
+      dispatch({ type: 'FAILED', error: result })
       return
     }
-    dispatch({ type: 'settled', status: action === 'approve' ? 'approved' : 'denied' })
+    dispatch({ type: 'SETTLED', status: action === 'approve' ? 'approved' : 'denied' })
   }
 
   return {
     state,
-    setCode: (userCode: string) => dispatch({ type: 'setCode', userCode }),
+    setCode: (userCode: string) => dispatch({ type: 'CODE_CHANGED', userCode }),
     submitCode,
     approve: () => runAction('approve'),
     deny: () => runAction('deny'),
-    reset: () => dispatch({ type: 'reset' }),
+    reset: () => dispatch({ type: 'RESET' }),
   }
 }
 
-const iconWrapper = 'mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full'
+const iconWrapperClass = 'mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full'
 
 /** Non-dismissable modal shell shared by every approval-page state. */
 const ApprovalShell = ({ children }: { children: ReactNode }) => (
@@ -146,7 +146,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
     <ApprovalShell>
       {state.status === 'verifying' && (
         <DialogHeader>
-          <div className={`${iconWrapper} bg-gradient-to-br from-amber-400 to-orange-500`}>
+          <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
             <Loader2 className="size-[var(--icon-size-default)] animate-spin text-white" />
           </div>
           <DialogTitle className="text-center text-xl">Checking sign-in request…</DialogTitle>
@@ -157,7 +157,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
       {state.status === 'enteringCode' && (
         <form onSubmit={submitCode}>
           <DialogHeader>
-            <div className={`${iconWrapper} bg-muted`}>
+            <div className={`${iconWrapperClass} bg-muted`}>
               <Terminal className="size-[var(--icon-size-default)] text-muted-foreground" />
             </div>
             <DialogTitle className="text-center text-xl">Sign in to the CLI</DialogTitle>
@@ -186,7 +186,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
       {(state.status === 'confirming' || isSubmitting) && (
         <>
           <DialogHeader>
-            <div className={`${iconWrapper} bg-gradient-to-br from-amber-400 to-orange-500`}>
+            <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
               <ShieldQuestion className="size-[var(--icon-size-default)] text-white" />
             </div>
             <DialogTitle className="text-center text-xl">Approve CLI sign-in?</DialogTitle>
@@ -240,7 +240,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
       {state.status === 'denied' && (
         <>
           <DialogHeader>
-            <div className={`${iconWrapper} bg-muted`}>
+            <div className={`${iconWrapperClass} bg-muted`}>
               <AlertCircle className="size-[var(--icon-size-default)] text-muted-foreground" />
             </div>
             <DialogTitle className="text-center text-xl">Sign-in denied</DialogTitle>
@@ -259,7 +259,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
       {state.status === 'failed' && state.error && (
         <>
           <DialogHeader>
-            <div className={`${iconWrapper} bg-red-100 dark:bg-red-900/30`}>
+            <div className={`${iconWrapperClass} bg-red-100 dark:bg-red-900/30`}>
               <AlertCircle className="size-[var(--icon-size-default)] text-red-600 dark:text-red-400" />
             </div>
             <DialogTitle className="text-center text-xl">
@@ -298,7 +298,7 @@ export const DeviceApproval = () => {
     return (
       <ApprovalShell>
         <DialogHeader>
-          <div className={`${iconWrapper} bg-gradient-to-br from-amber-400 to-orange-500`}>
+          <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
             <Loader2 className="size-[var(--icon-size-default)] animate-spin text-white" />
           </div>
           <DialogTitle className="text-center text-xl">Loading…</DialogTitle>
@@ -310,6 +310,8 @@ export const DeviceApproval = () => {
 
   if (!session?.user) {
     // Preserve the code across the login redirect so the approval page comes back pre-filled.
+    // Render-phase storage write: idempotent (same key, same value), so Strict Mode's double
+    // render is harmless, and it must happen before the <Navigate> below unmounts this page.
     if (searchParams.get('user_code')) {
       saveDeviceApprovalReturn(`${location.pathname}${location.search}`)
     }

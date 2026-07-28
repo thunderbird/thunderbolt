@@ -10,6 +10,45 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+/* Force-desktop: the Tauri desktop app always renders the desktop layout, no
+   matter how narrow the window is (the 600px min window width sits below the
+   640px sm and 768px md breakpoints). src/index.tsx adds .force-desktop to
+   <html> before first render on Tauri desktop; these overrides make the sm/md
+   variants treat that class as "breakpoint reached" and keep max-sm/max-md
+   off. lg and up stay purely viewport-based — they're progressive wide-screen
+   enhancements, not part of the mobile/desktop split. The JS half of the
+   split (useIsMobile) is gated in src/hooks/use-mobile.ts. */
+@custom-variant sm {
+  @media (width >= 40rem) {
+    @slot;
+  }
+  &:where(.force-desktop, .force-desktop *) {
+    @slot;
+  }
+}
+@custom-variant md {
+  @media (width >= 48rem) {
+    @slot;
+  }
+  &:where(.force-desktop, .force-desktop *) {
+    @slot;
+  }
+}
+@custom-variant max-sm {
+  @media (width < 40rem) {
+    &:where(:not(.force-desktop, .force-desktop *)) {
+      @slot;
+    }
+  }
+}
+@custom-variant max-md {
+  @media (width < 48rem) {
+    &:where(:not(.force-desktop, .force-desktop *)) {
+      @slot;
+    }
+  }
+}
+
 @theme {
   /* Mozilla brand font for display headings (e.g. the empty-chat greeting). */
   --font-heading: 'Mozilla Headline Variable', ui-sans-serif, system-ui, sans-serif;
@@ -52,6 +91,12 @@
      The same pair serves dark mode (see .dark below). */
   --color-brand: #c12d6c;
   --color-brand-2: #ab5e17;
+  /* Muted pair: the brand stops desaturated ~10% at equal lightness — a
+     quieter gradient for persistent "on" states (the Switch checked track)
+     that shouldn't compete with primary action buttons. Re-derive from the
+     brand pair if it changes. */
+  --color-brand-muted: #bd3778;
+  --color-brand-2-muted: #ad681f;
   --color-brand-foreground: #faf8f5;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #262120;
@@ -104,6 +149,9 @@
      with dark:shadow-none. */
   --shadow-glow: 0 0 32px rgb(38 33 32 / 0.06);
   --shadow-glow-sm: 0 0 16px rgb(38 33 32 / 0.06);
+  /* Stronger variant for the slide-in detail panel, which needs more lift to
+     separate from the page content it slides over. */
+  --shadow-glow-strong: 0 0 32px rgb(38 33 32 / 0.09);
 }
 
 /* Shadow colors for the three elevation intensities above. Light mode runs
@@ -115,15 +163,29 @@
   --elevation-medium: rgb(0 0 0 / 0.06);
   --elevation-strong: rgb(0 0 0 / 0.15);
 
+  /* Directional sheet/edge elevation — one recipe (8px offset toward the
+     layer below, 32px blur, -12px spread, 20% black) cast three ways. Single
+     source for the drawer sheets (drawer.tsx) and .mobile-sidebar-main-shadow
+     below; the -drawer names match the sheet's swipe-direction attribute. */
+  --shadow-drawer-down: 0 -8px 32px -12px rgb(0 0 0 / 20%);
+  --shadow-drawer-up: 0 8px 32px -12px rgb(0 0 0 / 20%);
+  --shadow-sidebar-edge: -8px 0 32px -12px rgb(0 0 0 / 20%);
+
+  /* Floor width of the create-item detail panel — the clamp() minimum in
+     DetailPanelSurface (detail-panel.tsx). Together with the 360px content
+     floor (ResizablePanel minSize in main-layout.tsx) it derives the 840px
+     create-item-layout container breakpoint below (480 + 360 = 840), which
+     must stay a literal because container queries can't read var(). */
+  --create-panel-min-width: 480px;
+
   /* Brand gradient — the logo's gold→magenta families as an amber→raspberry
      sweep. References the theme tokens, so the .dark overrides above flow
-     through automatically. Applied via
-     [background-image:var(--gradient-brand)] on "on" surfaces (switch ON
-     track); single-color call sites keep the solid --color-brand. Amber leads
-     (left) because the switch thumb parks on the RIGHT when checked — with
-     raspberry first, the thumb hid the amber end and the track read as plain
-     red. */
+     through automatically. Single-color call sites keep the solid
+     --color-brand. Amber leads (left) because the switch thumb parks on the
+     RIGHT when checked — with raspberry first, the thumb hid the amber end
+     and the track read as plain red. */
   --gradient-brand: linear-gradient(90deg, var(--color-brand-2), var(--color-brand));
+  --gradient-brand-muted: linear-gradient(90deg, var(--color-brand-2-muted), var(--color-brand-muted));
 }
 
 .dark {
@@ -134,23 +196,29 @@
 
 /* ===========================
    Responsive Touch Target System
+
+   Desktop-first: the base values below are the desktop sizing; the
+   `@media (width < 768px)` block after this one swaps in the mobile values.
+   The mobile block is guarded by :not(.force-desktop) so the Tauri desktop
+   app keeps desktop sizing at any window width (see the force-desktop
+   variants at the top of this file).
    =========================== */
 :root {
   /* Heights - Touch targets */
-  --touch-height-xl: 3.5rem; /* 56px mobile */
-  --touch-height-lg: 3rem; /* 48px mobile */
-  --touch-height-default: 2.75rem; /* 44px mobile - primary touch target */
-  --touch-height-sm: 2.5rem; /* 40px mobile */
-  --touch-height-control: 2.5rem; /* 40px mobile — prompt-area selectors/buttons; held at --min-touch-height */
+  --touch-height-xl: 3rem; /* 48px desktop */
+  --touch-height-lg: 2.5rem; /* 40px desktop */
+  --touch-height-default: 2.25rem; /* 36px desktop */
+  --touch-height-sm: 2rem; /* 32px desktop */
+  --touch-height-control: 1.75rem; /* 28px desktop — tightened prompt-area controls (THU-587) */
 
   /* Icon sizes */
-  --icon-size-default: 1.25rem; /* 20px mobile */
-  --icon-size-sm: 1rem; /* 16px mobile */
+  --icon-size-default: 1rem; /* 16px desktop */
+  --icon-size-sm: 0.875rem; /* 14px desktop */
 
   /* Font sizes */
-  --font-size-body: 1rem; /* 16px mobile */
-  --font-size-sm: 0.875rem; /* 14px mobile */
-  --font-size-xs: 0.75rem; /* 12px mobile */
+  --font-size-body: 0.875rem; /* 14px desktop */
+  --font-size-sm: 0.75rem; /* 12px desktop */
+  --font-size-xs: 0.625rem; /* 10px desktop */
 
   /* Border radius - overrides Tailwind's default --radius-* theme values.
    *
@@ -171,12 +239,12 @@
    * Corners step DOWN as you nest (outer radius − padding ≈ inner radius), so a
    * xl panel with p-1 holds md/lg items. Never hardcode px (`rounded-[12px]`) —
    * it defeats the responsive mobile→desktop step-down below. */
-  --radius-sm: 0.25rem; /* 4px mobile */
-  --radius-md: 0.5rem; /* 8px mobile */
-  --radius-lg: 0.75rem; /* 12px mobile */
-  --radius-xl: 1rem; /* 16px mobile */
-  --radius-2xl: 1.25rem; /* 20px mobile */
-  --radius-3xl: 1.5rem; /* 24px mobile */
+  --radius-sm: 0.125rem; /* 2px desktop */
+  --radius-md: 0.375rem; /* 6px desktop */
+  --radius-lg: 0.5rem; /* 8px desktop */
+  --radius-xl: 0.75rem; /* 12px desktop */
+  --radius-2xl: 1rem; /* 16px desktop */
+  --radius-3xl: 1.25rem; /* 20px desktop */
 
   /* Composer footer controls (+ / mode / model / submit): halfway between the
      lg and xl tiers — lg read too square against the composer's 3xl shell, xl
@@ -185,58 +253,96 @@
   --radius-control: calc((var(--radius-lg) + var(--radius-xl)) / 2);
 
   /* Minimum sizes */
-  --min-touch-height: 2.5rem; /* 40px mobile */
+  --min-touch-height: 0; /* No min on desktop */
+
+  /* Where the top-of-screen header cluster (floating header, modal
+     close/title/actions, page title, search button, drawer header) anchors
+     below the display cutout. Web and desktop use the raw safe area; the
+     .native-mobile override below pulls the cluster up a bit — the OS inset
+     leaves more room under the notch than the design needs. */
+  --header-safe-area-top: var(--safe-area-top-padding, 0px);
 
   /* The floating app header overlays the content area (main/settings layouts
      position it absolutely so pages scroll beneath it). Pages whose content
      starts at the top of the scroll area pad by this inset so nothing renders
      hidden under the header at rest. */
-  --header-inset: calc(var(--safe-area-top-padding, 0px) + var(--touch-height-xl));
+  --header-inset: calc(var(--header-safe-area-top) + var(--touch-height-xl));
+
+  /* Same idea for the mobile modal shell. Its close / actions controls pin
+     --modal-control-inset below the top safe area with a --touch-height-lg
+     target; a modal whose content runs edge to edge (see the responsive modal's
+     `flush`) pads its scroll container by these two insets, so content sits
+     clear of the controls and the footer at rest and scrolls beneath them after
+     that. 0.5rem matches the app header's top padding (header.tsx pt-2), so
+     everything anchored to --header-control-top — modal close/title/actions,
+     page titles, the page search button — sits on the same line as the
+     header controls beneath it. */
+  --modal-control-inset: 0.5rem;
+  --header-control-top: calc(var(--header-safe-area-top) + var(--modal-control-inset));
+  --modal-top-inset: calc(var(--header-control-top) + var(--touch-height-lg));
+
+  /* Whichever of the home indicator or the keyboard is taller — an open keyboard
+     already covers the indicator, so stacking them would strand dead space
+     (THU-586). The keyboard branch adds the standard 12px mobile edge gap
+     (edgeSpacing.mobile) because it brings no inset of its own; the 24px
+     fallback matches useSafeAreaInset's, so the geometry holds on the first
+     frame before that hook sets the variable. */
+  --modal-bottom-inset: max(var(--safe-area-bottom-padding, 24px), calc(var(--kb, 0px) + 12px));
+
+  /* Sticky modal actions live inside the visual viewport. When the keyboard is
+     closed that bottom edge is the physical screen edge, so the actions must
+     clear the home indicator / rounded corners: use the device safe area (or
+     the 16px panel gap, whichever is larger). When the keyboard is open the
+     edge is the keyboard itself — no safe area applies there, and adding one
+     would strand the actions above the keyboard. Subtracting --kb makes the
+     safe-area term collapse below 1rem the moment the keyboard opens (keyboard
+     heights dwarf any inset), so the max() degrades to the plain 16px gap. */
+  --modal-footer-inset: max(1rem, calc(var(--safe-area-bottom-padding, 24px) - var(--kb, 0px)));
 
   /* Switch component specific */
-  --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
-  --switch-track-width: 2.75rem; /* 44px mobile */
+  --switch-track-height: 1.25rem; /* 20px desktop - whole-px so the thumb is round */
+  --switch-track-width: 2rem; /* 32px desktop */
   /* Track = 1px border + 2px inner padding; thumb fills exactly what's left so the
    *  2px gap to the border is identical on every side and in every state. Whole-px
    *  values only, so the dot never shifts size as it slides. */
-  --switch-thumb-size: 1.125rem; /* 18px mobile (24 - 2*border - 2*pad) */
-  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 20px */
+  --switch-thumb-size: 0.875rem; /* 14px desktop (20 - 2*border - 2*pad) */
+  --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 12px */
 }
 
-@media (min-width: 768px) {
-  :root {
-    /* Heights - Desktop values */
-    --touch-height-xl: 3rem; /* 48px desktop */
-    --touch-height-lg: 2.5rem; /* 40px desktop */
-    --touch-height-default: 2.25rem; /* 36px desktop */
-    --touch-height-sm: 2rem; /* 32px desktop */
-    --touch-height-control: 1.75rem; /* 28px desktop — tightened prompt-area controls (THU-587) */
+@media (width < 768px) {
+  :root:not(.force-desktop) {
+    /* Heights - Mobile values */
+    --touch-height-xl: 3.5rem; /* 56px mobile */
+    --touch-height-lg: 3rem; /* 48px mobile */
+    --touch-height-default: 2.75rem; /* 44px mobile - primary touch target */
+    --touch-height-sm: 2.5rem; /* 40px mobile */
+    --touch-height-control: 2.5rem; /* 40px mobile — prompt-area selectors/buttons; held at --min-touch-height */
 
     /* Icon sizes */
-    --icon-size-default: 1rem; /* 16px desktop */
-    --icon-size-sm: 0.875rem; /* 14px desktop */
+    --icon-size-default: 1.25rem; /* 20px mobile */
+    --icon-size-sm: 1rem; /* 16px mobile */
 
     /* Font sizes */
-    --font-size-body: 0.875rem; /* 14px desktop */
-    --font-size-sm: 0.75rem; /* 12px desktop */
-    --font-size-xs: 0.625rem; /* 10px desktop */
+    --font-size-body: 1rem; /* 16px mobile */
+    --font-size-sm: 0.875rem; /* 14px mobile */
+    --font-size-xs: 0.75rem; /* 12px mobile */
 
     /* Border radius - overrides Tailwind's default --radius-* theme values */
-    --radius-sm: 0.125rem; /* 2px desktop */
-    --radius-md: 0.375rem; /* 6px desktop */
-    --radius-lg: 0.5rem; /* 8px desktop */
-    --radius-xl: 0.75rem; /* 12px desktop */
-    --radius-2xl: 1rem; /* 16px desktop */
-    --radius-3xl: 1.25rem; /* 20px desktop */
+    --radius-sm: 0.25rem; /* 4px mobile */
+    --radius-md: 0.5rem; /* 8px mobile */
+    --radius-lg: 0.75rem; /* 12px mobile */
+    --radius-xl: 1rem; /* 16px mobile */
+    --radius-2xl: 1.25rem; /* 20px mobile */
+    --radius-3xl: 1.5rem; /* 24px mobile */
 
     /* Minimum sizes */
-    --min-touch-height: 0; /* No min on desktop */
+    --min-touch-height: 2.5rem; /* 40px mobile */
 
     /* Switch component specific */
-    --switch-track-height: 1.25rem; /* 20px desktop - whole-px so the thumb is round */
-    --switch-track-width: 2rem; /* 32px desktop */
-    --switch-thumb-size: 0.875rem; /* 14px desktop (20 - 2*border - 2*pad) */
-    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 12px */
+    --switch-track-height: 1.75rem; /* 28px mobile */
+    --switch-track-width: 3rem; /* 48px mobile */
+    --switch-thumb-size: 1.375rem; /* 22px mobile (28 - 2*border - 2*pad) */
+    --switch-thumb-translate: calc(var(--switch-track-width) - var(--switch-thumb-size) - 6px); /* 20px */
   }
 }
 
@@ -263,6 +369,10 @@
      filled control here. */
   --color-brand: #c12d6c;
   --color-brand-2: #ab5e17;
+  /* Muted pair: same derivation as the :root block — desaturated ~10% at
+     equal lightness for the Switch checked track. */
+  --color-brand-muted: #bd3778;
+  --color-brand-2-muted: #ad681f;
   --color-brand-foreground: #faf8f5;
   --color-destructive: #ff5f5f;
   --color-destructive-foreground: #252220;
@@ -296,6 +406,14 @@
   --color-sidebar-accent-foreground: #f2f1ee;
   --color-sidebar-border: #434546;
   --color-sidebar-ring: #8a8a88;
+}
+
+/* Native mobile (Tauri iOS/Android; class added in src/index.tsx): pull the
+   header cluster up toward the notch — the OS safe-area inset is more generous
+   than the design needs, leaving dead space above the header. Clamped at 0 so
+   cutout-less devices (inset 0) don't push the header off-screen. */
+.native-mobile {
+  --header-safe-area-top: max(0px, calc(var(--safe-area-top-padding, 0px) - 10px));
 }
 
 /* macOS desktop app (Tauri) vibrancy — the window is transparent with a
@@ -391,6 +509,27 @@
   background-color: #282a2b;
 }
 
+/* The quick-create panel pushes the current route while both surfaces fit.
+   Below the panel's 480px floor + the content's 360px floor, take the panel
+   out of flex flow so it slides over the unchanged route instead. A container
+   query accounts for expanded, collapsed, and user-resized sidebars alike.
+   The 840px below is --create-panel-min-width (480px, :root above — consumed
+   by DetailPanelSurface's width clamp in detail-panel.tsx) + the 360px
+   ResizablePanel minSize (main-layout.tsx). Container queries can't read
+   var(), so if either floor changes, re-derive this literal. */
+[data-slot='create-item-layout'] {
+  container-name: create-item-layout;
+  container-type: inline-size;
+}
+
+@container create-item-layout (width < 840px) {
+  [data-slot='create-item-layout'] > [data-slot='slide-in-panel'] {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+  }
+}
+
 @keyframes accordion-down {
   from {
     height: 0;
@@ -469,6 +608,17 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+  /* A sustained press is an app gesture on these surfaces, so suppress the
+     browser's competing text selection and iOS callout UI. */
+  [data-slot='context-menu-trigger'],
+  [data-long-press],
+  [data-long-press] * {
+    /* Message text carries Tailwind's explicit `select-text` utility. This
+       transient gesture state must outrank it until the press ends. */
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+  }
 }
 
 /* Global scrollbar hiding for consistent cross-platform appearance */
@@ -485,6 +635,9 @@ html,
 body {
   overscroll-behavior: none;
   overflow: hidden;
+  /* Base UI's drawer backdrop falls back to absolute positioning on iOS
+     Safari and needs a positioned body to cover the scrolled viewport. */
+  position: relative;
 }
 #root {
   overflow: hidden;
@@ -492,8 +645,47 @@ body {
   height: 100svh;
 }
 
+/* Cast only toward the stationary menu so the moving app surface reads as
+   the layer above it in both themes. Same elevation recipe as the drawer
+   sheets — see the --shadow-drawer-down/up and --shadow-sidebar-edge tokens
+   in :root. */
+.mobile-sidebar-main-shadow {
+  box-shadow: var(--shadow-sidebar-edge);
+}
+
+/* The foreground owns mobile navigation motion, so Base UI's popup stays
+   anchored behind it instead of applying the drawer's default translation.
+   The !important is unavoidable: Base UI sets the transform as an inline
+   style with no prop to disable it. Timing matches `drawerTransition` in
+   mobile-sidebar.tsx — the popup fade and the foreground slide are one
+   animation; keep the two in sync. */
+.mobile-sidebar-popup {
+  opacity: 1;
+  transform: none !important;
+  transition: opacity 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 0.8, not 0: the menu only dims while covered — a subtle parallax fade so it
+   never appears to blink out behind the sliding foreground. */
+.mobile-sidebar-popup[data-starting-style],
+.mobile-sidebar-popup[data-ending-style] {
+  opacity: 0.8;
+}
+
+.mobile-sidebar-popup[data-swiping] {
+  /* transform already neutralized by the base rule above. */
+  opacity: 1;
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sidebar-popup {
+    transition-duration: 0ms;
+  }
+}
+
 @media (max-width: 768px) {
-  body {
+  :root:not(.force-desktop) body {
     width: 100%;
     height: 100%;
     overflow: hidden;

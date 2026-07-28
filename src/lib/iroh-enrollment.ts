@@ -38,7 +38,8 @@ const readOwnNodeId = async (
 ): Promise<string | null | undefined> => {
   try {
     return await load(deviceId)
-  } catch {
+  } catch (error) {
+    console.warn('own-device lookup failed; treating sync state as unavailable', error)
     return undefined
   }
 }
@@ -59,7 +60,7 @@ const readOwnNodeId = async (
  *
  * Optimistic and throwing on purpose: callers run this best-effort and, on failure
  * (Standalone / no account / offline), fall back to the manual pairing command still shown
- * in the add dialog. Enrollment must never block the add.
+ * in the add form. Enrollment must never block the add.
  *
  * @param httpClient Authenticated app client (bearer + X-Device-ID attached by the client).
  * @param loadNodeId Test/DI seam for reading this app's NodeId; production lazy-loads the wasm.
@@ -125,9 +126,22 @@ export const ensureSelfEnrollment = async (
 
     enrollmentsInFlight.set(enrollmentKey, pending)
     await pending
-  } catch {
-    console.warn('iroh transparent enrollment failed; using manual pairing fallback')
+  } catch (error) {
+    console.warn(enrollmentFallbackWarning, error)
   }
+}
+
+const enrollmentFallbackWarning = 'iroh transparent enrollment failed; using manual pairing fallback'
+
+/**
+ * Run a best-effort self-enrollment without blocking the caller. Failures warn
+ * (manual pairing remains the fallback) instead of rejecting — the single home
+ * for the fire-and-forget idiom the add flows share.
+ */
+export const fireAndForgetSelfEnrollment = (enroll: () => Promise<void>): void => {
+  void enroll().catch((error) => {
+    console.warn(enrollmentFallbackWarning, error)
+  })
 }
 
 /** Reset session memoization between tests. */

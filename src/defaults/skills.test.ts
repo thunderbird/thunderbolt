@@ -16,9 +16,11 @@ import {
   defaultSkillConnectIntegration,
   defaultSkillLinkPreview,
   defaultSkillMap,
+  defaultSkillResearch,
   defaultSkills,
+  defaultSkillSearch,
   defaultSkillsVersion,
-  defaultSkillWeatherForecast,
+  defaultSkillWeather,
   hashSkill,
   isWidgetSkillId,
 } from './skills'
@@ -40,8 +42,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 4,
-  hash: '0:01996330-0000-7000-8000-000000000001:-eur3ct|1:01996330-0000-7000-8000-000000000002:lp36jd|2:01996330-0000-7000-8000-000000000003:-4otv4y|3:01996330-0000-7000-8000-000000000004:-o0c0ul|4:01996330-0000-7000-8000-000000000005:atrnpq|5:01996330-0000-7000-8000-000000000006:ejr8vn|6:01996330-0000-7000-8000-000000000007:o1nire',
+  version: 5,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-cz2tdq|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:ejr8vn|8:01996330-0000-7000-8000-000000000009:o1nire',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -57,8 +59,8 @@ describe('defaultSkills', () => {
   it('ships spontaneous widget skills with load-bearing descriptions and canonical instruction bodies', () => {
     const widgetSkills = [
       {
-        skill: defaultSkillWeatherForecast,
-        description: 'Use this skill when the user asks for a current or upcoming weather forecast.',
+        skill: defaultSkillWeather,
+        description: 'Use this skill when the user asks about the weather or wants a forecast for a location.',
         instruction: weatherForecastWidgetInstruction,
       },
       {
@@ -101,21 +103,16 @@ describe('defaultSkills', () => {
     expect(names).not.toContain('document-result')
   })
 
-  it('pins task skills but not model-facing widget contracts', () => {
-    expect(defaultSkills.map((skill) => [skill.name, skill.pinnedOrder])).toEqual([
-      ['daily-brief', 0],
-      ['important-emails', 1],
-      ['weather-forecast', null],
-      ['link-preview', null],
-      ['connect-integration', null],
-      ['ask', null],
-      ['map', null],
-    ])
+  it('pins exactly Search, Research, Weather (in that order) as the starter chips for new users', () => {
+    const pinned = defaultSkills
+      .filter((skill) => skill.pinnedOrder !== null)
+      .sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0))
+    expect(pinned).toEqual([defaultSkillSearch, defaultSkillResearch, defaultSkillWeather])
   })
 
   it('identifies widget contracts by stable default id', () => {
     for (const skill of [
-      defaultSkillWeatherForecast,
+      defaultSkillWeather,
       defaultSkillLinkPreview,
       defaultSkillConnectIntegration,
       defaultSkillAsk,
@@ -126,21 +123,21 @@ describe('defaultSkills', () => {
 
     expect(isWidgetSkillId(defaultSkillDailyBrief.id)).toBe(false)
     expect(isWidgetSkillId(defaultSkillImportantEmails.id)).toBe(false)
+    expect(isWidgetSkillId(defaultSkillSearch.id)).toBe(false)
+    expect(isWidgetSkillId(defaultSkillResearch.id)).toBe(false)
     expect(isWidgetSkillId('user-skill-id')).toBe(false)
   })
 
   it('excludes user-controlled state from widget hashes only', () => {
-    expect(hashSkill({ ...defaultSkillWeatherForecast, enabled: 0, pinnedOrder: 4 })).toBe(
-      hashSkill(defaultSkillWeatherForecast),
-    )
+    expect(hashSkill({ ...defaultSkillWeather, enabled: 0, pinnedOrder: 4 })).toBe(hashSkill(defaultSkillWeather))
     expect(hashSkill({ ...defaultSkillDailyBrief, enabled: 0, pinnedOrder: 4 })).not.toBe(
       hashSkill(defaultSkillDailyBrief),
     )
   })
 
-  it('seeds every default as enabled — disabled defaults would never reach the chat resolver', () => {
+  it('seeds Important Emails disabled and everything else enabled', () => {
     for (const skill of defaultSkills) {
-      expect(skill.enabled).toBe(1)
+      expect(skill.enabled).toBe(skill === defaultSkillImportantEmails ? 0 : 1)
     }
   })
 })

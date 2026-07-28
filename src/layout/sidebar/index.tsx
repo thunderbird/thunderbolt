@@ -14,7 +14,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useCallback, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -28,7 +28,7 @@ export default function Sidebar() {
   const db = useDatabase()
   const navigate = useNavigate()
   const location = useLocation()
-  const { setOpenMobile, state, toggleSidebar } = useSidebar()
+  const { closeMobileSidebar, state, toggleSidebar } = useSidebar()
   const { isMobile } = useIsMobile()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
@@ -48,14 +48,6 @@ export default function Sidebar() {
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
   })
-
-  useEffect(() => {
-    if (showSearch && searchInputRef.current && !isCollapsed) {
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus()
-      })
-    }
-  }, [showSearch, isCollapsed])
 
   const { data } = useQuery({
     queryKey: ['chatThreads'],
@@ -112,30 +104,35 @@ export default function Sidebar() {
     },
   })
 
+  // Keep the current chat mounted until the mobile sidebar has fully covered
+  // it. Hydrating and mounting a long destination chat during the 300ms close
+  // animation competes for the main thread and makes the gesture visibly jank.
+  // Desktop navigation remains synchronous.
+  const navigateAndCloseSidebar = useCallback(
+    async (path: string) => {
+      if (isMobile) {
+        await closeMobileSidebar()
+      }
+      navigate(path)
+    },
+    [closeMobileSidebar, isMobile, navigate],
+  )
+
   const createNewChat = () => {
     trackEvent('chat_new_clicked')
-    navigate(`/chats/new`)
-    if (isMobile) {
-      setOpenMobile(false)
-    }
+    void navigateAndCloseSidebar('/chats/new')
   }
 
   const handleChatClick = useCallback(
     (threadId: string) => {
-      navigate(`/chats/${threadId}`)
       trackEvent('chat_select', { chat_id: threadId })
-      if (isMobile) {
-        setOpenMobile(false)
-      }
+      void navigateAndCloseSidebar(`/chats/${threadId}`)
     },
-    [navigate, isMobile, setOpenMobile],
+    [navigateAndCloseSidebar],
   )
 
   const handleNavigate = (path: string) => {
-    navigate(path)
-    if (isMobile) {
-      setOpenMobile(false)
-    }
+    void navigateAndCloseSidebar(path)
   }
 
   const handleSearchClick = (e?: MouseEvent) => {
@@ -150,6 +147,10 @@ export default function Sidebar() {
       })
     } else if (!showSearch) {
       setShowSearch(true)
+      // Focus synchronously inside the tap's event handler — the input is
+      // already in the DOM (just collapsed), and staying within the user
+      // gesture is what lets the mobile keyboard open immediately.
+      searchInputRef.current?.focus()
     } else {
       setShowSearch(false)
     }

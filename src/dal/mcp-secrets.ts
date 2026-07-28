@@ -2,9 +2,48 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpSecretsTable } from '../db/tables'
+import type { DrizzleQueryWithPromise } from '@/types'
+
+export type McpCredentialSummary = {
+  id: string
+  type: 'bearer' | 'oauth'
+  bearerToken?: string
+}
+
+type McpCredentialSummaryRow = {
+  id: string
+  type: string | null
+  bearerToken: string | null
+}
+
+/**
+ * Query credential summaries for all local MCP credentials. The projection
+ * happens in SQL so full OAuth token blobs never leave the DAL — these rows
+ * end up in the UI layer's query cache.
+ */
+export const getMcpServerCredentialRows = (db: AnyDrizzleDatabase) => {
+  const query = db
+    .select({
+      id: mcpSecretsTable.id,
+      type: sql<string | null>`json_extract(${mcpSecretsTable.credentials}, '$.type')`,
+      bearerToken: sql<
+        string | null
+      >`CASE WHEN json_extract(${mcpSecretsTable.credentials}, '$.type') = 'bearer' THEN json_extract(${mcpSecretsTable.credentials}, '$.token') END`,
+    })
+    .from(mcpSecretsTable)
+  return query as typeof query & DrizzleQueryWithPromise<McpCredentialSummaryRow>
+}
+
+/** Narrows a projected credential row to the tagged summary shape, dropping malformed rows. */
+export const parseMcpCredentialSummary = (row: McpCredentialSummaryRow): McpCredentialSummary | null => {
+  if (row.type === 'bearer') {
+    return { id: row.id, type: 'bearer', bearerToken: row.bearerToken ?? undefined }
+  }
+  return row.type === 'oauth' ? { id: row.id, type: 'oauth' } : null
+}
 
 /** Credential blob stored on-device for an MCP server. Forward-supports OAuth token sets. */
 export type McpServerCredentials =

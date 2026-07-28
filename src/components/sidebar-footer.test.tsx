@@ -12,12 +12,13 @@ import { MemoryRouter } from 'react-router'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 
 // Per docs/development/testing.md: do NOT mock app-internal modules. Real implementations
 // are used via createTestProvider + SignInModalProvider + SidebarProvider. Modal components
 // only render their dialog when `open={true}`, so leaving them real is harmless here.
 
-import { SidebarProvider } from '@/components/ui/sidebar'
+import { SidebarProvider, useSidebar } from '@/components/ui/sidebar'
 import { SignInModalProvider } from '@/contexts'
 import type { AuthClient } from '@/contexts'
 import { getDatabaseInstance } from '@/db/database'
@@ -35,9 +36,22 @@ afterAll(async () => {
 
 afterEach(() => {
   cleanup()
+  restoreViewport()
 })
 
-const renderWithProviders = (authClient: AuthClient) => {
+const MobileSidebarStateProbe = () => {
+  const { openMobile, setOpenMobile } = useSidebar()
+  return (
+    <>
+      <button type="button" onClick={() => setOpenMobile(true)}>
+        Open test sidebar
+      </button>
+      <output data-testid="mobile-sidebar-open">{String(openMobile)}</output>
+    </>
+  )
+}
+
+const renderWithProviders = (authClient: AuthClient, children?: ReactNode) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter>
@@ -48,17 +62,26 @@ const renderWithProviders = (authClient: AuthClient) => {
       </TestProvider>
     </MemoryRouter>
   )
-  return render(<SidebarFooter />, { wrapper: Wrapper })
+  return render(
+    <>
+      <SidebarFooter />
+      {children}
+    </>,
+    { wrapper: Wrapper },
+  )
 }
 
 describe('SidebarFooter', () => {
   describe('anonymous users', () => {
-    it('shows the Sign In affordance (treats anonymous as logged-out)', () => {
+    it('shows an icon-only Sign In affordance (treats anonymous as logged-out)', () => {
       const authClient = createMockAuthClient({
         session: { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } },
       })
       renderWithProviders(authClient)
-      expect(screen.getByText('Sign in')).toBeInTheDocument()
+      const button = screen.getByRole('button', { name: 'Sign in' })
+      expect(button).toBeInTheDocument()
+      expect(button.textContent).toBe('')
+      expect(button.className).toContain('w-[var(--touch-height-lg)]')
     })
 
     it('does NOT leak the synthetic anonymous email into the UI', () => {
@@ -85,7 +108,7 @@ describe('SidebarFooter', () => {
       })
       renderWithProviders(authClient)
       expect(screen.getByText('Real User')).toBeInTheDocument()
-      expect(screen.queryByText('Sign in')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
     })
 
     it('falls back to the email when the account has no display name', () => {
@@ -99,22 +122,37 @@ describe('SidebarFooter', () => {
     it('collapses to an icon-only perfect circle when the display label is blank', () => {
       // OTP sign-ups get name '' (not null); the old pill kept its horizontal
       // padding and rendered a 48×32 oval around the cloud icon. Blank labels
-      // must produce the square rounded-full control that matches ThemeToggle.
+      // must produce a square rounded-full icon-only control.
       const authClient = createMockAuthClient({
         session: { user: { id: 'real-3', email: '', name: '', isAnonymous: false } },
       })
       renderWithProviders(authClient)
       const button = screen.getByRole('button', { name: 'Account menu' })
-      expect(button.className).toContain('size-[var(--touch-height-default)]')
+      expect(button.className).toContain('h-[var(--touch-height-lg)]')
+      expect(button.className).toContain('w-[var(--touch-height-lg)]')
       expect(button.querySelector('span')).toBeNull()
     })
   })
 
   describe('fully logged-out users', () => {
-    it('shows the Sign In affordance', () => {
+    it('shows the icon-only Sign In affordance', () => {
       const authClient = createMockAuthClient({ session: null })
       renderWithProviders(authClient)
-      expect(screen.getByText('Sign in')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+      expect(screen.queryByText('Sign in')).toBeNull()
+    })
+
+    it('keeps the mobile sidebar open behind the sign-in modal', () => {
+      forceMobileViewport()
+      const authClient = createMockAuthClient({ session: null })
+      renderWithProviders(authClient, <MobileSidebarStateProbe />)
+      fireEvent.click(screen.getByRole('button', { name: 'Open test sidebar' }))
+      expect(screen.getByTestId('mobile-sidebar-open')).toHaveTextContent('true')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+      expect(screen.getByRole('dialog', { name: 'Sign In' })).toBeInTheDocument()
+      expect(screen.getByTestId('mobile-sidebar-open')).toHaveTextContent('true')
     })
   })
 

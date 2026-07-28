@@ -63,7 +63,6 @@ const baseAdapterContext = (overrides: Partial<AgentAdapterContext> = {}): Agent
   chatThread: null,
   acpSessionId: null,
   saveMessages: async () => {},
-  selectedMode: { id: 'm', name: 'Default', systemPrompt: 'sys' } as AgentAdapterContext['selectedMode'],
   selectedModel: { id: 'mod-1' } as AgentAdapterContext['selectedModel'],
   mcpClients: [],
   reconnectClient: async () => null,
@@ -83,15 +82,12 @@ describe('connectToAgent — built-in dispatch', () => {
 
     const init: RequestInit = { method: 'POST', body: '{}' }
     const ctx = baseAdapterContext({
-      selectedMode: { id: 'm', name: 'CodeMode', systemPrompt: 'be helpful' } as AgentAdapterContext['selectedMode'],
       selectedModel: { id: 'gpt' } as AgentAdapterContext['selectedModel'],
     })
     await adapter.fetch(init, ctx)
     expect(aiFetch).toHaveBeenCalledTimes(1)
     const call = (aiFetch.mock.calls[0] as unknown as [Record<string, unknown>])[0]
     expect(call.modelId).toBe('gpt')
-    expect(call.modeName).toBe('CodeMode')
-    expect(call.modeSystemPrompt).toBe('be helpful')
     expect(call.init).toBe(init)
   })
 

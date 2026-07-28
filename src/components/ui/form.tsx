@@ -88,7 +88,7 @@ const FormLabel = ({ className, ...props }: ComponentProps<typeof Root>) => {
     <Label
       data-slot="form-label"
       data-error={!!error}
-      className={cn('data-[error=true]:text-destructive-foreground', className)}
+      className={cn('data-[error=true]:text-destructive', className)}
       htmlFor={formItemId}
       {...props}
     />
@@ -100,7 +100,7 @@ const FormControl = ({ ...props }: ComponentProps<typeof Slot>) => {
 
   return (
     <Slot
-      data-slot="form-control"
+      data-form-control=""
       id={formItemId}
       aria-describedby={!error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`}
       aria-invalid={!!error}
@@ -131,12 +131,7 @@ const FormMessage = ({ className, ...props }: ComponentProps<'p'>) => {
   }
 
   return (
-    <p
-      data-slot="form-message"
-      id={formMessageId}
-      className={cn('text-destructive-foreground text-sm', className)}
-      {...props}
-    >
+    <p data-slot="form-message" id={formMessageId} className={cn('text-destructive text-sm', className)} {...props}>
       {body}
     </p>
   )

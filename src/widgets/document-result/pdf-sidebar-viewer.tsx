@@ -83,7 +83,7 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
 
   return (
     <div className="flex h-full flex-col">
-      <ContentViewHeader title={fileName} onClose={close} actions={downloadAction} className="border-b border-border" />
+      <ContentViewHeader title={fileName} onClose={close} actions={downloadAction} />
 
       {state.status === 'loading' && (
         <div className="flex flex-1 items-center justify-center">

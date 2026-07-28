@@ -16,6 +16,12 @@ import { createElement, useRef, type ReactNode } from 'react'
  * Import this module for its side effect from any test that wants the mock
  * applied; importing is idempotent because `mock.module` replaces by name.
  *
+ * IMPORTANT: bun does not retroactively rebind modules a file already linked
+ * statically — a static `import { X } from './x'` alongside this mock links
+ * the real framer-motion before `mock.module` registers, silently running the
+ * suite against the real animation runtime. Load the module under test with a
+ * top-level `await import(...)` placed after this import instead.
+ *
  * The motion-tag Proxy caches the per-tag component so React sees a stable
  * component identity across renders — without this, `<m.ul>` was returning a
  * fresh function on every access, which produced "Maximum update depth
@@ -83,15 +89,11 @@ const useStableMotionValue = (initial: unknown): MockMotionValue => {
  */
 export const animateSpy = mock((value: MockMotionValue, target: unknown, _transition?: unknown) => {
   value.set(target)
-  return Promise.resolve()
+  return Object.assign(Promise.resolve(), { stop: () => {} })
 })
 
-let reducedMotion = false
-
-/** Test hook: force `useReducedMotion()` to report (un)reduced motion. Reset per test. */
-export const setMockReducedMotion = (value: boolean) => {
-  reducedMotion = value
-}
+/** Spy for gestures started through Framer Motion's external drag controls. */
+const dragControlsStartSpy = mock(() => {})
 
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: ReactNode }) => children,
@@ -102,7 +104,8 @@ mock.module('framer-motion', () => ({
   m: motionTagProxy,
   motion: motionTagProxy,
   animate: animateSpy,
+  useDragControls: () => ({ start: dragControlsStartSpy }),
   useMotionValue: (initial: unknown) => useStableMotionValue(initial),
-  useReducedMotion: () => reducedMotion,
+  useReducedMotion: () => false,
   useTransform: () => useStableMotionValue(0),
 }))

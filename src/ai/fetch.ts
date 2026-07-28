@@ -22,7 +22,7 @@ import { getLocalSetting } from '@/stores/local-settings-store'
 import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import { isSsoMode } from '@/lib/auth-mode'
-import { getAuthToken } from '@/lib/auth-token'
+import { getAuthToken, getUserCacheSecret } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
@@ -58,8 +58,7 @@ import {
   type Tool,
   type ToolSet,
 } from 'ai'
-import { type MCPClient } from '@ai-sdk/mcp'
-import type { NamedMCPClient } from '@/lib/mcp-provider'
+import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import { isClosedConnectionError } from '@/lib/mcp-errors'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import type { SkillDefinition } from '@shared/agent-core/skills'
@@ -111,7 +110,7 @@ let userTinfoilClient: SecureClient | null = null
  */
 const createSystemTinfoilClient = (cloudUrl: string): Promise<SecureClient> => {
   const clientPromise = import('tinfoil').then(
-    ({ SecureClient }) => new SecureClient({ baseURL: `${cloudUrl}/tinfoil` }),
+    ({ SecureClient }) => new SecureClient({ baseURL: `${cloudUrl}/tinfoil`, userCacheSecret: getUserCacheSecret() }),
   )
   void clientPromise.catch(() => systemTinfoilClients.delete(cloudUrl))
   systemTinfoilClients.set(cloudUrl, clientPromise)
@@ -142,14 +141,14 @@ export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
  * swallowed ONLY here because this is a speculative cache fill — the real send
  * still surfaces attestation failures loudly through {@link createModel}.
  */
-export const prewarmSystemModel = async (model: Pick<Model, 'provider' | 'isSystem'> | null | undefined) => {
+export const runSystemModelPrewarm = async (model: Pick<Model, 'provider' | 'isSystem'> | null | undefined) => {
   if (!model || model.provider !== 'tinfoil' || !model.isSystem) {
     return
   }
   try {
     await getSystemTinfoilClient()
   } catch (error) {
-    console.warn('prewarmSystemModel: warm-up skipped', error)
+    console.warn('runSystemModelPrewarm: warm-up skipped', error)
   }
 }
 
@@ -157,7 +156,7 @@ export const prewarmSystemModel = async (model: Pick<Model, 'provider' | 'isSyst
  *  a new attestation context. Use when a key-config error keeps repeating
  *  inside the SDK's own reset+retry — the cached client's transport is wedged
  *  and only a brand-new instance breaks the cycle. */
-const evictSystemTinfoilClient = (): void => {
+export const evictSystemTinfoilClient = (): void => {
   const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
   systemTinfoilClients.delete(cloudUrl)
 }
@@ -165,7 +164,7 @@ const evictSystemTinfoilClient = (): void => {
 export const getTinfoilClient = async (): Promise<SecureClient> => {
   if (!userTinfoilClient) {
     const { SecureClient } = await import('tinfoil')
-    userTinfoilClient = new SecureClient()
+    userTinfoilClient = new SecureClient({ userCacheSecret: getUserCacheSecret() })
   }
   await userTinfoilClient.ready()
   return userTinfoilClient
@@ -178,7 +177,7 @@ const evictUserTinfoilClient = (): void => {
 /** A KeyConfigMismatchError that survives the SDK's internal reset+retry means
  *  our cached `SecureClient` has a wedged transport. Evict it so the next call
  *  builds a fresh instance with a brand-new attestation context. */
-const isKeyConfigMismatchError = (err: unknown): boolean =>
+export const isKeyConfigMismatchError = (err: unknown): boolean =>
   err instanceof Error && err.name === 'KeyConfigMismatchError'
 
 /** Reconnect a dropped MCP client; returns a fresh client or null. Supplied by
@@ -188,8 +187,6 @@ type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
 type AiFetchStreamingResponseOptions = {
   init: RequestInit
   modelId: string
-  modeSystemPrompt?: string
-  modeName?: string
   mcpClients?: NamedMCPClient[]
   reconnectClient?: ReconnectClient
   httpClient: HttpClient
@@ -562,8 +559,6 @@ export type PreparedAiRequestConfig = {
 
 export type PrepareAiRequestConfigOptions = {
   readonly modelId: string
-  readonly modeSystemPrompt?: string
-  readonly modeName?: string
   readonly mcpClients?: NamedMCPClient[]
   readonly reconnectClient?: ReconnectClient
   readonly httpClient: HttpClient
@@ -572,8 +567,6 @@ export type PrepareAiRequestConfigOptions = {
 /** Load model/profile/settings and build one send's app + MCP tools and prompt. */
 export const prepareAiRequestConfig = async ({
   modelId,
-  modeSystemPrompt,
-  modeName,
   mcpClients = [],
   reconnectClient = async () => null,
   httpClient,
@@ -622,7 +615,6 @@ export const prepareAiRequestConfig = async ({
   const prompt = createPromptParts({
     modelName: model.name,
     profile,
-    modeName: modeName ?? null,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,
@@ -637,7 +629,6 @@ export const prepareAiRequestConfig = async ({
       currency: settings.currency,
     },
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
-    modeSystemPrompt,
     mcpServersSummary: merged.summary,
     skills: supportsTools ? skills : [],
   })
@@ -659,8 +650,6 @@ export const prepareAiRequestConfig = async ({
 export const aiFetchStreamingResponse = async ({
   init,
   modelId,
-  modeSystemPrompt,
-  modeName,
   mcpClients,
   reconnectClient,
   httpClient,
@@ -679,8 +668,6 @@ export const aiFetchStreamingResponse = async ({
   const { model, profile, supportsTools, sourceCollector, toolset, skills, mcpToolsMetadata, systemPrompt } =
     await prepareAiRequestConfig({
       modelId,
-      modeSystemPrompt,
-      modeName,
       mcpClients,
       reconnectClient,
       httpClient,
@@ -689,7 +676,7 @@ export const aiFetchStreamingResponse = async ({
     console.log('Model does not support tools, skipping tool setup')
   }
 
-  const activeNudges = getNudgeMessagesFromProfile(profile, modeName)
+  const activeNudges = getNudgeMessagesFromProfile(profile)
 
   try {
     const baseModel = await createModel(model, getProxyFetch)
@@ -818,12 +805,6 @@ export const aiFetchStreamingResponse = async ({
     // into ephemeral system messages. Re-resolution happens on every send /
     // regenerate so the model sees the user's *current* skill library, not
     // a snapshot from when the message was originally typed.
-    //
-    // Skills v1 §OQ6: skills are intentionally available in *every* mode
-    // (Chat, Search, Research). There's no per-mode gating here — a skill
-    // is text injection, not a tool, and modes that disagree on tools
-    // still agree on text. If a future mode wants to exclude skills it'd
-    // need an explicit `noSkills` flag on the mode definition.
     //
     // The composer (`chat-prompt-input.tsx`) uses the same helpers to size
     // the context-overflow estimate so the budget and the actual prepend

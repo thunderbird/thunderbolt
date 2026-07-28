@@ -21,8 +21,12 @@ const classify: SkillStatusClassifier = (slug) => {
   return { status: 'unknown' }
 }
 
+const noopCreateSkill = () => {}
+
 const renderTokens = (text: string) =>
-  render(<MemoryRouter>{renderHighlightedSkillTokens(text, classify)}</MemoryRouter>)
+  render(
+    <MemoryRouter>{renderHighlightedSkillTokens(text, classify, { onCreateSkill: noopCreateSkill })}</MemoryRouter>,
+  )
 
 describe('renderHighlightedSkillTokens', () => {
   it('renders plain text unchanged when no tokens are present', () => {
@@ -115,7 +119,7 @@ describe('renderHighlightedSkillTokens', () => {
   })
 
   it('returns an array ending with a zero-width space to preserve trailing newlines', () => {
-    const nodes = renderHighlightedSkillTokens('hello\n', classify)
+    const nodes = renderHighlightedSkillTokens('hello\n', classify, { onCreateSkill: noopCreateSkill })
     expect(nodes[nodes.length - 1]).toBe('​')
   })
 })

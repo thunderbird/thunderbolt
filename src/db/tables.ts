@@ -245,6 +245,13 @@ export const modelProfilesTable = sqliteTable(
   ],
 )
 
+/**
+ * LEGACY — the chat-modes feature was removed (chat behavior is the default;
+ * Search/Research ship as default skills). The table stays in the synced
+ * schema so this client keeps matching the deployed sync rules; dropping it
+ * requires the backend + sync-rules PR flow (see AGENTS.md, "Deploying new
+ * synced tables"). No application code reads or writes it.
+ */
 export const modesTable = sqliteTable(
   'modes',
   {

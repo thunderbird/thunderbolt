@@ -5,7 +5,7 @@
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { defaultSkillDailyBrief, defaultSkillWeatherForecast, hashSkill } from '@/defaults/skills'
+import { defaultSkillDailyBrief, defaultSkillWeather, hashSkill } from '@/defaults/skills'
 import { hashValues } from '@/lib/utils'
 import type { Skill } from '@/types'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -40,10 +40,10 @@ beforeEach(async () => {
 describe('restampWidgetSkillDefaultHashes', () => {
   it('re-stamps toggled widget rows without changing user state', async () => {
     const toggledWidget = {
-      ...defaultSkillWeatherForecast,
+      ...defaultSkillWeather,
       enabled: 0,
       pinnedOrder: 4,
-      defaultHash: legacyHashSkill(defaultSkillWeatherForecast),
+      defaultHash: legacyHashSkill(defaultSkillWeather),
     }
     await getDb().insert(skillsTable).values(toggledWidget)
 
@@ -67,14 +67,14 @@ describe('restampWidgetSkillDefaultHashes', () => {
   })
 
   it('is idempotent for widget rows already using the content-only hash', async () => {
-    const currentHash = hashSkill(defaultSkillWeatherForecast)
+    const currentHash = hashSkill(defaultSkillWeather)
     await getDb()
       .insert(skillsTable)
-      .values({ ...defaultSkillWeatherForecast, defaultHash: currentHash })
+      .values({ ...defaultSkillWeather, defaultHash: currentHash })
 
     await restampWidgetSkillDefaultHashes.run(getDb())
 
-    const row = await getDb().select().from(skillsTable).where(eq(skillsTable.id, defaultSkillWeatherForecast.id)).get()
+    const row = await getDb().select().from(skillsTable).where(eq(skillsTable.id, defaultSkillWeather.id)).get()
     expect(row?.defaultHash).toBe(currentHash)
   })
 })

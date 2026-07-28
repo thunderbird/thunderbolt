@@ -6,6 +6,7 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
 import { AgentSelector, buildAgentItems } from './agent-selector'
 
@@ -39,6 +40,7 @@ const customAgent: Agent = {
 
 afterEach(() => {
   cleanup()
+  restoreViewport()
 })
 
 describe('buildAgentItems', () => {
@@ -63,6 +65,26 @@ describe('AgentSelector', () => {
 
     const trigger = screen.getByTestId('agent-selector-trigger')
     expect(trigger).toHaveTextContent('RAG Chat')
+    expect(trigger).toHaveClass('max-md:h-[var(--touch-height-lg)]')
+    expect(screen.getByTestId('agent-selector-pill')).toHaveClass(
+      'px-4',
+      'md:px-3',
+      'max-md:bg-muted/80',
+      'max-md:dark:bg-muted/40',
+      'max-md:backdrop-blur-md',
+    )
+  })
+
+  it('gives the collapsed mobile control the shared frosted background', () => {
+    const onSelect = mock(() => {})
+    render(
+      <AgentSelector selectedAgent={systemAgent} agents={[builtInAgent, systemAgent]} onSelect={onSelect} collapsed />,
+    )
+
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass(
+      'max-md:bg-muted/80',
+      'max-md:backdrop-blur-md',
+    )
   })
 
   it('opens the dropdown and exposes all agents when enabled', () => {
@@ -125,8 +147,33 @@ describe('AgentSelector', () => {
     )
 
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
-    fireEvent.click(screen.getByText('Add agent'))
+    const trigger = screen.getByTestId('agent-selector-trigger').closest('button')
+    fireEvent.click(screen.getByText('Add Agent'))
 
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(onAddAgent).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the mobile agent drawer before invoking Add Agent', () => {
+    forceMobileViewport()
+    const onAddAgent = mock(() => {})
+    render(
+      <AgentSelector
+        selectedAgent={builtInAgent}
+        agents={[builtInAgent]}
+        onSelect={() => {}}
+        onAddAgent={onAddAgent}
+      />,
+    )
+
+    const trigger = screen.getByTestId('agent-selector-trigger').closest('button')
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeNull()
+    fireEvent.click(screen.getByText('Add Agent'))
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    // The mobile card drawer must be gone before the add flow opens.
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 

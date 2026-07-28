@@ -5,7 +5,7 @@
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import dayjs from 'dayjs'
-import { Loader2, MoreVertical, Trash2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 
@@ -13,7 +13,7 @@ import '@/lib/dayjs'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { iconForAgent } from '@/components/agent-icon'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
-import { AgentIconTile } from '@/components/settings/agents/agent-list-row'
+import { IconTile } from '@/components/settings/icon-tile'
 import { EditableField, FieldLabel } from '@/components/settings/agents/editable-field'
 import { inferTransport, validateAgentUrl } from '@/components/settings/agents/validate-agent-url'
 import {
@@ -25,8 +25,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button, mutedIconButtonClass } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
+import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import { useDatabase } from '@/contexts'
 import { getAllMcpServers } from '@/dal'
@@ -35,7 +36,7 @@ import { cn } from '@/lib/utils'
 import { useLibrarySkills } from '@/skills/use-skills'
 import type { Agent } from '@/types/acp'
 import { acpEndpointLabel, agentProvenanceLine } from './agent-provenance'
-import type { TestAcpConnectionFn } from './add-custom-agent-dialog'
+import type { TestAcpConnectionFn } from './add-custom-agent-form'
 
 /** On-demand probe result: the panel never polls on open — Status starts at
  *  `idle` and reflects the last explicit "Test connection" run. `error` holds
@@ -99,8 +100,8 @@ export const AgentDetail = ({
       await onDelete()
     } catch (error) {
       // Keep the confirm dialog open so the failure is visible and retryable.
-      console.error('Failed to remove agent', error)
-      setRemoveError("Couldn't remove the agent. Please try again.")
+      console.error('Failed to delete agent', error)
+      setRemoveError("Couldn't delete the agent. Please try again.")
       return
     }
     setConfirmOpen(false)
@@ -108,32 +109,25 @@ export const AgentDetail = ({
   }
 
   const managementMenu = isEditable && (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="More" className={mutedIconButtonClass}>
-          <MoreVertical />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
-        <DropdownMenuItem onClick={() => setConfirmOpen(true)} className="cursor-pointer">
-          <Trash2 />
-          Remove agent
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <DetailActionsMenu>
+      <DropdownMenuItem onClick={() => setConfirmOpen(true)} className="cursor-pointer">
+        <Trash2 />
+        Delete agent
+      </DropdownMenuItem>
+    </DetailActionsMenu>
   )
 
   return (
     <DetailPanel
       icon={
-        <AgentIconTile>
+        <IconTile>
           {/* The logo reads slightly smaller than the lucide glyphs at equal
               box size, so it gets a half-step bump. */}
           <Icon
             className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-5.5' : 'size-5')}
             aria-hidden="true"
           />
-        </AgentIconTile>
+        </IconTile>
       }
       title={agent.name}
       subtitle={agentProvenanceLine(agent)}
@@ -157,7 +151,7 @@ export const AgentDetail = ({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {agent.name}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {agent.name}?</AlertDialogTitle>
             <AlertDialogDescription>
               This removes the connection from Thunderbolt only. Nothing on the remote server is changed.
             </AlertDialogDescription>
@@ -170,7 +164,7 @@ export const AgentDetail = ({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <Button variant="destructive" onClick={() => void handleRemove()}>
-              Remove agent
+              Delete agent
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -217,7 +211,7 @@ const BuiltInBody = () => {
           <div className="flex flex-col gap-1">
             <FieldLabel>MCP servers</FieldLabel>
             <Link
-              to="/settings/mcp-servers"
+              to="/settings/connections"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
               {mcpServers.length} {mcpServers.length === 1 ? 'MCP server' : 'MCP servers'}
@@ -226,7 +220,7 @@ const BuiltInBody = () => {
           <div className="flex flex-col gap-1">
             <FieldLabel>Integrations</FieldLabel>
             <Link
-              to="/settings/integrations"
+              to="/settings/connections"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
               Manage integrations

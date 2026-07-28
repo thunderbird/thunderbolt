@@ -8,14 +8,14 @@ import { createSetting } from '@/dal'
 import { eq, inArray, isNull } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
+import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
+import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widget-skill-default-hashes'
 import { nowIso } from './utils'
 
 const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
@@ -32,7 +32,6 @@ const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, d
  */
 export const versionMarkerKeys = {
   models: 'defaults_version.models',
-  modes: 'defaults_version.modes',
   tasks: 'defaults_version.tasks',
   skills: 'defaults_version.skills',
   settings: 'defaults_version.settings',
@@ -152,6 +151,9 @@ const advanceVersionMarker = async (
  *   and `provider` (routing). A server-shipped OTA payload cannot flip these
  *   on a bundle-known id; a new value ships under a fresh id. Only applies to
  *   updates — inserts use the default as-is.
+ * @property metadataFields - Server-owned fields intentionally excluded from
+ *   the user-edit hash. Differences in these fields still trigger an update
+ *   after the row's hashed fields are verified as unmodified.
  */
 type FrozenField<T> = Extract<keyof T, string>
 
@@ -161,6 +163,7 @@ export type ReconcileDefaultsForTableOptions<T> = {
   insertMissing?: boolean
   canResurrect?: boolean
   frozenFields?: readonly FrozenField<T>[] | ((defaultItem: T) => readonly FrozenField<T>[])
+  metadataFields?: readonly FrozenField<T>[]
 }
 
 /**
@@ -205,6 +208,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     insertMissing = canOverwrite,
     canResurrect = canOverwrite,
     frozenFields = [],
+    metadataFields = [],
   } = options
 
   if (defaults.length === 0) {
@@ -313,12 +317,16 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
             defaultItem,
           ) as T)
     const effectiveHash = itemFrozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
+    const metadataChanged = metadataFields.some(
+      (field) => (existing as Record<string, unknown>)[field] !== (effectiveDefault as Record<string, unknown>)[field],
+    )
 
     // Skip update if the effective default matches what's already stored
     // (prevents empty PATCH operations, and collapses OTA payloads that only
-    // touch frozen fields to a no-op). Row content genuinely matches target —
-    // keep `everyBundleRowAtTarget` true for this row.
-    if (existing.defaultHash === effectiveHash) {
+    // touch frozen fields to a no-op). Server-owned metadata is intentionally
+    // outside the hash, so compare it explicitly before declaring the row at
+    // target.
+    if (existing.defaultHash === effectiveHash && !metadataChanged) {
       continue
     }
 
@@ -454,7 +462,6 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // gone. Reading all five probes here — before any writes land in this
     // transaction — keeps every table's gate on the same pre-reconcile view.
     const hasAnyModelRow = (await tx.select({ id: modelsTable.id }).from(modelsTable).limit(1)).length > 0
-    const hasAnyModeRow = (await tx.select({ id: modesTable.id }).from(modesTable).limit(1)).length > 0
     const hasAnyTaskRow = (await tx.select({ id: tasksTable.id }).from(tasksTable).limit(1)).length > 0
     const hasAnySkillRow = (await tx.select({ id: skillsTable.id }).from(skillsTable).limit(1)).length > 0
     const hasAnySettingsRow = (await tx.select({ key: settingsTable.key }).from(settingsTable).limit(1)).length > 0
@@ -519,6 +526,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       canOverwrite: modelsGate.canOverwrite,
       canResurrect: initialSyncCompleted,
       frozenFields: ['isConfidential', 'provider'],
+      metadataFields: ['description', 'vendor'],
     })
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
@@ -613,8 +621,11 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       }
     }
 
-    await runGatedPass(modesTable, defaultModes, hashMode, versionMarkerKeys.modes, defaultModesVersion, hasAnyModeRow)
     await runGatedPass(tasksTable, defaultTasks, hashTask, versionMarkerKeys.tasks, defaultTasksVersion, hasAnyTaskRow)
+    // Main shipped weather with a full-row v4 hash before weather became a
+    // locked widget contract. Re-stamp first so v5 can recognize and replace
+    // that pristine row with the canonical widget instructions in this pass.
+    await restampWidgetSkillDefaultHashes.run(tx)
     await runGatedPass(
       skillsTable,
       defaultSkills,

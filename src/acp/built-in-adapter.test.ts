@@ -190,7 +190,6 @@ describe('createBuiltInAdapter persistent harness', () => {
     const context = {
       threadId: 'thread-1',
       selectedModel: model,
-      selectedMode: { name: 'chat', systemPrompt: 'mode' },
       mcpClients: [],
       reconnectClient: async () => null,
       httpClient: {},

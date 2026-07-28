@@ -74,7 +74,7 @@ Keep the entry bundle small by lazy-loading routes that aren't on the critical l
 
 **Lazy (`React.lazy(() => import(...))`):**
 
-- All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `McpServersPage`, `IntegrationsPage`, dev-only routes).
+- All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `ConnectionsPage`, dev-only routes).
 - Secondary features (`TasksPage`, `AutomationsPage`).
 - `WaitlistPage` and SSO flows (only hit by a subset of users).
 
@@ -84,6 +84,7 @@ When adding a new route, default to lazy unless the route is on the chat/landing
 
 - Create test files as `<file>.test.ts` next to source files
 - Test likely edge cases, aiming for useful 80% coverage
+- **Never run bare `bun test` at the repo root** — it discovers every `*.test.*` file in the repo, including `backend/` tests that open real connections (test DB, WebSocket e2e) and hang forever without their services running, and it applies no timeout. Use `bun run test` (scoped to `src/` + `shared/` with a 5s per-test timeout, finishes in ~15s), `bun test <path> --timeout 5000` for a specific file/folder, or `bun run test:backend` for backend tests
 
 ## After Each Task
 
@@ -118,14 +119,13 @@ Reconciled default tables ship a monotonic `defaults<X>Version` constant next to
 Files that ship a version constant today:
 
 - `shared/defaults/models.ts` — `defaultModelsVersion`
-- `src/defaults/modes.ts` — `defaultModesVersion`
 - `src/defaults/tasks.ts` — `defaultTasksVersion`
 - `src/defaults/skills.ts` — `defaultSkillsVersion`
 - `src/defaults/settings.ts` — `defaultSettingsVersion`
 
 `src/defaults/model-profiles.ts` is also reconciled but does not carry its own version — profiles ride the models gate (`insertMissing: true`, `canOverwrite: modelsGate.canOverwrite`), so bumping `defaultModelsVersion` covers profile changes too.
 
-**When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`, `src/defaults/modes.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
+**When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`, `src/defaults/skills.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
 
 ## CORS and API headers
 

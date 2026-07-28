@@ -252,7 +252,7 @@ export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: numbe
   await db.update(skillsTable).set({ pinnedOrder: order }).where(eq(skillsTable.id, id))
 }
 
-/** Toggle the `enabled` flag. SkillsView auto-unpins on disable as a side-effect at the call site. */
+/** Toggle `enabled`. SkillsView auto-unpins editable skills on disable at the call site. */
 export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boolean): Promise<void> => {
   await db
     .update(skillsTable)
@@ -262,7 +262,8 @@ export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boole
 
 /**
  * Rewrite the `pinned_order` of the supplied ids in a single transaction (index = position).
- * Ids not in the list keep their existing order. Bounded by the 10-pin cap.
+ * Ids not in the list keep their existing order. Widget ids may appear only
+ * at their existing positions. Bounded by the 10-pin cap.
  */
 export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promise<void> => {
   if (ids.length === 0) {
@@ -271,7 +272,19 @@ export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promis
   if (ids.length > maxPinnedSkills) {
     throw new PinLimitExceededError()
   }
+  const widgetIds = ids.filter(isWidgetSkillId)
   await db.transaction(async (tx) => {
+    if (widgetIds.length > 0) {
+      const pinnedWidgets = await tx
+        .select({ id: skillsTable.id, pinnedOrder: skillsTable.pinnedOrder })
+        .from(skillsTable)
+        .where(inArray(skillsTable.id, widgetIds))
+      const pinnedOrderById = new Map(pinnedWidgets.map((skill) => [skill.id, skill.pinnedOrder]))
+      const movesWidgetSkill = widgetIds.some((id) => pinnedOrderById.get(id) !== ids.indexOf(id))
+      if (movesWidgetSkill) {
+        throw new Error('reorderPins: refusing to move widget skills')
+      }
+    }
     // Two-phase update to avoid hitting the (id, pinned_order) collision space
     // mid-rewrite: stage everything to negative ordinals first, then settle.
     for (let i = 0; i < ids.length; i++) {

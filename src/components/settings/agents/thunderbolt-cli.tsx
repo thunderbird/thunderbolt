@@ -17,7 +17,8 @@ import {
   installThunderboltCli,
 } from '@/lib/cli-install'
 import { getPlatform, isTauri } from '@/lib/platform'
-import { AgentIconTile, AgentListRow } from './agent-list-row'
+import { AgentListRow } from './agent-list-row'
+import { IconTile } from '@/components/settings/icon-tile'
 
 /** Shell one-liner to build the CLI from source when no prebuilt binary applies. */
 const manualBuildCommand = 'cd cli && bun install && bun run build && ./install.sh'
@@ -122,9 +123,9 @@ export const ThunderboltCliDetail = ({
   return (
     <DetailPanel
       icon={
-        <AgentIconTile>
+        <IconTile>
           <Terminal className="size-5 text-muted-foreground" aria-hidden="true" />
-        </AgentIconTile>
+        </IconTile>
       }
       title="Thunderbolt CLI"
       subtitle={cliProvenanceLine}

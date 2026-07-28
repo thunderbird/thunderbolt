@@ -15,9 +15,8 @@ import { cn } from '@/lib/utils'
  * ON, and DISABLED. Only COLOR changes between states:
  *  - OFF      → `bg-input` track (`bg-secondary` in dark mode) with a
  *               `border-border` outline.
- *  - ON       → the brand amber→raspberry gradient track with a light thumb
- *               (the iOS convention), echoing the logo's colors — reads
- *               unambiguously as "on" in both light and dark mode.
+ *  - ON       → a muted amber→raspberry gradient with a light thumb, reading
+ *               unambiguously as "on" without competing with nearby content.
  *  - DISABLED → dimmed, keeps the outline.
  */
 const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof SwitchPrimitive.Root>) => {
@@ -41,13 +40,9 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
         // --color-input is a faint translucent field fill there, too weak for
         // a control that must read as a solid track.
         'border-border bg-input dark:bg-secondary',
-        // ON — brand gradient track in both modes; the thumb stays light below.
-        // bg-brand doubles as the fallback color under the gradient image.
-        // bg-origin-border makes the gradient span the border-box — without it
-        // the image starts inside the (transparent) 1px border and a ring of
-        // the fallback color shows at the track edges.
-        'data-[state=checked]:border-transparent data-[state=checked]:bg-brand data-[state=checked]:bg-origin-border',
-        'data-[state=checked]:[background-image:var(--gradient-brand)]',
+        // ON — a lower-saturation version of the brand gradient in both modes.
+        'data-[state=checked]:border-transparent data-[state=checked]:bg-brand-muted data-[state=checked]:bg-origin-border',
+        'data-[state=checked]:[background-image:var(--gradient-brand-muted)]',
         // Focus + disabled (disabled keeps its outline).
         'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
         'disabled:cursor-not-allowed disabled:border-border disabled:opacity-50',

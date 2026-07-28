@@ -8,45 +8,21 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { builtInAgent } from '@/defaults/agents'
 import { createTestProvider } from '@/test-utils/test-provider'
-import {
-  createMockChatThread,
-  createMockMode,
-  createMockModel,
-  hydrateStore,
-  resetStore,
-} from '@/test-utils/chat-store-mocks'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { createMockChatThread, createMockModel, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { Agent } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { CreateItemProvider } from '@/components/create-item/context'
+import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { SignInModalProvider } from '@/contexts'
 import { Header } from './header'
-
-/** happy-dom exposes its control API on `window.happyDOM`, but the global
- *  registrator doesn't augment the DOM lib's `Window`. Declare the one method
- *  this test drives so `tsc --noEmit` stays green. */
-declare global {
-  // Global augmentation requires declaration merging, which only `interface` supports.
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-  interface Window {
-    happyDOM?: { setViewport: (viewport: { width: number }) => void }
-  }
-}
-
-/** happy-dom's default viewport (matches the bun test preload). Restored after
- *  each test so the mobile override below never leaks. */
-const desktopWidth = 1024
-
-/** Forces `useIsMobile` (a `matchMedia` reader) to report mobile so `Header`
- *  renders its mobile layout, which centers the agent selector this suite
- *  asserts on — `useIsMobile` is global and a sibling suite may `mock.module`
- *  it to report desktop. */
-const forceMobileViewport = () => window.happyDOM?.setViewport({ width: 375 })
 
 /** A custom (synced) agent the thread is pinned to. */
 const customAgent: Agent = {
@@ -74,7 +50,12 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
     <MemoryRouter initialEntries={['/chats/thread-1']}>
       <Provider>
         <SignInModalProvider>
-          <SidebarProvider>{children}</SidebarProvider>
+          <SidebarProvider>
+            <CreateItemProvider>
+              {children}
+              <CreateRequestProbe />
+            </CreateItemProvider>
+          </SidebarProvider>
         </SignInModalProvider>
       </Provider>
     </MemoryRouter>
@@ -83,17 +64,17 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
 
 /** Hydrates a session on the canonical `thread-1`, then patches its
  *  `selectedAgent` directly (mirrors `chat-model-picker.test.tsx`, avoiding the
- *  DB write that `setSelectedAgent` performs). */
-const setupWithAgent = (agent: Agent) => {
+ *  DB write that `setSelectedAgent` performs). Pass `withThread: false` to
+ *  simulate an unsaved new chat (no thread row yet). */
+const setupWithAgent = (agent: Agent, { withThread = true }: { withThread?: boolean } = {}) => {
   hydrateStore({
     // A real `Chat` (not the plain-object mock) so the AI SDK's `useChat`
     // subscription inside `HeaderAgentSelector` mounts cleanly. It stays in its
     // default `ready` status — the selector only reads `status` to disable
     // itself mid-stream.
     chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-1' }),
-    chatThread: createMockChatThread({ agentId: agent.id }),
+    chatThread: withThread ? createMockChatThread({ agentId: agent.id }) : null,
     id: 'thread-1',
-    modes: [createMockMode()],
     models: [createMockModel()],
     selectedModel: createMockModel(),
     triggerData: null,
@@ -134,7 +115,7 @@ describe('Header', () => {
   afterEach(async () => {
     cleanup()
     resetStore()
-    window.happyDOM?.setViewport({ width: desktopWidth })
+    restoreViewport()
     await resetTestDatabase()
   })
 
@@ -147,6 +128,7 @@ describe('Header', () => {
 
     expect(screen.getByText(customAgent.name)).toBeInTheDocument()
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
+    expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement).toHaveClass('top-2')
   })
 
   it('keeps showing the thread agent after the synced list hydrates', async () => {
@@ -176,5 +158,38 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     expect(screen.getByText(builtInAgent.name)).toBeInTheDocument()
+  })
+
+  it('centers an expanded pill on an unsaved new chat (mobile)', () => {
+    setupWithAgent(customAgent, { withThread: false })
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
+    expect(wrapper).toHaveClass('left-1/2', '[translate:-50%_0]')
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-0')
+  })
+
+  it('docks a collapsed circle top-right once the chat has a thread (mobile)', () => {
+    setupWithAgent(customAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
+    // `left` stays fixed — only `translate` differs between the two states,
+    // so the dock slide can run entirely on the compositor.
+    expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
+    expect(wrapper).not.toHaveClass('[translate:-50%_0]')
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
+  })
+
+  it('opens agent creation over the current chat route', async () => {
+    setupWithAgent(builtInAgent)
+    render(<Header />, { wrapper: TestWrapper })
+
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    fireEvent.click(await screen.findByText('Add Agent'))
+
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
   })
 })

@@ -40,7 +40,7 @@ const cyan = '\x1b[36m'
 const yellow = '\x1b[33m'
 const reset = '\x1b[0m'
 
-const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string | undefined) => {
+const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
   const { verbose } = await import('./run')
   if (!verbose) {
     return
@@ -65,7 +65,6 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
   const systemPrompt = createPrompt({
     modelName: model?.name ?? scenario.modelName,
     profile,
-    modeName: scenario.modeName,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName || undefined,
@@ -80,13 +79,13 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
       currency: settings.currency,
     },
     integrationStatus: 'READY',
-    modeSystemPrompt,
   })
 
   console.log(`\n${cyan}--- SYSTEM PROMPT (${scenario.id}) ---${reset}`)
   console.log(`${dim}${systemPrompt}${reset}`)
   console.log(`${cyan}--- USER PROMPT ---${reset}`)
-  console.log(`${dim}${scenario.prompt}${reset}`)
+  // Include the skill token so the log shows the message exactly as sent.
+  console.log(`${dim}${skillToken}${scenario.prompt}${reset}`)
   console.log(`${cyan}--- END PROMPT ---${reset}\n`)
 }
 
@@ -108,14 +107,13 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
   try {
     const modelId = getModelId(scenario.modelName)
 
-    // Look up the mode by name to get the system prompt
-    const { defaultModes } = await import('@/defaults/modes')
-    const mode = defaultModes.find((m) => m.name === scenario.modeName)
-    if (!mode) {
-      throw new Error(`Unknown mode: ${scenario.modeName}`)
-    }
+    // Search/Research ship as default skills now (seeded by the eval DB's
+    // reconcile pass), so a non-chat scenario invokes its skill the way a
+    // user would: a `/slug` token at the start of each user turn, resolved
+    // to the skill instruction by the production send path.
+    const skillToken = scenario.modeName === 'chat' ? '' : `/${scenario.modeName} `
 
-    await logVerbosePrompt(scenario, mode.systemPrompt ?? undefined)
+    await logVerbosePrompt(scenario, skillToken)
 
     const httpClient = await getEvalHttpClient()
 
@@ -127,7 +125,7 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
     const userMessage = (text: string): ThunderboltUIMessage => ({
       id: uuidv7(),
       role: 'user',
-      parts: [{ type: 'text', text }],
+      parts: [{ type: 'text', text: `${skillToken}${text}` }],
     })
 
     const runTurn = async (messages: ThunderboltUIMessage[]): Promise<ParsedStream> => {
@@ -137,8 +135,6 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
         aiFetchStreamingResponse({
           init: { method: 'POST', body },
           modelId,
-          modeSystemPrompt: mode.systemPrompt ?? undefined,
-          modeName: mode.name,
           httpClient,
           getProxyFetch: () => proxyFetch,
         }),

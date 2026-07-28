@@ -123,6 +123,8 @@ export const defaultModelDeepseekV4Flash: SharedModel = {
 export const defaultModelGlm52: SharedModel = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
   name: 'GLM 5.2',
+  // `provider` is the internal transport. The UI presents system-managed
+  // Tinfoil models as Thunderbolt so infrastructure does not leak into branding.
   provider: 'tinfoil',
   model: 'glm-5-2',
   isSystem: 1,
@@ -136,7 +138,7 @@ export const defaultModelGlm52: SharedModel = {
   url: null,
   defaultHash: null,
   vendor: 'zhipu',
-  description: 'Confidential chat via Tinfoil',
+  description: 'Confidential chat via Thunderbolt',
   userId: null,
 }
 
@@ -167,4 +169,4 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 2
+export const defaultModelsVersion = 3

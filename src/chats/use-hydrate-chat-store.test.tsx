@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { modelsTable, modesTable } from '@/db/tables'
+import { modelsTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
@@ -21,27 +21,6 @@ import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
-
-/**
- * Helper function to create a default mode (required for getSelectedMode)
- */
-const createDefaultMode = async () => {
-  const db = getDb()
-
-  await db.insert(modesTable).values({
-    id: 'mode-chat',
-    name: 'chat',
-    label: 'Chat',
-    icon: 'message-square',
-    systemPrompt: null,
-    isDefault: 1,
-    order: 0,
-    deletedAt: null,
-    defaultHash: null,
-  })
-
-  return 'mode-chat'
-}
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -153,8 +132,7 @@ describe('useHydrateChatStore', () => {
     // Reset store state before each test
     resetStore()
     await resetTestDatabase()
-    // Create default mode (required for getSelectedMode) and system model (required for getDefaultModelForThread)
-    await createDefaultMode()
+    // Create system model (required for getDefaultModelForThread)
     await createSystemModel()
   })
 

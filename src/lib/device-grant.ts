@@ -34,8 +34,8 @@ const failureMessages: Record<DeviceGrantFailure['reason'], string> = {
 const toFailure = (error: unknown): DeviceGrantFailure => {
   const details = error as { error?: unknown; status?: unknown } | null
   const status = typeof details?.status === 'number' ? details.status : undefined
-  const unavailable = status === 0 || (status === undefined ? error instanceof Error : status >= 500)
-  if (unavailable) {
+  const isUnavailable = status === 0 || (status === undefined ? error instanceof Error : status >= 500)
+  if (isUnavailable) {
     const underlyingError = details?.error instanceof Error ? details.error : error
     console.error('Device grant request failed', underlyingError)
     return { reason: 'unavailable', message: failureMessages.unavailable }

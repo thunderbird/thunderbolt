@@ -20,7 +20,6 @@ import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } f
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { runDataMigrations } from '@/lib/data-migrations'
 import { reconcileDefaults, versionMarkerKeys, type VersionMarkerKey } from '@/lib/reconcile-defaults'
-import { defaultModesVersion } from '@/defaults/modes'
 import { defaultSettingsVersion } from '@/defaults/settings'
 import { defaultSkillsVersion } from '@/defaults/skills'
 import { defaultTasksVersion } from '@/defaults/tasks'
@@ -217,7 +216,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 2c: Returning-boot detection via `hasCurrentDefaultsVersions`.
   // Every `defaults_version.*` marker must exist AND meet-or-exceed the
   // version reconcile would pick this boot — that's the bundled version
-  // for modes/tasks/skills/settings and the OTA-or-bundle picked version
+  // for tasks/skills/settings and the OTA-or-bundle picked version
   // for models. This is stricter than a "marker exists" probe on purpose:
   // a client upgrade that bumped any bundled version OR a fresh OTA
   // payload needs the fresh-await path so reconcile can apply it. Nothing
@@ -231,7 +230,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // (see `everyBundleRowAtTarget` in `reconcileDefaultsForTable`).
   const defaultsTargets: Record<VersionMarkerKey, number> = {
     [versionMarkerKeys.models]: modelsDefaults.version,
-    [versionMarkerKeys.modes]: defaultModesVersion,
     [versionMarkerKeys.tasks]: defaultTasksVersion,
     [versionMarkerKeys.skills]: defaultSkillsVersion,
     [versionMarkerKeys.settings]: defaultSettingsVersion,
@@ -290,9 +288,10 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 5: Get cloud url and experimental feature tasks
   const cloudUrl = getLocalSetting('cloudUrl')
-  const { experimentalFeatureTasks } = await time('step5_get_settings', () =>
+  const { experimentalFeatureTasks, experimentalFeatureVoice } = await time('step5_get_settings', () =>
     getSettings(db, {
       experimental_feature_tasks: false,
+      experimental_feature_voice: false,
     }),
   )
 
@@ -345,6 +344,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       db,
       cloudUrl,
       experimentalFeatureTasks,
+      experimentalFeatureVoice,
       posthogClient,
       httpClient: client,
       ...tray,

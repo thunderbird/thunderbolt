@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
+import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
+import { useCreateItem } from '@/components/create-item/context'
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
@@ -24,26 +26,29 @@ import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
 } from '@/skills/use-skills'
-import { type AttachmentData, type Model } from '@/types'
+import { type AttachmentData, type Model, type Skill } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, Paperclip, Plus, X } from 'lucide-react'
+import { AlertCircle, Loader2, X } from 'lucide-react'
 import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
-import { ChatModePicker } from './chat-mode-picker'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
+import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
+import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
+import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
+import { loadChatMessageList } from './chat-messages-loader'
 
 /** Max size for a chat attachment stored locally and sent to the agent. */
 const maxAttachmentBytes = 25 * 1024 * 1024
@@ -158,6 +163,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
   ) => {
     const navigate = useNavigate()
     const location = useLocation()
+    const { openCreateItem } = useCreateItem()
+    /** Opens route-preserving skill creation pre-filled with an unknown token's slug. */
+    const openCreateSkill = (initialName: string) => openCreateItem({ kind: 'skill', initialName })
 
     const { isMobile } = useIsMobile()
 
@@ -253,6 +261,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // one for the form and one for the textarea) avoids two cached pointers
     // to the same node drifting out of sync.
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+    const hasPreloadedSendDependencies = useRef(false)
+
+    const preloadSendDependencies = useCallback(() => {
+      if (hasPreloadedSendDependencies.current) {
+        return
+      }
+      hasPreloadedSendDependencies.current = true
+      preloadAgentConnection()
+      void loadChatMessageList()
+    }, [])
 
     const getTextarea = (): HTMLTextAreaElement | null => {
       textareaRef.current = formRef.current?.querySelector('textarea') ?? null
@@ -283,15 +301,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     })
 
     const addSkillChip = useCallback(
-      (slug: string) => {
+      (skillOrSlug: Skill | string) => {
         // Read the latest input from a ref so deferred callers (e.g. the
         // `runSkill` microtask) don't operate on a stale closure value.
         // Insert the display title, not the slug — the user only ever sees
         // titles in chat; send-time normalization restores the slug.
         // `tokenForSkill` falls back to the slug for ambiguous display names
         // so the token stays resolvable at send time.
-        const skill = skillBySlug.get(slug)
-        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : slug)
+        const skill = typeof skillOrSlug === 'string' ? skillBySlug.get(skillOrSlug) : skillOrSlug
+        const fallbackSlug = typeof skillOrSlug === 'string' ? skillOrSlug : skillOrSlug.name
+        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug)
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -547,29 +566,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    const voice = useVoiceSession()
+
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="Add to chat"
-              title="Add to chat"
-              // `hover:bg-accent/50` / open `bg-accent` match the mode and
-              // model picker triggers sitting in the same footer row.
-              className="flex size-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
-            >
-              <Plus className="size-[var(--icon-size-sm)]" />
-            </button>
-          </DropdownMenuTrigger>
-          {/* Opens downward on desktop, matching the mode/model selectors. */}
-          <DropdownMenuContent side={isMobile ? 'top' : 'bottom'} align="start" className="min-w-44">
-            <DropdownMenuItem onSelect={() => fileInputRef.current?.click()} className="cursor-pointer">
-              <Paperclip className="size-[var(--icon-size-sm)]" />
-              Upload file
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ChatAddMenu
+          onUploadFile={() => fileInputRef.current?.click()}
+          onOpenConnections={() => navigate('/settings/connections')}
+        />
         {isConnecting ? (
           <div
             role="status"
@@ -596,26 +600,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       </div>
     )
 
-    // Mode/model pickers sit in the footer's right cluster, next to the send
-    // button; the connecting / connection-error status replaces them on the
-    // left, so the right side only renders them in the healthy state.
-    const footerEndElements =
-      !isConnecting && !isConnectionError ? (
-        <>
-          <ChatModePicker iconOnly={isMobile} />
-          <ChatModelPicker />
-        </>
-      ) : undefined
+    // The model picker sits in the footer's right cluster, next to the send
+    // button; the connecting / connection-error status replaces it on the
+    // left, so the right side only renders it in the healthy state.
+    const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker /> : undefined
 
     const handleAddChipFromBar = useCallback(
-      (slug: string) => {
-        addSkillChip(slug)
-        const resolved = skillBySlug.get(slug)
-        if (resolved) {
-          trackSkillEvent('skill_used', resolved.id, { via: 'chip' })
-        }
+      (skill: Skill) => {
+        addSkillChip(skill)
+        trackSkillEvent('skill_used', skill.id, { via: 'chip' })
       },
-      [addSkillChip, skillBySlug, trackSkillEvent],
+      [addSkillChip, trackSkillEvent],
     )
 
     // Backspace treats a display-title chip (`/Daily Brief`) as atomic: one
@@ -780,7 +775,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               ) : undefined
             }
             value={input}
-            onChange={(value: string) => setInput(value)}
+            onChange={(value: string) => {
+              if (value.length > 0) {
+                preloadSendDependencies()
+              }
+              setInput(value)
+            }}
             placeholder="Ask me anything..."
             showSubmitButton
             onSubmit={handleSubmit}
@@ -789,12 +789,26 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             isLoading={isStreaming || isConnecting}
             isStreaming={isStreaming}
             onStop={stop}
-            autoFocus={!isMobile}
+            // Desktop always autofocuses. The native mobile app autofocuses on a
+            // fresh chat (opening the app should land ready to type, keyboard up —
+            // programmatic focus raises the iOS keyboard via the main.mm swizzle)
+            // but not on existing chats, where popping the keyboard over the
+            // history the user came to read would be hostile. Mobile web keeps no
+            // autofocus: browsers won't show the keyboard for it anyway.
+            autoFocus={!isMobile || (isPlatformMobile() && isNewChat)}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
+            // Voice mode covers the composer with an overlay; make the underlying
+            // input non-interactive so Tab/Enter can't reach the hidden textarea.
+            inert={voice.active}
             className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
-            renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill, displayNameToSlug)}
+            // Empty + idle composer shows the voice-mode trigger in the send
+            // slot; it swaps back to Send as soon as there's text or an attachment.
+            emptyStateAction={<VoiceModeButton onStart={voice.start} />}
+            renderOverlay={(value) =>
+              renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
+            }
             popoverSlot={
               popupOpen ? (
                 <SlashPopup
@@ -810,6 +824,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
             onTextareaPaste={handlePaste}
           />
+          {/* Voice mode morphs the composer in-place: the overlay covers the
+              PromptInput box while a session is active. */}
+          <AnimatePresence>
+            {voice.active && (
+              <VoiceModeComposer
+                state={voice.state}
+                error={voice.error}
+                levelRef={voice.levelRef}
+                outputLevelRef={voice.outputLevelRef}
+                onClose={voice.stop}
+              />
+            )}
+          </AnimatePresence>
         </div>
         <ContextOverflowModal
           isOpen={showOverflowModal}

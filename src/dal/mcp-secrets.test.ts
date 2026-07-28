@@ -8,7 +8,12 @@ import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { deleteMcpServer } from './mcp-servers'
-import { getMcpServerCredentials, setMcpServerCredentials } from './mcp-secrets'
+import {
+  getMcpServerCredentialRows,
+  getMcpServerCredentials,
+  parseMcpCredentialSummary,
+  setMcpServerCredentials,
+} from './mcp-secrets'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -28,6 +33,22 @@ describe('MCP Secrets DAL', () => {
     it('should return null when no row exists', async () => {
       const credentials = await getMcpServerCredentials(getDb(), uuidv7())
       expect(credentials).toBeNull()
+    })
+  })
+
+  describe('settings credential summaries', () => {
+    it('reads and narrows bearer credentials through the DAL boundary', async () => {
+      const id = uuidv7()
+      await setMcpServerCredentials(getDb(), id, { type: 'bearer', token: 'secret-token' })
+
+      const rows = await getMcpServerCredentialRows(getDb())
+
+      expect(rows).toHaveLength(1)
+      expect(parseMcpCredentialSummary(rows[0]!)).toEqual({
+        id,
+        type: 'bearer',
+        bearerToken: 'secret-token',
+      })
     })
   })
 

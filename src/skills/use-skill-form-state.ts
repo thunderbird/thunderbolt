@@ -182,6 +182,7 @@ export const useSkillFormState = ({
     slug: state.slug,
     description: state.description,
     instruction: state.instruction,
+    isDirty: isSkillFormDirty(state, initialState),
     handleLabelChange,
     handleSlugChange,
     handleDescriptionChange,

@@ -55,10 +55,10 @@ const requestPermissionViaStore = (
  *  is the source of truth for ACP-side mode and config option state, so a
  *  mode/config emit always wins over a stale optimistic UI update.
  *
- *  This branch ships the wire but no UI surface reads it yet — the local
- *  mode selector continues to use `selectedMode` from the user's mode list.
- *  When a future PR adds ACP-mode UI it will subscribe to `agentSessionState`
- *  populated here. */
+ *  This branch ships the wire but no UI surface reads it yet — when a future
+ *  PR adds ACP-mode UI it will subscribe to `agentSessionState` populated
+ *  here. (ACP session modes are an agent-protocol concept, unrelated to the
+ *  removed local chat-mode picker.) */
 /** Build the agent-level commands sink wired into the ACP connection. Stashes
  *  the agent's advertised commands so the chat input's slash menu can surface
  *  them (badged with the agent name). Keyed by agent — they're agent-level, so
@@ -169,7 +169,7 @@ export const createAgentRoutingFetch = (
         throw new Error('No session found')
       }
 
-      const { chatThread, selectedAgent, selectedMode, selectedModel } = session
+      const { chatThread, selectedAgent, selectedModel } = session
 
       // Save the user message before invoking the adapter. This serves three
       // purposes that previously only the built-in pipeline got for free:
@@ -231,7 +231,6 @@ export const createAgentRoutingFetch = (
         chatThread,
         acpSessionId: chatThread?.acpSessionId ?? null,
         saveMessages,
-        selectedMode,
         selectedModel,
         mcpClients,
         reconnectClient,

@@ -25,21 +25,22 @@ import type { User } from '@shared/types/auth'
 import { LogoutModal } from '@/components/logout-modal'
 import { BrandGradientIcon } from '@/components/ui/brand-gradient-icon'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { NavLink } from '@/components/ui/nav-link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { MobileSidebarScrim } from '@/components/ui/scrim'
 import { SidebarFooter as ShadcnSidebarFooter, useSidebar } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
+import { useHaptics } from '@/hooks/use-haptics'
 import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
 import { getDownloadUrl } from '@/lib/download-links'
 import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
-import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
+import { edgeSpacing, getMobileSidebarWidth, mobileSidebarWidthCss } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
@@ -48,10 +49,6 @@ const openLink = (url: string) => window.open(url, '_blank', 'noopener,noreferre
 
 type SidebarFooterProps = {
   className?: string
-  /** Chats/Settings pill. On the mobile overlay it renders here, at the right
-   *  of the footer row, so section switching sits in thumb reach; desktop
-   *  ignores it (the pill lives in the sidebar header there). */
-  navToggle?: ReactNode
 }
 
 type AccountMenuItem = {
@@ -98,7 +95,7 @@ const GradientCloud = ({ className }: { className?: string }) => (
 
 /**
  * Single cloud glyph carrying both auth and sync state:
- * - logged out            → muted outline cloud (paired with a "Sign in" label)
+ * - logged out            → muted outline cloud
  * - logged in, sync off   → muted CloudOff ("connected account, not syncing")
  * - syncing, connecting   → spinner
  * - syncing, offline      → amber CloudAlert ("will sync when back online")
@@ -153,7 +150,7 @@ export const syncStatusText = (
   return 'Connected'
 }
 
-export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
+export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const authClient = useAuth()
   const navigate = useNavigate()
   const { isMobile, setOpenMobile, state } = useSidebar()
@@ -161,6 +158,12 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [isReconnecting, startReconnect] = useTransition()
+  const { triggerImpact } = useHaptics()
+
+  const handleMenuOpenChange = (open: boolean) => {
+    triggerImpact('light')
+    setMenuOpen(open)
+  }
 
   const isDesktopCollapsed = !isMobile && state === 'collapsed'
 
@@ -170,13 +173,8 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
     useSyncEnabledToggle()
 
-  const handleSignInClick = () => {
-    // Close mobile sidebar first so modal is visible
-    setOpenMobile(false)
-    openSignInModal()
-  }
-
   const handleNewChat = () => {
+    triggerImpact('light')
     trackEvent('chat_new_clicked')
     navigate('/chats/new')
     setOpenMobile(false)
@@ -214,35 +212,56 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
 
   const stateIcon = <SyncStateIcon isLoggedIn={!!user} syncEnabled={syncEnabled} connectionStatus={connectionStatus} />
 
-  // Accounts without a name/email label collapse to an icon-only control; it
-  // must be a perfect circle matching the theme toggle beside it.
+  // Accounts without a name/email label collapse to an icon-only perfect circle.
   const accountLabel = (displayName ?? displayEmail ?? '').trim()
 
-  // Same height as the theme toggle beside it; full-radius, hugging its
-  // content on the left edge of the footer.
+  // Full-radius and sized to hug its content on the left edge of the footer.
   const pillClassName = (hasLabel: boolean) =>
     cn(
-      'flex h-[var(--touch-height-default)] max-w-full min-w-0 cursor-pointer items-center rounded-full',
-      hasLabel ? 'w-fit gap-2 px-3' : 'size-[var(--touch-height-default)] justify-center',
+      'flex h-[var(--touch-height-lg)] max-w-full min-w-0 cursor-pointer items-center rounded-full md:h-[var(--touch-height-default)]',
+      hasLabel ? 'w-fit gap-2 px-3' : 'w-[var(--touch-height-lg)] justify-center md:w-[var(--touch-height-default)]',
       'text-[length:var(--font-size-body)] transition-colors outline-none',
       'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
       menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
     )
 
-  const renderAccountControl = () => {
+  const collapsedButtonClass =
+    'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent'
+
+  /**
+   * The footer's one account affordance: a spinner while the session loads,
+   * a sign-in button when logged out, the account-menu trigger when logged
+   * in. `collapsed` renders the icon-only circle for the desktop rail; the
+   * default is the labeled pill.
+   */
+  const renderAccountControl = (collapsed = false) => {
+    const iconOnly = collapsed || isMobile
     if (isPending) {
-      return (
+      return iconOnly ? (
+        <div
+          className={cn(
+            'flex items-center justify-center rounded-full',
+            isMobile ? 'size-[var(--touch-height-lg)] bg-sidebar-accent' : 'size-[var(--touch-height-default)]',
+          )}
+        >
+          <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />
+        </div>
+      ) : (
         <div className={cn(pillClassName(true), 'cursor-default hover:bg-transparent')}>
           <Loader2 className={cn(iconSize, 'shrink-0 animate-spin text-muted-foreground')} />
           <span className="truncate text-muted-foreground">Loading...</span>
         </div>
       )
     }
+    const showLabel = !iconOnly && accountLabel.length > 0
+    const controlClass = cn(
+      collapsed ? collapsedButtonClass : pillClassName(showLabel),
+      isMobile && 'bg-sidebar-accent',
+    )
     if (!user) {
       return (
-        <button type="button" className={pillClassName(true)} onClick={handleSignInClick}>
+        <button type="button" aria-label="Sign in" className={controlClass} onClick={openSignInModal}>
           {stateIcon}
-          <span className="truncate">Sign in</span>
         </button>
       )
     }
@@ -251,80 +270,68 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
         <button
           type="button"
           aria-label="Account menu"
-          className={cn(pillClassName(accountLabel.length > 0), isMobile && menuOpen && 'relative z-50')}
+          className={cn(
+            controlClass,
+            collapsed && menuOpen && 'bg-sidebar-accent',
+            !collapsed && isMobile && menuOpen && 'relative z-50',
+          )}
         >
           {stateIcon}
-          {accountLabel.length > 0 && <span className="truncate">{accountLabel}</span>}
+          {showLabel && <span className="truncate">{accountLabel}</span>}
         </button>
       </PopoverTrigger>
     )
   }
-
-  // Collapsed desktop rail: the theme toggle stacks above the account/sync
-  // button so both stay reachable at icon-rail width.
-  const collapsedButtonClass =
-    'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent'
-  const collapsedControl = !user ? (
-    <button type="button" aria-label="Sign in" className={collapsedButtonClass} onClick={handleSignInClick}>
-      {stateIcon}
-    </button>
-  ) : (
-    <PopoverTrigger asChild>
-      <button
-        type="button"
-        aria-label="Account menu"
-        className={cn(collapsedButtonClass, menuOpen && 'bg-sidebar-accent')}
-      >
-        {stateIcon}
-      </button>
-    </PopoverTrigger>
-  )
 
   const isConnecting = connectionStatus === 'connecting'
   // Sync is on but not connected (and not mid-connect): show the Retry button
   // and tint the status line as a warning.
   const syncNeedsAttention = syncEnabled && !isConnecting && connectionStatus !== 'connected'
 
+  // Three footer layouts, picked flat: desktop rail circle, mobile
+  // pill + New Chat, desktop expanded pill.
+  const footerControl = (() => {
+    if (isDesktopCollapsed) {
+      return <div className="flex flex-col items-center py-1">{renderAccountControl(true)}</div>
+    }
+    if (isMobile) {
+      return (
+        <div className="flex w-full min-w-0 items-center gap-1">
+          <div className="min-w-0">{renderAccountControl()}</div>
+          <Button type="button" size="lg" onClick={handleNewChat} className="ml-auto rounded-full">
+            <MessageCirclePlus className={iconSize} />
+            <span>New Chat</span>
+          </Button>
+        </div>
+      )
+    }
+    return <div className="min-w-0">{renderAccountControl()}</div>
+  })()
+
+  // Popover layout (placement + width) differs wholesale between mobile
+  // (centered over the sidebar) and desktop (anchored to the pill).
+  const popoverLayout = isMobile
+    ? {
+        sideOffset: 8,
+        align: 'center' as const,
+        collisionPadding: edgeSpacing.mobile,
+        width: `calc(${mobileSidebarWidthCss} - ${edgeSpacing.mobile * 2}px)`,
+      }
+    : { sideOffset: 5, align: 'start' as const, collisionPadding: 4, width: '17rem' }
+
   return (
-    <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
-      <ShadcnSidebarFooter className={cn('!gap-0', isDesktopCollapsed && '!p-0', className)}>
-        {isDesktopCollapsed ? (
-          <div className="flex flex-col items-center gap-1 py-2">
-            {/* Dev-only quick toggle; users switch themes in Preferences →
-                User Experience. */}
-            {import.meta.env.DEV && <ThemeToggle />}
-            {isPending ? (
-              <div className="flex size-[var(--touch-height-default)] items-center justify-center">
-                <Loader2 className={cn(iconSize, 'animate-spin text-muted-foreground')} />
-              </div>
-            ) : (
-              collapsedControl
-            )}
-          </div>
-        ) : (
-          <div className="flex w-full min-w-0 items-center gap-1">
-            <div className="min-w-0 flex-1">{renderAccountControl()}</div>
-            <div className="flex shrink-0 items-center gap-1">
-              {/* Dev-only quick toggle; users switch themes in Preferences →
-                  User Experience. */}
-              {import.meta.env.DEV && <ThemeToggle />}
-              {isMobile && navToggle}
-              {/* Mobile-only: desktop's New Chat list item covers this. Brand
-                  gradient, matching the primary Button variant. */}
-              {isMobile && (
-                <button
-                  type="button"
-                  aria-label="New Chat"
-                  title="New Chat"
-                  onClick={handleNewChat}
-                  className="flex size-[var(--touch-height-default)] shrink-0 cursor-pointer items-center justify-center rounded-full bg-brand text-brand-foreground shadow-sm [background-image:var(--gradient-brand)] transition-[filter] hover:brightness-[1.06] active:brightness-95"
-                >
-                  <MessageCirclePlus className={iconSize} />
-                </button>
-              )}
-            </div>
-          </div>
+    <Popover open={menuOpen} onOpenChange={handleMenuOpenChange} modal={isMobile}>
+      <ShadcnSidebarFooter
+        className={cn(
+          'relative !gap-0 bg-transparent',
+          isMobile && 'z-10 pb-[var(--mobile-sidebar-footer-inset)]',
+          isDesktopCollapsed && '!p-0',
+          className,
         )}
+      >
+        {isMobile && <MobileSidebarScrim data-slot="mobile-sidebar-footer-scrim" edge="bottom" />}
+        {/* z-10 lifts the controls above the mobile footer scrim. */}
+        <div className="relative z-10">{footerControl}</div>
         <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
         <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />
       </ShadcnSidebarFooter>
@@ -340,15 +347,13 @@ export const SidebarFooter = ({ className, navToggle }: SidebarFooterProps) => {
 
       <PopoverContent
         side="top"
-        sideOffset={isMobile ? 8 : 5}
-        align={isMobile ? 'center' : 'start'}
-        collisionPadding={isMobile ? edgeSpacing.mobile : 4}
+        sideOffset={popoverLayout.sideOffset}
+        align={popoverLayout.align}
+        collisionPadding={popoverLayout.collisionPadding}
         className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
-        style={{
-          width: isMobile ? `calc(${mobileSidebarWidthRatio * 100}vw - ${edgeSpacing.mobile * 2}px)` : '17rem',
-        }}
+        style={{ width: popoverLayout.width }}
         onPointerDownOutside={(e) => {
-          if (isMobile && e.detail.originalEvent.clientX > window.innerWidth * mobileSidebarWidthRatio) {
+          if (isMobile && e.detail.originalEvent.clientX > getMobileSidebarWidth(window.innerWidth)) {
             setOpenMobile(false)
           }
         }}

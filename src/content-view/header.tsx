@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { mobileHeaderControlFillDescendantClass } from '@/components/ui/modal-styles'
 import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
+import { ResponsiveModalActions, useResponsiveModalContext } from '@/components/ui/responsive-modal'
 import { useMacWindowControlsClearance } from '@/hooks/use-window-controls-safe-area'
 import { isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
@@ -20,6 +22,7 @@ type ContentViewHeaderProps = {
  * Provides consistent layout with title, optional actions, and close button
  */
 export const ContentViewHeader = ({ title, onClose, actions, className = '' }: ContentViewHeaderProps) => {
+  const { isMobile } = useResponsiveModalContext()
   // At mobile width the content view fills the whole window, putting this
   // header's top-left under the macOS traffic lights — start the title to
   // their right (pl-24: the lights end at ~x=68, plus breathing room).
@@ -34,16 +37,28 @@ export const ContentViewHeader = ({ title, onClose, actions, className = '' }: C
     <div
       {...dragProps}
       className={cn(
-        'flex h-12 w-full items-center justify-between pl-4 pr-2 flex-shrink-0',
-        needsWindowControlsClearance && 'pl-24',
+        'flex w-full flex-shrink-0 items-center',
+        // Desktop headers sit atop a scrolling panel and always draw the
+        // divider; callers only supply their surface color.
+        isMobile
+          ? 'min-h-[calc(var(--modal-top-inset)+3rem)] justify-center px-16 pb-3 pt-[calc(var(--modal-top-inset)+1rem)]'
+          : 'h-12 justify-between border-b border-border pl-4 pr-2',
+        needsWindowControlsClearance && !isMobile && 'pl-24',
         className,
       )}
     >
-      <h2 className="text-lg font-semibold truncate">{title}</h2>
-      <div className="flex items-center gap-2">
-        {actions}
-        <SidebarCloseButton onClick={onClose} />
-      </div>
+      <h2 className="truncate text-lg font-semibold">{title}</h2>
+      {isMobile && actions && (
+        <ResponsiveModalActions className={cn('gap-1', mobileHeaderControlFillDescendantClass)}>
+          {actions}
+        </ResponsiveModalActions>
+      )}
+      {!isMobile && (
+        <div className="flex items-center gap-2">
+          {actions}
+          <SidebarCloseButton onClick={onClose} />
+        </div>
+      )}
     </div>
   )
 }

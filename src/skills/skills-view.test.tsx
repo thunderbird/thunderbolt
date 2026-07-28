@@ -19,7 +19,7 @@ import '@/test-utils/framer-motion-mock'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { defaultSkillWeatherForecast } from '@/defaults/skills'
+import { defaultSkillWeather } from '@/defaults/skills'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { SkillsView } from './skills-view'
@@ -72,11 +72,11 @@ const flush = async () => {
 describe('SkillsView state machine', () => {
   describe('widget rendering contracts', () => {
     it('offers enable/disable without edit or delete affordances', async () => {
-      await getDb().insert(skillsTable).values(defaultSkillWeatherForecast)
+      await getDb().insert(skillsTable).values(defaultSkillWeather)
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const rowLabel = await waitForElement(() => screen.queryByText('Weather Forecast'))
+      const rowLabel = await waitForElement(() => screen.queryByText('Weather'))
       fireEvent.contextMenu(rowLabel)
       await flush()
       expect(screen.queryByText('Edit')).not.toBeInTheDocument()
@@ -87,9 +87,11 @@ describe('SkillsView state machine', () => {
       expect(screen.getByText('Built-in skill · Read-only')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('switch', { name: 'Disable Weather Forecast' }))
+      fireEvent.click(screen.getByRole('switch', { name: 'Disable Weather' }))
       await flush()
-      expect((await getSkill(getDb(), defaultSkillWeatherForecast.id))?.enabled).toBe(0)
+      const disabledWeather = await getSkill(getDb(), defaultSkillWeather.id)
+      expect(disabledWeather?.enabled).toBe(0)
+      expect(disabledWeather?.pinnedOrder).toBe(defaultSkillWeather.pinnedOrder)
     })
   })
 
@@ -175,7 +177,7 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'New Skill' }))
       fireEvent.click(createBtn)
       await flush()
 
@@ -195,7 +197,7 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'New Skill' }))
       fireEvent.click(createBtn)
       await flush()
 
@@ -213,38 +215,6 @@ describe('SkillsView state machine', () => {
       expect(slugInput.value).toBe('custom-slug')
     })
 
-    it('opens a blank create form for the empty-string deep link', async () => {
-      // The chat skills bar's "New skill" row navigates with
-      // `createSkill: ''` — a valid deep link that must open the form blank
-      // rather than being treated as "no link".
-      await createSkill(getDb(), { name: 'seed', label: 'Seed', description: 'desc', instruction: 'i' })
-
-      renderWithReactivity(<SkillsView />, {
-        tables: ['skills'],
-        wrapper: wrapperWithNavState({ createSkill: '' }),
-      })
-
-      const nameInput = await waitForElement(() => screen.queryByRole('textbox', { name: 'Name' }))
-      expect((nameInput as HTMLInputElement).value).toBe('')
-      expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument()
-    })
-
-    it('pre-fills the create form when the deep link carries a slug', async () => {
-      await createSkill(getDb(), { name: 'seed', label: 'Seed', description: 'desc', instruction: 'i' })
-
-      renderWithReactivity(<SkillsView />, {
-        tables: ['skills'],
-        wrapper: wrapperWithNavState({ createSkill: 'meeting-notes' }),
-      })
-
-      // Slug carries the typed token verbatim; Name gets a Title Case
-      // suggestion derived from it.
-      const slugInput = await waitForElement(() => screen.queryByRole('textbox', { name: 'Slug' }))
-      expect((slugInput as HTMLInputElement).value).toBe('meeting-notes')
-      const nameInput = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement
-      expect(nameInput.value).toBe('Meeting Notes')
-    })
-
     it('opens the edit form directly for the startEditSkill deep link', async () => {
       // The chat skills bar's chip menu "Edit skill" navigates with
       // `startEditSkill: <id>` — lands in the edit form, not the detail view.
@@ -260,7 +230,7 @@ describe('SkillsView state machine', () => {
         wrapper: wrapperWithNavState({ startEditSkill: created.id }),
       })
 
-      await waitForElement(() => screen.queryByText('Edit skill'))
+      await waitForElement(() => screen.queryByText('Edit Skill'))
       const nameInput = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement
       expect(nameInput.value).toBe('Daily Brief')
       expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
@@ -272,7 +242,7 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'New Skill' }))
       fireEvent.click(createBtn)
       await flush()
 
@@ -313,7 +283,7 @@ describe('SkillsView state machine', () => {
 
   describe('dirty form guard', () => {
     const openCreateFormAndDirty = async () => {
-      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'Create skill' }))
+      const createBtn = await waitForElement(() => screen.queryByRole('button', { name: 'New Skill' }))
       fireEvent.click(createBtn)
       await flush()
       const nameInput = screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement

@@ -11,7 +11,6 @@ import {
   hasToolCalls,
   isFinalStep,
   nudgeMessages,
-  searchModeNudges,
   shouldRetry,
   shouldShowPreventiveNudge,
 } from './step-logic'
@@ -261,33 +260,9 @@ describe('nudgeMessages', () => {
   })
 })
 
-describe('searchModeNudges', () => {
-  test('all messages mention widget:link-preview', () => {
-    expect(searchModeNudges.finalStep).toContain('widget:link-preview')
-    expect(searchModeNudges.preventive).toContain('widget:link-preview')
-    expect(searchModeNudges.retry).toContain('widget:link-preview')
-  })
-
-  test('messages do not mention citation [N]', () => {
-    expect(searchModeNudges.finalStep).not.toContain('[N]')
-    expect(searchModeNudges.preventive).not.toContain('[N]')
-    expect(searchModeNudges.retry).not.toContain('[N]')
-  })
-})
-
 describe('getNudgeMessagesFromProfile', () => {
-  test('returns default nudges when no mode specified', () => {
+  test('returns default nudges when no profile exists', () => {
     expect(getNudgeMessagesFromProfile(null)).toBe(nudgeMessages)
-    expect(getNudgeMessagesFromProfile(null, undefined)).toBe(nudgeMessages)
-  })
-
-  test('returns search nudges for search mode', () => {
-    expect(getNudgeMessagesFromProfile(null, 'search')).toBe(searchModeNudges)
-  })
-
-  test('returns default nudges for non-search modes', () => {
-    expect(getNudgeMessagesFromProfile(null, 'chat')).toBe(nudgeMessages)
-    expect(getNudgeMessagesFromProfile(null, 'research')).toBe(nudgeMessages)
   })
 
   test('returns profile nudges when all override fields are set', () => {
@@ -296,7 +271,7 @@ describe('getNudgeMessagesFromProfile', () => {
       nudgePreventive: 'custom preventive',
       nudgeRetry: 'custom retry',
     })
-    const result = getNudgeMessagesFromProfile(profile, 'chat')
+    const result = getNudgeMessagesFromProfile(profile)
     expect(result.finalStep).toBe('custom final')
     expect(result.preventive).toBe('custom preventive')
     expect(result.retry).toBe('custom retry')
@@ -304,7 +279,7 @@ describe('getNudgeMessagesFromProfile', () => {
 
   test('falls back to defaults for null nudge fields in partial override', () => {
     const profile = createStubProfile({ nudgeFinalStep: 'custom final' })
-    const result = getNudgeMessagesFromProfile(profile, 'chat')
+    const result = getNudgeMessagesFromProfile(profile)
     expect(result.finalStep).toBe('custom final')
     expect(result.preventive).toBe(nudgeMessages.preventive)
     expect(result.retry).toBe(nudgeMessages.retry)
@@ -312,32 +287,7 @@ describe('getNudgeMessagesFromProfile', () => {
 
   test('returns default nudges when profile has no nudge overrides', () => {
     const profile = createStubProfile()
-    expect(getNudgeMessagesFromProfile(profile, 'chat')).toBe(nudgeMessages)
-  })
-
-  test('returns profile search nudges when search overrides are set', () => {
-    const profile = createStubProfile({
-      nudgeSearchFinalStep: 'search final',
-      nudgeSearchPreventive: 'search preventive',
-      nudgeSearchRetry: 'search retry',
-    })
-    const result = getNudgeMessagesFromProfile(profile, 'search')
-    expect(result.finalStep).toBe('search final')
-    expect(result.preventive).toBe('search preventive')
-    expect(result.retry).toBe('search retry')
-  })
-
-  test('falls back to search defaults for null search nudge fields', () => {
-    const profile = createStubProfile({ nudgeSearchFinalStep: 'search final' })
-    const result = getNudgeMessagesFromProfile(profile, 'search')
-    expect(result.finalStep).toBe('search final')
-    expect(result.preventive).toBe(searchModeNudges.preventive)
-    expect(result.retry).toBe(searchModeNudges.retry)
-  })
-
-  test('returns search mode defaults when profile has no search overrides', () => {
-    const profile = createStubProfile()
-    expect(getNudgeMessagesFromProfile(profile, 'search')).toBe(searchModeNudges)
+    expect(getNudgeMessagesFromProfile(profile)).toBe(nudgeMessages)
   })
 })
 

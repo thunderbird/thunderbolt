@@ -6,6 +6,7 @@ import { ModificationIndicator } from '@/components/modification-indicator'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
+import { SettingsPageShell } from '@/components/settings/settings-list'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -36,7 +37,7 @@ export default function DevSettingsPage() {
   })
 
   return (
-    <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
+    <SettingsPageShell className="gap-6">
       <PageHeader title="Developer Settings" />
 
       <SectionCard title="Network">
@@ -122,6 +123,6 @@ export default function DevSettingsPage() {
           </div>
         </div>
       </SectionCard>
-    </div>
+    </SettingsPageShell>
   )
 }

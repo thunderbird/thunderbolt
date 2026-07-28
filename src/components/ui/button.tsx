@@ -4,6 +4,7 @@
 
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { Loader2 } from 'lucide-react'
 import { type MouseEvent, useCallback, type ComponentProps } from 'react'
 
 import { useHaptics } from '@/hooks/use-haptics'
@@ -14,11 +15,13 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary action — brand gradient (same amber→raspberry sweep as the
-        // switch ON track). bg-brand is the fallback under the image; hover
+        // Primary action — amber→raspberry brand gradient. bg-brand is the
+        // fallback under the image; hover
         // dims via brightness since the background is an image, not a color.
+        // The transparent border preserves the same box geometry as outlined
+        // secondary actions without drawing a grey edge over the gradient.
         default:
-          'bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95',
+          'border border-transparent bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100 disabled:brightness-100 disabled:[background-image:none]',
         destructive:
           'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         // Dark fill uses card (#282a2b) rather than input — input is the dark
@@ -43,49 +46,103 @@ const buttonVariants = cva(
         'icon-lg': 'size-[var(--touch-height-lg)]',
         'icon-xs': 'size-7',
       },
+      loading: {
+        true: '',
+        false: '',
+      },
     },
+    compoundVariants: [
+      // A loading primary button keeps its brand gradient (dimmed) instead of
+      // the flat disabled treatment — it is busy, not unavailable. Non-primary
+      // variants intentionally have no loading override and fall back to their
+      // regular disabled treatment (pinned by button.test.tsx).
+      {
+        variant: 'default',
+        loading: true,
+        class:
+          'disabled:bg-brand disabled:text-brand-foreground/80 disabled:brightness-75 disabled:saturate-50 disabled:[background-image:var(--gradient-brand)]',
+      },
+    ],
     defaultVariants: {
       variant: 'default',
       size: 'default',
+      loading: false,
     },
   },
 )
 
-/** Compact 32px muted icon action (panel-header close/X, kebab menus). Pair
- *  with `variant="ghost" size="icon"`. The svg rule bumps icons to 20px unless
- *  the icon carries its own explicit `size-*` class. */
+/** Muted icon action for panel headers and menus. Pair with
+ *  `variant="ghost" size="icon"`. Mobile matches the 48px height of the
+ *  floating New Chat / page-create pills; desktop remains the compact 32px
+ *  size. Icons default to --icon-size-default (20px / 16px); icons carrying
+ *  their own explicit `size-*` class keep their own size. Mobile is a circle like the
+ *  responsive modal's close control; desktop's rounded-xl matches the sidebar
+ *  nav toggle. */
 export const mutedIconButtonClass =
-  "size-8 rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground [&_svg:not([class*='size-'])]:size-5"
+  "size-[var(--touch-height-lg)] md:size-[var(--touch-height-sm)] rounded-full md:rounded-xl text-muted-foreground hover:bg-muted dark:hover:bg-muted hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground [&_svg:not([class*='size-'])]:size-[var(--icon-size-default)]"
+
+type ButtonProps = ComponentProps<'button'> &
+  // `loading` is derived from `isLoading` — not an independent prop.
+  Omit<VariantProps<typeof buttonVariants>, 'loading'> & {
+    asChild?: boolean
+    isLoading?: boolean
+    loadingLabel?: string
+  }
 
 const Button = ({
   className,
   variant,
   size,
   asChild = false,
+  isLoading = false,
+  loadingLabel,
+  disabled,
+  children,
   onClick,
   ...props
-}: ComponentProps<'button'> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) => {
+}: ButtonProps) => {
   const Comp = asChild ? Slot : 'button'
   const { triggerSelection } = useHaptics()
+  const isDisabled = disabled || isLoading
 
   const handleClick = useCallback(
     (e: MouseEvent<HTMLButtonElement>) => {
+      // Slot can render an anchor, where the native `disabled` attribute has
+      // no effect. Cancel activation here before haptics or caller logic.
+      if (isDisabled) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
       triggerSelection()
       onClick?.(e)
     },
-    [onClick, triggerSelection],
+    [isDisabled, onClick, triggerSelection],
   )
 
   return (
     <Comp
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      onClick={handleClick}
       {...props}
-    />
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, loading: isLoading, className }))}
+      onClick={handleClick}
+      disabled={asChild ? undefined : isDisabled}
+      aria-disabled={asChild && isDisabled ? true : undefined}
+      aria-busy={isLoading || undefined}
+      tabIndex={asChild && isDisabled ? -1 : props.tabIndex}
+    >
+      {/* Slot requires exactly one element child, so the loader can only be
+          injected when rendering a real <button>. asChild callers keep their
+          single child untouched (they don't use isLoading today). */}
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {isLoading && <Loader2 className="animate-spin" />}
+          {isLoading && loadingLabel ? loadingLabel : children}
+        </>
+      )}
+    </Comp>
   )
 }
 

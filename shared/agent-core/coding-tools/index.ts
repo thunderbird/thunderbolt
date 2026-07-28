@@ -50,7 +50,7 @@ import {
   stripBom,
   type EditReplacement,
 } from './edit-apply.ts'
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead, truncateTail } from './truncate.ts'
+import { defaultMaxBytes, defaultMaxLines, formatSize, truncateHead, truncateTail } from './truncate.ts'
 
 /** Wrap plain text as a single-block tool result with no structured details. */
 const textResult = (text: string): AgentToolResult<undefined> => ({
@@ -103,7 +103,7 @@ const formatBashOutput = async (env: BrowserExecutionEnv, output: string, emptyT
   if (truncation.truncatedBy === 'lines') {
     return `${truncation.content}\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}.${fullOutputNote}]`
   }
-  return `${truncation.content}\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit).${fullOutputNote}]`
+  return `${truncation.content}\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(defaultMaxBytes)} limit).${fullOutputNote}]`
 }
 
 /** `${text}\n\n${status}`, or just `status` when there is no captured output. */
@@ -114,7 +114,7 @@ const buildBashTool = (env: BrowserExecutionEnv, cwd: string): AgentTool<typeof 
   return {
     name: 'bash',
     label: 'bash',
-    description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
+    description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${defaultMaxLines} lines or ${defaultMaxBytes / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
     parameters: bashSchema,
     // Mutates the shared ZenFS mount (redirects, file writes); serialize the batch.
     executionMode: 'sequential',
@@ -132,10 +132,12 @@ const buildBashTool = (env: BrowserExecutionEnv, cwd: string): AgentTool<typeof 
         // already carries Pi's `aborted` / `timeout:<seconds>` framing.
         const text = await formatBashOutput(env, chunks.join(''), '')
         if (error instanceof Error && error.message === 'aborted') {
-          throw new Error(appendStatus(text, 'Command aborted'))
+          throw new Error(appendStatus(text, 'Command aborted'), { cause: error })
         }
         if (error instanceof Error && error.message.startsWith('timeout:')) {
-          throw new Error(appendStatus(text, `Command timed out after ${error.message.split(':')[1]} seconds`))
+          throw new Error(appendStatus(text, `Command timed out after ${error.message.split(':')[1]} seconds`), {
+            cause: error,
+          })
         }
         throw error
       }
@@ -181,12 +183,12 @@ const formatReadOutput = (
 
   if (truncation.firstLineExceedsLimit) {
     const firstLineSize = formatSize(Buffer.byteLength(allLines[startLine], 'utf-8'))
-    return `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${rawPath} | head -c ${DEFAULT_MAX_BYTES}]`
+    return `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(defaultMaxBytes)} limit. Use bash: sed -n '${startLineDisplay}p' ${rawPath} | head -c ${defaultMaxBytes}]`
   }
   if (truncation.truncated) {
     const endLineDisplay = startLineDisplay + truncation.outputLines - 1
     const nextOffset = endLineDisplay + 1
-    const limitNote = truncation.truncatedBy === 'lines' ? '' : ` (${formatSize(DEFAULT_MAX_BYTES)} limit)`
+    const limitNote = truncation.truncatedBy === 'lines' ? '' : ` (${formatSize(defaultMaxBytes)} limit)`
     return `${truncation.content}\n\n[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalFileLines}${limitNote}. Use offset=${nextOffset} to continue.]`
   }
   if (userLimitedLines !== undefined && startLine + userLimitedLines < allLines.length) {
@@ -202,7 +204,7 @@ const buildReadTool = (cwd: string): AgentTool<typeof readSchema> => {
   return {
     name: 'read',
     label: 'read',
-    description: `Read the contents of a file. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
+    description: `Read the contents of a file. For text files, output is truncated to ${defaultMaxLines} lines or ${defaultMaxBytes / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
     parameters: readSchema,
     async execute(_toolCallId, { path, offset, limit }, signal) {
       const absolutePath = resolveInWorkspace(cwd, path)
@@ -340,7 +342,7 @@ const buildEditTool = (cwd: string): AgentTool<typeof editSchema> => {
         await operations.access(absolutePath)
       } catch (error) {
         const reason = error instanceof Error && 'code' in error ? `Error code: ${error.code}` : String(error)
-        throw new Error(`Could not edit file: ${path}. ${reason}.`)
+        throw new Error(`Could not edit file: ${path}. ${reason}.`, { cause: error })
       }
       throwIfAborted(signal)
       const buffer = await operations.readFile(absolutePath)

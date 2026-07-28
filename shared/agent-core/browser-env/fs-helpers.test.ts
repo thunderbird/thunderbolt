@@ -93,7 +93,7 @@ describe('fileInfoFrom', () => {
   it('builds a file info with basename, size and mtimeMs', () => {
     const result = fileInfoFrom('/workspace/t1/mine.txt', statOf('file', { size: 42, mtimeMs: 1234 }))
     expect(result.ok).toBe(true)
-    if (!result.ok) throw new Error('unreachable')
+    if (!result.ok) {throw new Error('unreachable')}
     expect(result.value).toEqual({ name: 'mine.txt', path: '/workspace/t1/mine.txt', kind: 'file', size: 42, mtimeMs: 1234 })
   })
 
@@ -113,7 +113,7 @@ describe('fileInfoFrom', () => {
   it('returns an invalid FileError for a kind Pi does not model (e.g. device/fifo)', () => {
     const result = fileInfoFrom('/dev/null', statOf('other'))
     expect(result.ok).toBe(false)
-    if (result.ok) throw new Error('unreachable')
+    if (result.ok) {throw new Error('unreachable')}
     expect(result.error.code).toBe('invalid')
     expect(result.error.path).toBe('/dev/null')
   })

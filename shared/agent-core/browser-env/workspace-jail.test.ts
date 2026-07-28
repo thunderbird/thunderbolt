@@ -10,42 +10,42 @@
 import { describe, expect, it } from 'bun:test'
 import { isWithinWorkspace, resolveInWorkspace } from './workspace-jail.ts'
 
-const WS = '/workspace/thread-1'
+const ws = '/workspace/thread-1'
 
 describe('resolveInWorkspace', () => {
   it('resolves a relative path inside the workspace', () => {
-    expect(resolveInWorkspace(WS, 'notes/todo.md')).toBe(`${WS}/notes/todo.md`)
+    expect(resolveInWorkspace(ws, 'notes/todo.md')).toBe(`${ws}/notes/todo.md`)
   })
 
   it('allows the workspace root itself', () => {
-    expect(resolveInWorkspace(WS, '.')).toBe(WS)
+    expect(resolveInWorkspace(ws, '.')).toBe(ws)
   })
 
   it('throws on an absolute path outside the workspace', () => {
-    expect(() => resolveInWorkspace(WS, '/etc/passwd')).toThrow('path escapes workspace')
+    expect(() => resolveInWorkspace(ws, '/etc/passwd')).toThrow('path escapes workspace')
   })
 
   it('throws on a `..` traversal into a sibling thread', () => {
-    expect(() => resolveInWorkspace(WS, '../thread-2/secret')).toThrow('path escapes workspace')
+    expect(() => resolveInWorkspace(ws, '../thread-2/secret')).toThrow('path escapes workspace')
   })
 
   it('throws on a `..` chain that climbs above the workspace root', () => {
-    expect(() => resolveInWorkspace(WS, 'a/../../thread-2/x')).toThrow('path escapes workspace')
+    expect(() => resolveInWorkspace(ws, 'a/../../thread-2/x')).toThrow('path escapes workspace')
   })
 
   it('does not treat a sibling whose name shares a prefix as inside', () => {
-    expect(() => resolveInWorkspace(WS, '/workspace/thread-12/x')).toThrow('path escapes workspace')
+    expect(() => resolveInWorkspace(ws, '/workspace/thread-12/x')).toThrow('path escapes workspace')
   })
 })
 
 describe('isWithinWorkspace', () => {
   it('accepts the root and its descendants', () => {
-    expect(isWithinWorkspace(WS, WS)).toBe(true)
-    expect(isWithinWorkspace(WS, `${WS}/a/b`)).toBe(true)
+    expect(isWithinWorkspace(ws, ws)).toBe(true)
+    expect(isWithinWorkspace(ws, `${ws}/a/b`)).toBe(true)
   })
 
   it('rejects siblings and prefix-aliased siblings', () => {
-    expect(isWithinWorkspace(WS, '/workspace/thread-2')).toBe(false)
-    expect(isWithinWorkspace(WS, '/workspace/thread-1-evil')).toBe(false)
+    expect(isWithinWorkspace(ws, '/workspace/thread-2')).toBe(false)
+    expect(isWithinWorkspace(ws, '/workspace/thread-1-evil')).toBe(false)
   })
 })

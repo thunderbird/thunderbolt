@@ -23,7 +23,7 @@ import {
   type ResolvedPiModel,
 } from './built-in-adapter'
 import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
-import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
+import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import type { AgentHarness, AgentTool } from '@earendil-works/pi-agent-core'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
@@ -237,7 +237,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const firstSystemPrompt = buildCalls[0]?.systemPrompt as () => string
     const secondSystemPrompt = buildCalls[1]?.systemPrompt as () => string
     const expectedPrompt = (timestamp: string): string =>
-      `stable prompt\n\n${APP_HARNESS_ENVIRONMENT_PROMPT}\n\n${timestamp}`
+      `stable prompt\n\n${appHarnessEnvironmentPrompt}\n\n${timestamp}`
     expect(seededSystemPrompts).toEqual([expectedPrompt('timestamp 1'), expectedPrompt('timestamp 3')])
     expect(firstSystemPrompt()).toBe(expectedPrompt('timestamp 2'))
     expect(secondSystemPrompt()).toBe(expectedPrompt('timestamp 3'))

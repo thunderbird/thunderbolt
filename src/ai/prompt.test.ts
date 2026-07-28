@@ -47,6 +47,7 @@ const baseParams: PromptParams = {
     currency: 'USD',
   },
   integrationStatus: 'READY',
+  hasWebTools: false,
 }
 
 describe('createPrompt', () => {
@@ -103,6 +104,18 @@ describe('createPrompt', () => {
     const result = createPrompt(baseParams)
     expect(result).toContain('# Conversation Style')
     expect(result).toContain('Make quick decisions')
+  })
+
+  test('includes web tool rules in the stable prompt when the web tools are available', () => {
+    const result = createPromptParts({ ...baseParams, hasWebTools: true })
+
+    expect(result.stablePrompt).toContain('Web lookups use the `search` and `fetch_content` tools')
+  })
+
+  test('omits web tool rules from the stable prompt when the web tools are unavailable', () => {
+    const result = createPromptParts({ ...baseParams, hasWebTools: false })
+
+    expect(result.stablePrompt).not.toContain('Web lookups use the `search` and `fetch_content` tools')
   })
 
   test('includes the reuse-before-search gate', () => {

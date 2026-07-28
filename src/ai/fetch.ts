@@ -596,6 +596,7 @@ export const prepareAiRequestConfig = async ({
     ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
     : []
   const appToolset = createToolset(availableTools, toolCallCache)
+  const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
     : { toolset: appToolset, summary: undefined, mcpTools: undefined }
@@ -622,6 +623,7 @@ export const prepareAiRequestConfig = async ({
       currency: settings.currency,
     },
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
+    hasWebTools,
     mcpServersSummary: merged.summary,
   })
 

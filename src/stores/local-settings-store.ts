@@ -38,6 +38,10 @@ type LocalSettingsState = {
   syncEnabled: boolean
   theme: 'light' | 'dark' | 'system'
   voiceProvider: VoiceProviderConfig
+  /** TEMPORARY (THU-683): quick A/B of the hosted qwen3-tts voices via a picker in
+   *  Preferences. Remove once we settle on a fixed default voice in
+   *  `thunderbolt-engine.ts` and drop the selector. */
+  experimentalTtsVoice: string
 }
 
 type LocalSettingsActions = {
@@ -54,6 +58,7 @@ export const initialLocalSettings: LocalSettingsState = {
   syncEnabled: false,
   theme: 'system',
   voiceProvider: defaultVoiceProvider,
+  experimentalTtsVoice: 'aiden', // TEMPORARY (THU-683) — see field doc above
 }
 
 export const useLocalSettingsStore = create<LocalSettingsStore>()(
@@ -75,6 +80,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
         syncEnabled: s.syncEnabled,
         theme: s.theme,
         voiceProvider: s.voiceProvider,
+        experimentalTtsVoice: s.experimentalTtsVoice, // TEMPORARY (THU-683)
       }),
     },
   ),

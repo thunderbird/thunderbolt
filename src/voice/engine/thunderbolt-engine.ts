@@ -14,6 +14,7 @@
 import { evictSystemTinfoilClient, getSystemTinfoilClient, isKeyConfigMismatchError } from '@/ai/fetch'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { type AudioTransport, createAudioEngine } from './audio-engine'
 import type { VoiceEngine } from './types'
 
@@ -90,7 +91,10 @@ export const createThunderboltEngine = (): VoiceEngine =>
     },
     sttModel,
     ttsModel: ttsProfile.model,
-    ttsVoice: ttsProfile.voice,
+    // TEMPORARY (THU-683): honor the Preferences voice picker for quick A/B; falls
+    // back to the profile default. Read at session start, so it applies next turn.
+    // Remove this once we lock a default voice and drop the selector.
+    ttsVoice: getLocalSetting('experimentalTtsVoice') || ttsProfile.voice,
     ttsInstructions,
     ttsSpeed: 1,
   })

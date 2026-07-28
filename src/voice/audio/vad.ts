@@ -13,13 +13,18 @@
  * endpointing (e.g. Tinfoil voxtral-realtime) can supersede it later; energy VAD
  * is the crude-but-dependency-free MVP.
  *
- * `getUserMedia` runs with echo cancellation on; `onSpeechStart` is the barge-in
- * trigger (unused while half-duplex, but kept for when full-duplex returns).
+ * `getUserMedia` runs with echo cancellation on. For barge-in the session keeps
+ * the gate running *during* playback, so browser AEC is the only thing stopping
+ * the assistant's own audio from self-triggering — `onSpeechStart` deliberately
+ * waits for `bargeInFrames` of sustained speech (not the first frame) to stay
+ * robust against residual echo.
  */
 import { concatFrames } from '@/voice/engine/audio-engine'
 import { MediaDevicesUnavailableError } from '@/voice/voice-error'
 
 export type VadHandlers = {
+  /** Sustained speech detected (~130 ms) — the barge-in trigger. Fires once per
+   *  utterance, ahead of `onUtterance`, so the session can cut off the assistant. */
   onSpeechStart?: () => void
   /** A committed utterance (mono Float32Array @ 16 kHz) ready for transcription. */
   onUtterance: (audio: Float32Array) => void
@@ -41,6 +46,12 @@ export type VadGate = {
 /** Frames are 512 samples (~32 ms) — set by the capture worklet. */
 const speechRmsThreshold = 0.015 // normalized [-1,1] amplitude; tune for the mic
 const minSpeechFrames = 8 // ~256 ms — shorter is a misfire
+// Barge-in fires after this many *sustained* speech frames (~130 ms) instead of
+// on the first frame, so a brief residual-echo blip while the assistant is
+// speaking can't cut it off. Lower = snappier interrupts but more echo-driven
+// false triggers; raise this (or `speechRmsThreshold`) if the assistant keeps
+// interrupting itself. Kept below `minSpeechFrames` so barge-in leads the commit.
+const bargeInFrames = 4
 // ~1.4 s of trailing silence ends the turn. Long enough to think mid-sentence
 // without it firing on a natural pause; a streaming STT with semantic
 // endpointing would let us shorten this later.
@@ -70,12 +81,14 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
   let preroll: Float32Array[] = []
   let silenceRun = 0
   let speechFrames = 0 // frames actually above threshold (excludes trailing silence)
+  let bargeInFired = false // barge-in signalled once for the current utterance
 
   const reset = () => {
     speaking = false
     collected = []
     silenceRun = 0
     speechFrames = 0
+    bargeInFired = false
   }
 
   const endUtterance = () => {
@@ -98,11 +111,17 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
       if (!speaking) {
         speaking = true
         collected = [...preroll]
-        handlers.onSpeechStart?.()
       }
       collected.push(frame)
       silenceRun = 0
       speechFrames++
+      // Confirmed speech (not a one-frame blip) — signal a possible barge-in
+      // exactly once. The utterance keeps accumulating and still commits via
+      // onUtterance, so the audio that triggered the barge-in isn't lost.
+      if (!bargeInFired && speechFrames >= bargeInFrames) {
+        bargeInFired = true
+        handlers.onSpeechStart?.()
+      }
     } else if (speaking) {
       collected.push(frame)
       silenceRun++

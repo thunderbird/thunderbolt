@@ -31,11 +31,17 @@ const ttsProfiles = {
 } satisfies Record<string, TtsProfile>
 const ttsProfile: TtsProfile = ttsProfiles.qwen3
 // Expressive models improvise emphasis/pacing/laughter; steer delivery via the
-// `instructions` style control (honored by qwen3-tts / voxtral-tts).
+// `instructions` style control (honored by qwen3-tts / voxtral-tts). Crucially,
+// tone must FOLLOW the content — a fixed "warm & friendly" delivery reads as
+// callous on grave subjects — so the instruction tells the model to match the
+// material (it sees each sentence's text per synthesis call) rather than pinning
+// one mood.
 const ttsInstructions =
-  'Speak naturally and conversationally, like a warm, helpful friend. Relaxed and ' +
-  'clear, with an even, moderate pace. Sound genuinely engaged but never theatrical ' +
-  '— no shouting, exaggerated emphasis, or laughter.'
+  'Let your tone follow the material: relaxed and friendly for everyday topics, but ' +
+  'calm, measured, and serious for difficult, sad, or weighty subjects — never breezy ' +
+  'or cheerful about grave matters. Speak naturally and clearly at an even, moderate ' +
+  'pace; sound genuinely present but never theatrical — no shouting, exaggerated ' +
+  'emphasis, or laughter.'
 
 /**
  * POST to a Tinfoil `/v1/audio/*` endpoint via the attested `SecureClient`,

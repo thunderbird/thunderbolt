@@ -851,8 +851,11 @@ export const aiFetchStreamingResponse = async ({
 
         while (attemptNumber <= maxAttempts) {
           if (attemptNumber > 1 && !requestBudget.tryConsumeRequest()) {
-            writer.write({ type: 'finish' })
-            return
+            // Mirror the routing choke point's denial so both layers surface the
+            // same named error instead of ending the turn as a silent finish.
+            const budgetError = new Error('Turn request budget exhausted')
+            budgetError.name = 'TurnBudgetExhaustedError'
+            throw budgetError
           }
 
           const result = runStreamText(currentMessages)

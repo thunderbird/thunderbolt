@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createPromptParts } from '@/ai/prompt'
-import { createTurnBudget, type TurnBudgetConsumer } from '@/ai/retry-budget'
+import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import {
   buildStepOverrides,
   extractTextFromMessages,
@@ -853,9 +853,7 @@ export const aiFetchStreamingResponse = async ({
           if (attemptNumber > 1 && !requestBudget.tryConsumeRequest()) {
             // Mirror the routing choke point's denial so both layers surface the
             // same named error instead of ending the turn as a silent finish.
-            const budgetError = new Error('Turn request budget exhausted')
-            budgetError.name = 'TurnBudgetExhaustedError'
-            throw budgetError
+            throw createTurnBudgetExhaustedError()
           }
 
           const result = runStreamText(currentMessages)

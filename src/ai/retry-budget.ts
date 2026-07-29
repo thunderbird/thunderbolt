@@ -5,6 +5,10 @@
 export const maxRequestsPerTurn = 6
 export const maxTurnWallClockMs = 120_000
 
+/** The one sentinel both consuming layers throw on denial — classified by name. */
+export const createTurnBudgetExhaustedError = (): Error =>
+  Object.assign(new Error('Turn request budget exhausted'), { name: 'TurnBudgetExhaustedError' })
+
 export type TurnBudgetConsumer = {
   tryConsumeRequest: () => boolean
 }

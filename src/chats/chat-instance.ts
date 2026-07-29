@@ -6,7 +6,11 @@ import type { connectToAgent as defaultConnectToAgent } from '@/acp'
 import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
 import type { AcpCommand, SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
 import { useAgentCommandsStore } from '@/acp/agent-commands-store'
-import { createTurnBudget as defaultCreateTurnBudget, type TurnBudget } from '@/ai/retry-budget'
+import {
+  createTurnBudget as defaultCreateTurnBudget,
+  createTurnBudgetExhaustedError,
+  type TurnBudget,
+} from '@/ai/retry-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
@@ -245,9 +249,7 @@ export const createAgentRoutingFetch = (
 
       const turnBudget = getTurnBudget().consumer
       if (!turnBudget.tryConsumeRequest()) {
-        const error = new Error('Turn request budget exhausted')
-        error.name = 'TurnBudgetExhaustedError'
-        throw error
+        throw createTurnBudgetExhaustedError()
       }
 
       return adapter.fetch(init, {

@@ -17,7 +17,9 @@ const drive = (frames: Float32Array[]): Counts => {
     onUtterance: () => counts.utterances++,
     onMisfire: () => counts.misfires++,
   })
-  for (const f of frames) ep.processFrame(f)
+  for (const f of frames) {
+    ep.processFrame(f)
+  }
   return counts
 }
 

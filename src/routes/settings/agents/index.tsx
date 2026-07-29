@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { testAcpConnection } from '@/acp'
 import { selectAgentDeploy, selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
-import { DeployAgentPanel } from '@/components/agents/deploy-agent-panel'
+import { AddAgentPanel } from '@/components/agents/add-agent-panel'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
@@ -36,7 +36,10 @@ type AgentsSettingsPageProps = {
  * discovery, and user-added custom remote ACP endpoints. Rows are read-only —
  * clicking one slides in a detail panel (same slide-in idiom as the skills
  * page) where all viewing and management happens. The only other affordance
- * is "+" → the Add Custom Agent panel.
+ * is "+" → add a new agent. When the managed-deploy flow is enabled, "+" opens
+ * the Add Agent panel (catalog list with "Connect custom agent" first, falling
+ * back to the connect form when the catalog is empty); otherwise it opens the
+ * connect form directly.
  */
 const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) => {
   const db = useDatabase()
@@ -65,9 +68,10 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const panelOpen = addOpen || deployOpen || activeAgent !== undefined || cliOpen
 
   const closePanel = () => setActivePanel(null)
-  const openAddPanel = () => setActivePanel({ kind: 'add' })
   const openAgentPanel = (id: string) => setActivePanel({ kind: 'agent', id })
-  const openDeployPanel = () => setActivePanel({ kind: 'deploy' })
+  // The Add Agent panel folds the connect path into its catalog list, so "+"
+  // opens it whenever deploy is enabled; otherwise it opens the connect form.
+  const openCreatePanel = () => setActivePanel({ kind: agentDeploy ? 'deploy' : 'add' })
   const toggleAgentPanel = (id: string) =>
     setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
   const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
@@ -79,7 +83,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   // read-only view or no-op rather than forcing an edit. There is no inline
   // remove: deletion stays behind the detail panel's ownership-gated ⋯ menu.
   useEntityActionIntent('agent', {
-    onCreate: openAddPanel,
+    onCreate: openCreatePanel,
     onEdit: openAgentPanel,
   })
 
@@ -88,7 +92,14 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
       return <CreateAgentDetailPanel onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
     }
     if (deployOpen) {
-      return <DeployAgentPanel onClose={closePanel} />
+      return (
+        <AddAgentPanel
+          onClose={closePanel}
+          allowConnect={allowCustomAgents}
+          loadAppNodeId={loadAppNodeId}
+          enrollIroh={enrollIroh}
+        />
+      )
     }
     if (activeAgent) {
       return (
@@ -127,11 +138,8 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             panel edge). */}
         <SettingsListPane className="gap-6">
           <PageHeader title="Agents">
-            {agentDeploy && (
-              <PageCreateAction label="Deploy Agent" onClick={openDeployPanel} disabled={!currentUserId} />
-            )}
-            {allowCustomAgents && (
-              <PageCreateAction label="New Agent" onClick={openAddPanel} disabled={!currentUserId} />
+            {(agentDeploy || allowCustomAgents) && (
+              <PageCreateAction label="New Agent" onClick={openCreatePanel} disabled={!currentUserId} />
             )}
           </PageHeader>
 

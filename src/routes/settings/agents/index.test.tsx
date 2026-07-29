@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore, type AppConfig } from '@/api/config-store'
 import type { AuthClient } from '@/contexts'
 import { createAgent, getAllAgents } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -27,8 +28,8 @@ const authedSession = {
 
 type PageProps = Parameters<typeof AgentsSettingsPage>[0]
 
-const renderPage = (authClient: AuthClient, props: PageProps = {}) => {
-  const TestProvider = createTestProvider({ authClient })
+const renderPage = (authClient: AuthClient, props: PageProps = {}, mockResponse?: unknown) => {
+  const TestProvider = createTestProvider({ authClient, mockResponse })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
       <MemoryRouter initialEntries={['/settings/agents']}>{children}</MemoryRouter>
@@ -89,6 +90,125 @@ describe('AgentsSettingsPage — availability', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
     expect(screen.queryByRole('button', { name: 'Close details' })).not.toBeInTheDocument()
+  })
+})
+
+describe('AgentsSettingsPage — add-agent panel', () => {
+  const catalogWith = (descriptors: unknown[]) => ({ version: '1', descriptors })
+
+  const haystackDescriptor = {
+    id: 'haystack',
+    provider: 'haystack',
+    name: 'Haystack RAG agent',
+    description: null,
+    icon: null,
+    schemaVersion: 1,
+    action: 'deploy',
+    steps: [{ id: 'basics', title: 'Basics', fields: [{ key: 'name', label: 'Name', widget: 'text' }] }],
+  }
+
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+    useConfigStore.getState().updateConfig({} as AppConfig)
+  })
+
+  const setConfig = (config: AppConfig) => {
+    act(() => useConfigStore.getState().updateConfig(config))
+  }
+
+  it('lists Connect first alongside the catalog when deploy is enabled', async () => {
+    setConfig({ agentDeploy: true, allowCustomAgents: true })
+    renderPage(createMockAuthClient({ session: authedSession }), {}, catalogWith([haystackDescriptor]))
+
+    fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
+
+    const connect = await waitForElement(() => screen.queryByText('Connect custom agent'))
+    const deployCard = screen.getByText('Haystack RAG agent')
+    expect(connect).toBeInTheDocument()
+    // Connect is the first card in the list.
+    expect(connect.compareDocumentPosition(deployCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('routes a catalog entry to its descriptor form', async () => {
+    setConfig({ agentDeploy: true, allowCustomAgents: true })
+    renderPage(createMockAuthClient({ session: authedSession }), {}, catalogWith([haystackDescriptor]))
+
+    fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Haystack RAG agent')))
+
+    expect(screen.getByRole('button', { name: /deploy/i })).toBeInTheDocument()
+  })
+
+  it('routes Connect to the inline custom form', async () => {
+    setConfig({ agentDeploy: true, allowCustomAgents: true })
+    renderPage(createMockAuthClient({ session: authedSession }), {}, catalogWith([haystackDescriptor]))
+
+    fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Connect custom agent')))
+
+    expect(screen.getByPlaceholderText('My Agent')).toBeInTheDocument()
+  })
+
+  it('goes back to the list from a descriptor form', async () => {
+    setConfig({ agentDeploy: true, allowCustomAgents: true })
+    renderPage(createMockAuthClient({ session: authedSession }), {}, catalogWith([haystackDescriptor]))
+
+    fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Haystack RAG agent')))
+    expect(screen.getByRole('button', { name: /deploy/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+
+    expect(screen.getByText('Connect custom agent')).toBeInTheDocument()
+    expect(screen.getByText('Haystack RAG agent')).toBeInTheDocument()
+  })
+
+  it('goes back to the list from the connect form', async () => {
+    setConfig({ agentDeploy: true, allowCustomAgents: true })
+    renderPage(createMockAuthClient({ session: authedSession }), {}, catalogWith([haystackDescriptor]))
+
+    fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Connect custom agent')))
+    expect(screen.getByPlaceholderText('My Agent')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+
+    expect(screen.getByText('Haystack RAG agent')).toBeInTheDocument()
+  })
+
+  it('shows the connect form directly when the catalog is empty', async () => {
+    setConfig({ agentDeploy: true, allowCustomAgents: true })
+    renderPage(createMockAuthClient({ session: authedSession }), {}, catalogWith([]))
+
+    fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
+
+    expect(await waitForElement(() => screen.queryByPlaceholderText('My Agent'))).toBeInTheDocument()
+    expect(screen.queryByText('Connect custom agent')).not.toBeInTheDocument()
+    // No list to return to → no back affordance.
+    expect(screen.queryByRole('button', { name: 'Go back' })).not.toBeInTheDocument()
+  })
+
+  it('opens the connect form directly when deploy is disabled', () => {
+    setConfig({ allowCustomAgents: true })
+    renderPage(createMockAuthClient({ session: authedSession }))
+
+    fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
+
+    expect(screen.getByPlaceholderText('My Agent')).toBeInTheDocument()
   })
 })
 

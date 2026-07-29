@@ -77,7 +77,6 @@ const powersyncSettings: Settings = {
   haystackBaseUrl: '',
   haystackApiKey: '',
   haystackWorkspace: '',
-  haystackPipelines: '',
   haystackTemplatePipeline: '',
   minAppVersion: '',
 }

@@ -16,7 +16,6 @@ import type {
   DeployStatus,
 } from '@shared/agent-descriptors'
 import { DeepsetManagementClient } from './management-client'
-import { haystackPipelinesEnvSchema } from './types'
 
 /**
  * Provider id registered into the agent discovery registry. The string is
@@ -64,14 +63,13 @@ const haystackDescriptor: AgentDescriptor = {
   ],
 }
 
-/** Whether Haystack is configured to be deployable (base + key + workspace + template). */
+/** Whether Haystack is configured to talk to Deepset at all (discovery + chat). */
+const isHaystackConfigured = (settings: Settings): boolean =>
+  Boolean(settings.haystackBaseUrl && settings.haystackApiKey && settings.haystackWorkspace)
+
+/** Whether Haystack is also deployable (needs a template pipeline to clone). */
 const isDeployConfigured = (settings: Settings): boolean =>
-  Boolean(
-    settings.haystackBaseUrl &&
-    settings.haystackApiKey &&
-    settings.haystackWorkspace &&
-    settings.haystackTemplatePipeline,
-  )
+  isHaystackConfigured(settings) && Boolean(settings.haystackTemplatePipeline)
 
 /** Map a Deepset pipeline status onto the normalized deploy lifecycle. */
 const mapStatus = (deepsetStatus: string): DeployStatus => {
@@ -96,48 +94,87 @@ const toPipelineRef = (name: string): string => {
   return `tb-${slug}-${Date.now().toString(36)}`
 }
 
+/** Construct a management client from settings (shared by the provider verbs and the WS resolver). */
+const makeManagementClient = (settings: Settings, deps: HaystackProviderDeps): DeepsetManagementClient =>
+  new DeepsetManagementClient(
+    {
+      haystackBaseUrl: settings.haystackBaseUrl,
+      haystackApiKey: settings.haystackApiKey,
+      haystackWorkspace: settings.haystackWorkspace,
+    },
+    { fetchFn: deps.fetchFn },
+  )
+
+/** A pipeline resolved for a live chat connection. */
+export type ResolvedPipeline = { pipelineId: string; pipelineName: string; supportsFiles: boolean }
+
 /**
- * Build the Haystack provider. Reads `HAYSTACK_PIPELINES` (JSON array) from
- * the injected `settings`. An empty / missing / malformed value yields an
- * empty descriptor list — we log and skip rather than throw so a deployment
- * with no Haystack config doesn't fail other providers.
+ * Resolve a `?pipeline=` slug to its Deepset identifiers for the WS route by
+ * looking it up live (the slug is the Deepset pipeline name). Returns null for
+ * unknown / unconfigured slugs so the caller can close the socket. Pipelines are
+ * treated as text-only for now (`supportsFiles: false`).
+ */
+export const resolveHaystackPipeline = async (
+  slug: string,
+  settings: Settings,
+  deps: HaystackProviderDeps = {},
+): Promise<ResolvedPipeline | null> => {
+  if (!isHaystackConfigured(settings)) {
+    return null
+  }
+  try {
+    const pipeline = await makeManagementClient(settings, deps).getPipeline(slug)
+    return { pipelineId: pipeline.pipeline_id, pipelineName: slug, supportsFiles: false }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Build the Haystack provider. `list()` fetches the workspace's pipelines live
+ * from Deepset — `DEPLOYED`, prompt-capable, and excluding Thunderbolt-deployed
+ * `tb-*` instances (those are user-owned and live in the synced `agents` table).
+ * On any host error it logs and returns `[]` so discovery never fails.
  *
- * Each pipeline becomes a `managed-acp`, websocket-transport descriptor whose
- * URL points at `/v1/haystack/ws?pipeline=<pipelineId>`. The host is derived
- * from the inbound `Request` via {@link buildWebSocketUrl} so dev (`ws://`)
- * and prod (`wss://` behind a reverse proxy) both produce correct URLs
- * without env-var pinning.
+ * Each pipeline becomes a `managed-acp`, websocket descriptor whose URL points at
+ * `/v1/haystack/ws?pipeline=<name>`; the host is derived from the inbound request
+ * via {@link buildWebSocketUrl} so dev (`ws://`) and prod (`wss://`) both work.
  */
 export const createHaystackProvider = (deps: HaystackProviderDeps = {}): AgentProvider => {
-  const managementClient = (settings: Settings) =>
-    new DeepsetManagementClient(
-      {
-        haystackBaseUrl: settings.haystackBaseUrl,
-        haystackApiKey: settings.haystackApiKey,
-        haystackWorkspace: settings.haystackWorkspace,
-      },
-      { fetchFn: deps.fetchFn },
-    )
+  const managementClient = (settings: Settings) => makeManagementClient(settings, deps)
 
   return {
     id: haystackProviderId,
-    list: (request: Request, settings: Settings): RemoteAgentDescriptor[] => {
-      const pipelines = parsePipelinesEnv(settings)
-      if (pipelines.length === 0) {
+    list: async (request: Request, settings: Settings): Promise<RemoteAgentDescriptor[]> => {
+      if (!isHaystackConfigured(settings)) {
         return []
       }
-      return pipelines.map((pipeline) => ({
-        id: pipeline.id,
-        name: pipeline.name,
-        type: 'managed-acp',
-        transport: 'websocket',
-        // URL carries the public slug — the WS route resolves it back to the
-        // Deepset pipelineName / pipelineId from the same env-driven descriptor.
-        url: buildWebSocketUrl(request, `/haystack/ws?pipeline=${encodeURIComponent(pipeline.id)}`),
-        description: pipeline.description ?? null,
-        icon: pipeline.icon ?? null,
-        isSystem: 1,
-      }))
+      try {
+        const pipelines = await managementClient(settings).listPipelines()
+        return pipelines
+          .filter(
+            // Deepset auto-idles pipelines (status flips DEPLOYED→IDLE), but they
+            // wake on query — so key off the intended `desired_status`, not the
+            // transient runtime status. Non-prompt pipelines (indexes) aren't chat agents.
+            // @todo Revisit de-duplication: this includes Thunderbolt-deployed `tb-*`
+            // pipelines, which the FE also stores in the synced agents table, so a
+            // deployed agent can currently appear in both lanes.
+            (p) => (p.desired_status ?? p.status) === 'DEPLOYED' && p.supports_prompt !== false,
+          )
+          .map((p) => ({
+            id: p.name,
+            name: p.name,
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: buildWebSocketUrl(request, `/haystack/ws?pipeline=${encodeURIComponent(p.name)}`),
+            description: null,
+            icon: null,
+            isSystem: 1,
+          }))
+      } catch (err) {
+        createStandaloneLogger(settings).warn({ err }, 'haystack list pipelines failed; returning empty')
+        return []
+      }
     },
     catalog: ({ settings }: ProviderContext): AgentDescriptor[] =>
       isDeployConfigured(settings) ? [haystackDescriptor] : [],
@@ -164,34 +201,4 @@ export const createHaystackProvider = (deps: HaystackProviderDeps = {}): AgentPr
       return { deploymentId: encodeDeploymentId(haystackProviderId, ref), status, detail: pipeline.status, connection }
     },
   }
-}
-
-/**
- * Parse `HAYSTACK_PIPELINES` from settings. The env var is a JSON-encoded
- * array of {@link haystackPipelinesEnvSchema} entries. Empty / missing values
- * return `[]`. A malformed value also returns `[]` but is logged at WARN —
- * silent dropping would hide a deployment-side typo, but throwing would
- * cascade into a `GET /agents` 500 for unrelated providers (the discovery
- * route catches the throw, but the operator wouldn't get a structured signal).
- */
-export const parsePipelinesEnv = (settings: Settings) => {
-  const raw = settings.haystackPipelines.trim()
-  if (raw.length === 0) {
-    return []
-  }
-  let parsedJson: unknown
-  try {
-    parsedJson = JSON.parse(raw)
-  } catch (err) {
-    const log = createStandaloneLogger(settings)
-    log.warn({ err }, 'HAYSTACK_PIPELINES is not valid JSON; ignoring')
-    return []
-  }
-  const result = haystackPipelinesEnvSchema.safeParse(parsedJson)
-  if (!result.success) {
-    const log = createStandaloneLogger(settings)
-    log.warn({ issues: result.error.issues }, 'HAYSTACK_PIPELINES schema mismatch; ignoring')
-    return []
-  }
-  return result.data
 }

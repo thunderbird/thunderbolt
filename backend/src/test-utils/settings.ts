@@ -64,7 +64,6 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   haystackApiKey: '',
   haystackWorkspace: '',
   haystackTemplatePipeline: '',
-  haystackPipelines: '',
   minAppVersion: '',
   ...overrides,
 })

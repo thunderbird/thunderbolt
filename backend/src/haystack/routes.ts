@@ -12,7 +12,7 @@ import type { User } from '@shared/types/auth'
 import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, t } from 'elysia'
 import { HaystackAcpServer, type HaystackAcpDeps } from './acp-server'
-import { createHaystackProvider, parsePipelinesEnv } from './provider'
+import { createHaystackProvider, resolveHaystackPipeline } from './provider'
 
 /**
  * Mount the Haystack ACP adapter routes.
@@ -142,11 +142,12 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
           return
         }
 
-        // Resolve the public slug back to its Deepset identifiers. A missing
-        // descriptor here means a stale FE URL or a redeploy that dropped the
-        // pipeline — we close instead of opening to keep error surface tight.
-        const descriptor = parsePipelinesEnv(settings).find((p) => p.id === pipelineSlug)
-        if (!descriptor) {
+        // Resolve the slug to its Deepset identifiers: an env-declared descriptor,
+        // or a Thunderbolt-deployed `tb-*` pipeline looked up live. A null result
+        // means a stale FE URL or a dropped pipeline — close instead of opening to
+        // keep the error surface tight.
+        const resolved = await resolveHaystackPipeline(pipelineSlug, settings, { fetchFn: deps?.fetchFn })
+        if (!resolved) {
           ws.close(wsCloseUnauthorized, 'unknown pipeline')
           return
         }
@@ -155,14 +156,14 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
           send: (payload) => {
             ws.send(payload)
           },
-          pipelineId: descriptor.pipelineId,
-          pipelineName: descriptor.pipelineName,
-          supportsFiles: descriptor.supportedContent.files,
+          pipelineId: resolved.pipelineId,
+          pipelineName: resolved.pipelineName,
+          supportsFiles: resolved.supportsFiles,
           settings,
           deps,
         })
         ;(ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer = server
-        log.debug({ pipelineSlug, pipelineName: descriptor.pipelineName, userId: user.id }, 'haystack ws opened')
+        log.debug({ pipelineSlug, pipelineName: resolved.pipelineName, userId: user.id }, 'haystack ws opened')
       },
       async message(ws, message) {
         const server = (ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer

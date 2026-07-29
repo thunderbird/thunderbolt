@@ -99,6 +99,19 @@ const bearerProtocols = (bearerToken: string): string[] => [
   `thunderbolt.bearer.${encodeWsBearer(bearerToken)}`,
 ]
 
+/**
+ * Fake Deepset for the WS resolver (`resolveHaystackPipeline` → `GET /pipelines/:name`):
+ * `rag` resolves to a deployed pipeline; everything else 404s → the route closes 4001.
+ * Injected as `createApp`'s `fetchFn`, so it only affects the live slug lookup.
+ */
+const haystackFetch = (async (input: RequestInfo | URL) => {
+  const url = String(input)
+  if (/\/pipelines\/rag$/.test(url)) {
+    return new Response(JSON.stringify({ name: 'rag', pipeline_id: 'pipe-uuid', status: 'DEPLOYED' }), { status: 200 })
+  }
+  return new Response(JSON.stringify({ error: 'not found' }), { status: 404, statusText: 'Not Found' })
+}) as typeof fetch
+
 describe('WS /v1/haystack/ws — auth gating', () => {
   const cleanups: Array<() => Promise<void>> = []
   // Isolated PGlite instance for the real-`.listen()` upgrades in this suite:
@@ -106,12 +119,12 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   // singleton (head-of-line blocking under CI starvation; the 5s `initialize`
   // timeout was the canary). Closed once in afterAll to avoid exit-99.
   let iso: IsolatedTestDb
-  // Real settings come from `getSettings()` which reads `process.env`. Inject a
-  // valid pipelines config so the route's slug→descriptor lookup resolves;
-  // otherwise even authenticated upgrades would close 4001 with "unknown
-  // pipeline" before initialize can run.
-  const originalPipelinesEnv = process.env.HAYSTACK_PIPELINES
+  // Real settings come from `getSettings()` which reads `process.env`. Point
+  // Haystack at a fake host so it's "configured"; the route's live slug→pipeline
+  // lookup is served by the injected `haystackFetch` (otherwise even
+  // authenticated upgrades would close 4001 with "unknown pipeline").
   const originalBaseUrlEnv = process.env.HAYSTACK_BASE_URL
+  const originalApiKeyEnv = process.env.HAYSTACK_API_KEY
   const originalWorkspaceEnv = process.env.HAYSTACK_WORKSPACE
 
   beforeAll(async () => {
@@ -120,10 +133,8 @@ describe('WS /v1/haystack/ws — auth gating', () => {
 
   beforeEach(() => {
     process.env.HAYSTACK_BASE_URL = 'https://haystack.test'
+    process.env.HAYSTACK_API_KEY = 'sk-test'
     process.env.HAYSTACK_WORKSPACE = 'ws-test'
-    process.env.HAYSTACK_PIPELINES = JSON.stringify([
-      { id: 'rag', name: 'RAG', pipelineName: 'rag-pipeline', pipelineId: 'pipe-uuid' },
-    ])
     clearSettingsCache()
   })
 
@@ -131,15 +142,15 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     for (const cleanup of cleanups.splice(0)) {
       await cleanup()
     }
-    if (originalPipelinesEnv === undefined) {
-      delete process.env.HAYSTACK_PIPELINES
-    } else {
-      process.env.HAYSTACK_PIPELINES = originalPipelinesEnv
-    }
     if (originalBaseUrlEnv === undefined) {
       delete process.env.HAYSTACK_BASE_URL
     } else {
       process.env.HAYSTACK_BASE_URL = originalBaseUrlEnv
+    }
+    if (originalApiKeyEnv === undefined) {
+      delete process.env.HAYSTACK_API_KEY
+    } else {
+      process.env.HAYSTACK_API_KEY = originalApiKeyEnv
     }
     if (originalWorkspaceEnv === undefined) {
       delete process.env.HAYSTACK_WORKSPACE
@@ -232,7 +243,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   })
 
   it('opens the socket and answers initialize when a valid bearer is offered', async () => {
-    const handle = await createTestApp({ database: iso.db })
+    const handle = await createTestApp({ database: iso.db, fetchFn: haystackFetch })
     const port = await startApp(handle.app as unknown as RunningApp)
     cleanups.push(async () => {
       await stopApp(handle.app as unknown as RunningApp)
@@ -267,15 +278,15 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     client.close()
   }, 15000)
 
-  it('closes 4001 when the ?pipeline= slug is not in HAYSTACK_PIPELINES', async () => {
-    const handle = await createTestApp({ database: iso.db })
+  it('closes 4001 when the ?pipeline= slug is not a known pipeline', async () => {
+    const handle = await createTestApp({ database: iso.db, fetchFn: haystackFetch })
     const port = await startApp(handle.app as unknown as RunningApp)
     cleanups.push(async () => {
       await stopApp(handle.app as unknown as RunningApp)
       await handle.cleanup()
     })
 
-    // `rag` is configured in beforeEach; `nope` is not — the route should reject
+    // `rag` resolves via the fake host; `nope` 404s — the route should reject
     // even with a valid bearer.
     const client = new WebSocket(
       `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=nope`,

@@ -148,9 +148,6 @@ const settingsSchema = z
     haystackApiKey: z.string().default(''),
     // Deepset workspace slug. URLs are `${baseUrl}/api/v1/workspaces/${workspace}/...`.
     haystackWorkspace: z.string().default(''),
-    // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
-    // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
-    haystackPipelines: z.string().default(''),
     // Name of an existing Deepset pipeline whose query_yaml is cloned as the template
     // for descriptor-driven deploys (THU-743). Empty = Haystack is not deployable.
     haystackTemplatePipeline: z.string().default(''),
@@ -235,7 +232,6 @@ const parseSettings = (): Settings => {
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
-    haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
     haystackTemplatePipeline: process.env.HAYSTACK_TEMPLATE_PIPELINE || '',
   }
 

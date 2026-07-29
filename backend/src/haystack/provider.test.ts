@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { createTestSettings } from '@/test-utils/settings'
 import type { ProviderContext } from '@/agents'
-import { createHaystackProvider } from './provider'
+import { createHaystackProvider, resolveHaystackPipeline } from './provider'
 
 const deployableSettings = () =>
   createTestSettings({
@@ -105,5 +105,59 @@ describe('haystack provider — status', () => {
   it('maps a failure status to failed', async () => {
     const result = await statusProvider('DEPLOYMENT_FAILED').status!('tb-x', makeContext())
     expect(result.status).toBe('failed')
+  })
+})
+
+describe('haystack provider — list', () => {
+  const request = new Request('http://localhost:8000/v1/agents')
+  const listBody = {
+    data: [
+      { name: 'RAG', pipeline_id: 'p1', status: 'DEPLOYED', desired_status: 'DEPLOYED', supports_prompt: true },
+      // Auto-idled but intended-deployed → still a usable agent (wakes on query).
+      { name: 'Napping', pipeline_id: 'p2', status: 'IDLE', desired_status: 'DEPLOYED', supports_prompt: true },
+      // tb-* deploys ARE included for now (de-dup with the synced agents table is deferred).
+      { name: 'tb-mine-x', pipeline_id: 'p3', status: 'DEPLOYED', desired_status: 'DEPLOYED', supports_prompt: true },
+      { name: 'Undeployed', pipeline_id: 'p4', status: 'IDLE', desired_status: 'UNDEPLOYED', supports_prompt: true },
+      { name: 'Indexer', pipeline_id: 'p5', status: 'DEPLOYED', desired_status: 'DEPLOYED', supports_prompt: false },
+    ],
+  }
+
+  it('returns [] when Haystack is not configured', async () => {
+    expect(await createHaystackProvider().list(request, createTestSettings())).toEqual([])
+  })
+
+  it('maps intended-deployed, prompt-capable pipelines (including idle + tb- ones)', async () => {
+    const { fetchFn, calls } = routedFetch(() => ({ status: 200, body: listBody }))
+    const list = await createHaystackProvider({ fetchFn }).list(request, deployableSettings())
+    expect(list.map((a) => a.id)).toEqual(['RAG', 'Napping', 'tb-mine-x'])
+    expect(list[0]).toMatchObject({ name: 'RAG', type: 'managed-acp', transport: 'websocket', isSystem: 1 })
+    expect(list[0].url).toContain('haystack/ws?pipeline=RAG')
+    expect(calls[0].url).toContain('/pipelines?limit=')
+  })
+
+  it('returns [] (never throws) when the host errors', async () => {
+    const { fetchFn } = routedFetch(() => ({ status: 500 }))
+    expect(await createHaystackProvider({ fetchFn }).list(request, deployableSettings())).toEqual([])
+  })
+})
+
+describe('resolveHaystackPipeline', () => {
+  it('resolves a pipeline by fetching its pipeline_id live', async () => {
+    const { fetchFn, calls } = routedFetch(() => ({
+      status: 200,
+      body: { name: 'RAG', pipeline_id: 'pid-live', status: 'DEPLOYED' },
+    }))
+    const resolved = await resolveHaystackPipeline('RAG', deployableSettings(), { fetchFn })
+    expect(resolved).toEqual({ pipelineId: 'pid-live', pipelineName: 'RAG', supportsFiles: false })
+    expect(calls[0].url).toContain('/pipelines/RAG')
+  })
+
+  it('returns null when Haystack is not configured', async () => {
+    expect(await resolveHaystackPipeline('RAG', createTestSettings())).toBeNull()
+  })
+
+  it('returns null (not throw) when the host lookup fails', async () => {
+    const { fetchFn } = routedFetch(() => ({ status: 404, body: { error: 'gone' } }))
+    expect(await resolveHaystackPipeline('missing', deployableSettings(), { fetchFn })).toBeNull()
   })
 })

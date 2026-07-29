@@ -48,6 +48,8 @@ export const deepsetPipelineSchema = z.object({
   pipeline_id: z.string(),
   status: z.string(),
   desired_status: z.string().nullable().optional(),
+  supports_prompt: z.boolean().optional(),
+  output_type: z.string().nullable().optional(),
 })
 export type DeepsetPipeline = z.infer<typeof deepsetPipelineSchema>
 

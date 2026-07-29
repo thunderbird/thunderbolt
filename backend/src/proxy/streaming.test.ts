@@ -50,6 +50,21 @@ describe('capStream', () => {
     expect(capped.bytesRead()).toBe(data.byteLength)
   })
 
+  it('forwards all bytes when the byte cap is omitted', async () => {
+    const chunks = [new Uint8Array(6), new Uint8Array(5)]
+    const aborts: string[] = []
+    const capped = capStream(makeStream(chunks), {
+      idleTimeoutMs: 5000,
+      onAbort: (reason) => aborts.push(reason),
+    })
+
+    const result = await collectStream(capped.stream)
+
+    expect(result.byteLength).toBe(11)
+    expect(aborts).toEqual([])
+    expect(capped.bytesRead()).toBe(11)
+  })
+
   it('calls onAbort("cap") and terminates when bytes exceed cap', async () => {
     const chunk1 = new Uint8Array(6)
     const chunk2 = new Uint8Array(5)
@@ -77,6 +92,24 @@ describe('capStream', () => {
     })
     await collectStream(capped.stream)
     expect(aborts).toEqual(['idle'])
+  })
+
+  it('errors with the configured reason when error mode expires', async () => {
+    const idleError = new DOMException('opaque stream idle timeout', 'TimeoutError')
+    const aborts: string[] = []
+    const completions: number[] = []
+    const stalled = new ReadableStream<Uint8Array>({ start() {} })
+    const capped = capStream(stalled, {
+      idleTimeoutMs: 0,
+      onIdle: 'error',
+      idleError,
+      onAbort: (reason) => aborts.push(reason),
+      onComplete: (bytesRead) => completions.push(bytesRead),
+    })
+
+    await expect(capped.stream.getReader().read()).rejects.toBe(idleError)
+    expect(aborts).toEqual(['idle'])
+    expect(completions).toEqual([0])
   })
 
   it('resets idle timer on each chunk so a slow-but-steady stream completes', async () => {
@@ -156,6 +189,27 @@ describe('capStream', () => {
     // Wait longer than the idle timeout to confirm the timer was cleared
     await new Promise((r) => setTimeout(r, idleTimeout * 3))
     expect(aborts).toEqual([])
+  })
+
+  it('clears idle timer and completes once when the source errors', async () => {
+    const sourceError = new Error('upstream failed')
+    const aborts: string[] = []
+    const completions: number[] = []
+    const failed = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(sourceError)
+      },
+    })
+    const capped = capStream(failed, {
+      idleTimeoutMs: 0,
+      onAbort: (reason) => aborts.push(reason),
+      onComplete: (bytesRead) => completions.push(bytesRead),
+    })
+
+    await expect(capped.stream.getReader().read()).rejects.toBe(sourceError)
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(aborts).toEqual([])
+    expect(completions).toEqual([0])
   })
 
   // ---------------------------------------------------------------------------

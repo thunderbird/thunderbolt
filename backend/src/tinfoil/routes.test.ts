@@ -11,6 +11,8 @@ import { createTinfoilRoutes } from './routes'
 
 const enclaveUrl = 'https://inference.tinfoil.sh'
 const testApiKey = 'test-tinfoil-key'
+const upstreamTimeoutMessage = 'tinfoil upstream timeout'
+const upstreamIdleTimeoutMessage = 'tinfoil upstream idle timeout'
 
 const makeOkResponse = (body = 'ok', extraHeaders: Record<string, string> = {}) =>
   new Response(body, {
@@ -24,6 +26,47 @@ const drain = async (res: Response): Promise<Response> => {
     await res.arrayBuffer()
   }
   return res
+}
+
+/** Creates a fetch implementation whose pending request or response body follows its signal. */
+const createAbortableFetch = (response?: Response) => {
+  const started = Promise.withResolvers<AbortSignal>()
+  const aborted = Promise.withResolvers<unknown>()
+  const fetchFn = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    const signal = init?.signal as AbortSignal
+    started.resolve(signal)
+
+    if (!response) {
+      return new Promise<Response>((_resolve, reject) => {
+        const rejectOnAbort = () => {
+          aborted.resolve(signal.reason)
+          reject(signal.reason)
+        }
+        signal.addEventListener('abort', rejectOnAbort, { once: true })
+        if (signal.aborted) {
+          rejectOnAbort()
+        }
+      })
+    }
+
+    const trackAbort = () => aborted.resolve(signal.reason)
+    signal.addEventListener('abort', trackAbort, { once: true })
+    if (signal.aborted) {
+      trackAbort()
+      return Promise.reject(signal.reason)
+    }
+
+    const body = response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), { signal }) ?? null
+    return Promise.resolve(
+      new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      }),
+    )
+  }) as unknown as typeof fetch
+
+  return { fetchFn, started: started.promise, aborted: aborted.promise }
 }
 
 describe('createTinfoilRoutes', () => {
@@ -45,13 +88,24 @@ describe('createTinfoilRoutes', () => {
     consoleSpies.error.mockClear()
   })
 
-  const buildApp = (overrides: { apiKey?: string; enclaveUrl?: string; auth?: typeof mockAuth } = {}) =>
+  const buildApp = (
+    overrides: {
+      apiKey?: string
+      enclaveUrl?: string
+      auth?: typeof mockAuth
+      fetchFn?: typeof fetch
+      upstreamHeadersTimeoutMs?: number
+      upstreamIdleTimeoutMs?: number
+    } = {},
+  ) =>
     new Elysia().use(
       createTinfoilRoutes({
         auth: overrides.auth ?? mockAuth,
-        fetchFn: mockFetch as unknown as typeof fetch,
+        fetchFn: overrides.fetchFn ?? (mockFetch as unknown as typeof fetch),
         apiKey: overrides.apiKey ?? testApiKey,
         enclaveUrl: overrides.enclaveUrl ?? enclaveUrl,
+        upstreamHeadersTimeoutMs: overrides.upstreamHeadersTimeoutMs,
+        upstreamIdleTimeoutMs: overrides.upstreamIdleTimeoutMs,
       }),
     )
 
@@ -125,9 +179,66 @@ describe('createTinfoilRoutes', () => {
       expect(sent.get('cookie')).toBeNull()
       expect(sent.get('connection')).toBeNull()
     })
+
+    it('strips response hop-by-hop headers while preserving content encoding', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeOkResponse('opaque', {
+          connection: 'keep-alive',
+          'transfer-encoding': 'chunked',
+          'content-encoding': 'br',
+        }),
+      )
+      const app = buildApp()
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(res.headers.get('connection')).toBeNull()
+      expect(res.headers.get('transfer-encoding')).toBeNull()
+      expect(res.headers.get('content-encoding')).toBe('br')
+      await res.arrayBuffer()
+    })
   })
 
   describe('body forwarding', () => {
+    it('relays EHBP request and response bytes and headers unchanged', async () => {
+      const requestPayload = new Uint8Array([0x00, 0xff, 0x01, 0x80])
+      const responseChunks = [new Uint8Array([0xfe, 0x02]), new Uint8Array([0x00, 0x7f])]
+      const requestBody = Promise.withResolvers<Uint8Array>()
+      const requestEncapsulatedKey = Promise.withResolvers<string | null>()
+      const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = init?.headers as Headers
+        const body = init?.body as ReadableStream<Uint8Array>
+        requestEncapsulatedKey.resolve(headers.get('ehbp-encapsulated-key'))
+        requestBody.resolve(new Uint8Array(await new Response(body).arrayBuffer()))
+
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const chunk of responseChunks) {
+                controller.enqueue(chunk)
+              }
+              controller.close()
+            },
+          }),
+          { headers: { 'Ehbp-Response-Nonce': 'response-nonce' } },
+        )
+      }) as unknown as typeof fetch
+      const app = buildApp({ fetchFn })
+
+      const res = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Ehbp-Encapsulated-Key': 'encapsulated-key' },
+          body: requestPayload,
+        }),
+      )
+
+      expect(await requestBody.promise).toEqual(requestPayload)
+      expect(await requestEncapsulatedKey.promise).toBe('encapsulated-key')
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([0xfe, 0x02, 0x00, 0x7f]))
+      expect(res.headers.get('ehbp-response-nonce')).toBe('response-nonce')
+    })
+
     it('forwards the request body for POST requests', async () => {
       const app = buildApp()
       const payload = new Uint8Array([0x01, 0x02, 0x03, 0x04])
@@ -147,6 +258,9 @@ describe('createTinfoilRoutes', () => {
       expect(calledUrl).toBe(`${enclaveUrl}/v1/chat/completions`)
       expect(init.body).not.toBeNull()
       expect(init.method).toBe('POST')
+      expect(init.redirect).toBe('manual')
+      expect((init as RequestInit & { decompress: boolean }).decompress).toBeFalse()
+      expect((init as RequestInit & { duplex: string }).duplex).toBe('half')
     })
 
     it('forwards JSON bodies untouched (parse: none keeps the stream intact)', async () => {
@@ -174,6 +288,103 @@ describe('createTinfoilRoutes', () => {
 
       const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
       expect(init.body).toBeNull()
+    })
+  })
+
+  describe('upstream timeouts and aborts', () => {
+    it('returns 504 and aborts upstream when response headers time out', async () => {
+      const upstream = createAbortableFetch()
+      const app = buildApp({
+        fetchFn: upstream.fetchFn,
+        upstreamHeadersTimeoutMs: 0,
+      })
+
+      const res = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          body: 'opaque-bytes',
+        }),
+      )
+
+      expect(res.status).toBe(504)
+      expect(res.headers.get('content-type')).toBe('text/plain')
+      const body = await res.text()
+      expect(body).toBe(upstreamTimeoutMessage)
+      expect(await upstream.aborted).toBeInstanceOf(DOMException)
+      expect(body).not.toContain(testApiKey)
+    })
+
+    it('errors a stalled response stream and aborts upstream', async () => {
+      const firstChunk = new Uint8Array([0x01, 0xff])
+      const upstream = createAbortableFetch(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(firstChunk)
+            },
+          }),
+        ),
+      )
+      const app = buildApp({
+        fetchFn: upstream.fetchFn,
+        upstreamIdleTimeoutMs: 0,
+      })
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+      const reader = res.body!.getReader()
+
+      expect(await reader.read()).toEqual({ done: false, value: firstChunk })
+      const stalledRead = reader.read()
+      await expect(stalledRead).rejects.toThrow(upstreamIdleTimeoutMessage)
+      await expect(stalledRead).rejects.not.toThrow(testApiKey)
+      expect(await upstream.aborted).toBeInstanceOf(DOMException)
+    })
+
+    it('aborts upstream when the client request aborts', async () => {
+      const upstream = createAbortableFetch()
+      const clientController = new AbortController()
+      const app = buildApp({ fetchFn: upstream.fetchFn })
+      const response = app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          body: 'opaque-bytes',
+          signal: clientController.signal,
+        }),
+      )
+
+      await upstream.started
+      clientController.abort()
+
+      expect(await upstream.aborted).toBe(clientController.signal.reason)
+      expect(await (await response).text()).not.toContain(testApiKey)
+    })
+
+    it('keeps a steady response stream alive beyond the headers timeout', async () => {
+      const chunks = [new Uint8Array([0x01]), new Uint8Array([0x02]), new Uint8Array([0x03]), new Uint8Array([0x04])]
+      const upstream = createAbortableFetch(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              for (const chunk of chunks) {
+                controller.enqueue(chunk)
+                await new Promise((resolve) => setImmediate(resolve))
+              }
+              controller.close()
+            },
+          }),
+        ),
+      )
+      const app = buildApp({
+        fetchFn: upstream.fetchFn,
+        upstreamHeadersTimeoutMs: 0,
+        upstreamIdleTimeoutMs: 50,
+      })
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([0x01, 0x02, 0x03, 0x04]))
+      await new Promise((resolve) => setImmediate(resolve))
+      expect((await upstream.started).aborted).toBeFalse()
     })
   })
 

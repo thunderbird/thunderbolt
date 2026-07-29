@@ -6,10 +6,18 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { capStream } from '@/proxy/streaming'
+import { filterHeaders } from '@/utils/request'
 import { Elysia, type AnyElysia } from 'elysia'
 
 const allowedMethods = new Set(['GET', 'POST', 'OPTIONS'])
 const bodylessMethods = new Set(['GET', 'OPTIONS'])
+const defaultUpstreamHeadersTimeoutMs = 30_000
+const defaultUpstreamIdleTimeoutMs = 60_000
+const upstreamTimeoutMessage = 'tinfoil upstream timeout'
+const upstreamIdleTimeoutMessage = 'tinfoil upstream idle timeout'
+const upstreamHeadersTimeoutError = new DOMException(upstreamTimeoutMessage, 'TimeoutError')
+const upstreamIdleTimeoutError = new DOMException(upstreamIdleTimeoutMessage, 'TimeoutError')
 
 const textResponse = (status: number, body: string): Response =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain' } })
@@ -23,6 +31,10 @@ export type CreateTinfoilRoutesOptions = {
   apiKey?: string
   /** Override the upstream enclave URL. Defaults to `TINFOIL_ENCLAVE_URL`. */
   enclaveUrl?: string
+  /** Time allowed for upstream response headers. Defaults to 30 seconds. */
+  upstreamHeadersTimeoutMs?: number
+  /** Maximum idle time between upstream response chunks. Defaults to 60 seconds. */
+  upstreamIdleTimeoutMs?: number
 }
 
 export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
@@ -31,6 +43,8 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const settings = getSettings()
   const apiKey = options.apiKey ?? settings.tinfoilApiKey
   const enclaveUrl = (options.enclaveUrl ?? settings.tinfoilEnclaveUrl).replace(/\/$/, '')
+  const upstreamHeadersTimeoutMs = options.upstreamHeadersTimeoutMs ?? defaultUpstreamHeadersTimeoutMs
+  const upstreamIdleTimeoutMs = options.upstreamIdleTimeoutMs ?? defaultUpstreamIdleTimeoutMs
 
   const proxyToEnclave = async (request: Request, wildcard: string): Promise<Response> => {
     const method = request.method.toUpperCase()
@@ -58,33 +72,51 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     headers.set('Authorization', `Bearer ${apiKey}`)
 
     const body = bodylessMethods.has(method) ? null : request.body
+    const upstreamController = new AbortController()
+    const signal = AbortSignal.any([request.signal, upstreamController.signal])
+    const headersTimeoutId = setTimeout(
+      () => upstreamController.abort(upstreamHeadersTimeoutError),
+      upstreamHeadersTimeoutMs,
+    )
 
     // Bun-specific fetch options: `duplex: 'half'` enables streaming request
     // bodies; `decompress: false` keeps the HPKE-encrypted bytes opaque on
     // the response path so the frontend SDK can decrypt them as-is.
-    const upstream = await fetchFn(upstreamUrl, {
-      method,
-      headers,
-      body,
-      redirect: 'manual',
-      decompress: false,
-      duplex: 'half',
-    } as RequestInit & { decompress: boolean; duplex: 'half' })
+    try {
+      const upstream = await fetchFn(upstreamUrl, {
+        method,
+        headers,
+        body,
+        signal,
+        redirect: 'manual',
+        decompress: false,
+        duplex: 'half',
+      } as RequestInit & { decompress: boolean; duplex: 'half' })
 
-    const responseHeaders = new Headers()
-    upstream.headers.forEach((value, key) => {
-      const lower = key.toLowerCase()
-      if (lower === 'transfer-encoding' || lower === 'connection') {
-        return
+      const responseHeaders = filterHeaders(upstream.headers, ['transfer-encoding', 'connection'])
+
+      const responseBody = upstream.body
+        ? capStream(upstream.body, {
+            idleTimeoutMs: upstreamIdleTimeoutMs,
+            onIdle: 'error',
+            idleError: upstreamIdleTimeoutError,
+            onAbort: () => upstreamController.abort(upstreamIdleTimeoutError),
+          }).stream
+        : null
+
+      return new Response(responseBody, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: responseHeaders,
+      })
+    } catch (error) {
+      if (error === upstreamHeadersTimeoutError) {
+        return textResponse(504, upstreamTimeoutMessage)
       }
-      responseHeaders.set(key, value)
-    })
-
-    return new Response(upstream.body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: responseHeaders,
-    })
+      throw error
+    } finally {
+      clearTimeout(headersTimeoutId)
+    }
   }
 
   // `{ parse: 'none' }` keeps the request stream untouched so the HPKE-encrypted

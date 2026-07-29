@@ -14,6 +14,7 @@ const allowedMethods = new Set(['GET', 'POST', 'OPTIONS'])
 const bodylessMethods = new Set(['GET', 'OPTIONS'])
 const defaultUpstreamHeadersTimeoutMs = 30_000
 const defaultUpstreamIdleTimeoutMs = 60_000
+const abruptResponseCloseTimeoutSeconds = 1
 const upstreamTimeoutMessage = 'tinfoil upstream timeout'
 const upstreamIdleTimeoutMessage = 'tinfoil upstream idle timeout'
 const upstreamHeadersTimeoutError = new DOMException(upstreamTimeoutMessage, 'TimeoutError')
@@ -46,7 +47,11 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const upstreamHeadersTimeoutMs = options.upstreamHeadersTimeoutMs ?? defaultUpstreamHeadersTimeoutMs
   const upstreamIdleTimeoutMs = options.upstreamIdleTimeoutMs ?? defaultUpstreamIdleTimeoutMs
 
-  const proxyToEnclave = async (request: Request, wildcard: string): Promise<Response> => {
+  const proxyToEnclave = async (
+    request: Request,
+    wildcard: string,
+    server: Bun.Server<unknown> | null,
+  ): Promise<Response> => {
     const method = request.method.toUpperCase()
 
     if (!allowedMethods.has(method)) {
@@ -101,6 +106,9 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             onIdle: 'error',
             idleError: upstreamIdleTimeoutError,
             onAbort: () => upstreamController.abort(upstreamIdleTimeoutError),
+            // Bun serializes controller.error() after headers as clean chunked EOF.
+            // Keep body pending and let native request timeout reset socket instead.
+            onIdleError: server ? () => server.timeout(request, abruptResponseCloseTimeoutSeconds) : undefined,
           }).stream
         : null
 
@@ -132,8 +140,8 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       if (rateLimit) {
         return g
           .use(rateLimit)
-          .all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? ''), { parse: 'none' })
+          .all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? '', ctx.server), { parse: 'none' })
       }
-      return g.all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? ''), { parse: 'none' })
+      return g.all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? '', ctx.server), { parse: 'none' })
     })
 }

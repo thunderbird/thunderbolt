@@ -112,6 +112,56 @@ describe('capStream', () => {
     expect(completions).toEqual([0])
   })
 
+  it('keeps an externally handled idle error pending after the source aborts', async () => {
+    const idleError = new DOMException('opaque stream idle timeout', 'TimeoutError')
+    const upstreamController = new AbortController()
+    const handledError = Promise.withResolvers<Error>()
+    const stalled = new ReadableStream<Uint8Array>({
+      start(controller) {
+        upstreamController.signal.addEventListener('abort', () => controller.error(idleError), { once: true })
+      },
+    })
+    const capped = capStream(stalled, {
+      idleTimeoutMs: 0,
+      onIdle: 'error',
+      idleError,
+      onAbort: () => upstreamController.abort(idleError),
+      onIdleError: (error) => handledError.resolve(error),
+    })
+    const reader = capped.stream.getReader()
+    const pendingRead = reader.read()
+
+    expect(await handledError.promise).toBe(idleError)
+    const readState = await Promise.race([
+      pendingRead.then(
+        () => 'settled',
+        () => 'settled',
+      ),
+      new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 10)),
+    ])
+    expect(readState).toBe('pending')
+
+    await reader.cancel()
+    await pendingRead
+  })
+
+  it('still relays source errors before an external idle handler fires', async () => {
+    const sourceError = new Error('upstream failed')
+    const failed = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(sourceError)
+      },
+    })
+    const capped = capStream(failed, {
+      idleTimeoutMs: 1000,
+      onIdle: 'error',
+      onAbort: () => {},
+      onIdleError: () => {},
+    })
+
+    await expect(capped.stream.getReader().read()).rejects.toBe(sourceError)
+  })
+
   it('resets idle timer on each chunk so a slow-but-steady stream completes', async () => {
     const aborts: string[] = []
     const chunkDelay = 10

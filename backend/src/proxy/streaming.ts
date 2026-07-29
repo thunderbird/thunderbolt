@@ -19,6 +19,9 @@ export type CapStreamOptions = {
   onIdle?: 'terminate' | 'error'
   /** Error exposed to readers when `onIdle` is `error`. */
   idleError?: Error
+  /** Handles error-mode idle expiry at the transport layer. Caller must tear
+   *  down the transport because the relayed stream stays pending. */
+  onIdleError?: (error: Error) => void
   onAbort: (reason: 'cap' | 'idle') => void
   /** Fired exactly once after the stream finishes (graceful close, cap-hit,
    *  idle, source error, or downstream cancel). Receives the total bytes
@@ -29,8 +32,8 @@ export type CapStreamOptions = {
 /**
  * Wraps a ReadableStream with an optional byte cap and idle watchdog.
  * Limit expiry terminates by default because response headers have already
- * been sent. Error mode lets callers reject opaque streams that cannot be
- * safely truncated. `onAbort` fires first so callers can abort upstream.
+ * been sent. Error mode rejects unsafe truncation by default or delegates it
+ * to a transport handler. `onAbort` fires first so callers can abort upstream.
  *
  * Returns `bytesRead()` so observability can record the actual transferred byte
  * count after the stream has been consumed. With `content-encoding` passthrough
@@ -41,6 +44,9 @@ export const capStream = (source: ReadableStream<Uint8Array>, opts: CapStreamOpt
   let bytesReceived = 0
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   let completed = false
+  let idleHandled = false
+  const idleError = opts.idleError ?? defaultIdleTimeoutError
+  const externalIdleHandler = opts.onIdle === 'error' ? opts.onIdleError : undefined
 
   const fireComplete = () => {
     if (completed) {
@@ -58,11 +64,14 @@ export const capStream = (source: ReadableStream<Uint8Array>, opts: CapStreamOpt
 
     idleTimer = setTimeout(() => {
       idleTimer = undefined
+      idleHandled = externalIdleHandler !== undefined
       opts.onAbort('idle')
-      if (opts.onIdle === 'error') {
-        controller.error(opts.idleError ?? defaultIdleTimeoutError)
-      } else {
+      if (opts.onIdle !== 'error') {
         controller.terminate()
+      } else if (externalIdleHandler) {
+        externalIdleHandler(idleError)
+      } else {
+        controller.error(idleError)
       }
       fireComplete()
     }, opts.idleTimeoutMs)
@@ -92,14 +101,34 @@ export const capStream = (source: ReadableStream<Uint8Array>, opts: CapStreamOpt
     },
   })
 
-  source.pipeTo(writable).catch(() => {
-    // pipeTo rejects when source errors OR when writable is aborted (e.g., downstream
-    // was cancelled). Clear the idle timer here so it doesn't fire after the stream
-    // has been torn down — running terminate() on an errored controller throws.
+  // pipeTo rejects when the source errors OR the writable is aborted (downstream
+  // cancel). Clear the idle timer so it can't fire after teardown — terminate()
+  // on an errored controller throws.
+  const finishRelay = () => {
     clearTimeout(idleTimer)
     idleTimer = undefined
     fireComplete()
-  })
+  }
+
+  if (externalIdleHandler) {
+    /** Keeps the relayed body pending after idle expiry so Bun can reset the transport. */
+    const relaySource = async () => {
+      try {
+        await source.pipeTo(writable, { preventAbort: true, preventClose: true })
+        if (!idleHandled) {
+          await writable.close()
+        }
+      } catch (error) {
+        if (!idleHandled) {
+          await writable.abort(error).catch(() => {})
+        }
+      }
+    }
+
+    void relaySource().finally(finishRelay)
+  } else {
+    source.pipeTo(writable).catch(finishRelay)
+  }
 
   return {
     stream: readable,

@@ -13,6 +13,7 @@ const enclaveUrl = 'https://inference.tinfoil.sh'
 const testApiKey = 'test-tinfoil-key'
 const upstreamTimeoutMessage = 'tinfoil upstream timeout'
 const upstreamIdleTimeoutMessage = 'tinfoil upstream idle timeout'
+const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
 const makeOkResponse = (body = 'ok', extraHeaders: Record<string, string> = {}) =>
   new Response(body, {
@@ -338,6 +339,51 @@ describe('createTinfoilRoutes', () => {
       await expect(stalledRead).rejects.toThrow(upstreamIdleTimeoutMessage)
       await expect(stalledRead).rejects.not.toThrow(testApiKey)
       expect(await upstream.aborted).toBeInstanceOf(DOMException)
+    })
+
+    it('abruptly closes the socket when a relayed response stalls', async () => {
+      const responseChunks = [new Uint8Array([0x01, 0x02]), new Uint8Array([0x03, 0x04])]
+      const expectedBytes = new Uint8Array(responseChunks.flatMap((chunk) => [...chunk]))
+      const upstream = createAbortableFetch(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const chunk of responseChunks) {
+                controller.enqueue(chunk)
+              }
+            },
+          }),
+        ),
+      )
+      const app = buildApp({
+        fetchFn: upstream.fetchFn,
+        upstreamIdleTimeoutMs: 20,
+      })
+      // Real socket via Elysia's own listen so the route receives the genuine
+      // `ctx.server` — hand-wiring `app.server` would bypass the seam under test.
+      await new Promise<void>((resolve) => {
+        app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
+      })
+
+      try {
+        const res = await realFetch(new URL('/tinfoil/v1/models', app.server!.url))
+        const reader = res.body!.getReader()
+        const receivedBytes: number[] = []
+
+        while (receivedBytes.length < expectedBytes.byteLength) {
+          const result = await reader.read()
+          if (result.done) {
+            throw new Error('response ended before relaying both upstream chunks')
+          }
+          receivedBytes.push(...result.value)
+        }
+
+        expect(new Uint8Array(receivedBytes)).toEqual(expectedBytes)
+        await expect(reader.read()).rejects.toThrow()
+        expect(await upstream.aborted).toBeInstanceOf(DOMException)
+      } finally {
+        await app.stop(true)
+      }
     })
 
     it('aborts upstream when the client request aborts', async () => {

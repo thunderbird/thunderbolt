@@ -41,8 +41,8 @@ describe('Tinfoil client lifecycle', () => {
     expect(createClientFactory).toHaveBeenCalledTimes(2)
     expect(trackAttestation).toHaveBeenCalledWith({
       outcome: 'error',
-      durationMs: 0,
-      errorName: 'SyntaxError',
+      duration_ms: 0,
+      error_name: 'SyntaxError',
       client: 'system',
     })
   })
@@ -77,8 +77,8 @@ describe('Tinfoil client lifecycle', () => {
     expect(createClientFactory).toHaveBeenCalledTimes(2)
     expect(trackAttestation).toHaveBeenCalledWith({
       outcome: 'timeout',
-      durationMs: 1_000,
-      errorName: 'TinfoilAttestationTimeoutError',
+      duration_ms: 1_000,
+      error_name: 'TinfoilAttestationTimeoutError',
       client: 'system',
     })
   })
@@ -129,7 +129,7 @@ describe('Tinfoil client lifecycle', () => {
 
     expect(trackAttestation).toHaveBeenCalledWith({
       outcome: 'success',
-      durationMs: 0,
+      duration_ms: 0,
       client: 'system',
     })
   })
@@ -181,8 +181,8 @@ describe('Tinfoil client lifecycle', () => {
     expect(createClientFactory).toHaveBeenCalledTimes(2)
     expect(trackAttestation).toHaveBeenCalledWith({
       outcome: 'timeout',
-      durationMs: 1_000,
-      errorName: 'TinfoilAttestationTimeoutError',
+      duration_ms: 1_000,
+      error_name: 'TinfoilAttestationTimeoutError',
       client: 'system',
     })
   })
@@ -213,8 +213,8 @@ describe('Tinfoil client lifecycle', () => {
     expect(createClientFactory).toHaveBeenCalledWith('user', '')
     expect(trackAttestation).toHaveBeenCalledWith({
       outcome: 'error',
-      durationMs: 0,
-      errorName: 'TypeError',
+      duration_ms: 0,
+      error_name: 'TypeError',
       client: 'user',
     })
   })

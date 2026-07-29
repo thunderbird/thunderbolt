@@ -15,8 +15,8 @@ export const tinfoilAttestationTimeoutMs = 15_000
 type TinfoilClientType = 'system' | 'user'
 type TinfoilAttestationProperties = {
   outcome: 'success' | 'error' | 'timeout'
-  durationMs: number
-  errorName?: string
+  duration_ms: number
+  error_name?: string
   client: TinfoilClientType
 }
 
@@ -60,15 +60,15 @@ const waitForAttestation = async (
     await withDeadline(client.ready(), timeoutMs, () => createAttestationTimeoutError(timeoutMs))
     return {
       outcome: 'success',
-      durationMs: Date.now() - startedAt,
+      duration_ms: Date.now() - startedAt,
       client: clientType,
     }
   } catch (error) {
     const isTimeout = getErrorName(error) === 'TinfoilAttestationTimeoutError'
     trackAttestation({
       outcome: isTimeout ? 'timeout' : 'error',
-      durationMs: Date.now() - startedAt,
-      errorName: getErrorName(error),
+      duration_ms: Date.now() - startedAt,
+      error_name: getErrorName(error),
       client: clientType,
     })
     // Wrap only at the throw so telemetry reports the underlying SDK failure

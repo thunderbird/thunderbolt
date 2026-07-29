@@ -27,6 +27,7 @@ type TtsProfile = { model: string; voice: string }
 // the voice settings (THU-718) via createOpenAiCompatibleEngine.
 const ttsProfiles = {
   voxtral: { model: 'voxtral-tts', voice: 'casual_male' },
+  // `ryan` chosen after an A/B listen across the qwen3 voices above (THU-683).
   qwen3: { model: 'qwen3-tts', voice: 'ryan' },
 } satisfies Record<string, TtsProfile>
 const ttsProfile: TtsProfile = ttsProfiles.qwen3

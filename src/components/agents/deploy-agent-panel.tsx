@@ -4,9 +4,13 @@
 
 /**
  * Deploy flow panel: fetch the deployable-agent catalog, let the user pick one,
- * render its descriptor form, then deploy → poll → persist a synced agent row.
- * The resulting `managed-acp` agent shows up in the normal agent list and chats
- * over the existing ACP runtime.
+ * render its descriptor form, then deploy and persist the result as a synced
+ * `managed-acp` agent — no status polling.
+ *
+ * The deploy call returns the (deterministic) chat endpoint immediately, so we
+ * write the agent row right away and it shows up in the list. The pipeline may
+ * still be spinning up on the host for a few minutes; live status badging is
+ * handled separately.
  */
 
 import { useState } from 'react'
@@ -14,7 +18,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Server } from 'lucide-react'
 
-import { deployAgent, fetchAgentCatalog, getDeploymentStatus } from '@/api/agent-deploy'
+import { deployAgent, fetchAgentCatalog } from '@/api/agent-deploy'
 import { DetailPanel } from '@/components/detail-panel'
 import { SelectableCard } from '@/components/ui/selectable-card'
 import { useAuth, useDatabase, useHttpClient } from '@/contexts'
@@ -22,7 +26,6 @@ import { createAgent } from '@/dal'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentDescriptor, AgentSpec } from '@shared/agent-descriptors'
 import { DescriptorForm } from './descriptor-form/descriptor-form'
-import { runDeploy } from './deploy-agent'
 
 export const DeployAgentPanel = ({ onClose }: { onClose: () => void }) => {
   const db = useDatabase()
@@ -50,27 +53,33 @@ export const DeployAgentPanel = ({ onClose }: { onClose: () => void }) => {
     }
     setIsDeploying(true)
     setError(null)
-    const result = await runDeploy(selected, spec, {
-      deploy: (request) => deployAgent(cloudUrl, httpClient, request),
-      pollStatus: (deploymentId) => getDeploymentStatus(cloudUrl, httpClient, deploymentId),
-      onDeployed: ({ name, connection }) =>
-        createAgent(db, {
-          id: uuidv7(),
-          name,
-          type: 'managed-acp',
-          transport: 'websocket',
-          url: connection.url,
-          enabled: 1,
-          userId,
-        }),
-    })
-    setIsDeploying(false)
-    if (result.ok) {
+    try {
+      const result = await deployAgent(cloudUrl, httpClient, {
+        descriptorId: selected.id,
+        schemaVersion: selected.schemaVersion,
+        spec,
+      })
+      if (!result.connection) {
+        setError('Deploy did not return a connection endpoint.')
+        setIsDeploying(false)
+        return
+      }
+      const name = typeof spec.name === 'string' && spec.name.trim().length > 0 ? spec.name.trim() : selected.name
+      await createAgent(db, {
+        id: uuidv7(),
+        name,
+        type: 'managed-acp',
+        transport: 'websocket',
+        url: result.connection.url,
+        enabled: 1,
+        userId,
+      })
       await queryClient.invalidateQueries({ queryKey: ['agents'] })
       onClose()
-      return
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Deploy failed.')
+      setIsDeploying(false)
     }
-    setError(result.error)
   }
 
   return (

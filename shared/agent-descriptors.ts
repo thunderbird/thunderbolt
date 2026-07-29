@@ -135,10 +135,14 @@ export const deployRequestSchema = z.object({
 })
 export type DeployRequest = z.infer<typeof deployRequestSchema>
 
-/** Response of `POST /agents/deploy`. `deploymentId` encodes `provider:ref`. */
+/** Response of `POST /agents/deploy`. `deploymentId` encodes `provider:ref`.
+ *  `connection` is the (deterministic) chat endpoint, returned up front so the
+ *  client can persist the agent immediately without polling. Null when a provider
+ *  can't resolve it at deploy time. */
 export const deployResponseSchema = z.object({
   deploymentId: z.string(),
   status: deployStatusSchema,
+  connection: agentConnectionSchema.nullable(),
 })
 export type DeployResponse = z.infer<typeof deployResponseSchema>
 

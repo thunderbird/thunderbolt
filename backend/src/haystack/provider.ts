@@ -155,11 +155,11 @@ export const createHaystackProvider = (deps: HaystackProviderDeps = {}): AgentPr
           .filter(
             // Deepset auto-idles pipelines (status flips DEPLOYED→IDLE), but they
             // wake on query — so key off the intended `desired_status`, not the
-            // transient runtime status. Non-prompt pipelines (indexes) aren't chat agents.
-            // @todo Revisit de-duplication: this includes Thunderbolt-deployed `tb-*`
-            // pipelines, which the FE also stores in the synced agents table, so a
-            // deployed agent can currently appear in both lanes.
-            (p) => (p.desired_status ?? p.status) === 'DEPLOYED' && p.supports_prompt !== false,
+            // transient runtime status. Non-prompt pipelines (indexes) aren't chat
+            // agents. Exclude our own `tb-*` deploys: those are user-owned and live
+            // in the synced agents table, so listing them here too would double them.
+            (p) =>
+              (p.desired_status ?? p.status) === 'DEPLOYED' && p.supports_prompt !== false && !p.name.startsWith('tb-'),
           )
           .map((p) => ({
             id: p.name,
@@ -178,7 +178,7 @@ export const createHaystackProvider = (deps: HaystackProviderDeps = {}): AgentPr
     },
     catalog: ({ settings }: ProviderContext): AgentDescriptor[] =>
       isDeployConfigured(settings) ? [haystackDescriptor] : [],
-    deploy: async (spec: AgentSpec, { settings }: ProviderContext): Promise<DeployResponse> => {
+    deploy: async (spec: AgentSpec, { request, settings }: ProviderContext): Promise<DeployResponse> => {
       const name = typeof spec.name === 'string' ? spec.name : ''
       const ref = toPipelineRef(name)
       const client = managementClient(settings)
@@ -186,7 +186,17 @@ export const createHaystackProvider = (deps: HaystackProviderDeps = {}): AgentPr
       const queryYaml = await client.getPipelineYaml(settings.haystackTemplatePipeline)
       await client.createPipeline({ name: ref, queryYaml })
       const deployed = await client.deployPipeline(ref)
-      return { deploymentId: encodeDeploymentId(haystackProviderId, ref), status: mapStatus(deployed.status) }
+      // The chat endpoint is deterministic from the ref, so return it now — the
+      // client persists the agent immediately without waiting for it to spin up.
+      const connection: AgentConnection = {
+        url: buildWebSocketUrl(request, `/haystack/ws?pipeline=${encodeURIComponent(ref)}`),
+        transport: 'websocket',
+      }
+      return {
+        deploymentId: encodeDeploymentId(haystackProviderId, ref),
+        status: mapStatus(deployed.status),
+        connection,
+      }
     },
     status: async (ref: string, { request, settings }: ProviderContext): Promise<DeploymentStatusResponse> => {
       const pipeline = await managementClient(settings).getPipeline(ref)

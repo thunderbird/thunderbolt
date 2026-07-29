@@ -188,7 +188,8 @@ describe('agent deploy endpoints', () => {
       id: 'haystack',
       list: () => [],
       catalog: () => [descriptor],
-      deploy: (spec) => Promise.resolve({ deploymentId: `haystack:tb-${String(spec.name)}`, status: 'pending' }),
+      deploy: (spec) =>
+        Promise.resolve({ deploymentId: `haystack:tb-${String(spec.name)}`, status: 'pending', connection: null }),
       status: (ref) => Promise.resolve({ deploymentId: `haystack:${ref}`, status: 'running', connection: null }),
     })
 
@@ -256,7 +257,7 @@ describe('agent deploy endpoints', () => {
     const res = await post(app, '/agents/deploy', { descriptorId: 'haystack', schemaVersion: 3, spec: { name: 'Bot' } })
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toEqual({ deploymentId: 'haystack:tb-Bot', status: 'pending' })
+    expect(body).toEqual({ deploymentId: 'haystack:tb-Bot', status: 'pending', connection: null })
   })
 
   it('POST /deploy returns 409 on a stale schema version', async () => {

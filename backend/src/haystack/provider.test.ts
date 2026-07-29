@@ -73,6 +73,9 @@ describe('haystack provider — deploy', () => {
 
     expect(result.deploymentId.startsWith('haystack:tb-my-agent-')).toBe(true)
     expect(result.status).toBe('pending')
+    // Deploy returns the deterministic chat endpoint straight away.
+    expect(result.connection?.transport).toBe('websocket')
+    expect(result.connection?.url).toContain('haystack/ws?pipeline=tb-my-agent-')
     // The create body carried the cloned template YAML.
     const createCall = calls.find((c) => c.init?.method === 'POST' && c.url.endsWith('/pipelines'))
     expect(JSON.parse(String(createCall?.init?.body)).query_yaml).toContain('agent: {}')
@@ -115,7 +118,7 @@ describe('haystack provider — list', () => {
       { name: 'RAG', pipeline_id: 'p1', status: 'DEPLOYED', desired_status: 'DEPLOYED', supports_prompt: true },
       // Auto-idled but intended-deployed → still a usable agent (wakes on query).
       { name: 'Napping', pipeline_id: 'p2', status: 'IDLE', desired_status: 'DEPLOYED', supports_prompt: true },
-      // tb-* deploys ARE included for now (de-dup with the synced agents table is deferred).
+      // tb-* deploys are excluded — they live in the synced agents table, not /agents.
       { name: 'tb-mine-x', pipeline_id: 'p3', status: 'DEPLOYED', desired_status: 'DEPLOYED', supports_prompt: true },
       { name: 'Undeployed', pipeline_id: 'p4', status: 'IDLE', desired_status: 'UNDEPLOYED', supports_prompt: true },
       { name: 'Indexer', pipeline_id: 'p5', status: 'DEPLOYED', desired_status: 'DEPLOYED', supports_prompt: false },
@@ -126,10 +129,10 @@ describe('haystack provider — list', () => {
     expect(await createHaystackProvider().list(request, createTestSettings())).toEqual([])
   })
 
-  it('maps intended-deployed, prompt-capable pipelines (including idle + tb- ones)', async () => {
+  it('maps intended-deployed, prompt-capable pipelines (including idle, excluding tb-)', async () => {
     const { fetchFn, calls } = routedFetch(() => ({ status: 200, body: listBody }))
     const list = await createHaystackProvider({ fetchFn }).list(request, deployableSettings())
-    expect(list.map((a) => a.id)).toEqual(['RAG', 'Napping', 'tb-mine-x'])
+    expect(list.map((a) => a.id)).toEqual(['RAG', 'Napping'])
     expect(list[0]).toMatchObject({ name: 'RAG', type: 'managed-acp', transport: 'websocket', isSystem: 1 })
     expect(list[0].url).toContain('haystack/ws?pipeline=RAG')
     expect(calls[0].url).toContain('/pipelines?limit=')

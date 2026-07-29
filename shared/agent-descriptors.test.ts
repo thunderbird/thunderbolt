@@ -93,7 +93,9 @@ describe('descriptor + response schemas', () => {
     expect(
       deployRequestSchema.parse({ descriptorId: 'haystack', schemaVersion: 1, spec: { name: 'x' } }).spec.name,
     ).toBe('x')
-    expect(deployResponseSchema.parse({ deploymentId: 'haystack:tb-x', status: 'pending' }).status).toBe('pending')
+    expect(
+      deployResponseSchema.parse({ deploymentId: 'haystack:tb-x', status: 'pending', connection: null }).status,
+    ).toBe('pending')
     const status = deploymentStatusResponseSchema.parse({
       deploymentId: 'haystack:tb-x',
       status: 'running',

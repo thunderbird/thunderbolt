@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { HttpError, type HttpClient } from '@/lib/http'
-import type { AgentCatalogResponse, DeployRequest } from '@shared/agent-descriptors'
+import type { AgentCatalogResponse, DeployRequest, DeployResponse } from '@shared/agent-descriptors'
 import { deployAgent, fetchAgentCatalog, getDeploymentStatus } from './agent-deploy'
 
 type Call = { url: string; options?: { json?: unknown } }
@@ -69,12 +69,17 @@ describe('fetchAgentCatalog', () => {
 
 describe('deployAgent', () => {
   it('POSTs the request and parses the response', async () => {
-    const { client, calls } = makeClient({ deploymentId: 'haystack:tb-x', status: 'pending' })
+    const body: DeployResponse = {
+      deploymentId: 'haystack:tb-x',
+      status: 'pending',
+      connection: { url: 'wss://h/v1/haystack/ws?pipeline=tb-x', transport: 'websocket' },
+    }
+    const { client, calls } = makeClient(body)
     const request: DeployRequest = { descriptorId: 'haystack', schemaVersion: 1, spec: { name: 'Bot' } }
     const result = await deployAgent(cloudUrl, client, request)
     expect(calls[0].url).toBe('https://api.test/v1/agents/deploy')
     expect(calls[0].options?.json).toEqual(request)
-    expect(result).toEqual({ deploymentId: 'haystack:tb-x', status: 'pending' })
+    expect(result).toEqual(body)
   })
 })
 

@@ -20,18 +20,11 @@ import type { HandleErrorCode } from '@/types/handle-errors'
 describe('classifyErrorKind', () => {
   const cases: { label: string; error: unknown; expected: ChatErrorKind }[] = [
     {
-      label: 'Tinfoil attestation errors',
-      error: Object.assign(new Error('Attestation failed'), { name: 'AttestationError' }),
-      expected: 'attestation',
-    },
-    {
-      label: 'Tinfoil attestation fetch errors',
-      error: Object.assign(new Error('Attestation fetch failed'), { name: 'FetchError' }),
-      expected: 'attestation',
-    },
-    {
-      label: 'Tinfoil configuration errors',
-      error: Object.assign(new Error('Configuration failed'), { name: 'ConfigurationError' }),
+      label: 'wrapped Tinfoil attestation fetch failures',
+      error: Object.assign(new Error('Tinfoil attestation failed: TypeError: Failed to fetch'), {
+        name: 'TinfoilAttestationError',
+        cause: new TypeError('Failed to fetch'),
+      }),
       expected: 'attestation',
     },
     {
@@ -85,7 +78,7 @@ describe('classifyErrorKind', () => {
       expected: 'timeout',
     },
     {
-      label: 'Chrome fetch failures',
+      label: 'bare non-attestation Chrome fetch failures',
       error: new TypeError('Failed to fetch'),
       expected: 'network',
     },

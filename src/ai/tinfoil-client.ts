@@ -33,6 +33,18 @@ const createAttestationTimeoutError = (timeoutMs: number): Error =>
     name: 'TinfoilAttestationTimeoutError',
   })
 
+/**
+ * Stabilize attestation classification across the SDK's inconsistent failure
+ * names; live malformed and unreachable ATC responses use SyntaxError/TypeError.
+ */
+const createAttestationError = (cause: unknown): Error => {
+  const causeName = getErrorName(cause) ?? 'Error'
+  const causeMessage = cause instanceof Error ? cause.message : String(cause)
+  return Object.assign(new Error(`Tinfoil attestation failed: ${causeName}: ${causeMessage}`, { cause }), {
+    name: 'TinfoilAttestationError',
+  })
+}
+
 /** Bound the SDK's non-abortable attestation wait and emit structured telemetry. */
 const waitForAttestation = async (
   client: SecureClient,
@@ -52,13 +64,16 @@ const waitForAttestation = async (
       client: clientType,
     }
   } catch (error) {
+    const isTimeout = getErrorName(error) === 'TinfoilAttestationTimeoutError'
     trackAttestation({
-      outcome: getErrorName(error) === 'TinfoilAttestationTimeoutError' ? 'timeout' : 'error',
+      outcome: isTimeout ? 'timeout' : 'error',
       durationMs: Date.now() - startedAt,
       errorName: getErrorName(error),
       client: clientType,
     })
-    throw error
+    // Wrap only at the throw so telemetry reports the underlying SDK failure
+    // name while classification keys on our stable wrapper name.
+    throw isTimeout ? error : createAttestationError(error)
   }
 }
 

@@ -16,22 +16,35 @@ const createClient = (ready: () => Promise<void> = async () => {}): SecureClient
   }) as unknown as SecureClient
 
 describe('Tinfoil client lifecycle', () => {
-  it('evicts and rethrows when system-client ready rejects', async () => {
-    const readyError = Object.assign(new Error('attestation failed'), { name: 'AttestationError' })
+  it('wraps malformed attestation responses, preserves telemetry fidelity, and evicts the client', async () => {
+    const readyError = new SyntaxError('Unexpected token in attestation document')
     const failedClient = createClient(async () => {
       throw readyError
     })
     const healthyClient = createClient()
     const createClientFactory = mock(async () => healthyClient)
     createClientFactory.mockImplementationOnce(async () => failedClient)
+    const trackAttestation = mock(() => {})
     const lifecycle = createTinfoilClientLifecycle({
       createClient: createClientFactory,
       getCloudUrl: () => 'https://cloud.example.com/v1',
+      trackAttestation,
     })
 
-    await expect(lifecycle.getSystemTinfoilClient()).rejects.toBe(readyError)
+    await expect(lifecycle.getSystemTinfoilClient()).rejects.toMatchObject({
+      name: 'TinfoilAttestationError',
+      message: 'Tinfoil attestation failed: SyntaxError: Unexpected token in attestation document',
+      cause: readyError,
+    })
     await expect(lifecycle.getSystemTinfoilClient()).resolves.toBe(healthyClient)
+
     expect(createClientFactory).toHaveBeenCalledTimes(2)
+    expect(trackAttestation).toHaveBeenCalledWith({
+      outcome: 'error',
+      durationMs: 0,
+      errorName: 'SyntaxError',
+      client: 'system',
+    })
   })
 
   it('times out hung ready, evicts the client, and reports timeout telemetry', async () => {
@@ -174,8 +187,8 @@ describe('Tinfoil client lifecycle', () => {
     })
   })
 
-  it('tracks user attestation errors and evicts the failed client', async () => {
-    const readyError = Object.assign(new Error('bad evidence'), { name: 'AttestationError' })
+  it('wraps unreachable attestation endpoints, tracks the underlying error, and evicts the client', async () => {
+    const readyError = new TypeError('Failed to fetch')
     const failedClient = createClient(async () => {
       throw readyError
     })
@@ -189,7 +202,11 @@ describe('Tinfoil client lifecycle', () => {
       trackAttestation,
     })
 
-    await expect(lifecycle.getTinfoilClient()).rejects.toBe(readyError)
+    await expect(lifecycle.getTinfoilClient()).rejects.toMatchObject({
+      name: 'TinfoilAttestationError',
+      message: 'Tinfoil attestation failed: TypeError: Failed to fetch',
+      cause: readyError,
+    })
     await expect(lifecycle.getTinfoilClient()).resolves.toBe(healthyClient)
 
     expect(createClientFactory).toHaveBeenCalledTimes(2)
@@ -197,7 +214,7 @@ describe('Tinfoil client lifecycle', () => {
     expect(trackAttestation).toHaveBeenCalledWith({
       outcome: 'error',
       durationMs: 0,
-      errorName: 'AttestationError',
+      errorName: 'TypeError',
       client: 'user',
     })
   })

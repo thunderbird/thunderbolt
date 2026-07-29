@@ -16,7 +16,6 @@ const parseJson = (str: string): Record<string, unknown> | undefined => {
     return undefined
   }
 }
-const attestationErrorNames = new Set(['AttestationError', 'FetchError', 'ConfigurationError'])
 const providerErrorNames = new Set(['KeyConfigMismatchError', 'ProtocolError', 'DecryptionError'])
 const timeoutMarkers = ['tinfoil upstream timeout', 'tinfoil upstream idle timeout']
 const networkErrorMarkers = ['failed to fetch', 'load failed', 'networkerror']
@@ -62,7 +61,7 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   if (name === 'TinfoilAttestationTimeoutError') {
     return 'timeout'
   }
-  if (name && attestationErrorNames.has(name)) {
+  if (name === 'TinfoilAttestationError') {
     return 'attestation'
   }
   if (status === 429) {

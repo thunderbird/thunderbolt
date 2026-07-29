@@ -10,6 +10,39 @@ import { ErrorMessage } from './error-message'
 afterEach(cleanup)
 
 describe('ErrorMessage', () => {
+  describe('cause-specific errors', () => {
+    const cases = [
+      {
+        kind: 'attestation',
+        message: "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment.",
+      },
+      {
+        kind: 'timeout',
+        message: 'The AI provider took too long to respond. Try again.',
+      },
+      {
+        kind: 'provider',
+        message: 'The AI provider is having trouble right now. Try again in a moment.',
+      },
+      {
+        kind: 'network',
+        message: 'Connection problem. Check your internet and try again.',
+      },
+    ] as const
+
+    for (const { kind, message } of cases) {
+      it(`shows ${kind} guidance with Retry`, () => {
+        const onRetry = mock(() => {})
+        const error = new Error(JSON.stringify({ error: 'Request failed', kind }))
+
+        render(<ErrorMessage retryCount={maxRetries} retriesExhausted={true} error={error} onRetry={onRetry} />)
+
+        expect(screen.getByText(message)).toBeTruthy()
+        expect(screen.getByText('Retry')).toBeTruthy()
+      })
+    }
+  })
+
   describe('rate limit errors', () => {
     it('should show rate limit message for JSON 429 status', () => {
       const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))

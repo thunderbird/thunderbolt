@@ -3,9 +3,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { maxRetries } from '@/chats/chat-instance'
-import { isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
+import { type ChatErrorKind, getChatErrorKind, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
 import { Loader2 } from 'lucide-react'
 import { memo } from 'react'
+
+const defaultChatErrorMessage = 'Something went wrong. Please try again.'
+const causeSpecificErrorMessages: Partial<Record<ChatErrorKind, string>> = {
+  attestation: "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment.",
+  timeout: 'The AI provider took too long to respond. Try again.',
+  provider: 'The AI provider is having trouble right now. Try again in a moment.',
+  network: 'Connection problem. Check your internet and try again.',
+}
+
+/** Resolve final chat error copy after automatic retries stop. */
+const getFinalChatErrorMessage = (error?: Error | null): string => {
+  const kind = getChatErrorKind(error)
+  return (kind && causeSpecificErrorMessages[kind]) || defaultChatErrorMessage
+}
 
 type ErrorMessageProps = {
   retryCount: number
@@ -67,7 +81,7 @@ export const ErrorMessage = memo(
           <p className="text-destructive/80 text-[length:var(--font-size-body)]">
             {deliveryExhausted
               ? "This model couldn't read the attached file. Try a different model."
-              : 'Something went wrong. Please try again.'}
+              : getFinalChatErrorMessage(error)}
           </p>
           <div className="flex shrink-0 items-center gap-2">
             {/* No Retry when delivery is exhausted — re-running identical input fails

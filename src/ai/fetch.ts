@@ -25,6 +25,7 @@ import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
+import { classifyErrorKind } from '@/lib/error-utils'
 import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
@@ -778,6 +779,7 @@ export const aiFetchStreamingResponse = async ({
           error: error.responseBody ?? error.message,
           status: error.statusCode,
           isRetryable: error.isRetryable,
+          kind: classifyErrorKind(error),
         })
       }
       // A provider that can't serialize a part throws this client-side, before
@@ -788,9 +790,16 @@ export const aiFetchStreamingResponse = async ({
       // must NOT be tagged 422, or they'd masquerade as a fixable attachment.
       if (UnsupportedFunctionalityError.isInstance(error)) {
         const isFilePart = /file part|media type/i.test(`${error.functionality} ${error.message}`)
-        return JSON.stringify({ error: error.message, status: isFilePart ? 422 : undefined, isRetryable: false })
+        return JSON.stringify({
+          error: error.message,
+          status: isFilePart ? 422 : undefined,
+          isRetryable: false,
+          kind: classifyErrorKind(error),
+        })
       }
-      return error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error)
+      const kind = classifyErrorKind(error)
+      return kind ? JSON.stringify({ error: message, kind }) : message
     }
 
     // Surface the user's persisted ask-widget responses (stored in each
@@ -917,7 +926,7 @@ export const aiFetchStreamingResponse = async ({
     console.error('aiFetchStreamingResponse error', error)
     const status =
       (error as { status?: number }).status ?? (error as { response?: { status?: number } }).response?.status
-    return new Response(JSON.stringify({ error: (error as Error).message, status }), {
+    return new Response(JSON.stringify({ error: (error as Error).message, status, kind: classifyErrorKind(error) }), {
       status: status ?? 500,
       headers: { 'Content-Type': 'application/json' },
     })

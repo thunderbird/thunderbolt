@@ -12,7 +12,13 @@ import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
-import { getErrorRetryable, isContentRejectionError, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
+import {
+  getChatErrorKind,
+  getErrorRetryable,
+  isContentRejectionError,
+  isContextOverflowError,
+  isRateLimitError,
+} from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -306,6 +312,15 @@ export const createChatInstance = (
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
   }
 
+  /** Stop retrying this turn and record why it stopped. */
+  const markRetriesExhausted = () => {
+    trackEvent('chat_retries_exhausted', {
+      reason: getChatErrorKind(lastError) ?? 'unknown',
+      attempts: retryCount,
+    })
+    useChatStore.getState().updateSession(id, { retriesExhausted: true })
+  }
+
   const instance = createChat({
     id,
     messages,
@@ -331,6 +346,9 @@ export const createChatInstance = (
 
       // Handle successful responses: message exists, no error, and has parts
       if (!isError && message && message.parts?.length) {
+        if (retryCount > 0) {
+          trackEvent('chat_retry_success', { attempts: retryCount })
+        }
         resetRetryStateForNewTurn()
 
         const { sessions } = useChatStore.getState()
@@ -354,8 +372,8 @@ export const createChatInstance = (
 
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
       if (isRateLimitError(lastError)) {
+        markRetriesExhausted()
         lastError = null
-        useChatStore.getState().updateSession(id, { retriesExhausted: true })
         return
       }
 
@@ -376,13 +394,13 @@ export const createChatInstance = (
         isContentRejectionError(lastError) ||
         getErrorRetryable(lastError) === false
       ) {
-        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+        markRetriesExhausted()
         return
       }
 
       if (retryCount < maxRetries) {
         if (turnBudget.probe.isExhausted) {
-          useChatStore.getState().updateSession(id, { retriesExhausted: true })
+          markRetriesExhausted()
           return
         }
 
@@ -390,7 +408,11 @@ export const createChatInstance = (
         useChatStore.getState().updateSession(id, { retryCount })
         console.info(`Auto-retrying (${retryCount}/${maxRetries})...`)
 
-        trackEvent('chat_auto_retry', { attempt: retryCount, max_retries: maxRetries })
+        trackEvent('chat_auto_retry', {
+          attempt: retryCount,
+          max_retries: maxRetries,
+          reason: getChatErrorKind(lastError) ?? 'unknown',
+        })
 
         retryTimeout = setTimeout(() => {
           retryTimeout = null
@@ -412,7 +434,7 @@ export const createChatInstance = (
           })
         }, getRetryDelay(retryCount))
       } else {
-        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+        markRetriesExhausted()
       }
     },
     // Retry logic lives in onFinish (the SDK's finally block), not here.

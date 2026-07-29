@@ -29,9 +29,10 @@ export type AgentProvider = {
    *  Matches `AgentDescriptor.provider`, so deploy requests route back here. */
   id: string
   /** Returns descriptors visible to the caller. May read settings or the request
-   *  (e.g. for WS URL host derivation). Throwing here is isolated per-provider —
-   *  the discovery route swallows the failure and continues. */
-  list: (request: Request, settings: Settings) => RemoteAgentDescriptor[]
+   *  (e.g. for WS URL host derivation) and may be async (e.g. a live host query).
+   *  Throwing / rejecting here is isolated per-provider — the discovery route
+   *  swallows the failure and continues. */
+  list: (request: Request, settings: Settings) => RemoteAgentDescriptor[] | Promise<RemoteAgentDescriptor[]>
   /** Curated creation descriptors (static). Absent → the provider is discovery-only
    *  and not deployable. */
   catalog?: (ctx: ProviderContext) => AgentDescriptor[]

@@ -37,41 +37,44 @@ export const createAgentsRoutes = (auth: Auth) =>
       const sessionUser = session?.user as User | undefined
       return { user: sessionUser ?? null }
     })
-    .get('/', ({ request, set, user }): AgentDiscoveryResponse | AgentsErrorResponse | { error: string } => {
-      if (!user) {
-        set.status = 401
-        return { error: 'Unauthorized' }
-      }
-      if (user.isAnonymous) {
-        set.status = 403
-        return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
-      }
+    .get(
+      '/',
+      async ({ request, set, user }): Promise<AgentDiscoveryResponse | AgentsErrorResponse | { error: string }> => {
+        if (!user) {
+          set.status = 401
+          return { error: 'Unauthorized' }
+        }
+        if (user.isAnonymous) {
+          set.status = 403
+          return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
+        }
 
-      const settings = getSettings()
-      const enabledIds = getEnabledAgentsList(settings)
-      const allowedById = (id: string) => enabledIds.length === 0 || enabledIds.includes(id)
+        const settings = getSettings()
+        const enabledIds = getEnabledAgentsList(settings)
+        const allowedById = (id: string) => enabledIds.length === 0 || enabledIds.includes(id)
 
-      const agents = collectAgents(request, settings)
-      const filtered = agents.filter((descriptor) => allowedById(descriptor.id))
+        const agents = await collectAgents(request, settings)
+        const filtered = agents.filter((descriptor) => allowedById(descriptor.id))
 
-      return {
-        version: '1',
-        agents: filtered,
-        allowCustomAgents: settings.allowCustomAgents,
-      }
-    })
+        return {
+          version: '1',
+          agents: filtered,
+          allowCustomAgents: settings.allowCustomAgents,
+        }
+      },
+    )
 
 /**
  * Asks every registered provider for its descriptors and concatenates the
  * results. A throwing provider is logged and skipped — one misbehaving plugin
  * never poisons the response for the others.
  */
-const collectAgents = (request: Request, settings: Settings): RemoteAgentDescriptor[] => {
+const collectAgents = async (request: Request, settings: Settings): Promise<RemoteAgentDescriptor[]> => {
   const log = createStandaloneLogger(settings)
   const out: RemoteAgentDescriptor[] = []
   for (const provider of getRegisteredProviders()) {
     try {
-      out.push(...provider.list(request, settings))
+      out.push(...(await provider.list(request, settings)))
     } catch (error) {
       log.warn({ err: error, providerId: provider.id }, 'agent provider list() failed; skipping')
     }

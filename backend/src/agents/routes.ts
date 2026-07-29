@@ -7,10 +7,24 @@ import { getEnabledAgentsList, getSettings, type Settings } from '@/config/setti
 import { createStandaloneLogger } from '@/config/logger'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import type { AgentDiscoveryResponse, RemoteAgentDescriptor } from '@shared/acp-types'
+import {
+  deployRequestSchema,
+  schemaVersionMismatch,
+  specSchemaForDescriptor,
+  type AgentCatalogResponse,
+  type AgentDescriptor,
+  type AgentSpec,
+  type DeployResponse,
+  type DeploymentStatusResponse,
+} from '@shared/agent-descriptors'
 import type { User } from '@shared/types/auth'
 import { Elysia } from 'elysia'
-import { getRegisteredProviders } from './discovery'
+import { decodeDeploymentId } from './deployment-id'
+import { getProviderById, getRegisteredProviders, type ProviderContext } from './discovery'
 import type { AgentsErrorResponse } from './types'
+
+/** Generic error body for the deploy endpoints (may carry an app-specific `code`). */
+type ErrorBody = { error: string; code?: string }
 
 /**
  * Mounts `GET /agents`, the ACP discovery endpoint.
@@ -63,6 +77,93 @@ export const createAgentsRoutes = (auth: Auth) =>
         }
       },
     )
+    .get('/catalog', async ({ request, set, user }): Promise<AgentCatalogResponse | ErrorBody> => {
+      if (!user) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+      if (user.isAnonymous) {
+        set.status = 403
+        return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
+      }
+      const settings = getSettings()
+      if (!settings.agentDeploy) {
+        set.status = 404
+        return { error: 'Not found' }
+      }
+      return { version: '1', descriptors: collectCatalog({ request, settings, userId: user.id }) }
+    })
+    .post('/deploy', async ({ body, request, set, user }): Promise<DeployResponse | ErrorBody> => {
+      if (!user) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+      if (user.isAnonymous) {
+        set.status = 403
+        return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
+      }
+      const settings = getSettings()
+      if (!settings.agentDeploy) {
+        set.status = 404
+        return { error: 'Not found' }
+      }
+      const parsed = deployRequestSchema.safeParse(body)
+      if (!parsed.success) {
+        set.status = 400
+        return { error: 'Invalid deploy request' }
+      }
+      const ctx: ProviderContext = { request, settings, userId: user.id }
+      const descriptor = collectCatalog(ctx).find((d) => d.id === parsed.data.descriptorId)
+      if (!descriptor) {
+        set.status = 404
+        return { error: 'Unknown agent' }
+      }
+      // Reject a spec built against a stale descriptor before we act on it.
+      if (descriptor.schemaVersion !== parsed.data.schemaVersion) {
+        set.status = 409
+        return { error: 'Schema version mismatch', code: schemaVersionMismatch }
+      }
+      const provider = getProviderById(descriptor.provider)
+      if (!provider?.deploy) {
+        set.status = 404
+        return { error: 'Agent is not deployable' }
+      }
+      // Re-validate the spec server-side — the client is never trusted.
+      const specResult = specSchemaForDescriptor(descriptor).safeParse(parsed.data.spec)
+      if (!specResult.success) {
+        set.status = 400
+        return { error: 'Invalid spec' }
+      }
+      return provider.deploy(specResult.data as AgentSpec, ctx)
+    })
+    .get('/deployments/:id', async ({ params, request, set, user }): Promise<DeploymentStatusResponse | ErrorBody> => {
+      if (!user) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+      if (user.isAnonymous) {
+        set.status = 403
+        return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
+      }
+      const settings = getSettings()
+      if (!settings.agentDeploy) {
+        set.status = 404
+        return { error: 'Not found' }
+      }
+      let decoded: { provider: string; ref: string }
+      try {
+        decoded = decodeDeploymentId(params.id)
+      } catch {
+        set.status = 400
+        return { error: 'Invalid deployment id' }
+      }
+      const provider = getProviderById(decoded.provider)
+      if (!provider?.status) {
+        set.status = 404
+        return { error: 'Unknown provider' }
+      }
+      return provider.status(decoded.ref, { request, settings, userId: user.id })
+    })
 
 /**
  * Asks every registered provider for its descriptors and concatenates the
@@ -77,6 +178,27 @@ const collectAgents = async (request: Request, settings: Settings): Promise<Remo
       out.push(...(await provider.list(request, settings)))
     } catch (error) {
       log.warn({ err: error, providerId: provider.id }, 'agent provider list() failed; skipping')
+    }
+  }
+  return out
+}
+
+/**
+ * Ask every deployable provider for its creation descriptors. Like
+ * {@link collectAgents}, a throwing provider is logged and skipped so one bad
+ * plugin never poisons the catalog.
+ */
+const collectCatalog = (ctx: ProviderContext): AgentDescriptor[] => {
+  const log = createStandaloneLogger(ctx.settings)
+  const out: AgentDescriptor[] = []
+  for (const provider of getRegisteredProviders()) {
+    if (!provider.catalog) {
+      continue
+    }
+    try {
+      out.push(...provider.catalog(ctx))
+    } catch (error) {
+      log.warn({ err: error, providerId: provider.id }, 'agent provider catalog() failed; skipping')
     }
   }
   return out

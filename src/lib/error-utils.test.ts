@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
   createHandleError,
+  getErrorName,
   getErrorRetryable,
   getErrorStatusCode,
   isContentRejectionError,
@@ -12,6 +13,18 @@ import {
   isRateLimitError,
 } from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
+
+describe('getErrorName', () => {
+  it('returns string names from error-like values', () => {
+    expect(getErrorName(new TypeError('failed'))).toBe('TypeError')
+    expect(getErrorName({ name: 'SdkError' })).toBe('SdkError')
+  })
+
+  it('returns undefined when no string name exists', () => {
+    expect(getErrorName({ name: 42 })).toBeUndefined()
+    expect(getErrorName(null)).toBeUndefined()
+  })
+})
 
 describe('isRateLimitError', () => {
   it('detects 429 from JSON response body (DefaultChatTransport path)', () => {

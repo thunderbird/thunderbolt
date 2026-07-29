@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getTinfoilClient } from '@/ai/fetch'
+import { getTinfoilClient } from '@/ai/tinfoil-client'
 import { fetch } from '@/lib/fetch'
 import { http } from '@/lib/http'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'

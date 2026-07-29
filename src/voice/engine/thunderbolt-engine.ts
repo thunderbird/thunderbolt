@@ -11,7 +11,7 @@
  * is processed enclave-private. Only the *transport* is Tinfoil-specific; the
  * request/response orchestration is shared via `createAudioEngine`.
  */
-import { evictSystemTinfoilClient, getSystemTinfoilClient, isKeyConfigMismatchError } from '@/ai/fetch'
+import { evictSystemTinfoilClient, getSystemTinfoilClient, isTinfoilTransportWedgedError } from '@/ai/tinfoil-client'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { type AudioTransport, createAudioEngine } from './audio-engine'
@@ -40,9 +40,9 @@ const ttsInstructions =
 /**
  * POST to a Tinfoil `/v1/audio/*` endpoint via the attested `SecureClient`,
  * attaching the app's session auth (the `/tinfoil` route's guard needs the real
- * token/SSO cookies, not the SDK placeholder). On a `KeyConfigMismatchError`
- * that survives the SDK's own retry the cached client is wedged — evict it and
- * retry once with a fresh attestation context (mirrors the chat path).
+ * token/SSO cookies, not the SDK placeholder). On a wedged transport failure
+ * that survives the SDK's own reset/retry, evict the cached client and retry
+ * once with a fresh attestation context (mirrors the chat path).
  */
 const tinfoilTransport: AudioTransport = async (path, body, headers, signal) => {
   const sso = isSsoMode()
@@ -63,8 +63,7 @@ const tinfoilTransport: AudioTransport = async (path, body, headers, signal) => 
     }
     return client.fetch(`${baseUrl}${path}`, init)
   }
-  // Retry once on a wedged attestation key — whether the SDK throws
-  // KeyConfigMismatchError or the enclave returns it as a 422.
+  // Retry once on a wedged transport or a 422 key-mismatch response.
   try {
     const res = await attempt()
     if (res.status === 422) {
@@ -73,7 +72,7 @@ const tinfoilTransport: AudioTransport = async (path, body, headers, signal) => 
     }
     return res
   } catch (err) {
-    if (!isKeyConfigMismatchError(err)) {
+    if (!isTinfoilTransportWedgedError(err)) {
       throw err
     }
     evictSystemTinfoilClient()

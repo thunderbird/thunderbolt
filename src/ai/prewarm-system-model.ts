@@ -12,6 +12,6 @@ export const prewarmSystemModel = async (model: Pick<Model, 'provider' | 'isSyst
   if (!model || model.provider !== 'tinfoil' || !model.isSystem) {
     return
   }
-  const { runSystemModelPrewarm } = await import('./fetch')
+  const { runSystemModelPrewarm } = await import('./tinfoil-client')
   await runSystemModelPrewarm(model)
 }

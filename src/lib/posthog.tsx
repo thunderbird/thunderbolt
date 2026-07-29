@@ -163,6 +163,7 @@ export type EventType =
   | 'chat_new_clicked'
   | 'chat_delete'
   | 'chat_clear_all'
+  | 'tinfoil_attestation'
   // Model & Settings
   | 'model_select'
   | 'mode_select'

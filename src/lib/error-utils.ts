@@ -12,6 +12,14 @@ const parseJson = (str: string): Record<string, unknown> | undefined => {
   }
 }
 
+/** Return an error-like value's string name, when present. */
+export const getErrorName = (error: unknown): string | undefined => {
+  if (typeof error !== 'object' || error === null || !('name' in error)) {
+    return undefined
+  }
+  return typeof error.name === 'string' ? error.name : undefined
+}
+
 /** Check whether an error represents a rate-limit (HTTP 429) response. */
 export const isRateLimitError = (error?: Error | null): boolean => {
   if (!error?.message) {

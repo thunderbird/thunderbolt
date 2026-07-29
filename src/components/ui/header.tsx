@@ -16,7 +16,7 @@ import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { selectAgentDeploy, selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
@@ -171,6 +171,10 @@ export const Header = () => {
   const location = useLocation()
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const agentDeploy = useConfigStore((state) => selectAgentDeploy(state.config))
+  // Offer Add Agent when either path is available; the shared AddAgentBody picks
+  // the catalog+connect flow or the connect-only form by the same capability.
+  const canAddAgent = agentDeploy || allowCustomAgents
 
   const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, hasThread } = useChatStore(
     useShallow((state) => {
@@ -212,7 +216,7 @@ export const Header = () => {
       selectedAgent={effectiveAgent}
       agents={allAgents}
       onSelect={handleAgentSelect}
-      onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
+      onAddAgent={canAddAgent ? handleAddAgent : undefined}
       mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )

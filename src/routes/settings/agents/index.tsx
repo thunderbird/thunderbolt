@@ -7,11 +7,10 @@ import { useState } from 'react'
 import { testAcpConnection } from '@/acp'
 import { selectAgentDeploy, selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
-import { AddAgentPanel } from '@/components/agents/add-agent-panel'
+import { AddAgentBody } from '@/components/agents/add-agent-body'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
-import { CreateAgentDetailPanel } from '@/components/settings/agents/create-agent-detail-panel'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
 import { SettingsListBody, settingsListBodyRowsClass, SettingsListPane } from '@/components/settings/settings-list'
 import { PageCreateAction } from '@/components/ui/page-create-action'
@@ -36,10 +35,8 @@ type AgentsSettingsPageProps = {
  * discovery, and user-added custom remote ACP endpoints. Rows are read-only —
  * clicking one slides in a detail panel (same slide-in idiom as the skills
  * page) where all viewing and management happens. The only other affordance
- * is "+" → add a new agent. When the managed-deploy flow is enabled, "+" opens
- * the Add Agent panel (catalog list with "Connect custom agent" first, falling
- * back to the connect form when the catalog is empty); otherwise it opens the
- * connect form directly.
+ * is "+" → add a new agent, which opens the shared {@link AddAgentBody} (catalog
+ * + connect when managed deploy is enabled, connect form otherwise).
  */
 const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) => {
   const db = useDatabase()
@@ -50,28 +47,25 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
   const agentDeploy = useConfigStore((state) => selectAgentDeploy(state.config))
 
-  // The add form, the deploy flow, the CLI install card, and the agent rows all
-  // share the one slide-in panel slot, so the selection is a single union — the
-  // panels are mutually exclusive by construction (a string sentinel could
-  // collide with a server-chosen agent id).
+  // The add panel, the CLI install card, and the agent rows all share the one
+  // slide-in panel slot, so the selection is a single union — the panels are
+  // mutually exclusive by construction (a string sentinel could collide with a
+  // server-chosen agent id).
   const [activePanel, setActivePanel] = useState<
-    { kind: 'add' } | { kind: 'deploy' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
+    { kind: 'add' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
   >(null)
   const cliOpen = activePanel?.kind === 'cli'
   const addOpen = activePanel?.kind === 'add'
-  const deployOpen = activePanel?.kind === 'deploy'
 
   // Deriving from the live list means the panel follows sync: if the active
   // agent is deleted on another device, `activeAgent` turns undefined and the
   // panel closes on its own.
   const activeAgent = activePanel?.kind === 'agent' ? agents.find((a) => a.id === activePanel.id) : undefined
-  const panelOpen = addOpen || deployOpen || activeAgent !== undefined || cliOpen
+  const panelOpen = addOpen || activeAgent !== undefined || cliOpen
 
   const closePanel = () => setActivePanel(null)
   const openAgentPanel = (id: string) => setActivePanel({ kind: 'agent', id })
-  // The Add Agent panel folds the connect path into its catalog list, so "+"
-  // opens it whenever deploy is enabled; otherwise it opens the connect form.
-  const openCreatePanel = () => setActivePanel({ kind: agentDeploy ? 'deploy' : 'add' })
+  const openCreatePanel = () => setActivePanel({ kind: 'add' })
   const toggleAgentPanel = (id: string) =>
     setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
   const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
@@ -89,17 +83,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
 
   const renderPanel = () => {
     if (addOpen) {
-      return <CreateAgentDetailPanel onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
-    }
-    if (deployOpen) {
-      return (
-        <AddAgentPanel
-          onClose={closePanel}
-          allowConnect={allowCustomAgents}
-          loadAppNodeId={loadAppNodeId}
-          enrollIroh={enrollIroh}
-        />
-      )
+      return <AddAgentBody onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
     }
     if (activeAgent) {
       return (

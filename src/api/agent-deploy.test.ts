@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { HttpError, type HttpClient } from '@/lib/http'
 import type { AgentCatalogResponse, DeployRequest, DeployResponse } from '@shared/agent-descriptors'
-import { deployAgent, fetchAgentCatalog, getDeploymentStatus } from './agent-deploy'
+import { deployAgent, deploymentIdForAgent, fetchAgentCatalog, getDeploymentStatus } from './agent-deploy'
 
 type Call = { url: string; options?: { json?: unknown } }
 
@@ -80,6 +80,27 @@ describe('deployAgent', () => {
     expect(calls[0].url).toBe('https://api.test/v1/agents/deploy')
     expect(calls[0].options?.json).toEqual(request)
     expect(result).toEqual(body)
+  })
+})
+
+describe('deploymentIdForAgent', () => {
+  it('derives <provider>:<ref> from a managed agent url', () => {
+    expect(deploymentIdForAgent({ type: 'managed-acp', url: 'wss://h/v1/haystack/ws?pipeline=tb-x' })).toBe(
+      'haystack:tb-x',
+    )
+  })
+
+  it('returns null for non-managed agents', () => {
+    expect(deploymentIdForAgent({ type: 'remote-acp', url: 'wss://h/v1/haystack/ws?pipeline=tb-x' })).toBeNull()
+  })
+
+  it('returns null when the url carries no pipeline ref', () => {
+    expect(deploymentIdForAgent({ type: 'managed-acp', url: 'wss://h/v1/haystack/ws' })).toBeNull()
+  })
+
+  it('returns null for a missing or malformed url', () => {
+    expect(deploymentIdForAgent({ type: 'managed-acp', url: null })).toBeNull()
+    expect(deploymentIdForAgent({ type: 'managed-acp', url: 'not a url' })).toBeNull()
   })
 })
 

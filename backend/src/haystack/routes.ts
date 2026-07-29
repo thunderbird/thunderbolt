@@ -15,6 +15,18 @@ import { HaystackAcpServer, type HaystackAcpDeps } from './acp-server'
 import { createHaystackProvider, resolveHaystackPipeline } from './provider'
 
 /**
+ * Per-connection state stashed on `ws.data`. `server` is created once the async
+ * `open()` finishes; `pending` buffers frames that arrive during that window so
+ * the FE's eager `initialize` isn't dropped (see `open`). `request` is Bun's
+ * original upgrade request.
+ */
+type HaystackWsSlot = {
+  request?: Request
+  server?: HaystackAcpServer
+  pending?: string[]
+}
+
+/**
  * Mount the Haystack ACP adapter routes.
  *
  *  - Registers the Haystack provider into the agent discovery registry on
@@ -121,21 +133,29 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
       },
       async open(ws) {
         const log = createStandaloneLogger(settings)
-        const data = ws.data as unknown as { request?: Request }
+        const slot = ws.data as unknown as HaystackWsSlot
+
+        // Bun delivers `message` frames WITHOUT awaiting this async handler, so
+        // the FE's first ACP frame (`initialize`, sent the instant the socket
+        // opens) can arrive while the auth + live pipeline lookup below is still
+        // in flight. Buffer anything that lands during that window and drain it
+        // once the server exists, so no frame is silently dropped (that stall was
+        // the whole bug: the ACP handshake never completed and chat hung).
+        slot.pending = []
 
         // Validate the bearer exactly once per accepted socket. Doing this in
         // `beforeHandle` instead is unsafe because Bun's adapter can call it
         // more than once per upgrade. The bearer rides a subprotocol entry
         // (browsers can't set `Authorization` on `new WebSocket()`); it is
         // verified via the same Better Auth path REST uses (HMAC + DB lookup).
-        const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
+        const subprotocolHeader = slot.request?.headers.get('sec-websocket-protocol') ?? null
         const user: User | null = await authorizeWsBearer(auth, subprotocolHeader)
         if (!user) {
           ws.close(wsCloseUnauthorized, 'unauthorized')
           return
         }
 
-        const url = new URL(data.request?.url ?? 'http://localhost/haystack/ws')
+        const url = new URL(slot.request?.url ?? 'http://localhost/haystack/ws')
         const pipelineSlug = url.searchParams.get('pipeline')
         if (!pipelineSlug) {
           ws.close(wsCloseUnauthorized, 'missing pipeline parameter')
@@ -162,23 +182,37 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
           settings,
           deps,
         })
-        ;(ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer = server
+        slot.server = server
+        // Drain buffered frames in arrival order before going live. Frames that
+        // arrive mid-drain are appended to the same queue (see `message`), so the
+        // loop picks them up and ordering is preserved.
+        while (slot.pending.length > 0) {
+          await server.handleMessage(slot.pending.shift()!)
+        }
+        slot.pending = undefined
         log.debug({ pipelineSlug, pipelineName: resolved.pipelineName, userId: user.id }, 'haystack ws opened')
       },
       async message(ws, message) {
-        const server = (ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer
-        if (!server) {
-          // Auth already rejected this socket; the client may still race a
-          // first frame before the close lands. Drop quietly.
+        const slot = ws.data as unknown as HaystackWsSlot
+        const text = typeof message === 'string' ? message : JSON.stringify(message)
+        // Still inside (or draining after) an async `open()` — preserve order by
+        // queueing; `open()` drains this once the server is ready.
+        if (slot.pending) {
+          slot.pending.push(text)
           return
         }
-        const text = typeof message === 'string' ? message : JSON.stringify(message)
-        await server.handleMessage(text)
+        if (!slot.server) {
+          // Auth rejected this socket; the client may still race a first frame
+          // before the close lands. Drop quietly.
+          return
+        }
+        await slot.server.handleMessage(text)
       },
       close(ws) {
-        const slot = ws.data as unknown as { __haystackServer?: HaystackAcpServer }
-        slot.__haystackServer?.dispose()
-        slot.__haystackServer = undefined
+        const slot = ws.data as unknown as HaystackWsSlot
+        slot.server?.dispose()
+        slot.server = undefined
+        slot.pending = undefined
       },
     })
 }

@@ -112,6 +112,21 @@ const haystackFetch = (async (input: RequestInfo | URL) => {
   return new Response(JSON.stringify({ error: 'not found' }), { status: 404, statusText: 'Not Found' })
 }) as typeof fetch
 
+/**
+ * Same as {@link haystackFetch} but the slug lookup is deliberately slow, so the
+ * server-side async `open()` is still resolving when the client's first frame
+ * lands — the production condition (a real Deepset lookup takes tens of ms) that
+ * a synchronous fake hides. Exercises the early-frame buffering.
+ */
+const slowHaystackFetch = (async (input: RequestInfo | URL) => {
+  const url = String(input)
+  if (/\/pipelines\/rag$/.test(url)) {
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    return new Response(JSON.stringify({ name: 'rag', pipeline_id: 'pipe-uuid', status: 'DEPLOYED' }), { status: 200 })
+  }
+  return new Response(JSON.stringify({ error: 'not found' }), { status: 404, statusText: 'Not Found' })
+}) as typeof fetch
+
 describe('WS /v1/haystack/ws — auth gating', () => {
   const cleanups: Array<() => Promise<void>> = []
   // Isolated PGlite instance for the real-`.listen()` upgrades in this suite:
@@ -275,6 +290,40 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     expect(reply.id).toBe(1)
     expect(reply.result.protocolVersion).toBeGreaterThan(0)
     expect(reply.result.agentCapabilities.loadSession).toBe(true)
+    client.close()
+  }, 15000)
+
+  it('answers an initialize sent immediately, even while open() is still resolving', async () => {
+    // The production race: the FE sends `initialize` the instant the socket opens,
+    // while the server's async open() is still doing the auth + (slow) pipeline
+    // lookup. Without buffering that frame is dropped and the handshake hangs.
+    const handle = await createTestApp({ database: iso.db, fetchFn: slowHaystackFetch })
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
+
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`,
+      bearerProtocols(handle.bearerToken),
+    )
+    // Bind the reply listener up front, then fire initialize the moment the
+    // socket opens — before the slow server-side open() can finish.
+    const replyPromise = new Promise<string>((resolve, reject) => {
+      client.addEventListener('message', (event: MessageEvent) =>
+        resolve(typeof event.data === 'string' ? event.data : ''),
+      )
+      client.addEventListener('close', () => reject(new Error('closed before reply')))
+      client.addEventListener('error', () => reject(new Error('errored before reply')))
+    })
+    client.addEventListener('open', () => {
+      client.send(JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'initialize' }))
+    })
+
+    const reply = JSON.parse(await replyPromise)
+    expect(reply.id).toBe(7)
+    expect(reply.result.protocolVersion).toBeGreaterThan(0)
     client.close()
   }, 15000)
 

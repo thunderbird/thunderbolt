@@ -5,8 +5,9 @@
 import { useState } from 'react'
 
 import { testAcpConnection } from '@/acp'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { selectAgentDeploy, selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
+import { DeployAgentPanel } from '@/components/agents/deploy-agent-panel'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
@@ -44,26 +45,29 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const agentDeploy = useConfigStore((state) => selectAgentDeploy(state.config))
 
-  // The add form, the CLI install card, and the agent rows all share the one
-  // slide-in panel slot, so the selection is a single union — the panels are
-  // mutually exclusive by construction (a string sentinel could collide with
-  // a server-chosen agent id).
+  // The add form, the deploy flow, the CLI install card, and the agent rows all
+  // share the one slide-in panel slot, so the selection is a single union — the
+  // panels are mutually exclusive by construction (a string sentinel could
+  // collide with a server-chosen agent id).
   const [activePanel, setActivePanel] = useState<
-    { kind: 'add' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
+    { kind: 'add' } | { kind: 'deploy' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
   >(null)
   const cliOpen = activePanel?.kind === 'cli'
   const addOpen = activePanel?.kind === 'add'
+  const deployOpen = activePanel?.kind === 'deploy'
 
   // Deriving from the live list means the panel follows sync: if the active
   // agent is deleted on another device, `activeAgent` turns undefined and the
   // panel closes on its own.
   const activeAgent = activePanel?.kind === 'agent' ? agents.find((a) => a.id === activePanel.id) : undefined
-  const panelOpen = addOpen || activeAgent !== undefined || cliOpen
+  const panelOpen = addOpen || deployOpen || activeAgent !== undefined || cliOpen
 
   const closePanel = () => setActivePanel(null)
   const openAddPanel = () => setActivePanel({ kind: 'add' })
   const openAgentPanel = (id: string) => setActivePanel({ kind: 'agent', id })
+  const openDeployPanel = () => setActivePanel({ kind: 'deploy' })
   const toggleAgentPanel = (id: string) =>
     setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
   const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
@@ -82,6 +86,9 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const renderPanel = () => {
     if (addOpen) {
       return <CreateAgentDetailPanel onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
+    }
+    if (deployOpen) {
+      return <DeployAgentPanel onClose={closePanel} />
     }
     if (activeAgent) {
       return (
@@ -120,6 +127,9 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             panel edge). */}
         <SettingsListPane className="gap-6">
           <PageHeader title="Agents">
+            {agentDeploy && (
+              <PageCreateAction label="Deploy Agent" onClick={openDeployPanel} disabled={!currentUserId} />
+            )}
             {allowCustomAgents && (
               <PageCreateAction label="New Agent" onClick={openAddPanel} disabled={!currentUserId} />
             )}

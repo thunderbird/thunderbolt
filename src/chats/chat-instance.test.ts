@@ -137,7 +137,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getDb: (() => ({})) as never,
     })
 
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
 
     expect(observed).toEqual(['connecting'])
     expect(useChatStore.getState().sessions.get(sessionId)!.connectionStatus).toBe('ready')
@@ -155,7 +155,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getDb: (() => ({})) as never,
     })
 
-    await expect(fetch('http://x', { body: '{}' } as RequestInit)).rejects.toThrow('boom')
+    await expect(fetch('https://x', { body: '{}' } as RequestInit)).rejects.toThrow('boom')
 
     const session = useChatStore.getState().sessions.get(sessionId)!
     expect(session.connectionStatus).toBe('error')
@@ -171,8 +171,8 @@ describe('createAgentRoutingFetch — connection status', () => {
       getDb: (() => ({})) as never,
     })
 
-    await fetch('http://x', { body: '{}' } as RequestInit)
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
 
     expect(connectToAgent).toHaveBeenCalledTimes(1)
     expect(useChatStore.getState().sessions.get(sessionId)!.connectionStatus).toBe('ready')
@@ -188,9 +188,9 @@ describe('createAgentRoutingFetch — connection status', () => {
       getDb: (() => ({})) as never,
     })
 
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
     useChatStore.getState().updateSession(sessionId, { selectedAgent: altAgent })
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
 
     expect(connectToAgent).toHaveBeenCalledTimes(2)
     expect(useChatStore.getState().sessions.get(sessionId)!.connectionStatus).toBe('ready')
@@ -216,7 +216,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       { getTurnBudget: () => budget },
     )
 
-    await expect(fetch('http://x', { body: '{}' } as RequestInit)).rejects.toMatchObject({
+    await expect(fetch('https://x', { body: '{}' } as RequestInit)).rejects.toMatchObject({
       name: 'TurnBudgetExhaustedError',
     })
     expect(adapterFetch).not.toHaveBeenCalled()

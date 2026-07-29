@@ -208,7 +208,7 @@ describe('createVoiceSession', () => {
     }
     expect(session.state).toBe('speaking')
 
-    vadHandlers!.onSpeechStart() // the user starts talking over the assistant
+    vadHandlers!.onSpeechStart!() // the user starts talking over the assistant
     await turn
 
     // Cut off: back to listening, and the assistant reply never committed — a
@@ -222,7 +222,7 @@ describe('createVoiceSession', () => {
     const session = createVoiceSession({ engine: makeEngine('hi'), reply: makeReply(['hi']) })
     await session.start()
     expect(session.state).toBe('listening')
-    vadHandlers!.onSpeechStart() // nothing to interrupt
+    vadHandlers!.onSpeechStart!() // nothing to interrupt
     expect(session.state).toBe('listening')
   })
 })

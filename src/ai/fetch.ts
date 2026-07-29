@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createPromptParts } from '@/ai/prompt'
+import { createTurnBudget, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import {
   buildStepOverrides,
   extractTextFromMessages,
@@ -107,6 +108,7 @@ type AiFetchStreamingResponseOptions = {
   mcpClients?: NamedMCPClient[]
   reconnectClient?: ReconnectClient
   httpClient: HttpClient
+  turnBudget?: TurnBudgetConsumer
   /** Returns the current proxy fetch. Production callers pass the getter from
    *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
    *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
@@ -586,6 +588,13 @@ export const prepareAiRequestConfig = async ({
   }
 }
 
+/**
+ * Stream one response through the legacy built-in pipeline.
+ *
+ * Adapter callers supply the active turn consumer; direct callers receive a
+ * local budget. Only empty-response attempts after the first consume here
+ * because the routing fetch already consumed the initial request.
+ */
 export const aiFetchStreamingResponse = async ({
   init,
   modelId,
@@ -593,11 +602,13 @@ export const aiFetchStreamingResponse = async ({
   reconnectClient,
   httpClient,
   getProxyFetch,
+  turnBudget,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
   const abortSignal: AbortSignal | undefined = options.signal ?? undefined
   const { messages } = body as { messages: ThunderboltUIMessage[]; id: string }
+  const requestBudget = turnBudget ?? createTurnBudget().consumer
 
   // The chat instance saves the user message via `saveMessages` before
   // invoking the adapter — see `src/chats/chat-instance.ts`. By the time we
@@ -656,6 +667,9 @@ export const aiFetchStreamingResponse = async ({
      */
     const runStreamText = (inputMessages: Awaited<ReturnType<typeof convertToModelMessages>>) => {
       return streamText({
+        // SDK-internal retries are invisible to the shared per-turn request budget.
+        // Keep retries in the app layers where every request is counted.
+        maxRetries: 0,
         temperature: modelTemperature,
         model: wrappedModel,
         system: systemPrompt,
@@ -827,6 +841,11 @@ export const aiFetchStreamingResponse = async ({
         let anyAttemptHadToolCalls = false
 
         while (attemptNumber <= maxAttempts) {
+          if (attemptNumber > 1 && !requestBudget.tryConsumeRequest()) {
+            writer.write({ type: 'finish' })
+            return
+          }
+
           const result = runStreamText(currentMessages)
           const messageMetadata = createMessageMetadata(modelId, sourceCollector, mcpToolsMetadata)
 

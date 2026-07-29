@@ -15,6 +15,7 @@ import type { RequestPermissionRequest, RequestPermissionResponse } from '@agent
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SessionSideEffectSink } from '@/acp/translators/acp-to-ai-sdk'
+import type { TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
 
 /** Capabilities advertised by an ACP agent on `initialize`. Stored on the
@@ -73,6 +74,7 @@ export type AgentAdapterContext = {
   reconnectClient: (client: MCPClient) => Promise<MCPClient | null>
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
+  turnBudget?: TurnBudgetConsumer
   /** Increments only when the current assistant response is regenerated. Built-in
    *  persistent harnesses use it to rebuild from the edited transcript without
    *  rebuilding during ordinary transcript growth. */

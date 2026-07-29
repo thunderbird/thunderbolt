@@ -507,6 +507,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
       getProxyFetch: context.getProxyFetch,
+      turnBudget: context.turnBudget,
     })
 
   // Route tool-capable Pi-serviceable models (anthropic + the OpenAI-wire family)

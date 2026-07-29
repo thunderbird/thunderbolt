@@ -15,7 +15,7 @@ import type {
   DeployResponse,
   DeployStatus,
 } from '@shared/agent-descriptors'
-import { DeepsetManagementClient } from './management-client'
+import { DeepsetManagementClient, DeepsetManagementError } from './management-client'
 
 /**
  * Provider id registered into the agent discovery registry. The string is
@@ -71,16 +71,25 @@ const isHaystackConfigured = (settings: Settings): boolean =>
 const isDeployConfigured = (settings: Settings): boolean =>
   isHaystackConfigured(settings) && Boolean(settings.haystackTemplatePipeline)
 
-/** Map a Deepset pipeline status onto the normalized deploy lifecycle. */
+/**
+ * Map a Deepset pipeline status onto our normalized deploy lifecycle. Deepset
+ * `PipelineStatus`: DEPLOYMENT_IN_PROGRESS, ACTIVATING (transient → `pending`);
+ * DEPLOYED and IDLE (both usable — an auto-idled pipeline wakes on query →
+ * `running`); DEPLOYMENT_FAILED (`failed`); UNDEPLOYED, UNDEPLOYMENT_IN_PROGRESS
+ * (unusable → `gone`, alongside a not-found host lookup).
+ */
 const mapStatus = (deepsetStatus: string): DeployStatus => {
   const status = deepsetStatus.toUpperCase()
-  if (status === 'DEPLOYED') {
+  if (status === 'DEPLOYMENT_IN_PROGRESS' || status === 'ACTIVATING') {
+    return 'pending'
+  }
+  if (status === 'DEPLOYED' || status === 'IDLE') {
     return 'running'
   }
   if (status.includes('FAIL')) {
     return 'failed'
   }
-  return 'pending'
+  return 'gone'
 }
 
 /** Derive a Deepset-safe pipeline name from a user-chosen display name. */
@@ -199,8 +208,23 @@ export const createHaystackProvider = (deps: HaystackProviderDeps = {}): AgentPr
       }
     },
     status: async (ref: string, { request, settings }: ProviderContext): Promise<DeploymentStatusResponse> => {
-      const pipeline = await managementClient(settings).getPipeline(ref)
+      const deploymentId = encodeDeploymentId(haystackProviderId, ref)
+      // A not-found pipeline was deleted/undeployed on the host — report `gone`
+      // (a terminal state the client can warn on) rather than throwing.
+      const pipeline = await managementClient(settings)
+        .getPipeline(ref)
+        .catch((err) => {
+          if (err instanceof DeepsetManagementError && err.status === 404) {
+            return null
+          }
+          throw err
+        })
+      if (!pipeline) {
+        return { deploymentId, status: 'gone', detail: 'not found', connection: null }
+      }
       const status = mapStatus(pipeline.status)
+      // A usable (running, incl. auto-idled) pipeline carries the chat endpoint;
+      // pending/failed/gone don't.
       const connection: AgentConnection | null =
         status === 'running'
           ? {
@@ -208,7 +232,7 @@ export const createHaystackProvider = (deps: HaystackProviderDeps = {}): AgentPr
               transport: 'websocket',
             }
           : null
-      return { deploymentId: encodeDeploymentId(haystackProviderId, ref), status, detail: pipeline.status, connection }
+      return { deploymentId, status, detail: pipeline.status, connection }
     },
   }
 }

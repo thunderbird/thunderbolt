@@ -14,8 +14,10 @@
  *   list    GET    /pipelines?limit=N                                                    → 200 {data:[…]}
  *   yaml    GET    /pipelines/:name/yaml                                                 → 200 {query_yaml}
  *
- * Statuses seen: `DEPLOYMENT_IN_PROGRESS` (transient), `DEPLOYED` (running),
- * `FAILED`/`DEPLOYMENT_FAILED`. All URLs are workspace-scoped.
+ * Deepset `PipelineStatus` values: `DEPLOYMENT_IN_PROGRESS`, `ACTIVATING`
+ * (transient), `DEPLOYED`, `IDLE` (deployed but auto-slept; wakes on query),
+ * `DEPLOYMENT_FAILED`, `UNDEPLOYED`, `UNDEPLOYMENT_IN_PROGRESS`. All URLs are
+ * workspace-scoped.
  */
 
 import type { Settings } from '@/config/settings'

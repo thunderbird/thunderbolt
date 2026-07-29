@@ -105,9 +105,34 @@ describe('haystack provider — status', () => {
     expect(result.connection).toBeNull()
   })
 
+  it('maps ACTIVATING (waking from idle) to pending', async () => {
+    const result = await statusProvider('ACTIVATING').status!('tb-x', makeContext())
+    expect(result.status).toBe('pending')
+    expect(result.connection).toBeNull()
+  })
+
+  it('maps IDLE (auto-slept but usable) to running with a connection', async () => {
+    const result = await statusProvider('IDLE').status!('tb-my-agent-abc', makeContext())
+    expect(result.status).toBe('running')
+    expect(result.connection?.url).toContain('haystack/ws?pipeline=tb-my-agent-abc')
+  })
+
   it('maps a failure status to failed', async () => {
     const result = await statusProvider('DEPLOYMENT_FAILED').status!('tb-x', makeContext())
     expect(result.status).toBe('failed')
+  })
+
+  it('maps an undeployed pipeline to gone with no connection', async () => {
+    const result = await statusProvider('UNDEPLOYED').status!('tb-x', makeContext())
+    expect(result.status).toBe('gone')
+    expect(result.connection).toBeNull()
+  })
+
+  it('reports gone (never throws) when the pipeline no longer exists', async () => {
+    const { fetchFn } = routedFetch(() => ({ status: 404, body: { error: 'not found' } }))
+    const result = await createHaystackProvider({ fetchFn }).status!('tb-x', makeContext())
+    expect(result.status).toBe('gone')
+    expect(result.connection).toBeNull()
   })
 })
 

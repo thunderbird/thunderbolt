@@ -116,8 +116,13 @@ export const agentCatalogResponseSchema = z.object({
 })
 export type AgentCatalogResponse = z.infer<typeof agentCatalogResponseSchema>
 
-/** Normalized deploy lifecycle state (host statuses map onto these three). */
-export const deployStatusSchema = z.enum(['pending', 'running', 'failed'])
+/**
+ * Normalized deploy lifecycle state (host statuses map onto these). `pending` is
+ * spinning up; `running` is usable (a deployed pipeline, including one Deepset
+ * has auto-idled — it wakes on query); `failed` is a failed deploy; `gone` is
+ * deleted or undeployed on the host (unusable — redeploy or remove it).
+ */
+export const deployStatusSchema = z.enum(['pending', 'running', 'failed', 'gone'])
 export type DeployStatus = z.infer<typeof deployStatusSchema>
 
 /** How the frontend connects to a deployed agent once it is running. */

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
+import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
 
 const chatErrorKinds = ['attestation', 'timeout', 'rate-limit', 'provider', 'network'] as const
 export type ChatErrorKind = (typeof chatErrorKinds)[number]
@@ -17,7 +18,7 @@ const parseJson = (str: string): Record<string, unknown> | undefined => {
   }
 }
 const providerErrorNames = new Set(['KeyConfigMismatchError', 'ProtocolError', 'DecryptionError'])
-const timeoutMarkers = ['tinfoil upstream timeout', 'tinfoil upstream idle timeout']
+const timeoutMarkers = [tinfoilUpstreamTimeoutMessage, tinfoilUpstreamIdleTimeoutMessage]
 const networkErrorMarkers = ['failed to fetch', 'load failed', 'networkerror']
 
 type ErrorClassificationFields = {

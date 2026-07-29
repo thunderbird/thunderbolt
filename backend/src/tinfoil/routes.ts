@@ -8,6 +8,7 @@ import { getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { capStream } from '@/proxy/streaming'
 import { filterHeaders } from '@/utils/request'
+import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
 import { Elysia, type AnyElysia } from 'elysia'
 
 const allowedMethods = new Set(['GET', 'POST', 'OPTIONS'])
@@ -15,10 +16,8 @@ const bodylessMethods = new Set(['GET', 'OPTIONS'])
 const defaultUpstreamHeadersTimeoutMs = 30_000
 const defaultUpstreamIdleTimeoutMs = 60_000
 const abruptResponseCloseTimeoutSeconds = 1
-const upstreamTimeoutMessage = 'tinfoil upstream timeout'
-const upstreamIdleTimeoutMessage = 'tinfoil upstream idle timeout'
-const upstreamHeadersTimeoutError = new DOMException(upstreamTimeoutMessage, 'TimeoutError')
-const upstreamIdleTimeoutError = new DOMException(upstreamIdleTimeoutMessage, 'TimeoutError')
+const upstreamHeadersTimeoutError = new DOMException(tinfoilUpstreamTimeoutMessage, 'TimeoutError')
+const upstreamIdleTimeoutError = new DOMException(tinfoilUpstreamIdleTimeoutMessage, 'TimeoutError')
 
 const textResponse = (status: number, body: string): Response =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain' } })
@@ -119,7 +118,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       })
     } catch (error) {
       if (error === upstreamHeadersTimeoutError) {
-        return textResponse(504, upstreamTimeoutMessage)
+        return textResponse(504, tinfoilUpstreamTimeoutMessage)
       }
       throw error
     } finally {

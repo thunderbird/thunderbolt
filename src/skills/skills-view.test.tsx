@@ -19,6 +19,7 @@ import '@/test-utils/framer-motion-mock'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
+import { defaultSkillWeather } from '@/defaults/skills'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { SkillsView } from './skills-view'
@@ -69,6 +70,30 @@ const flush = async () => {
 }
 
 describe('SkillsView state machine', () => {
+  describe('widget rendering contracts', () => {
+    it('offers enable/disable without edit or delete affordances', async () => {
+      await getDb().insert(skillsTable).values(defaultSkillWeather)
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+
+      const rowLabel = await waitForElement(() => screen.queryByText('Weather'))
+      fireEvent.contextMenu(rowLabel)
+      await flush()
+      expect(screen.queryByText('Edit')).not.toBeInTheDocument()
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+
+      fireEvent.click(rowLabel)
+      await flush()
+      expect(screen.getByText('Built-in skill · Read-only')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('switch', { name: 'Disable Weather' }))
+      await flush()
+      const disabledWeather = await getSkill(getDb(), defaultSkillWeather.id)
+      expect(disabledWeather?.enabled).toBe(0)
+    })
+  })
+
   describe('handleToggleEnabled — auto-unpin on disable', () => {
     it('unpins a pinned skill when its row switch is turned off', async () => {
       const skill = await createSkill(getDb(), {
@@ -91,6 +116,20 @@ describe('SkillsView state machine', () => {
       await flush()
 
       const after = await getSkill(getDb(), skill.id)
+      expect(after?.enabled).toBe(0)
+      expect(after?.pinnedOrder).toBeNull()
+    })
+
+    it('unpins a legacy-pinned widget skill when disabled', async () => {
+      await getDb().insert(skillsTable).values(defaultSkillWeather)
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+
+      const switchEl = await waitForElement(() => screen.queryByRole('switch', { name: /Disable Weather/ }))
+      fireEvent.click(switchEl)
+      await flush()
+
+      const after = await getSkill(getDb(), defaultSkillWeather.id)
       expect(after?.enabled).toBe(0)
       expect(after?.pinnedOrder).toBeNull()
     })

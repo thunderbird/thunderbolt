@@ -23,8 +23,8 @@ export const chipSurfaceClass =
 /**
  * Pinned-skill chip shown above the chat input. Click → adds the slash
  * token to the input (does not auto-submit). Right-click / long-press on
- * mobile → context menu with add-to-chat / add-instructions / edit /
- * reorder / unpin.
+ * mobile → context menu with add-to-chat / add-instructions plus optional
+ * edit / reorder / unpin actions for mutable skills.
  */
 export const SuggestionChip = ({
   label,
@@ -40,9 +40,9 @@ export const SuggestionChip = ({
   onClick: () => void
   onAddInstruction: () => void
   /** Open the route-preserving skill editor. */
-  onEdit: () => void
-  onReorder: () => void
-  onUnpin: () => void
+  onEdit?: () => void
+  onReorder?: () => void
+  onUnpin?: () => void
 }) => {
   const [open, setOpen] = useState(false)
 
@@ -125,9 +125,13 @@ export const SuggestionChip = ({
       icon: <File className="size-[var(--icon-size-sm)]" />,
       onSelect: onAddInstruction,
     },
-    { label: 'Edit skill', icon: <SquarePen className="size-[var(--icon-size-sm)]" />, onSelect: onEdit },
-    { label: 'Reorder', icon: <ListOrdered className="size-[var(--icon-size-sm)]" />, onSelect: onReorder },
-    { label: 'Unpin', icon: <Pin className="size-[var(--icon-size-sm)]" />, onSelect: onUnpin },
+    ...(onEdit
+      ? [{ label: 'Edit skill', icon: <SquarePen className="size-[var(--icon-size-sm)]" />, onSelect: onEdit }]
+      : []),
+    ...(onReorder
+      ? [{ label: 'Reorder', icon: <ListOrdered className="size-[var(--icon-size-sm)]" />, onSelect: onReorder }]
+      : []),
+    ...(onUnpin ? [{ label: 'Unpin', icon: <Pin className="size-[var(--icon-size-sm)]" />, onSelect: onUnpin }] : []),
   ]
 
   return (

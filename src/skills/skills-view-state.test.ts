@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { defaultSkillDailyBrief, defaultSkillWeather } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import {
   initialSkillsViewState,
@@ -49,6 +50,21 @@ describe('skillsViewReducer', () => {
       const next = skillsViewReducer(initialSkillsViewState, { type: 'START_EDIT', id: 'b' })
       expect(next.mode).toBe('edit')
       expect(next.activeId).toBe('b')
+    })
+
+    it('keeps widget skills read-only when an edit route selects them', () => {
+      const widget = skillsViewReducer(initialSkillsViewState, {
+        type: 'START_EDIT',
+        id: defaultSkillWeather.id,
+      })
+      const task = skillsViewReducer(initialSkillsViewState, {
+        type: 'START_EDIT',
+        id: defaultSkillDailyBrief.id,
+      })
+
+      expect(widget.mode).toBe('detail')
+      expect(widget.activeId).toBe(defaultSkillWeather.id)
+      expect(task.mode).toBe('edit')
     })
 
     it('START_CREATE bumps resetSignal so the form re-mounts on back-to-back opens', () => {
@@ -125,6 +141,17 @@ describe('skillsViewReducer', () => {
       expect(next.panelView).toBe('panel')
       expect(next.isDirty).toBe(false)
       expect(next.resetSignal).toBe(2)
+    })
+
+    it('an edit intent lands on read-only detail for a widget skill', () => {
+      const next = skillsViewReducer(initialSkillsViewState, {
+        type: 'PERFORM_LEAVE',
+        leave: { type: 'edit', id: defaultSkillWeather.id },
+      })
+
+      expect(next.mode).toBe('detail')
+      expect(next.activeId).toBe(defaultSkillWeather.id)
+      expect(next.panelView).toBe('panel')
     })
 
     it('a create intent lands in a blank create form', () => {
@@ -212,6 +239,18 @@ describe('skillsViewReducer', () => {
       const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b' })
       expect(next.mode).toBe('edit')
       expect(next.activeId).toBe('b')
+      expect(next.pendingDependents).toBeNull()
+    })
+
+    it('JUMP_TO_DEPENDENT opens read-only detail when the dependent is a widget skill', () => {
+      const open: SkillsViewState = {
+        ...initialSkillsViewState,
+        pendingDependents: { action: 'disable', skill: skill('a', 'foo'), dependents: [] },
+      }
+      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: defaultSkillWeather.id })
+
+      expect(next.mode).toBe('detail')
+      expect(next.activeId).toBe(defaultSkillWeather.id)
       expect(next.pendingDependents).toBeNull()
     })
 

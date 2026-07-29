@@ -8,6 +8,7 @@ import { SquarePen, Trash2 } from 'lucide-react'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Switch } from '@/components/ui/switch'
+import { isWidgetSkillId } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import { skillDisplayName } from './display'
 
@@ -49,37 +50,43 @@ export const LibraryRow = ({
   onEdit: (id: string) => void
   onDelete: (id: string) => void
 }) => {
+  const row = (
+    <SettingsSelectableRow
+      title={skillDisplayName(skill)}
+      subtitle={skill.description}
+      isSelected={isActive}
+      isDimmed={!enabled}
+      onSelect={() => onSelect(skill.id)}
+      ariaLabel={`Open ${skillDisplayName(skill)}`}
+      trailing={
+        <Switch
+          checked={enabled}
+          onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
+          aria-label={`${enabled ? 'Disable' : 'Enable'} ${skillDisplayName(skill)}`}
+        />
+      }
+    />
+  )
+
   return (
     <m.li layout layoutId={skill.id} transition={skillRowTransition}>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <SettingsSelectableRow
-            title={skillDisplayName(skill)}
-            subtitle={skill.description}
-            isSelected={isActive}
-            isDimmed={!enabled}
-            onSelect={() => onSelect(skill.id)}
-            ariaLabel={`Open ${skillDisplayName(skill)}`}
-            trailing={
-              <Switch
-                checked={enabled}
-                onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
-                aria-label={`${enabled ? 'Disable' : 'Enable'} ${skillDisplayName(skill)}`}
-              />
-            }
-          />
-        </ContextMenuTrigger>
-        <ContextMenuContent className="min-w-56">
-          <ContextMenuItem onClick={() => onEdit(skill.id)} className="cursor-pointer">
-            <SquarePen className="size-4 mr-2" />
-            Edit
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => onDelete(skill.id)} className="cursor-pointer">
-            <Trash2 className="size-4 mr-2" />
-            Delete
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+      {isWidgetSkillId(skill.id) ? (
+        row
+      ) : (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+          <ContextMenuContent className="min-w-56">
+            <ContextMenuItem onClick={() => onEdit(skill.id)} className="cursor-pointer">
+              <SquarePen className="size-4 mr-2" />
+              Edit
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => onDelete(skill.id)} className="cursor-pointer">
+              <Trash2 className="size-4 mr-2" />
+              Delete
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      )}
     </m.li>
   )
 }

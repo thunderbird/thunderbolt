@@ -50,6 +50,7 @@ import type {
 } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { isReadOnlyAgentTool, resolveToolPermission } from '../../../shared/agent-tool-permissions.ts'
+import { readWireSkills, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { cliVersion } from '../cli.ts'
 import { buildHarness } from '../agent/harness.ts'
 import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
@@ -176,7 +177,7 @@ const attachAcpPermissionGate = (
   const sessionAllowed = new Set<string>()
 
   harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
-    if (toolName === 'webfetch') return undefined
+    if (toolName === 'webfetch' || toolName === 'skill') return undefined
     if (isReadOnlyAgentTool(toolName)) {
       const path =
         typeof input === 'object' && input !== null && 'path' in input && typeof input.path === 'string'
@@ -263,12 +264,13 @@ export const createHarnessAgent = (
       loadSession: false,
       sessionCapabilities: { resume: {} },
       promptCapabilities: { image: false, audio: false, embeddedContext: false },
+      _meta: skillsCapabilityMeta,
     },
     authMethods: [],
   })
 
   /** Per-session harness config rooted at server-owned launch directory. */
-  const harnessConfigFor = (workspaceRoot: string): HarnessConfig => ({
+  const harnessConfigFor = (workspaceRoot: string, skills: readonly SkillDefinition[]): HarnessConfig => ({
     model: config.model,
     cwd: workspaceRoot,
     workspaceRoot,
@@ -278,6 +280,7 @@ export const createHarnessAgent = (
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
     announceModel: true,
+    skills,
   })
 
   /** Build the harness on `session`, wire its run events + permission gate to the
@@ -287,9 +290,10 @@ export const createHarnessAgent = (
     sessionId: SessionId,
     workspaceRoot: string,
     session: PiSession,
+    skills: readonly SkillDefinition[],
     phase: string,
   ): Promise<void> => {
-    const { harness, dispose } = await buildServeHarness(harnessConfigFor(workspaceRoot), session)
+    const { harness, dispose } = await buildServeHarness(harnessConfigFor(workspaceRoot, skills), session)
 
     // If the client vanished while the harness was being built, the cleanup
     // microtask already ran against a map without this session — dispose now so
@@ -321,11 +325,11 @@ export const createHarnessAgent = (
     }
   }
 
-  const newSession = async (_params: NewSessionRequest): Promise<NewSessionResponse> => {
+  const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
     const sessionId = crypto.randomUUID()
     const workspaceRoot = await trustedWorkspace
     const session = await store.createSession(sessionId, workspaceRoot)
-    await activate(sessionId, workspaceRoot, session, 'session/new')
+    await activate(sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/new')
     return { sessionId }
   }
 
@@ -343,7 +347,7 @@ export const createHarnessAgent = (
     }
     const workspaceRoot = await trustedWorkspace
     const session = await store.openSession(params.sessionId, workspaceRoot)
-    await activate(params.sessionId, workspaceRoot, session, 'session/resume')
+    await activate(params.sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/resume')
     return {}
   }
 

@@ -27,8 +27,11 @@ import { verticalAxisModifiers } from '@/lib/dnd'
 import { cn } from '@/lib/utils'
 import { skillDisplayName } from './display'
 
-const SortableRow = ({ skill }: { skill: Skill }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: skill.id })
+const SortableRow = ({ skill, locked }: { skill: Skill; locked: boolean }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: skill.id,
+    disabled: locked,
+  })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -39,11 +42,11 @@ const SortableRow = ({ skill }: { skill: Skill }) => {
       style={style}
       {...attributes}
       {...listeners}
-      className={`flex h-9 touch-none cursor-grab items-center gap-2 rounded-md px-2 active:cursor-grabbing ${
-        isDragging ? 'opacity-40' : 'hover:bg-accent'
-      }`}
+      className={`flex h-9 touch-none items-center gap-2 rounded-md px-2 ${
+        locked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+      } ${isDragging ? 'opacity-40' : 'hover:bg-accent'}`}
     >
-      <GripVertical size={16} className="shrink-0 text-muted-foreground" />
+      <GripVertical size={16} className={`shrink-0 text-muted-foreground ${locked ? 'invisible' : ''}`} />
       <span className="truncate text-[length:var(--font-size-body)] text-foreground">{skillDisplayName(skill)}</span>
     </div>
   )
@@ -57,7 +60,8 @@ export type ReorderMove = { id: string; from: number; to: number }
  * entire new order is reported to the parent along with the moved item's
  * id and indices (sourced from dnd-kit's `active.id` — the ground truth,
  * unambiguous even for adjacent swaps). Caller commits via `reorderPins(ids)`
- * (single transaction in the DAL).
+ * (single transaction in the DAL). Locked rows stay fixed and cannot be
+ * crossed by a drag.
  *
  * TouchSensor uses a 120ms delay so vertical page-scroll still works when
  * the user isn't actually dragging.
@@ -67,11 +71,13 @@ export const ReorderPanel = ({
   onReorder,
   onClose,
   embedded = false,
+  lockedIds = new Set<string>(),
 }: {
   pinned: Skill[]
   onReorder: (ids: string[], move: ReorderMove) => void
   onClose: () => void
   embedded?: boolean
+  lockedIds?: ReadonlySet<string>
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -87,6 +93,12 @@ export const ReorderPanel = ({
     const oldIndex = pinned.findIndex((s) => s.id === active.id)
     const newIndex = pinned.findIndex((s) => s.id === over.id)
     if (oldIndex < 0 || newIndex < 0) {
+      return
+    }
+    const crossesLockedSkill = pinned
+      .slice(Math.min(oldIndex, newIndex), Math.max(oldIndex, newIndex) + 1)
+      .some((skill) => lockedIds.has(skill.id))
+    if (crossesLockedSkill) {
       return
     }
     const next = arrayMove(pinned, oldIndex, newIndex)
@@ -125,7 +137,7 @@ export const ReorderPanel = ({
       >
         <SortableContext items={pinned.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           {pinned.map((skill) => (
-            <SortableRow key={skill.id} skill={skill} />
+            <SortableRow key={skill.id} skill={skill} locked={lockedIds.has(skill.id)} />
           ))}
         </SortableContext>
       </DndContext>

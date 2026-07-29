@@ -4,27 +4,32 @@
 
 import { hashValues } from '@/lib/utils'
 import type { Skill, SkillRow } from '@/types'
+import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
+import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
+import { instructions as linkPreviewWidgetInstruction } from '@/widgets/link-preview/instructions'
+import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions'
+import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
 
 /**
- * Hash of user-editable fields. Includes `deletedAt` so soft-deletes are
- * treated as a user configuration choice — a user who deletes a default does
- * NOT get it re-seeded on next app init.
+ * Hash of reconciled skill fields. Widget contracts hash only their locked
+ * content so enabled or legacy pinned state cannot block contract updates.
+ * Editable task defaults also include state and `deletedAt`, so those user
+ * changes remain protected from reconciliation.
  *
  * Accepts raw (nullable) rows as well as `Skill` so the hash-restamp data
  * migration can stamp exactly what reconciliation will later recompute.
  */
 export const hashSkill = (
-  skill: Pick<SkillRow, 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder' | 'deletedAt'>,
-): string =>
-  hashValues([
-    skill.name,
-    skill.label,
-    skill.description,
-    skill.instruction,
-    skill.enabled,
-    skill.pinnedOrder,
-    skill.deletedAt,
-  ])
+  skill: Pick<
+    SkillRow,
+    'id' | 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder' | 'deletedAt'
+  >,
+): string => {
+  const contentFields = [skill.name, skill.label, skill.description, skill.instruction]
+  return hashValues(
+    isWidgetSkillId(skill.id) ? contentFields : [...contentFields, skill.enabled, skill.pinnedOrder, skill.deletedAt],
+  )
+}
 
 const dailyBriefInstruction = `Create a daily brief with the following sections. Do not ask the user for any missing information — just skip sections for which you are missing information or tools.
 
@@ -83,13 +88,6 @@ CRITICAL QUALITY RULES:
 
 Do NOT answer questions directly. Do NOT write paragraphs. Just search and show links.`
 
-const weatherInstruction = `Show the user the weather forecast.
-
-1. Determine the location: use the location from the user's message if given, otherwise use the user's known location. If you have neither, ask.
-2. Render the forecast widget: <widget:weather-forecast location="City" region="State" country="Country" />
-
-The widget fetches data automatically — do NOT search the web for weather data. Add at most one short sentence of context; the widget carries the content.`
-
 /** Former "Research" chat mode, now shipped as a default skill (`/research`). */
 const researchInstruction = `You are **Deep Research**. The user wants EXHAUSTIVE research, not a quick answer.
 
@@ -130,7 +128,9 @@ Do not add a Sources or References section at the end — inline [N] citations a
  *
  * New users get Search, Research, and Weather pinned (in that order) as their
  * starter chips; Daily Brief ships enabled but unpinned, and Important Emails
- * ships disabled. A user who soft-deletes one will not see it re-seeded.
+ * ships disabled. Additional model-facing widget contracts ship enabled and
+ * unpinned. Task skills may be edited or soft-deleted; widget contracts only
+ * expose enabled state.
  */
 export const defaultSkillDailyBrief: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
@@ -193,7 +193,7 @@ export const defaultSkillWeather: Skill = {
   name: 'weather',
   label: 'Weather',
   description: 'Use this skill when the user asks about the weather or wants a forecast for a location.',
-  instruction: weatherInstruction,
+  instruction: weatherForecastWidgetInstruction,
   enabled: 1,
   pinnedOrder: 2,
   deletedAt: null,
@@ -201,12 +201,82 @@ export const defaultSkillWeather: Skill = {
   userId: null,
 }
 
+export const defaultSkillLinkPreview: Skill = {
+  id: '01996330-0000-7000-8000-000000000006',
+  name: 'link-preview',
+  label: 'Link Preview',
+  description:
+    'Use this skill when the user wants web results, news, products, recommendations, or other fetched pages shown as rich link previews.',
+  instruction: linkPreviewWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillConnectIntegration: Skill = {
+  id: '01996330-0000-7000-8000-000000000007',
+  name: 'connect-integration',
+  label: 'Connect Integration',
+  description:
+    'Use this skill when the user asks to access email or calendar but required Google or Microsoft tools are unavailable.',
+  instruction: connectIntegrationWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillAsk: Skill = {
+  id: '01996330-0000-7000-8000-000000000008',
+  name: 'ask',
+  label: 'Ask',
+  description: 'Use this skill when asking the user to choose from options or answer an interactive quiz prompt.',
+  instruction: askWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillMap: Skill = {
+  id: '01996330-0000-7000-8000-000000000009',
+  name: 'map',
+  label: 'Map',
+  description:
+    'Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map.',
+  instruction: mapWidgetInstruction,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+const widgetSkillIds = new Set([
+  defaultSkillWeather.id,
+  defaultSkillLinkPreview.id,
+  defaultSkillConnectIntegration.id,
+  defaultSkillAsk.id,
+  defaultSkillMap.id,
+])
+
+/** Whether a skill id belongs to a model-facing widget rendering contract. */
+export const isWidgetSkillId = (id: string): boolean => widgetSkillIds.has(id)
+
 export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillDailyBrief,
   defaultSkillImportantEmails,
   defaultSkillSearch,
   defaultSkillResearch,
   defaultSkillWeather,
+  defaultSkillLinkPreview,
+  defaultSkillConnectIntegration,
+  defaultSkillAsk,
+  defaultSkillMap,
 ] as const
 
 /**
@@ -220,4 +290,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 4
+export const defaultSkillsVersion = 5

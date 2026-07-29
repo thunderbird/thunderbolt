@@ -13,6 +13,7 @@ import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { SearchInput } from '@/components/ui/search-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
+import { isWidgetSkillId } from '@/defaults/skills'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { skillDisplayName, skillMatchesQuery } from '@/skills/display'
@@ -107,6 +108,7 @@ export const ChatSkillsBar = ({
   const { openCreateItem } = useCreateItem()
 
   const [{ reorderMode, addOpen, addQuery, actionError }, dispatch] = useReducer(barReducer, initialBarState)
+  const lockedPinnedIds = new Set(pinned.filter((skill) => isWidgetSkillId(skill.id)).map((skill) => skill.id))
 
   // One shared pin/unpin path: telemetry only fires after the mutation
   // settles (so a rejection never records a phantom action), and a failure
@@ -135,6 +137,7 @@ export const ChatSkillsBar = ({
     <Suspense fallback={null}>
       <ReorderPanel
         pinned={pinned}
+        lockedIds={lockedPinnedIds}
         embedded={isMobile}
         onReorder={async (ids, move) => {
           // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
@@ -162,7 +165,7 @@ export const ChatSkillsBar = ({
   // Pinnable = enabled and not already pinned. The popover only ever lists
   // pin candidates, never a dual "pin / unpin" surface — unpin lives on the
   // chip's own dropdown.
-  const pinnable = library.filter((s) => isEnabled(s.id) && !pinnedSet.has(s.id))
+  const pinnable = library.filter((s) => !isWidgetSkillId(s.id) && isEnabled(s.id) && !pinnedSet.has(s.id))
   const query = addQuery.trim()
   const pinnableFiltered = pinnable.filter((s) => skillMatchesQuery(s, query))
   const pinCapReached = pinnedSet.size >= maxPinnedSkills
@@ -304,12 +307,16 @@ export const ChatSkillsBar = ({
             label={skillDisplayName(skill)}
             onClick={() => onAddToChat(skill)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
-            onEdit={() => openCreateItem({ kind: 'skill', skillId: skill.id })}
-            onReorder={() => {
-              void loadReorderPanel()
-              dispatch({ type: 'REORDER_OPENED' })
-            }}
-            onUnpin={() => handleTogglePin(skill, 'unpin')}
+            onEdit={isWidgetSkillId(skill.id) ? undefined : () => openCreateItem({ kind: 'skill', skillId: skill.id })}
+            onReorder={
+              isWidgetSkillId(skill.id)
+                ? undefined
+                : () => {
+                    void loadReorderPanel()
+                    dispatch({ type: 'REORDER_OPENED' })
+                  }
+            }
+            onUnpin={isWidgetSkillId(skill.id) ? undefined : () => handleTogglePin(skill, 'unpin')}
           />
         ))}
         {addControl}

@@ -8,6 +8,7 @@ import { MemoryRouter } from 'react-router'
 
 import { CreateItemProvider } from '@/components/create-item/context'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { defaultSkillWeather } from '@/defaults/skills'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -107,6 +108,34 @@ describe('ChatSkillsBar', () => {
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
     })
     expect(screen.getByLabelText('Add a skill')).toBeTruthy()
+  })
+
+  it('excludes widget skills from pin candidates', () => {
+    const task = { ...skill('task', 'daily-brief'), label: 'Daily Brief' }
+    renderBar({
+      useLibrarySkills: fakeUseLibrarySkills([task, defaultSkillWeather]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set([task.id, defaultSkillWeather.id])),
+    })
+
+    fireEvent.click(screen.getByLabelText('Add a skill'))
+
+    expect(screen.getByText('Daily Brief')).toBeTruthy()
+    expect(screen.queryByText('Weather')).toBeNull()
+  })
+
+  it('keeps pinned widget skill actions read-only', async () => {
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [defaultSkillWeather] }),
+      useLibrarySkills: fakeUseLibrarySkills([defaultSkillWeather]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set([defaultSkillWeather.id])),
+    })
+
+    fireEvent.contextMenu(screen.getByText('Weather'))
+
+    expect(await waitForElement(() => screen.queryByText('Add to chat'))).toBeTruthy()
+    expect(screen.queryByText('Edit skill')).toBeNull()
+    expect(screen.queryByText('Reorder')).toBeNull()
+    expect(screen.queryByText('Unpin')).toBeNull()
   })
 
   it('keeps the "+ Add a skill" trigger clickable when every enabled skill is already pinned (popover still offers New skill)', () => {

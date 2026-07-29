@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
+import { widgetRegistry } from '@/widgets'
 import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
 import { createPrompt, createPromptParts, type PromptParams } from './prompt'
 
@@ -47,6 +48,7 @@ const baseParams: PromptParams = {
     currency: 'USD',
   },
   integrationStatus: 'READY',
+  hasWebTools: false,
 }
 
 describe('createPrompt', () => {
@@ -105,6 +107,18 @@ describe('createPrompt', () => {
     expect(result).toContain('Make quick decisions')
   })
 
+  test('includes web tool rules in the stable prompt when the web tools are available', () => {
+    const result = createPromptParts({ ...baseParams, hasWebTools: true })
+
+    expect(result.stablePrompt).toContain('Web lookups use the `search` and `fetch_content` tools')
+  })
+
+  test('omits web tool rules from the stable prompt when the web tools are unavailable', () => {
+    const result = createPromptParts({ ...baseParams, hasWebTools: false })
+
+    expect(result.stablePrompt).not.toContain('Web lookups use the `search` and `fetch_content` tools')
+  })
+
   test('includes the reuse-before-search gate', () => {
     const result = createPrompt(baseParams)
     expect(result).toContain('reuse first, then search')
@@ -119,6 +133,61 @@ describe('createPrompt', () => {
   test('keeps the verify-before-answering directive', () => {
     const result = createPrompt(baseParams)
     expect(result).toContain('never state facts without verifying them first')
+  })
+
+  test('tool-capable models get the skill listing without instruction bodies', () => {
+    const result = createPrompt({
+      ...baseParams,
+      supportsTools: true,
+      skills: [
+        {
+          name: 'daily-brief',
+          description: 'Use for a daily rundown.',
+          instruction: 'Gather private full instructions here.',
+        },
+      ],
+    })
+
+    expect(result).toContain('## Skills')
+    expect(result).toContain('Use the `skill` tool')
+    expect(result).toContain('- daily-brief: Use for a daily rundown.')
+    expect(result).not.toContain('Gather private full instructions here.')
+  })
+
+  test('non-tool models get the skill catalog and full instruction bodies inline', () => {
+    const result = createPrompt({
+      ...baseParams,
+      supportsTools: false,
+      skills: [
+        {
+          name: 'weather',
+          description: 'Use for weather forecasts.',
+          instruction: 'Emit the weather widget contract.',
+        },
+      ],
+    })
+
+    expect(result).toContain('- weather: Use for weather forecasts.')
+    expect(result).toContain('Full skill instructions:')
+    expect(result).toContain('### weather\nEmit the weather widget contract.')
+    expect(result).not.toContain('Use the `skill` tool')
+  })
+
+  test('does not inject widget instruction bodies into every prompt', () => {
+    const result = createPrompt(baseParams)
+
+    for (const widget of widgetRegistry) {
+      if ('instructions' in widget.module) {
+        expect(result).not.toContain(widget.module.instructions)
+      }
+    }
+    expect(result).not.toContain('# Widget Components')
+  })
+
+  test('keeps citation tags forbidden after removing widget instruction injection', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result).toContain('Do not emit <widget:citation> tags')
   })
 
   test('keeps the per-turn timestamp in the suffix (prefix-cache friendly)', () => {

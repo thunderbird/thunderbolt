@@ -12,9 +12,10 @@ import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
-import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
+import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
+import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widget-skill-default-hashes'
 import { nowIso } from './utils'
 
 const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
@@ -142,25 +143,27 @@ const advanceVersionMarker = async (
  *   partial delivery of an authoritative retirement. Defaults to
  *   `canOverwrite` for callers that don't split the two signals.
  * @property frozenFields - Field names that must never change on an existing
- *   row via reconcile. When updating, the existing row's value is kept for
- *   each listed field and the stored `defaultHash` reflects that
- *   post-freeze state. Protects identity-critical columns whose values
- *   establish downstream contracts — e.g. `isConfidential` on models
- *   (encrypted threads bind to it at creation) and `provider` (routing).
- *   A server-shipped OTA payload cannot flip these on a bundle-known id;
- *   a new value ships under a fresh id. Only applies to updates — inserts
- *   use the default as-is.
+ *   row via reconcile, or a selector returning those names per default item.
+ *   When updating, the existing row's value is kept for each listed field and
+ *   the stored `defaultHash` reflects that post-freeze state. Protects
+ *   identity-critical columns whose values establish downstream contracts —
+ *   e.g. `isConfidential` on models (encrypted threads bind to it at creation)
+ *   and `provider` (routing). A server-shipped OTA payload cannot flip these
+ *   on a bundle-known id; a new value ships under a fresh id. Only applies to
+ *   updates — inserts use the default as-is.
  * @property metadataFields - Server-owned fields intentionally excluded from
  *   the user-edit hash. Differences in these fields still trigger an update
  *   after the row's hashed fields are verified as unmodified.
  */
-export type ReconcileDefaultsForTableOptions = {
+type FrozenField<T> = Extract<keyof T, string>
+
+export type ReconcileDefaultsForTableOptions<T> = {
   keyField?: string
   canOverwrite?: boolean
   insertMissing?: boolean
   canResurrect?: boolean
-  frozenFields?: readonly string[]
-  metadataFields?: readonly string[]
+  frozenFields?: readonly FrozenField<T>[] | ((defaultItem: T) => readonly FrozenField<T>[])
+  metadataFields?: readonly FrozenField<T>[]
 }
 
 /**
@@ -197,7 +200,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
-  options: ReconcileDefaultsForTableOptions = {},
+  options: ReconcileDefaultsForTableOptions<T> = {},
 ): Promise<ReconcileDefaultsForTableResult> => {
   const {
     keyField = 'id',
@@ -305,11 +308,15 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     // existing row's value instead of the incoming default. Hash covers the
     // effective (post-freeze) state so future reconciles still recognize the
     // row as unedited. Skips the copy entirely when no fields are frozen.
+    const itemFrozenFields = typeof frozenFields === 'function' ? frozenFields(defaultItem) : frozenFields
     const effectiveDefault =
-      frozenFields.length === 0
+      itemFrozenFields.length === 0
         ? defaultItem
-        : (frozenFields.reduce<T>((acc, field) => ({ ...acc, [field]: (existing as any)[field] }), defaultItem) as T)
-    const effectiveHash = frozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
+        : (itemFrozenFields.reduce<T>(
+            (acc, field) => ({ ...acc, [field]: (existing as any)[field] }),
+            defaultItem,
+          ) as T)
+    const effectiveHash = itemFrozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
     const metadataChanged = metadataFields.some(
       (field) => (existing as Record<string, unknown>)[field] !== (effectiveDefault as Record<string, unknown>)[field],
     )
@@ -598,13 +605,13 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionKey: string,
       currentVersion: number,
       hasAnyRow: boolean,
-      keyField?: string,
+      reconcileOptions: Pick<ReconcileDefaultsForTableOptions<T>, 'keyField' | 'frozenFields'> = {},
     ): Promise<void> => {
       const gate = await computeCanOverwrite(tx, versionKey, currentVersion, hasAnyRow, initialSyncCompleted)
       const pass = await reconcileDefaultsForTable(tx, table, defaults, hashFn, {
         canOverwrite: gate.canOverwrite,
         canResurrect: initialSyncCompleted,
-        ...(keyField ? { keyField } : {}),
+        ...reconcileOptions,
       })
       // Advance when we wrote something OR verified every row is at target.
       // See the models-path guard above for the full rationale — single-table
@@ -615,6 +622,10 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     }
 
     await runGatedPass(tasksTable, defaultTasks, hashTask, versionMarkerKeys.tasks, defaultTasksVersion, hasAnyTaskRow)
+    // Main shipped weather with a full-row v4 hash before weather became a
+    // locked widget contract. Re-stamp first so v5 can recognize and replace
+    // that pristine row with the canonical widget instructions in this pass.
+    await restampWidgetSkillDefaultHashes.run(tx)
     await runGatedPass(
       skillsTable,
       defaultSkills,
@@ -622,6 +633,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionMarkerKeys.skills,
       defaultSkillsVersion,
       hasAnySkillRow,
+      { frozenFields: (skill) => (isWidgetSkillId(skill.id) ? ['enabled', 'pinnedOrder'] : []) },
     )
     await runGatedPass(
       settingsTable,
@@ -630,7 +642,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionMarkerKeys.settings,
       defaultSettingsVersion,
       hasAnySettingsRow,
-      'key',
+      { keyField: 'key' },
     )
 
     // Initialize anonymous ID for analytics (unique per user)

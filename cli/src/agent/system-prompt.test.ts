@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 
 describe('buildSystemPrompt', () => {
@@ -47,5 +48,20 @@ describe('buildSystemPrompt', () => {
     expect(ladder.slice(curl)).toMatch(/last resort/i)
     expect(ladder.slice(curl)).toMatch(/permission/i)
     expect(prompt).not.toMatch(/no web access/i)
+  })
+
+  test('lists available skills without full instruction bodies', () => {
+    const skills: SkillDefinition[] = [
+      {
+        name: 'daily-brief',
+        description: 'Build a concise daily rundown.',
+        instruction: 'Gather current weather and calendar details.',
+      },
+    ]
+    const prompt = buildSystemPrompt({ cwd: '/work', skills })
+
+    expect(prompt).toContain('- skill')
+    expect(prompt).toContain('- daily-brief: Build a concise daily rundown.')
+    expect(prompt).not.toContain('Gather current weather')
   })
 })

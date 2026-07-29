@@ -12,6 +12,7 @@
  */
 
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
+import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 
 /**
  * A constructed harness paired with a teardown function. `buildHarness`
@@ -128,6 +129,8 @@ export type HarnessConfig = {
   /** When true, the system prompt names the underlying model so an exposed ACP
    *  agent can self-identify. The standalone CLI leaves this off. */
   readonly announceModel?: boolean
+  /** Skill definitions delivered by ACP session metadata. */
+  readonly skills?: readonly SkillDefinition[]
 }
 
 /**

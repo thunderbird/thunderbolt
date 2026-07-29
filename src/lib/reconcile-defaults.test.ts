@@ -20,10 +20,22 @@ import {
   type SharedModel,
 } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
-import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
+import {
+  defaultSkillWeather,
+  defaultSkills,
+  defaultSkillsVersion,
+  hashSkill,
+  isWidgetSkillId,
+} from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
+import { hashValues } from './utils'
 import type { ModelsDefaults } from './pick-defaults'
-import { cleanupRemovedDefaults, reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
+import {
+  cleanupRemovedDefaults,
+  reconcileDefaults,
+  reconcileDefaultsForTable,
+  versionMarkerKeys,
+} from './reconcile-defaults'
 import type { Model, ModelProfile, Prompt } from '@/types'
 
 /** A model id no current default uses — stands in for any retired default. */
@@ -1125,16 +1137,14 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     expect(await readStoredSkillsVersion()).toBe(defaultSkillsVersion)
   })
 
-  test('runGatedPass does not advance marker when every skill row is user-edited', async () => {
+  test('runGatedPass does not advance marker when every editable skill row is user-edited', async () => {
     const db = getDb()
     await reconcileDefaults(db)
 
-    // Every skills row user-edited (hash mismatch) and marker rewound so the
-    // version gate opens. Reconcile skips every row → `mutated=false` AND
-    // `everyBundleRowAtTarget=false` (hash-mismatch branch). Marker must
-    // stay at the rewound value — mirrors the existing models-path
-    // regression guard for the runGatedPass loop.
-    for (const skill of defaultSkills) {
+    // Every editable skill row is user-edited (hash mismatch) and the marker
+    // is rewound. Locked widget contracts remain at target. Reconcile skips
+    // each editable row, so `mutated=false` and the marker stays rewound.
+    for (const skill of defaultSkills.filter((defaultSkill) => !isWidgetSkillId(defaultSkill.id))) {
       await db
         .update(skillsTable)
         .set({ label: `user-edited ${skill.id}` })
@@ -1457,6 +1467,68 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     // version yet, so peers with the fuller bundle should still be able to
     // reach open canOverwrite on their next boot.
     expect(await readStoredModelsVersion()).not.toBe(defaultModelsVersion + 1)
+  })
+})
+
+describe('widget skill reconciliation', () => {
+  test('upgrades shipped v4 weather to canonical widget instructions on the first v5 pass', async () => {
+    const db = getDb()
+    const shippedV4Weather = {
+      ...defaultSkillWeather,
+      instruction: 'Shipped v4 inline weather instruction',
+    }
+    await db.insert(skillsTable).values({
+      ...shippedV4Weather,
+      defaultHash: hashValues([
+        shippedV4Weather.name,
+        shippedV4Weather.label,
+        shippedV4Weather.description,
+        shippedV4Weather.instruction,
+        shippedV4Weather.enabled,
+        shippedV4Weather.pinnedOrder,
+        shippedV4Weather.deletedAt,
+      ]),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.skills,
+      value: String(defaultSkillsVersion - 1),
+    })
+
+    await reconcileDefaults(db)
+
+    const updated = await db.select().from(skillsTable).where(eq(skillsTable.id, defaultSkillWeather.id)).get()
+    const marker = await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.skills)).get()
+    expect(updated?.instruction).toBe(defaultSkillWeather.instruction)
+    expect(updated?.pinnedOrder).toBe(defaultSkillWeather.pinnedOrder)
+    expect(marker?.value).toBe(String(defaultSkillsVersion))
+  })
+
+  test('newer defaults update contract content while preserving enabled and pinned state', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    const staleWidget = { ...defaultSkillWeather, description: 'stale widget contract' }
+    await db
+      .update(skillsTable)
+      .set({
+        description: staleWidget.description,
+        enabled: 0,
+        pinnedOrder: 4,
+        defaultHash: hashSkill(staleWidget),
+      })
+      .where(eq(skillsTable.id, staleWidget.id))
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultSkillsVersion - 1) })
+      .where(eq(settingsTable.key, versionMarkerKeys.skills))
+
+    await reconcileDefaults(db)
+
+    const updated = await db.select().from(skillsTable).where(eq(skillsTable.id, staleWidget.id)).get()
+    expect(updated?.description).toBe(defaultSkillWeather.description)
+    expect(updated?.enabled).toBe(0)
+    expect(updated?.pinnedOrder).toBe(4)
+    expect(updated?.defaultHash).toBe(hashSkill({ ...defaultSkillWeather, enabled: 0, pinnedOrder: 4 }))
   })
 })
 

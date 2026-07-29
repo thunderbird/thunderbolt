@@ -2,20 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { buildSkillListing, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
+
 type BuildSystemPromptParams = {
   cwd: string
   modelId?: string
   bashEnabled?: boolean
+  skills?: readonly SkillDefinition[]
 }
 
 /** Describe only tools registered on the harness. */
-const toolInstructions = (bashEnabled: boolean): string => {
+const toolInstructions = (bashEnabled: boolean, skillEnabled: boolean): string => {
+  const skillInstruction = skillEnabled ? '\n- skill — load full instructions for an available skill' : ''
   if (!bashEnabled) {
-    return `You have four tools:
+    return `You have ${skillEnabled ? 'five' : 'four'} tools:
 - read  — read a file
 - write — create or overwrite a file
 - edit  — replace a span within a file
-- webfetch — read a specific HTTP or HTTPS URL
+- webfetch — read a specific HTTP or HTTPS URL${skillInstruction}
 
 Web access priority:
 1. Use web_search when available to search for current information and discover URLs.
@@ -25,12 +29,12 @@ Bash is unavailable in this workspace-confined session, so do not try curl.
 Use read before edit. Make the smallest change that fully solves the task.`
   }
 
-  return `You have five tools:
+  return `You have ${skillEnabled ? 'six' : 'five'} tools:
 - bash  — run shell commands (grep, sed, find, git, language toolchains, tests, …)
 - read  — read a file
 - write — create or overwrite a file
 - edit  — replace a span within a file
-- webfetch — read a specific HTTP or HTTPS URL
+- webfetch — read a specific HTTP or HTTPS URL${skillInstruction}
 
 Web access priority:
 1. Use web_search when available to search for current information and discover URLs.
@@ -50,16 +54,25 @@ read before edit. Make the smallest change that fully solves the task.`
  * @param params.modelId - when set, names the underlying model so an exposed ACP
  *   agent can self-identify; omitted for the standalone CLI
  * @param params.bashEnabled - whether the harness exposes shell execution
+ * @param params.skills - wire-delivered skills available through skill tool
  * @returns the system prompt string
  */
-export const buildSystemPrompt = ({ cwd, modelId, bashEnabled = true }: BuildSystemPromptParams): string => `\
+export const buildSystemPrompt = ({
+  cwd,
+  modelId,
+  bashEnabled = true,
+  skills = [],
+}: BuildSystemPromptParams): string => {
+  const skillListing = buildSkillListing(skills)
+  return `\
 You are thunderbolt, a terminal coding agent${modelId ? `, powered by ${modelId}` : ''}. You operate directly in the user's \
 working directory and complete software tasks end-to-end.
 
 Working directory: ${cwd}
 
 # Tools
-${toolInstructions(bashEnabled)}
+${toolInstructions(bashEnabled, skills.length > 0)}
+${skillListing ? `\n${skillListing}\n` : ''}
 
 # How to work
 - When you have enough information to act, act. Don't re-derive facts already \
@@ -80,3 +93,4 @@ ${toolInstructions(bashEnabled)}
 When the task is complete, end with one or two sentences on what changed and any \
 follow-up the user should know about. Lead with the outcome. Don't recap every \
 file you touched — the user watched it happen.`
+}

@@ -5,6 +5,7 @@
 import { useCallback, useReducer } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
+import { isWidgetSkillId } from '@/defaults/skills'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
@@ -46,8 +47,8 @@ export const SkillsView = () => {
 
   // Route-state deep links retained for settings integrations.
   // `editSkill` selects an existing skill; `startEditSkill` lands directly in
-  // its edit form. Composer create/edit actions use the route-preserving
-  // CreateItemContext surface instead.
+  // its edit form, except widget contracts remain on read-only detail.
+  // Composer create/edit actions use route-preserving CreateItemContext.
   useConsumeNavState('editSkill', (id) => dispatch({ type: 'SELECT_SKILL', id }))
   useConsumeNavState('startEditSkill', (id) => dispatch({ type: 'START_EDIT', id }))
 
@@ -56,8 +57,7 @@ export const SkillsView = () => {
   // slide-in-from-the-right behavior. `undefined` means "nothing selected".
   const activeSkill = skills.find((s) => s.id === activeId)
 
-  // Disabling a pinned skill auto-unpins it. Re-enabling does NOT auto-repin;
-  // the user pins again deliberately from the chat composer.
+  // Disabling a pinned skill auto-unpins it so no inert chip remains.
   const disableSkill = useCallback(
     async (id: string) => {
       await setEnabled(id, false)
@@ -225,6 +225,7 @@ export const SkillsView = () => {
           name={skillDisplayName(activeSkill)}
           description={activeSkill.description}
           instruction={activeSkill.instruction}
+          readOnly={isWidgetSkillId(activeSkill.id)}
           onEdit={() => onEdit(activeSkill.id)}
           onDelete={() => onDelete(activeSkill.id)}
           onClose={() => dispatch({ type: 'BACK_TO_LIST' })}

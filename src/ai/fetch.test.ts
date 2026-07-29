@@ -3,12 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, mock } from 'bun:test'
+import { createPrompt } from '@/ai/prompt'
+import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import type { Model } from '@/types'
+import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import type { Model, Skill } from '@/types'
 import type { Tool } from 'ai'
-import { mergeMcpTools, resolveOpenAiCompatConnection, sanitizeToolPrefix } from './fetch'
+import {
+  addSkillTool,
+  mergeMcpTools,
+  resolveOpenAiCompatConnection,
+  sanitizeToolPrefix,
+  selectPromptSkillDefinitions,
+} from './fetch'
 
 /** Mirror the `MCPClientError` the SDK throws after a transport drop. The
  *  runtime instance `name` is `'MCPClientError'` (the `AI_MCPClientError`
@@ -48,6 +58,87 @@ describe('sanitizeToolPrefix', () => {
 
   it.each(cases)('sanitizes %p → %p', (input, expected) => {
     expect(sanitizeToolPrefix(input)).toBe(expected)
+  })
+})
+
+describe('addSkillTool', () => {
+  const skills = [
+    {
+      name: 'weather',
+      description: 'Use for weather forecasts.',
+      instruction: 'Emit the weather widget contract.',
+    },
+  ]
+
+  it('registers the skill tool only for tool-capable models', () => {
+    expect(Object.keys(addSkillTool({}, skills, true))).toEqual(['skill'])
+    expect(addSkillTool({}, skills, false)).toEqual({})
+  })
+})
+
+describe('selectPromptSkillDefinitions', () => {
+  const storedSkills: Skill[] = [
+    { ...defaultSkillWeather, instruction: 'WIDGET_CONTRACT_BODY' },
+    { ...defaultSkillResearch, instruction: 'TASK_SKILL_BODY' },
+    {
+      ...defaultSkillResearch,
+      id: 'user-authored-skill',
+      name: 'user-authored',
+      label: 'User Authored',
+      instruction: 'USER_AUTHORED_SKILL_BODY',
+    },
+  ]
+
+  /** Build a prompt with only skill capability varying between cases. */
+  const createSkillPrompt = (supportsTools: boolean) =>
+    createPrompt({
+      modelName: 'Test Model',
+      profile: null,
+      preferredName: '',
+      location: {},
+      localization: {
+        distanceUnit: 'imperial',
+        temperatureUnit: 'f',
+        dateFormat: 'MM/DD/YYYY',
+        timeFormat: '12h',
+        currency: 'USD',
+      },
+      integrationStatus: 'READY',
+      hasWebTools: false,
+      skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
+      supportsTools,
+    })
+
+  it('inlines only widget rendering contracts for non-tool models', () => {
+    const prompt = createSkillPrompt(false)
+
+    expect(prompt).toContain('### weather\nWIDGET_CONTRACT_BODY')
+    expect(prompt).not.toContain('TASK_SKILL_BODY')
+    expect(prompt).not.toContain('USER_AUTHORED_SKILL_BODY')
+    expect(prompt).not.toContain('- research:')
+    expect(prompt).not.toContain('- user-authored:')
+  })
+
+  it('keeps the full skill listing for tool-capable models', () => {
+    const prompt = createSkillPrompt(true)
+
+    expect(prompt).toContain('Use the `skill` tool')
+    expect(prompt).toContain('- weather:')
+    expect(prompt).toContain('- research:')
+    expect(prompt).toContain('- user-authored:')
+    expect(prompt).not.toContain('WIDGET_CONTRACT_BODY')
+    expect(prompt).not.toContain('TASK_SKILL_BODY')
+    expect(prompt).not.toContain('USER_AUTHORED_SKILL_BODY')
+  })
+
+  it('keeps every enabled skill in the slash-token resolution map', () => {
+    const skills = selectEnabledSkillDefinitions(storedSkills)
+    const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
+
+    expect(resolveSkillTokenInstructions('/research /user-authored', instructionBySlug)).toEqual([
+      'TASK_SKILL_BODY',
+      'USER_AUTHORED_SKILL_BODY',
+    ])
   })
 })
 

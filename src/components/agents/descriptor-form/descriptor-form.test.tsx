@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { AgentDescriptor } from '@shared/agent-descriptors'
 import { DescriptorForm } from './descriptor-form'
 
@@ -44,7 +44,7 @@ const nameOnly: AgentDescriptor = {
 
 describe('DescriptorForm', () => {
   it('renders visible fields and hides ones whose visibleWhen guard is unmet', () => {
-    render(<DescriptorForm descriptor={conditionalDescriptor} onSubmit={() => {}} />)
+    render(<DescriptorForm descriptor={conditionalDescriptor} onSubmit={() => {}} onCancel={() => {}} />)
     expect(screen.getByText('Name')).toBeInTheDocument()
     expect(screen.getByText('Mode')).toBeInTheDocument()
     // mode defaults to 'curated', so the byo-only field is hidden.
@@ -52,13 +52,20 @@ describe('DescriptorForm', () => {
   })
 
   it('shows the submit label and the descriptor description', () => {
-    render(<DescriptorForm descriptor={nameOnly} onSubmit={() => {}} submitLabel="Deploy agent" />)
+    render(<DescriptorForm descriptor={nameOnly} onSubmit={() => {}} onCancel={() => {}} submitLabel="Deploy agent" />)
     expect(screen.getByRole('button', { name: 'Deploy agent' })).toBeInTheDocument()
     expect(screen.getByText('Deploy X')).toBeInTheDocument()
   })
 
-  it('surfaces a submit-time error above the button', () => {
-    render(<DescriptorForm descriptor={nameOnly} onSubmit={() => {}} error="Deploy failed" />)
+  it('surfaces a submit-time error next to the buttons', () => {
+    render(<DescriptorForm descriptor={nameOnly} onSubmit={() => {}} onCancel={() => {}} error="Deploy failed" />)
     expect(screen.getByText('Deploy failed')).toBeInTheDocument()
+  })
+
+  it('fires onCancel from the Cancel button', () => {
+    const onCancel = mock(() => {})
+    render(<DescriptorForm descriptor={nameOnly} onSubmit={() => {}} onCancel={onCancel} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })

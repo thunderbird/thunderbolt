@@ -115,6 +115,7 @@ export const AddAgentPanel = ({ onClose, allowConnect, loadAppNodeId, enrollIroh
         <DescriptorForm
           descriptor={selected}
           onSubmit={handleDeploy}
+          onCancel={onClose}
           submitLabel="Deploy"
           isSubmitting={isDeploying}
           error={error}

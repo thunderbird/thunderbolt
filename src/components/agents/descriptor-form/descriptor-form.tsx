@@ -20,7 +20,9 @@ import {
   type AgentSpec,
 } from '@shared/agent-descriptors'
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
+import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
@@ -29,9 +31,11 @@ import { submittableSpec } from './submittable-spec'
 type DescriptorFormProps = {
   descriptor: AgentDescriptor
   onSubmit: (spec: AgentSpec) => void | Promise<void>
+  /** Dismiss the form (Cancel button); mirrors the connect form's onClose. */
+  onCancel: () => void
   submitLabel?: string
   isSubmitting?: boolean
-  /** A submit-time error (e.g. a failed deploy) shown above the button. */
+  /** A submit-time error (e.g. a failed deploy) shown next to the buttons. */
   error?: string | null
 }
 
@@ -76,6 +80,7 @@ const FieldControl = ({ field, rhf }: { field: AgentField; rhf: ControllerRender
 export const DescriptorForm = ({
   descriptor,
   onSubmit,
+  onCancel,
   submitLabel = 'Deploy',
   isSubmitting = false,
   error,
@@ -94,31 +99,38 @@ export const DescriptorForm = ({
 
   return (
     <Form {...form}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {descriptor.description && (
-          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{descriptor.description}</p>
-        )}
-        {fields.map((field) => (
-          <FormField
-            key={field.key}
-            control={form.control}
-            name={field.key}
-            render={({ field: rhf }) => (
-              <FormItem>
-                <FormLabel>{field.label}</FormLabel>
-                <FormControl>
-                  <FieldControl field={field} rhf={rhf} />
-                </FormControl>
-                {field.helpText && <FormDescription>{field.helpText}</FormDescription>}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        ))}
-        {error && <p className="text-[length:var(--font-size-sm)] text-destructive">{error}</p>}
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Deploying…' : submitLabel}
-        </Button>
+      <form onSubmit={handleSubmit} className="flex flex-1 flex-col">
+        {descriptor.description && <p className="text-sm text-muted-foreground">{descriptor.description}</p>}
+        <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
+          {fields.map((field) => (
+            <FormField
+              key={field.key}
+              control={form.control}
+              name={field.key}
+              render={({ field: rhf }) => (
+                <FormItem>
+                  <FormLabel>{field.label}</FormLabel>
+                  <FormControl>
+                    <FieldControl field={field} rhf={rhf} />
+                  </FormControl>
+                  {field.helpText && <FormDescription>{field.helpText}</FormDescription>}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ))}
+        </div>
+        <FormFooter>
+          {error && (
+            <p role="alert" className="min-w-0 flex-1 truncate text-[length:var(--font-size-sm)] text-destructive">
+              {error}
+            </p>
+          )}
+          <ResponsiveModalCancel onClick={onCancel} />
+          <Button type="submit" isLoading={isSubmitting} loadingLabel="Deploying…" disabled={isSubmitting}>
+            {submitLabel}
+          </Button>
+        </FormFooter>
       </form>
     </Form>
   )

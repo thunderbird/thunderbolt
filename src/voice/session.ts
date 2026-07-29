@@ -15,8 +15,8 @@
  * speaks (see `setState`), so sustained user speech (`onSpeechStart`) cuts the
  * reply off immediately — the aborted turn's audio keeps accumulating in the VAD
  * and commits as the next turn. This leans on the browser's echo cancellation to
- * keep the assistant's own playback from self-triggering; `bargeInFrames` in the
- * VAD is the echo-robustness knob if it interrupts itself.
+ * keep the assistant's own playback from self-triggering; `minSpeechFrames` in the
+ * endpointer is the echo-robustness knob if it interrupts itself.
  *
  * Not yet layered on: Smart Turn semantic endpointing (VAD silence endpointing
  * is used for now).

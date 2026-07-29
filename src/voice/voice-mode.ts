@@ -10,8 +10,16 @@
  * flag that `aiFetchStreamingResponse` reads to inject {@link voiceModeSystemNote}
  * as a system message *only* during voice — giving the model the self-knowledge it
  * needs (it's speaking aloud, its voice is fixed, keep replies brief) without
- * cluttering text chats. Safe as a module-level singleton: the composer is inert
- * while voice is active, so a typed send never overlaps a voice session.
+ * cluttering text chats.
+ *
+ * Known limitation (intentional): the flag is tab-global, and `aiFetchStreamingResponse`
+ * is the shared send path for *all* AI calls. So a non-voice call that happens to
+ * fire during a live voice session — e.g. title generation — would also get the
+ * note. In practice the composer is inert during voice so interactive overlap is
+ * rare and the impact is cosmetic, so we keep the singleton for now. If that ever
+ * matters, the fix is to scope it per-request: thread a `voiceMode` flag on the
+ * voice send (`chat.sendMessage(..., { body: { voiceMode: true } })`) through to
+ * the prompt builder instead of reading a global.
  */
 let voiceModeActive = false
 

@@ -87,4 +87,49 @@ describe('createOpenclawProvider', () => {
     const malformed = await provider.status!('not-a-ref', ctx('user-a'))
     expect(malformed.status).toBe('gone')
   })
+
+  test('undeploy kills the owner sandbox and reports gone', async () => {
+    const killed: string[] = []
+    const client: E2bClient = {
+      ...fakeClient({ 'sbx-1': { userId: 'user-a' } }),
+      kill: async (sandboxId) => {
+        killed.push(sandboxId)
+      },
+    }
+    const provider = createOpenclawProvider({ client })
+
+    const result = await provider.undeploy!('e2b:sbx-1', ctx('user-a'))
+    expect(result).toEqual({ deploymentId: `${openclawProviderId}:e2b:sbx-1`, status: 'gone' })
+    expect(killed).toEqual(['sbx-1'])
+  })
+
+  test('undeploy never kills another tenant sandbox but still reports gone (idempotent)', async () => {
+    const killed: string[] = []
+    const client: E2bClient = {
+      ...fakeClient({ 'sbx-1': { userId: 'victim' } }),
+      kill: async (sandboxId) => {
+        killed.push(sandboxId)
+      },
+    }
+    const provider = createOpenclawProvider({ client })
+
+    const result = await provider.undeploy!('e2b:sbx-1', ctx('attacker'))
+    expect(result.status).toBe('gone')
+    expect(killed).toEqual([])
+  })
+
+  test('undeploy is a no-op for a malformed ref', async () => {
+    const killed: string[] = []
+    const client: E2bClient = {
+      ...fakeClient(),
+      kill: async (sandboxId) => {
+        killed.push(sandboxId)
+      },
+    }
+    const provider = createOpenclawProvider({ client })
+
+    const result = await provider.undeploy!('not-a-ref', ctx('user-a'))
+    expect(result.status).toBe('gone')
+    expect(killed).toEqual([])
+  })
 })

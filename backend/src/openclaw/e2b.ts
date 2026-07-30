@@ -207,3 +207,26 @@ export const openclawSandboxStatusForUser = async (
   const isReady = deps.isAcpReady ?? probeAcpReady
   return (await isReady(sandbox.wsUrl)) ? 'running' : 'pending'
 }
+
+/**
+ * Trigger teardown of a caller-owned sandbox. Owner-gated exactly like the relay:
+ * reads the sandbox's own metadata and kills only when it matches `userId`, so a
+ * forged `?instance=` can never kill another tenant's sandbox. A foreign or
+ * already-gone sandbox is a no-op (`false`) — undeploy is idempotent, so the
+ * client can still drop its local row. Returns once E2B accepts the kill; it does
+ * not wait for the microVM to fully tear down.
+ */
+export const killOpenclawSandboxForUser = async (
+  sandboxId: string,
+  userId: string,
+  apiKey: string,
+  deps: OpenclawE2bDeps = {},
+): Promise<boolean> => {
+  const client = deps.client ?? defaultE2bClient
+  const metadata = await client.getMetadata(sandboxId, { apiKey })
+  if (!metadata || metadata[ownerMetadataKey] !== userId) {
+    return false
+  }
+  await client.kill(sandboxId, { apiKey })
+  return true
+}

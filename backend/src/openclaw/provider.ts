@@ -12,9 +12,11 @@ import type {
   AgentSpec,
   DeploymentStatusResponse,
   DeployResponse,
+  UndeployResponse,
 } from '@shared/agent-descriptors'
 import {
   deployOpenclawSandbox,
+  killOpenclawSandboxForUser,
   openclawSandboxStatusForUser,
   type OpenclawE2bConfig,
   type OpenclawE2bDeps,
@@ -127,5 +129,16 @@ export const createOpenclawProvider = (deps: OpenclawE2bDeps = {}): AgentProvide
     // Only a usable (ACP-answering) sandbox carries the chat endpoint.
     const connection = status === 'running' ? connectionFor(request, ref) : null
     return { deploymentId, status, connection }
+  },
+  undeploy: async (ref: string, { settings, userId }: ProviderContext): Promise<UndeployResponse> => {
+    const deploymentId = encodeDeploymentId(openclawProviderId, ref)
+    const sandboxId = parseSandboxRef(ref)
+    // Malformed ref, or a foreign / already-gone sandbox → idempotent no-op; the
+    // owner-gated kill returns false without throwing, so the client still drops
+    // its local row.
+    if (sandboxId) {
+      await killOpenclawSandboxForUser(sandboxId, userId, settings.e2bApiKey, deps)
+    }
+    return { deploymentId, status: 'gone' }
   },
 })

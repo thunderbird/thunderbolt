@@ -4,7 +4,13 @@
 
 import type { Settings } from '@/config/settings'
 import type { RemoteAgentDescriptor } from '@shared/acp-types'
-import type { AgentDescriptor, AgentSpec, DeployResponse, DeploymentStatusResponse } from '@shared/agent-descriptors'
+import type {
+  AgentDescriptor,
+  AgentSpec,
+  DeployResponse,
+  DeploymentStatusResponse,
+  UndeployResponse,
+} from '@shared/agent-descriptors'
 
 /**
  * Everything a provider needs to service a catalog/deploy/status request: the
@@ -41,6 +47,11 @@ export type AgentProvider = {
   deploy?: (spec: AgentSpec, ctx: ProviderContext) => Promise<DeployResponse>
   /** Live deployment status for `ref`, fetched from the host — never stored. */
   status?: (ref: string, ctx: ProviderContext) => Promise<DeploymentStatusResponse>
+  /** Trigger teardown of `ref` on the host (undeploy / kill). Returns once the
+   *  teardown is accepted — it does NOT block on the full unmount. Idempotent: a
+   *  foreign or already-gone deployment is a no-op so the client can still drop
+   *  its local row. Absent → the provider's deployments can't be torn down. */
+  undeploy?: (ref: string, ctx: ProviderContext) => Promise<UndeployResponse>
 }
 
 /**

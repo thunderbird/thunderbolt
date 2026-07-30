@@ -14,6 +14,7 @@ import type {
   DeploymentStatusResponse,
   DeployResponse,
   DeployStatus,
+  UndeployResponse,
 } from '@shared/agent-descriptors'
 import { DeepsetManagementClient, DeepsetManagementError } from './management-client'
 
@@ -233,6 +234,27 @@ export const createHaystackProvider = (deps: HaystackProviderDeps = {}): AgentPr
             }
           : null
       return { deploymentId, status, detail: pipeline.status, connection }
+    },
+    undeploy: async (ref: string, { settings }: ProviderContext): Promise<UndeployResponse> => {
+      const deploymentId = encodeDeploymentId(haystackProviderId, ref)
+      // Only tear down our own `tb-*` deploy clones — never the owner-curated
+      // template or other workspace pipelines. A non-`tb-` ref is a no-op so the
+      // client can still drop its local row.
+      if (!ref.startsWith('tb-')) {
+        return { deploymentId, status: 'gone' }
+      }
+      // Delete removes the cloned pipeline entirely (the whole teardown for a
+      // user-deleted agent). A 404 means it's already gone — the goal state — so
+      // treat it as success rather than surfacing an error.
+      await managementClient(settings)
+        .deletePipeline(ref)
+        .catch((err) => {
+          if (err instanceof DeepsetManagementError && err.status === 404) {
+            return
+          }
+          throw err
+        })
+      return { deploymentId, status: 'gone' }
     },
   }
 }

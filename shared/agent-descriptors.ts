@@ -160,6 +160,14 @@ export const deploymentStatusResponseSchema = z.object({
 })
 export type DeploymentStatusResponse = z.infer<typeof deploymentStatusResponseSchema>
 
+/** Response of `DELETE /agents/deployments/:id`. `status` is `gone` once teardown
+ *  is triggered on the host — the endpoint does not block on the full unmount. */
+export const undeployResponseSchema = z.object({
+  deploymentId: z.string(),
+  status: deployStatusSchema,
+})
+export type UndeployResponse = z.infer<typeof undeployResponseSchema>
+
 /** True when a spec value carries a usable (non-empty) value. */
 const hasValue = (value: SpecValue | undefined): boolean =>
   Array.isArray(value) ? value.length > 0 : typeof value === 'string' && value.trim().length > 0

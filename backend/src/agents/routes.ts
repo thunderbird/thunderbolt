@@ -16,6 +16,7 @@ import {
   type AgentSpec,
   type DeployResponse,
   type DeploymentStatusResponse,
+  type UndeployResponse,
 } from '@shared/agent-descriptors'
 import type { User } from '@shared/types/auth'
 import { Elysia } from 'elysia'
@@ -163,6 +164,34 @@ export const createAgentsRoutes = (auth: Auth) =>
         return { error: 'Unknown provider' }
       }
       return provider.status(decoded.ref, { request, settings, userId: user.id })
+    })
+    .delete('/deployments/:id', async ({ params, request, set, user }): Promise<UndeployResponse | ErrorBody> => {
+      if (!user) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+      if (user.isAnonymous) {
+        set.status = 403
+        return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
+      }
+      const settings = getSettings()
+      if (!settings.agentDeploy) {
+        set.status = 404
+        return { error: 'Not found' }
+      }
+      let decoded: { provider: string; ref: string }
+      try {
+        decoded = decodeDeploymentId(params.id)
+      } catch {
+        set.status = 400
+        return { error: 'Invalid deployment id' }
+      }
+      const provider = getProviderById(decoded.provider)
+      if (!provider?.undeploy) {
+        set.status = 404
+        return { error: 'Unknown provider' }
+      }
+      return provider.undeploy(decoded.ref, { request, settings, userId: user.id })
     })
 
 /**

@@ -136,6 +136,30 @@ describe('haystack provider — status', () => {
   })
 })
 
+describe('haystack provider — undeploy', () => {
+  it('deletes the cloned tb- pipeline and reports gone', async () => {
+    const { fetchFn, calls } = routedFetch((url, init) =>
+      init?.method === 'DELETE' && url.endsWith('/pipelines/tb-my-agent-abc') ? { status: 204 } : undefined,
+    )
+    const result = await createHaystackProvider({ fetchFn }).undeploy!('tb-my-agent-abc', makeContext())
+    expect(result).toEqual({ deploymentId: 'haystack:tb-my-agent-abc', status: 'gone' })
+    expect(calls.some((c) => c.init?.method === 'DELETE' && c.url.endsWith('/pipelines/tb-my-agent-abc'))).toBe(true)
+  })
+
+  it('treats an already-deleted (404) pipeline as success', async () => {
+    const { fetchFn } = routedFetch(() => ({ status: 404, body: { error: 'not found' } }))
+    const result = await createHaystackProvider({ fetchFn }).undeploy!('tb-x', makeContext())
+    expect(result.status).toBe('gone')
+  })
+
+  it('never deletes a non-tb pipeline (template / shared) — no-op success', async () => {
+    const { fetchFn, calls } = routedFetch(() => ({ status: 200 }))
+    const result = await createHaystackProvider({ fetchFn }).undeploy!('Template-Pipeline', makeContext())
+    expect(result.status).toBe('gone')
+    expect(calls).toEqual([])
+  })
+})
+
 describe('haystack provider — list', () => {
   const request = new Request('http://localhost:8000/v1/agents')
   const listBody = {

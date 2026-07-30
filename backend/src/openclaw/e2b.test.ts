@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   deployOpenclawSandbox,
+  killOpenclawSandboxForUser,
   openclawSandboxStatusForUser,
   resolveOpenclawSandboxForUser,
   type E2bClient,
@@ -115,6 +116,29 @@ describe('resolveOpenclawSandboxForUser', () => {
     const fake = fakeClient({ metadataById: {} })
     const result = await resolveOpenclawSandboxForUser('gone', 'user-a', config.apiKey, { client: fake.client })
     expect(result).toBeNull()
+  })
+})
+
+describe('killOpenclawSandboxForUser', () => {
+  test('kills the sandbox when the caller owns it', async () => {
+    const fake = fakeClient({ metadataById: { 'sbx-9': { userId: 'user-a', kind: 'openclaw' } } })
+    const result = await killOpenclawSandboxForUser('sbx-9', 'user-a', config.apiKey, { client: fake.client })
+    expect(result).toBe(true)
+    expect(fake.killed).toEqual(['sbx-9'])
+  })
+
+  test('never kills another tenant sandbox', async () => {
+    const fake = fakeClient({ metadataById: { 'sbx-9': { userId: 'victim', kind: 'openclaw' } } })
+    const result = await killOpenclawSandboxForUser('sbx-9', 'attacker', config.apiKey, { client: fake.client })
+    expect(result).toBe(false)
+    expect(fake.killed).toEqual([])
+  })
+
+  test('no-op for a missing / already-gone sandbox', async () => {
+    const fake = fakeClient({ metadataById: {} })
+    const result = await killOpenclawSandboxForUser('gone', 'user-a', config.apiKey, { client: fake.client })
+    expect(result).toBe(false)
+    expect(fake.killed).toEqual([])
   })
 })
 

@@ -191,6 +191,7 @@ describe('agent deploy endpoints', () => {
       deploy: (spec) =>
         Promise.resolve({ deploymentId: `haystack:tb-${String(spec.name)}`, status: 'pending', connection: null }),
       status: (ref) => Promise.resolve({ deploymentId: `haystack:${ref}`, status: 'running', connection: null }),
+      undeploy: (ref) => Promise.resolve({ deploymentId: `haystack:${ref}`, status: 'gone' }),
     })
 
   const post = (app: Elysia, path: string, body: unknown) =>
@@ -303,5 +304,44 @@ describe('agent deploy endpoints', () => {
     const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
     const res = await app.handle(new Request('http://localhost/agents/deployments/ghost:ref'))
     expect(res.status).toBe(404)
+  })
+
+  const del = (app: Elysia, path: string) => app.handle(new Request(`http://localhost${path}`, { method: 'DELETE' }))
+
+  it('DELETE /deployments/:id dispatches undeploy to the provider', async () => {
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await del(app, '/agents/deployments/haystack:tb-bot')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ deploymentId: 'haystack:tb-bot', status: 'gone' })
+  })
+
+  it('DELETE /deployments/:id returns 404 when the feature is off', async () => {
+    delete process.env.AGENT_DEPLOY
+    clearSettingsCache()
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await del(app, '/agents/deployments/haystack:tb-bot')
+    expect(res.status).toBe(404)
+  })
+
+  it('DELETE /deployments/:id returns 400 for a malformed id', async () => {
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await del(app, '/agents/deployments/nocolon')
+    expect(res.status).toBe(400)
+  })
+
+  it('DELETE /deployments/:id returns 404 when the provider has no undeploy', async () => {
+    registerAgentProvider({ id: 'haystack', list: () => [] }) // discovery-only, no undeploy
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await del(app, '/agents/deployments/haystack:tb-bot')
+    expect(res.status).toBe(404)
+  })
+
+  it('DELETE /deployments/:id returns 403 for anonymous users', async () => {
+    const app = buildApp(buildAuth({ id: 'anon-1', isAnonymous: true }))
+    const res = await del(app, '/agents/deployments/haystack:tb-bot')
+    expect(res.status).toBe(403)
   })
 })

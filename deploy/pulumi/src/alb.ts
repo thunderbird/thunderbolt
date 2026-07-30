@@ -31,6 +31,8 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
     loadBalancerType: 'application',
     securityGroups: [albSgId],
     subnets: publicSubnetIds,
+    // Must stay strictly below the backend keep-alive timeout — see backend/src/index.ts (120s).
+    idleTimeout: 60,
     tags: { Name: `${name}-alb` },
   })
 

@@ -200,6 +200,9 @@ const startServer = async () => {
         hostname,
         port: settings.port,
         reusePort: process.env.NODE_ENV === 'production',
+        // Must stay strictly above the ALB idle timeout (60s) — see deploy/pulumi; Bun cap is 255.
+        // If the server closes first, the ALB reuses a dead connection and returns 502.
+        idleTimeout: 120,
       },
       () => {
         log.info(

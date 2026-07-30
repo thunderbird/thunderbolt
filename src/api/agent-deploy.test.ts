@@ -5,15 +5,21 @@
 import { describe, expect, it } from 'bun:test'
 import { HttpError, type HttpClient } from '@/lib/http'
 import type { AgentCatalogResponse, DeployRequest, DeployResponse } from '@shared/agent-descriptors'
-import { deployAgent, deploymentIdForAgent, fetchAgentCatalog, getDeploymentStatus } from './agent-deploy'
+import {
+  deployAgent,
+  deploymentIdForAgent,
+  fetchAgentCatalog,
+  getDeploymentStatus,
+  undeployAgent,
+} from './agent-deploy'
 
-type Call = { url: string; options?: { json?: unknown } }
+type Call = { url: string; method: string; options?: { json?: unknown } }
 
-/** Build a fake HttpClient whose get/post resolve to `body`, recording calls. */
+/** Build a fake HttpClient whose get/post/delete resolve to `body`, recording calls. */
 const makeClient = (body: unknown, opts: { throwStatus?: number } = {}) => {
   const calls: Call[] = []
-  const respond = (url: string, options?: { json?: unknown }) => {
-    calls.push({ url, options })
+  const respond = (method: string) => (url: string, options?: { json?: unknown }) => {
+    calls.push({ url, method, options })
     return {
       json: async () => {
         if (opts.throwStatus) {
@@ -24,8 +30,9 @@ const makeClient = (body: unknown, opts: { throwStatus?: number } = {}) => {
     }
   }
   const client = {
-    get: (url: string) => respond(url),
-    post: (url: string, options?: { json?: unknown }) => respond(url, options),
+    get: respond('GET'),
+    post: respond('POST'),
+    delete: respond('DELETE'),
   } as unknown as HttpClient
   return { client, calls }
 }
@@ -94,13 +101,34 @@ describe('deploymentIdForAgent', () => {
     expect(deploymentIdForAgent({ type: 'remote-acp', url: 'wss://h/v1/haystack/ws?pipeline=tb-x' })).toBeNull()
   })
 
-  it('returns null when the url carries no pipeline ref', () => {
+  it('derives openclaw:<ref> from an instance url', () => {
+    expect(deploymentIdForAgent({ type: 'managed-acp', url: 'wss://h/v1/openclaw/ws?instance=e2b%3Asbx-1' })).toBe(
+      'openclaw:e2b:sbx-1',
+    )
+  })
+
+  it('returns null when the url carries no pipeline or instance ref', () => {
     expect(deploymentIdForAgent({ type: 'managed-acp', url: 'wss://h/v1/haystack/ws' })).toBeNull()
   })
 
   it('returns null for a missing or malformed url', () => {
     expect(deploymentIdForAgent({ type: 'managed-acp', url: null })).toBeNull()
     expect(deploymentIdForAgent({ type: 'managed-acp', url: 'not a url' })).toBeNull()
+  })
+})
+
+describe('undeployAgent', () => {
+  it('DELETEs the encoded deployment id and parses the response', async () => {
+    const { client, calls } = makeClient({ deploymentId: 'openclaw:e2b:sbx-1', status: 'gone' })
+    const result = await undeployAgent(cloudUrl, client, 'openclaw:e2b:sbx-1')
+    expect(calls[0].method).toBe('DELETE')
+    expect(calls[0].url).toBe('https://api.test/v1/agents/deployments/openclaw%3Ae2b%3Asbx-1')
+    expect(result).toEqual({ deploymentId: 'openclaw:e2b:sbx-1', status: 'gone' })
+  })
+
+  it('throws when the undeploy trigger fails', async () => {
+    const { client } = makeClient(null, { throwStatus: 500 })
+    await expect(undeployAgent(cloudUrl, client, 'openclaw:e2b:sbx-1')).rejects.toThrow()
   })
 })
 

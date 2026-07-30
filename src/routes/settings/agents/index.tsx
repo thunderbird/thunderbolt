@@ -5,6 +5,7 @@
 import { useState } from 'react'
 
 import { testAcpConnection } from '@/acp'
+import { deploymentIdForAgent, undeployAgent } from '@/api/agent-deploy'
 import { selectAgentDeploy, selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { AddAgentBody } from '@/components/agents/add-agent-body'
@@ -15,9 +16,10 @@ import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/a
 import { SettingsListBody, settingsListBodyRowsClass, SettingsListPane } from '@/components/settings/settings-list'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
-import { useAuth, useDatabase } from '@/contexts'
+import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 type AgentsSettingsPageProps = {
   /** Test/DI override for reading this app's iroh NodeId. Forwarded to the add
@@ -41,6 +43,8 @@ type AgentsSettingsPageProps = {
 const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) => {
   const db = useDatabase()
   const agents = useAllAgents()
+  const httpClient = useHttpClient()
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
@@ -102,7 +106,16 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
               useChatStore.getState().applyAgentWireIdentityChange({ ...activeAgent, ...patch })
             }
           }}
-          onDelete={() => deleteAgent(db, activeAgent.id)}
+          onDelete={async () => {
+            // Managed agents own a host deployment — trigger its teardown first.
+            // If the undeploy trigger fails we throw, so the local row is kept and
+            // the detail panel surfaces the error (nothing is silently orphaned).
+            const deploymentId = deploymentIdForAgent(activeAgent)
+            if (deploymentId) {
+              await undeployAgent(cloudUrl, httpClient, deploymentId)
+            }
+            await deleteAgent(db, activeAgent.id)
+          }}
           testAcpConnection={testAcpConnection}
         />
       )

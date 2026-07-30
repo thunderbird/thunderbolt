@@ -14,10 +14,12 @@ import {
   agentCatalogResponseSchema,
   deployResponseSchema,
   deploymentStatusResponseSchema,
+  undeployResponseSchema,
   type AgentDescriptor,
   type DeployRequest,
   type DeployResponse,
   type DeploymentStatusResponse,
+  type UndeployResponse,
 } from '@shared/agent-descriptors'
 
 /**
@@ -48,20 +50,30 @@ export const deployAgent = async (
 }
 
 /**
- * Reconstruct a persisted agent's deployment id so its live status can be polled
- * after a reload — nothing device-local is stored. Managed agents encode their
- * host ref in the connection url (`…/haystack/ws?pipeline=<ref>`), and the id is
- * `<provider>:<ref>` (see the backend `deployment-id` codec). Only Haystack ships
- * today; when the `provider` field lands it will be read off the row instead of
- * parsed from the url. Returns null for agents that carry no deployment.
+ * Reconstruct a persisted agent's deployment id so its status can be polled or
+ * its deployment torn down after a reload — nothing device-local is stored.
+ * Managed agents encode their host ref in the connection url; the id is
+ * `<provider>:<ref>` (see the backend `deployment-id` codec):
+ *   - Haystack → `…/haystack/ws?pipeline=<ref>` ⇒ `haystack:<ref>`
+ *   - OpenClaw → `…/openclaw/ws?instance=<ref>` ⇒ `openclaw:<ref>`
+ * When the `provider` field lands on the agents row it will be read off the row
+ * instead of parsed from the url. Returns null for agents that carry no deployment.
  */
 export const deploymentIdForAgent = (agent: Pick<Agent, 'type' | 'url'>): string | null => {
   if (agent.type !== 'managed-acp' || !agent.url) {
     return null
   }
   try {
-    const pipeline = new URL(agent.url).searchParams.get('pipeline')
-    return pipeline ? `haystack:${pipeline}` : null
+    const params = new URL(agent.url).searchParams
+    const pipeline = params.get('pipeline')
+    if (pipeline) {
+      return `haystack:${pipeline}`
+    }
+    const instance = params.get('instance')
+    if (instance) {
+      return `openclaw:${instance}`
+    }
+    return null
   } catch {
     return null
   }
@@ -77,4 +89,20 @@ export const getDeploymentStatus = async (
     .get(`${cloudUrl}/agents/deployments/${encodeURIComponent(deploymentId)}`)
     .json<unknown>()
   return deploymentStatusResponseSchema.parse(data)
+}
+
+/**
+ * Trigger teardown of a deployment on its host. Resolves once the undeploy is
+ * accepted (not the full unmount); throws if the trigger fails so the caller
+ * keeps the local agent row and surfaces the error to the user.
+ */
+export const undeployAgent = async (
+  cloudUrl: string,
+  httpClient: HttpClient,
+  deploymentId: string,
+): Promise<UndeployResponse> => {
+  const data = await httpClient
+    .delete(`${cloudUrl}/agents/deployments/${encodeURIComponent(deploymentId)}`)
+    .json<unknown>()
+  return undeployResponseSchema.parse(data)
 }

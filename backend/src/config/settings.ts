@@ -151,6 +151,15 @@ const settingsSchema = z
     // Name of an existing Deepset pipeline whose query_yaml is cloned as the template
     // for descriptor-driven deploys (THU-743). Empty = Haystack is not deployable.
     haystackTemplatePipeline: z.string().default(''),
+    // OpenClaw-specific config (consumed by the OpenClaw provider). OpenClaw is a
+    // sandbox-hosted managed-acp agent: we spin a per-user E2B microVM from a
+    // static, prebuilt template and relay ACP frames to it. Owner-managed / one-click:
+    // the owner fixes the sandbox + model here; the user just clicks Deploy.
+    e2bApiKey: z.string().default(''),
+    // OpenClaw "provider/model" string the deployed agent runs (e.g. openrouter/...). Empty = not deployable.
+    openclawModel: z.string().default(''),
+    // Shared OpenRouter key injected into the sandbox env for inference. Empty = not deployable.
+    openclawOpenrouterApiKey: z.string().default(''),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -233,6 +242,9 @@ const parseSettings = (): Settings => {
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
     haystackTemplatePipeline: process.env.HAYSTACK_TEMPLATE_PIPELINE || '',
+    e2bApiKey: process.env.E2B_API_KEY || '',
+    openclawModel: process.env.OPENCLAW_MODEL || '',
+    openclawOpenrouterApiKey: process.env.OPENCLAW_OPENROUTER_API_KEY || '',
   }
 
   return settingsSchema.parse(env)

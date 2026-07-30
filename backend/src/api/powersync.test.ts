@@ -78,6 +78,9 @@ const powersyncSettings: Settings = {
   haystackApiKey: '',
   haystackWorkspace: '',
   haystackTemplatePipeline: '',
+  e2bApiKey: '',
+  openclawModel: '',
+  openclawOpenrouterApiKey: '',
   minAppVersion: '',
 }
 

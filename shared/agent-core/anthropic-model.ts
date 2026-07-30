@@ -113,9 +113,15 @@ const mapThinkingLevelToEffort = (model: Model<typeof apiId>, level: ThinkingLev
   // `efforts.find` validates the catalog override as a real effort (type-safe,
   // no cast). Every Anthropic catalog override is valid, so this matches Pi.
   const override = typeof mapped === 'string' ? efforts.find((effort) => effort === mapped) : undefined
-  if (override) {return override}
-  if (level === 'minimal' || level === 'low') {return 'low'}
-  if (level === 'medium') {return 'medium'}
+  if (override) {
+    return override
+  }
+  if (level === 'minimal' || level === 'low') {
+    return 'low'
+  }
+  if (level === 'medium') {
+    return 'medium'
+  }
   return 'high'
 }
 

@@ -25,7 +25,9 @@ const ws = '/ws'
 
 const textOf = (result: { content: { type: string; text?: string }[] }): string => {
   const block = result.content[0]
-  if (block.type !== 'text' || block.text === undefined) {throw new Error('expected a text block')}
+  if (block.type !== 'text' || block.text === undefined) {
+    throw new Error('expected a text block')
+  }
   return block.text
 }
 
@@ -48,11 +50,9 @@ beforeEach(async () => {
 
 const run = (tool: AgentTool, args: unknown) =>
   // The Pi AgentTool.execute signature: (toolCallId, args, signal).
-  (tool.execute as (id: string, a: unknown, s?: AbortSignal) => Promise<{ content: { type: string; text?: string }[] }>)(
-    'call-1',
-    args,
-    undefined,
-  )
+  (
+    tool.execute as (id: string, a: unknown, s?: AbortSignal) => Promise<{ content: { type: string; text?: string }[] }>
+  )('call-1', args, undefined)
 
 describe('createBrowserCodingTools', () => {
   it('exposes the four tools in order with the model-visible names', () => {
@@ -115,7 +115,9 @@ describe('read tool', () => {
     const content = Array.from({ length: defaultMaxLines + 1 }, (_, i) => `row${i}`).join('\n')
     await fsp.writeFile(`${ws}/big.txt`, content)
     const out = textOf(await run(read, { path: 'big.txt' }))
-    expect(out).toContain(`[Showing lines 1-${defaultMaxLines} of ${defaultMaxLines + 1}. Use offset=${defaultMaxLines + 1} to continue.]`)
+    expect(out).toContain(
+      `[Showing lines 1-${defaultMaxLines} of ${defaultMaxLines + 1}. Use offset=${defaultMaxLines + 1} to continue.]`,
+    )
     expect(out).not.toContain('limit)') // line-based truncation has no "(50.0KB limit)" note
   })
 
@@ -198,8 +200,7 @@ describe('write tool', () => {
 })
 
 describe('edit tool – argument preparation', () => {
-  const prepare = (input: unknown): unknown =>
-    (edit.prepareArguments as (i: unknown) => unknown)(input)
+  const prepare = (input: unknown): unknown => (edit.prepareArguments as (i: unknown) => unknown)(input)
 
   it('parses a JSON-string `edits` into an array (some models stringify it)', () => {
     expect(prepare({ path: 'f', edits: '[{"oldText":"a","newText":"b"}]' })).toEqual({
@@ -216,9 +217,13 @@ describe('edit tool – argument preparation', () => {
   })
 
   it('appends a top-level oldText/newText pair to an existing edits[] array', () => {
-    expect(
-      prepare({ path: 'f', edits: [{ oldText: 'x', newText: 'y' }], oldText: 'a', newText: 'b' }),
-    ).toEqual({ path: 'f', edits: [{ oldText: 'x', newText: 'y' }, { oldText: 'a', newText: 'b' }] })
+    expect(prepare({ path: 'f', edits: [{ oldText: 'x', newText: 'y' }], oldText: 'a', newText: 'b' })).toEqual({
+      path: 'f',
+      edits: [
+        { oldText: 'x', newText: 'y' },
+        { oldText: 'a', newText: 'b' },
+      ],
+    })
   })
 
   it('leaves a non-JSON `edits` string untouched so validation surfaces a clear error', () => {
@@ -234,9 +239,7 @@ describe('edit tool – argument preparation', () => {
 describe('edit tool – execution', () => {
   it('throws when no replacements are provided', async () => {
     await fsp.writeFile(`${ws}/f.txt`, 'abc')
-    await expect(run(edit, { path: 'f.txt', edits: [] })).rejects.toThrow(
-      'edits must contain at least one replacement',
-    )
+    await expect(run(edit, { path: 'f.txt', edits: [] })).rejects.toThrow('edits must contain at least one replacement')
   })
 
   it('reports a friendly error (with the FS error code) when the file does not exist', async () => {
@@ -289,7 +292,13 @@ describe('edit tool – execution', () => {
   it('reports the count for multiple blocks', async () => {
     await fsp.writeFile(`${ws}/m.txt`, 'a x c')
     const out = textOf(
-      await run(edit, { path: 'm.txt', edits: [{ oldText: 'a', newText: 'A' }, { oldText: 'c', newText: 'C' }] }),
+      await run(edit, {
+        path: 'm.txt',
+        edits: [
+          { oldText: 'a', newText: 'A' },
+          { oldText: 'c', newText: 'C' },
+        ],
+      }),
     )
     expect(out).toBe('Successfully replaced 2 block(s) in m.txt.')
     expect(await fsp.readFile(`${ws}/m.txt`, { encoding: 'utf8' })).toBe('A x C')
@@ -328,9 +337,7 @@ describe('bash tool', () => {
 
   it('byte-truncates output and labels the footer with the 50KB limit', async () => {
     // 60 lines × ~1001 bytes ≈ 60KB: under the line limit but over the byte limit.
-    const out = textOf(
-      await run(bash, { command: 'for i in $(seq 1 60); do printf "%01000d\\n" $i; done' }),
-    )
+    const out = textOf(await run(bash, { command: 'for i in $(seq 1 60); do printf "%01000d\\n" $i; done' }))
     expect(out).toContain('(50.0KB limit). Full output:')
   })
 

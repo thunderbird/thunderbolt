@@ -61,11 +61,15 @@ const drive = async (
 
   const { models, model } = buildAnthropicModel({ apiKey: 'test-key', fetch: injectedFetch, modelId })
   const provider = models.getProvider('anthropic')
-  if (!provider) {throw new Error('anthropic provider not registered')}
+  if (!provider) {
+    throw new Error('anthropic provider not registered')
+  }
 
   const stream = provider[entry](model, context, options)
   try {
-    for await (const event of stream) {void event}
+    for await (const event of stream) {
+      void event
+    }
   } catch {
     // Stream-parse hiccups are irrelevant; the captured request body is the contract.
   }

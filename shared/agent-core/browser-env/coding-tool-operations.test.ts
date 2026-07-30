@@ -41,8 +41,12 @@ const fakeEnv = (script: {
   const env = {
     exec: async (command: string, options: Record<string, unknown>) => {
       calls.push({ command, options })
-      if (script.emit?.stdout !== undefined) {(options.onStdout as (c: string) => void)(script.emit.stdout)}
-      if (script.emit?.stderr !== undefined) {(options.onStderr as (c: string) => void)(script.emit.stderr)}
+      if (script.emit?.stdout !== undefined) {
+        ;(options.onStdout as (c: string) => void)(script.emit.stdout)
+      }
+      if (script.emit?.stderr !== undefined) {
+        ;(options.onStderr as (c: string) => void)(script.emit.stderr)
+      }
       return script.result
     },
   } as unknown as BrowserExecutionEnv

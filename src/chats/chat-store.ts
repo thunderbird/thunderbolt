@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 import { updateSettings } from '@/dal'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
@@ -76,8 +77,12 @@ type ChatStoreActions = {
   setPendingPermission(id: string, permission: PendingPermission | null): void
   resolvePendingPermission(id: string, response: RequestPermissionResponse): void
   setSelectedAgent(id: string, agent: Agent): Promise<void>
-  setSelectedModel(id: string, modelId: string | null): Promise<void>
+  setSelectedModel(id: string, modelId: string | null, deps?: SetSelectedModelDeps): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
+}
+
+type SetSelectedModelDeps = {
+  prewarmSystemModel?: typeof prewarmSystemModel
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
@@ -233,7 +238,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     trackEvent('agent_select', { agent: agent.id })
   },
 
-  setSelectedModel: async (id, modelId) => {
+  setSelectedModel: async (id, modelId, deps = {}) => {
     const { models, sessions } = get()
 
     const model = models.find((m) => m.id === modelId)
@@ -252,6 +257,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     nextSessions.set(id, { ...session, selectedModel: model })
 
     set({ sessions: nextSessions })
+
+    // Fire-and-forget: the wrapper no-ops (before any dynamic import) unless
+    // this is a Tinfoil system model, so the first send finds a warm client.
+    void (deps.prewarmSystemModel ?? prewarmSystemModel)(model)
 
     const db = getDb()
     await updateSettings(db, { selected_model: model.id })

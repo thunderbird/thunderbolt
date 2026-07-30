@@ -20,7 +20,7 @@ import {
   resetStore,
 } from '@/test-utils/chat-store-mocks'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 describe('chat-store', () => {
@@ -325,6 +325,49 @@ describe('chat-store', () => {
 
       const session = getCurrentSession()
       expect(session?.selectedModel?.id).toBe('tracked-model')
+    })
+
+    it('invokes the prewarm wrapper with the selected model (wrapper owns the tinfoil/system guard)', async () => {
+      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
+      const prewarmSystemModel = mock(async () => {})
+
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'test-id',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmSystemModel })
+
+      expect(prewarmSystemModel).toHaveBeenCalledTimes(1)
+      expect(prewarmSystemModel).toHaveBeenCalledWith(model)
+    })
+
+    it('does not propagate prewarm errors into model selection', async () => {
+      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
+      const prewarmFailure = Promise.reject(new Error('attestation failed'))
+      void prewarmFailure.catch(() => undefined)
+      const prewarmSystemModel = mock(() => prewarmFailure)
+
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'test-id',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await expect(
+        useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmSystemModel }),
+      ).resolves.toBeUndefined()
+      expect(prewarmSystemModel).toHaveBeenCalledTimes(1)
+      expect(getCurrentSession()?.selectedModel).toBe(model)
     })
   })
 

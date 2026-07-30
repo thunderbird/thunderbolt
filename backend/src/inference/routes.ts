@@ -5,7 +5,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
-import { isPostHogConfigured } from '@/posthog/client'
+import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import { elapsedMs } from '@/utils/timing'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
@@ -76,6 +76,7 @@ export type InferenceProxyLatencyLog = {
 
 export type CreateInferenceRoutesOptions = {
   auth: Auth
+  captureInferenceErrorFn?: typeof captureInferenceError
   fetchFn?: typeof fetch
   getClient?: (provider: InferenceProvider) => InferenceClient
   isPostHogConfiguredFn?: () => boolean
@@ -96,6 +97,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
   const { auth, fetchFn, logger, rateLimit } = options
   const nowFn = options.nowFn ?? (() => performance.now())
   const isPostHogConfiguredFn = options.isPostHogConfiguredFn ?? isPostHogConfigured
+  const captureInferenceErrorFn = options.captureInferenceErrorFn ?? captureInferenceError
   const getClient =
     options.getClient ?? ((provider: InferenceProvider) => getInferenceClient(provider, { fetchFn, logger, nowFn }))
   const app = new Elysia({
@@ -206,6 +208,12 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           console.error('Connection timeout to inference provider', error.cause)
           throw new Error('Connection timeout to inference provider', { cause: error })
         }
+        // safeErrorHandler strips the upstream cause from the client response
+        // (returns only "Bad Request"), so record the real provider status,
+        // message, and model to keep upstream failures diagnosable.
+        const status = getErrorStatus(error)
+        const detail = error instanceof Error ? error.message : String(error)
+        captureInferenceErrorFn({ provider, status, model: body.model, detail, distinctId: ctx.user.id })
         throw error
       }
     })

@@ -245,6 +245,37 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
     })
 
+    it('should capture the upstream status, model, and detail on an API error', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const apiError = Object.assign(new Error('400 invalid_request_error: prompt is too long'), { status: 400 })
+      mockCreateCompletion.mockImplementation(() => Promise.reject(apiError))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'mistral',
+        status: 400,
+        model: 'mistral-large-3',
+        detail: '400 invalid_request_error: prompt is too long',
+        distinctId: 'test-user',
+      })
+    })
+
     it('emits phase timing headers and a structured latency log on success', async () => {
       const entries: Array<{ context: InferenceProxyLatencyLog; message: string }> = []
       const timestamps = [100, 120, 170]

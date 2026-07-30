@@ -102,6 +102,7 @@ describe('createTinfoilRoutes', () => {
       upstreamHeadersTimeoutMs?: number
       upstreamIdleTimeoutMs?: number
       upstreamOriginStore?: TinfoilUpstreamOriginStore
+      captureInferenceErrorFn?: Parameters<typeof createTinfoilRoutes>[0]['captureInferenceErrorFn']
     } = {},
   ) =>
     new Elysia().use(
@@ -115,6 +116,7 @@ describe('createTinfoilRoutes', () => {
         upstreamHeadersTimeoutMs: overrides.upstreamHeadersTimeoutMs,
         upstreamIdleTimeoutMs: overrides.upstreamIdleTimeoutMs,
         upstreamOriginStore: overrides.upstreamOriginStore,
+        captureInferenceErrorFn: overrides.captureInferenceErrorFn,
       }),
     )
 
@@ -337,6 +339,42 @@ describe('createTinfoilRoutes', () => {
 
       const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
       expect(init.body).toBeNull()
+    })
+  })
+
+  describe('upstream error telemetry', () => {
+    it('captures non-2xx enclave responses with status and subpath', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      mockFetch.mockImplementation(() => Promise.resolve(new Response('key config mismatch', { status: 422 })))
+      const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })
+
+      const res = await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }),
+        ),
+      )
+
+      expect(res.status).toBe(422)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'tinfoil',
+        status: 422,
+        detail: '/v1/chat/completions',
+        distinctId: 'test-user',
+      })
+    })
+
+    it('does not capture 2xx enclave responses', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })
+
+      const res = await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }),
+        ),
+      )
+
+      expect(res.status).toBe(200)
+      expect(captureInferenceErrorMock).not.toHaveBeenCalled()
     })
   })
 

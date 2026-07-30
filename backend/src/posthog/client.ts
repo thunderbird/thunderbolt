@@ -61,6 +61,32 @@ export const isPostHogConfigured = (): boolean => {
   return !!settings.posthogApiKey
 }
 
+export type InferenceErrorEvent = {
+  provider: string
+  status: number
+  distinctId: string
+  model?: string
+  detail?: string
+}
+
+/**
+ * Record an upstream inference failure so the real provider error (status,
+ * message, model) stays queryable. `safeErrorHandler` strips the cause from the
+ * client response for security and stdout logs aren't retained, so a captured
+ * event is the only durable record of why a send 400'd. No-op when PostHog is
+ * unconfigured.
+ */
+export const captureInferenceError = ({ provider, status, distinctId, model, detail }: InferenceErrorEvent): void => {
+  if (!isPostHogConfigured()) {
+    return
+  }
+  getPostHogClient().capture({
+    distinctId,
+    event: 'inference_upstream_error',
+    properties: { provider, status, model, detail },
+  })
+}
+
 /**
  * Clear the PostHog client cache (for testing)
  */

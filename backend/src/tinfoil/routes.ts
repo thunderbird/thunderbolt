@@ -6,6 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
 import { filterHeaders } from '@/utils/request'
 import { elapsedMs } from '@/utils/timing'
@@ -105,6 +106,7 @@ export type CreateTinfoilRoutesOptions = {
   /** Maximum idle time between upstream response chunks. Defaults to 60 seconds. */
   upstreamIdleTimeoutMs?: number
   upstreamOriginStore?: Pick<TinfoilUpstreamOriginStore, 'record'>
+  captureInferenceErrorFn?: typeof captureInferenceError
 }
 
 export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
@@ -119,6 +121,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const upstreamHeadersTimeoutMs = options.upstreamHeadersTimeoutMs ?? defaultUpstreamHeadersTimeoutMs
   const upstreamIdleTimeoutMs = options.upstreamIdleTimeoutMs ?? defaultUpstreamIdleTimeoutMs
   const upstreamOriginStore = options.upstreamOriginStore ?? tinfoilUpstreamOriginStore
+  const captureInferenceErrorFn = options.captureInferenceErrorFn ?? captureInferenceError
 
   const proxyToEnclave = async (
     requestStartedAt: number,
@@ -126,6 +129,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     wildcard: string,
     server: Bun.Server<unknown> | null,
     setHeaders: Record<string, string | string[] | number>,
+    distinctId: string,
   ): Promise<Response> => {
     const handlerStartedAt = nowFn()
     const preHandlerMs = elapsedMs(requestStartedAt, handlerStartedAt)
@@ -265,6 +269,14 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         upstreamFetchStartedAt,
         upstreamHeadersReceivedAt,
       })
+
+      // The enclave body is HPKE-opaque (and the model lives inside it), so only
+      // status + subpath are readable here. Record non-2xx upstreams so a Tinfoil
+      // failure stays diagnosable from telemetry without touching the stream.
+      if (!upstream.ok) {
+        captureInferenceErrorFn({ provider: 'tinfoil', status: upstream.status, detail: subpath, distinctId })
+      }
+
       return response
     } catch (error) {
       const completedAt = nowFn()
@@ -313,6 +325,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
                 ctx.params['*'] ?? '',
                 ctx.server,
                 ctx.set.headers,
+                ctx.user.id,
               ),
             { parse: 'none' },
           )
@@ -320,7 +333,14 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       return g.all(
         '/*',
         (ctx) =>
-          proxyToEnclave(ctx.tinfoilRequestStartedAt, ctx.request, ctx.params['*'] ?? '', ctx.server, ctx.set.headers),
+          proxyToEnclave(
+            ctx.tinfoilRequestStartedAt,
+            ctx.request,
+            ctx.params['*'] ?? '',
+            ctx.server,
+            ctx.set.headers,
+            ctx.user.id,
+          ),
         { parse: 'none' },
       )
     })

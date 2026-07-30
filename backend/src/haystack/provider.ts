@@ -41,7 +41,7 @@ const haystackDescriptor: AgentDescriptor = {
   id: haystackProviderId,
   provider: haystackProviderId,
   name: 'Haystack RAG agent',
-  description: 'Deploy a Deepset Cloud pipeline as a chat agent.',
+  description: 'Deploy a Haystack pipeline as a chat agent.',
   icon: 'file-search',
   schemaVersion: haystackSchemaVersion,
   action: 'deploy',

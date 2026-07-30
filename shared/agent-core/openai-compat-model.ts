@@ -57,17 +57,17 @@ import {
 import type { AgentFetch } from './anthropic-model.ts'
 
 /** The Pi API this provider exclusively serves. */
-const API = 'openai-completions'
+const apiName = 'openai-completions'
 
 /** Context window used when the app model carries none. Only consumed by Pi's
  *  token-budget math (irrelevant to openai-completions, which never caps tokens
  *  unless the caller passes `maxTokens`), so a generous default is harmless. */
-const DEFAULT_CONTEXT_WINDOW = 128_000
+const defaultContextWindow = 128_000
 /** Advisory max-output budget on the synthetic model. openai-completions only
  *  sends `max_completion_tokens` when the caller sets `options.maxTokens` (the
  *  harness does not), so this value never reaches the wire — it exists solely to
  *  satisfy the `Model` shape. */
-const DEFAULT_MAX_TOKENS = 8_192
+const defaultMaxTokens = 8_192
 
 /** Inputs for {@link buildOpenAiCompatModel}. */
 export type BuildOpenAiCompatModelOptions = {
@@ -119,9 +119,9 @@ const withInjectedFetch = <T>(fetchImpl: AgentFetch, run: () => T): T => {
  * exclusively serves, surfacing misuse loudly rather than guessing. Mirrors
  * {@link buildAnthropicModel}'s `requireAnthropic`.
  */
-const requireOpenAiCompletions = (model: Model<Api>): Model<typeof API> => {
-  if (!hasApi(model, API)) {
-    throw new Error(`Expected an "${API}" model, got "${model.api}".`)
+const requireOpenAiCompletions = (model: Model<Api>): Model<typeof apiName> => {
+  if (!hasApi(model, apiName)) {
+    throw new Error(`Expected an "${apiName}" model, got "${model.api}".`)
   }
   return model
 }
@@ -129,17 +129,17 @@ const requireOpenAiCompletions = (model: Model<Api>): Model<typeof API> => {
 /** Synthesize the Pi `Model<"openai-completions">` descriptor. The app's models
  *  live outside Pi's built-in catalog (custom URLs, backend-proxied ids), so we
  *  build the descriptor directly rather than resolving it. */
-const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof API> => ({
+const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiName> => ({
   id: opts.modelId,
   name: opts.modelId,
-  api: API,
+  api: apiName,
   provider: opts.providerId,
   baseUrl: opts.baseURL,
   reasoning: opts.reasoning,
   input: ['text'],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: opts.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
-  maxTokens: DEFAULT_MAX_TOKENS,
+  contextWindow: opts.contextWindow ?? defaultContextWindow,
+  maxTokens: defaultMaxTokens,
 })
 
 /**

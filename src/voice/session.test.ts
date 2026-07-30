@@ -190,4 +190,39 @@ describe('createVoiceSession', () => {
     expect(gateDestroyCalls).toBe(1)
     expect(session.state).toBe('idle')
   })
+
+  test('barge-in: onSpeechStart while speaking aborts the turn and returns to listening', async () => {
+    const transcripts: Array<[string, string]> = []
+    const session = createVoiceSession({
+      engine: makeEngine('user turn'),
+      reply: makeReply(['Hello, ', 'this is a long-winded reply.']),
+      onTranscript: (text, role) => transcripts.push([role, text]),
+    })
+
+    await session.start()
+    const turn = vadHandlers!.onUtterance(new Float32Array(16000))
+    // Advance to 'speaking' with the turn still in flight (the playback-drain loop
+    // uses a real timer, so a microtask flush can't run the turn to completion).
+    for (let i = 0; i < 50 && session.state !== 'speaking'; i++) {
+      await Promise.resolve()
+    }
+    expect(session.state).toBe('speaking')
+
+    vadHandlers!.onSpeechStart!() // the user starts talking over the assistant
+    await turn
+
+    // Cut off: back to listening, and the assistant reply never committed — a
+    // turn that ran to completion would have pushed an ['assistant', …] transcript.
+    expect(session.state).toBe('listening')
+    expect(transcripts.some(([role]) => role === 'assistant')).toBe(false)
+    expect(transcripts).toContainEqual(['user', 'user turn'])
+  })
+
+  test('onSpeechStart is a no-op when not thinking or speaking', async () => {
+    const session = createVoiceSession({ engine: makeEngine('hi'), reply: makeReply(['hi']) })
+    await session.start()
+    expect(session.state).toBe('listening')
+    vadHandlers!.onSpeechStart!() // nothing to interrupt
+    expect(session.state).toBe('listening')
+  })
 })

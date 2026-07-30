@@ -18,6 +18,7 @@ import { getMessage } from '@/dal/chat-messages'
 import { isWidgetSkillId } from '@/defaults/skills'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { createSkillTool, selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { isVoiceModeActive, voiceModeSystemNote } from '@/voice/voice-mode'
 import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
@@ -826,7 +827,11 @@ export const aiFetchStreamingResponse = async ({
         ).flat()
       : []
     const askResponsesNote = formatAskResponsesNote(askEntries)
-    const systemNotes = [...skillSystemMessages, ...(askResponsesNote ? [askResponsesNote] : [])]
+    // Voice turns reuse this same send path; when voice is active, prepend the
+    // voice self-context so the model knows it's speaking aloud, keeps replies
+    // brief, and answers about itself instead of web-searching its own identity.
+    const voiceNotes = isVoiceModeActive() ? [voiceModeSystemNote] : []
+    const systemNotes = [...voiceNotes, ...skillSystemMessages, ...(askResponsesNote ? [askResponsesNote] : [])]
 
     const stream = createUIMessageStream({
       generateId: uuidv7,

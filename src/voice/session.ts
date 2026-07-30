@@ -11,10 +11,12 @@
  * for testing). Nothing here is platform-specific, so web and desktop share it
  * verbatim — only the injected `VoiceEngine` differs.
  *
- * Deliberately half-duplex: the mic is gated off while the assistant thinks or
- * speaks (see `setState`), so there is no barge-in — the user waits for the reply
- * to finish before the next turn. Full-duplex barge-in (cut the assistant off
- * mid-reply) is a future addition; the VAD keeps an `onSpeechStart` hook for it.
+ * Full-duplex barge-in: the mic/VAD keeps running while the assistant thinks and
+ * speaks (see `setState`), so sustained user speech (`onSpeechStart`) cuts the
+ * reply off immediately — the aborted turn's audio keeps accumulating in the VAD
+ * and commits as the next turn. This leans on the browser's echo cancellation to
+ * keep the assistant's own playback from self-triggering; `minSpeechFrames` in the
+ * endpointer is the echo-robustness knob if it interrupts itself.
  *
  * Not yet layered on: Smart Turn semantic endpointing (VAD silence endpointing
  * is used for now).
@@ -70,12 +72,27 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
 
   const setState = (next: SessionState) => {
     state = next
-    // Half-duplex: only run the mic/VAD while actually listening, so the
-    // assistant can't hear its own audio and trigger a runaway self-reply loop
-    // (echo cancellation isn't reliable across browsers). Also frees the main
-    // thread while thinking/speaking.
-    vadGate?.setListening(next === 'listening')
+    // Full-duplex for barge-in: keep the mic/VAD running while thinking/speaking
+    // so the user can talk over the assistant (onSpeechStart → barge-in below).
+    // Only 'idle' (session stopped) silences the gate. Relies on echo cancellation
+    // so the assistant's own audio doesn't self-trigger a barge-in.
+    vadGate?.setListening(next !== 'idle')
     onState?.(next)
+  }
+
+  /**
+   * Barge-in: sustained user speech while the assistant is thinking or speaking
+   * cuts the reply off at once — abort the turn (stops STT/LLM/TTS), flush queued
+   * audio (<100 ms), and drop back to listening. The VAD keeps this same utterance
+   * buffered, so it commits via onUtterance as the next turn (no lost onset).
+   */
+  const onSpeechStart = () => {
+    if (state !== 'thinking' && state !== 'speaking') {
+      return
+    }
+    turn?.abort()
+    playback.flush()
+    setState('listening')
   }
 
   const onUtterance = async (audio: Float32Array) => {
@@ -196,7 +213,7 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
     if (stopped) {
       return
     }
-    const gate = await createVadGate({ onUtterance, onLevel })
+    const gate = await createVadGate({ onSpeechStart, onUtterance, onLevel })
     if (stopped) {
       await gate.destroy()
       return

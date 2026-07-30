@@ -37,11 +37,11 @@ import { ensureBufferPolyfill } from './ensure-buffer.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
 
 /** Mount-relative root under which every thread carves its isolated workspace. */
-const WORKSPACE_ROOT = '/workspace'
+const workspaceRoot = '/workspace'
 
 /**
  * Absolute mount-relative workspace directory for a thread. Each thread gets its
- * own subtree under {@link WORKSPACE_ROOT} so concurrent threads never see each
+ * own subtree under {@link workspaceRoot} so concurrent threads never see each
  * other's files even though they share the one process-global ZenFS mount.
  *
  * @param threadId - the chat thread id (an app-generated id, e.g. a UUID)
@@ -55,7 +55,7 @@ export const workspaceDirFor = (threadId: string): string => {
   if (!/^[A-Za-z0-9._-]+$/.test(threadId) || threadId === '.' || threadId === '..') {
     throw new Error(`unsafe threadId for workspace: ${threadId}`)
   }
-  return `${WORKSPACE_ROOT}/${threadId}`
+  return `${workspaceRoot}/${threadId}`
 }
 
 /**
@@ -116,7 +116,7 @@ export type BuildAppHarnessOptions = {
 
 /**
  * Build a ready-to-run app harness for a thread. Mounts the ZenFS singleton
- * (once), carves the thread's isolated workspace under {@link WORKSPACE_ROOT},
+ * (once), carves the thread's isolated workspace under {@link workspaceRoot},
  * binds the coding tools to it, resolves the proxied model (anthropic or
  * openai-compatible), and returns the constructed harness. The workspace persists
  * with the harness; tear it down by removing {@link workspaceDirFor}`(threadId)`

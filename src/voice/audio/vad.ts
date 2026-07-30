@@ -13,21 +13,18 @@
  * endpointing (e.g. Tinfoil voxtral-realtime) can supersede it later; energy VAD
  * is the crude-but-dependency-free MVP.
  *
- * `getUserMedia` runs with echo cancellation on; `onSpeechStart` is the barge-in
- * trigger (unused while half-duplex, but kept for when full-duplex returns).
+ * `getUserMedia` runs with echo cancellation on. For barge-in the session keeps
+ * the gate running *during* playback, so browser AEC is the only thing stopping
+ * the assistant's own audio from self-triggering — `onSpeechStart` deliberately
+ * waits for sustained speech (see the endpointer) to stay robust against residual
+ * echo. This file owns only the mic/worklet plumbing; the endpointing state
+ * machine lives in `./endpointer` so it can be unit-tested without a mic.
  */
-import { concatFrames } from '@/voice/engine/audio-engine'
 import { MediaDevicesUnavailableError } from '@/voice/voice-error'
+import { type EndpointerHandlers, createEndpointer } from './endpointer'
 
-export type VadHandlers = {
-  onSpeechStart?: () => void
-  /** A committed utterance (mono Float32Array @ 16 kHz) ready for transcription. */
-  onUtterance: (audio: Float32Array) => void
-  /** Speech started but was too short to be a real utterance. */
-  onMisfire?: () => void
-  /** Per-frame mic RMS [0,1] while listening — drives the live waveform. */
-  onLevel?: (rms: number) => void
-}
+/** Handlers for the mic gate — same shape the endpointer consumes. */
+export type VadHandlers = EndpointerHandlers
 
 export type VadGate = {
   start: () => Promise<void>
@@ -38,84 +35,16 @@ export type VadGate = {
   setListening: (value: boolean) => void
 }
 
-/** Frames are 512 samples (~32 ms) — set by the capture worklet. */
-const speechRmsThreshold = 0.015 // normalized [-1,1] amplitude; tune for the mic
-const minSpeechFrames = 8 // ~256 ms — shorter is a misfire
-// ~1.4 s of trailing silence ends the turn. Long enough to think mid-sentence
-// without it firing on a natural pause; a streaming STT with semantic
-// endpointing would let us shorten this later.
-const endSilenceFrames = 45
-const prerollFrames = 4 // keep a little audio before onset so we don't clip it
-
 const aecConstraints: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-}
-
-const rms = (frame: Float32Array): number => {
-  let sum = 0
-  for (let i = 0; i < frame.length; i++) {
-    sum += frame[i] * frame[i]
-  }
-  return Math.sqrt(sum / frame.length)
 }
 
 export const createVadGate = (handlers: VadHandlers): VadGate => {
   let stream: MediaStream | null = null
   let ctx: AudioContext | null = null
   let node: AudioWorkletNode | null = null
-
   let listening = true
-  let speaking = false
-  let collected: Float32Array[] = []
-  let preroll: Float32Array[] = []
-  let silenceRun = 0
-  let speechFrames = 0 // frames actually above threshold (excludes trailing silence)
-
-  const reset = () => {
-    speaking = false
-    collected = []
-    silenceRun = 0
-    speechFrames = 0
-  }
-
-  const endUtterance = () => {
-    const frames = collected
-    const speech = speechFrames
-    reset()
-    // Gate on real speech only — `collected` also holds preroll + the ~1.4 s of
-    // trailing silence, so counting frames.length would never detect a misfire.
-    if (speech < minSpeechFrames) {
-      handlers.onMisfire?.()
-      return
-    }
-    handlers.onUtterance(concatFrames(frames))
-  }
-
-  const processFrame = (frame: Float32Array) => {
-    const level = rms(frame)
-    handlers.onLevel?.(level)
-    if (level >= speechRmsThreshold) {
-      if (!speaking) {
-        speaking = true
-        collected = [...preroll]
-        handlers.onSpeechStart?.()
-      }
-      collected.push(frame)
-      silenceRun = 0
-      speechFrames++
-    } else if (speaking) {
-      collected.push(frame)
-      silenceRun++
-      if (silenceRun >= endSilenceFrames) {
-        endUtterance()
-      }
-    } else {
-      preroll.push(frame)
-      if (preroll.length > prerollFrames) {
-        preroll.shift()
-      }
-    }
-  }
+  const endpointer = createEndpointer(handlers)
 
   const start = async () => {
     // WKWebView hides `navigator.mediaDevices` outside a secure context (a Tauri
@@ -139,7 +68,7 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
     node.connect(ctx.destination) // worklet has no output; keeps the graph pulling
     node.port.onmessage = (event: MessageEvent<Float32Array>) => {
       if (listening) {
-        processFrame(event.data)
+        endpointer.processFrame(event.data)
       }
     }
   }
@@ -164,15 +93,13 @@ export const createVadGate = (handlers: VadHandlers): VadGate => {
     stream = null
     await ctx?.close()
     ctx = null
-    reset()
-    preroll = []
+    endpointer.clear()
   }
 
   const setListening = (value: boolean) => {
     listening = value
     if (!value) {
-      reset()
-      preroll = []
+      endpointer.clear()
     }
   }
 

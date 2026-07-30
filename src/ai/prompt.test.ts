@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
 import { widgetRegistry } from '@/widgets'
-import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
+import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { createPrompt, createPromptParts, type PromptParams } from './prompt'
 
 const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile => ({
@@ -228,6 +228,6 @@ describe('createPrompt', () => {
   test('does not include the Pi app harness environment', () => {
     const result = createPromptParts(baseParams)
 
-    expect(result.fullPrompt).not.toContain(APP_HARNESS_ENVIRONMENT_PROMPT)
+    expect(result.fullPrompt).not.toContain(appHarnessEnvironmentPrompt)
   })
 })

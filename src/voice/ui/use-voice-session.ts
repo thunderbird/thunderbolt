@@ -13,6 +13,7 @@ import { getSettings } from '@/dal'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReplyChat } from '@/voice/chat-reply'
 import type { SessionState, VoiceSession } from '@/voice/session'
+import { setVoiceModeActive } from '@/voice/voice-mode'
 import type { Chat } from '@ai-sdk/react'
 import { useEffect, useMemo, useReducer, useRef } from 'react'
 
@@ -65,6 +66,7 @@ export const useVoiceSession = () => {
     () => () => {
       void sessionRef.current?.stop()
       sessionRef.current = null
+      setVoiceModeActive(false)
     },
     [],
   )
@@ -74,6 +76,9 @@ export const useVoiceSession = () => {
       return
     } // already running — never stack a second session
     patch({ active: true, error: null, state: 'idle' })
+    // Flag voice as active so the chat send path injects the voice self-context
+    // system note (see `voice-mode.ts`); cleared on stop / startup failure.
+    setVoiceModeActive(true)
     try {
       // Lazy-load the voice runtime (session + engines + VAD/playback/aggregator
       // graph) only when the user actually starts voice — it's a non-critical
@@ -112,6 +117,7 @@ export const useVoiceSession = () => {
       console.error('[voice]', error)
       await sessionRef.current?.stop()
       sessionRef.current = null
+      setVoiceModeActive(false)
       const { toVoiceErrorMessage } = await import('@/voice/voice-error')
       patch({ error: toVoiceErrorMessage(error) })
     }
@@ -120,6 +126,7 @@ export const useVoiceSession = () => {
   const stop = async () => {
     await sessionRef.current?.stop()
     sessionRef.current = null
+    setVoiceModeActive(false)
     patch({ active: false, state: 'idle' })
   }
 

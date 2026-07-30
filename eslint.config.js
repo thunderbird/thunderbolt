@@ -84,5 +84,22 @@ export default [
       ],
     },
   },
+  {
+    // Environment-agnostic code shared by frontend and backend. No React or
+    // browser assumptions here — just the shared TypeScript conventions.
+    files: ['shared/**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: sharedParserOptions,
+      globals: {
+        ...globals.node,
+        Bun: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: sharedRules,
+  },
   ...storybook.configs['flat/recommended'],
 ]

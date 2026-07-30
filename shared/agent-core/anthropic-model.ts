@@ -50,11 +50,11 @@ import { adjustMaxTokensForThinking, buildBaseOptions } from '@earendil-works/pi
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 
 /** Provider id of the resolved model; matches Pi's built-in anthropic provider. */
-const PROVIDER = 'anthropic'
-const API = 'anthropic-messages'
+const provider = 'anthropic'
+const apiId = 'anthropic-messages'
 
 /** Valid adaptive-thinking effort levels, used to narrow catalog overrides. */
-const EFFORTS: readonly AnthropicEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
+const efforts: readonly AnthropicEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
 /**
  * Minimal fetch shape every request is routed through. The app passes its proxy
@@ -88,17 +88,17 @@ export type BuildAnthropicModelOptions = {
  * @returns true if the catalog has an anthropic-messages model with that id
  */
 export const isKnownAnthropicModel = (modelId: string): boolean => {
-  const resolved = builtinModels().getModel(PROVIDER, modelId)
-  return Boolean(resolved && hasApi(resolved, API))
+  const resolved = builtinModels().getModel(provider, modelId)
+  return Boolean(resolved && hasApi(resolved, apiId))
 }
 
 /**
  * Narrows a dispatched `Model<Api>` to the anthropic-messages model this
  * provider exclusively serves, surfacing misuse loudly rather than guessing.
  */
-const requireAnthropic = (model: Model<Api>): Model<typeof API> => {
-  if (!hasApi(model, API)) {
-    throw new Error(`Expected an "${API}" model, got "${model.api}".`)
+const requireAnthropic = (model: Model<Api>): Model<typeof apiId> => {
+  if (!hasApi(model, apiId)) {
+    throw new Error(`Expected an "${apiId}" model, got "${model.api}".`)
   }
   return model
 }
@@ -108,14 +108,20 @@ const requireAnthropic = (model: Model<Api>): Model<typeof API> => {
  * model's `thinkingLevelMap` override (e.g. opus models remap `xhigh`). Mirrors
  * Pi's internal mapping, which is not exported.
  */
-const mapThinkingLevelToEffort = (model: Model<typeof API>, level: ThinkingLevel): AnthropicEffort => {
+const mapThinkingLevelToEffort = (model: Model<typeof apiId>, level: ThinkingLevel): AnthropicEffort => {
   const mapped = model.thinkingLevelMap?.[level]
-  // `EFFORTS.find` validates the catalog override as a real effort (type-safe,
+  // `efforts.find` validates the catalog override as a real effort (type-safe,
   // no cast). Every Anthropic catalog override is valid, so this matches Pi.
-  const override = typeof mapped === 'string' ? EFFORTS.find((effort) => effort === mapped) : undefined
-  if (override) return override
-  if (level === 'minimal' || level === 'low') return 'low'
-  if (level === 'medium') return 'medium'
+  const override = typeof mapped === 'string' ? efforts.find((effort) => effort === mapped) : undefined
+  if (override) {
+    return override
+  }
+  if (level === 'minimal' || level === 'low') {
+    return 'low'
+  }
+  if (level === 'medium') {
+    return 'medium'
+  }
   return 'high'
 }
 
@@ -125,7 +131,7 @@ const mapThinkingLevelToEffort = (model: Model<typeof API>, level: ThinkingLevel
  * are exported; only the (unexported) effort mapping is reproduced above.
  */
 const toFullAnthropicOptions = (
-  model: Model<typeof API>,
+  model: Model<typeof apiId>,
   context: Context,
   options?: SimpleStreamOptions,
 ): AnthropicOptions => {
@@ -154,7 +160,7 @@ const toFullAnthropicOptions = (
  * Builds the `@anthropic-ai/sdk` client with the injected fetch, restoring the
  * static headers Pi would otherwise add for direct browser access.
  */
-const createAnthropicClient = (model: Model<typeof API>, opts: BuildAnthropicModelOptions): Anthropic =>
+const createAnthropicClient = (model: Model<typeof apiId>, opts: BuildAnthropicModelOptions): Anthropic =>
   new Anthropic({
     apiKey: opts.apiKey,
     baseURL: model.baseUrl,
@@ -177,8 +183,8 @@ const createAnthropicClient = (model: Model<typeof API>, opts: BuildAnthropicMod
  */
 export const buildAnthropicModel = (opts: BuildAnthropicModelOptions): { models: Models; model: Model<Api> } => {
   const catalog = builtinModels()
-  const resolved = catalog.getModel(PROVIDER, opts.modelId)
-  if (!resolved || !hasApi(resolved, API)) {
+  const resolved = catalog.getModel(provider, opts.modelId)
+  if (!resolved || !hasApi(resolved, apiId)) {
     throw new Error(`Unknown Anthropic model "${opts.modelId}".`)
   }
 
@@ -194,7 +200,7 @@ export const buildAnthropicModel = (opts: BuildAnthropicModelOptions): { models:
   const models = createModels()
   models.setProvider(
     createProvider({
-      id: PROVIDER,
+      id: provider,
       name: 'Anthropic',
       baseUrl: resolved.baseUrl,
       // Advisory only: the pre-built `client` owns the real credential

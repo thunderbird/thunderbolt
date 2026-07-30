@@ -10,17 +10,17 @@
  * tools indistinguishable from the CLI's for the model.
  *
  * Truncation honours two independent limits (whichever is hit first wins):
- *   - line limit ({@link DEFAULT_MAX_LINES})
- *   - byte limit ({@link DEFAULT_MAX_BYTES})
+ *   - line limit ({@link defaultMaxLines})
+ *   - byte limit ({@link defaultMaxBytes})
  *
  * `Buffer` is used for byte counting (UTF-8 aware); the app installs the global
  * `Buffer` polyfill (`ensureBufferPolyfill`) before any tool runs.
  */
 
 /** Maximum lines retained before truncation kicks in. */
-export const DEFAULT_MAX_LINES = 2000
+export const defaultMaxLines = 2000
 /** Maximum bytes retained before truncation kicks in (50KB). */
-export const DEFAULT_MAX_BYTES = 50 * 1024
+export const defaultMaxBytes = 50 * 1024
 
 /** Result of a head/tail truncation pass. */
 export type TruncationResult = {
@@ -73,8 +73,8 @@ export const formatSize = (bytes: number): string => {
  * @param options - optional line/byte limit overrides
  */
 export const truncateHead = (content: string, options: TruncateOptions = {}): TruncationResult => {
-  const maxLines = options.maxLines ?? DEFAULT_MAX_LINES
-  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES
+  const maxLines = options.maxLines ?? defaultMaxLines
+  const maxBytes = options.maxBytes ?? defaultMaxBytes
   const totalBytes = Buffer.byteLength(content, 'utf-8')
   const lines = splitLinesForCounting(content)
   const totalLines = lines.length
@@ -167,8 +167,8 @@ const truncateStringToBytesFromEnd = (text: string, maxBytes: number): string =>
  * @param options - optional line/byte limit overrides
  */
 export const truncateTail = (content: string, options: TruncateOptions = {}): TruncationResult => {
-  const maxLines = options.maxLines ?? DEFAULT_MAX_LINES
-  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES
+  const maxLines = options.maxLines ?? defaultMaxLines
+  const maxBytes = options.maxBytes ?? defaultMaxBytes
   const totalBytes = Buffer.byteLength(content, 'utf-8')
   const lines = splitLinesForCounting(content)
   const totalLines = lines.length

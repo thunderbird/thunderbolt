@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { APP_HARNESS_ENVIRONMENT_PROMPT } from './environment-prompt.ts'
+import { appHarnessEnvironmentPrompt } from './environment-prompt.ts'
 
-describe('APP_HARNESS_ENVIRONMENT_PROMPT', () => {
+describe('appHarnessEnvironmentPrompt', () => {
   it('documents sandbox network constraints without assuming optional web tools exist', () => {
-    expect(APP_HARNESS_ENVIRONMENT_PROMPT).toContain('no network access')
-    expect(APP_HARNESS_ENVIRONMENT_PROMPT).toContain('`curl` and `wget` are unavailable')
-    expect(APP_HARNESS_ENVIRONMENT_PROMPT).toContain('when available')
+    expect(appHarnessEnvironmentPrompt).toContain('no network access')
+    expect(appHarnessEnvironmentPrompt).toContain('`curl` and `wget` are unavailable')
+    expect(appHarnessEnvironmentPrompt).toContain('when available')
   })
 })

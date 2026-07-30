@@ -13,7 +13,9 @@ import {
 /** Parse one test IP literal. */
 const parseLiteral = (address: string) => {
   const parsedAddress = parseIpAddress(address)
-  if (!parsedAddress) throw new Error(`Expected an IP literal: ${address}`)
+  if (!parsedAddress) {
+    throw new Error(`Expected an IP literal: ${address}`)
+  }
   return parsedAddress
 }
 
@@ -23,7 +25,9 @@ const classify = (address: string): boolean => isPrivateOrInternalAddress(parseL
 /** Parse one test IPv4 literal. */
 const parseIpv4Literal = (address: string) => {
   const parsedAddress = parseLiteral(address)
-  if (parsedAddress.version !== 4) throw new Error(`Expected an IPv4 literal: ${address}`)
+  if (parsedAddress.version !== 4) {
+    throw new Error(`Expected an IPv4 literal: ${address}`)
+  }
   return parsedAddress
 }
 

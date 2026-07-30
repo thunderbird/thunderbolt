@@ -56,7 +56,7 @@ import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
-import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
+import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { prepareBuiltInConversation } from './built-in-conversation'
 
@@ -304,7 +304,7 @@ export const harnessSignature = (
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
 const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string =>
-  `${config.stableSystemPrompt}\n\n${APP_HARNESS_ENVIRONMENT_PROMPT}\n\n${config.volatileSystemPrompt}`
+  `${config.stableSystemPrompt}\n\n${appHarnessEnvironmentPrompt}\n\n${config.volatileSystemPrompt}`
 
 /** Build a thread's harness from the lazily-loaded engine and bind it to the
  *  thread's isolated workspace with resolved model + thinking level. Per-send app

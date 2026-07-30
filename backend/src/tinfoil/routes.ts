@@ -97,7 +97,11 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         duplex: 'half',
       } as RequestInit & { decompress: boolean; duplex: 'half' })
 
-      const responseHeaders = filterHeaders(upstream.headers, ['transfer-encoding', 'connection'])
+      // Strip upstream CORS headers: the enclave emits a duplicated
+      // `Access-Control-Allow-Credentials: true, true`, which browsers reject
+      // outright. Our own cors() middleware sets the correct CORS headers for
+      // our origin (including Ehbp-Response-Nonce in expose-headers).
+      const responseHeaders = filterHeaders(upstream.headers, ['transfer-encoding', 'connection', /^access-control-/i])
 
       const responseBody = upstream.body
         ? capStream(upstream.body, {

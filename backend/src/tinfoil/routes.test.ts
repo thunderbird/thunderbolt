@@ -198,6 +198,29 @@ describe('createTinfoilRoutes', () => {
       expect(res.headers.get('content-encoding')).toBe('br')
       await res.arrayBuffer()
     })
+
+    it('strips upstream CORS headers so only our own middleware sets them', async () => {
+      // The enclave emits a duplicated `Access-Control-Allow-Credentials: true, true`
+      // that browsers reject; relaying any upstream access-control-* would fight
+      // our cors() middleware.
+      mockFetch.mockResolvedValueOnce(
+        makeOkResponse('opaque', {
+          'access-control-allow-credentials': 'true, true',
+          'access-control-allow-origin': '*',
+          'access-control-expose-headers': 'X-Upstream-Only',
+          'ehbp-response-nonce': 'abc123',
+        }),
+      )
+      const app = buildApp()
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(res.headers.get('access-control-allow-credentials')).toBeNull()
+      expect(res.headers.get('access-control-allow-origin')).toBeNull()
+      expect(res.headers.get('access-control-expose-headers')).toBeNull()
+      expect(res.headers.get('ehbp-response-nonce')).toBe('abc123')
+      await res.arrayBuffer()
+    })
   })
 
   describe('body forwarding', () => {

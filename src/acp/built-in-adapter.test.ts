@@ -19,6 +19,7 @@ import type { Model } from '@/types'
 import {
   createBuiltInAdapter,
   harnessSignature,
+  withThinkingSessionOverride,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
 } from './built-in-adapter'
@@ -94,12 +95,32 @@ describe('harnessSignature', () => {
 
   it('changes when the openai-compat context window changes', () => {
     expect(harnessSignature(openaiCompat(), 'sys')).not.toBe(
-      harnessSignature(openaiCompat({ contextWindow: 200000 }), 'sys'),
+      harnessSignature(openaiCompat({ contextWindow: 200_000 }), 'sys'),
     )
   })
 
   it('does not embed the plaintext api key', () => {
     expect(harnessSignature(anthropic({ apiKey: 'super-secret-key' }), 'sys')).not.toContain('super-secret-key')
+  })
+})
+
+describe('withThinkingSessionOverride', () => {
+  it('leaves resolved config alone when thinking is on or model is not thinking-capable', () => {
+    const base = openaiCompat({ reasoning: true })
+    expect(withThinkingSessionOverride(base, { startWithReasoning: 1 }, true)).toBe(base)
+    expect(withThinkingSessionOverride(base, { startWithReasoning: 1 }, undefined)).toBe(base)
+    expect(withThinkingSessionOverride(base, { startWithReasoning: 0 }, false)).toBe(base)
+  })
+
+  it('forces thinking off for anthropic and openai-compat when the chip is off', () => {
+    expect(withThinkingSessionOverride(anthropic(), { startWithReasoning: 1 }, false)).toEqual({
+      ...anthropic(),
+      thinkingLevel: 'off',
+    })
+    expect(withThinkingSessionOverride(openaiCompat({ reasoning: true }), { startWithReasoning: 1 }, false)).toEqual({
+      descriptor: { ...openaiCompat({ reasoning: true }).descriptor, reasoning: false },
+      thinkingLevel: 'off',
+    })
   })
 })
 

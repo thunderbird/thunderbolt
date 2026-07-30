@@ -67,6 +67,12 @@ export type AgentAdapterContext = {
   acpSessionId: string | null
   saveMessages: SaveMessagesFunction
   selectedModel: Model
+  /**
+   * Per-conversation Thinking chip. Only meaningful when the selected model
+   * advertises thinking (`startWithReasoning === 1`). `false` disables thinking
+   * for this send; omit/`true` keeps the model default.
+   */
+  thinkingEnabled?: boolean
   mcpClients: NamedMCPClient[]
   /** Reconnect a dropped MCP client at the `tools()` boundary; returns a fresh
    *  client or null. Supplied by the MCP provider via the chat store. */

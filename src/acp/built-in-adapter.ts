@@ -52,6 +52,7 @@ import {
   resolveOpenAiCompatConnection,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
+import { isThinkingDisabledForSend } from '@/ai/thinking-session'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -271,6 +272,28 @@ const resolvePiModel = (
   }
 }
 
+/**
+ * Honors the composer Thinking chip when the selected model can reason: chip
+ * off forces `thinkingLevel: 'off'` and clears openai-compat `reasoning`.
+ */
+export const withThinkingSessionOverride = (
+  resolved: ResolvedPiModel,
+  model: Pick<Model, 'startWithReasoning'>,
+  thinkingEnabled: boolean | undefined,
+): ResolvedPiModel => {
+  if (!isThinkingDisabledForSend(model, thinkingEnabled)) {
+    return resolved
+  }
+  if (resolved.descriptor.kind === 'openai-compat') {
+    return {
+      ...resolved,
+      descriptor: { ...resolved.descriptor, reasoning: false },
+      thinkingLevel: 'off',
+    }
+  }
+  return { ...resolved, thinkingLevel: 'off' }
+}
+
 /** Compact non-cryptographic fingerprint (FNV-1a) of a secret, so the harness
  *  signature can detect an api-key change without embedding the plaintext key. */
 const hashSecret = (value: string): string => {
@@ -434,10 +457,11 @@ const fetchViaHarness = async (
     reconnectClient: context.reconnectClient,
     httpClient: context.httpClient,
   })
-  const resolved = resolvePiModel(agentCore, context, config.profile)
-  if (!resolved) {
+  const resolvedBase = resolvePiModel(agentCore, context, config.profile)
+  if (!resolvedBase) {
     return fallback()
   }
+  const resolved = withThinkingSessionOverride(resolvedBase, context.selectedModel, context.thinkingEnabled)
 
   const messages = parseMessages(init)
   const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
@@ -507,6 +531,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
       getProxyFetch: context.getProxyFetch,
+      thinkingEnabled: context.thinkingEnabled,
     })
 
   // Route tool-capable Pi-serviceable models (anthropic + the OpenAI-wire family)

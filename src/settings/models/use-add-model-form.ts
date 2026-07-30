@@ -26,6 +26,10 @@ export const addModelFormSchema = z
     customModel: z.string().optional(),
     url: z.string().optional(),
     apiKey: z.string().optional(),
+    /** Max context tokens; null/empty means provider default / unknown. */
+    contextWindow: z.union([z.number().int().positive(), z.null()]).optional(),
+    toolUsage: z.boolean(),
+    startWithReasoning: z.boolean(),
   })
   .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
     message: 'URL is required for Custom providers',
@@ -40,6 +44,13 @@ export const addModelFormSchema = z
   )
 
 export type AddModelFormValues = z.infer<typeof addModelFormSchema>
+
+/** Defaults applied when the catalog entry does not advertise a capability. */
+export const defaultCapabilityValues = {
+  contextWindow: null as number | null,
+  toolUsage: true,
+  startWithReasoning: false,
+}
 
 type AddModelState = {
   selectedModelId: string
@@ -110,6 +121,9 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
       customModel: '',
       url: '',
       apiKey: '',
+      contextWindow: defaultCapabilityValues.contextWindow,
+      toolUsage: defaultCapabilityValues.toolUsage,
+      startWithReasoning: defaultCapabilityValues.startWithReasoning,
     },
   })
   const provider = form.watch('provider')
@@ -138,13 +152,16 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     mutationFn: async (values: AddModelFormValues) => {
       await createModel(db, {
         id: uuidv7(),
-        ...values,
+        provider: values.provider,
+        name: values.name,
+        model: values.model,
         apiKey: values.apiKey || null,
         url: values.url || null,
         isSystem: 0,
         enabled: 1,
-        toolUsage: 1,
-        contextWindow: null,
+        toolUsage: values.toolUsage ? 1 : 0,
+        contextWindow: values.contextWindow ?? null,
+        startWithReasoning: values.startWithReasoning ? 1 : 0,
       })
       return getAvailableModels(db)
     },
@@ -180,18 +197,35 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     })
   }
 
+  const applyCatalogCapabilities = (modelId: string) => {
+    const selected = catalog.models.find((candidate) => candidate.id === modelId)
+    form.setValue('contextWindow', selected?.context_window ?? defaultCapabilityValues.contextWindow, {
+      shouldValidate: false,
+    })
+    form.setValue(
+      'toolUsage',
+      selected?.supports_tools === undefined ? defaultCapabilityValues.toolUsage : selected.supports_tools,
+      { shouldValidate: false },
+    )
+    form.setValue('startWithReasoning', selected?.supports_thinking === true, { shouldValidate: false })
+  }
+
   const selectModel = (modelId: string) => {
     dispatch({ type: 'MODEL_SELECTED', modelId })
     if (modelId === 'custom') {
       form.setValue('model', '', { shouldValidate: true })
       form.setValue('customModel', '')
       form.setValue('name', '', { shouldValidate: true })
+      form.setValue('contextWindow', defaultCapabilityValues.contextWindow, { shouldValidate: false })
+      form.setValue('toolUsage', defaultCapabilityValues.toolUsage, { shouldValidate: false })
+      form.setValue('startWithReasoning', defaultCapabilityValues.startWithReasoning, { shouldValidate: false })
       return
     }
     form.setValue('model', modelId, { shouldValidate: true })
     form.setValue('customModel', '')
     const selected = catalog.models.find((candidate) => candidate.id === modelId)
     form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
+    applyCatalogCapabilities(modelId)
   }
 
   // Recomputes formState.isValid for the freshly blanked fields (the submit
@@ -208,6 +242,12 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     for (const field of ['name', 'model', 'customModel', 'apiKey'] as const) {
       form.setValue(field, '', { shouldValidate: false, shouldDirty: false })
     }
+    form.setValue('contextWindow', defaultCapabilityValues.contextWindow, { shouldValidate: false, shouldDirty: false })
+    form.setValue('toolUsage', defaultCapabilityValues.toolUsage, { shouldValidate: false, shouldDirty: false })
+    form.setValue('startWithReasoning', defaultCapabilityValues.startWithReasoning, {
+      shouldValidate: false,
+      shouldDirty: false,
+    })
     // Ollama's default local endpoint — the most common custom provider.
     form.setValue('url', nextProvider === 'custom' ? 'http://localhost:11434/v1' : '', {
       shouldValidate: false,
@@ -220,10 +260,10 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     const items = catalogToComboboxItems(catalog.models)
     return provider === 'thunderbolt' ? items : [...items, customModelItem]
   }, [catalog.models, provider])
-  const supportsTools =
-    !selectedModelId ||
-    selectedModelId === 'custom' ||
-    catalog.models.find((candidate) => candidate.id === selectedModelId)?.supports_tools === true
+  // Prefer the form toggle once a model is chosen so the tools warning tracks
+  // user edits, not only the catalog advertisement.
+  const toolUsage = form.watch('toolUsage')
+  const supportsTools = !selectedModelId || selectedModelId === 'custom' || toolUsage
 
   return {
     form,

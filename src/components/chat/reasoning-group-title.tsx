@@ -34,30 +34,30 @@ const activeToolLabel = (tool: ToolOrDynamicToolUIPart, mcpTools?: UIMessageMeta
 export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mcpTools }: ReasoningGroupTitleProps) => {
   const activeIndex = tools.length - 1
   const activeTool = tools[activeIndex]
-  const loadingLabel = activeTool ? activeToolLabel(activeTool, mcpTools) : null
+  // While streaming with no tool yet, still show a label — an empty title next
+  // to the spinner reads as a hung chat (common for thinking-only turns).
+  const loadingLabel = activeTool ? activeToolLabel(activeTool, mcpTools) : 'Thinking'
 
   return (
     <div className="relative">
       <AnimatePresence mode="wait">
         {isGroupReasoning ? (
-          loadingLabel ? (
-            <m.div
-              key={`tool-${activeIndex}`}
-              // Skip entrance animation for tools already in progress (e.g., when switching back to a chat with active streaming)
-              initial={activeTool?.state === 'input-streaming' ? { y: 20, opacity: 0 } : { y: 0, opacity: 1 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: -20, opacity: 0 }}
-              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-              className="w-full"
+          <m.div
+            key={activeTool ? `tool-${activeIndex}` : 'thinking'}
+            // Skip entrance animation for tools already in progress (e.g., when switching back to a chat with active streaming)
+            initial={activeTool?.state === 'input-streaming' ? { y: 20, opacity: 0 } : { y: 0, opacity: 1 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: -20, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            className="w-full"
+          >
+            <span
+              data-testid="tool-status"
+              className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0"
             >
-              <span
-                data-testid="tool-status"
-                className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0"
-              >
-                {loadingLabel}
-              </span>
-            </m.div>
-          ) : null
+              {loadingLabel}
+            </span>
+          </m.div>
         ) : (
           <m.div
             key="completed"

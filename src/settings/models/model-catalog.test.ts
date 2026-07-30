@@ -2,9 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { defaultModels } from '@shared/defaults/models'
-import { canFetchCatalog, catalogRequestKey, isFetchableCatalogUrl, thunderboltModelCatalog } from './model-catalog'
+import { http } from '@/lib/http'
+import { stubJsonResponse } from '@/test-utils/http'
+import {
+  canFetchCatalog,
+  catalogRequestKey,
+  fetchModelsForProvider,
+  isFetchableCatalogUrl,
+  thunderboltModelCatalog,
+} from './model-catalog'
 
 describe('model catalog policy', () => {
   it('derives Thunderbolt choices from shipped defaults', () => {
@@ -55,5 +63,84 @@ describe('model catalog policy', () => {
       expect(canFetchCatalog({ provider: 'thunderbolt' })).toBe(true)
       expect(canFetchCatalog({ provider: 'tinfoil' })).toBe(true)
     })
+  })
+})
+
+describe('fetchModelsForProvider Ollama path', () => {
+  it('prefers /api/tags capabilities when the Custom URL looks like Ollama', async () => {
+    const getSpy = spyOn(http, 'get').mockImplementation((url: string) => {
+      if (String(url).includes('/api/tags')) {
+        return stubJsonResponse({
+          models: [
+            {
+              name: 'qwen2.5:14b',
+              details: { context_length: 32_768 },
+              capabilities: ['completion', 'tools'],
+            },
+          ],
+        })
+      }
+      throw new Error(`unexpected catalog URL: ${url}`)
+    })
+
+    try {
+      const models = await fetchModelsForProvider({
+        provider: 'custom',
+        url: 'http://localhost:11434/v1',
+      })
+      expect(models).toEqual([
+        {
+          id: 'qwen2.5:14b',
+          name: 'qwen2.5:14b',
+          supports_tools: true,
+          supports_thinking: false,
+          supports_vision: false,
+          context_window: 32_768,
+        },
+      ])
+      expect(getSpy.mock.calls.some((call) => String(call[0]).endsWith('/api/tags'))).toBe(true)
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it('falls back to /v1/models when /api/tags fails for an Ollama-like URL', async () => {
+    const getSpy = spyOn(http, 'get').mockImplementation((url: string) => {
+      if (String(url).includes('/api/tags')) {
+        throw new Error('connection refused')
+      }
+      return stubJsonResponse({ data: [{ id: 'fallback-model' }] })
+    })
+
+    try {
+      const models = await fetchModelsForProvider({
+        provider: 'custom',
+        url: 'http://localhost:11434/v1',
+      })
+      expect(models.map((model) => model.id)).toEqual(['fallback-model'])
+      expect(getSpy.mock.calls.some((call) => String(call[0]).endsWith('/api/tags'))).toBe(true)
+      expect(getSpy.mock.calls.some((call) => String(call[0]).includes('/v1/models'))).toBe(true)
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it('falls back to /v1/models when /api/tags returns a non-Ollama body', async () => {
+    const getSpy = spyOn(http, 'get').mockImplementation((url: string) => {
+      if (String(url).includes('/api/tags')) {
+        return stubJsonResponse({ status: 'ok' })
+      }
+      return stubJsonResponse({ data: [{ id: 'openai-compat-model' }] })
+    })
+
+    try {
+      const models = await fetchModelsForProvider({
+        provider: 'custom',
+        url: 'http://ollama:11434/v1',
+      })
+      expect(models.map((model) => model.id)).toEqual(['openai-compat-model'])
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 })

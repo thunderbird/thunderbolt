@@ -25,6 +25,10 @@ const editModelFormSchema = z.object({
   model: z.string().min(1, { message: 'Model name is required.' }),
   url: z.string().optional(),
   apiKey: z.string().optional(),
+  /** Max context tokens; null means provider default / unknown. */
+  contextWindow: z.union([z.number().int().positive(), z.null()]),
+  toolUsage: z.boolean(),
+  startWithReasoning: z.boolean(),
 })
 
 const buildEditModelFormSchema = (provider: Model['provider']) =>
@@ -35,16 +39,26 @@ const buildEditModelFormSchema = (provider: Model['provider']) =>
 
 type EditModelFormValues = z.infer<typeof editModelFormSchema>
 
-export type EditModelSubmission = Omit<EditModelFormValues, 'apiKey'> & {
+export type EditModelSubmission = Omit<EditModelFormValues, 'apiKey' | 'toolUsage' | 'startWithReasoning'> & {
   id: string
   apiKey: string | null | undefined
+  toolUsage: 0 | 1
+  startWithReasoning: 0 | 1
 }
 
 /** Owns edit-model form, catalog, API-key policy, and connection-test orchestration. */
 export const useEditModelFormState = (model: Model) => {
   const form = useForm<EditModelFormValues>({
     resolver: zodResolver(buildEditModelFormSchema(model.provider)),
-    defaultValues: { name: model.name || '', model: model.model, url: model.url || '', apiKey: '' },
+    defaultValues: {
+      name: model.name || '',
+      model: model.model,
+      url: model.url || '',
+      apiKey: '',
+      contextWindow: model.contextWindow ?? null,
+      toolUsage: model.toolUsage === 1,
+      startWithReasoning: model.startWithReasoning === 1,
+    },
   })
   const watchedModel = form.watch('model')
   const watchedUrl = form.watch('url')
@@ -101,6 +115,22 @@ export const useEditModelFormState = (model: Model) => {
     void fetchCatalog(catalogRequest)
   }
 
+  const applyCatalogCapabilities = (modelId: string) => {
+    const selected = catalog.models.find((candidate) => candidate.id === modelId)
+    if (!selected) {
+      return
+    }
+    form.setValue('contextWindow', selected.context_window ?? null, { shouldDirty: true, shouldValidate: false })
+    form.setValue('toolUsage', selected.supports_tools === undefined ? true : selected.supports_tools, {
+      shouldDirty: true,
+      shouldValidate: false,
+    })
+    form.setValue('startWithReasoning', selected.supports_thinking === true, {
+      shouldDirty: true,
+      shouldValidate: false,
+    })
+  }
+
   const selectModel = (id: string) => {
     if (id === 'custom') {
       setIsCustomModel(true)
@@ -108,6 +138,7 @@ export const useEditModelFormState = (model: Model) => {
     }
     setIsCustomModel(false)
     form.setValue('model', id, { shouldValidate: true, shouldDirty: true })
+    applyCatalogCapabilities(id)
   }
   const changeUrl = (value: string) => {
     form.setValue('url', value, { shouldValidate: true, shouldDirty: true })
@@ -133,9 +164,14 @@ export const useEditModelFormState = (model: Model) => {
     })
   }
   const submissionFor = (values: EditModelFormValues): EditModelSubmission => ({
-    ...values,
+    name: values.name,
+    model: values.model,
+    url: values.url,
     apiKey: apiKeyEditValue(apiKeyEdit),
     id: model.id,
+    contextWindow: values.contextWindow,
+    toolUsage: values.toolUsage ? 1 : 0,
+    startWithReasoning: values.startWithReasoning ? 1 : 0,
   })
 
   return {

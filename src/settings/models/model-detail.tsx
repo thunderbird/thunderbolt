@@ -53,6 +53,17 @@ export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: Model
           <p className="truncate text-base text-foreground">{model.url}</p>
         </DetailField>
       )}
+      <DetailField label="Context window">
+        <p className="text-base text-foreground">
+          {model.contextWindow ? model.contextWindow.toLocaleString() : 'Not set'}
+        </p>
+      </DetailField>
+      <DetailField label="Tools">
+        <p className="text-base text-foreground">{model.toolUsage === 1 ? 'Enabled' : 'Disabled'}</p>
+      </DetailField>
+      <DetailField label="Thinking">
+        <p className="text-base text-foreground">{model.startWithReasoning === 1 ? 'Enabled' : 'Disabled'}</p>
+      </DetailField>
       {!!model.isConfidential && (
         <DetailField label="Privacy">
           <div>

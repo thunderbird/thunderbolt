@@ -169,7 +169,7 @@ export const createAgentRoutingFetch = (
         throw new Error('No session found')
       }
 
-      const { chatThread, selectedAgent, selectedModel } = session
+      const { chatThread, selectedAgent, selectedModel, thinkingEnabled } = session
 
       // Save the user message before invoking the adapter. This serves three
       // purposes that previously only the built-in pipeline got for free:
@@ -226,12 +226,16 @@ export const createAgentRoutingFetch = (
         ? undefined
         : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
 
+      // Per-conversation Thinking chip is applied in the legacy/Pi request
+      // path via `thinkingEnabled` — keep the stored model row as the source
+      // of capability (so the chip stays visible when toggled off).
       return adapter.fetch(init, {
         threadId: id,
         chatThread,
         acpSessionId: chatThread?.acpSessionId ?? null,
         saveMessages,
         selectedModel,
+        thinkingEnabled,
         mcpClients,
         reconnectClient,
         httpClient,

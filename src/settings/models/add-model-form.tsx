@@ -7,12 +7,13 @@ import type { UseFormReturn } from 'react-hook-form'
 
 import { Button } from '@/components/ui/button'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
+import { Switch } from '@/components/ui/switch'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
@@ -225,6 +226,68 @@ export const AddModelForm = ({
               </FormItem>
             )}
           />
+        )}
+        {(model || selectedModelId === 'custom') && (
+          <>
+            <FormField
+              control={form.control}
+              name="contextWindow"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Context window</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      step={1}
+                      placeholder="e.g. 32768"
+                      className="rounded-lg"
+                      value={field.value ?? ''}
+                      onChange={(event) => {
+                        const raw = event.target.value
+                        field.onChange(raw === '' ? null : Number(raw))
+                      }}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Tokens of context this model can use. Prefills from the provider when known.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="toolUsage"
+              render={({ field }) => (
+                <FormItem className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Tools</FormLabel>
+                    <FormDescription>Allow this model to call agent tools.</FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} aria-label="Enable tools" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="startWithReasoning"
+              render={({ field }) => (
+                <FormItem className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Thinking</FormLabel>
+                    <FormDescription>Model supports chain-of-thought / reasoning traces.</FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} aria-label="Enable thinking" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </>
         )}
         {!supportsTools && (model || selectedModelId === 'custom') && (
           <StatusCard

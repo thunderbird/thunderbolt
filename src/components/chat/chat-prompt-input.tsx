@@ -4,7 +4,7 @@
 
 import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { preloadAgentConnection } from '@/acp/adapter-cache'
-import { useCurrentChatSession } from '@/chats/chat-store'
+import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { useCreateItem } from '@/components/create-item/context'
 import { estimateTokensForText } from '@/ai/tokenizers'
@@ -35,11 +35,12 @@ import { AlertCircle, Loader2, X } from 'lucide-react'
 import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { ChatAddMenu } from './chat-add-menu'
+import { ChatModelPicker } from './chat-model-picker'
 import { ChatSkillsBar } from './chat-skills-bar'
+import { ThinkingChip } from './thinking-chip'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
-import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
@@ -177,8 +178,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       id: chatThreadId,
       selectedAgent,
       selectedModel,
+      thinkingEnabled,
     } = useCurrentChatSession()
+    const updateSession = useChatStore((state) => state.updateSession)
 
+    const thinkingOn = thinkingEnabled !== false
+    const showThinkingChip = selectedModel.startWithReasoning === 1
+    const toggleThinking = useCallback(() => {
+      updateSession(chatThreadId, { thinkingEnabled: !thinkingOn })
+    }, [chatThreadId, thinkingOn, updateSession])
     const { messages, status, stop, sendMessage } = useChat({
       chat: chatInstance,
       experimental_throttle: messageBookkeepingThrottleMs,
@@ -603,7 +611,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // The model picker sits in the footer's right cluster, next to the send
     // button; the connecting / connection-error status replaces it on the
     // left, so the right side only renders it in the healthy state.
-    const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker /> : undefined
+    const footerEndElements =
+      !isConnecting && !isConnectionError ? (
+        <>
+          {showThinkingChip && <ThinkingChip enabled={thinkingOn} onToggle={toggleThinking} />}
+          <ChatModelPicker />
+        </>
+      ) : undefined
 
     const handleAddChipFromBar = useCallback(
       (skill: Skill) => {

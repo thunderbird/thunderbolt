@@ -64,6 +64,9 @@ describe('useAddModelForm', () => {
         customModel: '',
         url: '',
         apiKey: '',
+        contextWindow: null,
+        toolUsage: true,
+        startWithReasoning: false,
       })
       await getClock().runAllAsync()
     })
@@ -93,6 +96,9 @@ describe('useAddModelForm', () => {
           customModel: '',
           url: '',
           apiKey: '',
+          contextWindow: null,
+          toolUsage: true,
+          startWithReasoning: false,
         })
         await getClock().runAllAsync()
       })
@@ -124,6 +130,9 @@ describe('useAddModelForm', () => {
         customModel: 'gpt-4-turbo-preview',
         url: '',
         apiKey: '',
+        contextWindow: null,
+        toolUsage: true,
+        startWithReasoning: false,
       })
       await getClock().runAllAsync()
     })
@@ -131,6 +140,68 @@ describe('useAddModelForm', () => {
     const created = useChatStore.getState().models.find((candidate) => candidate.name === 'My Custom Model')
     expect(created?.model).toBe('gpt-4-turbo-preview')
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('persists Ollama-advertised context, tools, and thinking flags on create', async () => {
+    const getSpy = spyOn(http, 'get').mockImplementation((url: string) => {
+      if (String(url).includes('/api/tags')) {
+        return stubJsonResponse({
+          models: [
+            {
+              name: 'qwen3:1.7b',
+              details: { context_length: 40_960 },
+              capabilities: ['completion', 'tools', 'thinking'],
+            },
+          ],
+        })
+      }
+      return stubJsonResponse({ data: [] })
+    })
+    const onClose = mock(() => {})
+    const { result } = renderHook(() => useAddModelForm({ isOpen: true, onClose }), {
+      wrapper: createTestProvider(),
+    })
+
+    try {
+      act(() => {
+        result.current.onProviderChange('custom')
+      })
+      await act(async () => {
+        getClock().tick(500)
+        await getClock().runAllAsync()
+      })
+
+      act(() => {
+        result.current.onSelectModel('qwen3:1.7b')
+      })
+
+      expect(result.current.form.getValues('contextWindow')).toBe(40_960)
+      expect(result.current.form.getValues('toolUsage')).toBe(true)
+      expect(result.current.form.getValues('startWithReasoning')).toBe(true)
+
+      await act(async () => {
+        result.current.onSubmit({
+          provider: 'custom',
+          name: 'Qwen3 1.7b',
+          model: 'qwen3:1.7b',
+          customModel: '',
+          url: 'http://localhost:11434/v1',
+          apiKey: '',
+          contextWindow: 40_960,
+          toolUsage: true,
+          startWithReasoning: true,
+        })
+        await getClock().runAllAsync()
+      })
+
+      const created = useChatStore.getState().models.find((candidate) => candidate.model === 'qwen3:1.7b')
+      expect(created?.contextWindow).toBe(40_960)
+      expect(created?.toolUsage).toBe(1)
+      expect(created?.startWithReasoning).toBe(1)
+      expect(onClose).toHaveBeenCalledTimes(1)
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 
   it('does not refetch an already requested catalog when visibility alone changes', async () => {

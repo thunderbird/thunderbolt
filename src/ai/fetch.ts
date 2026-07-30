@@ -12,6 +12,11 @@ import {
   isFinalStep,
   shouldRetry,
 } from '@/ai/step-logic'
+import {
+  isThinkingDisabledForSend,
+  openaiCompatThinkingProviderOptions,
+  withThinkingDisabledForSend,
+} from '@/ai/thinking-session'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
 import { getMessage } from '@/dal/chat-messages'
 import { isWidgetSkillId } from '@/defaults/skills'
@@ -196,6 +201,9 @@ type AiFetchStreamingResponseOptions = {
    *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
    *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
   getProxyFetch: () => FetchFn
+  /** Per-conversation Thinking chip override. `false` disables thinking for
+   *  models that advertise it; omit/`true` keeps the model default. */
+  thinkingEnabled?: boolean
 }
 
 /**
@@ -678,6 +686,7 @@ export const aiFetchStreamingResponse = async ({
   reconnectClient,
   httpClient,
   getProxyFetch,
+  thinkingEnabled,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
@@ -689,13 +698,15 @@ export const aiFetchStreamingResponse = async ({
   // reach this function the user turn is already persisted.
 
   const db = getDb()
-  const { model, profile, supportsTools, sourceCollector, toolset, skills, mcpToolsMetadata, systemPrompt } =
-    await prepareAiRequestConfig({
-      modelId,
-      mcpClients,
-      reconnectClient,
-      httpClient,
-    })
+  const prepared = await prepareAiRequestConfig({
+    modelId,
+    mcpClients,
+    reconnectClient,
+    httpClient,
+  })
+  const thinkingDisabled = isThinkingDisabledForSend(prepared.model, thinkingEnabled)
+  const model = withThinkingDisabledForSend(prepared.model, thinkingEnabled)
+  const { profile, supportsTools, sourceCollector, toolset, skills, mcpToolsMetadata, systemPrompt } = prepared
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
   }
@@ -709,9 +720,18 @@ export const aiFetchStreamingResponse = async ({
       providerId: model.provider,
       model: baseModel,
       middleware: [
+        // Extract `<think>...</think>` from content when present. Do NOT pass
+        // `startWithReasoning` from `model.startWithReasoning` — that DB flag
+        // means “model can think / show Thinking chip”, while the middleware
+        // option means “treat all content as reasoning until </think>”.
+        // Ollama thinking models emit a native `reasoning` field and plain
+        // answer `content` with no closing tag; wiring the chip flag through
+        // here classifies the answer as reasoning forever and never emits
+        // reasoning-end (stuck spinner with the reply stuck in the muted
+        // Thinking pane).
         extractReasoningMiddleware({
           tagName: 'think',
-          startWithReasoning: Boolean(model.startWithReasoning),
+          startWithReasoning: false,
         }),
       ],
     })
@@ -733,6 +753,8 @@ export const aiFetchStreamingResponse = async ({
       // rather than relying solely on the profile — custom OpenAI models may not have a profile.
       ...(model.vendor === 'openai' && { systemMessageMode: 'developer' as const }),
       ...profile?.providerOptions,
+      // Thinking chip off → ask OpenAI-compat endpoints (incl. Ollama) for no reasoning.
+      ...openaiCompatThinkingProviderOptions(thinkingDisabled),
     }
     const providerOptions = Object.keys(rawOptions).length > 0 ? { [providerOptionsKey]: rawOptions } : undefined
 

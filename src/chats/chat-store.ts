@@ -50,6 +50,11 @@ export type ChatSession = {
   retriesExhausted: boolean
   selectedAgent: Agent
   selectedModel: Model
+  /**
+   * Per-conversation override for models that advertise thinking
+   * (`startWithReasoning === 1`). `undefined` means “use the model default” (on).
+   */
+  thinkingEnabled?: boolean
   triggerData: AutomationRun | null
 }
 
@@ -249,7 +254,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     }
 
     const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, selectedModel: model })
+    nextSessions.set(id, { ...session, selectedModel: model, thinkingEnabled: undefined })
 
     set({ sessions: nextSessions })
 

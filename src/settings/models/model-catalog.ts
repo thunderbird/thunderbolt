@@ -9,6 +9,7 @@ import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
 import { catalogRequiresApiKey } from './model-policy'
+import { tryFetchOllamaCatalog } from './ollama-catalog'
 
 export type AvailableModel = {
   id: string
@@ -17,6 +18,12 @@ export type AvailableModel = {
   owned_by?: string
   supports_tools?: boolean
   supported_parameters?: string[]
+  /** Max context tokens when the provider advertises one (e.g. Ollama `/api/tags`). */
+  context_window?: number | null
+  /** True when the provider advertises thinking / chain-of-thought support. */
+  supports_thinking?: boolean
+  /** True when the provider advertises multimodal / vision support. */
+  supports_vision?: boolean
 }
 
 export type CatalogRequest = {
@@ -117,6 +124,15 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
       .filter((model) => model.endpoints?.includes('/v1/chat/completions'))
       .map((model) => ({ ...model, supports_tools: model.tool_calling === true }))
       .sort((left, right) => left.id.localeCompare(right.id))
+  }
+
+  // Local Ollama (default Custom URL) exposes tools / thinking / vision /
+  // context_length on `/api/tags`. Prefer that over sparse `/v1/models`.
+  if (provider === 'custom') {
+    const ollamaCatalog = await tryFetchOllamaCatalog(url)
+    if (ollamaCatalog) {
+      return ollamaCatalog
+    }
   }
 
   const endpoint = resolveCatalogEndpoint({ provider, apiKey, url })

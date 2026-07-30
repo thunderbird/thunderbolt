@@ -110,7 +110,7 @@ const requireAnthropic = (model: Model<Api>): Model<typeof apiId> => {
  */
 const mapThinkingLevelToEffort = (model: Model<typeof apiId>, level: ThinkingLevel): AnthropicEffort => {
   const mapped = model.thinkingLevelMap?.[level]
-  // `EFFORTS.find` validates the catalog override as a real effort (type-safe,
+  // `efforts.find` validates the catalog override as a real effort (type-safe,
   // no cast). Every Anthropic catalog override is valid, so this matches Pi.
   const override = typeof mapped === 'string' ? efforts.find((effort) => effort === mapped) : undefined
   if (override) {return override}

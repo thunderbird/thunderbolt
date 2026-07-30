@@ -13,17 +13,17 @@ Three moving parts, one wire contract:
    (steps → fields → widgets); the frontend renders it over a fixed widget set.
    Defined once in `shared/agent-descriptors.ts` and imported by both ends.
 2. **Provider** — the adapter for one agent "kind" (`haystack`, `openclaw`, …).
-   It supplies the descriptor and does the real work of `deploy` / `status`.
-   Providers self-register into a module-level registry.
+   It supplies the descriptor and does the real work of `deploy` / `status` /
+   `undeploy`. Providers self-register into a module-level registry.
 3. **Generic endpoints** — `/v1/agents/*` never mention a provider by name. They
-   collect descriptors from every provider, and route a deploy/status back to
-   the owning provider via the `provider` field on the descriptor.
+   collect descriptors from every provider, and route a deploy/status/undeploy
+   back to the owning provider via the `provider` field on the descriptor.
 
 The key consequence: **adding a new agent kind means writing one provider file
 and registering it. No changes to the frontend or the shared endpoints.**
 
 There is also **no server-side deployment table.** A deployment is identified by
-a self-describing `deploymentId = "<provider>:<ref>"`. Status is polled *live*
+a self-describing `deploymentId = "<provider>:<ref>"`. Status is polled _live_
 from the host (Haystack / E2B) on demand; the client persists the agent row
 itself (in the synced `agents` table).
 
@@ -66,14 +66,15 @@ All live under the `/v1` prefix. All require an authenticated, **non-anonymous**
 user (bearer token). Anonymous sessions get `403 ANONYMOUS_DISCOVERY_FORBIDDEN`;
 missing/invalid auth gets `401`.
 
-| Method | Path | Purpose | Gated by |
-| --- | --- | --- | --- |
-| `GET` | `/agents` | Discovery — every provider's `list()`, flattened. Powers the agent picker. | always on |
-| `GET` | `/agents/catalog` | Deployable descriptors (every provider's `catalog()`). | `AGENT_DEPLOY=true` |
-| `POST` | `/agents/deploy` | Deploy an instance from a submitted spec. | `AGENT_DEPLOY=true` |
-| `GET` | `/agents/deployments/:id` | Live status for a deployment id. | `AGENT_DEPLOY=true` |
-| `WS` | `/haystack/ws?pipeline=<ref>` | Haystack chat wire (ACP ↔ Haystack SSE, translated in-backend). | Haystack configured |
-| `WS` | `/openclaw/ws?instance=<ref>` | OpenClaw chat wire (dumb ACP relay to the sandbox). | OpenClaw configured |
+| Method   | Path                          | Purpose                                                                    | Gated by            |
+| -------- | ----------------------------- | -------------------------------------------------------------------------- | ------------------- |
+| `GET`    | `/agents`                     | Discovery — every provider's `list()`, flattened. Powers the agent picker. | always on           |
+| `GET`    | `/agents/catalog`             | Deployable descriptors (every provider's `catalog()`).                     | `AGENT_DEPLOY=true` |
+| `POST`   | `/agents/deploy`              | Deploy an instance from a submitted spec.                                  | `AGENT_DEPLOY=true` |
+| `GET`    | `/agents/deployments/:id`     | Live status for a deployment id.                                           | `AGENT_DEPLOY=true` |
+| `DELETE` | `/agents/deployments/:id`     | Trigger teardown (undeploy) of a deployment.                               | `AGENT_DEPLOY=true` |
+| `WS`     | `/haystack/ws?pipeline=<ref>` | Haystack chat wire (ACP ↔ Haystack SSE, translated in-backend).            | Haystack configured |
+| `WS`     | `/openclaw/ws?instance=<ref>` | OpenClaw chat wire (dumb ACP relay to the sandbox).                        | OpenClaw configured |
 
 When `AGENT_DEPLOY` is off, the three deploy endpoints return `404` — the
 frontend treats that identically to "nothing to deploy" and hides the flow.
@@ -92,14 +93,14 @@ URL into "Add custom agent" will fail auth by design. Deployed agents get typed
 
 ### Ownership model
 
-`open()` on both chat wires requires a non-anonymous bearer — but *which*
+`open()` on both chat wires requires a non-anonymous bearer — but _which_
 deployments a caller may reach differs by provider, and a new provider must
 choose deliberately:
 
 - **OpenClaw — per-user.** The sandbox is stamped with the deployer's `userId`
-  in E2B metadata (the source of truth; no backend table). Both `status` and the
-  WS relay re-check it, so a forged or foreign `?instance=` resolves to `gone` /
-  closes the socket without ever dialing the sandbox.
+  in E2B metadata (the source of truth; no backend table). `status`, `undeploy`,
+  and the WS relay all re-check it, so a forged or foreign `?instance=` resolves
+  to `gone` / a no-op / a closed socket without ever touching the sandbox.
 - **Haystack — workspace-shared.** Pipelines live in one Deepset workspace; any
   authenticated user in the deployment can reach a pipeline by name (no per-user
   gate). Appropriate for shared RAG pipelines — but don't assume it when your
@@ -109,18 +110,18 @@ choose deliberately:
 
 All error bodies are `{ error: string, code?: string }`.
 
-| Status | When | Body |
-| --- | --- | --- |
-| `401` | missing / invalid bearer | `{ error: 'Unauthorized' }` |
-| `403` | anonymous session | `{ error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }` |
-| `404` | `AGENT_DEPLOY` off (catalog/deploy/status) | `{ error: 'Not found' }` |
-| `400` | malformed deploy body | `{ error: 'Invalid deploy request' }` |
-| `404` | `descriptorId` not in catalog | `{ error: 'Unknown agent' }` |
-| `409` | stale `schemaVersion` | `{ error: 'Schema version mismatch', code: 'SCHEMA_VERSION_MISMATCH' }` |
-| `404` | provider exposes no `deploy` | `{ error: 'Agent is not deployable' }` |
-| `400` | spec fails server re-validation | `{ error: 'Invalid spec' }` |
-| `400` | malformed deployment id | `{ error: 'Invalid deployment id' }` |
-| `404` | unknown provider in the id | `{ error: 'Unknown provider' }` |
+| Status | When                                       | Body                                                                    |
+| ------ | ------------------------------------------ | ----------------------------------------------------------------------- |
+| `401`  | missing / invalid bearer                   | `{ error: 'Unauthorized' }`                                             |
+| `403`  | anonymous session                          | `{ error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }`         |
+| `404`  | `AGENT_DEPLOY` off (catalog/deploy/status) | `{ error: 'Not found' }`                                                |
+| `400`  | malformed deploy body                      | `{ error: 'Invalid deploy request' }`                                   |
+| `404`  | `descriptorId` not in catalog              | `{ error: 'Unknown agent' }`                                            |
+| `409`  | stale `schemaVersion`                      | `{ error: 'Schema version mismatch', code: 'SCHEMA_VERSION_MISMATCH' }` |
+| `404`  | provider exposes no `deploy`               | `{ error: 'Agent is not deployable' }`                                  |
+| `400`  | spec fails server re-validation            | `{ error: 'Invalid spec' }`                                             |
+| `400`  | malformed deployment id                    | `{ error: 'Invalid deployment id' }`                                    |
+| `404`  | unknown provider in the id                 | `{ error: 'Unknown provider' }`                                         |
 
 ## Contracts
 
@@ -147,10 +148,31 @@ mirrors `ALLOW_CUSTOM_AGENTS` so the UI can hide "+ Add Custom Agent".
 
 ```jsonc
 // real: both providers configured (descriptor.steps trimmed for brevity)
-{ "version": "1", "descriptors": [
-  { "id": "haystack", "provider": "haystack", "name": "Haystack RAG agent", "schemaVersion": 1, "action": "deploy", "steps": [ /* … */ ] },
-  { "id": "openclaw", "provider": "openclaw", "name": "OpenClaw",           "schemaVersion": 1, "action": "deploy", "steps": [ /* … */ ] }
-] }
+{
+  "version": "1",
+  "descriptors": [
+    {
+      "id": "haystack",
+      "provider": "haystack",
+      "name": "Haystack RAG agent",
+      "schemaVersion": 1,
+      "action": "deploy",
+      "steps": [
+        /* … */
+      ],
+    },
+    {
+      "id": "openclaw",
+      "provider": "openclaw",
+      "name": "OpenClaw",
+      "schemaVersion": 1,
+      "action": "deploy",
+      "steps": [
+        /* … */
+      ],
+    },
+  ],
+}
 ```
 
 **`POST /agents/deploy`** — body `DeployRequest`, response `DeployResponse`
@@ -188,9 +210,32 @@ mirrors `ALLOW_CUSTOM_AGENTS` so the UI can hide "+ Add Custom Agent".
 
 ```jsonc
 // real: OpenClaw sandbox now answering ACP (id URL-encoded in the path)
-{ "deploymentId": "openclaw:e2b:iq8fy72dtcwkosdu0jpu", "status": "running",
-  "connection": { "url": "ws://localhost:8000/v1/openclaw/ws?instance=e2b%3Aiq8fy72dtcwkosdu0jpu", "transport": "websocket" } }
+{
+  "deploymentId": "openclaw:e2b:iq8fy72dtcwkosdu0jpu",
+  "status": "running",
+  "connection": {
+    "url": "ws://localhost:8000/v1/openclaw/ws?instance=e2b%3Aiq8fy72dtcwkosdu0jpu",
+    "transport": "websocket",
+  },
+}
 ```
+
+**`DELETE /agents/deployments/:id`** → `UndeployResponse` — triggers teardown on
+the host and returns once accepted (does not block on full unmount).
+
+```ts
+{ deploymentId: string, status: DeployStatus }   // status is `gone` once teardown is triggered
+```
+
+```jsonc
+// real: undeploy an OpenClaw sandbox (id URL-encoded in the path)
+{ "deploymentId": "openclaw:e2b:iq8fy72dtcwkosdu0jpu", "status": "gone" }
+```
+
+Teardown is **idempotent**: a foreign / already-gone / malformed deployment is a
+no-op that still returns `gone`, so the client can always drop its local row. A
+genuine trigger failure (host/network error) surfaces as a `5xx` — the client
+keeps the row and shows an error rather than orphaning a live deployment.
 
 The full curl walkthroughs for these live in [Worked examples](#worked-examples).
 
@@ -198,7 +243,7 @@ Shared value types:
 
 ```ts
 type DeployStatus = 'pending' | 'running' | 'failed' | 'gone'
-type AgentConnection = { url: string, transport: 'websocket' }
+type AgentConnection = { url: string; transport: 'websocket' }
 ```
 
 - `pending` — spinning up. `running` — usable (includes a Haystack pipeline that
@@ -220,14 +265,14 @@ A descriptor is a small tree: `steps[] → fields[] → widget`. A spec is the f
 
 ```ts
 type AgentDescriptor = {
-  id: string            // unique catalog entry
-  provider: string      // registry key → which provider handles deploy/status
+  id: string // unique catalog entry
+  provider: string // registry key → which provider handles deploy/status
   name: string
   description: string | null
   icon: string | null
   schemaVersion: number // bump on any field change; guards stale submissions
   action: 'deploy' | 'connect'
-  steps: { id, title, description?, fields: AgentField[] }[]
+  steps: { id; title; description?; fields: AgentField[] }[]
 }
 
 type AgentField = {
@@ -238,11 +283,10 @@ type AgentField = {
   placeholder?: string
   helpText?: string
   default?: string | string[]
-  visibleWhen?: { field: string, equals: string }  // conditional field
-  source?:                                          // options for select/cards/gallery
-    | { kind: 'inline', options: { value, label, description?, icon? }[] }
-    | { kind: 'fetched', sourceId: string }         // resolved live by the FE (see note)
-  multiple?: boolean                                // collects a list (always true for gallery)
+  visibleWhen?: { field: string; equals: string } // conditional field
+  source?: // options for select/cards/gallery
+    { kind: 'inline'; options: { value; label; description?; icon? }[] } | { kind: 'fetched'; sourceId: string } // resolved live by the FE (see note)
+  multiple?: boolean // collects a list (always true for gallery)
   maxLength?: number
 }
 ```
@@ -308,8 +352,26 @@ curl -s http://localhost:8000/v1/agents/catalog -H "Authorization: Bearer $TOKEN
 {
   "version": "1",
   "descriptors": [
-    { "id": "haystack", "provider": "haystack", "name": "Haystack RAG agent", "schemaVersion": 1, "action": "deploy", "steps": [ /* … */ ] },
-    { "id": "openclaw", "provider": "openclaw", "name": "OpenClaw",           "schemaVersion": 1, "action": "deploy", "steps": [ /* … */ ] }
+    {
+      "id": "haystack",
+      "provider": "haystack",
+      "name": "Haystack RAG agent",
+      "schemaVersion": 1,
+      "action": "deploy",
+      "steps": [
+        /* … */
+      ]
+    },
+    {
+      "id": "openclaw",
+      "provider": "openclaw",
+      "name": "OpenClaw",
+      "schemaVersion": 1,
+      "action": "deploy",
+      "steps": [
+        /* … */
+      ]
+    }
   ]
 }
 ```
@@ -330,7 +392,10 @@ curl -s -X POST http://localhost:8000/v1/agents/deploy \
 {
   "deploymentId": "haystack:tb-my-research-agent-lx9f2k",
   "status": "running",
-  "connection": { "url": "ws://localhost:8000/v1/haystack/ws?pipeline=tb-my-research-agent-lx9f2k", "transport": "websocket" }
+  "connection": {
+    "url": "ws://localhost:8000/v1/haystack/ws?pipeline=tb-my-research-agent-lx9f2k",
+    "transport": "websocket"
+  }
 }
 ```
 
@@ -350,12 +415,15 @@ curl -s -X POST http://localhost:8000/v1/agents/deploy \
 {
   "deploymentId": "openclaw:e2b:iq8fy72dtcwkosdu0jpu",
   "status": "pending",
-  "connection": { "url": "ws://localhost:8000/v1/openclaw/ws?instance=e2b%3Aiq8fy72dtcwkosdu0jpu", "transport": "websocket" }
+  "connection": {
+    "url": "ws://localhost:8000/v1/openclaw/ws?instance=e2b%3Aiq8fy72dtcwkosdu0jpu",
+    "transport": "websocket"
+  }
 }
 ```
 
 Deploy returns **immediately** — it creates the E2B sandbox and launches the
-agent daemon, but does *not* block on the ~15–30s boot. Status starts `pending`;
+agent daemon, but does _not_ block on the ~15–30s boot. Status starts `pending`;
 the client polls until the sandbox's ACP endpoint answers. The sandbox is
 stamped with the caller's `userId` in E2B metadata (the ownership source of
 truth — no backend table).
@@ -369,8 +437,14 @@ curl -s "http://localhost:8000/v1/agents/deployments/openclaw%3Ae2b%3Aiq8fy72dtc
 ```
 
 ```json
-{ "deploymentId": "openclaw:e2b:iq8fy72dtcwkosdu0jpu", "status": "running",
-  "connection": { "url": "ws://localhost:8000/v1/openclaw/ws?instance=e2b%3Aiq8fy72dtcwkosdu0jpu", "transport": "websocket" } }
+{
+  "deploymentId": "openclaw:e2b:iq8fy72dtcwkosdu0jpu",
+  "status": "running",
+  "connection": {
+    "url": "ws://localhost:8000/v1/openclaw/ws?instance=e2b%3Aiq8fy72dtcwkosdu0jpu",
+    "transport": "websocket"
+  }
+}
 ```
 
 `status` re-derives the state live from the host each call: Haystack pipeline
@@ -378,6 +452,23 @@ status for Haystack; an ACP-readiness probe against the sandbox for OpenClaw.
 For OpenClaw the lookup is **owner-gated** — a deployment id whose sandbox
 metadata `userId` doesn't match the caller resolves to `gone`, never leaking
 another user's sandbox.
+
+### Undeploy (delete)
+
+```bash
+curl -s -X DELETE "http://localhost:8000/v1/agents/deployments/openclaw%3Ae2b%3Aiq8fy72dtcwkosdu0jpu" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{ "deploymentId": "openclaw:e2b:iq8fy72dtcwkosdu0jpu", "status": "gone" }
+```
+
+The frontend calls this when the user deletes a deployed agent: it undeploys
+first (Haystack deletes the `tb-*` pipeline clone; OpenClaw kills the sandbox,
+owner-gated) and only soft-deletes the local agent row once the teardown is
+accepted. A `5xx` keeps the row and surfaces the error (see the idempotency note
+under [Contracts](#contracts)).
 
 ## Adding a new provider
 
@@ -388,23 +479,35 @@ Everything provider-specific lives in one module. Concretely (mirror
 
    ```ts
    export const createFooProvider = (deps: FooDeps = {}): AgentProvider => ({
-     id: 'foo',                                   // === descriptor.provider
-     list: () => [],                              // discovery descriptors, or [] if deploy-only
-     catalog: ({ settings }) => isConfigured(settings) ? [fooDescriptor] : [],
+     id: 'foo', // === descriptor.provider
+     list: () => [], // discovery descriptors, or [] if deploy-only
+     catalog: ({ settings }) => (isConfigured(settings) ? [fooDescriptor] : []),
      deploy: async (spec, { request, settings, userId }) => {
        const ref = await provisionOnHost(spec, settings, userId)
        return {
          deploymentId: encodeDeploymentId('foo', ref),
          status: 'pending',
-         connection: { url: buildWebSocketUrl(request, `foo/ws?instance=${encodeURIComponent(ref)}`), transport: 'websocket' },
+         connection: {
+           url: buildWebSocketUrl(request, `foo/ws?instance=${encodeURIComponent(ref)}`),
+           transport: 'websocket',
+         },
        }
      },
-     status: async (ref, { request, settings, userId }) => { /* live host lookup → DeploymentStatusResponse */ },
+     status: async (ref, { request, settings, userId }) => {
+       /* live host lookup → DeploymentStatusResponse */
+     },
+     undeploy: async (ref, { settings, userId }) => {
+       await tearDownOnHost(ref, settings, userId) // owner-gate + idempotent (no-op if foreign/gone)
+       return { deploymentId: encodeDeploymentId('foo', ref), status: 'gone' }
+     },
    })
    ```
 
-   - `catalog`/`deploy`/`status` are all optional. Omit `deploy`/`status` for a
-     discovery-only provider; omit `catalog` if it isn't deployable.
+   - `catalog`/`deploy`/`status`/`undeploy` are all optional. Omit `deploy`/`status`/
+     `undeploy` for a discovery-only provider; omit `catalog` if it isn't deployable.
+   - Make `undeploy` **idempotent** — a foreign or already-gone ref should no-op and
+     still return `gone`, so the client can drop its local row. Reserve throwing for
+     a real host/network failure (the FE keeps the row and shows an error).
    - Use `encodeDeploymentId(providerId, ref)` and `buildWebSocketUrl(request, …)`
      (both from `@/agents`) so ids and URLs stay consistent and prod/dev
      (`wss`/`ws`) both work.
@@ -432,8 +535,8 @@ Everything provider-specific lives in one module. Concretely (mirror
    vars in `backend/.env.example`. Gate `catalog()` on them so an unconfigured
    provider stays invisible.
 
-That's it — the frontend renders your descriptor and drives deploy/status with
-zero provider knowledge.
+That's it — the frontend renders your descriptor and drives deploy/status/undeploy
+with zero provider knowledge.
 
 ## Adding a field to a descriptor
 
@@ -458,7 +561,7 @@ To collect one more input (say a BYO model for Haystack):
 You do **not** write a validator: the backend rebuilds a zod schema from the
 descriptor (`specSchemaForDescriptor`) and re-validates every submitted spec
 before `deploy()` runs — required-ness is enforced only for fields that are
-*visible* under the submitted values (so a hidden `visibleWhen` field is never
+_visible_ under the submitted values (so a hidden `visibleWhen` field is never
 demanded). The frontend uses the same rebuilt schema via `zodResolver`, so both
 ends agree with no duplicated rules. The client is never trusted; the server
 re-validation is the authority.
@@ -472,24 +575,24 @@ descriptor note above).
 
 - **`source: 'fetched'` is contract-only** — no resolver endpoint yet; use
   `'inline'` options.
-- **`deploymentIdForAgent` (frontend) only reconstructs Haystack ids** — it
-  parses `?pipeline=` from the stored URL. OpenClaw's `?instance=` isn't handled
-  there yet; the deployment id is derived from the deploy response at deploy
-  time. This is fine for the live deploy flow but means OpenClaw status isn't
-  re-derivable from a persisted row after reload until the `provider` field lands
-  on the agents row (see the TODO in `src/api/agent-deploy.ts`).
+- **`deploymentIdForAgent` (frontend) reconstructs the id by parsing the stored
+  URL** — `?pipeline=` → `haystack:<ref>`, `?instance=` → `openclaw:<ref>`. This
+  works for both providers today, but a new managed provider that uses a
+  different query param must be added here until the `provider` field lands on the
+  agents row and the id can be read off it directly (see the TODO in
+  `src/api/agent-deploy.ts`).
 
 ## Source map
 
-| Concern | File |
-| --- | --- |
-| Wire contract + validator | `shared/agent-descriptors.ts` |
-| Discovery response shape | `shared/acp-types.ts` |
-| Generic endpoints | `backend/src/agents/routes.ts` |
-| Provider seam + registry + URL helper | `backend/src/agents/discovery.ts` |
-| Deployment id codec | `backend/src/agents/deployment-id.ts` |
-| Haystack provider / chat wire | `backend/src/haystack/{provider,routes}.ts` |
-| OpenClaw provider / relay / E2B | `backend/src/openclaw/{provider,routes,relay,e2b}.ts` |
-| WS bearer auth | `backend/src/auth/ws-bearer-auth.ts`, `shared/ws-bearer.ts` |
-| Frontend deploy client | `src/api/agent-deploy.ts` |
-| Frontend transport routing | `src/acp/transports/index.ts` |
+| Concern                               | File                                                        |
+| ------------------------------------- | ----------------------------------------------------------- |
+| Wire contract + validator             | `shared/agent-descriptors.ts`                               |
+| Discovery response shape              | `shared/acp-types.ts`                                       |
+| Generic endpoints                     | `backend/src/agents/routes.ts`                              |
+| Provider seam + registry + URL helper | `backend/src/agents/discovery.ts`                           |
+| Deployment id codec                   | `backend/src/agents/deployment-id.ts`                       |
+| Haystack provider / chat wire         | `backend/src/haystack/{provider,routes}.ts`                 |
+| OpenClaw provider / relay / E2B       | `backend/src/openclaw/{provider,routes,relay,e2b}.ts`       |
+| WS bearer auth                        | `backend/src/auth/ws-bearer-auth.ts`, `shared/ws-bearer.ts` |
+| Frontend deploy client                | `src/api/agent-deploy.ts`                                   |
+| Frontend transport routing            | `src/acp/transports/index.ts`                               |

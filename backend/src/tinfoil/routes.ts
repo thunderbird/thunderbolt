@@ -6,6 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { captureInferenceError } from '@/posthog/client'
 import { Elysia, type AnyElysia } from 'elysia'
 
 const allowedMethods = new Set(['GET', 'POST', 'OPTIONS'])
@@ -32,7 +33,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const apiKey = options.apiKey ?? settings.tinfoilApiKey
   const enclaveUrl = (options.enclaveUrl ?? settings.tinfoilEnclaveUrl).replace(/\/$/, '')
 
-  const proxyToEnclave = async (request: Request, wildcard: string): Promise<Response> => {
+  const proxyToEnclave = async (request: Request, wildcard: string, distinctId: string): Promise<Response> => {
     const method = request.method.toUpperCase()
 
     if (!allowedMethods.has(method)) {
@@ -80,6 +81,14 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       responseHeaders.set(key, value)
     })
 
+    // The enclave body is HPKE-opaque (and the model lives inside it), so only
+    // status + subpath are readable here. Record non-2xx upstreams so a Tinfoil
+    // failure stays diagnosable from telemetry without touching the stream (THU-672).
+    if (!upstream.ok) {
+      console.error(`[tinfoil] enclave ${upstream.status} for ${subpath}`)
+      captureInferenceError({ provider: 'tinfoil', status: upstream.status, detail: subpath, distinctId })
+    }
+
     return new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
@@ -100,8 +109,8 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       if (rateLimit) {
         return g
           .use(rateLimit)
-          .all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? ''), { parse: 'none' })
+          .all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? '', ctx.user.id), { parse: 'none' })
       }
-      return g.all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? ''), { parse: 'none' })
+      return g.all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? '', ctx.user.id), { parse: 'none' })
     })
 }

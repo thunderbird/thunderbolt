@@ -4,8 +4,8 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
-import { safeErrorHandler } from '@/middleware/error-handling'
-import { isPostHogConfigured } from '@/posthog/client'
+import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
+import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { Elysia, type AnyElysia } from 'elysia'
@@ -129,6 +129,13 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
           console.error('Connection timeout to inference provider', error.cause)
           throw new Error('Connection timeout to inference provider', { cause: error })
         }
+        // safeErrorHandler strips the upstream cause from the client response
+        // (returns only "Bad Request"). Record the real provider status/message
+        // + model here so a 400 stays diagnosable from telemetry (THU-672).
+        const status = getErrorStatus(error)
+        const detail = error instanceof Error ? error.message : String(error)
+        console.error(`[inference] ${provider}/${body.model} upstream ${status}: ${detail}`)
+        captureInferenceError({ provider, status, model: body.model, detail, distinctId: ctx.user.id })
         throw error
       }
     })

@@ -249,6 +249,31 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
     })
 
+    it('should capture the upstream status, model, and detail on an API error (THU-672)', async () => {
+      const captureSpy = spyOn(posthogClient, 'captureInferenceError').mockImplementation(() => {})
+      const apiError = Object.assign(new Error('400 invalid_request_error: prompt is too long'), { status: 400 })
+      mockCreateCompletion.mockImplementation(() => Promise.reject(apiError))
+
+      const response = await app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(captureSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'mistral',
+          status: 400,
+          model: 'mistral-large-3',
+          detail: '400 invalid_request_error: prompt is too long',
+        }),
+      )
+      captureSpy.mockRestore()
+    })
+
     it('should handle malformed JSON requests', async () => {
       const response = await app.handle(
         new Request('http://localhost/chat/completions', {

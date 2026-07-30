@@ -4,8 +4,9 @@
 
 import { isPosthogRequest } from '@/test-utils/posthog'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
-import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, jest, spyOn } from 'bun:test'
 import { PostHog } from 'posthog-node'
+import * as client from './client'
 
 type FetchCall = {
   url: string
@@ -317,6 +318,46 @@ describe('PostHog Privacy Mode', () => {
       expect((clientWithPrivacy as any).privacy_mode || false).toBe(true)
       expect((clientWithoutPrivacy as any).privacy_mode || false).toBe(false)
     })
+  })
+})
+
+describe('captureInferenceError', () => {
+  it('is a no-op when PostHog is unconfigured', () => {
+    const configuredSpy = spyOn(client, 'isPostHogConfigured').mockReturnValue(false)
+    const clientSpy = spyOn(client, 'getPostHogClient')
+
+    client.captureInferenceError({ provider: 'anthropic', status: 400, distinctId: 'user-1' })
+
+    expect(clientSpy).not.toHaveBeenCalled()
+    configuredSpy.mockRestore()
+    clientSpy.mockRestore()
+  })
+
+  it('captures an inference_upstream_error event with provider, status, model, and detail', () => {
+    const capture = jest.fn()
+    const configuredSpy = spyOn(client, 'isPostHogConfigured').mockReturnValue(true)
+    const clientSpy = spyOn(client, 'getPostHogClient').mockReturnValue({ capture } as unknown as PostHog)
+
+    client.captureInferenceError({
+      provider: 'anthropic',
+      status: 400,
+      distinctId: 'user-1',
+      model: 'opus-4.8',
+      detail: '400 invalid_request_error: prompt is too long',
+    })
+
+    expect(capture).toHaveBeenCalledWith({
+      distinctId: 'user-1',
+      event: 'inference_upstream_error',
+      properties: {
+        provider: 'anthropic',
+        status: 400,
+        model: 'opus-4.8',
+        detail: '400 invalid_request_error: prompt is too long',
+      },
+    })
+    configuredSpy.mockRestore()
+    clientSpy.mockRestore()
   })
 })
 

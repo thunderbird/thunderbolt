@@ -8,7 +8,7 @@ const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
 const defaultCorsExposeHeaders =
-  'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing'
+  'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing'
 
 /**
  * Settings schema for environment variables validation

@@ -71,12 +71,15 @@ export class ReconnectScheduler {
   /** Register a failed adapter and start its immediate recovery attempt. */
   register(agentId: string, reconnect: () => Promise<void>): void {
     const existing = this.records.get(agentId)
-    if (existing) {
+    if (existing && !existing.running) {
       existing.reconnect = reconnect
       this.wake(agentId)
       return
     }
 
+    if (existing?.timer) {
+      this.clearTimer(existing.timer)
+    }
     this.records.set(agentId, { attempts: 0, reconnect, running: false, timer: null })
     this.scheduleImmediate(agentId)
   }
@@ -160,7 +163,7 @@ export class ReconnectScheduler {
         await record.reconnect()
         return true
       })
-      if (attempted) {
+      if (attempted && this.records.get(agentId) === record) {
         this.unregister(agentId)
       }
     } catch {

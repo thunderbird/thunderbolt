@@ -37,13 +37,15 @@ describe('AdapterSlot', () => {
 
     expect(slot.status).toBe('connecting')
     expect(slot.generation).toBe(1)
-    connect.resolve(buildAdapter('first', transport.promise))
-    await expect(pending).resolves.toMatchObject({ id: 'first' })
+    const adapter = buildAdapter('first', transport.promise)
+    connect.resolve(adapter)
+    await expect(pending).resolves.toBe(adapter)
     expect(slot.status).toBe('ready')
 
     transport.reject(new Error('dropped'))
     await Promise.resolve()
     expect(slot.status).toBe('terminated')
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1)
     expect(onTerminated).toHaveBeenCalledWith({ generation: 1, error: expect.any(Error) })
   })
 

@@ -120,4 +120,33 @@ describe('ReconnectScheduler', () => {
     await flush()
     scheduler.dispose()
   })
+
+  it('keeps recovery registered when a replacement dies during the completed attempt', async () => {
+    const scheduled: Array<() => void> = []
+    const replacementReconnect = mock(async () => Promise.reject(new Error('replacement offline')))
+    const scheduler = new ReconnectScheduler({
+      baseDelayMs: 1_000,
+      random: () => 1,
+      isVisible: () => true,
+      isOnline: () => true,
+      setTimer: ((callback: TimerHandler) => {
+        scheduled.push(callback as () => void)
+        return scheduled.length as unknown as ReturnType<typeof setTimeout>
+      }) as unknown as typeof setTimeout,
+      clearTimer: (() => {}) as typeof clearTimeout,
+    })
+    const reconnect = mock(async () => {
+      scheduler.register('agent', replacementReconnect)
+    })
+
+    scheduler.register('agent', reconnect)
+    scheduled.shift()?.()
+    await flush()
+    scheduled.shift()?.()
+    await flush()
+
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    expect(replacementReconnect).toHaveBeenCalledTimes(1)
+    scheduler.dispose()
+  })
 })

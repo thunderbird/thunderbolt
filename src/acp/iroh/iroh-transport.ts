@@ -41,10 +41,12 @@ const secretStorageKey = 'iroh_acp_client_secret'
 // open their own connection on it.
 let sharedClient: Promise<IrohClientLike> | null = null
 
-// A wasm dial cannot be cancelled once `client.connect()` has started. Serialize
-// dials to the same bridge/protocol so an abandoned future must settle before a
-// replacement can allocate another QUIC attempt.
-const inFlightDials = new Map<string, Promise<IrohConnectionLike>>()
+const defaultDialTimeoutMs = 30_000
+
+// A wasm dial cannot be cancelled once `client.connect()` has started. Queue
+// dials to the same bridge/protocol so every caller waits for the complete chain,
+// not merely the dial that happened to be current when it arrived.
+const dialTails = new Map<string, Promise<void>>()
 
 // Bumped by every wipe (sign-out / account-deletion / device-revocation). A bind
 // samples this before its async work and only persists if it still matches, so a
@@ -210,6 +212,30 @@ const raceAbort = <T>(promise: Promise<T>, signal: AbortSignal, onAbort?: () => 
   })
 }
 
+/** Bound an uncancellable wasm dial and close any connection that resolves after the timeout. */
+const raceDialTimeout = (
+  promise: Promise<IrohConnectionLike>,
+  timeoutMs: number,
+  setTimer: typeof setTimeout,
+  clearTimer: typeof clearTimeout,
+): Promise<IrohConnectionLike> =>
+  new Promise<IrohConnectionLike>((resolve, reject) => {
+    const timer = setTimer(() => {
+      void promise.then((connection) => connection.close()).catch(() => {})
+      reject(new Error(`Iroh dial timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+    promise.then(
+      (connection) => {
+        clearTimer(timer)
+        resolve(connection)
+      },
+      (error: unknown) => {
+        clearTimer(timer)
+        reject(error)
+      },
+    )
+  })
+
 /** This app's iroh NodeId — what a bridge operator runs
  *  `thunderbolt iroh allow <node-id>` against. Binds the shared client on first
  *  call. Surfaced for the agent-settings UI (wired in a later slice). */
@@ -227,6 +253,11 @@ export type DialIrohBridgeOptions = {
   signal: AbortSignal
   /** Test seam — production omits and lazy-loads the wasm client. */
   loadClient?: IrohClientLoader
+  /** Test seam for the bounded uncancellable wasm dial. */
+  dialTimeoutMs?: number
+  /** Test seams for deterministic timeout coverage. */
+  setTimer?: typeof setTimeout
+  clearTimer?: typeof clearTimeout
 }
 
 /**
@@ -256,27 +287,32 @@ export const dialIrohBridge = async (options: DialIrohBridgeOptions): Promise<Ir
   const client = await raceAbort(clientPromise, signal, () => clearSharedClientIfPending(clientPromise))
 
   const dialKey = `${options.target}\u0000${options.alpn}`
-  const precedingDial = inFlightDials.get(dialKey)
-  if (precedingDial) {
-    await raceAbort(
-      precedingDial.then(
-        () => undefined,
-        () => undefined,
-      ),
-      signal,
-    )
-  }
-
-  const connectPromise = client.connect(options.target, options.alpn)
-  inFlightDials.set(dialKey, connectPromise)
-  const clearDial = (): void => {
-    if (inFlightDials.get(dialKey) === connectPromise) {
-      inFlightDials.delete(dialKey)
+  const precedingTail = dialTails.get(dialKey) ?? Promise.resolve()
+  const operation = (async (): Promise<IrohConnectionLike> => {
+    await precedingTail
+    if (signal.aborted) {
+      throw new DOMException('aborted', 'AbortError')
     }
-  }
-  void connectPromise.then(clearDial, clearDial)
-  return raceAbort(connectPromise, signal, () => {
-    void connectPromise.then((conn) => conn.close()).catch(() => {})
+    const connectPromise = client.connect(options.target, options.alpn)
+    return raceDialTimeout(
+      connectPromise,
+      options.dialTimeoutMs ?? defaultDialTimeoutMs,
+      options.setTimer ?? setTimeout,
+      options.clearTimer ?? clearTimeout,
+    )
+  })()
+  const tail = operation.then(
+    () => undefined,
+    () => undefined,
+  )
+  dialTails.set(dialKey, tail)
+  void tail.then(() => {
+    if (dialTails.get(dialKey) === tail) {
+      dialTails.delete(dialKey)
+    }
+  })
+  return raceAbort(operation, signal, () => {
+    void operation.then((connection) => connection.close()).catch(() => {})
   })
 }
 
@@ -361,6 +397,15 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
     settleClosedOnce(null)
   }
 
+  const terminate = (error: TransportTerminationError): void => {
+    if (!readableClosed) {
+      readableClosed = true
+      readableController?.error(error)
+    }
+    settleClosedOnce(error)
+    close()
+  }
+
   // Pump iroh recv bytes → ndjson decode → ACP messages, for the session's life.
   const pumpReceive = async (): Promise<void> => {
     const reader = connection.readable().getReader()
@@ -379,25 +424,21 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
     } catch (err) {
       const cause = err instanceof Error ? err : new Error(String(err))
       const error = new TransportTerminationError('stream-error', cause.message, { cause })
-      if (!readableClosed) {
-        readableClosed = true
-        readableController?.error(error)
-      }
-      // Settle `closed` with the error FIRST (so `close()`'s `settleClosedOnce(null)`
-      // no-ops), then route the rest of teardown through the same `close()` the
-      // normal path uses — detaching the abort listener from the adapter's
-      // long-lived signal and closing the QUIC connection. Without this, a recv
-      // read error (or an oversized ndjson frame) would leak both. All of
-      // `close()`'s steps are idempotent, so the double-call is safe.
-      settleClosedOnce(error)
-      close()
+      terminate(error)
     }
   }
   void pumpReceive()
 
   const writable = new WritableStream<AnyMessage>({
     async write(message) {
-      await connection.send(encodeNdjsonFrame(message))
+      try {
+        await connection.send(encodeNdjsonFrame(message))
+      } catch (err) {
+        const cause = err instanceof Error ? err : new Error(String(err))
+        const error = new TransportTerminationError('stream-error', cause.message, { cause })
+        terminate(error)
+        throw error
+      }
     },
     close() {
       close()
@@ -418,7 +459,7 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
  *  doesn't leak between cases. */
 export const resetSharedIrohClientForTests = (): void => {
   sharedClient = null
-  inFlightDials.clear()
+  dialTails.clear()
   secretGeneration = 0
 }
 

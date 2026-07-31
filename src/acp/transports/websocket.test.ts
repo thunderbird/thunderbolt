@@ -4,11 +4,15 @@
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 import { describe, expect, it } from 'bun:test'
+import { getErrorRetryable } from '@/lib/error-utils'
 import { TransportTerminationError } from '../termination'
 import {
+  authCloseCode,
   normalCloseCode,
   openWebSocketTransport,
+  proxyRejectCloseCode,
   proxyForbiddenCloseCode,
+  serverErrorCloseCode,
   validateWebSocketUrl,
   type WebSocketEventMap,
   type WebSocketLike,
@@ -157,4 +161,21 @@ describe('openWebSocketTransport', () => {
 
     await expect(opening).rejects.toMatchObject({ reason: 'remote-close' })
   })
+
+  for (const code of [authCloseCode, proxyRejectCloseCode, proxyForbiddenCloseCode, serverErrorCloseCode]) {
+    it(`marks deterministic connect close ${code} as non-retryable`, async () => {
+      const socket = new FakeSocket()
+      const opening = openWebSocketTransport({
+        url: 'wss://example.com/ws',
+        signal: new AbortController().signal,
+        webSocketFactory: () => asWebSocketLike(socket),
+        isTauriIos: () => false,
+      })
+      socket.emit('close', { code, reason: 'rejected' })
+
+      const error = await opening.catch((reason: unknown) => reason)
+      expect(error).toBeInstanceOf(TransportTerminationError)
+      expect(getErrorRetryable(error as Error)).toBe(false)
+    })
+  }
 })

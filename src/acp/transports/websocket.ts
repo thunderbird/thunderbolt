@@ -20,6 +20,20 @@ export const proxyRejectCloseCode = 4002
 export const proxyForbiddenCloseCode = 4003
 export const serverErrorCloseCode = 1011
 
+const terminalConnectCloseCodes = new Set([
+  authCloseCode,
+  proxyRejectCloseCode,
+  proxyForbiddenCloseCode,
+  serverErrorCloseCode,
+])
+
+/** Classify deterministic connect rejections so chat skips futile auto-retries. */
+const connectCloseError = (code: number): TransportTerminationError => {
+  const detail = `ACP transport closed during connect (code ${code})`
+  const message = terminalConnectCloseCodes.has(code) ? JSON.stringify({ error: detail, isRetryable: false }) : detail
+  return new TransportTerminationError('remote-close', message)
+}
+
 /** Subset of the native `WebSocket` interface used by the transport. */
 export type WebSocketLike = {
   readyState: number
@@ -98,7 +112,7 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
     }
     const onClose = (event: WebSocketEventMap['close']): void => {
       cleanup()
-      reject(new TransportTerminationError('remote-close', `ACP transport closed during connect (code ${event.code})`))
+      reject(connectCloseError(event.code))
     }
     const onAbort = (): void => {
       cleanup()

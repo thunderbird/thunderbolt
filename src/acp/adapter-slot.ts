@@ -89,8 +89,10 @@ export class AdapterSlot<TAdapter extends SlotAdapter> {
       return false
     }
 
+    const adapter = this.adapter
     this.adapter = null
     this.statusValue = 'terminated'
+    adapter?.disconnect()
     this.onTerminated({ generation, error })
     return true
   }

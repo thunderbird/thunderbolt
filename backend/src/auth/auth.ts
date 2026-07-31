@@ -197,15 +197,6 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     },
     session: {
-      // Revoking a device deletes its database sessions immediately, but a signed
-      // cache cookie on that device cannot be removed remotely. Other authenticated
-      // routes may accept it for up to 60 seconds, absorbing parallel proxy calls
-      // per send while keeping the revocation window under a minute; PowerSync
-      // device checks still reject revoked devices directly.
-      cookieCache: {
-        enabled: true,
-        maxAge: 60,
-      },
       additionalFields: {
         deviceId: {
           type: 'string',

@@ -47,10 +47,6 @@ const parseSetCookie = (raw: string) => {
 const findSessionCookie = (cookies: ReturnType<typeof parseSetCookie>[]) =>
   cookies.find((c) => c.name.endsWith('session_token'))
 
-/** Find the short-lived session-data cache cookie among all Set-Cookie lines. */
-const findSessionDataCookie = (cookies: ReturnType<typeof parseSetCookie>[]) =>
-  cookies.find((cookie) => cookie.name.endsWith('session_data'))
-
 /** Assert the response carries an HttpOnly session cookie; returns all parsed cookies + the session one. */
 const expectHttpOnlySessionCookie = (res: Response) => {
   const all = res.headers.getSetCookie().map(parseSetCookie)
@@ -95,7 +91,7 @@ describe('session cookie HttpOnly (CWE-1004 regression)', () => {
     }
   })
 
-  it('email-OTP sign-in issues HttpOnly session cookies with a 60-second session cache', async () => {
+  it('email-OTP sign-in issues an HttpOnly session cookie', async () => {
     const email = `httponly-otp-${crypto.randomUUID()}@example.com`
     await db.insert(waitlist).values({ id: crypto.randomUUID(), email, status: 'approved' })
 
@@ -115,10 +111,6 @@ describe('session cookie HttpOnly (CWE-1004 regression)', () => {
 
     const { all, session } = expectHttpOnlySessionCookie(res)
     expect(session.flags.has('samesite')).toBe(true)
-    const sessionData = findSessionDataCookie(all)
-    expect(sessionData).toBeDefined()
-    expect(sessionData!.flags.has('httponly')).toBe(true)
-    expect(sessionData!.attributes.get('max-age')).toBe('60')
 
     // The advisory's claimed cookie name does not (and must not) exist here.
     expect(all.find((c) => c.name === '__session')).toBeUndefined()

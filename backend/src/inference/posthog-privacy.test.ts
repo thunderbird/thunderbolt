@@ -159,7 +159,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', mockFetch)
+      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
 
       // Verify it's a PostHog-wrapped client
       expect(client.constructor.name).toBe('PostHogOpenAI')
@@ -176,7 +176,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', mockFetch)
+      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
 
       // Verify client exists and is functional
       expect(client).toBeDefined()
@@ -197,7 +197,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       clearPostHogClient()
 
       // Get the wrapped client with injected mock fetch
-      const { client } = getInferenceClient('fireworks', mockFetch)
+      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
 
       // Make a completion with sensitive data
       const completion = await (client as PostHogOpenAI).chat.completions.create({
@@ -258,7 +258,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', mockFetch)
+      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
 
       // Make multiple completions
       const conversations = [

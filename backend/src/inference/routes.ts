@@ -4,18 +4,28 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
-import { safeErrorHandler } from '@/middleware/error-handling'
+import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
 import { isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
+import { elapsedMs } from '@/utils/timing'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { Elysia, type AnyElysia } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError } from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import { getInferenceClient, type InferenceProvider } from './client'
+import {
+  createInferenceAttemptTracker,
+  getInferenceClient,
+  runWithInferenceAttemptTracking,
+  type InferenceClient,
+  type InferenceLogger,
+  type InferenceProvider,
+} from './client'
 
 type Message = { role: string; content: unknown }
 
 const privilegedRoles = new Set(['developer', 'system'])
+const inferenceProxyTimingHeader = 'X-Proxy-Timing'
+const serverTimingHeader = 'Server-Timing'
 
 /** Downgrade developer/system roles to user for all messages except the first (the legitimate system prompt). */
 const sanitizeMessageRoles = (messages: Message[]): Message[] =>
@@ -53,13 +63,53 @@ export const supportedModels: Record<string, ModelConfig> = {
   },
 }
 
+export type InferenceProxyLatencyLog = {
+  event: 'inference_proxy_latency'
+  route: string
+  provider: InferenceProvider
+  status: number
+  preMs: number
+  upstreamMs: number
+  totalMs: number
+  attempts: number
+}
+
+export type CreateInferenceRoutesOptions = {
+  auth: Auth
+  fetchFn?: typeof fetch
+  getClient?: (provider: InferenceProvider) => InferenceClient
+  isPostHogConfiguredFn?: () => boolean
+  logger?: InferenceLogger
+  /** Monotonic clock used for route latency and upstream-attempt instrumentation. */
+  nowFn?: () => number
+  rateLimit?: AnyElysia
+}
+
+/** Format inference phases using Server-Timing header syntax. */
+const formatServerTiming = (preMs: number, upstreamMs: number, totalMs: number): string =>
+  `pre;dur=${preMs}, upstream;dur=${upstreamMs}, total;dur=${totalMs}`
+
 /**
  * Inference API routes
  */
-export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
+export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => {
+  const { auth, fetchFn, logger, rateLimit } = options
+  const nowFn = options.nowFn ?? (() => performance.now())
+  const isPostHogConfiguredFn = options.isPostHogConfiguredFn ?? isPostHogConfigured
+  const getClient =
+    options.getClient ?? ((provider: InferenceProvider) => getInferenceClient(provider, { fetchFn, logger, nowFn }))
   const app = new Elysia({
     prefix: '/chat',
-  }).onError(safeErrorHandler)
+  })
+    .onError(safeErrorHandler)
+    .decorate('inferenceRequestStartedAt', 0)
+    .onRequest((ctx) => {
+      // onRequest hooks become app-wide when plugins merge, so avoid timing unrelated routes.
+      if (!ctx.request.url.includes('/chat/completions')) {
+        return
+      }
+      ctx.inferenceRequestStartedAt = nowFn()
+    })
 
   return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
     if (rateLimit) {
@@ -67,6 +117,8 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
     }
 
     return guardedApp.post('/completions', async (ctx) => {
+      const handlerStartedAt = nowFn()
+      const preMs = elapsedMs(ctx.inferenceRequestStartedAt, handlerStartedAt)
       const body = await ctx.request.json()
 
       if (!body.stream) {
@@ -80,28 +132,52 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
 
       const { provider, internalName, omitTemperature } = modelConfig
 
-      const { client } = getInferenceClient(provider)
+      const { client } = getClient(provider)
+      const attemptTracker = createInferenceAttemptTracker()
+      const route = new URL(ctx.request.url).pathname
+      /** Emit route phase telemetry in structured logs and response headers. */
+      const recordLatency = (status: number, completedAt: number) => {
+        const upstreamMs = elapsedMs(handlerStartedAt, completedAt)
+        const totalMs = elapsedMs(ctx.inferenceRequestStartedAt, completedAt)
+        const latency: InferenceProxyLatencyLog = {
+          event: 'inference_proxy_latency',
+          route,
+          provider,
+          status,
+          preMs,
+          upstreamMs,
+          totalMs,
+          attempts: attemptTracker.attempts,
+        }
 
-      console.info(`Routing model "${body.model}" to ${provider} provider`)
+        ctx.set.headers[inferenceProxyTimingHeader] =
+          `pre=${preMs};upstream=${upstreamMs};total=${totalMs};attempts=${attemptTracker.attempts}`
+        ctx.set.headers[serverTimingHeader] = formatServerTiming(preMs, upstreamMs, totalMs)
+        logger?.info(latency, 'Inference proxy latency')
+      }
 
       try {
-        const completion = await (client as PostHogOpenAI).chat.completions.create({
-          model: internalName,
-          messages: sanitizeMessageRoles(body.messages) as ChatCompletionMessageParam[],
-          ...(omitTemperature ? {} : { temperature: body.temperature }),
-          tools: body.tools,
-          tool_choice: body.tool_choice,
-          stream: true,
-          ...(isPostHogConfigured() && {
-            posthogProperties: {
-              model_provider: provider,
-              endpoint: '/chat/completions',
-              has_tools: !!body.tools,
-              temperature: body.temperature,
-              // @todo add distinct id and trace id
-            },
+        const completion = await runWithInferenceAttemptTracking(attemptTracker, () =>
+          (client as PostHogOpenAI).chat.completions.create({
+            model: internalName,
+            messages: sanitizeMessageRoles(body.messages) as ChatCompletionMessageParam[],
+            ...(omitTemperature ? {} : { temperature: body.temperature }),
+            tools: body.tools,
+            tool_choice: body.tool_choice,
+            stream: true,
+            ...(isPostHogConfiguredFn() && {
+              posthogProperties: {
+                model_provider: provider,
+                endpoint: '/chat/completions',
+                has_tools: !!body.tools,
+                temperature: body.temperature,
+                // @todo add distinct id and trace id
+              },
+            }),
           }),
-        })
+        )
+        const upstreamResolvedAt = nowFn()
+        recordLatency(200, upstreamResolvedAt)
 
         const stream = createSSEStreamFromCompletion(completion)
 
@@ -121,6 +197,7 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
 
         return new Response(stream, { headers: responseHeaders })
       } catch (error) {
+        recordLatency(getErrorStatus(error), nowFn())
         if (error instanceof APIConnectionError) {
           console.error('Failed to connect to inference provider', error.cause)
           throw new Error('Failed to connect to inference provider', { cause: error })

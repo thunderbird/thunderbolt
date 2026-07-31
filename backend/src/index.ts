@@ -130,7 +130,14 @@ export const createApp = async (deps?: AppDeps) => {
       )
       .use(createSearchRoutes(auth, proRateLimit, { exaClient: deps?.searchExaClient }))
       .use(createPreviewRoutes({ auth, fetchFn, rateLimit: proRateLimit, dnsLookup: deps?.dnsLookup }))
-      .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
+      .use(
+        createInferenceRoutes({
+          auth,
+          fetchFn: deps?.fetchFn,
+          logger: appLogger,
+          rateLimit: createInferenceRateLimit(database, rateLimitSettings),
+        }),
+      )
       .use(createConfigRoutes(settings))
       .use(createPostHogRoutes(fetchFn))
       .use(

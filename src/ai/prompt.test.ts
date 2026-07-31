@@ -57,7 +57,7 @@ describe('assembleBuiltInModelInput', () => {
     { role: 'assistant' as const, content: 'first answer' },
   ]
 
-  test('keeps the stable prefix byte-identical and ends on the current user turn', () => {
+  test('keeps all system content at the front and ends on the current user turn', () => {
     const firstPrompt = createPromptParts(baseParams, new Date('2026-07-10T12:00:00Z'))
     const secondPrompt = createPromptParts(baseParams, new Date('2026-07-10T12:01:00Z'))
     const fixedVolatileNotes = ['Voice mode is active.', 'Follow project style.', 'Ask responses: concise']
@@ -74,26 +74,43 @@ describe('assembleBuiltInModelInput', () => {
       [secondPrompt.volatilePrompt, ...fixedVolatileNotes],
     )
     const firstMessages = [{ role: 'system' as const, content: first.system }, ...first.messages]
-    const secondMessages = [{ role: 'system' as const, content: second.system }, ...second.messages]
-    const stablePrefixLength = sharedHistory.length + 1
 
-    expect(firstMessages.map(({ role }) => role)).toEqual(['system', 'user', 'assistant', 'system', 'user'])
-    expect(firstMessages.slice(0, stablePrefixLength)).toEqual(secondMessages.slice(0, stablePrefixLength))
-    expect(firstMessages.slice(stablePrefixLength)).not.toEqual(secondMessages.slice(stablePrefixLength))
-    expect(first.system).not.toContain('Current date/time')
-    expect(first.messages.at(-2)?.content).toContain('Current date/time')
+    expect(firstMessages.map(({ role }) => role)).toEqual(['system', 'user', 'assistant', 'user'])
+    expect(first.system).toContain(firstPrompt.stablePrompt)
+    expect(first.system).toContain(firstPrompt.volatilePrompt)
+    expect(first.system).toContain(fixedVolatileNotes.join('\n\n'))
+    expect(first.system).not.toBe(second.system)
+    expect(first.messages).toEqual([...sharedHistory, firstUserMessage])
     expect(first.messages.at(-1)).toEqual(firstUserMessage)
   })
 
-  test('places volatile notes before a sole message and trails with them when input is empty', () => {
+  test('keeps volatile notes in the system prompt for sole-message and empty inputs', () => {
     const userMessage = { role: 'user' as const, content: 'hello' }
-    const volatileMessage = { role: 'system' as const, content: 'Current date/time: now' }
+    const volatileNote = 'Current date/time: now'
 
-    expect(assembleBuiltInModelInput('stable', [userMessage], [volatileMessage.content]).messages).toEqual([
-      volatileMessage,
-      userMessage,
-    ])
-    expect(assembleBuiltInModelInput('stable', [], [volatileMessage.content]).messages).toEqual([volatileMessage])
+    expect(assembleBuiltInModelInput('stable', [userMessage], [volatileNote])).toEqual({
+      system: `stable\n\n${volatileNote}`,
+      messages: [userMessage],
+    })
+    expect(assembleBuiltInModelInput('stable', [], [volatileNote])).toEqual({
+      system: `stable\n\n${volatileNote}`,
+      messages: [],
+    })
+  })
+
+  test('produces one front system block for a two-turn conversation', () => {
+    const currentUserMessage = { role: 'user' as const, content: 'second question' }
+    const input = assembleBuiltInModelInput(
+      'stable',
+      [...sharedHistory, currentUserMessage],
+      ['Current date/time: now', 'Voice mode is active.'],
+    )
+    const messages = [{ role: 'system' as const, content: input.system }, ...input.messages]
+    const firstNonSystemIndex = messages.findIndex(({ role }) => role !== 'system')
+
+    expect(firstNonSystemIndex).toBe(1)
+    expect(messages.slice(firstNonSystemIndex).every(({ role }) => role !== 'system')).toBeTrue()
+    expect(messages.at(-1)).toEqual(currentUserMessage)
   })
 })
 

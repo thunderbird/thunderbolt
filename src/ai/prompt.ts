@@ -44,21 +44,14 @@ export type BuiltInModelInput = {
   readonly messages: ModelMessage[]
 }
 
-/** Place volatile notes after cacheable history while keeping the current user turn last. */
+/** Combine stable and volatile system content before conversation messages. */
 export const assembleBuiltInModelInput = (
   stableSystemPrompt: string,
   baseMessages: readonly ModelMessage[],
   volatileSystemNotes: readonly string[],
 ): BuiltInModelInput => ({
-  system: stableSystemPrompt,
-  messages: [
-    ...baseMessages.slice(0, -1),
-    {
-      role: 'system',
-      content: volatileSystemNotes.join('\n\n'),
-    },
-    ...baseMessages.slice(-1),
-  ],
+  system: [stableSystemPrompt, ...volatileSystemNotes].join('\n\n'),
+  messages: [...baseMessages],
 })
 
 /** Build stable assistant instructions separately from per-send date/time. */

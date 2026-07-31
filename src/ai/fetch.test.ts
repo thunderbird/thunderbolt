@@ -144,7 +144,7 @@ describe('selectPromptSkillDefinitions', () => {
 })
 
 describe('buildVolatileSystemNotes', () => {
-  it('wires volatile notes immediately before the current user turn', () => {
+  it('wires volatile notes into the front system block', () => {
     const volatileSystemPrompt = 'Current date/time: Friday, July 10, 2026 at 9:00 AM GMT-3'
     const currentUserMessage = { role: 'user' as const, content: 'What changed?' }
 
@@ -172,7 +172,10 @@ describe('buildVolatileSystemNotes', () => {
       notes,
     )
 
-    expect(input.messages.at(-2)).toEqual({ role: 'system', content: notes.join('\n\n') })
+    const messages = [{ role: 'system' as const, content: input.system }, ...input.messages]
+
+    expect(input.system).toBe(`stable prompt\n\n${notes.join('\n\n')}`)
+    expect(messages.slice(1).every(({ role }) => role !== 'system')).toBeTrue()
     expect(input.messages.at(-1)).toEqual(currentUserMessage)
   })
 })

@@ -44,7 +44,7 @@ export type BuiltInModelInput = {
   readonly messages: ModelMessage[]
 }
 
-/** Keep volatile notes after conversation history so Tinfoil prefix cache can reuse stable system + history. */
+/** Place volatile notes after cacheable history while keeping the current user turn last. */
 export const assembleBuiltInModelInput = (
   stableSystemPrompt: string,
   baseMessages: readonly ModelMessage[],
@@ -52,11 +52,12 @@ export const assembleBuiltInModelInput = (
 ): BuiltInModelInput => ({
   system: stableSystemPrompt,
   messages: [
-    ...baseMessages,
+    ...baseMessages.slice(0, -1),
     {
       role: 'system',
       content: volatileSystemNotes.join('\n\n'),
     },
+    ...baseMessages.slice(-1),
   ],
 })
 

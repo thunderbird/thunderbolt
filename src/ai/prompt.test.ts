@@ -52,33 +52,48 @@ const baseParams: PromptParams = {
 }
 
 describe('assembleBuiltInModelInput', () => {
-  const history = [
+  const sharedHistory = [
     { role: 'user' as const, content: 'first question' },
     { role: 'assistant' as const, content: 'first answer' },
-    { role: 'user' as const, content: 'follow-up' },
   ]
 
-  test('keeps stable system and history as byte-identical prefix across consecutive builds', () => {
+  test('keeps the stable prefix byte-identical and ends on the current user turn', () => {
     const firstPrompt = createPromptParts(baseParams, new Date('2026-07-10T12:00:00Z'))
     const secondPrompt = createPromptParts(baseParams, new Date('2026-07-10T12:01:00Z'))
     const fixedVolatileNotes = ['Voice mode is active.', 'Follow project style.', 'Ask responses: concise']
-    const first = assembleBuiltInModelInput(firstPrompt.stablePrompt, history, [
-      firstPrompt.volatilePrompt,
-      ...fixedVolatileNotes,
-    ])
-    const second = assembleBuiltInModelInput(secondPrompt.stablePrompt, history, [
-      secondPrompt.volatilePrompt,
-      ...fixedVolatileNotes,
-    ])
+    const firstUserMessage = { role: 'user' as const, content: 'first follow-up' }
+    const secondUserMessage = { role: 'user' as const, content: 'second follow-up' }
+    const first = assembleBuiltInModelInput(
+      firstPrompt.stablePrompt,
+      [...sharedHistory, firstUserMessage],
+      [firstPrompt.volatilePrompt, ...fixedVolatileNotes],
+    )
+    const second = assembleBuiltInModelInput(
+      secondPrompt.stablePrompt,
+      [...sharedHistory, secondUserMessage],
+      [secondPrompt.volatilePrompt, ...fixedVolatileNotes],
+    )
     const firstMessages = [{ role: 'system' as const, content: first.system }, ...first.messages]
     const secondMessages = [{ role: 'system' as const, content: second.system }, ...second.messages]
-    const stablePrefixLength = history.length + 1
+    const stablePrefixLength = sharedHistory.length + 1
 
-    expect(firstMessages.map(({ role }) => role)).toEqual(['system', 'user', 'assistant', 'user', 'system'])
+    expect(firstMessages.map(({ role }) => role)).toEqual(['system', 'user', 'assistant', 'system', 'user'])
     expect(firstMessages.slice(0, stablePrefixLength)).toEqual(secondMessages.slice(0, stablePrefixLength))
     expect(firstMessages.slice(stablePrefixLength)).not.toEqual(secondMessages.slice(stablePrefixLength))
     expect(first.system).not.toContain('Current date/time')
-    expect(first.messages.at(-1)?.content).toContain('Current date/time')
+    expect(first.messages.at(-2)?.content).toContain('Current date/time')
+    expect(first.messages.at(-1)).toEqual(firstUserMessage)
+  })
+
+  test('places volatile notes before a sole message and trails with them when input is empty', () => {
+    const userMessage = { role: 'user' as const, content: 'hello' }
+    const volatileMessage = { role: 'system' as const, content: 'Current date/time: now' }
+
+    expect(assembleBuiltInModelInput('stable', [userMessage], [volatileMessage.content]).messages).toEqual([
+      volatileMessage,
+      userMessage,
+    ])
+    expect(assembleBuiltInModelInput('stable', [], [volatileMessage.content]).messages).toEqual([volatileMessage])
   })
 })
 

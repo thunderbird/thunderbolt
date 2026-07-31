@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, mock } from 'bun:test'
-import { createPrompt } from '@/ai/prompt'
+import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
@@ -144,8 +144,9 @@ describe('selectPromptSkillDefinitions', () => {
 })
 
 describe('buildVolatileSystemNotes', () => {
-  it('leads with the volatile timestamp', () => {
+  it('wires volatile notes immediately before the current user turn', () => {
     const volatileSystemPrompt = 'Current date/time: Friday, July 10, 2026 at 9:00 AM GMT-3'
+    const currentUserMessage = { role: 'user' as const, content: 'What changed?' }
 
     const notes = buildVolatileSystemNotes({
       volatileSystemPrompt,
@@ -161,6 +162,18 @@ describe('buildVolatileSystemNotes', () => {
       'Follow project style.',
       'Ask responses: concise',
     ])
+    const input = assembleBuiltInModelInput(
+      'stable prompt',
+      [
+        { role: 'user', content: 'Earlier question' },
+        { role: 'assistant', content: 'Earlier answer' },
+        currentUserMessage,
+      ],
+      notes,
+    )
+
+    expect(input.messages.at(-2)).toEqual({ role: 'system', content: notes.join('\n\n') })
+    expect(input.messages.at(-1)).toEqual(currentUserMessage)
   })
 })
 

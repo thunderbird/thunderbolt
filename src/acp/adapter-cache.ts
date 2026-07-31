@@ -104,7 +104,12 @@ export const getOrConnectAdapter = async (
   }
 
   const adapter = await entry.slot.getOrConnect(connect)
-  entry.scheduler.unregister(agent.id)
+  // A generation whose `closed` settled before this continuation resumed has
+  // already re-registered its own recovery via onTerminated (status flipped to
+  // 'terminated') — only a still-live slot may cancel pending recovery work.
+  if (entry.slot.status === 'ready') {
+    entry.scheduler.unregister(agent.id)
+  }
   return adapter
 }
 

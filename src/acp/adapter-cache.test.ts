@@ -306,6 +306,26 @@ describe('adapter-cache', () => {
     )
   })
 
+  it('keeps recovery registered when the fresh adapter dies before the caller resumes', async () => {
+    // `closed` is already rejected when the slot's ready-handler runs, so the
+    // terminate → onTerminated → register chain is queued ahead of the
+    // awaiting caller's continuation.
+    const closed = Promise.reject(new Error('instant death'))
+    closed.catch(() => {})
+    const { adapter } = buildAdapter(agentA, closed)
+    const { scheduler, registered } = buildScheduler()
+    const { connectToAgent } = makeCounter(() => adapter)
+
+    await expect(getOrConnectAdapter(agentA, ctx, { connectToAgent, reconnectScheduler: scheduler })).resolves.toBe(
+      adapter,
+    )
+    await Promise.resolve()
+
+    // An unfenced unregister here would silently cancel the just-scheduled
+    // recovery and hand back a dead adapter with no rebuild behind it.
+    expect(registered.has(agentA.id)).toBe(true)
+  })
+
   it('disposeAdapter cancels recovery scheduled for a dead generation', async () => {
     let rejectClosed: (error: unknown) => void = () => {}
     const closed = new Promise<void>((_, reject) => {

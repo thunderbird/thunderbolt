@@ -13,9 +13,11 @@ const resolveCorsOrigin = (
   request: Request,
   settings: Pick<Settings, 'corsOrigins'>,
   allowsAnyOrigin: boolean,
+  allowCredentials: boolean,
 ): string | null => {
   if (allowsAnyOrigin) {
-    return '*'
+    // Browsers reject wildcard ACAO with credentials, so credentialed wildcard policies must echo Origin.
+    return allowCredentials ? request.headers.get('Origin') : '*'
   }
 
   const origin = request.headers.get('Origin')
@@ -29,8 +31,12 @@ const resolveCorsOrigin = (
 export const createCorsMiddleware = (settings: CorsSettings) => {
   const corsOrigins = getCorsOriginsList(settings)
   const allowsAnyOrigin = corsOrigins.includes('*')
-  const resolveRequestOrigin = (request: Request) => resolveCorsOrigin(request, settings, allowsAnyOrigin)
-  const corsOrigin = allowsAnyOrigin ? '*' : (request: Request) => resolveRequestOrigin(request) !== null
+  const resolveRequestOrigin = (request: Request) =>
+    resolveCorsOrigin(request, settings, allowsAnyOrigin, settings.corsAllowCredentials)
+  const corsOrigin =
+    allowsAnyOrigin && !settings.corsAllowCredentials
+      ? '*'
+      : (request: Request) => resolveRequestOrigin(request) !== null
 
   return new Elysia({ name: 'cors-with-resource-timing' })
     .onRequest(({ request, set }) => {

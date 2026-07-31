@@ -12,12 +12,12 @@ import { Elysia } from 'elysia'
  * Verifies that the actual HTTP headers are set correctly for various origins.
  */
 describe('CORS integration', () => {
-  const createTestApp = (corsOrigins: string[]) =>
+  const createTestApp = (corsOrigins: string[], corsAllowCredentials = true) =>
     new Elysia()
       .use(
         createCorsMiddleware({
           corsOrigins: corsOrigins.join(','),
-          corsAllowCredentials: true,
+          corsAllowCredentials,
           corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
           corsExposeHeaders: '',
         }),
@@ -152,7 +152,7 @@ describe('CORS integration', () => {
     })
   })
 
-  it('mirrors explicitly configured wildcard access', async () => {
+  it('echoes the request origin for credentialed wildcard access', async () => {
     const app = createTestApp(['*'])
     const res = await app.handle(
       new Request('http://localhost/test', {
@@ -160,7 +160,22 @@ describe('CORS integration', () => {
       }),
     )
 
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com')
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true')
+    expect(res.headers.get('timing-allow-origin')).toBe('https://app.example.com')
+    expect(res.headers.get('vary')).toContain('Origin')
+  })
+
+  it('uses wildcard access when credentials are disabled', async () => {
+    const app = createTestApp(['*'], false)
+    const res = await app.handle(
+      new Request('http://localhost/test', {
+        headers: { Origin: 'https://app.example.com' },
+      }),
+    )
+
     expect(res.headers.get('access-control-allow-origin')).toBe('*')
+    expect(res.headers.get('access-control-allow-credentials')).toBeNull()
     expect(res.headers.get('timing-allow-origin')).toBe('*')
   })
 })

@@ -513,6 +513,7 @@ describe('createTinfoilRoutes', () => {
         },
       ])
       expect(response.headers.get('x-proxy-timing')).toBe('pre=10;fetch=12;headers=40')
+      expect(response.headers.get('server-timing')).toBe('pre;dur=10, fetch;dur=12, headers;dur=40')
       expect(JSON.stringify(entries)).not.toContain('request-secret')
       expect(JSON.stringify(entries)).not.toContain(testApiKey)
     })
@@ -571,6 +572,7 @@ describe('createTinfoilRoutes', () => {
 
       expect(response.status).toBe(504)
       expect(response.headers.get('x-proxy-timing')).toBe('pre=10;fetch=5;headers=na')
+      expect(response.headers.get('server-timing')).toBe('pre;dur=10, fetch;dur=5')
       expect(entries).toEqual([
         {
           context: {

@@ -104,6 +104,7 @@ describe('Config Settings', () => {
       const settings = getSettings()
 
       expect(settings.corsExposeHeaders.split(',')).toContain('X-Proxy-Timing')
+      expect(settings.corsExposeHeaders.split(',')).not.toContain('Timing-Allow-Origin')
     })
 
     it('should not match non-Tauri origins by default', () => {

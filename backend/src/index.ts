@@ -9,6 +9,7 @@ import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
 import { createSsoDesktopCallbackRoutes } from '@/auth/sso-desktop-callback'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
+import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
@@ -32,7 +33,6 @@ import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import type { AppDeps } from '@/types'
-import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
 /**
@@ -97,20 +97,7 @@ export const createApp = async (deps?: AppDeps) => {
 
   return (
     configuredApp
-      .use(
-        cors({
-          origin: getCorsOriginsList(settings),
-          credentials: settings.corsAllowCredentials,
-          methods: settings.corsAllowMethods,
-          // Echo back the client's Access-Control-Request-Headers. The universal
-          // proxy at /v1/proxy forwards arbitrary upstream headers as
-          // X-Proxy-Passthrough-* (provider SDKs add x-api-key, x-stainless-*,
-          // openai-organization, anthropic-beta, …). A static allowlist can't
-          // enumerate every upstream's header set without breaking preflight.
-          allowedHeaders: true,
-          exposeHeaders: settings.corsExposeHeaders,
-        }),
-      )
+      .use(createCorsMiddleware(settings))
       .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware(settings.trustedProxy))
       .use(createErrorHandlingMiddleware())

@@ -20,6 +20,7 @@ const upstreamHeadersTimeoutError = new DOMException(tinfoilUpstreamTimeoutMessa
 const upstreamIdleTimeoutError = new DOMException(tinfoilUpstreamIdleTimeoutMessage, 'TimeoutError')
 const tinfoilEnclaveUrlHeader = 'x-tinfoil-enclave-url'
 const tinfoilProxyTimingHeader = 'X-Proxy-Timing'
+const serverTimingHeader = 'Server-Timing'
 
 export type TinfoilProxyLatencyLog = {
   event: 'tinfoil_proxy_latency'
@@ -40,6 +41,20 @@ const textResponse = (status: number, body: string): Response =>
 
 /** Round a monotonic duration to hundredths of a millisecond for structured logs. */
 const elapsedMs = (startedAt: number, completedAt: number) => Math.round((completedAt - startedAt) * 100) / 100
+
+/** Format available Tinfoil proxy phases using the Server-Timing header syntax. */
+const formatServerTiming = (
+  preHandlerMs: number,
+  handlerToUpstreamFetchMs: number | null,
+  upstreamFetchToHeadersMs: number | null,
+): string =>
+  [
+    `pre;dur=${preHandlerMs}`,
+    handlerToUpstreamFetchMs === null ? null : `fetch;dur=${handlerToUpstreamFetchMs}`,
+    upstreamFetchToHeadersMs === null ? null : `headers;dur=${upstreamFetchToHeadersMs}`,
+  ]
+    .filter((metric): metric is string => metric !== null)
+    .join(', ')
 
 /** Check whether an error's cause chain contains the target value. */
 const errorCauseIncludes = (error: unknown, target: unknown): boolean =>
@@ -145,6 +160,11 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
 
       setHeaders[tinfoilProxyTimingHeader] =
         `pre=${preHandlerMs};fetch=${handlerToUpstreamFetchMs ?? 'na'};headers=${upstreamFetchToHeadersMs ?? 'na'}`
+      setHeaders[serverTimingHeader] = formatServerTiming(
+        preHandlerMs,
+        handlerToUpstreamFetchMs,
+        upstreamFetchToHeadersMs,
+      )
       logger?.info(latency, 'Tinfoil proxy latency')
     }
 

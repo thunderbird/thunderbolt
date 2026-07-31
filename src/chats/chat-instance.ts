@@ -3,7 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { connectToAgent as defaultConnectToAgent } from '@/acp'
-import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
+import {
+  getOrConnectAdapter as defaultGetOrConnectAdapter,
+  wakeAdapterReconnect as defaultWakeAdapterReconnect,
+} from '@/acp/adapter-cache'
 import type { AcpCommand, SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
 import { useAgentCommandsStore } from '@/acp/agent-commands-store'
 import {
@@ -103,6 +106,7 @@ export type CreateChatInstanceDeps = {
   getAllSkills?: typeof defaultGetAllSkills
   createChat?: (init: ChatInit<ThunderboltUIMessage>) => Chat<ThunderboltUIMessage>
   createTurnBudget?: typeof defaultCreateTurnBudget
+  wakeAdapterReconnect?: typeof defaultWakeAdapterReconnect
 }
 
 export type AgentRoutingState = {
@@ -290,6 +294,7 @@ export const createChatInstance = (
   deps: CreateChatInstanceDeps = {},
 ) => {
   const createTurnBudget = deps.createTurnBudget ?? defaultCreateTurnBudget
+  const wakeAdapterReconnect = deps.wakeAdapterReconnect ?? defaultWakeAdapterReconnect
   let turnBudget = createTurnBudget()
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
@@ -369,6 +374,13 @@ export const createChatInstance = (
           reply_number: instance.messages.length + 1,
         })
 
+        return
+      }
+
+      // A transport loss may have interrupted the turn after the agent performed
+      // side effects. Only the user may choose to submit it again.
+      if (getChatErrorKind(lastError) === 'connection-lost') {
+        markRetriesExhausted()
         return
       }
 
@@ -462,6 +474,10 @@ export const createChatInstance = (
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {
     resetRetryStateForNewTurn()
+    const agentId = useChatStore.getState().sessions.get(id)?.selectedAgent.id
+    if (agentId) {
+      wakeAdapterReconnect(agentId)
+    }
     return regenerateResponse()
   }
 

@@ -50,6 +50,8 @@ const createRetryHarness = () => {
   const sendMessage = mock(async () => {})
   const budgets: TurnBudget[] = []
   let onFinish: ChatOnFinishCallback<ThunderboltUIMessage> | undefined
+  let onError: ((error: Error) => void) | undefined
+  const wakeAdapterReconnect = mock(() => {})
 
   const createTrackedTurnBudget = () => {
     const budget = createTurnBudget()
@@ -59,6 +61,7 @@ const createRetryHarness = () => {
 
   const createChat = (init: ChatInit<ThunderboltUIMessage>) => {
     onFinish = init.onFinish
+    onError = init.onError
     return {
       id: init.id ?? sessionId,
       messages: init.messages ?? [],
@@ -70,6 +73,7 @@ const createRetryHarness = () => {
   const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
     createChat,
     createTurnBudget: createTrackedTurnBudget,
+    wakeAdapterReconnect,
   })
   hydrateStore({
     chatInstance: instance,
@@ -79,14 +83,18 @@ const createRetryHarness = () => {
     triggerData: null,
   })
 
-  const finishWithError = () =>
-    onFinish!({
+  const finishWithError = (error?: Error) => {
+    if (error) {
+      onError?.(error)
+    }
+    return onFinish!({
       message: { id: 'failed-assistant', role: 'assistant', parts: [] },
       messages: [],
       isAbort: false,
       isDisconnect: false,
       isError: true,
     })
+  }
 
   const finishSuccessfully = () =>
     onFinish!({
@@ -103,7 +111,15 @@ const createRetryHarness = () => {
 
   const getTurnBudget = () => budgets.at(-1)!
 
-  return { finishSuccessfully, finishWithError, getTurnBudget, instance, regenerate, sendMessage }
+  return {
+    finishSuccessfully,
+    finishWithError,
+    getTurnBudget,
+    instance,
+    regenerate,
+    sendMessage,
+    wakeAdapterReconnect,
+  }
 }
 
 /** Fully consume one injected chat-instance turn budget. */
@@ -264,8 +280,25 @@ describe('createChatInstance — retry policy', () => {
     expect(regenerate).not.toHaveBeenCalled()
   })
 
+  it('never auto-regenerates a turn interrupted by connection loss', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate } = createRetryHarness()
+
+    try {
+      await finishWithError(new Error(JSON.stringify({ error: 'relay dropped', kind: 'connection-lost' })))
+      await getClock().runAllAsync()
+
+      const session = useChatStore.getState().sessions.get(sessionId)!
+      expect(session.retryCount).toBe(0)
+      expect(session.retriesExhausted).toBe(true)
+      expect(regenerate).not.toHaveBeenCalled()
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
   it('manual regenerate resets the turn budget', async () => {
-    const { getTurnBudget, instance, regenerate } = createRetryHarness()
+    const { getTurnBudget, instance, regenerate, wakeAdapterReconnect } = createRetryHarness()
     const exhaustedBudget = exhaustTurnBudget(getTurnBudget())
 
     await instance.regenerate()
@@ -274,6 +307,7 @@ describe('createChatInstance — retry policy', () => {
     expect(getTurnBudget().probe.isExhausted).toBe(false)
     expect(getTurnBudget().consumer.tryConsumeRequest()).toBe(true)
     expect(regenerate).toHaveBeenCalledTimes(1)
+    expect(wakeAdapterReconnect).toHaveBeenCalledWith(builtInAgent.id)
   })
 
   it('auto-retry does not reset the turn budget', async () => {

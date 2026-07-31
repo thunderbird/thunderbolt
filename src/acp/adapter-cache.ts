@@ -7,6 +7,7 @@
  * a transport underneath live JSON-RPC state. */
 
 import type { Agent, AgentAdapter } from '@/types/acp'
+import { useChatStore } from '@/chats/chat-store'
 import { AdapterSlot } from './adapter-slot'
 import { useAgentCommandsStore } from './agent-commands-store'
 import type { connectToAgent as defaultConnectToAgent, ConnectToAgentContext, ConnectToAgentDeps } from './connect'
@@ -67,6 +68,7 @@ const createEntry = (
           return
         }
         useAgentCommandsStore.getState().clearCommands(agent.id)
+        useChatStore.getState().cancelPendingPermissionsForAgent(agent.id)
         entry.scheduler.register(agent.id, async () => {
           await entry.slot.getOrConnect(entry.connect)
         })

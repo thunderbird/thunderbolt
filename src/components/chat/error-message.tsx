@@ -13,6 +13,8 @@ const causeSpecificErrorMessages: Partial<Record<ChatErrorKind, string>> = {
   timeout: 'The AI provider took too long to respond. Try again.',
   provider: 'The AI provider is having trouble right now. Try again in a moment.',
   network: 'Connection problem. Check your internet and try again.',
+  'connection-lost':
+    'The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed.',
 }
 
 /** Resolve final chat error copy after automatic retries stop. */

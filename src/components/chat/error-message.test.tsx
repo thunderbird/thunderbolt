@@ -28,6 +28,11 @@ describe('ErrorMessage', () => {
         kind: 'network',
         message: 'Connection problem. Check your internet and try again.',
       },
+      {
+        kind: 'connection-lost',
+        message:
+          'The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed.',
+      },
     ] as const
 
     for (const { kind, message } of cases) {

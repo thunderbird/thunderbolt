@@ -5,7 +5,7 @@
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
 
-const chatErrorKinds = ['attestation', 'timeout', 'rate-limit', 'provider', 'network'] as const
+const chatErrorKinds = ['attestation', 'timeout', 'rate-limit', 'provider', 'network', 'connection-lost'] as const
 export type ChatErrorKind = (typeof chatErrorKinds)[number]
 
 const isChatErrorKind = (value: unknown): value is ChatErrorKind => chatErrorKinds.includes(value as ChatErrorKind)

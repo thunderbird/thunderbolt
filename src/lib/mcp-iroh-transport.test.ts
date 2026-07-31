@@ -13,6 +13,7 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { resetSharedIrohClientForTests } from '@/acp/iroh/iroh-transport'
 import type { IrohClientLike, IrohConnectionLike } from '@/acp/iroh/types'
+import { TransportTerminationError } from '@/acp/termination'
 import { ensureSelfEnrollment, resetSelfEnrollmentForTests } from './iroh-enrollment'
 import { createMcpIrohTransport, mcpIrohAlpn } from './mcp-iroh-transport'
 
@@ -227,11 +228,42 @@ describe('createMcpIrohTransport', () => {
       loadClient: async () => makeFakeClient(fake.connection, []),
     })
     const order: string[] = []
-    transport.onerror = (e) => order.push(`error:${e.message}`)
+    let termination: Error | null = null
+    transport.onerror = (e) => {
+      termination = e
+      order.push(`error:${e.message}`)
+    }
     transport.onclose = () => order.push('close')
     await transport.start()
     fake.errorReceive(new Error('relay dropped'))
     await flush()
+    expect(order).toEqual(['error:relay dropped', 'close'])
+    expect(termination).toBeInstanceOf(TransportTerminationError)
+    expect(termination).toMatchObject({ reason: 'stream-error' })
+    expect(fake.closed()).toBe(true)
+  })
+
+  it('tears down a failed send once without queueing or replaying it', async () => {
+    const fake = makeFakeConnection()
+    let sendCalls = 0
+    const connection: IrohConnectionLike = {
+      ...fake.connection,
+      send: async () => {
+        sendCalls += 1
+        throw new Error('relay dropped')
+      },
+    }
+    const transport = createMcpIrohTransport({
+      target: 't',
+      loadClient: async () => makeFakeClient(connection, []),
+    })
+    const order: string[] = []
+    transport.onerror = (error) => order.push(`error:${error.message}`)
+    transport.onclose = () => order.push('close')
+    await transport.start()
+
+    await expect(transport.send(initialize)).rejects.toMatchObject({ reason: 'stream-error' })
+    expect(sendCalls).toBe(1)
     expect(order).toEqual(['error:relay dropped', 'close'])
     expect(fake.closed()).toBe(true)
   })

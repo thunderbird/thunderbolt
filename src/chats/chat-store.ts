@@ -68,6 +68,7 @@ type ChatStoreActions = {
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
   applyAgentWireIdentityChange(agent: Agent): void
+  cancelPendingPermissionsForAgent(agentId: string): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
   setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
@@ -145,6 +146,26 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     if (changed) {
       set({ sessions: nextSessions })
+    }
+  },
+
+  cancelPendingPermissionsForAgent: (agentId) => {
+    const matching = [...get().sessions.entries()].filter(
+      ([, session]) => session.pendingPermission?.agentId === agentId,
+    )
+    if (matching.length === 0) {
+      return
+    }
+
+    const nextSessions = new Map(get().sessions)
+    for (const [id, session] of matching) {
+      nextSessions.set(id, { ...session, pendingPermission: null })
+    }
+    set({ sessions: nextSessions })
+
+    const cancelled: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } }
+    for (const [, session] of matching) {
+      session.pendingPermission?.resolve(cancelled)
     }
   },
 

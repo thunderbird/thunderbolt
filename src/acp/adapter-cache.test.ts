@@ -11,12 +11,14 @@
 
 import '@/testing-library'
 
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { ConnectToAgentContext } from './connect'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { clearAdapterCache, disposeAdapter, disposeAllAdapters, getOrConnectAdapter } from './adapter-cache'
 import { useAgentCommandsStore } from './agent-commands-store'
 import type { ReconnectSchedulerLike } from './reconnect-scheduler'
+import { type ChatSession, useChatStore } from '@/chats/chat-store'
+import type { RequestPermissionRequest } from '@agentclientprotocol/sdk'
 
 const agentA: Agent = {
   id: 'agent-a',
@@ -90,6 +92,7 @@ const makeCounter = (
 describe('adapter-cache', () => {
   beforeEach(() => {
     clearAdapterCache()
+    useChatStore.setState({ sessions: new Map() })
   })
 
   it('reuses ONE adapter for the same agentId across two different sessionIds (connect once)', async () => {
@@ -194,6 +197,16 @@ describe('adapter-cache', () => {
     const { scheduler, registered } = buildScheduler()
     const adapters = [first.adapter, second.adapter]
     const counter = makeCounter(() => adapters.shift()!)
+    const resolvePermission = mock(() => {})
+    const permissionSession = {
+      pendingPermission: {
+        agentId: agentA.id,
+        requestId: 'permission-1',
+        request: { sessionId: 'remote' } as RequestPermissionRequest,
+        resolve: resolvePermission,
+      },
+    } as unknown as ChatSession
+    useChatStore.setState({ sessions: new Map([['permission-session', permissionSession]]) })
 
     await expect(
       getOrConnectAdapter(agentA, ctx, { connectToAgent: counter.connectToAgent, reconnectScheduler: scheduler }),
@@ -201,6 +214,8 @@ describe('adapter-cache', () => {
     rejectClosed(new Error('relay dropped'))
     await Promise.resolve()
     expect(registered.has(agentA.id)).toBe(true)
+    expect(resolvePermission).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get('permission-session')?.pendingPermission).toBeNull()
 
     await expect(
       getOrConnectAdapter(agentA, ctx, { connectToAgent: counter.connectToAgent, reconnectScheduler: scheduler }),

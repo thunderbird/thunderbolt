@@ -113,6 +113,12 @@ describe('getChatErrorKind', () => {
     expect(getChatErrorKind(error)).toBe('timeout')
   })
 
+  it('preserves a serialized ACP connection-lost kind', () => {
+    const error = new Error(JSON.stringify({ error: 'relay dropped', kind: 'connection-lost' }))
+
+    expect(getChatErrorKind(error)).toBe('connection-lost')
+  })
+
   it('classifies kind-less legacy payloads from their status and message', () => {
     expect(getChatErrorKind(new Error(JSON.stringify({ error: 'Bad Gateway', status: 502 })))).toBe('provider')
     expect(getChatErrorKind(new Error(JSON.stringify({ error: 'tinfoil upstream timeout', statusCode: 504 })))).toBe(

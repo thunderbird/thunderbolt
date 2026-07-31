@@ -119,7 +119,7 @@ describe('CORS integration', () => {
       )
 
       expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com')
-      expect(res.headers.get('access-control-max-age')).toBe('7200')
+      expect(res.headers.get('access-control-max-age')).toBe('600')
       expect(res.headers.get('timing-allow-origin')).toBe('https://app.example.com')
     })
   })

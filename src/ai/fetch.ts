@@ -721,7 +721,7 @@ export const aiFetchStreamingResponse = async ({
           return buildStepOverrides({
             steps,
             messages: stepMessages,
-            stableSystemPrompt,
+            currentSystemPrompt: input.system,
             profile,
             maxSteps,
             nudgeThreshold,

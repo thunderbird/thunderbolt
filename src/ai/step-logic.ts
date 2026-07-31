@@ -87,7 +87,7 @@ export const nudgeMessages: NudgeMessages = {
 export const buildStepOverrides = <TMessage>({
   steps,
   messages,
-  stableSystemPrompt,
+  currentSystemPrompt,
   profile,
   maxSteps,
   nudgeThreshold,
@@ -95,7 +95,7 @@ export const buildStepOverrides = <TMessage>({
 }: {
   steps: Step[]
   messages: TMessage[]
-  stableSystemPrompt: string
+  currentSystemPrompt: string
   profile: ModelProfile | null
   maxSteps: number
   nudgeThreshold: number
@@ -104,7 +104,7 @@ export const buildStepOverrides = <TMessage>({
   const hadToolCallSteps = steps.some((s) => s.finishReason === 'tool-calls')
   const citationSystem =
     profile?.citationReinforcementEnabled === 1 && hadToolCallSteps
-      ? stableSystemPrompt + (profile.citationReinforcementPrompt ?? '')
+      ? currentSystemPrompt + (profile.citationReinforcementPrompt ?? '')
       : undefined
 
   if (isFinalStep(steps.length, maxSteps)) {

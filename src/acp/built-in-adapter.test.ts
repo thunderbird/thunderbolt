@@ -136,7 +136,6 @@ describe('createBuiltInAdapter persistent harness', () => {
         mcpToolsMetadata: undefined,
         stableSystemPrompt: 'stable prompt',
         volatileSystemPrompt: `timestamp ${index + 1}`,
-        systemPrompt: `stable prompt\n\ntimestamp ${index + 1}`,
       }),
     )
     const prepareConfig = mock(async () => configs.shift()!)

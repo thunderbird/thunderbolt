@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createPromptParts } from '@/ai/prompt'
+import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import {
   buildStepOverrides,
@@ -475,7 +475,6 @@ export type PreparedAiRequestConfig = {
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
   readonly stableSystemPrompt: string
   readonly volatileSystemPrompt: string
-  readonly systemPrompt: string
 }
 
 export type PrepareAiRequestConfigOptions = {
@@ -586,9 +585,26 @@ export const prepareAiRequestConfig = async ({
     mcpToolsMetadata: merged.mcpTools,
     stableSystemPrompt: prompt.stablePrompt,
     volatileSystemPrompt: prompt.volatilePrompt,
-    systemPrompt: prompt.fullPrompt,
   }
 }
+
+/** Order per-send system notes after cached history, with date/time first. */
+export const buildVolatileSystemNotes = ({
+  volatileSystemPrompt,
+  voiceNotes,
+  skillSystemMessages,
+  askResponsesNote,
+}: {
+  volatileSystemPrompt: string
+  voiceNotes: readonly string[]
+  skillSystemMessages: readonly string[]
+  askResponsesNote: string | null
+}): string[] => [
+  volatileSystemPrompt,
+  ...voiceNotes,
+  ...skillSystemMessages,
+  ...(askResponsesNote ? [askResponsesNote] : []),
+]
 
 /**
  * Stream one response through the legacy built-in pipeline.
@@ -617,13 +633,22 @@ export const aiFetchStreamingResponse = async ({
   // reach this function the user turn is already persisted.
 
   const db = getDb()
-  const { model, profile, supportsTools, sourceCollector, toolset, skills, mcpToolsMetadata, systemPrompt } =
-    await prepareAiRequestConfig({
-      modelId,
-      mcpClients,
-      reconnectClient,
-      httpClient,
-    })
+  const {
+    model,
+    profile,
+    supportsTools,
+    sourceCollector,
+    toolset,
+    skills,
+    mcpToolsMetadata,
+    stableSystemPrompt,
+    volatileSystemPrompt,
+  } = await prepareAiRequestConfig({
+    modelId,
+    mcpClients,
+    reconnectClient,
+    httpClient,
+  })
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
   }
@@ -667,15 +692,15 @@ export const aiFetchStreamingResponse = async ({
     /**
      * Run a single streamText attempt and return the result along with metadata
      */
-    const runStreamText = (inputMessages: Awaited<ReturnType<typeof convertToModelMessages>>) => {
+    const runStreamText = (input: BuiltInModelInput) => {
       return streamText({
         // SDK-internal retries are invisible to the shared per-turn request budget.
         // Keep retries in the app layers where every request is counted.
         maxRetries: 0,
         temperature: modelTemperature,
         model: wrappedModel,
-        system: systemPrompt,
-        messages: inputMessages,
+        system: input.system,
+        messages: input.messages,
         tools: supportsTools ? (toolset as ToolSet) : undefined,
         stopWhen: stepCountIs(maxSteps),
         providerOptions,
@@ -696,7 +721,7 @@ export const aiFetchStreamingResponse = async ({
           return buildStepOverrides({
             steps,
             messages: stepMessages,
-            systemPrompt,
+            stableSystemPrompt,
             profile,
             maxSteps,
             nudgeThreshold,
@@ -762,7 +787,7 @@ export const aiFetchStreamingResponse = async ({
     // a snapshot from when the message was originally typed.
     //
     // The composer (`chat-prompt-input.tsx`) uses the same helpers to size
-    // the context-overflow estimate so the budget and the actual prepend
+    // the context-overflow estimate so the budget and the actual injection
     // stay in lockstep.
     const lastUserText = extractLastUserText(messages)
     const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
@@ -827,11 +852,16 @@ export const aiFetchStreamingResponse = async ({
         ).flat()
       : []
     const askResponsesNote = formatAskResponsesNote(askEntries)
-    // Voice turns reuse this same send path; when voice is active, prepend the
+    // Voice turns reuse this same send path; when voice is active, include the
     // voice self-context so the model knows it's speaking aloud, keeps replies
     // brief, and answers about itself instead of web-searching its own identity.
     const voiceNotes = isVoiceModeActive() ? [voiceModeSystemNote] : []
-    const systemNotes = [...voiceNotes, ...skillSystemMessages, ...(askResponsesNote ? [askResponsesNote] : [])]
+    const volatileSystemNotes = buildVolatileSystemNotes({
+      volatileSystemPrompt,
+      voiceNotes,
+      skillSystemMessages,
+      askResponsesNote,
+    })
 
     const stream = createUIMessageStream({
       generateId: uuidv7,
@@ -844,10 +874,7 @@ export const aiFetchStreamingResponse = async ({
         const baseMessages = await convertToModelMessages(
           hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(messages)),
         )
-        let currentMessages: typeof baseMessages = [
-          ...systemNotes.map((content) => ({ role: 'system' as const, content })),
-          ...baseMessages,
-        ]
+        let currentInput = assembleBuiltInModelInput(stableSystemPrompt, baseMessages, volatileSystemNotes)
         let attemptNumber = 1
         let isRetry = false
         // Track tool calls across ALL attempts — a retry may produce no tool calls
@@ -861,7 +888,7 @@ export const aiFetchStreamingResponse = async ({
             throw createTurnBudgetExhaustedError()
           }
 
-          const result = runStreamText(currentMessages)
+          const result = runStreamText(currentInput)
           const messageMetadata = createMessageMetadata(modelId, sourceCollector, mcpToolsMetadata)
 
           // If this is not the last possible attempt, we need to check for empty response
@@ -897,11 +924,14 @@ export const aiFetchStreamingResponse = async ({
                   : activeNudges.retry
 
               console.info(`Empty response detected, retrying (attempt ${attemptNumber + 1}/${maxAttempts})...`)
-              currentMessages = [
-                ...currentMessages,
-                ...response.messages,
-                { role: 'user' as const, content: retryNudge },
-              ]
+              currentInput = {
+                ...currentInput,
+                messages: [
+                  ...currentInput.messages,
+                  ...response.messages,
+                  { role: 'user' as const, content: retryNudge },
+                ],
+              }
 
               isRetry = true
               attemptNumber++

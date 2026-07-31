@@ -14,6 +14,7 @@ import type { Model, Skill } from '@/types'
 import type { Tool } from 'ai'
 import {
   addSkillTool,
+  buildVolatileSystemNotes,
   mergeMcpTools,
   resolveOpenAiCompatConnection,
   sanitizeToolPrefix,
@@ -138,6 +139,27 @@ describe('selectPromptSkillDefinitions', () => {
     expect(resolveSkillTokenInstructions('/research /user-authored', instructionBySlug)).toEqual([
       'TASK_SKILL_BODY',
       'USER_AUTHORED_SKILL_BODY',
+    ])
+  })
+})
+
+describe('buildVolatileSystemNotes', () => {
+  it('leads with the volatile timestamp', () => {
+    const volatileSystemPrompt = 'Current date/time: Friday, July 10, 2026 at 9:00 AM GMT-3'
+
+    const notes = buildVolatileSystemNotes({
+      volatileSystemPrompt,
+      voiceNotes: ['Voice mode is active.'],
+      skillSystemMessages: ['Follow project style.'],
+      askResponsesNote: 'Ask responses: concise',
+    })
+
+    expect(notes[0]).toBe(volatileSystemPrompt)
+    expect(notes).toEqual([
+      volatileSystemPrompt,
+      'Voice mode is active.',
+      'Follow project style.',
+      'Ask responses: concise',
     ])
   })
 })

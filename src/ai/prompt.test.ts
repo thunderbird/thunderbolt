@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
 import { widgetRegistry } from '@/widgets'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
-import { createPrompt, createPromptParts, type PromptParams } from './prompt'
+import { assembleBuiltInModelInput, createPrompt, createPromptParts, type PromptParams } from './prompt'
 
 const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile => ({
   modelId: 'test-model',
@@ -50,6 +50,37 @@ const baseParams: PromptParams = {
   integrationStatus: 'READY',
   hasWebTools: false,
 }
+
+describe('assembleBuiltInModelInput', () => {
+  const history = [
+    { role: 'user' as const, content: 'first question' },
+    { role: 'assistant' as const, content: 'first answer' },
+    { role: 'user' as const, content: 'follow-up' },
+  ]
+
+  test('keeps stable system and history as byte-identical prefix across consecutive builds', () => {
+    const firstPrompt = createPromptParts(baseParams, new Date('2026-07-10T12:00:00Z'))
+    const secondPrompt = createPromptParts(baseParams, new Date('2026-07-10T12:01:00Z'))
+    const fixedVolatileNotes = ['Voice mode is active.', 'Follow project style.', 'Ask responses: concise']
+    const first = assembleBuiltInModelInput(firstPrompt.stablePrompt, history, [
+      firstPrompt.volatilePrompt,
+      ...fixedVolatileNotes,
+    ])
+    const second = assembleBuiltInModelInput(secondPrompt.stablePrompt, history, [
+      secondPrompt.volatilePrompt,
+      ...fixedVolatileNotes,
+    ])
+    const firstMessages = [{ role: 'system' as const, content: first.system }, ...first.messages]
+    const secondMessages = [{ role: 'system' as const, content: second.system }, ...second.messages]
+    const stablePrefixLength = history.length + 1
+
+    expect(firstMessages.map(({ role }) => role)).toEqual(['system', 'user', 'assistant', 'user', 'system'])
+    expect(firstMessages.slice(0, stablePrefixLength)).toEqual(secondMessages.slice(0, stablePrefixLength))
+    expect(firstMessages.slice(stablePrefixLength)).not.toEqual(secondMessages.slice(stablePrefixLength))
+    expect(first.system).not.toContain('Current date/time')
+    expect(first.messages.at(-1)?.content).toContain('Current date/time')
+  })
+})
 
 describe('createPrompt', () => {
   test('includes model name', () => {
@@ -190,10 +221,8 @@ describe('createPrompt', () => {
     expect(result).toContain('Do not emit <widget:citation> tags')
   })
 
-  test('keeps the per-turn timestamp in the suffix (prefix-cache friendly)', () => {
+  test('keeps the per-turn timestamp at the end of the complete stateless prompt', () => {
     const result = createPrompt(baseParams)
-    // The timestamp is the only per-turn-volatile field, so it comes after the
-    // whole static instruction block to leave a stable cacheable prefix.
     expect(result.indexOf('Current date/time')).toBeGreaterThan(result.indexOf('# Output Format'))
     expect(result.indexOf('Current date/time')).toBeGreaterThan(result.indexOf('# Tools'))
   })
@@ -215,13 +244,15 @@ describe('createPrompt', () => {
     expect(result.indexOf('# Conversation Style')).toBeLessThan(result.indexOf('Current date/time'))
   })
 
-  test('separates stable instructions from the volatile timestamp', () => {
-    const first = createPromptParts(baseParams, new Date('2026-07-10T12:00:00Z'))
-    const second = createPromptParts(baseParams, new Date('2026-07-10T12:01:00Z'))
+  test('separates stable instructions from the minute-precision timestamp', () => {
+    const first = createPromptParts(baseParams, new Date('2026-07-10T12:00:01Z'))
+    const sameMinute = createPromptParts(baseParams, new Date('2026-07-10T12:00:59Z'))
+    const nextMinute = createPromptParts(baseParams, new Date('2026-07-10T12:01:00Z'))
 
-    expect(first.stablePrompt).toBe(second.stablePrompt)
+    expect(first.stablePrompt).toBe(nextMinute.stablePrompt)
     expect(first.stablePrompt).not.toContain('Current date/time')
-    expect(first.volatilePrompt).not.toBe(second.volatilePrompt)
+    expect(first.volatilePrompt).toBe(sameMinute.volatilePrompt)
+    expect(first.volatilePrompt).not.toBe(nextMinute.volatilePrompt)
     expect(first.fullPrompt).toBe(`${first.stablePrompt}\n\n${first.volatilePrompt}`)
   })
 

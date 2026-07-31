@@ -293,7 +293,7 @@ describe('getNudgeMessagesFromProfile', () => {
 
 describe('buildStepOverrides', () => {
   const baseParams = {
-    systemPrompt: 'You are an assistant.',
+    stableSystemPrompt: 'You are an assistant.',
     profile: null as ModelProfile | null,
     maxSteps: 20,
     nudgeThreshold: 6,
@@ -365,6 +365,7 @@ describe('buildStepOverrides', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })
     expect(result?.system).toBe('You are an assistant.\n<cite>sources</cite>')
+    expect(result?.system).not.toContain('Current date/time')
   })
 
   test('no citation reinforcement when disabled', () => {

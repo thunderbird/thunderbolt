@@ -42,6 +42,7 @@ import type { Agent, AgentAdapterContext } from '@/types/acp'
 import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '@shared/agent-core/skills'
 import type { AcpTransport } from './types'
 import { connectAcpAdapter, type AcpAdapterContext } from './acp-adapter'
+import { TransportTerminationError } from './termination'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
 
 const remoteAgent: Agent = {
@@ -113,6 +114,8 @@ const buildFakeConnection = (
     rejectLoad?: boolean
     /** Reject the fire-and-forget cancel so a test exercises the abort `.catch`. */
     rejectCancel?: boolean
+    /** Reject prompt after its gate opens so transport-death mapping is observable. */
+    rejectPrompt?: boolean
   } = {},
 ) => {
   const calls = {
@@ -165,6 +168,9 @@ const buildFakeConnection = (
     prompt = async (req: PromptRequest) => {
       calls.prompt.push(req)
       await promptGatePromise
+      if (opts.rejectPrompt) {
+        throw new Error('SDK connection aborted')
+      }
       return { stopReason: 'end_turn' as const }
     }
     cancel = (req: CancelNotification) => {
@@ -323,6 +329,39 @@ describe('connectAcpAdapter — handshake failure modes', () => {
     expect(joined).toContain('[DONE]')
     // The body must close so the AI SDK leaves the streaming state.
     expect(sse).toContain('[CLOSED]')
+  })
+
+  it('rejects fetch and ensureSession immediately after the adapter generation dies', async () => {
+    const { transport, rejectClosed } = buildFakeTransport()
+    const { FakeConnection } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    rejectClosed(new TransportTerminationError('remote-close', 'relay dropped'))
+    await adapter.closed?.catch(() => {})
+
+    await expect(adapter.fetch(promptInit('too late'), threadCtx('dead-fetch'))).rejects.toThrow('connection-lost')
+    await expect(adapter.ensureSession(threadCtx('dead-session'))).rejects.toThrow('connection-lost')
+  })
+
+  it('serializes connection-lost when an in-flight prompt rejects after termination', async () => {
+    const { transport, rejectClosed } = buildFakeTransport()
+    const { FakeConnection, releasePrompts } = buildFakeConnection({ rejectPrompt: true })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const response = await adapter.fetch(promptInit('in flight'), threadCtx('dead-prompt'))
+
+    rejectClosed(new TransportTerminationError('stream-error', 'relay dropped'))
+    await adapter.closed?.catch(() => {})
+    releasePrompts()
+    const chunks = await readSse(response)
+
+    expect(chunks.join('')).toContain('connection-lost')
+    expect(chunks).toContain('[CLOSED]')
   })
 
   it('folds resolved skill instructions into the prompt ahead of the user text', async () => {

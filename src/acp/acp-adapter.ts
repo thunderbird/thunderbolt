@@ -398,6 +398,32 @@ export const connectAcpAdapter = async (
     httpClient: ctx.httpClient,
   })
 
+  let terminationError: Error | null = null
+  const markConnectionLost = (cause?: unknown): Error => {
+    if (terminationError) {
+      return terminationError
+    }
+    const detail = cause instanceof Error ? cause.message : 'ACP connection closed'
+    terminationError = new Error(JSON.stringify({ error: detail, kind: 'connection-lost' }), { cause })
+    terminationError.name = 'AcpConnectionLostError'
+    return terminationError
+  }
+  const closed = transport.closed?.then(
+    () => {
+      throw markConnectionLost()
+    },
+    (error: unknown) => {
+      throw markConnectionLost(error)
+    },
+  )
+  closed?.catch(() => {})
+
+  const throwIfConnectionLost = (): void => {
+    if (terminationError) {
+      throw terminationError
+    }
+  }
+
   // `session/update` notifications are routed to the owning thread's translator
   // by ACP `sessionId`. While a thread isn't actively prompting its entry is
   // absent and updates for it are dropped (the agent SHOULD only emit them
@@ -442,7 +468,7 @@ export const connectAcpAdapter = async (
           clientInfo: { name: clientName, version: clientVersion },
           clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
         }),
-        transport.closed,
+        closed,
         handshakeTimeoutMs,
       )
       return adaptCapabilities(initializeResponse)
@@ -471,8 +497,7 @@ export const connectAcpAdapter = async (
   }
   const freshPending = new Map<string, FreshSessionState>()
 
-  const guardHandshake = <T>(step: Promise<T>): Promise<T> =>
-    withHandshakeGuard(step, transport.closed, handshakeTimeoutMs)
+  const guardHandshake = <T>(step: Promise<T>): Promise<T> => withHandshakeGuard(step, closed, handshakeTimeoutMs)
 
   /** Resolve (and cache) the ACP session id for the calling thread. First send
    *  on a thread with a stored id + a capable agent tries, in order,
@@ -492,6 +517,7 @@ export const connectAcpAdapter = async (
       skills: readonly SkillDefinition[],
       skillsMeta: Record<string, unknown> | undefined,
     ): Promise<string> => {
+      throwIfConnectionLost()
       const newSession = await guardHandshake(
         connection.newSession({
           cwd: sessionCwd,
@@ -510,14 +536,19 @@ export const connectAcpAdapter = async (
     // evicted on the agent, wire still alive) into `false` so the caller degrades
     // to the next tier. A genuinely dead transport also lands here as `false`,
     // then surfaces loudly at `resolveNew`'s own guarded handshake.
-    const tryRestore = (restore: Promise<unknown>): Promise<boolean> =>
-      guardHandshake(restore).then(
-        () => true,
-        () => false,
-      )
+    const tryRestore = async (restore: Promise<unknown>): Promise<boolean> => {
+      try {
+        await guardHandshake(restore)
+        return true
+      } catch {
+        throwIfConnectionLost()
+        return false
+      }
+    }
     const resolve = (async (): Promise<string> => {
       const stored = context.acpSessionId
       const skills = await getEnabledSkills()
+      throwIfConnectionLost()
       const skillsMeta = capabilities.skills ? buildWireSkillsMeta(skills) : undefined
       // `resume` restores execution state with no replay; `load` has the agent
       // replay its own transcript over `session/update`. Resume is tried first.
@@ -591,6 +622,7 @@ export const connectAcpAdapter = async (
   }
 
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+    throwIfConnectionLost()
     const sessionId = await resolveThreadSession(context)
 
     // First real send of a freshly-minted session: persist the id we actually
@@ -665,7 +697,7 @@ export const connectAcpAdapter = async (
         // both makes us resilient to adapters that only set one path.
         translator.ingestMeta(response._meta)
       } catch (err) {
-        translator.error(err instanceof Error ? err.message : String(err))
+        translator.error(terminationError?.message ?? (err instanceof Error ? err.message : String(err)))
       } finally {
         teardown()
       }
@@ -692,10 +724,12 @@ export const connectAcpAdapter = async (
   // a reload after warming but before any prompt must leave the thread on its
   // old/`null` id so it re-resolves correctly instead of resuming an empty one.
   const ensureSession = async (context: EnsureSessionContext): Promise<void> => {
+    throwIfConnectionLost()
     await resolveThreadSession(context)
   }
 
   const disconnect = (): void => {
+    markConnectionLost()
     transportController.abort()
     transport.close()
   }
@@ -703,6 +737,7 @@ export const connectAcpAdapter = async (
   return {
     agent,
     capabilities,
+    closed,
     fetch,
     ensureSession,
     disconnect,

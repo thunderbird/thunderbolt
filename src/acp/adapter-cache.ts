@@ -2,129 +2,134 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * Global, lazy ACP adapter cache — ONE connection per agent, reused across
- * every chat thread that targets that agent.
- *
- * Why module-level: a chat thread is created per `Chat` instance, so a
- * per-instance cache would open a fresh transport for every thread (and leak
- * N connections for N threads on the same agent). Hoisting the cache to module
- * scope makes the connection follow the AGENT, not the thread, so switching
- * threads on the same agent reuses the warm connection instead of reconnecting.
- *
- * Lazy: a connection opens only when `getOrConnectAdapter` is called, which the
- * routing fetch does on the FIRST actual send of a thread the user opened.
- * Nothing iterates agents or pre-warms on hydrate, so unopened history threads
- * never open a connection.
- *
- * The cache stores the connect PROMISE (not the resolved adapter) so concurrent
- * first-uses dedupe to a single connect. A rejected connect is evicted so the
- * next call retries against a fresh transport instead of replaying a poisoned
- * one.
- *
- * Teardown is explicit and rare: `disposeAdapter(agentId)` on agent delete or a
- * connection-invalidating config edit (url/transport/type), and
- * `disposeAllAdapters()` on sign-out. Thread switch does NOT dispose.
- */
+/** Global per-agent adapter slots. A terminated generation is rebuilt as a
+ * complete transport + ACP connection + initialize handshake, never by swapping
+ * a transport underneath live JSON-RPC state. */
 
+import type { Agent, AgentAdapter } from '@/types/acp'
+import { AdapterSlot } from './adapter-slot'
 import { useAgentCommandsStore } from './agent-commands-store'
 import type { connectToAgent as defaultConnectToAgent, ConnectToAgentContext, ConnectToAgentDeps } from './connect'
-import type { Agent, AgentAdapter } from '@/types/acp'
+import { reconnectScheduler, type ReconnectSchedulerLike } from './reconnect-scheduler'
 
-const cache = new Map<string, Promise<AgentAdapter>>()
+type AdapterCacheEntry = {
+  connect: () => Promise<AgentAdapter>
+  scheduler: ReconnectSchedulerLike
+  slot: AdapterSlot<AgentAdapter>
+}
+
+const cache = new Map<string, AdapterCacheEntry>()
 
 /** Preload the agent connection pipeline before the user's first send. */
 export const preloadAgentConnection = (): void => {
   void import('./connect')
 }
 
-/** DI seam so tests can inject a counting/fake `connectToAgent` without
- *  `mock.module()`. Production omits and binds to the real entry point. */
+/** DI seams for connection and reconnect scheduling tests. */
 export type AdapterCacheDeps = {
   connectToAgent?: typeof defaultConnectToAgent
+  reconnectScheduler?: ReconnectSchedulerLike
 }
 
-/** Load the connect chunk on demand (kept out of the entry bundle) and connect. */
+/** Load the connect chunk on demand and open one complete adapter generation. */
 const lazilyConnectToAgent = async (
   agent: Agent,
-  ctx: ConnectToAgentContext,
+  context: ConnectToAgentContext,
   deps: ConnectToAgentDeps,
 ): Promise<AgentAdapter> => {
   const { connectToAgent } = await import('./connect')
-  return connectToAgent(agent, ctx, deps)
+  return connectToAgent(agent, context, deps)
 }
 
-/**
- * Return the cached adapter for `agent`, connecting once on first use. Concurrent
- * callers awaiting the same agent share a single in-flight connect. A failed
- * connect is evicted so a later call can retry.
- */
+const createConnect = (
+  agent: Agent,
+  context: ConnectToAgentContext,
+  deps: AdapterCacheDeps & ConnectToAgentDeps,
+): (() => Promise<AgentAdapter>) => {
+  if (!deps.connectToAgent) {
+    return () => lazilyConnectToAgent(agent, context, deps)
+  }
+  const connectToAgent = deps.connectToAgent
+  return () => connectToAgent(agent, context, deps)
+}
+
+const createEntry = (
+  agent: Agent,
+  connect: () => Promise<AgentAdapter>,
+  scheduler: ReconnectSchedulerLike,
+): AdapterCacheEntry => {
+  const entry: AdapterCacheEntry = {
+    connect,
+    scheduler,
+    slot: new AdapterSlot({
+      onTerminated: () => {
+        if (cache.get(agent.id) !== entry) {
+          return
+        }
+        useAgentCommandsStore.getState().clearCommands(agent.id)
+        entry.scheduler.register(agent.id, async () => {
+          await entry.slot.getOrConnect(entry.connect)
+        })
+      },
+    }),
+  }
+  return entry
+}
+
+/** Return the ready generation or join one atomic rebuild for this agent. */
 export const getOrConnectAdapter = async (
   agent: Agent,
-  ctx: ConnectToAgentContext,
+  context: ConnectToAgentContext,
   deps: AdapterCacheDeps & ConnectToAgentDeps = {},
 ): Promise<AgentAdapter> => {
-  const cached = cache.get(agent.id)
-  if (cached) {
-    return cached
+  const connect = createConnect(agent, context, deps)
+  const existing = cache.get(agent.id)
+  const entry = existing ?? createEntry(agent, connect, deps.reconnectScheduler ?? reconnectScheduler)
+  entry.connect = connect
+  if (!existing) {
+    cache.set(agent.id, entry)
   }
 
-  const pending = deps.connectToAgent ? deps.connectToAgent(agent, ctx, deps) : lazilyConnectToAgent(agent, ctx, deps)
-  // Evict a failed connect so the poisoned promise isn't replayed on retry.
-  pending.catch(() => {
-    if (cache.get(agent.id) === pending) {
-      cache.delete(agent.id)
-    }
-  })
-  cache.set(agent.id, pending)
-  return pending
+  const adapter = await entry.slot.getOrConnect(connect)
+  entry.scheduler.unregister(agent.id)
+  return adapter
 }
 
-/** Await an in-flight (or settled) connect and disconnect the resulting adapter.
- *  Awaiting first means we tear down a fully-formed adapter rather than racing
- *  teardown against an open handshake. A connect that rejected was already
- *  evicted by `getOrConnectAdapter`, so swallow its rejection here. */
-const disconnectPending = async (pending: Promise<AgentAdapter>): Promise<void> => {
-  const adapter = await pending.catch(() => null)
-  adapter?.disconnect()
+/** Trigger an immediate coalesced background rebuild for a terminated agent. */
+export const wakeAdapterReconnect = (agentId: string): void => {
+  cache.get(agentId)?.scheduler.wake(agentId)
 }
 
-/**
- * Tear down and evict the cached adapter for `agentId`. Call on agent delete or
- * a config edit that invalidates the warm connection (url/transport/type). A
- * no-op when no connection exists for the agent.
- */
+/** Tear down and evict one agent's entire adapter slot. */
 export const disposeAdapter = async (agentId: string): Promise<void> => {
-  const pending = cache.get(agentId)
-  if (!pending) {
+  const entry = cache.get(agentId)
+  if (!entry) {
     return
   }
   cache.delete(agentId)
+  entry.scheduler.unregister(agentId)
   useAgentCommandsStore.getState().clearCommands(agentId)
-  await disconnectPending(pending)
+  await entry.slot.dispose()
 }
 
-/**
- * Tear down and evict every cached adapter. Call on sign-out so no agent
- * connection survives across user identities.
- */
+/** Tear down and evict every adapter slot. */
 export const disposeAllAdapters = async (): Promise<void> => {
   const entries = [...cache.entries()]
   cache.clear()
   const { clearCommands } = useAgentCommandsStore.getState()
   await Promise.all(
-    entries.map(([agentId, pending]) => {
+    entries.map(async ([agentId, entry]) => {
+      entry.scheduler.unregister(agentId)
       clearCommands(agentId)
-      return disconnectPending(pending)
+      await entry.slot.dispose()
     }),
   )
 }
 
-/**
- * Forget every cached entry WITHOUT disconnecting. Use only for test isolation
- * — the chat-store reset hook calls this so cache state never bleeds between
- * tests. Production teardown goes through `disposeAdapter` / `disposeAllAdapters`.
- */
+/** Forget cache state without disconnecting; tests only. */
 export const clearAdapterCache = (): void => {
+  for (const [agentId, entry] of cache) {
+    entry.scheduler.unregister(agentId)
+  }
   cache.clear()
 }

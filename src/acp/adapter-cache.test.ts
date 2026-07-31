@@ -16,6 +16,7 @@ import type { ConnectToAgentContext } from './connect'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { clearAdapterCache, disposeAdapter, disposeAllAdapters, getOrConnectAdapter } from './adapter-cache'
 import { useAgentCommandsStore } from './agent-commands-store'
+import type { ReconnectSchedulerLike } from './reconnect-scheduler'
 
 const agentA: Agent = {
   id: 'agent-a',
@@ -39,11 +40,12 @@ const ctx: ConnectToAgentContext = {
 }
 
 /** Build a fake adapter for `agent` that tracks disconnect calls. */
-const buildAdapter = (agent: Agent) => {
+const buildAdapter = (agent: Agent, closed?: Promise<void>) => {
   let disconnects = 0
   const adapter: AgentAdapter = {
     agent,
     capabilities: null,
+    closed,
     fetch: async () => new Response('ok'),
     ensureSession: async () => {},
     disconnect: () => {
@@ -51,6 +53,18 @@ const buildAdapter = (agent: Agent) => {
     },
   }
   return { adapter, disconnectCount: () => disconnects }
+}
+
+const buildScheduler = () => {
+  const registered = new Map<string, () => Promise<void>>()
+  const scheduler: ReconnectSchedulerLike = {
+    register: (agentId, reconnect) => registered.set(agentId, reconnect),
+    unregister: (agentId) => {
+      registered.delete(agentId)
+    },
+    wake: () => {},
+  }
+  return { scheduler, registered }
 }
 
 /** A counting fake `connectToAgent`. `delayMs` lets a test hold the connect
@@ -167,6 +181,49 @@ describe('adapter-cache', () => {
     const result = await getOrConnectAdapter(agentA, ctx, { connectToAgent: succeeding.connectToAgent })
     expect(result).toBe(adapter)
     expect(succeeding.callCount()).toBe(1)
+  })
+
+  it('rebuilds after an adapter dies following a successful connect', async () => {
+    let rejectClosed: (error: unknown) => void = () => {}
+    const closed = new Promise<void>((_, reject) => {
+      rejectClosed = reject
+    })
+    closed.catch(() => {})
+    const first = buildAdapter(agentA, closed)
+    const second = buildAdapter(agentA)
+    const { scheduler, registered } = buildScheduler()
+    const adapters = [first.adapter, second.adapter]
+    const counter = makeCounter(() => adapters.shift()!)
+
+    await expect(
+      getOrConnectAdapter(agentA, ctx, { connectToAgent: counter.connectToAgent, reconnectScheduler: scheduler }),
+    ).resolves.toBe(first.adapter)
+    rejectClosed(new Error('relay dropped'))
+    await Promise.resolve()
+    expect(registered.has(agentA.id)).toBe(true)
+
+    await expect(
+      getOrConnectAdapter(agentA, ctx, { connectToAgent: counter.connectToAgent, reconnectScheduler: scheduler }),
+    ).resolves.toBe(second.adapter)
+    expect(counter.callCount()).toBe(2)
+  })
+
+  it('disposeAdapter cancels recovery scheduled for a dead generation', async () => {
+    let rejectClosed: (error: unknown) => void = () => {}
+    const closed = new Promise<void>((_, reject) => {
+      rejectClosed = reject
+    })
+    closed.catch(() => {})
+    const { adapter } = buildAdapter(agentA, closed)
+    const { scheduler, registered } = buildScheduler()
+    const { connectToAgent } = makeCounter(() => adapter)
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent, reconnectScheduler: scheduler })
+
+    rejectClosed(new Error('relay dropped'))
+    await Promise.resolve()
+    expect(registered.has(agentA.id)).toBe(true)
+    await disposeAdapter(agentA.id)
+    expect(registered.has(agentA.id)).toBe(false)
   })
 
   it('disposeAllAdapters disconnects every cached adapter and clears', async () => {

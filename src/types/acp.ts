@@ -112,6 +112,9 @@ export type AgentAdapter = {
   agent: Agent
   /** `null` for the built-in adapter (no ACP handshake). */
   capabilities: AgentCapabilities | null
+  /** Settles when this remote adapter generation terminates. Absent for the
+   *  built-in adapter, which has no transport lifecycle. */
+  closed?: Promise<void>
   fetch: (init: RequestInit, context: AgentAdapterContext) => Promise<Response>
   /** Eagerly resolve the thread's ACP session (no prompt), so the agent emits
    *  its advertised commands before the first send. No-op for the built-in

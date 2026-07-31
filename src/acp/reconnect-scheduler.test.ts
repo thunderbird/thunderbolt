@@ -149,4 +149,60 @@ describe('ReconnectScheduler', () => {
     expect(replacementReconnect).toHaveBeenCalledTimes(1)
     scheduler.dispose()
   })
+
+  it('continues the backoff progression when each fresh connection dies inside the stability window', async () => {
+    const reconnect = mock(async () => {})
+    const scheduler = new ReconnectScheduler({
+      baseDelayMs: 1_000,
+      random: () => 0.5,
+      isVisible: () => true,
+      isOnline: () => true,
+      stabilityWindowMs: 30_000,
+    })
+    scheduler.register('agent', reconnect)
+    await getClock().tickAsync(0)
+    expect(reconnect).toHaveBeenCalledTimes(1)
+
+    // The immediate attempt succeeded, but the connection died 5s later —
+    // inside the window — so re-registering keeps draining the retry budget
+    // (attempt 1: 0.5 * 1000ms) instead of earning another 0ms redial.
+    await getClock().tickAsync(5_000)
+    scheduler.register('agent', reconnect)
+    await getClock().tickAsync(499)
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    await getClock().tickAsync(1)
+    expect(reconnect).toHaveBeenCalledTimes(2)
+
+    // Another success-then-instant-death cycle moves further along the
+    // progression (attempt 2: 0.5 * 2000ms).
+    await getClock().tickAsync(5_000)
+    scheduler.register('agent', reconnect)
+    await getClock().tickAsync(999)
+    expect(reconnect).toHaveBeenCalledTimes(2)
+    await getClock().tickAsync(1)
+    expect(reconnect).toHaveBeenCalledTimes(3)
+    scheduler.dispose()
+  })
+
+  it('resets the retry budget once a connection stays up past the stability window', async () => {
+    const reconnect = mock(async () => {})
+    const scheduler = new ReconnectScheduler({
+      baseDelayMs: 1_000,
+      random: () => 0.5,
+      isVisible: () => true,
+      isOnline: () => true,
+      stabilityWindowMs: 30_000,
+    })
+    scheduler.register('agent', reconnect)
+    await getClock().tickAsync(0)
+    expect(reconnect).toHaveBeenCalledTimes(1)
+
+    // The connection proved stable, so the next failure starts fresh with an
+    // immediate attempt.
+    await getClock().tickAsync(31_000)
+    scheduler.register('agent', reconnect)
+    await getClock().tickAsync(0)
+    expect(reconnect).toHaveBeenCalledTimes(2)
+    scheduler.dispose()
+  })
 })

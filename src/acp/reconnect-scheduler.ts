@@ -6,6 +6,11 @@ const defaultBaseDelayMs = 1_000
 const defaultMaxDelayMs = 30_000
 const defaultMaxAttempts = 6
 const defaultMaxConcurrent = 2
+// A connection must stay up this long before the retry budget resets. The CLI
+// bridge spawns one agent subprocess per accepted connection, so a bridge
+// that accepts then dies moments later (crash loop) must keep draining the
+// budget instead of earning a fresh immediate redial on every cycle.
+const defaultStabilityWindowMs = 30_000
 
 type Timer = ReturnType<typeof setTimeout>
 
@@ -16,6 +21,12 @@ type ReconnectRecord = {
   timer: Timer | null
 }
 
+/** Success memory that outlives a record's unregister, keyed by agent. */
+type RecentSuccess = {
+  attempts: number
+  succeededAt: number
+}
+
 type EventTargetLike = Pick<EventTarget, 'addEventListener' | 'removeEventListener'>
 
 export type ReconnectSchedulerOptions = {
@@ -23,6 +34,7 @@ export type ReconnectSchedulerOptions = {
   maxDelayMs?: number
   maxAttempts?: number
   maxConcurrent?: number
+  stabilityWindowMs?: number
   random?: () => number
   isVisible?: () => boolean
   isOnline?: () => boolean
@@ -40,6 +52,7 @@ export class ReconnectScheduler {
   private readonly maxDelayMs: number
   private readonly maxAttempts: number
   private readonly maxConcurrent: number
+  private readonly stabilityWindowMs: number
   private readonly random: () => number
   private readonly isVisible: () => boolean
   private readonly isOnline: () => boolean
@@ -48,6 +61,7 @@ export class ReconnectScheduler {
   private readonly visibilityTarget?: EventTargetLike
   private readonly onlineTarget?: EventTargetLike
   private readonly records = new Map<string, ReconnectRecord>()
+  private readonly recentSuccesses = new Map<string, RecentSuccess>()
   private readonly permitWaiters: Array<() => void> = []
   private activePermits = 0
 
@@ -56,6 +70,7 @@ export class ReconnectScheduler {
     this.maxDelayMs = options.maxDelayMs ?? defaultMaxDelayMs
     this.maxAttempts = options.maxAttempts ?? defaultMaxAttempts
     this.maxConcurrent = options.maxConcurrent ?? defaultMaxConcurrent
+    this.stabilityWindowMs = options.stabilityWindowMs ?? defaultStabilityWindowMs
     this.random = options.random ?? Math.random
     this.isVisible =
       options.isVisible ?? (() => typeof document === 'undefined' || document.visibilityState === 'visible')
@@ -68,7 +83,7 @@ export class ReconnectScheduler {
     this.onlineTarget?.addEventListener('online', this.handleWakeEvent)
   }
 
-  /** Register a failed adapter and start its immediate recovery attempt. */
+  /** Register a failed adapter and start its recovery attempt. */
   register(agentId: string, reconnect: () => Promise<void>): void {
     const existing = this.records.get(agentId)
     if (existing && !existing.running) {
@@ -80,8 +95,18 @@ export class ReconnectScheduler {
     if (existing?.timer) {
       this.clearTimer(existing.timer)
     }
-    this.records.set(agentId, { attempts: 0, reconnect, running: false, timer: null })
-    this.scheduleImmediate(agentId)
+    const record: ReconnectRecord = {
+      attempts: this.seedAttempts(agentId),
+      reconnect,
+      running: false,
+      timer: null,
+    }
+    this.records.set(agentId, record)
+    if (record.attempts === 0) {
+      this.scheduleImmediate(agentId)
+      return
+    }
+    this.scheduleRetry(agentId, record)
   }
 
   /** Cancel all pending recovery work for one adapter. */
@@ -114,12 +139,28 @@ export class ReconnectScheduler {
     for (const agentId of [...this.records.keys()]) {
       this.unregister(agentId)
     }
+    this.recentSuccesses.clear()
     this.visibilityTarget?.removeEventListener('visibilitychange', this.handleWakeEvent)
     this.onlineTarget?.removeEventListener('online', this.handleWakeEvent)
   }
 
   private readonly handleWakeEvent = (): void => {
     this.wake()
+  }
+
+  /** Retry budget carried over from a recent success: a connection that died
+   *  younger than the stability window counts as one more unstable cycle and
+   *  continues the backoff progression; anything older starts fresh. */
+  private seedAttempts(agentId: string): number {
+    const success = this.recentSuccesses.get(agentId)
+    if (!success) {
+      return 0
+    }
+    if (Date.now() - success.succeededAt >= this.stabilityWindowMs) {
+      this.recentSuccesses.delete(agentId)
+      return 0
+    }
+    return success.attempts + 1
   }
 
   private canAttempt(): boolean {
@@ -164,6 +205,7 @@ export class ReconnectScheduler {
         return true
       })
       if (attempted && this.records.get(agentId) === record) {
+        this.recentSuccesses.set(agentId, { attempts: record.attempts, succeededAt: Date.now() })
         this.unregister(agentId)
       }
     } catch {

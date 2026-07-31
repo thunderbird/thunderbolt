@@ -101,7 +101,9 @@ const installPermissionSession = (agent: Agent, sessionId: string) => {
       resolve: resolvePermission,
     },
   } as unknown as ChatSession
-  useChatStore.setState({ sessions: new Map([[sessionId, permissionSession]]) })
+  const sessions = new Map(useChatStore.getState().sessions)
+  sessions.set(sessionId, permissionSession)
+  useChatStore.setState({ sessions })
   return resolvePermission
 }
 
@@ -184,6 +186,37 @@ describe('adapter-cache', () => {
 
     await disposeAdapter(agentA.id)
     expect(useAgentCommandsStore.getState().byAgentId[agentA.id]).toBeUndefined()
+  })
+
+  it('disposeAdapter cancels pending permission prompts for the agent', async () => {
+    const { adapter } = buildAdapter(agentA)
+    const { connectToAgent } = makeCounter(() => adapter)
+    const resolvePermission = installPermissionSession(agentA, 'permission-session')
+
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent })
+    await disposeAdapter(agentA.id)
+
+    // Slot disposal suppresses onTerminated, so the prompt would hang forever
+    // without the dispose path cancelling it directly.
+    expect(resolvePermission).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get('permission-session')?.pendingPermission).toBeNull()
+  })
+
+  it('disposeAllAdapters cancels pending permission prompts for every agent', async () => {
+    const a = buildAdapter(agentA)
+    const b = buildAdapter(agentB)
+    const { connectToAgent } = makeCounter((agent) => (agent.id === agentA.id ? a.adapter : b.adapter))
+    const resolveA = installPermissionSession(agentA, 'session-a')
+    const resolveB = installPermissionSession(agentB, 'session-b')
+
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent })
+    await getOrConnectAdapter(agentB, ctx, { connectToAgent })
+    await disposeAllAdapters()
+
+    expect(resolveA).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(resolveB).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get('session-a')?.pendingPermission).toBeNull()
+    expect(useChatStore.getState().sessions.get('session-b')?.pendingPermission).toBeNull()
   })
 
   it('evicts a failed connect so the next call retries', async () => {

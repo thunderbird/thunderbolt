@@ -122,6 +122,9 @@ export const disposeAdapter = async (agentId: string): Promise<void> => {
   cache.delete(agentId)
   entry.scheduler.unregister(agentId)
   useAgentCommandsStore.getState().clearCommands(agentId)
+  // Slot disposal suppresses the onTerminated callback, so the permission
+  // cleanup that termination normally performs must happen here too.
+  useChatStore.getState().cancelPendingPermissionsForAgent(agentId)
   await entry.slot.dispose()
 }
 
@@ -130,10 +133,12 @@ export const disposeAllAdapters = async (): Promise<void> => {
   const entries = [...cache.entries()]
   cache.clear()
   const { clearCommands } = useAgentCommandsStore.getState()
+  const { cancelPendingPermissionsForAgent } = useChatStore.getState()
   await Promise.all(
     entries.map(async ([agentId, entry]) => {
       entry.scheduler.unregister(agentId)
       clearCommands(agentId)
+      cancelPendingPermissionsForAgent(agentId)
       await entry.slot.dispose()
     }),
   )

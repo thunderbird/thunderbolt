@@ -18,6 +18,7 @@ export type InferenceClient = {
 
 export type InferenceUpstreamAttemptLog = {
   event: 'inference_upstream_attempt'
+  provider: InferenceProvider
   attempt: number
   method: string
   host: string
@@ -36,6 +37,10 @@ export type InferenceClientOptions = {
   logger?: InferenceLogger
   /** Monotonic clock used for upstream-attempt instrumentation. */
   nowFn?: () => number
+}
+
+type InferenceFetchOptions = InferenceClientOptions & {
+  provider: InferenceProvider
 }
 
 export type InferenceAttemptTracker = {
@@ -80,10 +85,11 @@ const logUpstreamAttempt = (
 
 /** Wrap fetch with safe, per-attempt upstream telemetry for OpenAI-compatible clients. */
 export const createInferenceFetch = ({
+  provider,
   fetchFn = globalThis.fetch,
   logger,
   nowFn = () => performance.now(),
-}: InferenceClientOptions = {}): typeof fetch => {
+}: InferenceFetchOptions): typeof fetch => {
   const instrumentedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const attempt = getAttemptIndex(input, init)
     const tracker = inferenceAttemptStorage.getStore()
@@ -93,6 +99,7 @@ export const createInferenceFetch = ({
 
     const startedAt = nowFn()
     const requestContext = {
+      provider,
       attempt,
       method: getRequestMethod(input, init),
       host: getRequestHost(input),
@@ -156,7 +163,7 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
   const params = {
     apiKey: settings.fireworksApiKey,
     baseURL: 'https://api.fireworks.ai/inference/v1',
-    fetch: createInferenceFetch({ fetchFn, logger, nowFn }),
+    fetch: createInferenceFetch({ provider: 'fireworks', fetchFn, logger, nowFn }),
     // OpenAI SDK defaults to 2 retries; changing maxRetries is a follow-up decision after collecting attempt data.
   }
 
@@ -179,7 +186,7 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
  * Get the Mistral AI client using OpenAI-compatible API
  */
 const getMistralClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn } = options
+  const { fetchFn, logger, nowFn } = options
   if (mistralClient && !fetchFn) {
     return mistralClient
   }
@@ -193,7 +200,7 @@ const getMistralClient = (options: InferenceClientOptions = {}): OpenAI | PostHo
   const params = {
     apiKey: settings.mistralApiKey,
     baseURL: 'https://api.mistral.ai/v1',
-    ...(fetchFn && { fetch: fetchFn }),
+    fetch: createInferenceFetch({ provider: 'mistral', fetchFn, logger, nowFn }),
   }
 
   const client = isPostHogConfigured()
@@ -214,7 +221,7 @@ const getMistralClient = (options: InferenceClientOptions = {}): OpenAI | PostHo
  * Get the Anthropic AI client using OpenAI-compatible API
  */
 const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn } = options
+  const { fetchFn, logger, nowFn } = options
   if (anthropicClient && !fetchFn) {
     return anthropicClient
   }
@@ -228,7 +235,7 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
   const params = {
     apiKey: settings.anthropicApiKey,
     baseURL: 'https://api.anthropic.com/v1/',
-    ...(fetchFn && { fetch: fetchFn }),
+    fetch: createInferenceFetch({ provider: 'anthropic', fetchFn, logger, nowFn }),
   }
 
   const client = isPostHogConfigured()

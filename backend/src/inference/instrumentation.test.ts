@@ -18,12 +18,15 @@ const successfulStream =
 
 describe('inference attempt instrumentation', () => {
   let originalFireworksApiKey: string | undefined
+  let originalAnthropicApiKey: string | undefined
   let originalPostHogApiKey: string | undefined
 
   beforeEach(() => {
     originalFireworksApiKey = process.env.FIREWORKS_API_KEY
+    originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
     originalPostHogApiKey = process.env.POSTHOG_API_KEY
     process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
     delete process.env.POSTHOG_API_KEY
     clearSettingsCache()
     clearInferenceClientCache()
@@ -36,6 +39,11 @@ describe('inference attempt instrumentation', () => {
     } else {
       process.env.FIREWORKS_API_KEY = originalFireworksApiKey
     }
+    if (originalAnthropicApiKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
+    }
     if (originalPostHogApiKey === undefined) {
       delete process.env.POSTHOG_API_KEY
     } else {
@@ -46,7 +54,20 @@ describe('inference attempt instrumentation', () => {
     clearPostHogClient()
   })
 
-  it('logs a 429 retry and surfaces attempts=2 after the successful attempt', async () => {
+  it.each([
+    {
+      model: 'deepseek-v4-flash',
+      provider: 'fireworks' as const,
+      host: 'api.fireworks.ai',
+      apiKey: 'test-fireworks-key',
+    },
+    {
+      model: 'opus-4.8',
+      provider: 'anthropic' as const,
+      host: 'api.anthropic.com',
+      apiKey: 'test-anthropic-key',
+    },
+  ])('logs $provider 429 retry and surfaces attempts=2 after success', async ({ model, provider, host, apiKey }) => {
     const logs: Array<{ context: InferenceLog; message: string }> = []
     let callCount = 0
     const fetchFn = (async () => {
@@ -82,7 +103,7 @@ describe('inference attempt instrumentation', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model,
           messages: [{ role: 'user', content: 'Hello' }],
           stream: true,
         }),
@@ -102,9 +123,10 @@ describe('inference attempt instrumentation', () => {
     expect(response.headers.get('x-proxy-timing')).toContain('attempts=2')
     expect(attemptLogs).toHaveLength(2)
     expect(attemptLogs[0]).toMatchObject({
+      provider,
       attempt: 1,
       method: 'POST',
-      host: 'api.fireworks.ai',
+      host,
       status: 429,
       retry_after: '0',
       rate_limit_headers: {
@@ -113,19 +135,20 @@ describe('inference attempt instrumentation', () => {
       },
     })
     expect(attemptLogs[1]).toMatchObject({
+      provider,
       attempt: 2,
       method: 'POST',
-      host: 'api.fireworks.ai',
+      host,
       status: 200,
     })
     expect(attemptLogs.every(({ duration_ms }) => duration_ms >= 0)).toBeTrue()
     expect(latencyLogs).toHaveLength(1)
     expect(latencyLogs[0]).toMatchObject({
-      provider: 'fireworks',
+      provider,
       status: 200,
       attempts: 2,
     })
-    expect(JSON.stringify(logs)).not.toContain('test-fireworks-key')
+    expect(JSON.stringify(logs)).not.toContain(apiKey)
     expect(JSON.stringify(logs)).not.toContain('Hello')
     expect(JSON.stringify(logs)).not.toContain('/inference/v1/chat/completions')
   })

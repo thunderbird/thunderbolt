@@ -121,17 +121,32 @@ export class ReconnectScheduler {
     this.records.delete(agentId)
   }
 
-  /** Wake one adapter, or every registered adapter after a browser event. */
+  /** Wake one adapter (manual retry), or every registered adapter after a
+   *  browser event. A manual wake resets the full retry budget; a browser
+   *  event grants an exhausted recovery exactly one coalesced attempt —
+   *  enough to catch a bridge that came back while paused — instead of a
+   *  fresh budget per refocus or network flap. */
   wake(agentId?: string): void {
-    const ids = agentId ? [agentId] : [...this.records.keys()]
+    const targeted = agentId !== undefined
+    const ids = targeted ? [agentId] : [...this.records.keys()]
     for (const id of ids) {
       const record = this.records.get(id)
       if (!record) {
         continue
       }
-      record.attempts = 0
+      record.attempts = this.wakeAttempts(record.attempts, targeted)
       this.scheduleImmediate(id)
     }
+  }
+
+  /** Budget granted by a wake: a targeted manual retry resets fully, while a
+   *  browser-event broadcast leaves an exhausted record one attempt short of
+   *  the cap so a failure re-exhausts (and re-logs the pause) immediately. */
+  private wakeAttempts(attempts: number, targeted: boolean): number {
+    if (targeted || attempts < this.maxAttempts) {
+      return 0
+    }
+    return this.maxAttempts - 1
   }
 
   /** Remove browser listeners and cancel every scheduled reconnect. */
@@ -180,7 +195,10 @@ export class ReconnectScheduler {
 
   private scheduleRetry(agentId: string, record: ReconnectRecord): void {
     if (record.attempts >= this.maxAttempts) {
-      console.error('ACP background recovery stopped after exhausting attempts', agentId)
+      console.error(
+        'ACP background recovery paused after exhausting attempts; will retry on tab refocus, network recovery, or manual retry',
+        agentId,
+      )
       return
     }
     const cap = Math.min(this.maxDelayMs, this.baseDelayMs * 2 ** (record.attempts - 1))

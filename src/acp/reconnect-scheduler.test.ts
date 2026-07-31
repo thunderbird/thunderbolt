@@ -206,7 +206,7 @@ describe('ReconnectScheduler', () => {
     scheduler.dispose()
   })
 
-  it('warns on each failed attempt and errors when recovery stops after maxAttempts', async () => {
+  it('warns on each failed attempt and errors when recovery pauses after maxAttempts', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     const error = spyOn(console, 'error').mockImplementation(() => {})
     const reconnect = mock(async () => Promise.reject(new Error('offline')))
@@ -225,7 +225,114 @@ describe('ReconnectScheduler', () => {
     expect(warn).toHaveBeenCalledTimes(2)
     expect(warn).toHaveBeenCalledWith('ACP background reconnect attempt failed', 'agent', 1, expect.any(Error))
     expect(error).toHaveBeenCalledTimes(1)
-    expect(error).toHaveBeenCalledWith('ACP background recovery stopped after exhausting attempts', 'agent')
+    expect(error).toHaveBeenCalledWith(
+      'ACP background recovery paused after exhausting attempts; will retry on tab refocus, network recovery, or manual retry',
+      'agent',
+    )
+    scheduler.dispose()
+  })
+
+  it('grants an exhausted recovery exactly one coalesced attempt on a browser-event wake', async () => {
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    const reconnect = mock(async () => Promise.reject(new Error('offline')))
+    const scheduler = new ReconnectScheduler({
+      baseDelayMs: 1_000,
+      maxAttempts: 2,
+      random: () => 0.5,
+      isVisible: () => true,
+      isOnline: () => true,
+    })
+    scheduler.register('agent', reconnect)
+    await getClock().runAllAsync()
+    expect(reconnect).toHaveBeenCalledTimes(2)
+    expect(error).toHaveBeenCalledTimes(1)
+
+    scheduler.wake()
+    await getClock().tickAsync(0)
+    expect(reconnect).toHaveBeenCalledTimes(3)
+
+    // The granted attempt failed, so the budget re-exhausts at once: no
+    // further backoff retries are scheduled and the pause is logged again.
+    await getClock().runAllAsync()
+    expect(reconnect).toHaveBeenCalledTimes(3)
+    expect(error).toHaveBeenCalledTimes(2)
+    scheduler.dispose()
+  })
+
+  it('fully resets a non-exhausted recovery on a browser-event wake', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    const reconnect = mock(async () => Promise.reject(new Error('offline')))
+    const scheduler = new ReconnectScheduler({
+      baseDelayMs: 1_000,
+      maxAttempts: 3,
+      random: () => 0.5,
+      isVisible: () => true,
+      isOnline: () => true,
+    })
+    scheduler.register('agent', reconnect)
+    await getClock().tickAsync(0)
+    expect(reconnect).toHaveBeenCalledTimes(1)
+
+    // One failure already drained one attempt; a browser-event wake before
+    // the backoff fires still restarts the full budget.
+    scheduler.wake()
+    await getClock().runAllAsync()
+
+    expect(reconnect).toHaveBeenCalledTimes(4)
+    expect(warn).toHaveBeenNthCalledWith(2, 'ACP background reconnect attempt failed', 'agent', 1, expect.any(Error))
+    expect(error).toHaveBeenCalledTimes(1)
+    scheduler.dispose()
+  })
+
+  it('fully resets an exhausted recovery on a manual wake', async () => {
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    const reconnect = mock(async () => Promise.reject(new Error('offline')))
+    const scheduler = new ReconnectScheduler({
+      baseDelayMs: 1_000,
+      maxAttempts: 2,
+      random: () => 0.5,
+      isVisible: () => true,
+      isOnline: () => true,
+    })
+    scheduler.register('agent', reconnect)
+    await getClock().runAllAsync()
+    expect(reconnect).toHaveBeenCalledTimes(2)
+    expect(error).toHaveBeenCalledTimes(1)
+
+    // Manual Retry (wakeAdapterReconnect) re-grants the full budget.
+    scheduler.wake('agent')
+    await getClock().runAllAsync()
+
+    expect(reconnect).toHaveBeenCalledTimes(4)
+    expect(error).toHaveBeenCalledTimes(2)
+    scheduler.dispose()
+  })
+
+  it('keeps an exhausted record registered so a later wake can revive it', async () => {
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    const exhaustedReconnect = mock(async () => Promise.reject(new Error('offline')))
+    const removedReconnect = mock(async () => Promise.reject(new Error('offline')))
+    const scheduler = new ReconnectScheduler({
+      maxAttempts: 1,
+      isVisible: () => true,
+      isOnline: () => true,
+    })
+    scheduler.register('exhausted', exhaustedReconnect)
+    scheduler.register('removed', removedReconnect)
+    scheduler.unregister('removed')
+    await getClock().runAllAsync()
+    expect(exhaustedReconnect).toHaveBeenCalledTimes(1)
+    expect(removedReconnect).not.toHaveBeenCalled()
+    expect(error).toHaveBeenCalledTimes(1)
+
+    // Exhaustion must not free the record: a browser-event wake still
+    // reaches it, while the explicitly unregistered record stays untouched.
+    scheduler.wake()
+    await getClock().runAllAsync()
+    expect(exhaustedReconnect).toHaveBeenCalledTimes(2)
+    expect(removedReconnect).not.toHaveBeenCalled()
+    expect(error).toHaveBeenCalledTimes(2)
     scheduler.dispose()
   })
 })

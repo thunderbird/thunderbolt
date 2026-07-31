@@ -48,8 +48,12 @@ const isClientAbortError = (error: unknown, requestSignal: AbortSignal): boolean
   requestSignal.aborted ||
   (error instanceof Error && error.name === 'AbortError' && errorCauseIncludes(error, requestSignal))
 
-/** Resolve an optional ATC-assigned enclave URL, returning null when it is not allowlisted. */
-const resolveEnclaveUrl = (assignedEnclaveUrl: string | null, fallbackEnclaveUrl: string): string | null => {
+/** Resolve an optional ATC-assigned enclave origin, applying the configured API path prefix. */
+const resolveEnclaveUrl = (
+  assignedEnclaveUrl: string | null,
+  fallbackEnclaveUrl: string,
+  apiPathPrefix: string,
+): string | null => {
   if (assignedEnclaveUrl === null) {
     return fallbackEnclaveUrl
   }
@@ -62,7 +66,7 @@ const resolveEnclaveUrl = (assignedEnclaveUrl: string | null, fallbackEnclaveUrl
       return null
     }
 
-    return parsedUrl.href.replace(/\/$/, '')
+    return `${parsedUrl.origin}${apiPathPrefix}`
   } catch {
     return null
   }
@@ -94,6 +98,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const settings = getSettings()
   const apiKey = options.apiKey ?? settings.tinfoilApiKey
   const enclaveUrl = (options.enclaveUrl ?? settings.tinfoilEnclaveUrl).replace(/\/$/, '')
+  const enclaveApiPathPrefix = new URL(enclaveUrl).pathname.replace(/\/$/, '')
   const upstreamHeadersTimeoutMs = options.upstreamHeadersTimeoutMs ?? defaultUpstreamHeadersTimeoutMs
   const upstreamIdleTimeoutMs = options.upstreamIdleTimeoutMs ?? defaultUpstreamIdleTimeoutMs
 
@@ -146,7 +151,11 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
 
     // ATC dynamically assigns the enclave whose HPKE key sealed this body, so forwarding elsewhere guarantees a
     // key-config 422; only HTTPS tinfoil.sh hosts are accepted here as the SSRF guard.
-    const upstreamBaseUrl = resolveEnclaveUrl(request.headers.get(tinfoilEnclaveUrlHeader), enclaveUrl)
+    const upstreamBaseUrl = resolveEnclaveUrl(
+      request.headers.get(tinfoilEnclaveUrlHeader),
+      enclaveUrl,
+      enclaveApiPathPrefix,
+    )
     if (upstreamBaseUrl === null) {
       logLatency({ status: 400, completedAt: nowFn() })
       return textResponse(400, 'Invalid X-Tinfoil-Enclave-Url: expected an HTTPS tinfoil.sh host')

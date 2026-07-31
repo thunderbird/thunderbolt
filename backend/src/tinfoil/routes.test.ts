@@ -656,13 +656,31 @@ describe('createTinfoilRoutes', () => {
   })
 
   describe('upstream URL derivation', () => {
-    it('uses the ATC-assigned enclave URL when provided', async () => {
+    it('applies the configured API path prefix to the ATC-assigned enclave origin', async () => {
       const assignedEnclaveUrl = 'https://router.inf6.tinfoil.sh'
-      const app = buildApp()
+      const app = buildApp({ enclaveUrl: 'https://inference.tinfoil.sh/v1' })
 
       await drain(
         await app.handle(
-          new Request('http://localhost/tinfoil/v1/chat/completions?stream=true', {
+          new Request('http://localhost/tinfoil/chat/completions?stream=true', {
+            method: 'POST',
+            headers: { 'X-Tinfoil-Enclave-Url': assignedEnclaveUrl },
+            body: 'opaque-bytes',
+          }),
+        ),
+      )
+
+      const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(calledUrl).toBe(`${assignedEnclaveUrl}/v1/chat/completions?stream=true`)
+    })
+
+    it('avoids a double slash when the assigned enclave origin has a trailing slash', async () => {
+      const assignedEnclaveUrl = 'https://router.inf6.tinfoil.sh'
+      const app = buildApp({ enclaveUrl: 'https://inference.tinfoil.sh/v1' })
+
+      await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/chat/completions', {
             method: 'POST',
             headers: { 'X-Tinfoil-Enclave-Url': `${assignedEnclaveUrl}/` },
             body: 'opaque-bytes',
@@ -671,7 +689,25 @@ describe('createTinfoilRoutes', () => {
       )
 
       const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
-      expect(calledUrl).toBe(`${assignedEnclaveUrl}/v1/chat/completions?stream=true`)
+      expect(calledUrl).toBe(`${assignedEnclaveUrl}/v1/chat/completions`)
+    })
+
+    it('does not add a path prefix when the configured enclave URL has none', async () => {
+      const assignedEnclaveUrl = 'https://router.inf6.tinfoil.sh'
+      const app = buildApp({ enclaveUrl: 'https://inference.tinfoil.sh' })
+
+      await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/chat/completions', {
+            method: 'POST',
+            headers: { 'X-Tinfoil-Enclave-Url': assignedEnclaveUrl },
+            body: 'opaque-bytes',
+          }),
+        ),
+      )
+
+      const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(calledUrl).toBe(`${assignedEnclaveUrl}/chat/completions`)
     })
 
     it.each(['https://sub.tinfoil.sh', 'https://tinfoil.sh'])(

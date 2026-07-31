@@ -588,7 +588,7 @@ export const prepareAiRequestConfig = async ({
   }
 }
 
-/** Order per-send system notes after cached history, with date/time first. */
+/** Order per-send system notes for the trailing half of the system prompt, with date/time first. */
 export const buildVolatileSystemNotes = ({
   volatileSystemPrompt,
   voiceNotes,

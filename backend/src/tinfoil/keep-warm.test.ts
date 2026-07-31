@@ -71,6 +71,31 @@ describe('createTinfoilKeepWarm', () => {
     expect(requests).toHaveLength(0)
   })
 
+  it('resumes probing after start, stop, and start', () => {
+    const requests: Array<RequestInfo | URL> = []
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      requests.push(input)
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    const { logger } = createLogger()
+    const keepWarm = createTinfoilKeepWarm(tinfoilSettings, {
+      fetchFn,
+      intervalMs: 100,
+      logger,
+    })
+
+    keepWarm.start()
+    expect(requests).toHaveLength(1)
+    keepWarm.stop()
+    keepWarm.start()
+
+    try {
+      expect(requests).toHaveLength(2)
+    } finally {
+      keepWarm.stop()
+    }
+  })
+
   it('times out failed probes, logs only safe metadata, and ignores the failure', async () => {
     const aborted = Promise.withResolvers<unknown>()
     const fetchFn = ((_input: RequestInfo | URL, init?: RequestInit) => {

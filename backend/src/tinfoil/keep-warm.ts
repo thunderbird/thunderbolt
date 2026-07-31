@@ -73,7 +73,10 @@ export const createTinfoilKeepWarm = (
     state.intervalId = setInterval(() => void keepWarm(), intervalMs)
   }
 
-  const stop = () => clearInterval(state.intervalId)
+  const stop = () => {
+    clearInterval(state.intervalId)
+    state.intervalId = undefined
+  }
 
   return { start, stop }
 }

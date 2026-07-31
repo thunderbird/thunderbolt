@@ -563,6 +563,47 @@ describe('createTinfoilRoutes', () => {
       ])
     })
 
+    it('logs exactly one 499 line when the client aborts before upstream headers', async () => {
+      const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
+      const timestamps = [10, 12, 20]
+      const upstream = createAbortableFetch()
+      const clientController = new AbortController()
+      const logger: TinfoilProxyLogger = {
+        info: (context, message) => entries.push({ context, message }),
+      }
+      const app = buildApp({
+        fetchFn: upstream.fetchFn,
+        logger,
+        nowFn: () => timestamps.shift() ?? 0,
+      })
+      const response = app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          body: 'opaque-bytes',
+          signal: clientController.signal,
+        }),
+      )
+
+      await upstream.started
+      clientController.abort()
+      await response
+
+      expect(entries).toEqual([
+        {
+          context: {
+            event: 'tinfoil_proxy_latency',
+            route: '/tinfoil/v1/chat/completions',
+            status: 499,
+            handlerToUpstreamFetchMs: 2,
+            upstreamFetchToHeadersMs: null,
+            handlerToOutcomeMs: 10,
+          },
+          message: 'Tinfoil proxy latency',
+        },
+      ])
+      expect(entries.some(({ context }) => context.status === 500)).toBeFalse()
+    })
+
     it('logs exactly one 500 line when upstream fetch rejects', async () => {
       const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
       const timestamps = [10, 12, 20]

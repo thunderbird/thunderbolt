@@ -38,6 +38,15 @@ const textResponse = (status: number, body: string): Response =>
 /** Round a monotonic duration to hundredths of a millisecond for structured logs. */
 const elapsedMs = (startedAt: number, completedAt: number) => Math.round((completedAt - startedAt) * 100) / 100
 
+/** Check whether an error's cause chain contains the target value. */
+const errorCauseIncludes = (error: unknown, target: unknown): boolean =>
+  error instanceof Error && (error.cause === target || errorCauseIncludes(error.cause, target))
+
+/** Identify fetch rejection caused by the downstream client closing its request. */
+const isClientAbortError = (error: unknown, requestSignal: AbortSignal): boolean =>
+  requestSignal.aborted ||
+  (error instanceof Error && error.name === 'AbortError' && errorCauseIncludes(error, requestSignal))
+
 /** Forwards HPKE-encrypted bodies to the Tinfoil enclave; injects the bearer key from env. */
 export type CreateTinfoilRoutesOptions = {
   auth: Auth
@@ -185,7 +194,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     } catch (error) {
       const completedAt = nowFn()
       logLatency({
-        status: error === upstreamHeadersTimeoutError ? 504 : 500,
+        status: isClientAbortError(error, request.signal) ? 499 : error === upstreamHeadersTimeoutError ? 504 : 500,
         completedAt,
         upstreamFetchStartedAt,
       })

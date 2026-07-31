@@ -52,7 +52,6 @@ export type OpenTransportInputs = {
    *  explicit values to avoid touching the platform / localStorage globals. */
   isStandalone?: () => boolean
   readProxyEnabled?: () => string | null
-  backoffMs?: (attempt: number) => number
   /** Authenticated cloud backend client. Managed-ACP uses its presence to offer
    *  the bearer subprotocol; iroh uses it for transparent device enrollment. */
   httpClient?: HttpClient
@@ -96,7 +95,6 @@ export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTra
     url: inputs.url,
     signal: inputs.signal,
     webSocketFactory,
-    backoffMs: inputs.backoffMs,
   })
 }
 

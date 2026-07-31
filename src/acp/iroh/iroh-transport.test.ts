@@ -11,10 +11,12 @@
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { ensureSelfEnrollment, resetSelfEnrollmentForTests } from '@/lib/iroh-enrollment'
+import { TransportTerminationError } from '../termination'
 import {
   bindAndPersistForTests,
   bindIrohClient,
   clearIrohClientSecret,
+  dialIrohBridge,
   irohRelayUrl,
   resetSharedIrohClientForTests,
   acpIrohAlpn,
@@ -213,7 +215,9 @@ describe('openIrohTransport', () => {
       loadClient: async () => makeFakeClient(fake.connection, []),
     })
     fake.errorReceive(new Error('relay dropped'))
-    await expect(transport.closed).rejects.toThrow('relay dropped')
+    const error = await transport.closed?.catch((reason: unknown) => reason)
+    expect(error).toBeInstanceOf(TransportTerminationError)
+    expect(error).toMatchObject({ reason: 'stream-error', message: 'relay dropped' })
   })
 
   it('routes teardown through close() on a receive error: closes the connection and detaches the abort listener', async () => {
@@ -320,6 +324,53 @@ describe('openIrohTransport', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(fake.closed()).toBe(true)
+  })
+
+  it('does not start a replacement dial while an abandoned dial is still pending', async () => {
+    const abandoned = makeFakeConnection()
+    const replacement = makeFakeConnection()
+    const firstController = new AbortController()
+    let connectCalls = 0
+    let resolveFirst: (connection: IrohConnectionLike) => void = () => {}
+    let signalFirstDial: () => void = () => {}
+    const firstDialStarted = new Promise<void>((resolve) => {
+      signalFirstDial = resolve
+    })
+    const firstPending = new Promise<IrohConnectionLike>((resolve) => {
+      resolveFirst = resolve
+    })
+    const client: IrohClientLike = {
+      nodeId: () => 'slow',
+      connect: () => {
+        connectCalls += 1
+        signalFirstDial()
+        return connectCalls === 1 ? firstPending : Promise.resolve(replacement.connection)
+      },
+    }
+
+    const first = dialIrohBridge({
+      target: 'same-target',
+      alpn: acpIrohAlpn,
+      signal: firstController.signal,
+      loadClient: async () => client,
+    })
+    await firstDialStarted
+    firstController.abort()
+    await expect(first).rejects.toThrow(/abort/i)
+
+    const second = dialIrohBridge({
+      target: 'same-target',
+      alpn: acpIrohAlpn,
+      signal: new AbortController().signal,
+      loadClient: async () => client,
+    })
+    await Promise.resolve()
+    expect(connectCalls).toBe(1)
+
+    resolveFirst(abandoned.connection)
+    await expect(second).resolves.toBe(replacement.connection)
+    expect(connectCalls).toBe(2)
+    expect(abandoned.closed()).toBe(true)
   })
 
   it('evicts the shared client when the bind fails so a later dial rebinds', async () => {

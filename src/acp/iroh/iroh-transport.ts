@@ -22,6 +22,7 @@ import type { AnyMessage, Stream } from '@agentclientprotocol/sdk'
 import { irohAlpnFor } from '@shared/iroh'
 import type { HttpClient } from '@/lib/http'
 import { ensureSelfEnrollment } from '@/lib/iroh-enrollment'
+import { TransportTerminationError } from '../termination'
 import type { AcpTransport } from '../types'
 import { createNdjsonDecoder, encodeNdjsonFrame } from './ndjson'
 import type { IrohClientLike, IrohClientLoader, IrohConnectionLike } from './types'
@@ -39,6 +40,11 @@ const secretStorageKey = 'iroh_acp_client_secret'
 // the relay handshake and the NodeId. All iroh transports share this client and
 // open their own connection on it.
 let sharedClient: Promise<IrohClientLike> | null = null
+
+// A wasm dial cannot be cancelled once `client.connect()` has started. Serialize
+// dials to the same bridge/protocol so an abandoned future must settle before a
+// replacement can allocate another QUIC attempt.
+const inFlightDials = new Map<string, Promise<IrohConnectionLike>>()
 
 // Bumped by every wipe (sign-out / account-deletion / device-revocation). A bind
 // samples this before its async work and only persists if it still matches, so a
@@ -249,7 +255,26 @@ export const dialIrohBridge = async (options: DialIrohBridgeOptions): Promise<Ir
   const clientPromise = getSharedClient(options.loadClient ?? defaultLoadClient)
   const client = await raceAbort(clientPromise, signal, () => clearSharedClientIfPending(clientPromise))
 
+  const dialKey = `${options.target}\u0000${options.alpn}`
+  const precedingDial = inFlightDials.get(dialKey)
+  if (precedingDial) {
+    await raceAbort(
+      precedingDial.then(
+        () => undefined,
+        () => undefined,
+      ),
+      signal,
+    )
+  }
+
   const connectPromise = client.connect(options.target, options.alpn)
+  inFlightDials.set(dialKey, connectPromise)
+  const clearDial = (): void => {
+    if (inFlightDials.get(dialKey) === connectPromise) {
+      inFlightDials.delete(dialKey)
+    }
+  }
+  void connectPromise.then(clearDial, clearDial)
   return raceAbort(connectPromise, signal, () => {
     void connectPromise.then((conn) => conn.close()).catch(() => {})
   })
@@ -352,7 +377,8 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
       closeReadable()
       settleClosedOnce(null)
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
+      const cause = err instanceof Error ? err : new Error(String(err))
+      const error = new TransportTerminationError('stream-error', cause.message, { cause })
       if (!readableClosed) {
         readableClosed = true
         readableController?.error(error)
@@ -392,6 +418,7 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
  *  doesn't leak between cases. */
 export const resetSharedIrohClientForTests = (): void => {
   sharedClient = null
+  inFlightDials.clear()
   secretGeneration = 0
 }
 

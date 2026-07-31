@@ -13,17 +13,16 @@
  */
 
 import type { Stream } from '@agentclientprotocol/sdk'
+import type { TransportTerminationError } from './termination'
 
 /** Bidirectional ACP message stream + a lifecycle hook the adapter calls to
  *  tear the transport down (closes the WebSocket). */
 export type AcpTransport = {
   stream: Stream
   close: () => void
-  /** Resolves when the transport closes cleanly; REJECTS when it closes
-   *  terminally (a non-reconnectable close code or exhausted reconnects) so the
-   *  handshake can race against it and fail loudly instead of hanging on a
-   *  pending `initialize`. Optional so simpler fake transports (tests) can omit
-   *  it — the adapter only races when it's present. */
+  /** Resolves when the transport closes cleanly; rejects with
+   *  {@link TransportTerminationError} when the connection dies. Optional so
+   *  simpler fake transports can omit it. */
   closed?: Promise<void>
 }
 

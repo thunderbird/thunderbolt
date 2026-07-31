@@ -18,6 +18,7 @@ const defaultUpstreamIdleTimeoutMs = 60_000
 const abruptResponseCloseTimeoutSeconds = 1
 const upstreamHeadersTimeoutError = new DOMException(tinfoilUpstreamTimeoutMessage, 'TimeoutError')
 const upstreamIdleTimeoutError = new DOMException(tinfoilUpstreamIdleTimeoutMessage, 'TimeoutError')
+const tinfoilEnclaveUrlHeader = 'x-tinfoil-enclave-url'
 
 export type TinfoilProxyLatencyLog = {
   event: 'tinfoil_proxy_latency'
@@ -46,6 +47,26 @@ const errorCauseIncludes = (error: unknown, target: unknown): boolean =>
 const isClientAbortError = (error: unknown, requestSignal: AbortSignal): boolean =>
   requestSignal.aborted ||
   (error instanceof Error && error.name === 'AbortError' && errorCauseIncludes(error, requestSignal))
+
+/** Resolve an optional ATC-assigned enclave URL, returning null when it is not allowlisted. */
+const resolveEnclaveUrl = (assignedEnclaveUrl: string | null, fallbackEnclaveUrl: string): string | null => {
+  if (assignedEnclaveUrl === null) {
+    return fallbackEnclaveUrl
+  }
+
+  try {
+    const parsedUrl = new URL(assignedEnclaveUrl)
+    const isAllowedHostname = parsedUrl.hostname === 'tinfoil.sh' || parsedUrl.hostname.endsWith('.tinfoil.sh')
+
+    if (parsedUrl.protocol !== 'https:' || !isAllowedHostname) {
+      return null
+    }
+
+    return parsedUrl.href.replace(/\/$/, '')
+  } catch {
+    return null
+  }
+}
 
 /** Forwards HPKE-encrypted bodies to the Tinfoil enclave; injects the bearer key from env. */
 export type CreateTinfoilRoutesOptions = {
@@ -123,14 +144,28 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       return textResponse(503, 'Tinfoil provider not configured')
     }
 
+    // ATC dynamically assigns the enclave whose HPKE key sealed this body, so forwarding elsewhere guarantees a
+    // key-config 422; only HTTPS tinfoil.sh hosts are accepted here as the SSRF guard.
+    const upstreamBaseUrl = resolveEnclaveUrl(request.headers.get(tinfoilEnclaveUrlHeader), enclaveUrl)
+    if (upstreamBaseUrl === null) {
+      logLatency({ status: 400, completedAt: nowFn() })
+      return textResponse(400, 'Invalid X-Tinfoil-Enclave-Url: expected an HTTPS tinfoil.sh host')
+    }
+
     const subpath = wildcard.startsWith('/') ? wildcard : `/${wildcard}`
     const search = requestUrl.search
-    const upstreamUrl = `${enclaveUrl}${subpath}${search}`
+    const upstreamUrl = `${upstreamBaseUrl}${subpath}${search}`
 
     const headers = new Headers()
     request.headers.forEach((value, key) => {
       const lower = key.toLowerCase()
-      if (lower === 'authorization' || lower === 'host' || lower === 'cookie' || lower === 'connection') {
+      if (
+        lower === 'authorization' ||
+        lower === 'host' ||
+        lower === 'cookie' ||
+        lower === 'connection' ||
+        lower === tinfoilEnclaveUrlHeader
+      ) {
         return
       }
       headers.set(key, value)

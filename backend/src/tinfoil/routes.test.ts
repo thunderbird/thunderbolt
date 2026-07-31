@@ -185,6 +185,23 @@ describe('createTinfoilRoutes', () => {
       expect(sent.get('connection')).toBeNull()
     })
 
+    it('does not forward X-Tinfoil-Enclave-Url upstream', async () => {
+      const app = buildApp()
+      await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'X-Tinfoil-Enclave-Url': 'https://router.inf6.tinfoil.sh' },
+            body: 'opaque-bytes',
+          }),
+        ),
+      )
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const sent = init.headers as Headers
+      expect(sent.get('x-tinfoil-enclave-url')).toBeNull()
+    })
+
     it('strips response hop-by-hop headers while preserving content encoding', async () => {
       mockFetch.mockResolvedValueOnce(
         makeOkResponse('opaque', {
@@ -639,6 +656,70 @@ describe('createTinfoilRoutes', () => {
   })
 
   describe('upstream URL derivation', () => {
+    it('uses the ATC-assigned enclave URL when provided', async () => {
+      const assignedEnclaveUrl = 'https://router.inf6.tinfoil.sh'
+      const app = buildApp()
+
+      await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions?stream=true', {
+            method: 'POST',
+            headers: { 'X-Tinfoil-Enclave-Url': `${assignedEnclaveUrl}/` },
+            body: 'opaque-bytes',
+          }),
+        ),
+      )
+
+      const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(calledUrl).toBe(`${assignedEnclaveUrl}/v1/chat/completions?stream=true`)
+    })
+
+    it.each(['https://sub.tinfoil.sh', 'https://tinfoil.sh'])(
+      'accepts allowlisted assigned enclave URL %s',
+      async (assignedEnclaveUrl) => {
+        const app = buildApp()
+
+        const response = await app.handle(
+          new Request('http://localhost/tinfoil/v1/models', {
+            headers: { 'X-Tinfoil-Enclave-Url': assignedEnclaveUrl },
+          }),
+        )
+
+        expect(response.status).toBe(200)
+        await drain(response)
+        const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+        expect(calledUrl).toBe(`${assignedEnclaveUrl}/v1/models`)
+      },
+    )
+
+    it.each(['http://inference.tinfoil.sh', 'https://evil-tinfoil.sh', 'https://tinfoil.sh.evil.com'])(
+      'rejects non-allowlisted assigned enclave URL %s',
+      async (assignedEnclaveUrl) => {
+        const app = buildApp()
+
+        const response = await app.handle(
+          new Request('http://localhost/tinfoil/v1/models', {
+            headers: { 'X-Tinfoil-Enclave-Url': assignedEnclaveUrl },
+          }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(response.headers.get('content-type')).toBe('text/plain')
+        expect(await response.text()).toContain('Invalid X-Tinfoil-Enclave-Url')
+        expect(mockFetch).not.toHaveBeenCalled()
+      },
+    )
+
+    it('uses the configured enclave URL when no assignment header is provided', async () => {
+      const fallbackEnclaveUrl = 'https://fallback.tinfoil.sh/v1'
+      const app = buildApp({ enclaveUrl: fallbackEnclaveUrl })
+
+      await drain(await app.handle(new Request('http://localhost/tinfoil/models')))
+
+      const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(calledUrl).toBe(`${fallbackEnclaveUrl}/models`)
+    })
+
     it('derives the upstream path from the wildcard, not the outer mount prefix', async () => {
       // Mount at a non-default outer prefix to prove the path comes from the wildcard.
       const app = new Elysia({ prefix: '/v2/alt' }).use(

@@ -8,8 +8,10 @@ import { getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { capStream } from '@/proxy/streaming'
 import { filterHeaders } from '@/utils/request'
+import { elapsedMs } from '@/utils/timing'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
 import { Elysia, type AnyElysia } from 'elysia'
+import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
 const allowedMethods = new Set(['GET', 'POST', 'OPTIONS'])
 const bodylessMethods = new Set(['GET', 'OPTIONS'])
@@ -38,9 +40,6 @@ export type TinfoilProxyLogger = {
 
 const textResponse = (status: number, body: string): Response =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain' } })
-
-/** Round a monotonic duration to hundredths of a millisecond for structured logs. */
-const elapsedMs = (startedAt: number, completedAt: number) => Math.round((completedAt - startedAt) * 100) / 100
 
 /** Format available Tinfoil proxy phases using the Server-Timing header syntax. */
 const formatServerTiming = (
@@ -105,6 +104,7 @@ export type CreateTinfoilRoutesOptions = {
   upstreamHeadersTimeoutMs?: number
   /** Maximum idle time between upstream response chunks. Defaults to 60 seconds. */
   upstreamIdleTimeoutMs?: number
+  upstreamOriginStore?: Pick<TinfoilUpstreamOriginStore, 'record'>
 }
 
 export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
@@ -118,6 +118,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const enclaveApiPathPrefix = new URL(enclaveUrl).pathname.replace(/\/$/, '')
   const upstreamHeadersTimeoutMs = options.upstreamHeadersTimeoutMs ?? defaultUpstreamHeadersTimeoutMs
   const upstreamIdleTimeoutMs = options.upstreamIdleTimeoutMs ?? defaultUpstreamIdleTimeoutMs
+  const upstreamOriginStore = options.upstreamOriginStore ?? tinfoilUpstreamOriginStore
 
   const proxyToEnclave = async (
     requestStartedAt: number,
@@ -193,6 +194,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     const subpath = wildcard.startsWith('/') ? wildcard : `/${wildcard}`
     const search = requestUrl.search
     const upstreamUrl = `${upstreamBaseUrl}${subpath}${search}`
+    upstreamOriginStore.record(upstreamUrl)
 
     const headers = new Headers()
     request.headers.forEach((value, key) => {

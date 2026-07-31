@@ -7,7 +7,9 @@ import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
+import { createTinfoilKeepWarm } from './keep-warm'
 import { createTinfoilRoutes, type TinfoilProxyLatencyLog, type TinfoilProxyLogger } from './routes'
+import { createTinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
 const enclaveUrl = 'https://inference.tinfoil.sh'
 const testApiKey = 'test-tinfoil-key'
@@ -99,6 +101,7 @@ describe('createTinfoilRoutes', () => {
       nowFn?: () => number
       upstreamHeadersTimeoutMs?: number
       upstreamIdleTimeoutMs?: number
+      upstreamOriginStore?: TinfoilUpstreamOriginStore
     } = {},
   ) =>
     new Elysia().use(
@@ -111,6 +114,7 @@ describe('createTinfoilRoutes', () => {
         enclaveUrl: overrides.enclaveUrl ?? enclaveUrl,
         upstreamHeadersTimeoutMs: overrides.upstreamHeadersTimeoutMs,
         upstreamIdleTimeoutMs: overrides.upstreamIdleTimeoutMs,
+        upstreamOriginStore: overrides.upstreamOriginStore,
       }),
     )
 
@@ -669,7 +673,8 @@ describe('createTinfoilRoutes', () => {
   describe('upstream URL derivation', () => {
     it('applies the configured API path prefix to the ATC-assigned enclave origin', async () => {
       const assignedEnclaveUrl = 'https://router.inf6.tinfoil.sh'
-      const app = buildApp({ enclaveUrl: 'https://inference.tinfoil.sh/v1' })
+      const upstreamOriginStore = createTinfoilUpstreamOriginStore()
+      const app = buildApp({ enclaveUrl: 'https://inference.tinfoil.sh/v1', upstreamOriginStore })
 
       await drain(
         await app.handle(
@@ -683,6 +688,25 @@ describe('createTinfoilRoutes', () => {
 
       const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
       expect(calledUrl).toBe(`${assignedEnclaveUrl}/v1/chat/completions?stream=true`)
+      expect(upstreamOriginStore.get()).toBe(assignedEnclaveUrl)
+
+      const keepWarmFetch = mock(() => Promise.resolve(makeOkResponse()))
+      const keepWarm = createTinfoilKeepWarm(
+        { tinfoilApiKey: testApiKey, tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1' },
+        {
+          fetchFn: keepWarmFetch as unknown as typeof fetch,
+          intervalMs: 100,
+          logger: { debug: () => undefined },
+          upstreamOriginStore,
+        },
+      )
+      keepWarm.start()
+      keepWarm.stop()
+
+      expect(keepWarmFetch).toHaveBeenCalledWith(
+        `${assignedEnclaveUrl}/v1/models`,
+        expect.objectContaining({ method: 'GET' }),
+      )
     })
 
     it('avoids a double slash when the assigned enclave origin has a trailing slash', async () => {

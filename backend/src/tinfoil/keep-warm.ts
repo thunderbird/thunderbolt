@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Settings } from '@/config/settings'
+import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
 const defaultIntervalMs = 60_000
 const defaultTimeoutMs = 5_000
@@ -16,6 +17,7 @@ type TinfoilKeepWarmOptions = {
   intervalMs?: number
   timeoutMs?: number
   logger: TinfoilKeepWarmLogger
+  upstreamOriginStore?: Pick<TinfoilUpstreamOriginStore, 'get'>
 }
 
 type TinfoilKeepWarmController = {
@@ -33,11 +35,15 @@ export const createTinfoilKeepWarm = (
   const fetchFn = options.fetchFn ?? globalThis.fetch
   const intervalMs = options.intervalMs ?? defaultIntervalMs
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs
-  const modelsUrl = `${settings.tinfoilEnclaveUrl.replace(/\/$/, '')}/models`
+  const upstreamOriginStore = options.upstreamOriginStore ?? tinfoilUpstreamOriginStore
+  const defaultEnclaveUrl = settings.tinfoilEnclaveUrl.replace(/\/$/, '')
+  const apiPathPrefix = new URL(defaultEnclaveUrl).pathname.replace(/\/$/, '')
   const state: { intervalId?: ReturnType<typeof setInterval> } = {}
 
   const keepWarm = async () => {
     try {
+      const latestOrigin = upstreamOriginStore.get()
+      const modelsUrl = `${latestOrigin ? `${latestOrigin}${apiPathPrefix}` : defaultEnclaveUrl}/models`
       const response = await fetchFn(modelsUrl, {
         method: 'GET',
         headers: { Authorization: `Bearer ${settings.tinfoilApiKey}` },

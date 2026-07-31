@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { createTinfoilKeepWarm, type TinfoilKeepWarmLogger } from './keep-warm'
+import { createTinfoilUpstreamOriginStore } from './upstream-origin'
 
 const tinfoilSettings = {
   tinfoilApiKey: 'test-tinfoil-key',
@@ -20,7 +21,7 @@ const createLogger = () => {
 }
 
 describe('createTinfoilKeepWarm', () => {
-  it('fires immediately, repeats on the configured interval, and stops cleanly', async () => {
+  it('probes the configured default before traffic, repeats, and stops cleanly', async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = []
     const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
       requests.push({ input, init })
@@ -31,6 +32,7 @@ describe('createTinfoilKeepWarm', () => {
       fetchFn,
       intervalMs: 5,
       logger,
+      upstreamOriginStore: createTinfoilUpstreamOriginStore(),
     })
 
     keepWarm.start()
@@ -50,6 +52,29 @@ describe('createTinfoilKeepWarm', () => {
     expect(firstRequest?.input.toString()).toBe('https://inference.tinfoil.sh/v1/models')
     expect(firstRequest?.init?.method).toBe('GET')
     expect(new Headers(firstRequest?.init?.headers).get('authorization')).toBe('Bearer test-tinfoil-key')
+  })
+
+  it('probes the latest upstream origin while preserving the configured API prefix', () => {
+    const requests: Array<RequestInfo | URL> = []
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      requests.push(input)
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    const upstreamOriginStore = createTinfoilUpstreamOriginStore()
+    upstreamOriginStore.record('https://router.inf6.tinfoil.sh/v1/chat/completions?stream=true')
+    const { logger } = createLogger()
+    const keepWarm = createTinfoilKeepWarm(tinfoilSettings, {
+      fetchFn,
+      intervalMs: 100,
+      logger,
+      upstreamOriginStore,
+    })
+
+    keepWarm.start()
+    keepWarm.stop()
+
+    expect(upstreamOriginStore.get()).toBe('https://router.inf6.tinfoil.sh')
+    expect(requests[0]?.toString()).toBe('https://router.inf6.tinfoil.sh/v1/models')
   })
 
   it('does not start without an API key', async () => {

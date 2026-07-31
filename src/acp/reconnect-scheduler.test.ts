@@ -4,7 +4,7 @@
 
 import '@/testing-library'
 
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { ReconnectScheduler } from './reconnect-scheduler'
 
@@ -203,6 +203,29 @@ describe('ReconnectScheduler', () => {
     scheduler.register('agent', reconnect)
     await getClock().tickAsync(0)
     expect(reconnect).toHaveBeenCalledTimes(2)
+    scheduler.dispose()
+  })
+
+  it('warns on each failed attempt and errors when recovery stops after maxAttempts', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    const reconnect = mock(async () => Promise.reject(new Error('offline')))
+    const scheduler = new ReconnectScheduler({
+      baseDelayMs: 1_000,
+      maxAttempts: 2,
+      random: () => 0.5,
+      isVisible: () => true,
+      isOnline: () => true,
+    })
+    scheduler.register('agent', reconnect)
+
+    await getClock().runAllAsync()
+
+    expect(reconnect).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledWith('ACP background reconnect attempt failed', 'agent', 1, expect.any(Error))
+    expect(error).toHaveBeenCalledTimes(1)
+    expect(error).toHaveBeenCalledWith('ACP background recovery stopped after exhausting attempts', 'agent')
     scheduler.dispose()
   })
 })

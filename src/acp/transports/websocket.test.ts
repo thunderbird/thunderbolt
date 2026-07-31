@@ -176,6 +176,36 @@ describe('openWebSocketTransport', () => {
       const error = await opening.catch((reason: unknown) => reason)
       expect(error).toBeInstanceOf(TransportTerminationError)
       expect(getErrorRetryable(error as Error)).toBe(false)
+      expect((error as TransportTerminationError).retryable).toBe(false)
+    })
+
+    it(`marks post-connect close ${code} as non-retryable`, async () => {
+      const { transport, sockets } = await openSocket()
+      sockets[0].emit('close', { code, reason: 'rejected' })
+
+      const error = await transport.closed?.catch((reason: unknown) => reason)
+      expect(error).toBeInstanceOf(TransportTerminationError)
+      expect(error).toMatchObject({ reason: 'remote-close', retryable: false })
     })
   }
+
+  it('keeps transient closes retryable in both phases', async () => {
+    const socket = new FakeSocket()
+    const opening = openWebSocketTransport({
+      url: 'wss://example.com/ws',
+      signal: new AbortController().signal,
+      webSocketFactory: () => asWebSocketLike(socket),
+      isTauriIos: () => false,
+    })
+    socket.emit('close', { code: 1006, reason: 'dropped' })
+
+    const connectError = await opening.catch((reason: unknown) => reason)
+    expect(connectError).toMatchObject({ reason: 'remote-close', retryable: true })
+    expect(getErrorRetryable(connectError as Error)).toBeUndefined()
+
+    const { transport, sockets } = await openSocket()
+    sockets[0].emit('close', { code: 1006, reason: 'dropped' })
+    const error = await transport.closed?.catch((reason: unknown) => reason)
+    expect(error).toMatchObject({ reason: 'remote-close', retryable: true })
+  })
 })

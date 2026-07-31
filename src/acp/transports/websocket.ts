@@ -30,8 +30,12 @@ const terminalConnectCloseCodes = new Set([
 /** Classify deterministic connect rejections so chat skips futile auto-retries. */
 const connectCloseError = (code: number): TransportTerminationError => {
   const detail = `ACP transport closed during connect (code ${code})`
-  const message = terminalConnectCloseCodes.has(code) ? JSON.stringify({ error: detail, isRetryable: false }) : detail
-  return new TransportTerminationError('remote-close', message)
+  const retryable = !terminalConnectCloseCodes.has(code)
+  // Connect rejections cross into the chat layer as a bare message string, so
+  // the retry verdict also travels as JSON inside it (see `getErrorRetryable`)
+  // — the typed field is for lifecycle code that sees the error object itself.
+  const message = retryable ? detail : JSON.stringify({ error: detail, isRetryable: false })
+  return new TransportTerminationError('remote-close', message, { retryable })
 }
 
 /** Subset of the native `WebSocket` interface used by the transport. */
@@ -195,7 +199,11 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
     if (locallyClosed) {
       return
     }
-    terminate(new TransportTerminationError('remote-close', `ACP transport closed (code ${event.code})`))
+    terminate(
+      new TransportTerminationError('remote-close', `ACP transport closed (code ${event.code})`, {
+        retryable: !terminalConnectCloseCodes.has(event.code),
+      }),
+    )
   }
 
   const close = (): void => {

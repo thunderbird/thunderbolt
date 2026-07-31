@@ -12,6 +12,7 @@ import { AdapterSlot } from './adapter-slot'
 import { useAgentCommandsStore } from './agent-commands-store'
 import type { connectToAgent as defaultConnectToAgent, ConnectToAgentContext, ConnectToAgentDeps } from './connect'
 import { reconnectScheduler, type ReconnectSchedulerLike } from './reconnect-scheduler'
+import { getTransportTermination } from './termination'
 
 type AdapterCacheEntry = {
   connect: () => Promise<AgentAdapter>
@@ -63,12 +64,22 @@ const createEntry = (
     connect,
     scheduler,
     slot: new AdapterSlot({
-      onTerminated: () => {
+      onTerminated: (termination) => {
         if (cache.get(agent.id) !== entry) {
           return
         }
         useAgentCommandsStore.getState().clearCommands(agent.id)
         useChatStore.getState().cancelPendingPermissionsForAgent(agent.id)
+        console.warn('ACP adapter generation terminated', agent.id, termination.error)
+        const cause = getTransportTermination(termination.error)
+        if (cause?.retryable === false) {
+          console.error(
+            'ACP adapter terminated with a non-retryable error; skipping background reconnect',
+            agent.id,
+            cause.message,
+          )
+          return
+        }
         entry.scheduler.register(agent.id, async () => {
           await entry.slot.getOrConnect(entry.connect)
         })

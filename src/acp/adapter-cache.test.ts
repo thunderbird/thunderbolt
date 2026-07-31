@@ -11,12 +11,13 @@
 
 import '@/testing-library'
 
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ConnectToAgentContext } from './connect'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { clearAdapterCache, disposeAdapter, disposeAllAdapters, getOrConnectAdapter } from './adapter-cache'
 import { useAgentCommandsStore } from './agent-commands-store'
 import type { ReconnectSchedulerLike } from './reconnect-scheduler'
+import { TransportTerminationError } from './termination'
 import { type ChatSession, useChatStore } from '@/chats/chat-store'
 import type { RequestPermissionRequest } from '@agentclientprotocol/sdk'
 
@@ -87,6 +88,21 @@ const makeCounter = (
     return resolveFor(agent)
   }) as never
   return { connectToAgent, callCount: () => calls }
+}
+
+/** Install one chat session holding a pending permission prompt for `agent`. */
+const installPermissionSession = (agent: Agent, sessionId: string) => {
+  const resolvePermission = mock(() => {})
+  const permissionSession = {
+    pendingPermission: {
+      agentId: agent.id,
+      requestId: `permission-${sessionId}`,
+      request: { sessionId: 'remote' } as RequestPermissionRequest,
+      resolve: resolvePermission,
+    },
+  } as unknown as ChatSession
+  useChatStore.setState({ sessions: new Map([[sessionId, permissionSession]]) })
+  return resolvePermission
 }
 
 describe('adapter-cache', () => {
@@ -221,6 +237,40 @@ describe('adapter-cache', () => {
       getOrConnectAdapter(agentA, ctx, { connectToAgent: counter.connectToAgent, reconnectScheduler: scheduler }),
     ).resolves.toBe(second.adapter)
     expect(counter.callCount()).toBe(2)
+  })
+
+  it('skips reconnect and logs when the termination is non-retryable', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    let rejectClosed: (error: unknown) => void = () => {}
+    const closed = new Promise<void>((_, reject) => {
+      rejectClosed = reject
+    })
+    closed.catch(() => {})
+    const { adapter } = buildAdapter(agentA, closed)
+    const { scheduler, registered } = buildScheduler()
+    const { connectToAgent } = makeCounter(() => adapter)
+    const resolvePermission = installPermissionSession(agentA, 'permission-session')
+
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent, reconnectScheduler: scheduler })
+
+    // The adapter wraps the transport death in its connection-lost error, so
+    // the non-retryable verdict arrives via the cause chain.
+    const cause = new TransportTerminationError('remote-close', 'ACP transport closed (code 4001)', {
+      retryable: false,
+    })
+    rejectClosed(new Error(JSON.stringify({ error: cause.message, kind: 'connection-lost' }), { cause }))
+    await Promise.resolve()
+
+    expect(registered.has(agentA.id)).toBe(false)
+    expect(resolvePermission).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get('permission-session')?.pendingPermission).toBeNull()
+    expect(warn).toHaveBeenCalledWith('ACP adapter generation terminated', agentA.id, expect.any(Error))
+    expect(errorLog).toHaveBeenCalledWith(
+      'ACP adapter terminated with a non-retryable error; skipping background reconnect',
+      agentA.id,
+      cause.message,
+    )
   })
 
   it('disposeAdapter cancels recovery scheduled for a dead generation', async () => {

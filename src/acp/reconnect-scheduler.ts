@@ -180,6 +180,7 @@ export class ReconnectScheduler {
 
   private scheduleRetry(agentId: string, record: ReconnectRecord): void {
     if (record.attempts >= this.maxAttempts) {
+      console.error('ACP background recovery stopped after exhausting attempts', agentId)
       return
     }
     const cap = Math.min(this.maxDelayMs, this.baseDelayMs * 2 ** (record.attempts - 1))
@@ -208,9 +209,10 @@ export class ReconnectScheduler {
         this.recentSuccesses.set(agentId, { attempts: record.attempts, succeededAt: Date.now() })
         this.unregister(agentId)
       }
-    } catch {
+    } catch (error) {
       if (this.records.get(agentId) === record) {
         record.attempts += 1
+        console.warn('ACP background reconnect attempt failed', agentId, record.attempts, error)
         this.scheduleRetry(agentId, record)
       }
     } finally {

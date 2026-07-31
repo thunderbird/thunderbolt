@@ -68,7 +68,7 @@ rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] 
 tauri-plugin-single-instance = "2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
-objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIInterface", "UIScene", "UIWindowScene"] }
+objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIView", "UIInterface", "UIScene", "UIWindowScene"] }
 objc2-foundation = "0.3.2"
 
 [profile.dev]

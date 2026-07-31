@@ -82,6 +82,30 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         });
     }
 
+    // The shared `transparent: true` window config exists only for the macOS
+    // sidebar vibrancy (`.mac-vibrancy` in index.css), but it also makes the
+    // WKWebView non-opaque on iOS. A non-opaque webview lets the root view
+    // controller's systemBackgroundColor — white in light mode, black in dark —
+    // bleed through the status-bar and home-indicator safe areas, so the status
+    // bar reads as white on the light theme. Force the webview opaque so those
+    // regions paint the web canvas (the themed --color-background) instead.
+    #[cfg(target_os = "ios")]
+    {
+        builder = builder.setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.with_webview(|webview| {
+                    use objc2_ui_kit::UIView;
+                    // SAFETY: on iOS `inner()` returns the WKWebView, a UIView subclass.
+                    unsafe {
+                        let view = &*(webview.inner() as *const UIView);
+                        view.setOpaque(true);
+                    }
+                });
+            }
+            Ok(())
+        });
+    }
+
     builder
 }
 

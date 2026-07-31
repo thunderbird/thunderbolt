@@ -51,6 +51,8 @@ export const createCorsMiddleware = (settings: CorsSettings) => {
         // proxy forwards arbitrary upstream headers as X-Proxy-Passthrough-*.
         allowedHeaders: true,
         exposeHeaders: settings.corsExposeHeaders,
+        // Preflights cost ~195ms measured; Chrome caps at 7200s and Firefox at 86400s, making 7200s portable.
+        maxAge: 7200,
       }),
     )
 }

@@ -479,9 +479,9 @@ describe('createTinfoilRoutes', () => {
   })
 
   describe('latency instrumentation', () => {
-    it('logs one structured line with handler, fetch, and upstream-header phases', async () => {
+    it('logs and exposes pre-handler, fetch, and upstream-header phases', async () => {
       const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
-      const timestamps = [100, 112, 152]
+      const timestamps = [90, 100, 112, 152]
       const logger: TinfoilProxyLogger = {
         info: (context, message) => entries.push({ context, message }),
       }
@@ -494,7 +494,9 @@ describe('createTinfoilRoutes', () => {
       }
       const app = buildApp({ logger, nowFn })
 
-      await drain(await app.handle(new Request('http://localhost/tinfoil/v1/models?request-secret=do-not-log')))
+      const response = await drain(
+        await app.handle(new Request('http://localhost/tinfoil/v1/models?request-secret=do-not-log')),
+      )
 
       expect(entries).toEqual([
         {
@@ -502,6 +504,7 @@ describe('createTinfoilRoutes', () => {
             event: 'tinfoil_proxy_latency',
             route: '/tinfoil/v1/models',
             status: 200,
+            preHandlerMs: 10,
             handlerToUpstreamFetchMs: 12,
             upstreamFetchToHeadersMs: 40,
             handlerToOutcomeMs: 52,
@@ -509,13 +512,14 @@ describe('createTinfoilRoutes', () => {
           message: 'Tinfoil proxy latency',
         },
       ])
+      expect(response.headers.get('x-proxy-timing')).toBe('pre=10;fetch=12;headers=40')
       expect(JSON.stringify(entries)).not.toContain('request-secret')
       expect(JSON.stringify(entries)).not.toContain(testApiKey)
     })
 
     it('logs one structured line for a request rejected before upstream fetch', async () => {
       const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
-      const timestamps = [10, 13]
+      const timestamps = [5, 10, 13]
       const logger: TinfoilProxyLogger = {
         info: (context, message) => entries.push({ context, message }),
       }
@@ -534,6 +538,7 @@ describe('createTinfoilRoutes', () => {
             event: 'tinfoil_proxy_latency',
             route: '/tinfoil/v1/models',
             status: 503,
+            preHandlerMs: 5,
             handlerToUpstreamFetchMs: null,
             upstreamFetchToHeadersMs: null,
             handlerToOutcomeMs: 3,
@@ -545,7 +550,7 @@ describe('createTinfoilRoutes', () => {
 
     it('logs exactly one 504 line when upstream headers time out', async () => {
       const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
-      const timestamps = [100, 105, 135]
+      const timestamps = [90, 100, 105, 135]
       const upstream = createAbortableFetch()
       const logger: TinfoilProxyLogger = {
         info: (context, message) => entries.push({ context, message }),
@@ -565,12 +570,14 @@ describe('createTinfoilRoutes', () => {
       )
 
       expect(response.status).toBe(504)
+      expect(response.headers.get('x-proxy-timing')).toBe('pre=10;fetch=5;headers=na')
       expect(entries).toEqual([
         {
           context: {
             event: 'tinfoil_proxy_latency',
             route: '/tinfoil/v1/chat/completions',
             status: 504,
+            preHandlerMs: 10,
             handlerToUpstreamFetchMs: 5,
             upstreamFetchToHeadersMs: null,
             handlerToOutcomeMs: 35,
@@ -582,7 +589,7 @@ describe('createTinfoilRoutes', () => {
 
     it('logs exactly one 499 line when the client aborts before upstream headers', async () => {
       const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
-      const timestamps = [10, 12, 20]
+      const timestamps = [5, 10, 12, 20]
       const upstream = createAbortableFetch()
       const clientController = new AbortController()
       const logger: TinfoilProxyLogger = {
@@ -611,6 +618,7 @@ describe('createTinfoilRoutes', () => {
             event: 'tinfoil_proxy_latency',
             route: '/tinfoil/v1/chat/completions',
             status: 499,
+            preHandlerMs: 5,
             handlerToUpstreamFetchMs: 2,
             upstreamFetchToHeadersMs: null,
             handlerToOutcomeMs: 10,
@@ -623,7 +631,7 @@ describe('createTinfoilRoutes', () => {
 
     it('logs exactly one 500 line when upstream fetch rejects', async () => {
       const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
-      const timestamps = [10, 12, 20]
+      const timestamps = [5, 10, 12, 20]
       const logger: TinfoilProxyLogger = {
         info: (context, message) => entries.push({ context, message }),
       }
@@ -645,6 +653,7 @@ describe('createTinfoilRoutes', () => {
             event: 'tinfoil_proxy_latency',
             route: '/tinfoil/v1/models',
             status: 500,
+            preHandlerMs: 5,
             handlerToUpstreamFetchMs: 2,
             upstreamFetchToHeadersMs: null,
             handlerToOutcomeMs: 10,
@@ -741,6 +750,7 @@ describe('createTinfoilRoutes', () => {
 
         expect(response.status).toBe(400)
         expect(response.headers.get('content-type')).toBe('text/plain')
+        expect(response.headers.get('x-proxy-timing')).not.toBeNull()
         expect(await response.text()).toContain('Invalid X-Tinfoil-Enclave-Url')
         expect(mockFetch).not.toHaveBeenCalled()
       },

@@ -52,7 +52,7 @@ describe('Config Settings', () => {
   })
 
   describe('CORS default security', () => {
-    const corsEnvKeys = ['CORS_ORIGINS'] as const
+    const corsEnvKeys = ['CORS_ORIGINS', 'CORS_EXPOSE_HEADERS'] as const
 
     let savedEnv: Partial<Record<string, string | undefined>>
 
@@ -97,6 +97,13 @@ describe('Config Settings', () => {
       const settings = getSettings()
 
       expect(isOriginAllowed('http://localhost:1420', settings)).toBe(true)
+    })
+
+    it('should expose proxy timing to cross-origin clients by default', () => {
+      delete process.env.CORS_EXPOSE_HEADERS
+      const settings = getSettings()
+
+      expect(settings.corsExposeHeaders.split(',')).toContain('X-Proxy-Timing')
     })
 
     it('should not match non-Tauri origins by default', () => {

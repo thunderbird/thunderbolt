@@ -19,11 +19,13 @@ const abruptResponseCloseTimeoutSeconds = 1
 const upstreamHeadersTimeoutError = new DOMException(tinfoilUpstreamTimeoutMessage, 'TimeoutError')
 const upstreamIdleTimeoutError = new DOMException(tinfoilUpstreamIdleTimeoutMessage, 'TimeoutError')
 const tinfoilEnclaveUrlHeader = 'x-tinfoil-enclave-url'
+const tinfoilProxyTimingHeader = 'X-Proxy-Timing'
 
 export type TinfoilProxyLatencyLog = {
   event: 'tinfoil_proxy_latency'
   route: string
   status: number
+  preHandlerMs: number
   handlerToUpstreamFetchMs: number | null
   upstreamFetchToHeadersMs: number | null
   handlerToOutcomeMs: number
@@ -103,15 +105,18 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const upstreamIdleTimeoutMs = options.upstreamIdleTimeoutMs ?? defaultUpstreamIdleTimeoutMs
 
   const proxyToEnclave = async (
+    requestStartedAt: number,
     request: Request,
     wildcard: string,
     server: Bun.Server<unknown> | null,
+    setHeaders: Record<string, string | string[] | number>,
   ): Promise<Response> => {
     const handlerStartedAt = nowFn()
+    const preHandlerMs = elapsedMs(requestStartedAt, handlerStartedAt)
     const requestUrl = new URL(request.url)
     const route = requestUrl.pathname
     const method = request.method.toUpperCase()
-    const logLatency = ({
+    const recordLatency = ({
       status,
       completedAt,
       upstreamFetchStartedAt = null,
@@ -122,30 +127,34 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       upstreamFetchStartedAt?: number | null
       upstreamHeadersReceivedAt?: number | null
     }) => {
-      logger?.info(
-        {
-          event: 'tinfoil_proxy_latency',
-          route,
-          status,
-          handlerToUpstreamFetchMs:
-            upstreamFetchStartedAt === null ? null : elapsedMs(handlerStartedAt, upstreamFetchStartedAt),
-          upstreamFetchToHeadersMs:
-            upstreamFetchStartedAt === null || upstreamHeadersReceivedAt === null
-              ? null
-              : elapsedMs(upstreamFetchStartedAt, upstreamHeadersReceivedAt),
-          handlerToOutcomeMs: elapsedMs(handlerStartedAt, completedAt),
-        },
-        'Tinfoil proxy latency',
-      )
+      const handlerToUpstreamFetchMs =
+        upstreamFetchStartedAt === null ? null : elapsedMs(handlerStartedAt, upstreamFetchStartedAt)
+      const upstreamFetchToHeadersMs =
+        upstreamFetchStartedAt === null || upstreamHeadersReceivedAt === null
+          ? null
+          : elapsedMs(upstreamFetchStartedAt, upstreamHeadersReceivedAt)
+      const latency: TinfoilProxyLatencyLog = {
+        event: 'tinfoil_proxy_latency',
+        route,
+        status,
+        preHandlerMs,
+        handlerToUpstreamFetchMs,
+        upstreamFetchToHeadersMs,
+        handlerToOutcomeMs: elapsedMs(handlerStartedAt, completedAt),
+      }
+
+      setHeaders[tinfoilProxyTimingHeader] =
+        `pre=${preHandlerMs};fetch=${handlerToUpstreamFetchMs ?? 'na'};headers=${upstreamFetchToHeadersMs ?? 'na'}`
+      logger?.info(latency, 'Tinfoil proxy latency')
     }
 
     if (!allowedMethods.has(method)) {
-      logLatency({ status: 405, completedAt: nowFn() })
+      recordLatency({ status: 405, completedAt: nowFn() })
       return textResponse(405, 'Method not allowed')
     }
 
     if (!apiKey) {
-      logLatency({ status: 503, completedAt: nowFn() })
+      recordLatency({ status: 503, completedAt: nowFn() })
       return textResponse(503, 'Tinfoil provider not configured')
     }
 
@@ -157,7 +166,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       enclaveApiPathPrefix,
     )
     if (upstreamBaseUrl === null) {
-      logLatency({ status: 400, completedAt: nowFn() })
+      recordLatency({ status: 400, completedAt: nowFn() })
       return textResponse(400, 'Invalid X-Tinfoil-Enclave-Url: expected an HTTPS tinfoil.sh host')
     }
 
@@ -228,7 +237,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         statusText: upstream.statusText,
         headers: responseHeaders,
       })
-      logLatency({
+      recordLatency({
         status: upstream.status,
         completedAt: upstreamHeadersReceivedAt,
         upstreamFetchStartedAt,
@@ -237,7 +246,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       return response
     } catch (error) {
       const completedAt = nowFn()
-      logLatency({
+      recordLatency({
         status: isClientAbortError(error, request.signal) ? 499 : error === upstreamHeadersTimeoutError ? 504 : 500,
         completedAt,
         upstreamFetchStartedAt,
@@ -260,13 +269,37 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   // and make `.all()` uncallable / fall back to `any`).
   return new Elysia({ prefix: '/tinfoil' })
     .onError(safeErrorHandler)
+    .decorate('tinfoilRequestStartedAt', 0)
+    .onRequest((ctx) => {
+      // onRequest hooks become app-wide when plugins merge, so avoid timing unrelated routes.
+      if (!ctx.request.url.includes('/tinfoil/')) {
+        return
+      }
+      ctx.tinfoilRequestStartedAt = nowFn()
+    })
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
       if (rateLimit) {
         return g
           .use(rateLimit)
-          .all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? '', ctx.server), { parse: 'none' })
+          .all(
+            '/*',
+            (ctx) =>
+              proxyToEnclave(
+                ctx.tinfoilRequestStartedAt,
+                ctx.request,
+                ctx.params['*'] ?? '',
+                ctx.server,
+                ctx.set.headers,
+              ),
+            { parse: 'none' },
+          )
       }
-      return g.all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? '', ctx.server), { parse: 'none' })
+      return g.all(
+        '/*',
+        (ctx) =>
+          proxyToEnclave(ctx.tinfoilRequestStartedAt, ctx.request, ctx.params['*'] ?? '', ctx.server, ctx.set.headers),
+        { parse: 'none' },
+      )
     })
 }

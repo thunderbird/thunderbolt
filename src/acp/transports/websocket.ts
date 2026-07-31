@@ -11,6 +11,7 @@
 
 import type { AnyMessage, Stream } from '@agentclientprotocol/sdk'
 import { getPlatform } from '@/lib/platform'
+import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { TransportTerminationError } from '../termination'
 import type { AcpTransport } from '../types'
 
@@ -71,6 +72,17 @@ export type WebSocketEventMap = {
 }
 
 export type WebSocketFactory = (url: string) => WebSocketLike
+
+/**
+ * Subprotocol list a managed-ACP WebSocket offers on the upgrade: the carrier
+ * (`thunderbolt.v1`, echoed by the server) plus, when a bearer token is present,
+ * the auth entry the backend validates in `open()`. Shared by the live transport
+ * ({@link openTransport}) and the connection probe ({@link testAcpConnection}) so
+ * both authenticate identically against the managed relay.
+ */
+export const managedAcpSubprotocols = (token: string | null): string[] =>
+  token ? [wsCarrierSubprotocol, `${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`] : [wsCarrierSubprotocol]
+
 export type IsTauriIosFn = () => boolean
 
 const defaultWebSocketFactory: WebSocketFactory = (url) => new WebSocket(url) as unknown as WebSocketLike

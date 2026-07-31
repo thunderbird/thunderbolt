@@ -294,7 +294,9 @@ const CustomBody = ({
       return
     }
     setTestResult('testing')
-    const probe = await testAcpConnection({ url: agent.url })
+    // Managed agents live behind the auth-gated backend relay — pass the type so
+    // the probe attaches the bearer subprotocol (custom remote agents connect natively).
+    const probe = await testAcpConnection({ url: agent.url, agentType: agent.type })
     const testedAt = new Date().toISOString()
     setTestResult(
       probe.success ? { isReachable: true, testedAt } : { isReachable: false, testedAt, error: probe.error },

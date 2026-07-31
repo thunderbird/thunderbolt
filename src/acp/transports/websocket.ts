@@ -20,7 +20,13 @@ export const proxyRejectCloseCode = 4002
 export const proxyForbiddenCloseCode = 4003
 export const serverErrorCloseCode = 1011
 
-const terminalConnectCloseCodes = new Set([
+/** Close codes that mean "do not bother reconnecting", governing both phases:
+ *  a clean close, an auth rejection, the proxy's two hard rejects, and a
+ *  server-internal error. A remote 1000 is the bridge deliberately shutting
+ *  down — the CLI spawns one subprocess per accepted connection, so
+ *  auto-reconnecting would resurrect a doomed subprocess on a dead endpoint. */
+const terminalCloseCodes = new Set([
+  normalCloseCode,
   authCloseCode,
   proxyRejectCloseCode,
   proxyForbiddenCloseCode,
@@ -30,7 +36,7 @@ const terminalConnectCloseCodes = new Set([
 /** Classify deterministic connect rejections so chat skips futile auto-retries. */
 const connectCloseError = (code: number): TransportTerminationError => {
   const detail = `ACP transport closed during connect (code ${code})`
-  const retryable = !terminalConnectCloseCodes.has(code)
+  const retryable = !terminalCloseCodes.has(code)
   // Connect rejections cross into the chat layer as a bare message string, so
   // the retry verdict also travels as JSON inside it (see `getErrorRetryable`)
   // — the typed field is for lifecycle code that sees the error object itself.
@@ -201,7 +207,7 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
     }
     terminate(
       new TransportTerminationError('remote-close', `ACP transport closed (code ${event.code})`, {
-        retryable: !terminalConnectCloseCodes.has(event.code),
+        retryable: !terminalCloseCodes.has(event.code),
       }),
     )
   }

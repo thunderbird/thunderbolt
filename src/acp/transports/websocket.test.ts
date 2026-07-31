@@ -105,7 +105,7 @@ describe('openWebSocketTransport', () => {
     await expect(reader.read()).resolves.toMatchObject({ value: { id: 1, result: {} }, done: false })
   })
 
-  for (const code of [1006, proxyForbiddenCloseCode]) {
+  for (const code of [1006, normalCloseCode, proxyForbiddenCloseCode]) {
     it(`terminates the generation on remote close ${code} without reconnecting`, async () => {
       const { transport, sockets } = await openSocket()
       sockets[0].emit('close', { code, reason: 'dropped' })
@@ -162,7 +162,13 @@ describe('openWebSocketTransport', () => {
     await expect(opening).rejects.toMatchObject({ reason: 'remote-close' })
   })
 
-  for (const code of [authCloseCode, proxyRejectCloseCode, proxyForbiddenCloseCode, serverErrorCloseCode]) {
+  for (const code of [
+    normalCloseCode,
+    authCloseCode,
+    proxyRejectCloseCode,
+    proxyForbiddenCloseCode,
+    serverErrorCloseCode,
+  ]) {
     it(`marks deterministic connect close ${code} as non-retryable`, async () => {
       const socket = new FakeSocket()
       const opening = openWebSocketTransport({

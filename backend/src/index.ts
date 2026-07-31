@@ -22,6 +22,7 @@ import { createSearchRoutes } from '@/api/search'
 import { createPreviewRoutes } from '@/api/preview'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
+import { createTinfoilKeepWarm } from '@/tinfoil/keep-warm'
 import { createTinfoilRoutes } from '@/tinfoil/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
@@ -83,13 +84,15 @@ export const createApp = async (deps?: AppDeps) => {
   )
   const auth = deps?.auth ?? createdAuth
 
+  const appLogger = createStandaloneLogger(settings)
+
   // Build the production observability recorder unless tests injected their own.
   // Proxy events go to Pino + OTel only — not PostHog (proxy traffic is infra
   // plumbing, not product analytics).
   const proxyObservability =
     deps?.proxyObservability ??
     createObservabilityRecorder({
-      logger: createStandaloneLogger(settings),
+      logger: appLogger,
     })
 
   return (
@@ -129,7 +132,7 @@ export const createApp = async (deps?: AppDeps) => {
           dnsLookup: deps?.dnsLookup,
         }),
       )
-      .use(createTinfoilRoutes({ auth, fetchFn, rateLimit: proRateLimit }))
+      .use(createTinfoilRoutes({ auth, fetchFn, logger: appLogger, rateLimit: proRateLimit }))
       .use(
         createUniversalProxyWsRoutes({
           auth,
@@ -166,6 +169,7 @@ export const createApp = async (deps?: AppDeps) => {
 const startServer = async () => {
   const settings = getSettings()
   const log = createStandaloneLogger(settings)
+  const tinfoilKeepWarm = createTinfoilKeepWarm(settings, { logger: log })
 
   // Set up logging
   log.info('Starting Thunderbolt Server...')
@@ -206,6 +210,7 @@ const startServer = async () => {
           },
           '🦊 Elysia server started',
         )
+        tinfoilKeepWarm.start()
 
         if (settings.swaggerEnabled) {
           log.info(
@@ -220,11 +225,13 @@ const startServer = async () => {
 
     // Graceful shutdown
     process.on('SIGINT', async () => {
+      tinfoilKeepWarm.stop()
       log.info('Received SIGINT, shutting down gracefully...')
       process.exit(0)
     })
 
     process.on('SIGTERM', async () => {
+      tinfoilKeepWarm.stop()
       log.info('Received SIGTERM, shutting down gracefully...')
       process.exit(0)
     })

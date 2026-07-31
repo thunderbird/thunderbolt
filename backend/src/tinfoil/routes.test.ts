@@ -7,7 +7,7 @@ import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
-import { createTinfoilRoutes } from './routes'
+import { createTinfoilRoutes, type TinfoilProxyLatencyLog, type TinfoilProxyLogger } from './routes'
 
 const enclaveUrl = 'https://inference.tinfoil.sh'
 const testApiKey = 'test-tinfoil-key'
@@ -95,6 +95,8 @@ describe('createTinfoilRoutes', () => {
       enclaveUrl?: string
       auth?: typeof mockAuth
       fetchFn?: typeof fetch
+      logger?: TinfoilProxyLogger
+      nowFn?: () => number
       upstreamHeadersTimeoutMs?: number
       upstreamIdleTimeoutMs?: number
     } = {},
@@ -103,6 +105,8 @@ describe('createTinfoilRoutes', () => {
       createTinfoilRoutes({
         auth: overrides.auth ?? mockAuth,
         fetchFn: overrides.fetchFn ?? (mockFetch as unknown as typeof fetch),
+        logger: overrides.logger,
+        nowFn: overrides.nowFn,
         apiKey: overrides.apiKey ?? testApiKey,
         enclaveUrl: overrides.enclaveUrl ?? enclaveUrl,
         upstreamHeadersTimeoutMs: overrides.upstreamHeadersTimeoutMs,
@@ -454,6 +458,142 @@ describe('createTinfoilRoutes', () => {
       expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([0x01, 0x02, 0x03, 0x04]))
       await new Promise((resolve) => setImmediate(resolve))
       expect((await upstream.started).aborted).toBeFalse()
+    })
+  })
+
+  describe('latency instrumentation', () => {
+    it('logs one structured line with handler, fetch, and upstream-header phases', async () => {
+      const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
+      const timestamps = [100, 112, 152]
+      const logger: TinfoilProxyLogger = {
+        info: (context, message) => entries.push({ context, message }),
+      }
+      const nowFn = () => {
+        const timestamp = timestamps.shift()
+        if (timestamp === undefined) {
+          throw new Error('Unexpected timing read')
+        }
+        return timestamp
+      }
+      const app = buildApp({ logger, nowFn })
+
+      await drain(await app.handle(new Request('http://localhost/tinfoil/v1/models?request-secret=do-not-log')))
+
+      expect(entries).toEqual([
+        {
+          context: {
+            event: 'tinfoil_proxy_latency',
+            route: '/tinfoil/v1/models',
+            status: 200,
+            handlerToUpstreamFetchMs: 12,
+            upstreamFetchToHeadersMs: 40,
+            handlerToOutcomeMs: 52,
+          },
+          message: 'Tinfoil proxy latency',
+        },
+      ])
+      expect(JSON.stringify(entries)).not.toContain('request-secret')
+      expect(JSON.stringify(entries)).not.toContain(testApiKey)
+    })
+
+    it('logs one structured line for a request rejected before upstream fetch', async () => {
+      const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
+      const timestamps = [10, 13]
+      const logger: TinfoilProxyLogger = {
+        info: (context, message) => entries.push({ context, message }),
+      }
+      const app = buildApp({
+        apiKey: '',
+        logger,
+        nowFn: () => timestamps.shift() ?? 0,
+      })
+
+      const response = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(response.status).toBe(503)
+      expect(entries).toEqual([
+        {
+          context: {
+            event: 'tinfoil_proxy_latency',
+            route: '/tinfoil/v1/models',
+            status: 503,
+            handlerToUpstreamFetchMs: null,
+            upstreamFetchToHeadersMs: null,
+            handlerToOutcomeMs: 3,
+          },
+          message: 'Tinfoil proxy latency',
+        },
+      ])
+    })
+
+    it('logs exactly one 504 line when upstream headers time out', async () => {
+      const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
+      const timestamps = [100, 105, 135]
+      const upstream = createAbortableFetch()
+      const logger: TinfoilProxyLogger = {
+        info: (context, message) => entries.push({ context, message }),
+      }
+      const app = buildApp({
+        fetchFn: upstream.fetchFn,
+        logger,
+        nowFn: () => timestamps.shift() ?? 0,
+        upstreamHeadersTimeoutMs: 0,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          body: 'opaque-bytes',
+        }),
+      )
+
+      expect(response.status).toBe(504)
+      expect(entries).toEqual([
+        {
+          context: {
+            event: 'tinfoil_proxy_latency',
+            route: '/tinfoil/v1/chat/completions',
+            status: 504,
+            handlerToUpstreamFetchMs: 5,
+            upstreamFetchToHeadersMs: null,
+            handlerToOutcomeMs: 35,
+          },
+          message: 'Tinfoil proxy latency',
+        },
+      ])
+    })
+
+    it('logs exactly one 500 line when upstream fetch rejects', async () => {
+      const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
+      const timestamps = [10, 12, 20]
+      const logger: TinfoilProxyLogger = {
+        info: (context, message) => entries.push({ context, message }),
+      }
+      const fetchFn = (async () => {
+        throw new Error('Upstream connection failed')
+      }) as unknown as typeof fetch
+      const app = buildApp({
+        fetchFn,
+        logger,
+        nowFn: () => timestamps.shift() ?? 0,
+      })
+
+      const response = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(response.status).toBe(500)
+      expect(entries).toEqual([
+        {
+          context: {
+            event: 'tinfoil_proxy_latency',
+            route: '/tinfoil/v1/models',
+            status: 500,
+            handlerToUpstreamFetchMs: 2,
+            upstreamFetchToHeadersMs: null,
+            handlerToOutcomeMs: 10,
+          },
+          message: 'Tinfoil proxy latency',
+        },
+      ])
     })
   })
 

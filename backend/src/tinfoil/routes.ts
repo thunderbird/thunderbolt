@@ -19,13 +19,32 @@ const abruptResponseCloseTimeoutSeconds = 1
 const upstreamHeadersTimeoutError = new DOMException(tinfoilUpstreamTimeoutMessage, 'TimeoutError')
 const upstreamIdleTimeoutError = new DOMException(tinfoilUpstreamIdleTimeoutMessage, 'TimeoutError')
 
+export type TinfoilProxyLatencyLog = {
+  event: 'tinfoil_proxy_latency'
+  route: string
+  status: number
+  handlerToUpstreamFetchMs: number | null
+  upstreamFetchToHeadersMs: number | null
+  handlerToOutcomeMs: number
+}
+
+export type TinfoilProxyLogger = {
+  info: (context: TinfoilProxyLatencyLog, message: string) => void
+}
+
 const textResponse = (status: number, body: string): Response =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain' } })
+
+/** Round a monotonic duration to hundredths of a millisecond for structured logs. */
+const elapsedMs = (startedAt: number, completedAt: number) => Math.round((completedAt - startedAt) * 100) / 100
 
 /** Forwards HPKE-encrypted bodies to the Tinfoil enclave; injects the bearer key from env. */
 export type CreateTinfoilRoutesOptions = {
   auth: Auth
   fetchFn?: typeof fetch
+  logger?: TinfoilProxyLogger
+  /** Monotonic clock used for latency instrumentation. */
+  nowFn?: () => number
   rateLimit?: AnyElysia
   /** Override the enclave bearer key. Defaults to `TINFOIL_API_KEY`. */
   apiKey?: string
@@ -40,6 +59,8 @@ export type CreateTinfoilRoutesOptions = {
 export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const { auth, rateLimit } = options
   const fetchFn = options.fetchFn ?? globalThis.fetch
+  const logger = options.logger
+  const nowFn = options.nowFn ?? (() => performance.now())
   const settings = getSettings()
   const apiKey = options.apiKey ?? settings.tinfoilApiKey
   const enclaveUrl = (options.enclaveUrl ?? settings.tinfoilEnclaveUrl).replace(/\/$/, '')
@@ -51,18 +72,50 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     wildcard: string,
     server: Bun.Server<unknown> | null,
   ): Promise<Response> => {
+    const handlerStartedAt = nowFn()
+    const requestUrl = new URL(request.url)
+    const route = requestUrl.pathname
     const method = request.method.toUpperCase()
+    const logLatency = ({
+      status,
+      completedAt,
+      upstreamFetchStartedAt = null,
+      upstreamHeadersReceivedAt = null,
+    }: {
+      status: number
+      completedAt: number
+      upstreamFetchStartedAt?: number | null
+      upstreamHeadersReceivedAt?: number | null
+    }) => {
+      logger?.info(
+        {
+          event: 'tinfoil_proxy_latency',
+          route,
+          status,
+          handlerToUpstreamFetchMs:
+            upstreamFetchStartedAt === null ? null : elapsedMs(handlerStartedAt, upstreamFetchStartedAt),
+          upstreamFetchToHeadersMs:
+            upstreamFetchStartedAt === null || upstreamHeadersReceivedAt === null
+              ? null
+              : elapsedMs(upstreamFetchStartedAt, upstreamHeadersReceivedAt),
+          handlerToOutcomeMs: elapsedMs(handlerStartedAt, completedAt),
+        },
+        'Tinfoil proxy latency',
+      )
+    }
 
     if (!allowedMethods.has(method)) {
+      logLatency({ status: 405, completedAt: nowFn() })
       return textResponse(405, 'Method not allowed')
     }
 
     if (!apiKey) {
+      logLatency({ status: 503, completedAt: nowFn() })
       return textResponse(503, 'Tinfoil provider not configured')
     }
 
     const subpath = wildcard.startsWith('/') ? wildcard : `/${wildcard}`
-    const search = new URL(request.url).search
+    const search = requestUrl.search
     const upstreamUrl = `${enclaveUrl}${subpath}${search}`
 
     const headers = new Headers()
@@ -82,6 +135,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       () => upstreamController.abort(upstreamHeadersTimeoutError),
       upstreamHeadersTimeoutMs,
     )
+    const upstreamFetchStartedAt = nowFn()
 
     // Bun-specific fetch options: `duplex: 'half'` enables streaming request
     // bodies; `decompress: false` keeps the HPKE-encrypted bytes opaque on
@@ -96,6 +150,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         decompress: false,
         duplex: 'half',
       } as RequestInit & { decompress: boolean; duplex: 'half' })
+      const upstreamHeadersReceivedAt = nowFn()
 
       // Strip upstream CORS headers: the enclave emits a duplicated
       // `Access-Control-Allow-Credentials: true, true`, which browsers reject
@@ -115,12 +170,26 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
           }).stream
         : null
 
-      return new Response(responseBody, {
+      const response = new Response(responseBody, {
         status: upstream.status,
         statusText: upstream.statusText,
         headers: responseHeaders,
       })
+      logLatency({
+        status: upstream.status,
+        completedAt: upstreamHeadersReceivedAt,
+        upstreamFetchStartedAt,
+        upstreamHeadersReceivedAt,
+      })
+      return response
     } catch (error) {
+      const completedAt = nowFn()
+      logLatency({
+        status: error === upstreamHeadersTimeoutError ? 504 : 500,
+        completedAt,
+        upstreamFetchStartedAt,
+      })
+
       if (error === upstreamHeadersTimeoutError) {
         return textResponse(504, tinfoilUpstreamTimeoutMessage)
       }

@@ -6,7 +6,7 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 
 ## AI you control
 
-- **Choose your models.** Bring Anthropic, OpenAI, Mistral, Fireworks, OpenRouter, or any OpenAI-compatible endpoint. Recommended local options are [Ollama](https://ollama.com/) and [llama.cpp](https://github.com/ggml-org/llama.cpp). There is no Thunderbolt-hosted inference endpoint — you bring your own API keys.
+- **Choose your models.** Bring Anthropic, OpenAI, Mistral, Fireworks, OpenRouter, OrcaRouter, or any OpenAI-compatible endpoint. Recommended local options are [Ollama](https://ollama.com/) and [llama.cpp](https://github.com/ggml-org/llama.cpp). There is no Thunderbolt-hosted inference endpoint — you bring your own API keys.
 - **Own your data.** Every device keeps a local, encrypted SQLite database. Sync is opt-in and can run end-to-end encrypted so the server only ever sees ciphertext.
 - **Eliminate vendor lock-in.** [Self-host the backend](./self-hosting.md) on Docker Compose, Kubernetes, or AWS via Pulumi. Nothing depends on a SaaS control plane.
 

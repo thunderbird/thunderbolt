@@ -6,7 +6,7 @@ This page is a reference map of the Thunderbolt architecture — the components,
 
 - **Offline-first.** Local SQLite is the source of truth. The app works without network.
 - **Cross-platform.** A single React codebase runs in Tauri on desktop (macOS, Linux, Windows) and mobile (iOS, Android).
-- **Model-agnostic.** LLM calls route through the backend inference proxy, supporting Claude, GPT, Mistral, OpenRouter, and any OpenAI-compatible endpoint.
+- **Model-agnostic.** LLM calls route through the backend inference proxy, supporting Claude, GPT, Mistral, OpenRouter, OrcaRouter, and any OpenAI-compatible endpoint.
 - **Self-hostable.** The entire server stack (backend, PostgreSQL, PowerSync, Keycloak) runs via Docker Compose, Kubernetes, or Pulumi.
 - **E2E encrypted (optional).** When enabled, data is encrypted before leaving the device and the server stores only ciphertext. See [E2E Encryption](./e2e-encryption.md).
 
@@ -45,7 +45,7 @@ graph TB
 
   subgraph EXTERNAL["External Services"]
     direction LR
-    LLM["LLM Providers<br/>Anthropic · OpenAI · Mistral · OpenRouter"]
+    LLM["LLM Providers<br/>Anthropic · OpenAI · Mistral · OpenRouter · OrcaRouter"]
     OAUTH["OAuth<br/>Google · Microsoft"]
     POSTHOG["PostHog<br/>Analytics"]
     RESEND["Resend<br/>Email"]
@@ -145,7 +145,7 @@ The custom SharedWorker extends `SharedSyncImplementation`, an `@internal` class
 | Keycloak     | Default OIDC provider in the self-hosted stack         | Yes — any OIDC-compliant IdP          |
 | Resend       | Transactional email delivery                           | Swap for any SMTP/provider            |
 | PostHog      | In-app analytics (opt-in)                              | Optional                              |
-| AI providers | Anthropic, OpenAI, Mistral, Fireworks, OpenRouter, and any OpenAI-compatible endpoint | Bring your own |
+| AI providers | Anthropic, OpenAI, Mistral, Fireworks, OpenRouter, OrcaRouter, and any OpenAI-compatible endpoint | Bring your own |
 
 ## Build and Release
 

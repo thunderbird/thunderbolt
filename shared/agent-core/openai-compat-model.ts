@@ -6,7 +6,7 @@
  * Builds a Pi-compatible OpenAI-completions model whose HTTP goes through an
  * injected `fetch`. This is the OpenAI-family analogue of
  * {@link buildAnthropicModel}: it serves every provider the app talks to over the
- * OpenAI Chat Completions wire — `openai`, `custom`, `openrouter`, and
+ * OpenAI Chat Completions wire — `openai`, `custom`, `openrouter`, `orcarouter`, and
  * `thunderbolt` (the backend proxy = openai-compatible against `cloudUrl`).
  *
  * Unlike the anthropic API, Pi's `openai-completions` provider exposes NO public
@@ -73,7 +73,7 @@ const defaultMaxTokens = 8_192
 export type BuildOpenAiCompatModelOptions = {
   /** Pi provider id; must equal the synthetic model's `provider` so the
    *  `MutableModels` dispatch resolves this provider. Carries the app provider
-   *  name (`openai` | `custom` | `openrouter` | `thunderbolt`). */
+   *  name (`openai` | `custom` | `openrouter` | `orcarouter` | `thunderbolt`). */
   readonly providerId: string
   /** Upstream model id sent on the wire, e.g. `opus-4.8` or `gpt-5`. */
   readonly modelId: string

@@ -94,6 +94,9 @@ const resolveCatalogEndpoint = ({ provider, apiKey, url }: CatalogRequest): stri
   if (provider === 'openrouter') {
     return apiKey ? 'https://openrouter.ai/api/v1/models' : undefined
   }
+  if (provider === 'orcarouter') {
+    return apiKey ? 'https://api.orcarouter.ai/v1/models' : undefined
+  }
   if (provider === 'custom' && url) {
     return `${normalizeOpenAiBaseUrl(url)}/models`
   }

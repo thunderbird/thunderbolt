@@ -294,6 +294,10 @@ export const resolveOpenAiCompatConnection = (
       return modelConfig.apiKey
         ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
         : null
+    case 'orcarouter':
+      return modelConfig.apiKey
+        ? { baseURL: 'https://api.orcarouter.ai/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        : null
     default:
       return null
   }
@@ -393,6 +397,21 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         fetch: conn.fetch,
       })
       return openrouter(modelConfig.model)
+    }
+    case 'orcarouter': {
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
+        throw new Error('No API key provided')
+      }
+      // OrcaRouter exposes the OpenAI Chat Completions wire, so it rides the
+      // same OpenAI-compatible provider as other gateways.
+      const orcarouter = createOpenAICompatible({
+        name: 'orcarouter',
+        baseURL: conn.baseURL,
+        apiKey: conn.apiKey,
+        fetch: conn.fetch,
+      })
+      return orcarouter(modelConfig.model)
     }
     case 'tinfoil': {
       // System Tinfoil models proxy through Thunderbolt's backend; the bearer

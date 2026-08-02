@@ -7,6 +7,7 @@ import { Server } from 'lucide-react'
 
 import openAiLogoSrc from '@/assets/openai.svg'
 import openRouterLogoSrc from '@/assets/openrouter.svg'
+import orcarouterLogoSrc from '@/assets/orcarouter.svg'
 import tinfoilLogoSrc from '@/assets/tinfoil.svg'
 import { AppLogo } from '@/components/app-logo'
 import { IconTile } from '@/components/settings/icon-tile'
@@ -20,6 +21,7 @@ export const providerLabels: Record<Model['provider'], string> = {
   tinfoil: 'Tinfoil',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
+  orcarouter: 'OrcaRouter',
   anthropic: 'Anthropic',
   custom: 'Custom',
 }
@@ -39,6 +41,8 @@ const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSyste
       return <SiAnthropic size={20} aria-hidden="true" />
     case 'openrouter':
       return <img src={openRouterLogoSrc} alt="" className="h-5 w-auto dark:invert" />
+    case 'orcarouter':
+      return <img src={orcarouterLogoSrc} alt="" className="h-5 w-auto dark:invert" />
     case 'tinfoil':
       return <img src={tinfoilLogoSrc} alt="" className="size-5 dark:invert" />
     case 'custom':

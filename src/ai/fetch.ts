@@ -4,6 +4,7 @@
 
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
 import {
   buildStepOverrides,
   extractTextFromMessages,
@@ -111,6 +112,7 @@ type AiFetchStreamingResponseOptions = {
   reconnectClient?: ReconnectClient
   httpClient: HttpClient
   turnBudget?: TurnBudgetConsumer
+  webToolBudget?: WebToolBudget
   /** Returns the current proxy fetch. Production callers pass the getter from
    *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
    *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
@@ -482,6 +484,7 @@ export type PrepareAiRequestConfigOptions = {
   readonly mcpClients?: NamedMCPClient[]
   readonly reconnectClient?: ReconnectClient
   readonly httpClient: HttpClient
+  readonly webToolBudget?: WebToolBudget
 }
 
 /** Register progressive skill loading only for models that support tools. */
@@ -511,6 +514,7 @@ export const prepareAiRequestConfig = async ({
   mcpClients = [],
   reconnectClient = async () => null,
   httpClient,
+  webToolBudget,
 }: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
   const db = getDb()
   const settings = await getSettings(db, {
@@ -541,7 +545,7 @@ export const prepareAiRequestConfig = async ({
   const availableTools = supportsTools
     ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
     : []
-  const appToolset = addSkillTool(createToolset(availableTools, toolCallCache), skills, supportsTools)
+  const appToolset = addSkillTool(createToolset(availableTools, toolCallCache, webToolBudget), skills, supportsTools)
   const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
@@ -621,6 +625,7 @@ export const aiFetchStreamingResponse = async ({
   httpClient,
   getProxyFetch,
   turnBudget,
+  webToolBudget,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
@@ -648,6 +653,7 @@ export const aiFetchStreamingResponse = async ({
     mcpClients,
     reconnectClient,
     httpClient,
+    webToolBudget,
   })
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
@@ -726,6 +732,7 @@ export const aiFetchStreamingResponse = async ({
             maxSteps,
             nudgeThreshold,
             activeNudges,
+            webBudgetProbe: webToolBudget?.probe,
           })
         },
 

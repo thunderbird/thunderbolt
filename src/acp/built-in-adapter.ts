@@ -434,6 +434,7 @@ const fetchViaHarness = async (
     mcpClients: context.mcpClients,
     reconnectClient: context.reconnectClient,
     httpClient: context.httpClient,
+    webToolBudget: context.webToolBudget,
   })
   const resolved = resolvePiModel(agentCore, context, config.profile)
   if (!resolved) {
@@ -509,6 +510,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       httpClient: context.httpClient,
       getProxyFetch: context.getProxyFetch,
       turnBudget: context.turnBudget,
+      webToolBudget: context.webToolBudget,
     })
 
   // Route tool-capable Pi-serviceable models (anthropic + the OpenAI-wire family)

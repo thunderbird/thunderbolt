@@ -14,6 +14,7 @@ import {
   createTurnBudgetExhaustedError,
   type TurnBudget,
 } from '@/ai/retry-budget'
+import { createWebToolBudget, resolveWebToolIntent, type WebToolBudget } from '@/ai/web-tool-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
@@ -154,6 +155,21 @@ export const createAgentRoutingFetch = (
     })()
 
   let routedAgentId: string | null = null
+  let webToolBudgetState: { key: string; budget: WebToolBudget } | undefined
+
+  const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
+    const lastUserMessage = messages.findLast((message) => message.role === 'user')
+    if (!lastUserMessage) {
+      return undefined
+    }
+    const key = `${lastUserMessage.id}#${routingState.regenerationRevision ?? 0}`
+    if (webToolBudgetState?.key === key) {
+      return webToolBudgetState.budget
+    }
+    const budget = createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages)))
+    webToolBudgetState = { key, budget }
+    return budget
+  }
 
   /** Resolve user-skill (`/slug`) instructions from the latest user message, so
    *  ACP agents can receive them in the prompt (the built-in pipeline injects
@@ -206,8 +222,9 @@ export const createAgentRoutingFetch = (
       //      never be generated.
       //   3. Keeps message ordering consistent: the user turn is durable
       //      before the assistant stream starts.
-      const requestBody = JSON.parse(init.body as string) as { messages: ThunderboltUIMessage[] }
-      await saveMessages({ id, messages: requestBody.messages })
+      const requestBody = JSON.parse(init.body as string) as { messages?: ThunderboltUIMessage[] }
+      const requestMessages = requestBody.messages ?? []
+      await saveMessages({ id, messages: requestMessages })
 
       // Persist by `id`, not `chatThread.id`: on a brand-new chat the session's
       // `chatThread` snapshot is still `null` here (PowerSync hasn't re-hydrated
@@ -245,7 +262,7 @@ export const createAgentRoutingFetch = (
       // agents we resolve here and fold them into the prompt via the adapter.
       const skillInstructions = isBuiltInAgent(selectedAgent)
         ? undefined
-        : await resolveAcpSkillInstructions(requestBody.messages)
+        : await resolveAcpSkillInstructions(requestMessages)
       // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
       const requestPermission = isBuiltInAgent(selectedAgent)
         ? undefined
@@ -267,6 +284,7 @@ export const createAgentRoutingFetch = (
         httpClient,
         getProxyFetch,
         turnBudget,
+        webToolBudget: getWebToolBudget(requestMessages),
         regenerationRevision: routingState.regenerationRevision ?? 0,
         skillInstructions,
         onAcpSessionId: persistAcpSessionId,

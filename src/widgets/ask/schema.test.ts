@@ -19,6 +19,13 @@ describe('ask schema parse', () => {
     expect(result?.args.options).toHaveLength(2)
   })
 
+  it('parses a choices-mode (ungraded multi-select) widget', () => {
+    const result = parse({ prompt: 'Which do you like?', mode: 'choices', options: optionsJson })
+    expect(result).not.toBeNull()
+    expect(result?.args.mode).toBe('choices')
+    expect(result?.args.options).toHaveLength(2)
+  })
+
   it('parses legacy free-mode markup with no options (historical messages)', () => {
     const result = parse({ prompt: 'What should we do next?', mode: 'free' })
     expect(result).not.toBeNull()

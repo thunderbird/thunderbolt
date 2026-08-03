@@ -7,7 +7,7 @@ import { useReducer, useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { evaluateAnswer, optionLetter, type AskData, type AskOption } from './lib'
+import { evaluateAnswer, isGradedMode, isMultiSelectMode, optionLetter, type AskData, type AskOption } from './lib'
 
 export type AskSubmission = {
   selectedIds: string[]
@@ -108,8 +108,11 @@ export const Ask = ({
   // This is a side-effect latch, not UI state, so it lives outside the reducer.
   const committedRef = useRef(initialSubmitted ?? false)
 
-  const isGraded = mode === 'single' || mode === 'multiple'
-  const isMultiple = mode === 'multiple'
+  const isGraded = isGradedMode(mode)
+  const isMultiple = isMultiSelectMode(mode)
+  // `choice` (ungraded, single) commits the instant an option is clicked; every
+  // other mode toggles selection and waits for the Submit button.
+  const commitsOnClick = !isGraded && !isMultiple
 
   const commit = (ids: Set<string>) => {
     if (committedRef.current) {
@@ -127,15 +130,14 @@ export const Ask = ({
     if (state.submitted) {
       return
     }
-    if (!isGraded) {
-      // `choice` mode: selecting an option commits the choice immediately.
+    if (commitsOnClick) {
       commit(new Set([id]))
       return
     }
     dispatch({ type: 'OPTION_TOGGLED', id, isMultiple })
   }
 
-  const label = isGraded ? (isMultiple ? 'Select all that apply' : 'Choose one') : 'Your call'
+  const label = isMultiple ? 'Select all that apply' : isGraded ? 'Choose one' : 'Your call'
 
   return (
     <div className="my-4 w-full">
@@ -193,7 +195,7 @@ export const Ask = ({
             })}
           </div>
 
-          {isGraded && !state.submitted && (
+          {!commitsOnClick && !state.submitted && (
             <Button
               size="default"
               disabled={state.selected.size === 0}
@@ -214,7 +216,7 @@ export const Ask = ({
             </div>
           )}
 
-          {state.submitted && mode === 'choice' && (
+          {state.submitted && !isGraded && (
             <div className="flex items-center gap-2 text-[length:var(--font-size-sm)] text-muted-foreground">
               <Lightbulb className="size-[var(--icon-size-sm)] shrink-0" />
               <span>Got it, working on that next.</span>

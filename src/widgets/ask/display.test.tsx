@@ -80,6 +80,34 @@ describe('Ask — display', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
+  it('choices mode: allows multiple selections and commits them together on submit', () => {
+    const onSubmit = mock((_: AskSubmission) => {})
+    render(
+      <Ask
+        prompt="Which of these do you like?"
+        mode="choices"
+        options={[
+          { id: 'coffee', text: 'Coffee' },
+          { id: 'tea', text: 'Tea' },
+          { id: 'neither', text: 'Neither' },
+        ]}
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Selecting one option does not commit — a multi-select waits for Submit.
+    fireEvent.click(screen.getByText('Coffee'))
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('Tea'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    // Both picks recorded, and no right/wrong verdict (ungraded).
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ selectedIds: ['coffee', 'tea'], matched: null })
+    expect(document.body.textContent ?? '').not.toMatch(/correct!|incorrect|not quite|score/i)
+  })
+
   it('restores a previously-submitted response', () => {
     render(<Ask {...single} initialSelectedIds={['smtp']} initialSubmitted />)
     // Already submitted → no Submit button, explanation shown.

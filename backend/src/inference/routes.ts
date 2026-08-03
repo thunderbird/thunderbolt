@@ -63,6 +63,7 @@ export type InferenceProxyLatencyLog = {
   event: 'inference_proxy_latency'
   route: string
   provider: InferenceProvider
+  model: string
   status: number
   preMs: number
   upstreamMs: number
@@ -141,6 +142,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           event: 'inference_proxy_latency',
           route,
           provider,
+          model: body.model,
           status,
           preMs,
           upstreamMs,

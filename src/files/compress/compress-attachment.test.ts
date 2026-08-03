@@ -40,6 +40,21 @@ describe('maybeCompressAttachment', () => {
     expect(result.size).toBe(1024)
   })
 
+  test('compresses a large image identified only by extension (empty/odd MIME)', async () => {
+    const d = deps({ compressImage: mock(async () => smallerBlob(1024, 'image/webp')) })
+    const result = await maybeCompressAttachment(fakeFile('screenshot.PNG', '', overThreshold), d)
+    expect(d.compressImage).toHaveBeenCalledTimes(1)
+    expect(result.type).toBe('image/webp')
+    expect(result.name).toBe('screenshot.webp')
+  })
+
+  test('compresses a large PDF identified only by extension (empty/odd MIME)', async () => {
+    const d = deps({ compressPdf: mock(async () => smallerBlob(2048, 'application/pdf')) })
+    const result = await maybeCompressAttachment(fakeFile('report.pdf', '', overThreshold), d)
+    expect(d.compressPdf).toHaveBeenCalledTimes(1)
+    expect(result.type).toBe('application/pdf')
+  })
+
   test('keeps the original image when compression is not smaller', async () => {
     const d = deps({ compressImage: mock(async () => null) })
     const file = fakeFile('photo.jpg', 'image/jpeg', overThreshold)

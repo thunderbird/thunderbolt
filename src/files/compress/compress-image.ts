@@ -47,7 +47,11 @@ const encodeWebp = async (bitmap: ImageBitmap, width: number, height: number): P
  * falls back to the original.
  */
 export const compressImage = async (blob: Blob): Promise<Blob | null> => {
-  const bitmap = await createImageBitmap(blob)
+  // Phone photos (the common >10MB case) usually store rotation as an EXIF
+  // orientation tag rather than baked-in pixels, and canvas → WebP drops EXIF
+  // entirely. `from-image` bakes the tag into the drawn bitmap so a portrait
+  // photo doesn't come out sideways with no metadata left to fix it downstream.
+  const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' })
   const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
   const width = Math.round(bitmap.width * scale)
   const height = Math.round(bitmap.height * scale)

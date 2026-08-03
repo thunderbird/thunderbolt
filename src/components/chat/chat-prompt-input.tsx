@@ -466,7 +466,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // promise reject silently — otherwise no chip appears and no banner
             // shows. Stop here: subsequent writes would hit the same failure.
             console.error('Failed to store attachment locally:', error)
-            setAttachError(`Couldn't attach "${file.name}" — your browser's storage is full or unavailable.`)
+            setAttachError(`Couldn't attach "${prepared.name}" — your browser's storage is full or unavailable.`)
             break
           }
           setAttachments((prev) => [...prev, { localFileId, filename: prepared.name, mimeType: prepared.type }])

@@ -23,6 +23,23 @@ export const compressionThresholdBytes = 10 * 1024 * 1024
  *  don't flatten animated frames. */
 const compressibleImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
+/** Extension fallbacks for when the browser reports an empty/odd MIME type (a
+ *  pasted screenshot, a drag from some sources) — the same reason the
+ *  acceptance check keys on extension too. Kept in lock-step with the MIME sets
+ *  above: GIF is omitted so animated frames still pass through untouched. */
+const compressibleImageExtensions = ['.png', '.jpg', '.jpeg', '.webp']
+const pdfExtensions = ['.pdf']
+
+const hasExtension = (name: string, extensions: readonly string[]): boolean => {
+  const lower = name.toLowerCase()
+  return extensions.some((ext) => lower.endsWith(ext))
+}
+
+const isCompressibleImage = (file: File): boolean =>
+  compressibleImageMimeTypes.has(file.type) || hasExtension(file.name, compressibleImageExtensions)
+
+const isPdf = (file: File): boolean => file.type === 'application/pdf' || hasExtension(file.name, pdfExtensions)
+
 /** Injectable so the orchestrator's routing/fallback logic is unit-testable
  *  without a canvas or pdf-lib in the test environment. */
 export type CompressDeps = {
@@ -53,11 +70,11 @@ export const maybeCompressAttachment = async (file: File, deps: CompressDeps = d
   }
 
   try {
-    if (compressibleImageMimeTypes.has(file.type)) {
+    if (isCompressibleImage(file)) {
       const compressed = await deps.compressImage(file)
       return compressed ? new File([compressed], withExtension(file.name, 'webp'), { type: 'image/webp' }) : file
     }
-    if (file.type === 'application/pdf') {
+    if (isPdf(file)) {
       const compressed = await deps.compressPdf(file)
       return compressed ? new File([compressed], file.name, { type: 'application/pdf' }) : file
     }

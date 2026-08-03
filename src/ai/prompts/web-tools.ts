@@ -8,5 +8,5 @@
  * present in the toolset, so a session without them is never told it has them.
  */
 export const webToolsPrompt = `Web lookups use the \`search\` and \`fetch_content\` tools.
-Quick questions: run 1–3 searches, fetch the most promising pages, and answer from them.
-Deep dives, research requests, or comprehensive reports: go beyond the default tool budget—break the question into sub-questions, search each from multiple angles, fetch several pages per sub-question, and synthesize the findings.`
+Quick questions: run at most one search and answer from its snippets. Fetch a page only when the snippets are insufficient.
+Deep dives, research requests, or comprehensive reports: break the question into sub-questions, search each from multiple angles, fetch the pages needed for evidence, and synthesize the findings.`

@@ -184,7 +184,6 @@ describe('createPrompt', () => {
 
   test('includes the reuse-before-search gate', () => {
     const result = createPrompt(baseParams)
-    expect(result).toContain('reuse first, then search')
     expect(result).toContain("Don't repeat a tool call you already made")
   })
 
@@ -193,9 +192,20 @@ describe('createPrompt', () => {
     expect(result).toContain('time-sensitive that may have changed')
   })
 
-  test('keeps the verify-before-answering directive', () => {
+  test('uses the four-bucket search policy with an explicit search-request escape hatch', () => {
     const result = createPrompt(baseParams)
-    expect(result).toContain('never state facts without verifying them first')
+    expect(result).toContain('never_search')
+    expect(result).toContain('answer_then_offer')
+    expect(result).toContain('single_search')
+    expect(result).toContain('research')
+    expect(result).not.toContain('When in doubt, search')
+    expect(result).toContain('If the user asks you to search, verify, or look something up, always do it')
+  })
+
+  test('limits quick web lookups to one search and conditional fetching', () => {
+    const result = createPrompt({ ...baseParams, hasWebTools: true })
+    expect(result).toContain('run at most one search')
+    expect(result).toContain('Fetch a page only when the snippets are insufficient')
   })
 
   test('tool-capable models get the skill listing without instruction bodies', () => {

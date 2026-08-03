@@ -290,6 +290,103 @@ describe('Inference Routes', () => {
       })
     })
 
+    it('captures body-free structured metadata from a mid-stream API error', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const apiError = new APIError(
+        529,
+        {
+          message: 'Overloaded',
+          type: 'overloaded_error',
+        },
+        undefined,
+        new Headers({ 'x-request-id': 'provider-stream-request-123' }),
+      )
+      const completionController = new AbortController()
+      const mockCompletion = {
+        controller: completionController,
+        async *[Symbol.asyncIterator]() {
+          yield { choices: [{ delta: { content: 'Hello' } }] }
+          throw apiError
+        },
+      }
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...validRequestBody, model: 'opus-4.8' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.text()).rejects.toThrow('Overloaded')
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'anthropic',
+        status: 529,
+        model: 'opus-4.8',
+        errorKind: 'upstream_error',
+        errorType: 'overloaded_error',
+        errorCode: undefined,
+        requestId: 'provider-stream-request-123',
+        distinctId: 'test-user',
+        phase: 'stream',
+      })
+    })
+
+    it('does not capture downstream cancellation as a stream error', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const completionController = new AbortController()
+      const iterationSettled = Promise.withResolvers<void>()
+      const mockCompletion = {
+        controller: completionController,
+        async *[Symbol.asyncIterator]() {
+          try {
+            yield { choices: [{ delta: { content: 'Hello' } }] }
+            await new Promise<void>((_resolve, reject) => {
+              completionController.signal.addEventListener('abort', () => reject(new Error('cancelled')), {
+                once: true,
+              })
+            })
+          } finally {
+            iterationSettled.resolve()
+          }
+        },
+      }
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+      const reader = response.body!.getReader()
+
+      expect((await reader.read()).done).toBeFalse()
+      await reader.cancel()
+      await iterationSettled.promise
+      expect(captureInferenceErrorMock).not.toHaveBeenCalled()
+    })
+
     it('captures connection timeouts before wrapping them', async () => {
       const captureInferenceErrorMock = mock(() => {})
       const captureApp = new Elysia().use(

@@ -88,6 +88,15 @@ export type CreateInferenceRoutesOptions = {
 const formatServerTiming = (preMs: number, upstreamMs: number, totalMs: number): string =>
   `pre;dur=${preMs}, upstream;dur=${upstreamMs}, total;dur=${totalMs}`
 
+const getApiErrorMetadata = (error: unknown) => {
+  const apiError = error instanceof APIError ? error : undefined
+  return {
+    errorType: apiError?.type,
+    errorCode: apiError?.code ?? undefined,
+    requestId: apiError?.requestID ?? undefined,
+  }
+}
+
 /**
  * Inference API routes
  */
@@ -180,7 +189,19 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         const upstreamResolvedAt = nowFn()
         recordLatency(200, upstreamResolvedAt)
 
-        const stream = createSSEStreamFromCompletion(completion)
+        const stream = createSSEStreamFromCompletion(completion, {
+          onError: (error) => {
+            captureInferenceErrorFn({
+              provider,
+              status: getErrorStatus(error),
+              model: body.model,
+              errorKind: classifyInferenceError(error),
+              ...getApiErrorMetadata(error),
+              distinctId: ctx.user.id,
+              phase: 'stream',
+            })
+          },
+        })
 
         // Merge rate-limit headers (set by middleware on ctx.set.headers) into the
         // streaming Response so clients can read them. Elysia skips ctx.set.headers
@@ -198,18 +219,15 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
 
         return new Response(stream, { headers: responseHeaders })
       } catch (error) {
-        recordLatency(getErrorStatus(error), nowFn())
-        // Keep failures diagnosable using body-free structured metadata only.
         const status = getErrorStatus(error)
-        const apiError = error instanceof APIError ? error : undefined
+        recordLatency(status, nowFn())
+        // Keep failures diagnosable using body-free structured metadata only.
         captureInferenceErrorFn({
           provider,
           status,
           model: body.model,
           errorKind: classifyInferenceError(error),
-          errorType: apiError?.type,
-          errorCode: apiError?.code ?? undefined,
-          requestId: apiError?.requestID ?? undefined,
+          ...getApiErrorMetadata(error),
           distinctId: ctx.user.id,
         })
         if (error instanceof APIConnectionTimeoutError) {

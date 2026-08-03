@@ -2,14 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
+import { LogoutModal } from '@/components/logout-modal'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandList } from '@/components/ui/command'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
 import { trackEvent } from '@/lib/posthog'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import type { PaletteCommand } from '../commands/types'
+import { useCommands } from '../commands/use-commands'
 import { searchEntities } from '../registry'
 import type { SearchEntityType, SearchResult } from '../types'
 import { useSearch } from '../use-search'
+import { CommandActionItem } from './command-item'
 import { entityLabels } from './entity-meta'
 import { RecentChatsGroup } from './recent-chats-group'
 import { SearchResultItem } from './search-result-item'
@@ -39,6 +45,21 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
   const { results, isLoading } = useSearch(hasQuery ? trimmedQuery : '')
   const groups = useMemo(() => (hasQuery ? groupByEntity(results) : []), [hasQuery, results])
 
+  const [logoutOpen, setLogoutOpen] = useState(false)
+  const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
+  const deleteAllChats = useDeleteAllChats()
+
+  const commandOpts = useMemo(
+    () => ({
+      onSignOut: () => setLogoutOpen(true),
+      onClearAllChats: () => deleteAllChatsDialogRef.current?.open(),
+    }),
+    [],
+  )
+  const commands = useCommands(commandOpts)
+  const navCommands = commands.filter((command) => command.section === 'navigation')
+  const actionCommands = commands.filter((command) => command.section === 'actions')
+
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {
@@ -58,38 +79,83 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
     [handleOpenChange, navigate],
   )
 
+  const handleCommand = useCallback(
+    (command: PaletteCommand) => {
+      handleOpenChange(false)
+      trackEvent('search_command_run', { commandId: command.id })
+      if ('to' in command) {
+        navigate(command.to)
+        return
+      }
+      void command.run()
+    },
+    [handleOpenChange, navigate],
+  )
+
+  const handleClearAllChatsConfirm = useCallback(async () => {
+    await deleteAllChats()
+    deleteAllChatsDialogRef.current?.close()
+  }, [deleteAllChats])
+
+  const commandSections = (
+    <>
+      {navCommands.length > 0 ? (
+        <CommandGroup heading="Go to">
+          {navCommands.map((command) => (
+            <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
+          ))}
+        </CommandGroup>
+      ) : null}
+      {actionCommands.length > 0 ? (
+        <CommandGroup heading="Actions">
+          {actionCommands.map((command) => (
+            <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
+          ))}
+        </CommandGroup>
+      ) : null}
+    </>
+  )
+
   return (
-    <CommandDialog
-      open={open}
-      onOpenChange={handleOpenChange}
-      title="Search"
-      description="Search across chats, models, skills, agents, and more"
-      className="rounded-2xl"
-    >
-      <CommandInput placeholder="Search chats, models, skills, agents…" value={query} onValueChange={setQuery} />
-      <CommandList>
-        {!hasQuery ? (
-          <RecentChatsGroup onSelect={handleSelect} />
-        ) : isLoading ? (
-          <CommandEmpty>Searching…</CommandEmpty>
-        ) : (
-          <>
-            <CommandEmpty>No results found.</CommandEmpty>
-            {groups.map(({ entity, hits }) => (
-              <CommandGroup key={entity.type} heading={entityLabels[entity.type]}>
-                {hits.map((result) => (
-                  <SearchResultItem
-                    key={`${result.entityType}-${result.id}`}
-                    result={result}
-                    query={trimmedQuery}
-                    onSelect={handleSelect}
-                  />
-                ))}
-              </CommandGroup>
-            ))}
-          </>
-        )}
-      </CommandList>
-    </CommandDialog>
+    <>
+      <CommandDialog
+        open={open}
+        onOpenChange={handleOpenChange}
+        title="Search"
+        description="Search across chats, models, skills, agents, and more"
+        className="rounded-2xl"
+      >
+        <CommandInput placeholder="Search chats, models, skills, agents…" value={query} onValueChange={setQuery} />
+        <CommandList>
+          {!hasQuery ? (
+            <>
+              {commandSections}
+              <RecentChatsGroup onSelect={handleSelect} />
+            </>
+          ) : isLoading ? (
+            <CommandEmpty>Searching…</CommandEmpty>
+          ) : (
+            <>
+              <CommandEmpty>No results found.</CommandEmpty>
+              {commandSections}
+              {groups.map(({ entity, hits }) => (
+                <CommandGroup key={entity.type} heading={entityLabels[entity.type]}>
+                  {hits.map((result) => (
+                    <SearchResultItem
+                      key={`${result.entityType}-${result.id}`}
+                      result={result}
+                      query={trimmedQuery}
+                      onSelect={handleSelect}
+                    />
+                  ))}
+                </CommandGroup>
+              ))}
+            </>
+          )}
+        </CommandList>
+      </CommandDialog>
+      <LogoutModal open={logoutOpen} onOpenChange={setLogoutOpen} />
+      <DeleteAllChatsDialog ref={deleteAllChatsDialogRef} onConfirm={() => void handleClearAllChatsConfirm()} />
+    </>
   )
 }

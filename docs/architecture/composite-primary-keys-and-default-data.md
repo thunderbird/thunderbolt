@@ -12,7 +12,6 @@ Several tables hold data that is **seeded as defaults** when a user first initia
 |---------|------------------|--------|
 | settings| `(key, user_id)` | Setting keys like `theme` or `model_id` are shared; each user has their own value. |
 | models  | `(id, user_id)`  | Default models (e.g. `openai-gpt-4o`) are seeded per user with same ID. |
-| modes   | `(id, user_id)`  | Default modes (e.g. `default-mode`) are seeded per user with same ID. |
 | tasks   | `(id, user_id)`  | Default tasks (e.g. `inbox`) are seeded per user with same ID. |
 | prompts | `(id, user_id)`  | Default automations/prompts are seeded per user with same ID. |
 | model_profiles | `(id, user_id)` | Per-model inference tuning (temperature, nudges, prompt overrides) seeded per user. |

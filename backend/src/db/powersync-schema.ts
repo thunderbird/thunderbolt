@@ -175,6 +175,12 @@ export const triggersTable = powersyncSchema.table(
   (table) => [index('idx_triggers_user_id').on(table.userId)],
 )
 
+/**
+ * LEGACY — the chat-modes feature was removed. No longer synced (dropped from
+ * the sync rules and PowerSync table maps). The def stays so the postgres table
+ * persists until the DROP migration lands, after the powersync service has been
+ * rolled off the modes sync rule. See THU-739.
+ */
 export const modesTable = powersyncSchema.table(
   'modes',
   {
@@ -289,7 +295,6 @@ export const powersyncTablesByName = {
   prompts: promptsTable,
   skills: skillsTable,
   triggers: triggersTable,
-  modes: modesTable,
   model_profiles: modelProfilesTable,
   devices: devicesTable,
   agents: agentsTable,
@@ -318,7 +323,6 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   prompts: promptsTable.id,
   skills: skillsTable.id,
   triggers: triggersTable.id,
-  modes: modesTable.id,
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
   agents: agentsTable.id,
@@ -326,7 +330,7 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
 
 /**
  * Conflict target for each PowerSync table (for INSERT ON CONFLICT).
- * Tables with default data (settings, models, modes, tasks, prompts) use composite primary keys (id/key + user_id)
+ * Tables with default data (settings, models, tasks, prompts) use composite primary keys (id/key + user_id)
  * so each user can have their own row with the same default ID. See docs/composite-primary-keys-and-default-data.md.
  */
 export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> = {
@@ -338,7 +342,6 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   prompts: [promptsTable.id, promptsTable.userId],
   skills: [skillsTable.id, skillsTable.userId],
   triggers: [triggersTable.id],
-  modes: [modesTable.id, modesTable.userId],
   model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],
   devices: [devicesTable.id],
   agents: [agentsTable.id, agentsTable.userId],

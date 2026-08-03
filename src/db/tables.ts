@@ -245,34 +245,6 @@ export const modelProfilesTable = sqliteTable(
   ],
 )
 
-/**
- * LEGACY — the chat-modes feature was removed (chat behavior is the default;
- * Search/Research ship as default skills). The table stays in the synced
- * schema so this client keeps matching the deployed sync rules; dropping it
- * requires the backend + sync-rules PR flow (see AGENTS.md, "Deploying new
- * synced tables"). No application code reads or writes it.
- */
-export const modesTable = sqliteTable(
-  'modes',
-  {
-    id: text('id').primaryKey(),
-    name: text('name'),
-    label: text('label'),
-    icon: text('icon'),
-    systemPrompt: text('system_prompt'),
-    isDefault: integer('is_default').default(0),
-    order: integer('order').default(0),
-    defaultHash: text('default_hash'),
-    deletedAt: text('deleted_at'),
-    userId: text('user_id'),
-  },
-  (table) => [
-    index('idx_modes_active')
-      .on(table.id)
-      .where(sql`${table.deletedAt} IS NULL`),
-  ],
-)
-
 /** Synced via PowerSync. No token. Used for device list and revoke access. */
 export const devicesTable = sqliteTable('devices', {
   id: text('id').primaryKey(),

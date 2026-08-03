@@ -69,8 +69,8 @@ const modeForSkillEdit = (id: string): Mode => (isWidgetSkillId(id) ? 'detail' :
  * Action type for the SkillsView state machine. Each action describes a
  * user-meaningful event (a click, a confirm, a successful mutation) — the
  * reducer maps it to the minimal state delta and any compound transitions
- * (e.g. `JUMP_TO_DEPENDENT` clears the dialog, sets active, sets mode,
- * and on mobile slides the panel in, all in one dispatch).
+ * (e.g. `SUBMIT_SUCCESS` clears form state, sets active, and returns to
+ * detail mode, all in one dispatch).
  */
 export type SkillsViewAction =
   /** User selected a skill in the list while in `detail` mode. */
@@ -94,8 +94,6 @@ export type SkillsViewAction =
   | { type: 'CLOSE_DELETE' }
   /** Close the dependents confirm dialog (cancelled or confirmed). */
   | { type: 'CLOSE_DEPENDENTS' }
-  /** User clicked a row in the dependents dialog — open that skill. */
-  | { type: 'JUMP_TO_DEPENDENT'; id: string }
   /** Form reports its dirty state changed. */
   | { type: 'DIRTY_CHANGED'; dirty: boolean }
   /** Form submit succeeded — return to detail mode on the (possibly new) skill. */
@@ -188,22 +186,6 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
 
     case 'CLOSE_DEPENDENTS':
       return { ...state, pendingDependents: null }
-
-    case 'JUMP_TO_DEPENDENT':
-      // Clear form state before opening the dependent. Editable skills get a
-      // fresh form; widget contracts stay in read-only detail.
-      return {
-        ...state,
-        activeId: action.id,
-        mode: modeForSkillEdit(action.id),
-        pendingDependents: null,
-        isDirty: false,
-        slugError: null,
-        submitError: null,
-        // The dependents dialog can be opened from a list-row action while
-        // panelView is still 'list'; opening the panel here reveals the target.
-        panelView: 'panel',
-      }
 
     case 'DIRTY_CHANGED':
       return { ...state, isDirty: action.dirty }

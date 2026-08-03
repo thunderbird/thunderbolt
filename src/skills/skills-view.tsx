@@ -167,10 +167,6 @@ export const SkillsView = () => {
     })
   }
 
-  const onJumpToDependent = (id: string) => {
-    dispatch({ type: 'JUMP_TO_DEPENDENT', id })
-  }
-
   const handleSubmit = async (values: SkillFormValues) => {
     try {
       if (mode === 'create') {
@@ -290,7 +286,6 @@ export const SkillsView = () => {
           targetName={skillDisplayName(pendingDependents.skill)}
           dependents={pendingDependents.dependents}
           onConfirm={confirmPendingDependents}
-          onJumpToDependent={onJumpToDependent}
         />
       )}
       {pendingDelete && (

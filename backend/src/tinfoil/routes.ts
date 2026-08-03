@@ -278,7 +278,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         captureInferenceErrorFn({
           provider: 'tinfoil',
           status: upstream.status,
-          errorKind: errorKindFromStatus(upstream.status) ?? 'unknown',
+          errorKind: errorKindFromStatus(upstream.status),
           subpath,
           distinctId,
         })

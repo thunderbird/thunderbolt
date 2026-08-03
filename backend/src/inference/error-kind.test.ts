@@ -20,8 +20,10 @@ describe('classifyInferenceError', () => {
       expected: 'schema_validation',
       error: createApiError(400, 'invalid_schema', 'invalid_request_error'),
     },
-    { expected: 'rate_limit', error: createApiError(429, undefined, 'invalid_request_error') },
-    { expected: 'auth', error: createApiError(401) },
+    { expected: 'rate_limit', error: createApiError(400, 'rate_limit_exceeded') },
+    { expected: 'rate_limit', error: createApiError(400, 'rate_limit_error') },
+    { expected: 'auth', error: createApiError(400, 'authentication_error') },
+    { expected: 'auth', error: createApiError(400, 'invalid_api_key') },
     { expected: 'bad_request', error: createApiError(400, undefined, 'invalid_request_error') },
     { expected: 'connection', error: new APIConnectionError({ message: 'provider unavailable' }) },
     { expected: 'upstream_error', error: createApiError(503) },
@@ -33,12 +35,6 @@ describe('classifyInferenceError', () => {
       expect(classifyInferenceError(error)).toBe(expected)
     })
   }
-
-  it('uses bounded message matching when structured metadata is generic', () => {
-    expect(
-      classifyInferenceError(createApiError(400, undefined, 'invalid_request_error', 'maximum context exceeded')),
-    ).toBe('context_length')
-  })
 
   it('classifies the Anthropic prompt-too-long message as context_length', () => {
     expect(
@@ -58,6 +54,8 @@ describe('errorKindFromStatus', () => {
     { expected: 'upstream_error', status: 599 },
     { expected: 'bad_request', status: 400 },
     { expected: 'bad_request', status: 422 },
+    { expected: 'bad_request', status: 404 },
+    { expected: 'bad_request', status: 409 },
   ]
 
   for (const { expected, status } of cases) {
@@ -65,8 +63,4 @@ describe('errorKindFromStatus', () => {
       expect(errorKindFromStatus(status)).toBe(expected)
     })
   }
-
-  it('returns undefined for an unmapped status', () => {
-    expect(errorKindFromStatus(404)).toBeUndefined()
-  })
 })

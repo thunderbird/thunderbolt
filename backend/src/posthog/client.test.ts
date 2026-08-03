@@ -352,6 +352,7 @@ describe('captureInferenceError', () => {
       errorType: 'invalid_request_error',
       errorCode: 'context_length_exceeded',
       requestId: 'provider-request-123',
+      phase: 'stream',
     })
 
     expect(capture).toHaveBeenCalledWith({
@@ -365,6 +366,7 @@ describe('captureInferenceError', () => {
         errorType: 'invalid_request_error',
         errorCode: 'context_length_exceeded',
         requestId: 'provider-request-123',
+        phase: 'stream',
       },
     })
     configuredSpy.mockRestore()

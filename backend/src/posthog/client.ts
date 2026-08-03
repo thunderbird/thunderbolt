@@ -72,6 +72,7 @@ export type InferenceErrorEvent = {
   errorCode?: string
   requestId?: string
   subpath?: string
+  phase?: 'stream'
 }
 
 /**
@@ -89,6 +90,7 @@ export const captureInferenceError = ({
   errorCode,
   requestId,
   subpath,
+  phase,
 }: InferenceErrorEvent): void => {
   if (!isPostHogConfigured()) {
     return
@@ -105,6 +107,7 @@ export const captureInferenceError = ({
       ...(errorCode !== undefined && { errorCode }),
       ...(requestId !== undefined && { requestId }),
       ...(subpath !== undefined && { subpath }),
+      ...(phase !== undefined && { phase }),
     },
   })
 }

@@ -225,6 +225,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       upstreamHeadersTimeoutMs,
     )
     const upstreamFetchStartedAt = nowFn()
+    let hasCapturedInferenceError = false
 
     // Bun-specific fetch options: `duplex: 'half'` enables streaming request
     // bodies; `decompress: false` keeps the HPKE-encrypted bytes opaque on
@@ -252,7 +253,21 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             idleTimeoutMs: upstreamIdleTimeoutMs,
             onIdle: 'error',
             idleError: upstreamIdleTimeoutError,
-            onAbort: () => upstreamController.abort(upstreamIdleTimeoutError),
+            onAbort: (reason) => {
+              upstreamController.abort(upstreamIdleTimeoutError)
+              if (reason !== 'idle' || request.signal.aborted || hasCapturedInferenceError) {
+                return
+              }
+              hasCapturedInferenceError = true
+              captureInferenceErrorFn({
+                provider: 'tinfoil',
+                status: 504,
+                errorKind: 'connection',
+                subpath,
+                distinctId,
+                phase: 'stream',
+              })
+            },
             // Bun serializes controller.error() after headers as clean chunked EOF.
             // Keep body pending and let native request timeout reset socket instead.
             onIdleError: server ? () => server.timeout(request, abruptResponseCloseTimeoutSeconds) : undefined,
@@ -275,6 +290,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       // status + subpath are readable here. Record non-2xx upstreams so a Tinfoil
       // failure stays diagnosable from telemetry without touching the stream.
       if (!upstream.ok) {
+        hasCapturedInferenceError = true
         captureInferenceErrorFn({
           provider: 'tinfoil',
           status: upstream.status,
@@ -295,7 +311,8 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         upstreamFetchStartedAt,
       })
 
-      if (!isClientAbort) {
+      if (!isClientAbort && !hasCapturedInferenceError) {
+        hasCapturedInferenceError = true
         captureInferenceErrorFn({
           provider: 'tinfoil',
           status,

@@ -560,12 +560,38 @@
   }
 }
 
+/* Transient highlight for a message jumped-to from the Cmd+K search palette.
+   A soft brand-tinted fill plus ring flashes on, holds briefly, then fades to
+   transparent so the row settles back to its normal appearance. The tint is
+   derived from --color-brand via color-mix (kept low so it reads as a gentle
+   pulse, not a selection), which resolves per theme — legible on both the
+   light and dark chat backgrounds. */
+@keyframes message-flash {
+  0% {
+    background-color: color-mix(in oklab, var(--color-brand) 14%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-brand) 28%, transparent);
+  }
+  25% {
+    background-color: color-mix(in oklab, var(--color-brand) 14%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-brand) 28%, transparent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
 @utility animate-accordion-down {
   animation: accordion-down 0.2s ease-out;
 }
 
 @utility animate-accordion-up {
   animation: accordion-up 0.2s ease-out;
+}
+
+@utility animate-message-flash {
+  border-radius: var(--radius-2xl);
+  animation: message-flash 1.5s ease-out;
 }
 
 @utility scrollbar-hide {

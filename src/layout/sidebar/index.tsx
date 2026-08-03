@@ -8,13 +8,13 @@ import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
-import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
+import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { type MouseEvent, useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -28,8 +28,9 @@ export default function Sidebar() {
   const db = useDatabase()
   const navigate = useNavigate()
   const location = useLocation()
-  const { closeMobileSidebar, state, toggleSidebar } = useSidebar()
+  const { closeMobileSidebar, state } = useSidebar()
   const { isMobile } = useIsMobile()
+  const { open: openSearchPalette } = useSearchPalette()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
@@ -39,11 +40,7 @@ export default function Sidebar() {
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
-  const [showSearch, setShowSearch] = useState(false)
   const { activeSection, setActiveSection } = useSidebarSection(location.pathname)
-  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
@@ -55,13 +52,7 @@ export default function Sidebar() {
     placeholderData: (previousData) => previousData,
   })
 
-  const chatThreads = useMemo(() => {
-    if (!data) {
-      return []
-    }
-
-    return data.filter((thread) => thread.title?.toLowerCase().includes(debouncedSearchQuery?.toLowerCase()))
-  }, [data, debouncedSearchQuery])
+  const chatThreads = useMemo(() => data ?? [], [data])
 
   const deleteChatMutation = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
@@ -135,27 +126,6 @@ export default function Sidebar() {
     void navigateAndCloseSidebar(path)
   }
 
-  const handleSearchClick = (e?: MouseEvent) => {
-    e?.preventDefault()
-    e?.stopPropagation()
-
-    if (isCollapsed) {
-      toggleSidebar()
-      setShowSearch(true)
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus()
-      })
-    } else if (!showSearch) {
-      setShowSearch(true)
-      // Focus synchronously inside the tap's event handler — the input is
-      // already in the DOM (just collapsed), and staying within the user
-      // gesture is what lets the mobile keyboard open immediately.
-      searchInputRef.current?.focus()
-    } else {
-      setShowSearch(false)
-    }
-  }
-
   return (
     <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <TooltipProvider>
@@ -171,10 +141,6 @@ export default function Sidebar() {
             isCollapsed={isCollapsed}
             chatThreads={chatThreads}
             currentChatThreadId={currentChatThreadId}
-            searchQuery={searchQuery}
-            debouncedSearchQuery={debouncedSearchQuery}
-            showSearch={showSearch}
-            searchInputRef={searchInputRef}
             deleteAllChatsMutation={deleteAllChatsMutation}
             deleteChatMutation={deleteChatMutation}
             deleteAllChatsDialogRef={deleteAllChatsDialogRef}
@@ -187,8 +153,7 @@ export default function Sidebar() {
             onTasksClick={() => handleNavigate('/tasks')}
             onRename={handleRename}
             onChatClick={handleChatClick}
-            onSearchClick={handleSearchClick}
-            onSearchQueryChange={setSearchQuery}
+            onSearchClick={openSearchPalette}
           />
         )}
       </TooltipProvider>

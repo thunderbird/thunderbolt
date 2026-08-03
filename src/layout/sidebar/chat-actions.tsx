@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { SidebarMenuButton } from '@/components/ui/sidebar'
-import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
 import type { ChatActionsProps } from './types'
 
@@ -12,8 +11,6 @@ const actionButtonClass =
 
 export const ChatActions = ({
   isCollapsed,
-  debouncedSearchQuery,
-  showSearch,
   deleteAllChatsMutation,
   deleteAllChatsDialogRef,
   onSearchClick,
@@ -24,15 +21,7 @@ export const ChatActions = ({
 
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <SidebarMenuButton
-        onClick={(e) => onSearchClick(e)}
-        aria-label="Search chats"
-        className={cn(
-          actionButtonClass,
-          showSearch && 'bg-sidebar-accent',
-          debouncedSearchQuery && 'bg-primary/15 text-primary hover:bg-primary/25 hover:text-primary',
-        )}
-      >
+      <SidebarMenuButton onClick={onSearchClick} aria-label="Search chats" className={actionButtonClass}>
         <Search className="size-[var(--icon-size-default)]" />
       </SidebarMenuButton>
       <SidebarMenuButton

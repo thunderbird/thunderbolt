@@ -48,10 +48,6 @@ export const supportedModels: Record<string, ModelConfig> = {
     provider: 'mistral',
     internalName: 'mistral-large-2512',
   },
-  'sonnet-4.5': {
-    provider: 'anthropic',
-    internalName: 'claude-sonnet-4-5',
-  },
   'opus-4.8': {
     provider: 'anthropic',
     internalName: 'claude-opus-4-8',

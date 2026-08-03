@@ -44,6 +44,7 @@ import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
+import { maybeCompressAttachment } from '@/files/compress/compress-attachment'
 import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
@@ -441,19 +442,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             setAttachError(`"${file.name}" isn't a supported file type.`)
             continue
           }
-          if (file.size > maxAttachmentBytes) {
-            setAttachError(`"${file.name}" is too large (max ${maxAttachmentBytes / 1024 / 1024}MB).`)
+          // Shrink large images/PDFs before the cap check, so a compressible
+          // photo over the limit can slip under it instead of being rejected
+          // (THU-671). Falls back to the original when it can't help.
+          const prepared = await maybeCompressAttachment(file)
+          if (prepared.size > maxAttachmentBytes) {
+            setAttachError(`"${prepared.name}" is too large (max ${maxAttachmentBytes / 1024 / 1024}MB).`)
             continue
           }
           const localFileId = crypto.randomUUID()
           try {
             await putAttachment({
               id: localFileId,
-              filename: file.name,
-              mimeType: file.type,
-              size: file.size,
+              filename: prepared.name,
+              mimeType: prepared.type,
+              size: prepared.size,
               createdAt: Date.now(),
-              blob: file,
+              blob: prepared,
             })
           } catch (error) {
             // IndexedDB can reject when its storage quota is exceeded or it's
@@ -461,10 +466,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // promise reject silently — otherwise no chip appears and no banner
             // shows. Stop here: subsequent writes would hit the same failure.
             console.error('Failed to store attachment locally:', error)
-            setAttachError(`Couldn't attach "${file.name}" — your browser's storage is full or unavailable.`)
+            setAttachError(`Couldn't attach "${prepared.name}" — your browser's storage is full or unavailable.`)
             break
           }
-          setAttachments((prev) => [...prev, { localFileId, filename: file.name, mimeType: file.type }])
+          setAttachments((prev) => [...prev, { localFileId, filename: prepared.name, mimeType: prepared.type }])
           count++
         }
       },

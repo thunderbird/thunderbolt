@@ -30,7 +30,7 @@ const meta = {
     },
   },
   tags: ['autodocs'],
-  args: { onConfirm: fn(), onOpenChange: fn(), onJumpToDependent: fn() },
+  args: { onConfirm: fn(), onOpenChange: fn() },
 } satisfies Meta<typeof DependentsDialog>
 
 export default meta

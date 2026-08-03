@@ -8,6 +8,8 @@ import {
   collectAskEntriesFromCache,
   evaluateAnswer,
   formatAskResponsesNote,
+  isGradedMode,
+  isMultiSelectMode,
   optionLetter,
   turnTextForAnswer,
   type AskCacheEntry,
@@ -47,6 +49,26 @@ describe('evaluateAnswer', () => {
 
   test('choice: no designated answer', () => {
     expect(evaluateAnswer({ ...singleAsk, mode: 'choice' }, new Set(['a']))).toBeNull()
+  })
+
+  test('choices: no designated answer even with several selected', () => {
+    expect(evaluateAnswer({ ...multiAsk, mode: 'choices' }, new Set(['a', 'b']))).toBeNull()
+  })
+})
+
+describe('mode helpers', () => {
+  test('isGradedMode: only single/multiple are graded', () => {
+    expect(isGradedMode('single')).toBe(true)
+    expect(isGradedMode('multiple')).toBe(true)
+    expect(isGradedMode('choice')).toBe(false)
+    expect(isGradedMode('choices')).toBe(false)
+  })
+
+  test('isMultiSelectMode: multiple and choices allow several selections', () => {
+    expect(isMultiSelectMode('multiple')).toBe(true)
+    expect(isMultiSelectMode('choices')).toBe(true)
+    expect(isMultiSelectMode('single')).toBe(false)
+    expect(isMultiSelectMode('choice')).toBe(false)
   })
 })
 
@@ -134,6 +156,19 @@ describe('formatAskResponsesNote', () => {
     expect(note).toContain('"What next?" — chose "Draft a reply"')
   })
 
+  test('reports a multi-select (choices) response with every pick', () => {
+    const note = formatAskResponsesNote([
+      {
+        prompt: 'Which do you like?',
+        mode: 'choices',
+        selectedIds: ['a', 'b'],
+        chosen: ['Coffee', 'Tea'],
+        matched: null,
+      },
+    ])
+    expect(note).toContain('"Which do you like?" — chose "Coffee", "Tea"')
+  })
+
   test('reports legacy free-text answers verbatim', () => {
     const note = formatAskResponsesNote([
       {
@@ -159,6 +194,11 @@ describe('formatAskResponsesNote', () => {
 describe('turnTextForAnswer', () => {
   test('choice dispatches the chosen option text', () => {
     expect(turnTextForAnswer('choice', ['Draft a reply'])).toBe('Draft a reply')
+  })
+
+  test('choices dispatches all chosen option texts, comma-joined', () => {
+    expect(turnTextForAnswer('choices', ['Coffee', 'Tea'])).toBe('Coffee, Tea')
+    expect(turnTextForAnswer('choices', [])).toBeNull()
   })
 
   test('graded modes never dispatch a turn (no quiz loop)', () => {

@@ -169,12 +169,11 @@ describe('SkillsView state machine', () => {
       fireEvent.click(switchA)
       await flush()
 
-      // Scope dialog assertions to the dialog itself — "Skill B" also appears
-      // in the list row underneath, which makes a bare getByText ambiguous.
-      // Both the title and dependent rows use display names only.
+      // Scope dialog assertions to the dialog itself, since the skill list
+      // underneath repeats display names.
       const dialog = await waitForElement(() => screen.queryByRole('alertdialog'))
       expect(within(dialog).getByText('Disable Skill A?')).toBeInTheDocument()
-      expect(within(dialog).getByText('Skill B')).toBeInTheDocument()
+      expect(within(dialog).getByText(/One skill references this/)).toBeInTheDocument()
       expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
 
       // /a is still enabled — the user hasn't confirmed.

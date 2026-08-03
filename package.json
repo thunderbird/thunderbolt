@@ -137,6 +137,7 @@
     "mammoth": "^1.12.0",
     "maplibre-gl": "^5.24.0",
     "path-browserify": "^1.0.1",
+    "pdf-lib": "^1.17.1",
     "posthog-js": "^1.288.1",
     "qrcode": "^1.5.4",
     "react": "^19.2.1",

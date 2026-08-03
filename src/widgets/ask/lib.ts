@@ -4,9 +4,11 @@
 
 /**
  * Ask widget interaction modes:
- * - `single`   — exactly one designated answer (radio-style)
- * - `multiple` — one or more designated answers (checkbox-style)
- * - `choice`   — no designated answer, an open prompt like "What do you want to do next?"
+ * - `single`   — exactly one designated answer (radio-style, graded)
+ * - `multiple` — one or more designated answers (checkbox-style, graded)
+ * - `choice`   — no designated answer, user picks one (e.g. "What do you want to do next?")
+ * - `choices`  — no designated answer, user picks one or more (a preference/opinion
+ *                question, e.g. "Which of these do you like?")
  *
  * (A `free` text-response mode existed briefly and was removed — typing an
  * answer belongs in the regular composer. Historical `free` widgets still
@@ -16,8 +18,15 @@
  * The array is the single source for the schema's `z.enum`, so the type and
  * the wire validation can't drift.
  */
-export const askModes = ['single', 'multiple', 'choice'] as const
+export const askModes = ['single', 'multiple', 'choice', 'choices'] as const
 export type AskMode = (typeof askModes)[number]
+
+/** Graded modes have designated answer(s) and reveal right/wrong feedback on
+ *  submit. Ungraded modes (`choice` / `choices`) just record the selection. */
+export const isGradedMode = (mode: AskMode): boolean => mode === 'single' || mode === 'multiple'
+
+/** Modes where the user may select more than one option. */
+export const isMultiSelectMode = (mode: AskMode): boolean => mode === 'multiple' || mode === 'choices'
 
 export type AskOption = {
   id: string
@@ -41,10 +50,10 @@ export type AskData = {
 
 /**
  * Compares a set of selected option ids against the designated answer(s).
- * Returns `null` for modes without a designated answer (`choice`).
+ * Returns `null` for ungraded modes without a designated answer (`choice` / `choices`).
  */
 export const evaluateAnswer = (data: AskData, selectedIds: Set<string>): boolean | null => {
-  if (data.mode === 'choice') {
+  if (!isGradedMode(data.mode)) {
     return null
   }
 
@@ -97,7 +106,7 @@ export type AskCacheEntry = {
   selectedIds: string[]
   /** The option texts the user chose — used to report the response to the model. */
   chosen: string[]
-  /** Whether the selection matched the designated answer; `null` for `choice`. */
+  /** Whether the selection matched the designated answer; `null` for ungraded modes (`choice` / `choices`). */
   matched: boolean | null
   /** The typed answer of a legacy `free` entry — still reported to the model. */
   text?: string
@@ -145,16 +154,19 @@ export const formatAskResponsesNote = (entries: AskCacheEntry[]): string | null 
 
 /**
  * The user-turn text to dispatch when an ask is submitted, or `null` if none
- * should be sent. `choice` (an action pick) is a conversational response the
- * model should act on, so it produces a turn; graded `single`/`multiple`
- * reveal the answer client-side and produce none (auto-sending them would
- * goad single-prompt backends into endlessly asking the next question).
- * Empty input produces `null`.
+ * should be sent. Ungraded modes (`choice` / `choices`) are conversational
+ * responses the model should act on, so they produce a turn — the chosen option
+ * text(s), comma-joined. Graded `single`/`multiple` reveal the answer
+ * client-side and produce none (auto-sending them would goad single-prompt
+ * backends into endlessly asking the next question). Empty input produces `null`.
  */
 export const turnTextForAnswer = (mode: AskMode, chosen: string[]): string | null => {
-  if (mode !== 'choice') {
+  if (isGradedMode(mode)) {
     return null
   }
-  const answer = (chosen[0] ?? '').trim()
+  const answer = chosen
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .join(', ')
   return answer || null
 }

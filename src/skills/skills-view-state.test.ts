@@ -217,7 +217,7 @@ describe('skillsViewReducer', () => {
     })
   })
 
-  describe('OPEN_DEPENDENTS / JUMP_TO_DEPENDENT', () => {
+  describe('OPEN_DEPENDENTS', () => {
     it('OPEN_DEPENDENTS snapshots the action target and dependents list', () => {
       const target = skill('a', 'foo')
       const dep = skill('b', 'bar')
@@ -229,41 +229,6 @@ describe('skillsViewReducer', () => {
       expect(next.pendingDependents?.skill).toBe(target)
       expect(next.pendingDependents?.dependents).toEqual([dep])
       expect(next.activeId).toBe('a')
-    })
-
-    it('JUMP_TO_DEPENDENT switches to edit on the dependent, closes the dialog', () => {
-      const open: SkillsViewState = {
-        ...initialSkillsViewState,
-        pendingDependents: { action: 'disable', skill: skill('a', 'foo'), dependents: [skill('b', 'bar')] },
-      }
-      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b' })
-      expect(next.mode).toBe('edit')
-      expect(next.activeId).toBe('b')
-      expect(next.pendingDependents).toBeNull()
-    })
-
-    it('JUMP_TO_DEPENDENT opens read-only detail when the dependent is a widget skill', () => {
-      const open: SkillsViewState = {
-        ...initialSkillsViewState,
-        pendingDependents: { action: 'disable', skill: skill('a', 'foo'), dependents: [] },
-      }
-      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: defaultSkillWeather.id })
-
-      expect(next.mode).toBe('detail')
-      expect(next.activeId).toBe(defaultSkillWeather.id)
-      expect(next.pendingDependents).toBeNull()
-    })
-
-    it('opens the panel so the edit form is visible even when jumping from a list-row action', () => {
-      // The dependents dialog can open from the list (panelView 'list') on
-      // both mobile and desktop — the jump must reveal the edit surface.
-      const open: SkillsViewState = {
-        ...initialSkillsViewState,
-        panelView: 'list',
-        pendingDependents: { action: 'delete', skill: skill('a', 'foo'), dependents: [skill('b', 'bar')] },
-      }
-      const next = skillsViewReducer(open, { type: 'JUMP_TO_DEPENDENT', id: 'b' })
-      expect(next.panelView).toBe('panel')
     })
   })
 

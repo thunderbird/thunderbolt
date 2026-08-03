@@ -15,7 +15,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
-import { Flame, Loader2, Search } from 'lucide-react'
+import { Loader2, Search, Trash2 } from 'lucide-react'
 import { useLayoutEffect, useRef, useState, type Ref } from 'react'
 import { Virtualizer, type CustomContainerComponentProps, type CustomItemComponentProps } from 'virtua'
 import { ChatActions } from './chat-actions'
@@ -211,7 +211,7 @@ export const ChatList = ({
             {deleteAllChatsMutation.isPending ? (
               <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
             ) : (
-              <Flame className="size-[var(--icon-size-default)]" />
+              <Trash2 className="size-[var(--icon-size-default)]" />
             )}
           </SidebarMenuButton>
         </SidebarMenuItem>

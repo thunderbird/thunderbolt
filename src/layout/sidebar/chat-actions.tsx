@@ -4,7 +4,7 @@
 
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
-import { Loader2, Search, Trash2 } from 'lucide-react'
+import { Flame, Loader2, Search } from 'lucide-react'
 import type { ChatActionsProps } from './types'
 
 const actionButtonClass =
@@ -44,7 +44,7 @@ export const ChatActions = ({
         {deleteAllChatsMutation.isPending ? (
           <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
         ) : (
-          <Trash2 className="size-[var(--icon-size-default)]" />
+          <Flame className="size-[var(--icon-size-default)]" />
         )}
       </SidebarMenuButton>
     </div>

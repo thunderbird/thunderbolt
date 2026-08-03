@@ -49,6 +49,7 @@ import { UpdateNotification } from './components/update-notification'
 import { WindowChrome } from '@/components/window-chrome'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
+import { SearchPaletteProvider } from '@/search/search-palette-context'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
@@ -176,9 +177,11 @@ const AppContent = ({ initData }: { initData: InitData }) => {
 
   return (
     <BrowserRouter>
-      <AppRoutes initData={initData} />
-      <UpdateNotification />
-      <PendingDeviceModal />
+      <SearchPaletteProvider>
+        <AppRoutes initData={initData} />
+        <UpdateNotification />
+        <PendingDeviceModal />
+      </SearchPaletteProvider>
     </BrowserRouter>
   )
 }

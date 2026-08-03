@@ -34,6 +34,21 @@ const groupByEntity = (results: SearchResult[]) =>
     .filter((group) => group.hits.length > 0)
 
 /**
+ * Matches a static command against the query: every whitespace token must
+ * appear (case-insensitive) in the command's title or keywords. cmdk's built-in
+ * filter is disabled on the palette (it would also re-filter — and wrongly hide
+ * — the already-FTS-filtered result rows), so we filter the command list here.
+ */
+const commandMatchesQuery = (command: PaletteCommand, query: string): boolean => {
+  const haystack = `${command.title} ${command.keywords?.join(' ') ?? ''}`.toLowerCase()
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
+    .every((token) => haystack.includes(token))
+}
+
+/**
  * The Cmd+K command palette modal. Owns the debounced query, drives `useSearch`,
  * and renders grouped results (or the command groups when the query is empty).
  */
@@ -59,9 +74,10 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
     [],
   )
   const commands = useCommands(commandOpts)
-  const navCommands = commands.filter((command) => command.section === 'navigation')
-  const actionCommands = commands.filter((command) => command.section === 'actions')
-  const createCommands = commands.filter((command) => command.section === 'create')
+  const visibleCommands = hasQuery ? commands.filter((command) => commandMatchesQuery(command, trimmedQuery)) : commands
+  const navCommands = visibleCommands.filter((command) => command.section === 'navigation')
+  const actionCommands = visibleCommands.filter((command) => command.section === 'actions')
+  const createCommands = visibleCommands.filter((command) => command.section === 'create')
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -148,6 +164,9 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
         title="Search"
         description="Search across chats, models, skills, agents, and more"
         className="rounded-2xl"
+        // FTS already filters result rows and we filter commands manually; cmdk's
+        // fuzzy filter would otherwise hide valid stemmed/prefixed FTS matches.
+        shouldFilter={false}
       >
         <CommandInput placeholder="Search chats, models, skills, agents…" value={query} onValueChange={setQuery} />
         <CommandList>

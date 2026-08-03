@@ -217,4 +217,36 @@ describe('SearchPalette commands', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/chats/thread-9')
     expect(screen.getByTestId('location')).toHaveAttribute('data-state', 'null')
   })
+
+  it('keeps FTS result rows that cmdk fuzzy filtering would hide', async () => {
+    // "GPT model" is a valid FTS hit for "models" (stemmed/plural), but the raw
+    // query is not a subsequence of the row text — cmdk's built-in filter would
+    // drop it. shouldFilter={false} must keep it visible.
+    searchResults = [{ id: 'gpt', entityType: 'model', title: 'GPT model', snippet: '', to: '/settings/models' }]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'models' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    expect(screen.getByRole('option', { name: /GPT model/ })).toBeInTheDocument()
+    expect(screen.queryByText('No results found.')).not.toBeInTheDocument()
+  })
+
+  it('filters the static command list by the query itself (cmdk filter is off)', async () => {
+    buildCommands = () => [
+      { id: 'nav-models', title: 'Models', icon: Bot, section: 'navigation', to: '/settings/models' },
+      { id: 'nav-agents', title: 'All agents', icon: Bot, section: 'navigation', to: '/settings/agents' },
+    ]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'models' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    expect(screen.getByRole('option', { name: /Models/ })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /All agents/ })).not.toBeInTheDocument()
+  })
 })

@@ -13,6 +13,7 @@ import { getWebOsPlatform, isMacDesktop, isTauri, isWebDesktopPlatform } from '@
 import { trackEvent } from '@/lib/posthog'
 import { useTheme, type Theme } from '@/lib/theme-provider'
 import { Cloud, CloudOff, Download, LogOut, MessageCirclePlus, PanelLeft, RefreshCw, Trash2 } from 'lucide-react'
+import { buildCreateCommands } from './create-commands'
 import { navigationCommands, type NavGate } from './navigation'
 import type { PaletteCommand, UseCommandsOptions } from './types'
 
@@ -149,7 +150,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     },
   ]
 
-  return [...navCommands, ...actionCommands]
+  return [...navCommands, ...buildCreateCommands(), ...actionCommands]
 }
 
 /**

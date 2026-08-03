@@ -20,7 +20,7 @@
  * The captured group is the bare slug (no leading `/`), which is also how
  * skills are stored after THU-533 (the `/` is display only).
  */
-const tokenRegex = /(?<=^|\s)\/([\w-]+)(?=\s|$)/g
+export const skillTokenRegex = /(?<=^|\s)\/([\w-]+)(?=\s|$)/g
 
 /**
  * Resolve a bare slug to a skill's instruction text, or `null` if the slug
@@ -54,7 +54,7 @@ export type ParsedSkills = {
 export const parseSkillTokens = (text: string, resolve: SkillResolver): ParsedSkills => {
   const seen = new Set<string>()
   const systemMessages: string[] = []
-  for (const match of text.matchAll(tokenRegex)) {
+  for (const match of text.matchAll(skillTokenRegex)) {
     const slug = match[1]
     if (!slug || seen.has(slug)) {
       continue

@@ -8,10 +8,10 @@ import type { LucideIcon } from 'lucide-react'
  * A command either navigates to a route (`to`) or runs an imperative
  * side effect (`run`). Exactly one variant applies per command.
  */
-export type CommandAction = { to: string } | { run: () => void | Promise<void> }
+export type CommandAction = { to: string; state?: Record<string, unknown> } | { run: () => void | Promise<void> }
 
 /** Logical grouping used to render section headers in the palette. */
-export type CommandSection = 'navigation' | 'actions'
+export type CommandSection = 'navigation' | 'actions' | 'create'
 
 /**
  * A single non-entity command row in the Cmd+K palette. Commands are a

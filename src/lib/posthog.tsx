@@ -217,6 +217,7 @@ export type EventType =
   | 'search_palette_open'
   | 'search_result_select'
   | 'search_command_run'
+  | 'search_action_run'
   // Anonymous session & promotion
   | 'anonymous_user_promoted'
   // Sync Diagnostics

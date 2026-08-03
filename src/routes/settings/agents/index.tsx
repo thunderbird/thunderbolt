@@ -17,6 +17,7 @@ import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase } from '@/contexts'
 import { deleteAgent, updateAgent, useAllAgents } from '@/dal'
+import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
 
 type AgentsSettingsPageProps = {
   /** Test/DI override for reading this app's iroh NodeId. Forwarded to the add
@@ -62,9 +63,21 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
 
   const closePanel = () => setActivePanel(null)
   const openAddPanel = () => setActivePanel({ kind: 'add' })
+  const openAgentPanel = (id: string) => setActivePanel({ kind: 'agent', id })
   const toggleAgentPanel = (id: string) =>
     setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
   const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
+
+  // Palette (Cmd+K) create/edit intents arrive as one-shot router state and
+  // route into the page's existing handlers (THU-768). "Edit" opens the
+  // agent's detail panel — the same read-only-or-editable surface a row click
+  // opens — so built-in/system agents (and ids no longer present) degrade to a
+  // read-only view or no-op rather than forcing an edit. There is no inline
+  // remove: deletion stays behind the detail panel's ownership-gated ⋯ menu.
+  useEntityActionIntent('agent', {
+    onCreate: openAddPanel,
+    onEdit: openAgentPanel,
+  })
 
   const renderPanel = () => {
     if (addOpen) {

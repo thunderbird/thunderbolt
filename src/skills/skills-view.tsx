@@ -7,6 +7,7 @@ import { useCallback, useReducer } from 'react'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { isWidgetSkillId } from '@/defaults/skills'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
+import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
@@ -141,6 +142,16 @@ export const SkillsView = () => {
       dispatch({ type: 'OPEN_DELETE', skill: target })
     }
   }
+
+  // Palette (Cmd+K) create/edit/remove intents arrive as one-shot router
+  // state. Remove routes through `onDelete` so the dependents-aware confirm
+  // is preserved (THU-768). Coexists with the `editSkill`/`startEditSkill`
+  // deep links above under its own `skillsAction` state key.
+  useEntityActionIntent('skill', {
+    onCreate,
+    onEdit: (id) => onEdit(id),
+    onRemove: (id) => onDelete(id),
+  })
 
   // `softDeleteSkill` already nulls `pinnedOrder` in the same write, so no
   // explicit unpin call is needed here — that would be a redundant write on

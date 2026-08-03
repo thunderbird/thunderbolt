@@ -373,6 +373,67 @@ describe('createTinfoilRoutes', () => {
       })
     }
 
+    it('captures upstream fetch rejection as a connection failure', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+      const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(res.status).toBe(500)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'tinfoil',
+        status: 500,
+        errorKind: 'connection',
+        subpath: '/v1/models',
+        distinctId: 'test-user',
+      })
+    })
+
+    it('captures upstream headers timeout as a connection failure', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const upstream = createAbortableFetch()
+      const app = buildApp({
+        captureInferenceErrorFn: captureInferenceErrorMock,
+        fetchFn: upstream.fetchFn,
+        upstreamHeadersTimeoutMs: 0,
+      })
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(res.status).toBe(504)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'tinfoil',
+        status: 504,
+        errorKind: 'connection',
+        subpath: '/v1/models',
+        distinctId: 'test-user',
+      })
+    })
+
+    it('does not capture downstream client aborts', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const upstream = createAbortableFetch()
+      const clientController = new AbortController()
+      const app = buildApp({
+        captureInferenceErrorFn: captureInferenceErrorMock,
+        fetchFn: upstream.fetchFn,
+      })
+      const response = app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          body: 'opaque-bytes',
+          signal: clientController.signal,
+        }),
+      )
+
+      await upstream.started
+      clientController.abort()
+      await response
+
+      expect(captureInferenceErrorMock).not.toHaveBeenCalled()
+    })
+
     it('does not capture 2xx enclave responses', async () => {
       const captureInferenceErrorMock = mock(() => {})
       const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })

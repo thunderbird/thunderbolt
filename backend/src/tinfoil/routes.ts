@@ -287,11 +287,23 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       return response
     } catch (error) {
       const completedAt = nowFn()
+      const isClientAbort = isClientAbortError(error, request.signal)
+      const status = isClientAbort ? 499 : error === upstreamHeadersTimeoutError ? 504 : 500
       recordLatency({
-        status: isClientAbortError(error, request.signal) ? 499 : error === upstreamHeadersTimeoutError ? 504 : 500,
+        status,
         completedAt,
         upstreamFetchStartedAt,
       })
+
+      if (!isClientAbort) {
+        captureInferenceErrorFn({
+          provider: 'tinfoil',
+          status,
+          errorKind: 'connection',
+          subpath,
+          distinctId,
+        })
+      }
 
       if (error === upstreamHeadersTimeoutError) {
         return textResponse(504, tinfoilUpstreamTimeoutMessage)

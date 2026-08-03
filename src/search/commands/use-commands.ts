@@ -98,14 +98,6 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     : []
 
   const actionCommands: PaletteCommand[] = [
-    {
-      id: 'new-chat',
-      title: 'New chat',
-      icon: MessageCirclePlus,
-      section: 'actions',
-      keywords: ['new', 'create'],
-      run: deps.onNewChat,
-    },
     ...themeCommands,
     {
       id: 'toggle-sidebar',
@@ -150,7 +142,18 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     },
   ]
 
-  return [...navCommands, ...buildCreateCommands(), ...actionCommands]
+  // "New chat" is a create action too, and the most common one — list it first
+  // in the Create group ahead of the entity create commands.
+  const newChatCommand: PaletteCommand = {
+    id: 'new-chat',
+    title: 'New chat',
+    icon: MessageCirclePlus,
+    section: 'create',
+    keywords: ['new', 'create'],
+    run: deps.onNewChat,
+  }
+
+  return [...navCommands, newChatCommand, ...buildCreateCommands(), ...actionCommands]
 }
 
 /**

@@ -274,7 +274,13 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       // status + subpath are readable here. Record non-2xx upstreams so a Tinfoil
       // failure stays diagnosable from telemetry without touching the stream.
       if (!upstream.ok) {
-        captureInferenceErrorFn({ provider: 'tinfoil', status: upstream.status, detail: subpath, distinctId })
+        captureInferenceErrorFn({
+          provider: 'tinfoil',
+          status: upstream.status,
+          errorKind: 'upstream_error',
+          subpath,
+          distinctId,
+        })
       }
 
       return response

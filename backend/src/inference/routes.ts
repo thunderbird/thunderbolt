@@ -4,13 +4,14 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
+import { classifyInferenceError } from '@/inference/error-kind'
 import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import { elapsedMs } from '@/utils/timing'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { Elysia, type AnyElysia } from 'elysia'
-import { APIConnectionError, APIConnectionTimeoutError } from 'openai'
+import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import {
   createInferenceAttemptTracker,
@@ -206,12 +207,19 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           console.error('Connection timeout to inference provider', error.cause)
           throw new Error('Connection timeout to inference provider', { cause: error })
         }
-        // safeErrorHandler strips the upstream cause from the client response
-        // (returns only "Bad Request"), so record the real provider status,
-        // message, and model to keep upstream failures diagnosable.
+        // Keep failures diagnosable using body-free structured metadata only.
         const status = getErrorStatus(error)
-        const detail = error instanceof Error ? error.message : String(error)
-        captureInferenceErrorFn({ provider, status, model: body.model, detail, distinctId: ctx.user.id })
+        const apiError = error instanceof APIError ? error : undefined
+        captureInferenceErrorFn({
+          provider,
+          status,
+          model: body.model,
+          errorKind: classifyInferenceError(error),
+          errorType: apiError?.type,
+          errorCode: apiError?.code ?? undefined,
+          requestId: apiError?.requestID ?? undefined,
+          distinctId: ctx.user.id,
+        })
         throw error
       }
     })

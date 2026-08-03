@@ -358,7 +358,8 @@ describe('createTinfoilRoutes', () => {
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
         provider: 'tinfoil',
         status: 422,
-        detail: '/v1/chat/completions',
+        errorKind: 'upstream_error',
+        subpath: '/v1/chat/completions',
         distinctId: 'test-user',
       })
     })

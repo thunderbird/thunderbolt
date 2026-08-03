@@ -8,6 +8,7 @@ import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
 import type OpenAI from 'openai'
+import { APIError } from 'openai'
 import { createInferenceRoutes, supportedModels, type InferenceProxyLatencyLog } from './routes'
 import { defaultModels } from '@shared/defaults/models'
 
@@ -245,7 +246,7 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
     })
 
-    it('should capture the upstream status, model, and detail on an API error', async () => {
+    it('captures body-free structured metadata from an API error', async () => {
       const captureInferenceErrorMock = mock(() => {})
       const captureApp = new Elysia().use(
         createInferenceRoutes({
@@ -255,7 +256,16 @@ describe('Inference Routes', () => {
           captureInferenceErrorFn: captureInferenceErrorMock,
         }),
       )
-      const apiError = Object.assign(new Error('400 invalid_request_error: prompt is too long'), { status: 400 })
+      const apiError = new APIError(
+        400,
+        {
+          message: 'prompt is too long',
+          code: 'context_length_exceeded',
+          type: 'invalid_request_error',
+        },
+        undefined,
+        new Headers({ 'x-request-id': 'provider-request-123' }),
+      )
       mockCreateCompletion.mockImplementation(() => Promise.reject(apiError))
 
       const response = await captureApp.handle(
@@ -271,9 +281,43 @@ describe('Inference Routes', () => {
         provider: 'mistral',
         status: 400,
         model: 'mistral-large-3',
-        detail: '400 invalid_request_error: prompt is too long',
+        errorKind: 'context_length',
+        errorType: 'invalid_request_error',
+        errorCode: 'context_length_exceeded',
+        requestId: 'provider-request-123',
         distinctId: 'test-user',
       })
+    })
+
+    it('never captures provider error message content', async () => {
+      const sentinel = 'SECRET_PROMPT_FRAGMENT_XYZ'
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const apiError = new APIError(
+        400,
+        { message: sentinel, code: 'invalid_request_error', type: 'invalid_request_error' },
+        undefined,
+        new Headers(),
+      )
+      mockCreateCompletion.mockImplementation(() => Promise.reject(apiError))
+
+      await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify(captureInferenceErrorMock.mock.calls)).not.toContain(sentinel)
     })
 
     it('emits phase timing headers and a structured latency log on success', async () => {

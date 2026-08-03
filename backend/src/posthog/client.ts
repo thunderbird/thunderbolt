@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getSettings } from '@/config/settings'
+import type { InferenceErrorKind } from '@/inference/error-kind'
 import { PostHog } from 'posthog-node'
 
 let phClient: PostHog | null = null
@@ -65,25 +66,46 @@ export type InferenceErrorEvent = {
   provider: string
   status: number
   distinctId: string
+  errorKind: InferenceErrorKind
   model?: string
-  detail?: string
+  errorType?: string
+  errorCode?: string
+  requestId?: string
+  subpath?: string
 }
 
 /**
- * Record an upstream inference failure so the real provider error (status,
- * message, model) stays queryable. `safeErrorHandler` strips the cause from the
- * client response for security and stdout logs aren't retained, so a captured
- * event is the only durable record of why a send 400'd. No-op when PostHog is
- * unconfigured.
+ * Records an upstream inference failure without shipping request or response
+ * content. Every property is a constant, identifier, or provider-issued ID;
+ * free text is forbidden. No-op when PostHog is unconfigured.
  */
-export const captureInferenceError = ({ provider, status, distinctId, model, detail }: InferenceErrorEvent): void => {
+export const captureInferenceError = ({
+  provider,
+  status,
+  distinctId,
+  errorKind,
+  model,
+  errorType,
+  errorCode,
+  requestId,
+  subpath,
+}: InferenceErrorEvent): void => {
   if (!isPostHogConfigured()) {
     return
   }
   getPostHogClient().capture({
     distinctId,
     event: 'inference_upstream_error',
-    properties: { provider, status, model, detail },
+    properties: {
+      provider,
+      status,
+      errorKind,
+      ...(model !== undefined && { model }),
+      ...(errorType !== undefined && { errorType }),
+      ...(errorCode !== undefined && { errorCode }),
+      ...(requestId !== undefined && { requestId }),
+      ...(subpath !== undefined && { subpath }),
+    },
   })
 }
 

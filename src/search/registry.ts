@@ -46,7 +46,7 @@ export const searchEntities: SearchEntityConfig[] = [
     tableName: 'chat_messages',
     titleField: null,
     bodyFields: ['content'],
-    parentIdField: 'chatThreadId',
+    parentIdField: 'chat_thread_id',
     icon: MessageSquareText,
     route: ({ parentId }) => `/chats/${parentId}`,
   },
@@ -111,4 +111,4 @@ export const searchEntities: SearchEntityConfig[] = [
  * FTS schema changes so consumers rebuild the index instead of reading a stale
  * one.
  */
-export const searchIndexVersion = 1
+export const searchIndexVersion = 2

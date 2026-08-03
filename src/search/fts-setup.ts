@@ -14,6 +14,12 @@ const searchIndexTable = 'search_index'
 const searchMetaTable = 'search_index_meta'
 /** Column order shared by the create, trigger, and backfill statements. */
 const indexColumns = 'id, entity_type, parent_id, title, body'
+/**
+ * Soft-delete column (snake_case DB name, as stored in the PowerSync `data`
+ * blob). Rows whose `deleted_at` is non-null are excluded from the index;
+ * tables without the column always index (json_extract yields NULL).
+ */
+const softDeleteColumn = 'deleted_at'
 
 /** Deterministic trigger names so a rebuild can drop the previous generation. */
 const triggerNames = (type: SearchEntityType) => ({
@@ -43,6 +49,9 @@ const bodyExpr = (cfg: SearchEntityConfig, dataExpr: string): string =>
     ? `''`
     : cfg.bodyFields.map((field) => `coalesce(${jsonExtract(dataExpr, field)}, '')`).join(` || ' ' || `)
 
+/** Predicate that keeps only rows that are not soft-deleted. */
+const notSoftDeleted = (dataExpr: string): string => `${jsonExtract(dataExpr, softDeleteColumn)} IS NULL`
+
 /**
  * The `CREATE VIRTUAL TABLE` statement for the unified FTS5 index. `id`,
  * `entity_type`, and `parent_id` are UNINDEXED (stored, not tokenized); `title`
@@ -56,14 +65,18 @@ export const buildCreateSql = (): string =>
 /**
  * The three `AFTER INSERT/UPDATE/DELETE` triggers that keep {@link searchIndexTable}
  * in sync with one entity's internal backing table. Rows are scoped by the
- * literal `entity_type` so deletes never touch another entity's hits.
+ * literal `entity_type` so deletes never touch another entity's hits. The insert
+ * is conditional on {@link notSoftDeleted} (a `SELECT … WHERE` yields zero rows
+ * for a soft-deleted record), so on UPDATE the delete-then-insert pair hard-deletes
+ * the index entry when `deleted_at` becomes set, and re-adds it if it's cleared.
  * @param internalName - The `ps_data__*` / `ps_data_local__*` backing table.
  */
 export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): string[] => {
   const names = triggerNames(cfg.type)
   const insert =
-    `INSERT INTO ${searchIndexTable}(${indexColumns}) VALUES (` +
-    `NEW.id, '${cfg.type}', ${parentExpr(cfg, 'NEW.data')}, ${titleExpr(cfg, 'NEW.data')}, ${bodyExpr(cfg, 'NEW.data')})`
+    `INSERT INTO ${searchIndexTable}(${indexColumns}) SELECT ` +
+    `NEW.id, '${cfg.type}', ${parentExpr(cfg, 'NEW.data')}, ${titleExpr(cfg, 'NEW.data')}, ${bodyExpr(cfg, 'NEW.data')} ` +
+    `WHERE ${notSoftDeleted('NEW.data')}`
   const remove = `DELETE FROM ${searchIndexTable} WHERE id = OLD.id AND entity_type = '${cfg.type}'`
   return [
     `CREATE TRIGGER ${names.insert} AFTER INSERT ON ${internalName} BEGIN ${insert}; END`,
@@ -72,11 +85,14 @@ export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): 
   ]
 }
 
-/** The one-shot `INSERT … SELECT` that backfills existing rows of one entity. */
+/**
+ * The one-shot `INSERT … SELECT` that backfills existing rows of one entity,
+ * skipping soft-deleted rows.
+ */
 export const buildBackfillSql = (cfg: SearchEntityConfig, internalName: string): string =>
   `INSERT INTO ${searchIndexTable}(${indexColumns}) SELECT ` +
   `id, '${cfg.type}', ${parentExpr(cfg, 'data')}, ${titleExpr(cfg, 'data')}, ${bodyExpr(cfg, 'data')} ` +
-  `FROM ${internalName}`
+  `FROM ${internalName} WHERE ${notSoftDeleted('data')}`
 
 /** Drops the previous index generation: every entity trigger, then the table. */
 export const buildDropSql = (): string[] => {

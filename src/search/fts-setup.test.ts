@@ -45,7 +45,16 @@ describe('buildTriggerSql', () => {
 
   it('inserts the literal entity_type and NEW.id', () => {
     const [insert] = buildTriggerSql(configOf('chat'), 'ps_data__chat_threads')
-    expect(insert).toContain("VALUES (NEW.id, 'chat',")
+    expect(insert).toContain("SELECT NEW.id, 'chat',")
+  })
+
+  it('guards insert and update re-insert against soft-deleted rows (deleted_at not null)', () => {
+    const [insert, update] = buildTriggerSql(configOf('chat'), 'ps_data__chat_threads')
+    expect(insert).toContain(`WHERE json_extract(NEW.data, '$.deleted_at') IS NULL`)
+    // the update deletes then conditionally re-inserts, so setting deleted_at
+    // hard-deletes the index row and clearing it re-adds the row
+    expect(update).toContain(`DELETE FROM search_index WHERE id = OLD.id AND entity_type = 'chat'`)
+    expect(update).toContain(`WHERE json_extract(NEW.data, '$.deleted_at') IS NULL`)
   })
 
   it('maps the title field via json_extract on NEW.data', () => {
@@ -62,13 +71,13 @@ describe('buildTriggerSql', () => {
 
   it('maps parent_id via json_extract when the entity has a parent (message)', () => {
     const [insert] = buildTriggerSql(configOf('message'), 'ps_data__chat_messages')
-    expect(insert).toContain(`json_extract(NEW.data, '$.chatThreadId')`)
+    expect(insert).toContain(`json_extract(NEW.data, '$.chat_thread_id')`)
   })
 
   it('uses NULL for parent_id when the entity has no parent (chat)', () => {
     const [insert] = buildTriggerSql(configOf('chat'), 'ps_data__chat_threads')
     expect(insert).toContain('NULL')
-    expect(insert).not.toContain(`json_extract(NEW.data, '$.chatThreadId')`)
+    expect(insert).not.toContain(`json_extract(NEW.data, '$.chat_thread_id')`)
   })
 
   it('coalesces and space-joins multiple body fields (model)', () => {
@@ -101,6 +110,11 @@ describe('buildBackfillSql', () => {
     const sql = buildBackfillSql(configOf('chat'), 'ps_data__chat_threads')
     expect(sql).toContain(`json_extract(data, '$.title')`)
     expect(sql).not.toContain('NEW.data')
+  })
+
+  it('skips soft-deleted rows in the backfill', () => {
+    const sql = buildBackfillSql(configOf('chat'), 'ps_data__chat_threads')
+    expect(sql).toContain(`FROM ps_data__chat_threads WHERE json_extract(data, '$.deleted_at') IS NULL`)
   })
 
   it('emits empty-string title and NULL parent for an entity lacking both (device)', () => {

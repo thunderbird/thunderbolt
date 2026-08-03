@@ -69,7 +69,7 @@ describe('normalizeWebToolKey', () => {
 })
 
 it('returns a non-empty structured exhaustion result', () => {
-  const result = budgetExhaustedResult('auto')
+  const result = budgetExhaustedResult()
   expect(result.status).toBe('budget_exhausted')
   expect(result.message.length).toBeGreaterThan(0)
 })

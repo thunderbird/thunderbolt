@@ -113,7 +113,7 @@ const budgetedWebExecute =
       return cached
     }
     if (!webToolBudget.tryConsume()) {
-      return Promise.resolve(budgetExhaustedResult(webToolBudget.intent))
+      return Promise.resolve(budgetExhaustedResult())
     }
     const result = execute(input)
     webToolBudget.dedupe.set(key, result)

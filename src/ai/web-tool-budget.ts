@@ -90,7 +90,7 @@ export const normalizeWebToolKey = (toolName: string, input: unknown): string =>
 }
 
 /** Return the structured result used when a turn's web-tool budget is spent. */
-export const budgetExhaustedResult = (_intent: WebToolIntent): BudgetExhaustedResult => ({
+export const budgetExhaustedResult = (): BudgetExhaustedResult => ({
   status: 'budget_exhausted',
   message:
     'Per-turn web tool budget reached. Answer now from the results already gathered. If coverage is insufficient, tell the user they can ask you to search more or use /research.',

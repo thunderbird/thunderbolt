@@ -29,7 +29,7 @@ const renderRow = (
   result: SearchResult,
   handlers: {
     query?: string
-    onSelect?: (to: string, entityType: SearchEntityType) => void
+    onSelect?: (to: string, entityType: SearchEntityType, id: string) => void
     onAction?: (entityType: SearchEntityType, action: EntityActionType, id: string) => void
   } = {},
 ) =>
@@ -75,6 +75,15 @@ describe('SearchResultItem', () => {
       expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument()
       unmount()
     }
+  })
+
+  it('forwards to, entityType, and id to onSelect when the row is selected', () => {
+    const onSelect = mock(() => {})
+    renderRow(chatResult, { onSelect })
+
+    fireEvent.click(screen.getByRole('option', { name: /Weekend trip planning/ }))
+
+    expect(onSelect).toHaveBeenCalledWith('/chats/thread-1', 'chat', 'thread-1')
   })
 
   it('fires onAction (not the row onSelect) when an action button is clicked', () => {

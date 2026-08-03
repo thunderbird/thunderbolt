@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
+import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -176,5 +177,44 @@ describe('SearchPalette commands', () => {
       'data-state',
       JSON.stringify({ modelsAction: JSON.stringify({ type: 'edit', id: 'gpt-4o' }) }),
     )
+  })
+
+  it('navigates to a message result with scroll-to-message intent state and flags the analytics event', async () => {
+    searchResults = [
+      { id: 'msg-42', entityType: 'message', title: 'A matching message', snippet: '', to: '/chats/thread-9' },
+    ]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'matching' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    fireEvent.click(screen.getByRole('option', { name: /A matching message/ }))
+
+    expect(mockTrackEvent).toHaveBeenCalledWith('search_result_select', { entityType: 'message', jumpToMessage: true })
+    expect(screen.getByTestId('location')).toHaveTextContent('/chats/thread-9')
+    expect(screen.getByTestId('location')).toHaveAttribute(
+      'data-state',
+      JSON.stringify({ [scrollToMessageStateKey]: 'msg-42' }),
+    )
+  })
+
+  it('navigates to a non-message result with no state and an unset jump flag', async () => {
+    searchResults = [
+      { id: 'thread-9', entityType: 'chat', title: 'A matching chat', snippet: '', to: '/chats/thread-9' },
+    ]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'matching' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    fireEvent.click(screen.getByRole('option', { name: /A matching chat/ }))
+
+    expect(mockTrackEvent).toHaveBeenCalledWith('search_result_select', { entityType: 'chat', jumpToMessage: false })
+    expect(screen.getByTestId('location')).toHaveTextContent('/chats/thread-9')
+    expect(screen.getByTestId('location')).toHaveAttribute('data-state', 'null')
   })
 })

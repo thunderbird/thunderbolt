@@ -37,7 +37,7 @@ export const SearchResultItem = ({
 }: {
   result: SearchResult
   query: string
-  onSelect: (to: string, entityType: SearchEntityType) => void
+  onSelect: (to: string, entityType: SearchEntityType, id: string) => void
   onAction: (entityType: SearchEntityType, action: EntityActionType, id: string) => void
 }) => {
   const Icon = entityIcons[result.entityType]
@@ -63,7 +63,7 @@ export const SearchResultItem = ({
       // cmdk filters/keys off `value`; include the id so identical titles stay
       // distinct, and the visible text so its built-in filter keeps real hits.
       value={`${result.title} ${result.snippet} ${result.id}`}
-      onSelect={() => onSelect(result.to, result.entityType)}
+      onSelect={() => onSelect(result.to, result.entityType, result.id)}
       className="group items-start gap-2 rounded-md"
     >
       <Icon className="mt-0.5 size-[var(--icon-size-sm)] shrink-0" />

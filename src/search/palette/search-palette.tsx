@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { LogoutModal } from '@/components/logout-modal'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandList } from '@/components/ui/command'
@@ -73,10 +74,11 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
   )
 
   const handleSelect = useCallback(
-    (to: string, entityType: SearchEntityType) => {
-      trackEvent('search_result_select', { entityType })
+    (to: string, entityType: SearchEntityType, id: string) => {
+      const jumpToMessage = entityType === 'message'
+      trackEvent('search_result_select', { entityType, jumpToMessage })
       handleOpenChange(false)
-      navigate(to)
+      navigate(to, jumpToMessage ? { state: { [scrollToMessageStateKey]: id } } : undefined)
     },
     [handleOpenChange, navigate],
   )

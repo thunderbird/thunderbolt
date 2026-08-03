@@ -57,6 +57,7 @@ import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { vendorSupportsImages } from '@shared/defaults/models'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { prepareBuiltInConversation } from './built-in-conversation'
 
@@ -227,7 +228,7 @@ export type ResolvedPiModel = {
  *  fall back to legacy. Anthropic ids must exist in Pi's built-in catalog;
  *  OpenAI-wire providers must resolve a connection (api key / url present). The
  *  thinking level is derived from the model's profile for both families. */
-const resolvePiModel = (
+export const resolvePiModel = (
   agentCore: AgentCoreModule,
   context: AgentAdapterContext,
   profile: ModelProfile | null,
@@ -266,6 +267,10 @@ const resolvePiModel = (
       fetch: connection.fetch,
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
+      // Pi's openai-compat descriptor is text-only by default; without this a
+      // vision-capable hosted model (e.g. Thunderbolt Opus) has its image blocks
+      // stripped before the wire and only sees the `[Attachment: …]` text label.
+      supportsImages: vendorSupportsImages(model.vendor),
     },
     thinkingLevel,
   }
@@ -298,7 +303,7 @@ export const harnessSignature = (
   const model =
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${hashSecret(d.apiKey)}`
-      : `openai-compat|${d.providerId}|${d.modelId}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}`
+      : `openai-compat|${d.providerId}|${d.modelId}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}`
   return `${model}|${resolved.thinkingLevel}|${stableSystemPrompt}|regenerate:${regenerationRevision}`
 }
 

@@ -19,6 +19,7 @@ import type { Model } from '@/types'
 import {
   createBuiltInAdapter,
   harnessSignature,
+  resolvePiModel,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
 } from './built-in-adapter'
@@ -44,6 +45,7 @@ const openaiCompat = (
     apiKey: 'sk-o',
     fetch: noopFetch,
     reasoning: false,
+    supportsImages: false,
     ...overrides,
   },
   thinkingLevel: 'medium',
@@ -100,6 +102,30 @@ describe('harnessSignature', () => {
 
   it('does not embed the plaintext api key', () => {
     expect(harnessSignature(anthropic({ apiKey: 'super-secret-key' }), 'sys')).not.toContain('super-secret-key')
+  })
+
+  it('changes when the openai-compat image capability changes', () => {
+    expect(harnessSignature(openaiCompat(), 'sys')).not.toBe(
+      harnessSignature(openaiCompat({ supportsImages: true }), 'sys'),
+    )
+  })
+})
+
+describe('resolvePiModel — image capability (vendor-gated)', () => {
+  const contextFor = (model: Model): AgentAdapterContext =>
+    ({ selectedModel: model, getProxyFetch: () => noopFetch }) as unknown as AgentAdapterContext
+  const agentCore = {} as Parameters<typeof resolvePiModel>[0]
+  const openaiModel = (vendor: string | null): Model =>
+    ({ id: 'm', name: 'M', provider: 'openai', model: 'gpt-4o', apiKey: 'sk-o', vendor, toolUsage: 1 }) as Model
+
+  it('advertises image support for a vision-vendor model', () => {
+    const resolved = resolvePiModel(agentCore, contextFor(openaiModel('openai')), null)
+    expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: true })
+  })
+
+  it('does not advertise image support when the vendor is unknown (custom/local)', () => {
+    const resolved = resolvePiModel(agentCore, contextFor(openaiModel(null)), null)
+    expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: false })
   })
 })
 

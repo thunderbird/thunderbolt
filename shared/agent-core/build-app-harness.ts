@@ -94,6 +94,9 @@ export type PiModelDescriptor =
       readonly reasoning: boolean
       /** Optional upstream context window. */
       readonly contextWindow?: number
+      /** Whether the model accepts image input; drives the synthetic descriptor's
+       *  input modalities (text-only strips images before the wire). */
+      readonly supportsImages: boolean
     }
 
 /** Inputs for {@link buildAppHarness}. */
@@ -150,6 +153,7 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
           fetch: options.model.fetch,
           reasoning: options.model.reasoning,
           contextWindow: options.model.contextWindow,
+          supportsImages: options.model.supportsImages,
         })
 
   const tools: AgentTool[] = [...createBrowserCodingTools(env, { cwd: workspaceDir }), ...(options.tools ?? [])]

@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import { hashValues } from '../lib/hash'
-import { defaultModels, defaultModelsVersion, hashModel } from './models'
+import { defaultModels, defaultModelsVersion, hashModel, vendorSupportsImages } from './models'
 
 /**
  * Snapshot pinning the shipped defaults to their declared version. When you
@@ -41,5 +41,20 @@ describe('defaultModels version snapshot', () => {
       hash: computeSnapshotHash(),
       metadataHash: computeMetadataHash(),
     }).toEqual(expected)
+  })
+})
+
+describe('vendorSupportsImages', () => {
+  test('true for known vision vendors', () => {
+    expect(vendorSupportsImages('anthropic')).toBe(true)
+    expect(vendorSupportsImages('openai')).toBe(true)
+    expect(vendorSupportsImages('google')).toBe(true)
+  })
+
+  test('false for unknown or absent vendors (no guessing for custom/local)', () => {
+    expect(vendorSupportsImages(null)).toBe(false)
+    expect(vendorSupportsImages(undefined)).toBe(false)
+    expect(vendorSupportsImages('ollama')).toBe(false)
+    expect(vendorSupportsImages('')).toBe(false)
   })
 })

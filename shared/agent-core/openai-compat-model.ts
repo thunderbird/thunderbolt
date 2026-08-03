@@ -90,6 +90,10 @@ export type BuildOpenAiCompatModelOptions = {
   readonly reasoning: boolean
   /** Optional upstream context window for the synthetic model descriptor. */
   readonly contextWindow?: number
+  /** Whether the upstream model accepts image input. When false, the synthetic
+   *  descriptor advertises text-only and Pi strips image blocks before the wire
+   *  (`downgradeUnsupportedImages`), so a vision model would never see the bytes. */
+  readonly supportsImages: boolean
 }
 
 /**
@@ -136,7 +140,7 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiN
   provider: opts.providerId,
   baseUrl: opts.baseURL,
   reasoning: opts.reasoning,
-  input: ['text'],
+  input: opts.supportsImages ? ['text', 'image'] : ['text'],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: opts.contextWindow ?? defaultContextWindow,
   maxTokens: defaultMaxTokens,

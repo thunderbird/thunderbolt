@@ -36,6 +36,21 @@ export type SharedModel = {
 }
 
 /**
+ * Vendors whose models accept image input. The built-in Pi openai-compat
+ * transport can't know an arbitrary custom endpoint's capabilities, so it
+ * advertises text-only by default and strips image blocks. For the providers we
+ * host/control we instead key image support off the model's `vendor` — otherwise
+ * images are silently dropped before reaching a vision-capable hosted model
+ * (e.g. Thunderbolt-hosted Opus, `vendor: 'anthropic'`).
+ */
+export const imageCapableVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
+
+/** Whether a model's vendor is known to accept image input. Unknown/absent
+ *  vendors (custom or local endpoints) return false — we don't guess. */
+export const vendorSupportsImages = (vendor: string | null | undefined): boolean =>
+  vendor != null && imageCapableVendors.has(vendor)
+
+/**
  * Compute hash of user-editable fields for a model.
  * Includes deletedAt to treat soft-delete as a user configuration choice.
  */

@@ -214,6 +214,8 @@ export type EventType =
   | 'ui_shortcut_use'
   | 'ui_sidebar_open'
   | 'ui_sidebar_close'
+  | 'search_palette_open'
+  | 'search_result_select'
   // Anonymous session & promotion
   | 'anonymous_user_promoted'
   // Sync Diagnostics

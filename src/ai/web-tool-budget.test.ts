@@ -36,6 +36,10 @@ describe('createWebToolBudget', () => {
       expect(budget.probe.exhaustedAttempts).toBe(1)
     })
   }
+
+  it('allows /search to fetch each homepage needed for ten target previews', () => {
+    expect(webToolCaps.search).toBeGreaterThanOrEqual(11)
+  })
 })
 
 describe('normalizeWebToolKey', () => {
@@ -48,9 +52,18 @@ describe('normalizeWebToolKey', () => {
     )
   })
 
-  it('normalizes fetch URL host casing and trailing slashes', () => {
+  it('normalizes fetch URL host casing without conflating path trailing slashes', () => {
     expect(normalizeWebToolKey('fetch_content', { url: ' HTTPS://EXAMPLE.COM/path/ ' })).toBe(
+      normalizeWebToolKey('fetch_content', { url: 'https://example.com/path/' }),
+    )
+    expect(normalizeWebToolKey('fetch_content', { url: 'https://example.com/path/' })).not.toBe(
       normalizeWebToolKey('fetch_content', { url: 'https://example.com/path' }),
+    )
+  })
+
+  it('uses the raw trimmed value for unparseable URLs', () => {
+    expect(normalizeWebToolKey('fetch_content', { url: ' not a url ' })).toBe(
+      normalizeWebToolKey('fetch_content', { url: 'not a url' }),
     )
   })
 })

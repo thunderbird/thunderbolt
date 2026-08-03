@@ -460,8 +460,24 @@ const fetchViaHarness = async (
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
-        await harness.prompt(prompt.text, { images: prompt.images })
-        await harness.waitForIdle()
+        const webToolBudget = context.webToolBudget
+        if (webToolBudget?.probe.exhaustedAttempts) {
+          await harness.setActiveTools([])
+        }
+        const removeBudgetFloor = webToolBudget
+          ? harness.on('tool_result', async () => {
+              if (webToolBudget.probe.exhaustedAttempts) {
+                await harness.setActiveTools([])
+              }
+              return undefined
+            })
+          : () => {}
+        try {
+          await harness.prompt(prompt.text, { images: prompt.images })
+          await harness.waitForIdle()
+        } finally {
+          removeBudgetFloor()
+        }
       },
       {
         initial: { modelId: context.selectedModel.id },

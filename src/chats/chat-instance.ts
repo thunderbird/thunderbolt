@@ -112,6 +112,7 @@ export type CreateChatInstanceDeps = {
 
 export type AgentRoutingState = {
   regenerationRevision?: number
+  webToolBudgetRevision?: number
   getTurnBudget?: () => TurnBudget
 }
 
@@ -162,7 +163,7 @@ export const createAgentRoutingFetch = (
     if (!lastUserMessage) {
       return undefined
     }
-    const key = `${lastUserMessage.id}#${routingState.regenerationRevision ?? 0}`
+    const key = `${lastUserMessage.id}#${routingState.webToolBudgetRevision ?? 0}`
     if (webToolBudgetState?.key === key) {
       return webToolBudgetState.budget
     }
@@ -316,6 +317,7 @@ export const createChatInstance = (
   let turnBudget = createTurnBudget()
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
+    webToolBudgetRevision: 0,
     getTurnBudget: () => turnBudget,
   }
   const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
@@ -332,6 +334,7 @@ export const createChatInstance = (
       retryTimeout = null
     }
     turnBudget = createTurnBudget()
+    routingState.webToolBudgetRevision = (routingState.webToolBudgetRevision ?? 0) + 1
     retryCount = 0
     lastError = null
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })

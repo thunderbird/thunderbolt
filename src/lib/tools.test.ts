@@ -172,6 +172,21 @@ describe('createTool web budget', () => {
     expect(attempts).toBe(2)
   })
 
+  test('passes unparseable URLs through to the tool error path', async () => {
+    const budget = createWebToolBudget('auto')
+    const { config, calls } = makeConfig({
+      name: 'fetch_content',
+      execute: async (params: unknown) => {
+        calls.push(params)
+        return { error: 'Invalid URL' }
+      },
+    })
+    const t = createTool(config, new Map(), budget)
+
+    await expect(t.execute!({ url: 'not a url' }, options)).resolves.toEqual({ error: 'Invalid URL' })
+    expect(calls).toEqual([{ url: 'not a url' }])
+  })
+
   test('non-web tools never consume the web budget', async () => {
     const budget = createWebToolBudget('auto')
     const { config, calls } = makeConfig({ name: 'calendar' })

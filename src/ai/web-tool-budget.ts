@@ -9,7 +9,7 @@ export type WebToolIntent = 'auto' | 'search' | 'research'
 
 export const webToolCaps: Record<WebToolIntent, number> = {
   auto: 2,
-  search: 6,
+  search: 12,
   research: 30,
 }
 
@@ -70,9 +70,14 @@ export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
 const normalizeSearchQuery = (query: string): string => query.trim().toLowerCase().replace(/\s+/g, ' ')
 
 const normalizeUrl = (value: string): string => {
-  const url = new URL(value.trim())
-  const pathname = url.pathname === '/' ? '' : url.pathname.replace(/\/+$/, '')
-  return `${url.protocol}//${url.host.toLowerCase()}${pathname}${url.search}${url.hash}`
+  const trimmed = value.trim()
+  try {
+    const url = new URL(trimmed)
+    const pathname = url.pathname === '/' ? '' : url.pathname
+    return `${url.protocol}//${url.host.toLowerCase()}${pathname}${url.search}${url.hash}`
+  } catch {
+    return trimmed
+  }
 }
 
 /** Build the normalized per-turn dedupe key for a built-in web tool call. */

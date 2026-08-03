@@ -101,12 +101,12 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
 }
 
 describe('createAgentRoutingFetch', () => {
-  it('reuses a web-tool budget for retries and refreshes it for new turns or regenerations', async () => {
+  it('reuses a web-tool budget across revision-incrementing retries and refreshes it for restarted turns', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
     const connectToAgent = mock(async () => adapter)
     hydrateSessionWith('t-web-budget', builtInAgent)
-    const routingState = { regenerationRevision: 0 }
+    const routingState = { regenerationRevision: 0, webToolBudgetRevision: 0 }
     const customFetch = createAgentRoutingFetch(
       't-web-budget',
       saveMessages,
@@ -121,8 +121,10 @@ describe('createAgentRoutingFetch', () => {
     })
 
     await customFetch('/chat', request('message-1', '/search topic'))
+    routingState.regenerationRevision++
     await customFetch('/chat', request('message-1', '/search topic'))
     await customFetch('/chat', request('message-2', 'new topic'))
+    routingState.webToolBudgetRevision++
     routingState.regenerationRevision++
     await customFetch('/chat', request('message-2', 'new topic'))
 

@@ -5,8 +5,8 @@
 # Input-name verification:
 #   - The `anthropics/claude-code-action` input names below were verified
 #     against the live @v1 `action.yml` (2026-06): `prompt`, `anthropic_api_key`,
-#     `claude_args`, and `use_sticky_comment` all EXIST. `model:` /
-#     `allowed_tools:` / `review_event:` do NOT exist in @v1 — do NOT
+#     `claude_args`, `use_sticky_comment`, and `allowed_bots` all EXIST.
+#     `model:` / `allowed_tools:` / `review_event:` do NOT exist in @v1 — do NOT
 #     reintroduce them (pass --model/--allowedTools via `claude_args`).
 #     Re-confirm only if the action major version changes.
 #   - Action commit SHAs are PINNED below (checkout / claude-code-action).
@@ -204,6 +204,13 @@ jobs:
           # `id-token: write` (we keep least-privilege without it). The action's
           # OIDC path only runs when github_token is empty; providing it skips OIDC.
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Bot-authored PRs must be allow-listed or the action aborts pre-model
+          # ("Workflow initiated by non-human actor") — the factory pipeline opens
+          # PRs as thunderbolt-automation-agent[bot]. The check strips the [bot]
+          # suffix and lowercases, so either form matches. Never '*': on a public
+          # repo any external App could then run the action (spending the API
+          # key) with prompts it controls.
+          allowed_bots: "thunderbolt-automation-agent[bot]"
           use_sticky_comment: "false" # we own the inline review via the post step
           # Model id pinned LITERALLY (a mutable vars.* would change review
           # behavior with no PR/audit trail). claude-opus-4-8 is a pinned
@@ -402,6 +409,8 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Same bot allow-list as STEP 1 — the gate runs under the same actor.
+          allowed_bots: "thunderbolt-automation-agent[bot]"
           use_sticky_comment: "false" # we own the inline review via the post step
           # Same model + same findings schema as STEP 1 so the kept subset round-
           # trips into readModelFindings unchanged (title/body/rule/evidence stay

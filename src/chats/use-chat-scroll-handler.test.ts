@@ -126,7 +126,31 @@ describe('useChatScrollHandler', () => {
       expect(result.current).toHaveProperty('isAtBottom')
       expect(result.current).toHaveProperty('scrollToBottom')
       expect(result.current).toHaveProperty('scrollToBottomAndActivate')
+      expect(result.current).toHaveProperty('scrollToMessage')
       expect(result.current).toHaveProperty('scrollHandlers')
+    })
+  })
+
+  describe('scrollToMessage', () => {
+    it('pins the target message near the top via scrollToElement (smooth, programmatic)', () => {
+      const { mockUseAutoScroll, mockScrollToElement } = createMockUseAutoScroll()
+      const mockUseCurrentChatSession = createMockUseCurrentChatSession()
+
+      const { result } = renderHook(() =>
+        useChatScrollHandler({
+          useAutoScroll: mockUseAutoScroll,
+          useChat: createMockUseChat('idle'),
+          useCurrentChatSession: mockUseCurrentChatSession,
+        }),
+      )
+
+      mockScrollToElement.mockClear()
+
+      act(() => {
+        result.current.scrollToMessage('msg-42')
+      })
+
+      expect(mockScrollToElement).toHaveBeenCalledWith('[data-message-id="msg-42"]', 20, true, true)
     })
   })
 

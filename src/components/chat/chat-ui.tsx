@@ -5,8 +5,9 @@
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, m, type Transition } from 'framer-motion'
-import { lazy, Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
+import { useScrollToMessage } from '@/chats/use-scroll-to-message'
 import { loadChatMessageList } from './chat-messages-loader'
 import { ChatPromptInput } from './chat-prompt-input'
 import { PermissionDialogHost } from './permission-dialog-host'
@@ -57,8 +58,30 @@ export default function ChatUI() {
   // instant `submitted`/`streaming` transition mounts the list immediately.
   const hasMessages = messages.length > 0 || status === 'submitted' || status === 'streaming'
 
-  const { isAtBottom, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom, scrollToBottomAndActivate } =
-    useChatScrollHandler()
+  const {
+    isAtBottom,
+    scrollContainerRef,
+    scrollHandlers,
+    scrollTargetRef,
+    scrollToBottom,
+    scrollToBottomAndActivate,
+    scrollToMessage,
+  } = useChatScrollHandler()
+
+  // Track the scroll container element as state (not just via the hook's
+  // callback ref) so `useScrollToMessage`'s wait-for-element effect re-runs
+  // when the container attaches. Compose with the hook's ref so auto-scroll
+  // still owns the element too.
+  const [scrollContainerEl, setScrollContainerEl] = useState<HTMLDivElement | null>(null)
+  const setScrollContainer = useCallback(
+    (el: HTMLDivElement | null) => {
+      setScrollContainerEl(el)
+      scrollContainerRef(el)
+    },
+    [scrollContainerRef],
+  )
+
+  useScrollToMessage({ scrollContainer: scrollContainerEl, scrollToMessage, messages })
 
   const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
@@ -89,7 +112,7 @@ export default function ChatUI() {
                   animation). Slide the list itself up instead, matching the
                   composer tween, so mobile mirrors the desktop motion. */}
               <m.div
-                ref={scrollContainerRef}
+                ref={setScrollContainer}
                 {...scrollHandlers}
                 initial={{ opacity: 0, y: isMobile ? 24 : 0 }}
                 animate={{ opacity: 1, y: 0 }}

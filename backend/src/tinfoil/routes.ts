@@ -5,6 +5,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
+import { errorKindFromStatus } from '@/inference/error-kind'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
@@ -277,7 +278,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         captureInferenceErrorFn({
           provider: 'tinfoil',
           status: upstream.status,
-          errorKind: 'upstream_error',
+          errorKind: errorKindFromStatus(upstream.status) ?? 'unknown',
           subpath,
           distinctId,
         })

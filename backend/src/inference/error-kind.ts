@@ -30,6 +30,23 @@ const rateLimitIdentifiers = new Set(['rate_limit_error', 'rate_limit_exceeded',
 const authIdentifiers = new Set(['authentication_error', 'invalid_api_key', 'permission_denied', 'unauthorized'])
 const badRequestIdentifiers = new Set(['bad_request', 'invalid_request', 'invalid_request_error'])
 
+/** Maps an inference HTTP status to its body-free telemetry category when recognized. */
+export const errorKindFromStatus = (status: number): InferenceErrorKind | undefined => {
+  if (status === 401 || status === 403) {
+    return 'auth'
+  }
+  if (status === 429) {
+    return 'rate_limit'
+  }
+  if (status >= 500) {
+    return 'upstream_error'
+  }
+  if (status === 400 || status === 422) {
+    return 'bad_request'
+  }
+  return undefined
+}
+
 /** Classifies an inference failure into a fixed, body-free telemetry category. */
 export const classifyInferenceError = (error: unknown): InferenceErrorKind => {
   if (error instanceof APIConnectionError) {
@@ -54,14 +71,9 @@ export const classifyInferenceError = (error: unknown): InferenceErrorKind => {
   }
 
   const status = error instanceof APIError ? error.status : undefined
-  if (status === 401 || status === 403) {
-    return 'auth'
-  }
-  if (status === 429) {
-    return 'rate_limit'
-  }
-  if (status !== undefined && status >= 500) {
-    return 'upstream_error'
+  const statusErrorKind = status === undefined ? undefined : errorKindFromStatus(status)
+  if (statusErrorKind !== undefined && statusErrorKind !== 'bad_request') {
+    return statusErrorKind
   }
 
   const message = error instanceof Error ? error.message : ''
@@ -87,7 +99,7 @@ export const classifyInferenceError = (error: unknown): InferenceErrorKind => {
   if (identifiers.some((identifier) => identifier && badRequestIdentifiers.has(identifier))) {
     return 'bad_request'
   }
-  if (status === 400 || status === 422 || /\b(bad request|invalid request)\b/i.test(message)) {
+  if (statusErrorKind === 'bad_request' || /\b(bad request|invalid request)\b/i.test(message)) {
     return 'bad_request'
   }
   return 'unknown'

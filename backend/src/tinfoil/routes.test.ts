@@ -343,26 +343,35 @@ describe('createTinfoilRoutes', () => {
   })
 
   describe('upstream error telemetry', () => {
-    it('captures non-2xx enclave responses with status and subpath', async () => {
-      const captureInferenceErrorMock = mock(() => {})
-      mockFetch.mockImplementation(() => Promise.resolve(new Response('key config mismatch', { status: 422 })))
-      const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })
+    const statusCases = [
+      { status: 422, errorKind: 'bad_request' },
+      { status: 429, errorKind: 'rate_limit' },
+      { status: 401, errorKind: 'auth' },
+      { status: 500, errorKind: 'upstream_error' },
+    ] as const
 
-      const res = await drain(
-        await app.handle(
-          new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }),
-        ),
-      )
+    for (const { status, errorKind } of statusCases) {
+      it(`captures status ${status} as ${errorKind}`, async () => {
+        const captureInferenceErrorMock = mock(() => {})
+        mockFetch.mockResolvedValueOnce(new Response('enclave error', { status }))
+        const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })
 
-      expect(res.status).toBe(422)
-      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
-        provider: 'tinfoil',
-        status: 422,
-        errorKind: 'upstream_error',
-        subpath: '/v1/chat/completions',
-        distinctId: 'test-user',
+        const res = await drain(
+          await app.handle(
+            new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }),
+          ),
+        )
+
+        expect(res.status).toBe(status)
+        expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+          provider: 'tinfoil',
+          status,
+          errorKind,
+          subpath: '/v1/chat/completions',
+          distinctId: 'test-user',
+        })
       })
-    })
+    }
 
     it('does not capture 2xx enclave responses', async () => {
       const captureInferenceErrorMock = mock(() => {})

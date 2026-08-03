@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { APIConnectionError, APIError } from 'openai'
-import { classifyInferenceError, type InferenceErrorKind } from './error-kind'
+import { classifyInferenceError, errorKindFromStatus, type InferenceErrorKind } from './error-kind'
 
 /** Creates an SDK error with provider-style structured metadata. */
 const createApiError = (status: number, code?: string, type?: string, message?: string) =>
@@ -46,5 +46,27 @@ describe('classifyInferenceError', () => {
         createApiError(400, undefined, 'invalid_request_error', 'prompt is too long: 215000 tokens > 200000 maximum'),
       ),
     ).toBe('context_length')
+  })
+})
+
+describe('errorKindFromStatus', () => {
+  const cases: Array<{ expected: InferenceErrorKind; status: number }> = [
+    { expected: 'auth', status: 401 },
+    { expected: 'auth', status: 403 },
+    { expected: 'rate_limit', status: 429 },
+    { expected: 'upstream_error', status: 500 },
+    { expected: 'upstream_error', status: 599 },
+    { expected: 'bad_request', status: 400 },
+    { expected: 'bad_request', status: 422 },
+  ]
+
+  for (const { expected, status } of cases) {
+    it(`maps ${status} to ${expected}`, () => {
+      expect(errorKindFromStatus(status)).toBe(expected)
+    })
+  }
+
+  it('returns undefined for an unmapped status', () => {
+    expect(errorKindFromStatus(404)).toBeUndefined()
   })
 })

@@ -70,6 +70,9 @@ export const useSearch: UseSearch = (query) => {
     query: searchSql,
     parameters: [match],
     enabled,
+    // Keep the prior results visible while the next query resolves so the list
+    // updates in place instead of flickering empty on every keystroke.
+    placeholderData: (previousData) => previousData,
   })
 
   if (!enabled) {

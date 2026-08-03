@@ -10,6 +10,8 @@ import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
 import { trackEvent } from '@/lib/posthog'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { buildActionNav } from '../actions/entity-actions'
+import type { EntityActionType } from '../actions/types'
 import type { PaletteCommand } from '../commands/types'
 import { useCommands } from '../commands/use-commands'
 import { searchEntities } from '../registry'
@@ -17,7 +19,6 @@ import type { SearchEntityType, SearchResult } from '../types'
 import { useSearch } from '../use-search'
 import { CommandActionItem } from './command-item'
 import { entityLabels } from './entity-meta'
-import { RecentChatsGroup } from './recent-chats-group'
 import { SearchResultItem } from './search-result-item'
 
 const debounceMs = 180
@@ -33,7 +34,7 @@ const groupByEntity = (results: SearchResult[]) =>
 
 /**
  * The Cmd+K command palette modal. Owns the debounced query, drives `useSearch`,
- * and renders grouped results (or recent chats when the query is empty).
+ * and renders grouped results (or the command groups when the query is empty).
  */
 export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
   const navigate = useNavigate()
@@ -42,7 +43,7 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
   const trimmedQuery = debouncedQuery.trim()
   const hasQuery = trimmedQuery.length > 0
 
-  const { results, isLoading } = useSearch(hasQuery ? trimmedQuery : '')
+  const { results } = useSearch(hasQuery ? trimmedQuery : '')
   const groups = useMemo(() => (hasQuery ? groupByEntity(results) : []), [hasQuery, results])
 
   const [logoutOpen, setLogoutOpen] = useState(false)
@@ -59,6 +60,7 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
   const commands = useCommands(commandOpts)
   const navCommands = commands.filter((command) => command.section === 'navigation')
   const actionCommands = commands.filter((command) => command.section === 'actions')
+  const createCommands = commands.filter((command) => command.section === 'create')
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -84,10 +86,23 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
       handleOpenChange(false)
       trackEvent('search_command_run', { commandId: command.id })
       if ('to' in command) {
-        navigate(command.to)
+        navigate(command.to, command.state ? { state: command.state } : undefined)
         return
       }
       void command.run()
+    },
+    [handleOpenChange, navigate],
+  )
+
+  const handleAction = useCallback(
+    (entityType: SearchEntityType, action: EntityActionType, id: string) => {
+      const nav = buildActionNav(entityType, { type: action, id })
+      if (!nav) {
+        return
+      }
+      handleOpenChange(false)
+      trackEvent('search_action_run', { entityType, action })
+      navigate(nav.to, { state: nav.state })
     },
     [handleOpenChange, navigate],
   )
@@ -99,6 +114,13 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
 
   const commandSections = (
     <>
+      {createCommands.length > 0 ? (
+        <CommandGroup heading="Create">
+          {createCommands.map((command) => (
+            <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
+          ))}
+        </CommandGroup>
+      ) : null}
       {navCommands.length > 0 ? (
         <CommandGroup heading="Go to">
           {navCommands.map((command) => (
@@ -128,12 +150,7 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
         <CommandInput placeholder="Search chats, models, skills, agents…" value={query} onValueChange={setQuery} />
         <CommandList>
           {!hasQuery ? (
-            <>
-              {commandSections}
-              <RecentChatsGroup onSelect={handleSelect} />
-            </>
-          ) : isLoading ? (
-            <CommandEmpty>Searching…</CommandEmpty>
+            commandSections
           ) : (
             <>
               <CommandEmpty>No results found.</CommandEmpty>
@@ -146,6 +163,7 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
                       result={result}
                       query={trimmedQuery}
                       onSelect={handleSelect}
+                      onAction={handleAction}
                     />
                   ))}
                 </CommandGroup>

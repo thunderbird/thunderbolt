@@ -4,13 +4,15 @@
 
 import '@testing-library/jest-dom'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getClock } from '@/testing-library'
 import { createTestProvider } from '@/test-utils/test-provider'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { Bot, LogOut } from 'lucide-react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { Bot, LogOut, Plus } from 'lucide-react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { type ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import type { PaletteCommand, UseCommandsOptions } from '../commands/types'
+import type { SearchResult } from '../types'
 
 const mockTrackEvent = mock((_event: string, _props?: Record<string, unknown>) => {})
 
@@ -33,9 +35,27 @@ mock.module('../commands/use-commands', () => ({
   useCommands: (opts: UseCommandsOptions) => buildCommands(opts),
 }))
 
+// The FTS stream owns real search; this suite injects canned results so the
+// action-row tests don't depend on a seeded index.
+let searchResults: SearchResult[] = []
+const realUseSearch = await import('../use-search')
+mock.module('../use-search', () => ({
+  ...realUseSearch,
+  useSearch: () => ({ results: searchResults, isLoading: false }),
+}))
+
 const { SearchPalette } = await import('./search-palette')
 
-const LocationProbe = () => <div data-testid="location">{useLocation().pathname}</div>
+const LocationProbe = () => {
+  const location = useLocation()
+  return (
+    <div data-testid="location" data-state={JSON.stringify(location.state)}>
+      {location.pathname}
+    </div>
+  )
+}
+
+const debounceMs = 180
 
 const renderPalette = () => {
   const TestProvider = createTestProvider()
@@ -63,6 +83,7 @@ describe('SearchPalette commands', () => {
     await resetTestDatabase()
     mockTrackEvent.mockClear()
     buildCommands = () => []
+    searchResults = []
   })
 
   afterEach(() => {
@@ -113,5 +134,47 @@ describe('SearchPalette commands', () => {
     fireEvent.click(screen.getByRole('option', { name: /Sign out/ }))
 
     expect(screen.getByText('What would you like to do with your local data?')).toBeInTheDocument()
+  })
+
+  it('renders create commands under the "Create" heading', () => {
+    buildCommands = () => [
+      { id: 'create-model', title: 'Create model', icon: Plus, section: 'create', to: '/settings/models' },
+    ]
+    renderPalette()
+
+    expect(screen.getByText('Create')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Create model/ })).toBeInTheDocument()
+  })
+
+  it('navigates with router state when a create command carries state', () => {
+    const state = { modelsAction: JSON.stringify({ type: 'create' }) }
+    buildCommands = () => [
+      { id: 'create-model', title: 'Create model', icon: Plus, section: 'create', to: '/settings/models', state },
+    ]
+    renderPalette()
+
+    fireEvent.click(screen.getByRole('option', { name: /Create model/ }))
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
+    expect(screen.getByTestId('location')).toHaveAttribute('data-state', JSON.stringify(state))
+  })
+
+  it('fires an entity action from a result row: navigates with intent state + tracks', async () => {
+    searchResults = [{ id: 'gpt-4o', entityType: 'model', title: 'GPT-4o', snippet: '', to: '/settings/models' }]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'gpt' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+    expect(mockTrackEvent).toHaveBeenCalledWith('search_action_run', { entityType: 'model', action: 'edit' })
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
+    expect(screen.getByTestId('location')).toHaveAttribute(
+      'data-state',
+      JSON.stringify({ modelsAction: JSON.stringify({ type: 'edit', id: 'gpt-4o' }) }),
+    )
   })
 })

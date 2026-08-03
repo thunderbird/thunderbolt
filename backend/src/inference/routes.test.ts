@@ -8,7 +8,7 @@ import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
 import type OpenAI from 'openai'
-import { APIError } from 'openai'
+import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import { createInferenceRoutes, supportedModels, type InferenceProxyLatencyLog } from './routes'
 import { defaultModels } from '@shared/defaults/models'
 
@@ -80,6 +80,7 @@ describe('Inference Routes', () => {
       mockCreateCompletion.mockClear()
       getInferenceClientMock.mockClear()
       isPostHogConfiguredMock.mockClear()
+      consoleSpies.error.mockClear()
       isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
         client: mockOpenAIClient as unknown as OpenAI,
@@ -287,6 +288,78 @@ describe('Inference Routes', () => {
         requestId: 'provider-request-123',
         distinctId: 'test-user',
       })
+    })
+
+    it('captures connection timeouts before wrapping them', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const connectionError = new APIConnectionTimeoutError({ message: 'Request timed out.' })
+      mockCreateCompletion.mockImplementation(() => Promise.reject(connectionError))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'mistral',
+        status: 500,
+        model: 'mistral-large-3',
+        errorKind: 'connection',
+        errorType: undefined,
+        errorCode: undefined,
+        requestId: undefined,
+        distinctId: 'test-user',
+      })
+      expect(consoleSpies.error).toHaveBeenCalledWith('Connection timeout to inference provider', connectionError.cause)
+    })
+
+    it('captures connection failures before wrapping them', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const connectionError = new APIConnectionError({ message: 'Connection failed.' })
+      mockCreateCompletion.mockImplementation(() => Promise.reject(connectionError))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'mistral',
+        status: 500,
+        model: 'mistral-large-3',
+        errorKind: 'connection',
+        errorType: undefined,
+        errorCode: undefined,
+        requestId: undefined,
+        distinctId: 'test-user',
+      })
+      expect(consoleSpies.error).toHaveBeenCalledWith('Failed to connect to inference provider', connectionError.cause)
     })
 
     it('never captures provider error message content', async () => {

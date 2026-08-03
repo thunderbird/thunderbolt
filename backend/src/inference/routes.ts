@@ -199,14 +199,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         return new Response(stream, { headers: responseHeaders })
       } catch (error) {
         recordLatency(getErrorStatus(error), nowFn())
-        if (error instanceof APIConnectionError) {
-          console.error('Failed to connect to inference provider', error.cause)
-          throw new Error('Failed to connect to inference provider', { cause: error })
-        }
-        if (error instanceof APIConnectionTimeoutError) {
-          console.error('Connection timeout to inference provider', error.cause)
-          throw new Error('Connection timeout to inference provider', { cause: error })
-        }
         // Keep failures diagnosable using body-free structured metadata only.
         const status = getErrorStatus(error)
         const apiError = error instanceof APIError ? error : undefined
@@ -220,6 +212,14 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           requestId: apiError?.requestID ?? undefined,
           distinctId: ctx.user.id,
         })
+        if (error instanceof APIConnectionTimeoutError) {
+          console.error('Connection timeout to inference provider', error.cause)
+          throw new Error('Connection timeout to inference provider', { cause: error })
+        }
+        if (error instanceof APIConnectionError) {
+          console.error('Failed to connect to inference provider', error.cause)
+          throw new Error('Failed to connect to inference provider', { cause: error })
+        }
         throw error
       }
     })

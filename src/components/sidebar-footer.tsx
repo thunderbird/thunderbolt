@@ -15,7 +15,6 @@ import {
   UserRound,
 } from 'lucide-react'
 import { type ReactNode, useState, useTransition } from 'react'
-import { useNavigate } from 'react-router'
 
 import dayjs from 'dayjs'
 import '@/lib/dayjs'
@@ -33,13 +32,13 @@ import { MobileSidebarScrim } from '@/components/ui/scrim'
 import { SidebarFooter as ShadcnSidebarFooter, useSidebar } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useHaptics } from '@/hooks/use-haptics'
 import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
 import { getDownloadUrl } from '@/lib/download-links'
 import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
-import { trackEvent } from '@/lib/posthog'
 import { edgeSpacing, getMobileSidebarWidth, mobileSidebarWidthCss } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
@@ -152,7 +151,6 @@ export const syncStatusText = (
 
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const authClient = useAuth()
-  const navigate = useNavigate()
   const { isMobile, setOpenMobile, state } = useSidebar()
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
@@ -173,10 +171,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
     useSyncEnabledToggle()
 
+  const createNewChat = useCreateNewChat()
+
   const handleNewChat = () => {
     triggerImpact('light')
-    trackEvent('chat_new_clicked')
-    navigate('/chats/new')
+    createNewChat()
     setOpenMobile(false)
   }
 

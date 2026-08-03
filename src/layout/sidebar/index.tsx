@@ -7,7 +7,9 @@ import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
-import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
+import { deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
+import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
@@ -84,14 +86,11 @@ export default function Sidebar() {
     [renameMutate],
   )
 
+  const deleteAllChats = useDeleteAllChats()
   const deleteAllChatsMutation = useMutation({
-    mutationFn: async () => {
-      await deleteAllChatThreads(db)
-    },
-    onSuccess: async () => {
-      trackEvent('chat_clear_all')
+    mutationFn: deleteAllChats,
+    onSuccess: () => {
       deleteAllChatsDialogRef.current?.close()
-      navigate('/chats/new')
     },
   })
 
@@ -109,9 +108,12 @@ export default function Sidebar() {
     [closeMobileSidebar, isMobile, navigate],
   )
 
-  const createNewChat = () => {
-    trackEvent('chat_new_clicked')
-    void navigateAndCloseSidebar('/chats/new')
+  const startNewChat = useCreateNewChat()
+  const createNewChat = async () => {
+    if (isMobile) {
+      await closeMobileSidebar()
+    }
+    startNewChat()
   }
 
   const handleChatClick = useCallback(

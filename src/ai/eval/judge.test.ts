@@ -3,12 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import {
   applyJudgeVerdict,
   buildJudgePrompt,
   evaluateWithJudge,
   getJudgeModelName,
   parseJudgeVerdict,
+  requestJudgeVerdict,
   requiresJudge,
 } from './judge'
 import type { EvalResult, EvalScenario } from './types'
@@ -87,6 +89,54 @@ describe('judge verdict parsing', () => {
         }),
       ),
     ).toThrow('Invalid judge verdict')
+  })
+
+  test('requests and aggregates a streaming OpenAI-compatible verdict', async () => {
+    const verdict = {
+      correct: true,
+      searchOffer: null,
+      premiseRebuttal: null,
+      verificationDisclaimer: null,
+      explanation: 'The year is correct.',
+    }
+    const requestBodies: Array<Record<string, unknown>> = []
+    const judgeFetch: typeof fetch = Object.assign(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        const chunks = [
+          {
+            id: 'judge',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: 'judge',
+            choices: [
+              { index: 0, delta: { role: 'assistant', content: JSON.stringify(verdict) }, finish_reason: null },
+            ],
+          },
+          {
+            id: 'judge',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: 'judge',
+            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+          },
+        ]
+        return new Response(`${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('')}data: [DONE]\n\n`, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const provider = createOpenAICompatible({
+      name: 'judge-test',
+      baseURL: 'https://judge.invalid/v1',
+      apiKey: 'test',
+      fetch: judgeFetch,
+    })
+
+    await expect(requestJudgeVerdict(provider('judge'), 'Grade this.')).resolves.toEqual(verdict)
+    expect(requestBodies).toHaveLength(1)
+    expect(requestBodies[0].stream).toBe(true)
   })
 })
 

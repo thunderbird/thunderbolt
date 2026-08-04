@@ -72,8 +72,10 @@ const main = async (): Promise<number> => {
   return failCount > 0 ? 1 : 0
 }
 
-// Match the frontend origin accepted by the CI backend while retaining browser storage semantics.
+const nativeTransformStream = globalThis.TransformStream
+// Match the frontend origin accepted by the CI backend while retaining browser storage semantics and native streams.
 GlobalRegistrator.register({ url: 'http://localhost:1420' })
+globalThis.TransformStream = nativeTransformStream
 const run = async (): Promise<number> => {
   try {
     return await main()

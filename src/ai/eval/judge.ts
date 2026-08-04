@@ -7,7 +7,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { defaultModelDeepseekV4Flash, defaultModelOpus48 } from '@shared/defaults/models'
-import { generateText } from 'ai'
+import { streamText, type LanguageModel } from 'ai'
 import { z } from 'zod'
 import type { EvalCriteria, EvalResult, EvalScenario } from './types'
 
@@ -119,6 +119,17 @@ User prompt: ${JSON.stringify(userPrompt)}
 Assistant response: ${JSON.stringify(responseText)}`
 }
 
+/** Request a judge verdict through the streaming transport required by the app backend. */
+export const requestJudgeVerdict = async (model: LanguageModel, prompt: string): Promise<JudgeVerdict> => {
+  const result = streamText({
+    model,
+    prompt,
+    temperature: 0,
+    maxRetries: 0,
+  })
+  return parseJudgeVerdict(await result.text)
+}
+
 /** Run one semantic judge call for a scenario sample. */
 export const judgeScenario = async (
   scenario: EvalScenario,
@@ -137,11 +148,5 @@ export const judgeScenario = async (
     apiKey: connection.apiKey,
     fetch: connection.fetch,
   })
-  const { text } = await generateText({
-    model: provider(judgeModel.model),
-    prompt: buildJudgePrompt(scenario, responseText),
-    temperature: 0,
-    maxRetries: 0,
-  })
-  return parseJudgeVerdict(text)
+  return requestJudgeVerdict(provider(judgeModel.model), buildJudgePrompt(scenario, responseText))
 }

@@ -140,6 +140,14 @@ describe('Inference Routes', () => {
       )
     })
 
+    it('configures Opus 5 for Anthropic without temperature', () => {
+      expect(supportedModels['opus-5']).toEqual({
+        provider: 'anthropic',
+        internalName: 'claude-opus-5',
+        omitTemperature: true,
+      })
+    })
+
     it('should handle request with tools and tool_choice', async () => {
       const mockCompletion = createMockStream()
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
@@ -323,7 +331,7 @@ describe('Inference Routes', () => {
         new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...validRequestBody, model: 'opus-4.8' }),
+          body: JSON.stringify({ ...validRequestBody, model: 'opus-5' }),
         }),
       )
 
@@ -333,7 +341,7 @@ describe('Inference Routes', () => {
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
         provider: 'anthropic',
         status: 529,
-        model: 'opus-4.8',
+        model: 'opus-5',
         errorKind: 'upstream_error',
         errorType: 'overloaded_error',
         errorCode: undefined,
@@ -592,7 +600,7 @@ describe('Inference Routes', () => {
     })
 
     it('should validate all supported models', () => {
-      const expectedModels = ['mistral-medium-3.1', 'mistral-large-3', 'opus-4.8', 'deepseek-v4-flash']
+      const expectedModels = ['mistral-medium-3.1', 'mistral-large-3', 'opus-5', 'deepseek-v4-flash']
       expect(Object.keys(supportedModels)).toEqual(expectedModels)
     })
 

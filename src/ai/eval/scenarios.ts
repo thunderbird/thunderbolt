@@ -2,10 +2,46 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelOpus48 } from '@shared/defaults/models'
-import type { EvalCriteria, EvalScenario } from './types'
+import { isPiModelCandidate } from '@/acp/built-in-adapter'
+import {
+  defaultModelDeepseekV4Flash,
+  defaultModelGlm52,
+  defaultModelOpus48,
+  defaultModels,
+  type SharedModel,
+} from '@shared/defaults/models'
+import type { EvalCriteria, EvalEngine, EvalScenario } from './types'
 
-const models = [{ name: 'opus', id: defaultModelOpus48.id }] as const
+type EvalModel = {
+  id: string
+  name: string
+  engineName: EvalEngine
+}
+
+export const evalModelSlugs: Readonly<Record<string, string>> = {
+  [defaultModelOpus48.id]: 'opus',
+  [defaultModelDeepseekV4Flash.id]: 'flash',
+  [defaultModelGlm52.id]: 'glm',
+}
+
+/** Build the eval matrix from shipped defaults, requiring a stable CLI slug for every model. */
+export const deriveEvalModelMatrix = (
+  models: ReadonlyArray<SharedModel>,
+  slugs: Readonly<Record<string, string>>,
+): EvalModel[] =>
+  models.map((model) => {
+    const name = slugs[model.id]
+    if (!name) {
+      throw new Error(`Missing eval slug for default model "${model.name}" (${model.id})`)
+    }
+    return {
+      id: model.id,
+      name,
+      engineName: isPiModelCandidate(model) ? 'pi' : 'legacy',
+    }
+  })
+
+export const evalModels = deriveEvalModelMatrix(defaultModels, evalModelSlugs)
 
 /** Default criteria applied to all Chat mode scenarios */
 const chatCriteria: EvalCriteria = {
@@ -357,10 +393,11 @@ const buildScenarios = (
   modeName: EvalScenario['modeName'],
   defaultCriteria: EvalCriteria,
 ): EvalScenario[] =>
-  models.flatMap((model) =>
+  evalModels.flatMap((model) =>
     prompts.map((p) => ({
-      id: `${model.name}/${modeName}/${p.id}`,
+      id: `${model.name}/${model.engineName}/${modeName}/${p.id}`,
       modelName: model.name,
+      engineName: model.engineName,
       modeName,
       prompt: p.prompt,
       followUps: p.followUps,
@@ -380,15 +417,18 @@ const allScenarios: EvalScenario[] = [
   ...buildScenarios(widgetSearchPrompts, 'search', searchCriteria),
 ]
 
-/** Get scenarios filtered by model names and mode names */
-export const getScenarios = (modelNames?: string[], modeNames?: string[]): EvalScenario[] =>
+/** Get scenarios filtered by model, mode, and engine names. */
+export const getScenarios = (modelNames?: string[], modeNames?: string[], engineNames?: string[]): EvalScenario[] =>
   allScenarios.filter(
-    (s) => (!modelNames || modelNames.includes(s.modelName)) && (!modeNames || modeNames.includes(s.modeName)),
+    (scenario) =>
+      (!modelNames || modelNames.includes(scenario.modelName)) &&
+      (!modeNames || modeNames.includes(scenario.modeName)) &&
+      (!engineNames || engineNames.includes(scenario.engineName)),
   )
 
 /** Get the model ID for a given model name */
 export const getModelId = (modelName: string): string => {
-  const model = models.find((m) => m.name === modelName)
+  const model = evalModels.find((candidate) => candidate.name === modelName)
   if (!model) {
     throw new Error(`Unknown model: ${modelName}`)
   }

@@ -20,6 +20,7 @@ import type { Model } from '@/types'
 import {
   createBuiltInAdapter,
   harnessSignature,
+  isPiModelCandidate,
   resolvePiModel,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
@@ -50,6 +51,18 @@ const openaiCompat = (
     ...overrides,
   },
   thinkingLevel: 'medium',
+})
+
+describe('isPiModelCandidate', () => {
+  it('matches the production provider and tool-usage routing boundary', () => {
+    expect(
+      ['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'].map((provider) =>
+        isPiModelCandidate({ provider: provider as Model['provider'], toolUsage: 1 }),
+      ),
+    ).toEqual([true, true, true, true, true])
+    expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(false)
+    expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
+  })
 })
 
 describe('harnessSignature', () => {

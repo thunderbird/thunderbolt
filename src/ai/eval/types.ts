@@ -7,10 +7,13 @@ import type { WidgetName } from '@/widgets'
 
 export type { WidgetName }
 
+export type EvalEngine = 'pi' | 'legacy'
+
 /** A single evaluation scenario: one prompt tested against one model in one mode */
 export type EvalScenario = {
   id: string
   modelName: string
+  engineName: EvalEngine
   modeName: 'chat' | 'search' | 'research'
   prompt: string
   /**
@@ -88,5 +91,6 @@ export type EvalSummary = {
   failed: number
   passRate: number
   byModel: Record<string, { total: number; passed: number; passRate: number }>
+  byEngine: Record<string, { total: number; passed: number; passRate: number }>
   byMode: Record<string, { total: number; passed: number; passRate: number }>
 }

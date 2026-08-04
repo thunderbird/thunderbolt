@@ -40,8 +40,9 @@ describe('countDuplicateToolCalls', () => {
 
 describe('scoreResult — maxToolCalls + duplicate reporting', () => {
   const scenario: EvalScenario = {
-    id: 'opus/chat/MTx',
+    id: 'opus/pi/chat/MTx',
     modelName: 'opus',
+    engineName: 'pi',
     modeName: 'chat',
     prompt: 'p',
     criteria: { mustProduceOutput: true, maxToolCalls: 0 },
@@ -73,8 +74,9 @@ describe('scoreResult — maxToolCalls + duplicate reporting', () => {
 
 describe('scoreResult — widget criteria', () => {
   const scenario: EvalScenario = {
-    id: 'opus/chat/WIDGET_TEST',
+    id: 'opus/pi/chat/WIDGET_TEST',
     modelName: 'opus',
+    engineName: 'pi',
     modeName: 'chat',
     prompt: 'p',
     criteria: { mustProduceOutput: true },

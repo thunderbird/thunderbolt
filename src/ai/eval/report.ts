@@ -31,16 +31,24 @@ export const summarize = (results: EvalResult[]): EvalSummary => {
   const passed = results.filter((r) => r.passed).length
 
   const byModel: EvalSummary['byModel'] = {}
+  const byEngine: EvalSummary['byEngine'] = {}
   const byMode: EvalSummary['byMode'] = {}
 
   for (const r of results) {
     const model = r.scenario.modelName
+    const engine = r.scenario.engineName
     const mode = r.scenario.modeName
 
     byModel[model] ??= { total: 0, passed: 0, passRate: 0 }
     byModel[model].total++
     if (r.passed) {
       byModel[model].passed++
+    }
+
+    byEngine[engine] ??= { total: 0, passed: 0, passRate: 0 }
+    byEngine[engine].total++
+    if (r.passed) {
+      byEngine[engine].passed++
     }
 
     byMode[mode] ??= { total: 0, passed: 0, passRate: 0 }
@@ -55,11 +63,14 @@ export const summarize = (results: EvalResult[]): EvalSummary => {
   for (const stats of Object.values(byModel)) {
     stats.passRate = rate(stats.passed, stats.total)
   }
+  for (const stats of Object.values(byEngine)) {
+    stats.passRate = rate(stats.passed, stats.total)
+  }
   for (const stats of Object.values(byMode)) {
     stats.passRate = rate(stats.passed, stats.total)
   }
 
-  return { total, passed, failed: total - passed, passRate: rate(passed, total), byModel, byMode }
+  return { total, passed, failed: total - passed, passRate: rate(passed, total), byModel, byEngine, byMode }
 }
 
 /** Print a console summary with colors */
@@ -80,6 +91,12 @@ export const printConsoleReport = (results: EvalResult[], summary: EvalSummary) 
   for (const [model, stats] of Object.entries(summary.byModel)) {
     const color = stats.passRate >= 80 ? g : stats.passRate >= 50 ? y : r
     console.log(`  ${color}${model}: ${stats.passed}/${stats.total} (${stats.passRate}%)${reset}`)
+  }
+
+  console.log(`\n${b}By Engine:${reset}`)
+  for (const [engine, stats] of Object.entries(summary.byEngine)) {
+    const color = stats.passRate >= 80 ? g : stats.passRate >= 50 ? y : r
+    console.log(`  ${color}${engine}: ${stats.passed}/${stats.total} (${stats.passRate}%)${reset}`)
   }
 
   console.log(`\n${b}By Mode:${reset}`)
@@ -111,6 +128,7 @@ export const writeMarkdownReport = (
 ) => {
   const now = new Date()
   const models = [...new Set(results.map((r) => r.scenario.modelName))].join(', ')
+  const engines = [...new Set(results.map((r) => r.scenario.engineName))].join(', ')
   const modes = [...new Set(results.map((r) => r.scenario.modeName))].join(', ')
   const totalDuration = results.reduce((sum, r) => sum + r.durationMs, 0)
 
@@ -119,7 +137,7 @@ export const writeMarkdownReport = (
     '',
     `> **${formatDate(now)}** | ${summary.total} scenarios | ${(totalDuration / 1000).toFixed(0)}s total`,
     '>',
-    `> Models: \`${models}\` | Modes: \`${modes}\``,
+    `> Models: \`${models}\` | Engines: \`${engines}\` | Modes: \`${modes}\``,
     '',
     '---',
     '',
@@ -136,6 +154,15 @@ export const writeMarkdownReport = (
     ...Object.entries(summary.byModel).map(
       ([model, s]) =>
         `| ${model} | ${s.passed} | ${s.total - s.passed} | ${s.total} | ${rateEmoji(s.passRate)} ${s.passRate}% |`,
+    ),
+    '',
+    '### By Engine',
+    '',
+    '| Engine | Passed | Failed | Total | Rate |',
+    '|--------|:---:|:---:|:---:|:---:|',
+    ...Object.entries(summary.byEngine).map(
+      ([engine, s]) =>
+        `| ${engine} | ${s.passed} | ${s.total - s.passed} | ${s.total} | ${rateEmoji(s.passRate)} ${s.passRate}% |`,
     ),
     '',
     '### By Mode',

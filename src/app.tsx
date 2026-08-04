@@ -19,7 +19,6 @@ import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
 import WaitlistLayout from '@/waitlist/layout'
 import WaitlistPage from '@/waitlist/waitlist-page'
-import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import {
   AuthProvider,
@@ -49,7 +48,6 @@ import { UpdateNotification } from './components/update-notification'
 import { WindowChrome } from '@/components/window-chrome'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
-import { SearchPaletteProvider } from '@/search/search-palette-context'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
@@ -177,11 +175,9 @@ const AppContent = ({ initData }: { initData: InitData }) => {
 
   return (
     <BrowserRouter>
-      <SearchPaletteProvider>
-        <AppRoutes initData={initData} />
-        <UpdateNotification />
-        <PendingDeviceModal />
-      </SearchPaletteProvider>
+      <AppRoutes initData={initData} />
+      <UpdateNotification />
+      <PendingDeviceModal />
     </BrowserRouter>
   )
 }
@@ -334,13 +330,11 @@ export const App = () => {
                       <ProxyFetchProvider>
                         <MCPProvider>
                           <HapticsProvider>
-                            <SidebarProvider>
-                              <ContentViewProvider>
-                                <ExternalLinkDialogProvider>
-                                  <AppContent initData={initData} />
-                                </ExternalLinkDialogProvider>
-                              </ContentViewProvider>
-                            </SidebarProvider>
+                            <ContentViewProvider>
+                              <ExternalLinkDialogProvider>
+                                <AppContent initData={initData} />
+                              </ExternalLinkDialogProvider>
+                            </ContentViewProvider>
                           </HapticsProvider>
                         </MCPProvider>
                       </ProxyFetchProvider>

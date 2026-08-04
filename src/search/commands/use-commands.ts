@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { themeIcons } from '@/components/theme-icons'
+import { useSidebar } from '@/components/ui/sidebar'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useSettings } from '@/hooks/use-settings'
 import { getDownloadUrl } from '@/lib/download-links'
@@ -129,13 +130,13 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
  * to the same hook the sidebar uses — nothing here reimplements behaviour.
  */
 export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
-  const { experimentalFeatureVoice, experimentalFeatureTasks, sidebarState } = useSettings({
+  const { experimentalFeatureVoice, experimentalFeatureTasks } = useSettings({
     experimental_feature_voice: false,
     experimental_feature_tasks: false,
-    sidebar_state: true,
   })
   const createNewChat = useCreateNewChat()
   const { setTheme } = useTheme()
+  const { toggleSidebar } = useSidebar()
 
   return buildCommands({
     flags: {
@@ -150,10 +151,9 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
       setTheme(theme)
       trackEvent('settings_theme_set', { theme })
     },
-    // The visible sidebar is controlled by the persisted `sidebar_state` setting
-    // (layout.tsx), not the app-level SidebarProvider the palette renders under —
-    // toggle the setting so the toggle actually reaches the real sidebar.
-    onToggleSidebar: () => sidebarState.setValue(!sidebarState.value),
+    // The palette shares the layout's SidebarProvider, so this hits the real
+    // toggle — mobile drawer and desktop collapse alike.
+    onToggleSidebar: toggleSidebar,
     onSignOut: opts.onSignOut,
     onClearAllChats: opts.onClearAllChats,
   })

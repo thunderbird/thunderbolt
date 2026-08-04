@@ -22,6 +22,7 @@ import { CommandActionItem } from './command-item'
 import { entityLabels } from './entity-meta'
 import { SearchResultItem } from './search-result-item'
 
+/** Wait for typing to settle before running FTS, to avoid a query per keystroke. */
 const debounceMs = 180
 
 /**
@@ -107,7 +108,9 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
         navigate(command.to, command.state ? { state: command.state } : undefined)
         return
       }
-      void command.run()
+      void Promise.resolve(command.run()).catch((error) => {
+        console.error(`[search] command '${command.id}' failed`, error)
+      })
     },
     [handleOpenChange, navigate],
   )
@@ -126,8 +129,12 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
   )
 
   const handleClearAllChatsConfirm = useCallback(async () => {
-    await deleteAllChats()
-    deleteAllChatsDialogRef.current?.close()
+    try {
+      await deleteAllChats()
+      deleteAllChatsDialogRef.current?.close()
+    } catch (error) {
+      console.error('[search] clear all chats failed', error)
+    }
   }, [deleteAllChats])
 
   const commandSections = (

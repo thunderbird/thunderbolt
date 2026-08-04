@@ -27,7 +27,7 @@ type SearchRow = {
 const searchSql =
   `SELECT id, entity_type, parent_id, title, ` +
   `snippet(search_index, 4, '', '', '…', 15) AS snippet ` +
-  `FROM search_index WHERE search_index MATCH ? ORDER BY bm25(search_index, 1.0, 1.0, 1.0, 10.0, 1.0) LIMIT 50`
+  `FROM search_index WHERE search_index MATCH ? ORDER BY bm25(search_index, 1.0, 1.0, 1.0, 10.0, 1.0), id LIMIT 50`
 
 /**
  * Sanitizes a raw user query into safe FTS5 MATCH syntax: whitespace-split into

@@ -128,7 +128,15 @@ export const createSearchIndex = async (powerSync: AbstractPowerSyncDatabase): P
   const indexRows = await powerSync.getAll(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [
     searchIndexTable,
   ])
-  if (indexRows.length > 0 && meta?.version === searchIndexVersion) {
+  // Also confirm the per-entity triggers still exist: PowerSync can drop/recreate
+  // its internal ps_data__* tables (resync, schema update), which silently takes
+  // our triggers with them while the search_index table survives. Without this
+  // check the version gate would short-circuit and the index would go stale.
+  const triggerRows = await powerSync.getAll(
+    `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'`,
+  )
+  const expectedTriggerCount = searchEntities.length * 3
+  if (indexRows.length > 0 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
     return
   }
 

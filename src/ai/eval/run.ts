@@ -5,6 +5,7 @@
 import { createBuiltInAdapter } from '@/acp/built-in-adapter'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { builtInAgent } from '@/defaults/agents'
+import { getNecessityScenarios } from './necessity-scenarios'
 import { generateReport } from './report'
 import { runPool } from './runner'
 import { getScenarios } from './scenarios'
@@ -18,8 +19,14 @@ const main = async () => {
   const modeFilter = process.env.EVAL_MODES?.split(',').map((s) => s.trim())
   const engineFilter = process.env.EVAL_ENGINES?.split(',').map((s) => s.trim())
   const scenarioParallel = parseInt(process.env.EVAL_SCENARIO_PARALLEL ?? '3')
+  const necessitySamples = parseInt(process.env.EVAL_SAMPLES ?? '3')
+  if (!Number.isInteger(necessitySamples) || necessitySamples < 1) {
+    throw new Error('EVAL_SAMPLES must be a positive integer')
+  }
 
-  const scenarios = getScenarios(modelFilter, modeFilter, engineFilter)
+  const necessityScenarios =
+    !modeFilter || modeFilter.includes('chat') ? getNecessityScenarios(modelFilter, engineFilter) : []
+  const scenarios = [...getScenarios(modelFilter, modeFilter, engineFilter), ...necessityScenarios]
 
   if (scenarios.length === 0) {
     console.error('No scenarios matched the filters.')
@@ -38,7 +45,9 @@ const main = async () => {
     initLayout(scenarios, scenarioParallel)
 
     try {
-      return await runPool(scenarios, scenarioParallel, adapter)
+      return await runPool(scenarios, scenarioParallel, adapter, (scenario) =>
+        scenario.category ? necessitySamples : 1,
+      )
     } finally {
       printFooter()
       teardownLayout()

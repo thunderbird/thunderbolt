@@ -21,6 +21,7 @@ import type { Model, ThunderboltUIMessage } from '@/types'
 import { evaluateWithJudge, judgeScenario } from './judge'
 import { getModelId } from './scenarios'
 import { scoreResult } from './scoring'
+import { modalResult } from './stats'
 import { parseStream } from './stream-parser'
 import type { EvalResult, EvalScenario, ParsedStream } from './types'
 
@@ -261,6 +262,7 @@ export const runPool = async (
   scenarios: EvalScenario[],
   concurrency: number,
   adapter: AgentAdapter,
+  sampleCountForScenario: (scenario: EvalScenario) => number = () => 1,
 ): Promise<EvalResult[]> => {
   const { startSpinner, stopSpinner, printResult } = await import('./ui')
 
@@ -271,7 +273,15 @@ export const runPool = async (
     while (queue.length > 0) {
       const scenario = queue.shift()!
       startSpinner(scenario)
-      const result = await runScenario(scenario, adapter)
+      const samples: EvalResult[] = []
+      const sampleRuns = Array.from(
+        { length: sampleCountForScenario(scenario) },
+        () => () => runScenario(scenario, adapter),
+      )
+      for (const runSample of sampleRuns) {
+        samples.push(await runSample())
+      }
+      const result = samples.length === 1 ? samples[0] : modalResult(samples)
       stopSpinner(scenario.id)
       printResult(result)
       results.push(result)

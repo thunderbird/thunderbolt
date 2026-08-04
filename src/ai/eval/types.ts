@@ -104,6 +104,9 @@ export type EvalResult = {
   retryCount: number
   durationMs: number
   error?: string
+  sampleCount?: number
+  passedSampleCount?: number
+  errorSampleCount?: number
 }
 
 /** Summary stats for report generation */
@@ -115,4 +118,57 @@ export type EvalSummary = {
   byModel: Record<string, { total: number; passed: number; passRate: number }>
   byEngine: Record<string, { total: number; passed: number; passRate: number }>
   byMode: Record<string, { total: number; passed: number; passRate: number }>
+}
+
+export type WilsonInterval = {
+  lower: number
+  upper: number
+}
+
+export type NecessityCategoryMetrics = {
+  passed: number
+  total: number
+  rate: number
+  wilson: WilsonInterval
+  threshold: number
+  gatePassed: boolean
+}
+
+export type NecessityRateMetric = {
+  count: number
+  total: number
+  rate: number
+  threshold: number
+  gatePassed: boolean
+}
+
+export type NecessityScenarioMetrics = {
+  category: NecessityCategory
+  passed: boolean
+  webToolCalls: number
+  duplicateWebToolCalls: number
+  sampleCount: number
+  passedSampleCount: number
+  errorSampleCount: number
+  isNegativeControl: boolean
+  reviewBy: string
+  failures: string[]
+}
+
+export type NecessityMetricsGroup = {
+  model: string
+  engine: EvalEngine
+  scenarios: Record<string, NecessityScenarioMetrics>
+  categories: Partial<Record<NecessityCategory, NecessityCategoryMetrics>>
+  headline: {
+    unnecessarySearchRate: NecessityRateMetric
+    missedSearchRate: NecessityRateMetric
+    meanWebCallsNoSearchExpected: number
+  }
+}
+
+export type NecessityMetrics = {
+  schemaVersion: 1
+  generatedAt: string
+  groups: Record<string, NecessityMetricsGroup>
 }

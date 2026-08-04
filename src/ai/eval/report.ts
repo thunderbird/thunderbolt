@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { writeFileSync, mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-import type { EvalResult, EvalSummary } from './types'
+import { dirname, join } from 'node:path'
+import { aggregateNecessityMetrics } from './stats'
+import type { EvalResult, EvalSummary, NecessityMetrics } from './types'
 
 const rateEmoji = (rate: number) => (rate >= 80 ? '🟢' : rate >= 50 ? '🟡' : '🔴')
 
@@ -24,6 +25,9 @@ const timestamp = () => {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
 }
+
+const formatPercent = (rate: number) => `${(rate * 100).toFixed(1)}%`
+const gateVerdict = (passed: boolean) => (passed ? '✅ pass' : '❌ fail')
 
 /** Generate summary statistics from results */
 export const summarize = (results: EvalResult[]): EvalSummary => {
@@ -119,14 +123,65 @@ export const printConsoleReport = (results: EvalResult[], summary: EvalSummary) 
   console.log('\n' + '='.repeat(60))
 }
 
+const buildNecessityLines = (results: EvalResult[], metrics: NecessityMetrics, now: Date): string[] => {
+  if (Object.keys(metrics.groups).length === 0) {
+    return []
+  }
+  const lines = ['## Search Necessity Gate', '']
+  for (const [groupKey, group] of Object.entries(metrics.groups)) {
+    lines.push(
+      `### ${groupKey}`,
+      '',
+      '| Category | Passed | Rate | Wilson 95% | Gate | Verdict |',
+      '|----------|:------:|:----:|:----------:|:----:|:-------:|',
+      ...Object.entries(group.categories).map(
+        ([category, stats]) =>
+          `| ${category} | ${stats.passed}/${stats.total} | ${formatPercent(stats.rate)} | ${formatPercent(stats.wilson.lower)}–${formatPercent(stats.wilson.upper)} | ≥${formatPercent(stats.threshold)} | ${gateVerdict(stats.gatePassed)} |`,
+      ),
+      '',
+      '| Headline metric | Result | Gate | Verdict |',
+      '|-----------------|:------:|:----:|:-------:|',
+      `| Unnecessary-search rate | ${group.headline.unnecessarySearchRate.count}/${group.headline.unnecessarySearchRate.total} (${formatPercent(group.headline.unnecessarySearchRate.rate)}) | ≤${formatPercent(group.headline.unnecessarySearchRate.threshold)} | ${gateVerdict(group.headline.unnecessarySearchRate.gatePassed)} |`,
+      `| Missed-search rate | ${group.headline.missedSearchRate.count}/${group.headline.missedSearchRate.total} (${formatPercent(group.headline.missedSearchRate.rate)}) | ≤${formatPercent(group.headline.missedSearchRate.threshold)} | ${gateVerdict(group.headline.missedSearchRate.gatePassed)} |`,
+      `| Mean web calls per no-search-expected prompt | ${group.headline.meanWebCallsNoSearchExpected.toFixed(3)} | — | — |`,
+      '',
+    )
+  }
+
+  const today = now.toISOString().slice(0, 10)
+  const overdue = [
+    ...new Set(
+      results
+        .filter(({ scenario }) => scenario.reviewBy && scenario.reviewBy < today)
+        .map(({ scenario }) => `${scenario.id} (${scenario.reviewBy})`),
+    ),
+  ]
+  if (overdue.length > 0) {
+    lines.push('### Past-due review dates', '', ...overdue.map((warning) => `- ⚠️ ${warning}`), '')
+  }
+  return lines
+}
+
+/** Write machine-readable modal outcomes and aggregates beside the markdown report. */
+export const writeMetricsReport = (
+  results: EvalResult[],
+  markdownPath: string,
+  generatedAt = new Date().toISOString(),
+): string => {
+  const outputPath = join(dirname(markdownPath), 'eval-metrics.json')
+  mkdirSync(dirname(outputPath), { recursive: true })
+  writeFileSync(outputPath, `${JSON.stringify(aggregateNecessityMetrics(results, generatedAt), null, 2)}\n`, 'utf-8')
+  return outputPath
+}
+
 /** Write a markdown report file. When `detailed` is true, includes a Failures section with prompts and reasons. */
 export const writeMarkdownReport = (
   results: EvalResult[],
   summary: EvalSummary,
   outputPath: string,
   detailed: boolean,
+  now = new Date(),
 ) => {
-  const now = new Date()
   const models = [...new Set(results.map((r) => r.scenario.modelName))].join(', ')
   const engines = [...new Set(results.map((r) => r.scenario.engineName))].join(', ')
   const modes = [...new Set(results.map((r) => r.scenario.modeName))].join(', ')
@@ -176,13 +231,15 @@ export const writeMarkdownReport = (
     '',
     '---',
     '',
+    ...buildNecessityLines(results, aggregateNecessityMetrics(results, now.toISOString()), now),
+    ...(results.some(({ scenario }) => scenario.category) ? ['---', ''] : []),
     '## Results',
     '',
-    '| | Scenario | Citations | Widgets | Links | Tools | Dups | Chars | Time |',
-    '|---|----------|:---:|:---:|:---:|:---:|:---:|:---:|---:|',
+    '| | Scenario | Citations | Widgets | Links | Web calls | Dups | Samples | Errors | Chars | Time |',
+    '|---|----------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---:|',
     ...results.map((r) => {
       const icon = r.passed ? '✅' : '❌'
-      return `| ${icon} | ${r.scenario.id} | ${r.citations.length} | ${r.widgets.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${r.duplicateToolCallCount} | ${r.responseLength} | ${(r.durationMs / 1000).toFixed(1)}s |`
+      return `| ${icon} | ${r.scenario.id} | ${r.citations.length} | ${r.widgets.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${r.duplicateToolCallCount} | ${r.passedSampleCount ?? Number(r.passed)}/${r.sampleCount ?? 1} | ${r.errorSampleCount ?? Number(Boolean(r.error))} | ${r.responseLength} | ${(r.durationMs / 1000).toFixed(1)}s |`
     }),
     '',
   ]
@@ -221,5 +278,8 @@ export const generateReport = (results: EvalResult[], detailed = false) => {
   printConsoleReport(results, summary)
 
   const outputPath = process.env.EVAL_OUTPUT ?? `evals/eval-results-${timestamp()}.md`
-  writeMarkdownReport(results, summary, outputPath, detailed)
+  const now = new Date()
+  writeMarkdownReport(results, summary, outputPath, detailed, now)
+  const metricsPath = writeMetricsReport(results, outputPath, now.toISOString())
+  console.log(`Metrics saved to: ${metricsPath}`)
 }

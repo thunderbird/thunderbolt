@@ -14,38 +14,14 @@ import { type ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import type { PaletteCommand, UseCommandsOptions } from '../commands/types'
 import type { SearchResult } from '../types'
+import { SearchPalette } from './search-palette'
 
+// The palette's data/analytics dependencies are injected as props (no shared
+// module mocking — that leaks worker-wide under `--randomize`). Each test drives
+// dispatch with a canned command builder / result set and asserts on the spy.
 const mockTrackEvent = mock((_event: string, _props?: Record<string, unknown>) => {})
-
-// Partial mock: spread the REAL module so every other export survives if this
-// registration leaks across files under `--randomize`. Only `trackEvent` is
-// overridden with the spy this suite asserts on. See docs/development/testing.md §65.
-const realPosthog = await import('@/lib/posthog')
-mock.module('@/lib/posthog', () => ({
-  ...realPosthog,
-  trackEvent: mockTrackEvent,
-}))
-
-// The data-layer stream owns the real command list; this suite drives dispatch
-// with a per-test builder so we control the exact commands (and reach the
-// opts.onSignOut modal-opener) without depending on that stream's contents.
 let buildCommands: (opts: UseCommandsOptions) => PaletteCommand[] = () => []
-const realUseCommands = await import('../commands/use-commands')
-mock.module('../commands/use-commands', () => ({
-  ...realUseCommands,
-  useCommands: (opts: UseCommandsOptions) => buildCommands(opts),
-}))
-
-// The FTS stream owns real search; this suite injects canned results so the
-// action-row tests don't depend on a seeded index.
 let searchResults: SearchResult[] = []
-const realUseSearch = await import('../use-search')
-mock.module('../use-search', () => ({
-  ...realUseSearch,
-  useSearch: () => ({ results: searchResults, isLoading: false }),
-}))
-
-const { SearchPalette } = await import('./search-palette')
 
 const LocationProbe = () => {
   const location = useLocation()
@@ -68,7 +44,16 @@ const renderPalette = () => {
       </TestProvider>
     </MemoryRouter>
   )
-  return render(<SearchPalette open onOpenChange={() => {}} />, { wrapper: Wrapper })
+  return render(
+    <SearchPalette
+      open
+      onOpenChange={() => {}}
+      useCommands={(opts) => buildCommands(opts)}
+      useSearch={() => ({ results: searchResults, isLoading: false })}
+      trackEvent={mockTrackEvent}
+    />,
+    { wrapper: Wrapper },
+  )
 }
 
 describe('SearchPalette commands', () => {

@@ -8,16 +8,16 @@ import { LogoutModal } from '@/components/logout-modal'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandList } from '@/components/ui/command'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
-import { trackEvent } from '@/lib/posthog'
+import { trackEvent as trackEventImpl } from '@/lib/posthog'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { buildActionNav } from '../actions/entity-actions'
 import type { EntityActionType } from '../actions/types'
 import type { PaletteCommand } from '../commands/types'
-import { useCommands } from '../commands/use-commands'
+import { useCommands as useCommandsImpl } from '../commands/use-commands'
 import { searchEntities } from '../registry'
 import type { SearchEntityType, SearchResult } from '../types'
-import { useSearch } from '../use-search'
+import { useSearch as useSearchImpl } from '../use-search'
 import { CommandActionItem } from './command-item'
 import { entityLabels } from './entity-meta'
 import { SearchResultItem } from './search-result-item'
@@ -49,11 +49,31 @@ const commandMatchesQuery = (command: PaletteCommand, query: string): boolean =>
     .every((token) => haystack.includes(token))
 }
 
+type SearchPaletteProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /**
+   * Data/analytics dependencies, injected in tests to drive dispatch with canned
+   * commands/results and a spy — the component uses the real hooks by default.
+   * Keeps the suite from module-mocking these shared modules (which leaks across
+   * files under `--randomize`).
+   */
+  useCommands?: typeof useCommandsImpl
+  useSearch?: typeof useSearchImpl
+  trackEvent?: typeof trackEventImpl
+}
+
 /**
  * The Cmd+K command palette modal. Owns the debounced query, drives `useSearch`,
  * and renders grouped results (or the command groups when the query is empty).
  */
-export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
+export const SearchPalette = ({
+  open,
+  onOpenChange,
+  useCommands = useCommandsImpl,
+  useSearch = useSearchImpl,
+  trackEvent = trackEventImpl,
+}: SearchPaletteProps) => {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebounce(query, debounceMs)
@@ -97,7 +117,7 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
       handleOpenChange(false)
       navigate(to, jumpToMessage ? { state: { [scrollToMessageStateKey]: id } } : undefined)
     },
-    [handleOpenChange, navigate],
+    [handleOpenChange, navigate, trackEvent],
   )
 
   const handleCommand = useCallback(
@@ -112,7 +132,7 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
         console.error(`[search] command '${command.id}' failed`, error)
       })
     },
-    [handleOpenChange, navigate],
+    [handleOpenChange, navigate, trackEvent],
   )
 
   const handleAction = useCallback(
@@ -125,7 +145,7 @@ export const SearchPalette = ({ open, onOpenChange }: { open: boolean; onOpenCha
       trackEvent('search_action_run', { entityType, action })
       navigate(nav.to, { state: nav.state })
     },
-    [handleOpenChange, navigate],
+    [handleOpenChange, navigate, trackEvent],
   )
 
   const handleClearAllChatsConfirm = useCallback(async () => {

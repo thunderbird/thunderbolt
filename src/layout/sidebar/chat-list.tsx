@@ -107,6 +107,7 @@ export const ChatList = ({
   const chatActions = (
     <ChatActions
       isCollapsed={isCollapsed}
+      showClearAll={hasListContent}
       deleteAllChatsMutation={deleteAllChatsMutation}
       deleteAllChatsDialogRef={deleteAllChatsDialogRef}
       onSearchClick={onSearchClick}
@@ -125,7 +126,7 @@ export const ChatList = ({
       <div className="relative z-10">
         <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
           {mobileNavToggle}
-          {hasListContent && chatActions}
+          {chatActions}
         </div>
         {mobileSecondaryNavigation}
       </div>
@@ -133,48 +134,47 @@ export const ChatList = ({
   )
 
   // Desktop: an in-flow label row while expanded, or the icon rail while
-  // collapsed.
+  // collapsed. Search is always shown; the clear-all action, rail divider, and
+  // "Recent Chats" label only appear once there are chats.
   const desktopChrome = isCollapsed ? (
-    hasListContent && (
-      <SidebarMenu className="flex-shrink-0">
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={onSearchClick}
-            tooltip="Search"
-            className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-          >
-            <Search className="size-[var(--icon-size-default)]" />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={() => deleteAllChatsDialogRef.current?.open()}
-            disabled={deleteAllChatsMutation.isPending}
-            tooltip="Clear all chats"
-            className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-          >
-            {deleteAllChatsMutation.isPending ? (
-              <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
-            ) : (
-              <Flame className="size-[var(--icon-size-default)]" />
-            )}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
-        <li aria-hidden>
-          <RailDivider className="my-1.5" />
-        </li>
-      </SidebarMenu>
-    )
-  ) : (
-    <>
+    <SidebarMenu className="flex-shrink-0">
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          onClick={onSearchClick}
+          tooltip="Search"
+          className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
+        >
+          <Search className="size-[var(--icon-size-default)]" />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
       {hasListContent && (
-        <div className="flex items-center justify-between flex-shrink-0">
-          <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
-          {chatActions}
-        </div>
+        <>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={() => deleteAllChatsDialogRef.current?.open()}
+              disabled={deleteAllChatsMutation.isPending}
+              tooltip="Clear all chats"
+              className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
+            >
+              {deleteAllChatsMutation.isPending ? (
+                <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
+              ) : (
+                <Flame className="size-[var(--icon-size-default)]" />
+              )}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
+          <li aria-hidden>
+            <RailDivider className="my-1.5" />
+          </li>
+        </>
       )}
-    </>
+    </SidebarMenu>
+  ) : (
+    <div className="flex items-center justify-between flex-shrink-0">
+      {hasListContent ? <SidebarGroupLabel>Recent Chats</SidebarGroupLabel> : <span aria-hidden />}
+      {chatActions}
+    </div>
   )
 
   return (

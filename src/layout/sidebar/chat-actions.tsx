@@ -11,6 +11,7 @@ const actionButtonClass =
 
 export const ChatActions = ({
   isCollapsed,
+  showClearAll,
   deleteAllChatsMutation,
   deleteAllChatsDialogRef,
   onSearchClick,
@@ -24,18 +25,20 @@ export const ChatActions = ({
       <SidebarMenuButton onClick={onSearchClick} aria-label="Search" className={actionButtonClass}>
         <Search className="size-[var(--icon-size-default)]" />
       </SidebarMenuButton>
-      <SidebarMenuButton
-        onClick={() => deleteAllChatsDialogRef.current?.open()}
-        aria-label="Clear all chats"
-        className={actionButtonClass}
-        disabled={deleteAllChatsMutation.isPending}
-      >
-        {deleteAllChatsMutation.isPending ? (
-          <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
-        ) : (
-          <Flame className="size-[var(--icon-size-default)]" />
-        )}
-      </SidebarMenuButton>
+      {showClearAll && (
+        <SidebarMenuButton
+          onClick={() => deleteAllChatsDialogRef.current?.open()}
+          aria-label="Clear all chats"
+          className={actionButtonClass}
+          disabled={deleteAllChatsMutation.isPending}
+        >
+          {deleteAllChatsMutation.isPending ? (
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
+          ) : (
+            <Flame className="size-[var(--icon-size-default)]" />
+          )}
+        </SidebarMenuButton>
+      )}
     </div>
   )
 }

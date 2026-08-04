@@ -22,6 +22,8 @@ export type DeleteAllChatsMutationType = UseMutationResult<void, Error, void, un
 
 export type ChatActionsProps = {
   isCollapsed: boolean
+  /** Whether to render the "Clear all chats" action — hidden when there are no chats. */
+  showClearAll: boolean
   deleteAllChatsMutation: DeleteAllChatsMutationType
   deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
   onSearchClick: () => void

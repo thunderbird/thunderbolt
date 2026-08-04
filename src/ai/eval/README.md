@@ -27,7 +27,7 @@ EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --verbose
 EVAL_MODELS=opus EVAL_MODES=search bun run eval
 ```
 
-> **Prerequisite**: The backend must be running at `localhost:8000` (or whatever `cloud_url` is configured). Protected model and proxy routes also require a signed bearer in `EVAL_AUTH_TOKEN` unless the Bun environment's local storage is already seeded. The eval runner makes real API calls to the models.
+> **Prerequisite**: The backend must be running at `localhost:8000` (or whatever `cloud_url` is configured). Protected model and proxy routes require a signed bearer in `EVAL_AUTH_TOKEN`. The eval runner makes real API calls to the models.
 
 ## How It Works
 
@@ -335,7 +335,7 @@ No baseline files are shipped until the first scheduled run produces real measur
 
 ### CI authentication
 
-Inference, Tinfoil, search, and universal-proxy routes reject unauthenticated requests. The workflow starts an isolated PGlite backend with `AUTH_ALLOW_ANONYMOUS=true`, calls Better Auth's anonymous sign-in endpoint, and reads the signed bearer from its `set-auth-token` response header. It passes that value as `EVAL_AUTH_TOKEN`; the eval seeds the production token store before creating adapters, so direct inference, Tinfoil, search, and hosted-proxy transports all use the same bearer. This uses the existing test-mode authentication path and does not add an auth bypass.
+Inference, Tinfoil, search, and universal-proxy routes reject unauthenticated requests. The workflow starts an isolated PGlite backend with `AUTH_ALLOW_ANONYMOUS=true`, calls Better Auth's anonymous sign-in endpoint, and reads the signed bearer from its `set-auth-token` response header. It passes that value as `EVAL_AUTH_TOKEN`; the eval entrypoint registers Happy DOM and seeds the production token store before creating adapters, so direct inference, Tinfoil, search, and hosted-proxy transports all use the same bearer. The DOM environment is required because the production adapter's auth and confidential-model cache seams intentionally use browser storage. This uses the existing test-mode authentication path and does not add an auth bypass.
 
 The repository needs these Actions secrets:
 

@@ -19,6 +19,7 @@ import { v7 as uuidv7 } from 'uuid'
 import type { AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { evaluateWithJudge, judgeScenario } from './judge'
+import { verbose } from './options'
 import { getModelId } from './scenarios'
 import { scoreResult } from './scoring'
 import { modalResult } from './stats'
@@ -26,16 +27,6 @@ import { parseStream } from './stream-parser'
 import type { EvalResult, EvalScenario, ParsedStream } from './types'
 
 const timeout = parseInt(process.env.EVAL_TIMEOUT ?? '120000')
-
-/** Seed the production token store so every adapter transport uses the CI bearer. */
-export const initializeEvalAuthToken = (
-  environmentToken: string | undefined,
-  storeToken: (token: string) => void,
-): void => {
-  if (environmentToken) {
-    storeToken(environmentToken)
-  }
-}
 
 let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = null
 const getEvalHttpClient = () => {
@@ -113,7 +104,6 @@ export const fetchAndParseTurn = async (
 }
 
 const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
-  const { verbose } = await import('./run')
   if (!verbose) {
     return
   }
@@ -163,7 +153,6 @@ const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
 }
 
 const logVerboseResponse = async (scenario: EvalScenario, responseText: string) => {
-  const { verbose } = await import('./run')
   if (!verbose) {
     return
   }

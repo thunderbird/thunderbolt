@@ -6,18 +6,20 @@ import { createBuiltInAdapter } from '@/acp/built-in-adapter'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { builtInAgent } from '@/defaults/agents'
 import { setAuthToken } from '@/lib/auth-token'
+import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { getNecessityScenarios } from './necessity-scenarios'
+import { detailed, verbose } from './options'
 import { generateReport } from './report'
-import { initializeEvalAuthToken, runPool } from './runner'
+import { runPool } from './runner'
 import { getScenarios } from './scenarios'
 import { getScenarioSampleCount, selectSmokeScenarios } from './smoke'
 import { initLayout, printFooter, restoreConsole, silenceConsole, teardownLayout } from './ui'
 
-export const verbose = process.argv.includes('--verbose')
-export const detailed = process.argv.includes('--detailed')
-
-const main = async () => {
-  initializeEvalAuthToken(process.env.EVAL_AUTH_TOKEN, setAuthToken)
+const main = async (): Promise<number> => {
+  const authToken = process.env.EVAL_AUTH_TOKEN
+  if (authToken) {
+    setAuthToken(authToken)
+  }
 
   const modelFilter = process.env.EVAL_MODELS?.split(',').map((s) => s.trim())
   const modeFilter = process.env.EVAL_MODES?.split(',').map((s) => s.trim())
@@ -39,7 +41,7 @@ const main = async () => {
     console.error(`  EVAL_MODELS=${process.env.EVAL_MODELS ?? '(all)'}`)
     console.error(`  EVAL_MODES=${process.env.EVAL_MODES ?? '(all)'}`)
     console.error(`  EVAL_ENGINES=${process.env.EVAL_ENGINES ?? '(all)'}`)
-    process.exit(1)
+    return 1
   }
 
   const adapter = createBuiltInAdapter(builtInAgent)
@@ -67,9 +69,16 @@ const main = async () => {
   generateReport(results, detailed)
 
   const failCount = results.filter((r) => !r.passed).length
-  if (failCount > 0) {
-    process.exit(1)
-  }
+  return failCount > 0 ? 1 : 0
 }
 
-await main()
+// Match the frontend origin accepted by the CI backend while retaining browser storage semantics.
+GlobalRegistrator.register({ url: 'http://localhost:1420' })
+const run = async (): Promise<number> => {
+  try {
+    return await main()
+  } finally {
+    await GlobalRegistrator.unregister()
+  }
+}
+process.exit(await run())

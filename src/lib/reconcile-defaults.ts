@@ -10,7 +10,13 @@ import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
+import {
+  defaultModelOpus5,
+  defaultModels,
+  defaultModelsVersion,
+  hashModel,
+  type SharedModel,
+} from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
@@ -449,6 +455,24 @@ export type ReconcileDefaultsOverrides = {
   initialSyncCompleted?: boolean
 }
 
+/** Upgrade the reused model identity so persisted chat references resolve Opus 5. */
+const migrateLegacyOpusModel = async (tx: AnyDrizzleDatabase): Promise<void> => {
+  const existing = await tx
+    .select({ model: modelsTable.model, deletedAt: modelsTable.deletedAt })
+    .from(modelsTable)
+    .where(eq(modelsTable.id, defaultModelOpus5.id))
+    .get()
+  if (!existing || existing.deletedAt !== null || existing.model !== 'opus-4.8') {
+    return
+  }
+
+  const { id, userId, deletedAt, defaultHash, ...modelValues } = defaultModelOpus5
+  await tx
+    .update(modelsTable)
+    .set({ ...modelValues, defaultHash: hashModel(defaultModelOpus5) })
+    .where(eq(modelsTable.id, id))
+}
+
 export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: ReconcileDefaultsOverrides) => {
   const modelsSource = overrides?.models ?? bundledModelsDefaults
   const initialSyncCompleted = overrides?.initialSyncCompleted ?? true
@@ -479,6 +503,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       hasAnyModelRow,
       initialSyncCompleted,
     )
+    await migrateLegacyOpusModel(tx)
 
     // OTA can ship models whose id isn't in this bundle's `defaultModelProfiles`
     // — profiles are not part of the OTA channel, so we have no profile to

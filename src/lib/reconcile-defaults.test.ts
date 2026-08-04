@@ -14,6 +14,7 @@ import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import {
   defaultModelGlm52,
+  defaultModelOpus5,
   defaultModels,
   defaultModelsVersion,
   hashModel,
@@ -802,6 +803,30 @@ describe('reconcileDefaultsForTable', () => {
       // The critical assertion — must not be flipped false by the
       // wouldOverwriteUserValue branch.
       expect(result.everyBundleRowAtTarget).toBe(true)
+    })
+  })
+})
+
+describe('Opus 5 data migration', () => {
+  test('upgrades the active legacy row in place even when the defaults marker is current', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({
+      ...defaultModelOpus5,
+      name: 'Customized legacy Opus',
+      model: 'opus-4.8',
+      contextWindow: 200_000,
+      defaultHash: 'customized',
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...defaultModelOpus5,
+      defaultHash: hashModel(defaultModelOpus5),
     })
   })
 })

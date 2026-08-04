@@ -189,7 +189,12 @@ export const aggregateNecessityMetrics = (
   const grouped = new Map<string, EvalResult[]>()
   for (const result of necessityResults) {
     const key = `${result.scenario.modelName}/${result.scenario.engineName}`
-    grouped.set(key, [...(grouped.get(key) ?? []), result])
+    const group = grouped.get(key)
+    if (group) {
+      group.push(result)
+    } else {
+      grouped.set(key, [result])
+    }
   }
   return {
     schemaVersion: 1,

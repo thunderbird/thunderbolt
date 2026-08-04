@@ -3,7 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { applyJudgeVerdict, evaluateWithJudge, getJudgeModelName, parseJudgeVerdict, requiresJudge } from './judge'
+import {
+  applyJudgeVerdict,
+  buildJudgePrompt,
+  evaluateWithJudge,
+  getJudgeModelName,
+  parseJudgeVerdict,
+  requiresJudge,
+} from './judge'
 import type { EvalResult, EvalScenario } from './types'
 
 const scenario: EvalScenario = {
@@ -122,5 +129,12 @@ describe('judge-backed criteria', () => {
     expect(judged.passed).toBe(false)
     expect(judged.error).toBe('Judge error: upstream unavailable')
     expect(judged.failures).toContain('Judge error: upstream unavailable')
+  })
+
+  test('grades a multi-turn response against the final follow-up', () => {
+    const prompt = buildJudgePrompt({ ...scenario, followUps: ['What year was that?'] }, '1989.')
+
+    expect(prompt).toContain('User prompt: "What year was that?"')
+    expect(prompt).not.toContain('User prompt: "When did the Berlin Wall fall?"')
   })
 })

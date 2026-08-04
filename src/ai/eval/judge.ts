@@ -29,17 +29,25 @@ const judgeModels: Record<JudgeModelName, Model> = {
   flash: { ...defaultModelDeepseekV4Flash, apiKey: null },
 }
 
-type VerdictKey = Exclude<keyof JudgeVerdict, 'explanation'>
+type SemanticAssertion = {
+  criteriaKey: 'expectCorrectAnswer' | 'expectSearchOffer' | 'expectPremiseRebuttal' | 'expectVerificationDisclaimer'
+  verdictKey: Exclude<keyof JudgeVerdict, 'explanation'>
+  label: string
+}
 
-const declaredAssertions = (criteria: EvalCriteria): Array<{ key: VerdictKey; label: string }> =>
-  [
-    criteria.expectCorrectAnswer ? { key: 'correct' as const, label: 'answer correctness' } : null,
-    criteria.expectSearchOffer ? { key: 'searchOffer' as const, label: 'search offer' } : null,
-    criteria.expectPremiseRebuttal ? { key: 'premiseRebuttal' as const, label: 'premise rebuttal' } : null,
-    criteria.expectVerificationDisclaimer
-      ? { key: 'verificationDisclaimer' as const, label: 'verification disclaimer' }
-      : null,
-  ].filter((assertion): assertion is { key: VerdictKey; label: string } => assertion !== null)
+const semanticAssertions: SemanticAssertion[] = [
+  { criteriaKey: 'expectCorrectAnswer', verdictKey: 'correct', label: 'answer correctness' },
+  { criteriaKey: 'expectSearchOffer', verdictKey: 'searchOffer', label: 'search offer' },
+  { criteriaKey: 'expectPremiseRebuttal', verdictKey: 'premiseRebuttal', label: 'premise rebuttal' },
+  {
+    criteriaKey: 'expectVerificationDisclaimer',
+    verdictKey: 'verificationDisclaimer',
+    label: 'verification disclaimer',
+  },
+]
+
+const declaredAssertions = (criteria: EvalCriteria): SemanticAssertion[] =>
+  semanticAssertions.filter(({ criteriaKey }) => criteria[criteriaKey])
 
 /** Select a capable judge that is neither GLM nor the model under evaluation. */
 export const getJudgeModelName = (testedModelName: string): JudgeModelName => {
@@ -60,16 +68,18 @@ export const parseJudgeVerdict = (text: string): JudgeVerdict => {
   try {
     return judgeVerdictSchema.parse(JSON.parse(text))
   } catch (error) {
-    throw new Error(`Invalid judge verdict: ${error instanceof Error ? error.message : String(error)}`)
+    throw new Error(`Invalid judge verdict: ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
+    })
   }
 }
 
 /** Apply only the semantic assertions declared by the scenario's criteria. */
 export const applyJudgeVerdict = (result: EvalResult, verdict: JudgeVerdict): EvalResult => {
-  const judgeFailures = declaredAssertions(result.scenario.criteria).flatMap(({ key, label }) => {
-    const value = verdict[key]
+  const judgeFailures = declaredAssertions(result.scenario.criteria).flatMap(({ verdictKey, label }) => {
+    const value = verdict[verdictKey]
     if (value === null) {
-      throw new Error(`Judge omitted declared assertion: ${key}`)
+      throw new Error(`Judge omitted declared assertion: ${verdictKey}`)
     }
     return value ? [] : [`Judge rejected ${label}: ${verdict.explanation}`]
   })
@@ -98,12 +108,14 @@ export const evaluateWithJudge = async (
   }
 }
 
-const buildJudgePrompt = (scenario: EvalScenario, responseText: string): string => {
-  const assertions = declaredAssertions(scenario.criteria).map(({ key }) => key)
+/** Build the terse semantic grading prompt for a scenario's scored turn. */
+export const buildJudgePrompt = (scenario: EvalScenario, responseText: string): string => {
+  const assertions = declaredAssertions(scenario.criteria).map(({ verdictKey }) => verdictKey)
+  const userPrompt = scenario.followUps?.at(-1) ?? scenario.prompt
   return `Grade only these assertions: ${assertions.join(', ')}.
 Be strict and factual. Unsupported claims make correctness fail. A search offer must include an actual answer first. A premise rebuttal must explicitly correct the false premise. A verification disclaimer must explicitly admit the answer cannot be verified.
 Set unrequested assertion fields to null. Return only JSON with exactly: correct, searchOffer, premiseRebuttal, verificationDisclaimer, explanation.
-User prompt: ${JSON.stringify(scenario.prompt)}
+User prompt: ${JSON.stringify(userPrompt)}
 Assistant response: ${JSON.stringify(responseText)}`
 }
 

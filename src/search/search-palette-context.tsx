@@ -3,26 +3,27 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ReactNode } from 'react'
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import { trackEvent } from '@/lib/posthog'
-import { SearchPalette } from './palette/search-palette'
+
+// Lazy so the search subsystem (cmdk dialog, FTS, registry, icons) stays out of
+// the entry bundle — the palette is only reachable via Cmd/Ctrl+K.
+const SearchPalette = lazy(() =>
+  import('./palette/search-palette').then((module) => ({ default: module.SearchPalette })),
+)
 
 type SearchPaletteContextValue = {
   open: () => void
-  close: () => void
-  isOpen: boolean
 }
 
 const SearchPaletteContext = createContext<SearchPaletteContextValue>({
   open: () => {},
-  close: () => {},
-  isOpen: false,
 })
 
 /**
- * Provides command-palette open/close state, registers the Cmd/Ctrl+K global
- * shortcut, and renders the palette modal alongside the app.
+ * Provides the command-palette opener, registers the Cmd/Ctrl+K global
+ * shortcut, and lazily mounts the palette modal on first open.
  */
 export const SearchPaletteProvider = ({ children }: { children: ReactNode }) => {
   const [isOpen, setIsOpen] = useState(false)
@@ -44,15 +45,23 @@ export const SearchPaletteProvider = ({ children }: { children: ReactNode }) => 
     }
   }, [isOpen])
 
-  const value = useMemo<SearchPaletteContextValue>(
-    () => ({ open: () => setIsOpen(true), close: () => setIsOpen(false), isOpen }),
-    [isOpen],
-  )
+  // Mount the lazy modal on first open and keep it mounted thereafter so its
+  // open/close transition animates on later toggles.
+  const hasOpenedRef = useRef(false)
+  if (isOpen) {
+    hasOpenedRef.current = true
+  }
+
+  const value = useMemo<SearchPaletteContextValue>(() => ({ open: () => setIsOpen(true) }), [])
 
   return (
     <SearchPaletteContext.Provider value={value}>
       {children}
-      <SearchPalette open={isOpen} onOpenChange={setIsOpen} />
+      {hasOpenedRef.current ? (
+        <Suspense fallback={null}>
+          <SearchPalette open={isOpen} onOpenChange={setIsOpen} />
+        </Suspense>
+      ) : null}
     </SearchPaletteContext.Provider>
   )
 }

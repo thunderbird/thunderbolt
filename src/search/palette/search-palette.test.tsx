@@ -241,6 +241,20 @@ describe('SearchPalette commands', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
   })
 
+  it('hides the tasks result group when the tasks feature flag is off (still indexed, just not shown)', async () => {
+    // The test settings default `experimental_feature_tasks` to off.
+    searchResults = [{ id: 'task-1', entityType: 'task', title: 'Buy milk', snippet: '', to: '/tasks' }]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'milk' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    expect(screen.queryByRole('option', { name: /Buy milk/ })).not.toBeInTheDocument()
+    expect(screen.getByText('No results found.')).toBeInTheDocument()
+  })
+
   it('filters the static command list by the query itself (cmdk filter is off)', async () => {
     buildCommands = () => [
       { id: 'nav-models', title: 'Models', icon: Bot, section: 'navigation', to: '/settings/models' },

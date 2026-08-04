@@ -140,7 +140,7 @@ export const ChatList = ({
         <SidebarMenuItem>
           <SidebarMenuButton
             onClick={onSearchClick}
-            tooltip="Search chats"
+            tooltip="Search"
             className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
           >
             <Search className="size-[var(--icon-size-default)]" />

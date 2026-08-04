@@ -8,6 +8,7 @@ import { LogoutModal } from '@/components/logout-modal'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandList } from '@/components/ui/command'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
+import { useSettings } from '@/hooks/use-settings'
 import { trackEvent as trackEventImpl } from '@/lib/posthog'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -79,8 +80,19 @@ export const SearchPalette = ({
   const trimmedQuery = debouncedQuery.trim()
   const hasQuery = trimmedQuery.length > 0
 
+  const { experimentalFeatureTasks } = useSettings({ experimental_feature_tasks: false })
+
   const { results } = useSearch(hasQuery ? trimmedQuery : '')
-  const groups = useMemo(() => (hasQuery ? groupByEntity(results) : []), [hasQuery, results])
+  const groups = useMemo(() => {
+    if (!hasQuery) {
+      return []
+    }
+    // Tasks stay indexed, but the Tasks result group is hidden when the feature
+    // flag is off — `/tasks` isn't mounted then (app.tsx), so a click would 404.
+    // Mirrors the flag-gating on the Tasks nav/create commands.
+    const visible = experimentalFeatureTasks.value ? results : results.filter((result) => result.entityType !== 'task')
+    return groupByEntity(visible)
+  }, [hasQuery, results, experimentalFeatureTasks.value])
 
   const [logoutOpen, setLogoutOpen] = useState(false)
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)

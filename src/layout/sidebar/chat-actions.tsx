@@ -21,7 +21,7 @@ export const ChatActions = ({
 
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <SidebarMenuButton onClick={onSearchClick} aria-label="Search chats" className={actionButtonClass}>
+      <SidebarMenuButton onClick={onSearchClick} aria-label="Search" className={actionButtonClass}>
         <Search className="size-[var(--icon-size-default)]" />
       </SidebarMenuButton>
       <SidebarMenuButton

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { wilsonScoreInterval } from './stats'
 import type { NecessityCategory, NecessityMetrics, NecessityMetricsGroup, WilsonInterval } from './types'
@@ -83,6 +83,9 @@ const compareRate = (
 /** Write one deterministic baseline file per model and engine cell. */
 export const writeBaselineFiles = (metrics: NecessityMetrics, outputDirectory: string): string[] => {
   mkdirSync(outputDirectory, { recursive: true })
+  for (const fileName of readdirSync(outputDirectory).filter((name) => name.endsWith('.json'))) {
+    rmSync(join(outputDirectory, fileName))
+  }
   return Object.entries(metrics.groups)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([groupKey, group]) => {

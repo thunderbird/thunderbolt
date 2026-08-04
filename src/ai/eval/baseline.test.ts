@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compareMetricsToBaselines, loadBaselineFiles, type EvalBaseline, writeBaselineFiles } from './baseline'
@@ -69,10 +69,13 @@ describe('baseline files', () => {
 
   test('writes one reviewable file per model and engine cell and loads it back', () => {
     const source = metrics(group({ categoryPassed: 8, unnecessaryCount: 2, missedCount: 1, meanWebCalls: 0.2 }))
+    const stalePath = join(outputDirectory, 'retired--legacy.json')
+    writeFileSync(stalePath, '{}')
 
     const written = writeBaselineFiles(source, outputDirectory)
     const contents = JSON.parse(readFileSync(written[0], 'utf8')) as EvalBaseline
 
+    expect(existsSync(stalePath)).toBe(false)
     expect(written).toEqual([join(outputDirectory, 'opus--pi.json')])
     expect(contents).toEqual({
       schemaVersion: 1,

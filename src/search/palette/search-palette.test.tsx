@@ -169,7 +169,7 @@ describe('SearchPalette commands', () => {
       await getClock().tickAsync(debounceMs)
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('button', { name: /Edit/ }))
 
     expect(mockTrackEvent).toHaveBeenCalledWith('search_action_run', { entityType: 'model', action: 'edit' })
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')

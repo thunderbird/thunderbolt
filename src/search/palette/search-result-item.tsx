@@ -46,7 +46,7 @@ export const SearchResultItem = ({
   const renderAction = (action: EntityActionType, ActionIcon: typeof Pencil, label: string) => (
     <button
       type="button"
-      aria-label={label}
+      aria-label={`${label} ${result.title}`}
       onPointerDown={stopRowSelect}
       onClick={(event) => {
         stopRowSelect(event)

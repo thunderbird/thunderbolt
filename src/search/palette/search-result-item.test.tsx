@@ -62,8 +62,8 @@ describe('SearchResultItem', () => {
   it('renders edit and remove buttons for entities that support them (model, skill)', () => {
     for (const entityType of ['model', 'skill'] as const) {
       const { unmount } = renderRow(makeResult(entityType))
-      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Edit/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Remove/ })).toBeInTheDocument()
       unmount()
     }
   })
@@ -71,8 +71,8 @@ describe('SearchResultItem', () => {
   it('renders no action buttons for entities without inline actions', () => {
     for (const entityType of ['chat', 'message', 'device', 'task'] as const) {
       const { unmount } = renderRow(makeResult(entityType))
-      expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Edit/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument()
       unmount()
     }
   })
@@ -91,7 +91,7 @@ describe('SearchResultItem', () => {
     const onAction = mock(() => {})
     renderRow(makeResult('model'), { onSelect, onAction })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('button', { name: /Edit/ }))
 
     expect(onAction).toHaveBeenCalledWith('model', 'edit', 'model-1')
     expect(onSelect).not.toHaveBeenCalled()

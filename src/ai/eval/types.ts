@@ -142,8 +142,8 @@ export type NecessityRateMetric = {
   gatePassed: boolean
 }
 
-export type NecessityScenarioMetrics = {
-  category: NecessityCategory
+export type EvalScenarioMetrics = {
+  category: NecessityCategory | 'core'
   passed: boolean
   webToolCalls: number
   duplicateWebToolCalls: number
@@ -151,14 +151,20 @@ export type NecessityScenarioMetrics = {
   passedSampleCount: number
   errorSampleCount: number
   isNegativeControl: boolean
-  reviewBy: string
+  reviewBy: string | null
   failures: string[]
 }
 
-export type NecessityMetricsGroup = {
+export type EvalScenarioComparison = {
+  baselinePassed: boolean | null
+  currentPassed: boolean
+  direction: 'improved' | 'regressed' | 'unchanged' | 'no-baseline'
+}
+
+export type EvalMetricsGroup = {
   model: string
   engine: EvalEngine
-  scenarios: Record<string, NecessityScenarioMetrics>
+  scenarios: Record<string, EvalScenarioMetrics>
   categories: Partial<Record<NecessityCategory, NecessityCategoryMetrics>>
   headline: {
     unnecessarySearchRate: NecessityRateMetric
@@ -167,8 +173,8 @@ export type NecessityMetricsGroup = {
   }
 }
 
-export type NecessityMetrics = {
-  schemaVersion: 1
+export type EvalMetrics = {
+  schemaVersion: 2
   generatedAt: string
-  groups: Record<string, NecessityMetricsGroup>
+  groups: Record<string, EvalMetricsGroup>
 }

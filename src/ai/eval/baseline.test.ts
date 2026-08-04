@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compareMetricsToBaselines, loadBaselineFiles, type EvalBaseline, writeBaselineFiles } from './baseline'
 import { wilsonScoreInterval } from './stats'
-import type { NecessityCategoryMetrics, NecessityMetrics, NecessityMetricsGroup, NecessityRateMetric } from './types'
+import type { EvalMetrics, EvalMetricsGroup, NecessityCategoryMetrics, NecessityRateMetric } from './types'
 
 const categoryMetric = (passed: number, total: number): NecessityCategoryMetrics => ({
   passed,
@@ -32,15 +32,30 @@ const group = ({
   unnecessaryCount,
   missedCount,
   meanWebCalls,
+  corePassed = true,
 }: {
   categoryPassed: number
   unnecessaryCount: number
   missedCount: number
   meanWebCalls: number
-}): NecessityMetricsGroup => ({
+  corePassed?: boolean
+}): EvalMetricsGroup => ({
   model: 'opus',
   engine: 'pi',
-  scenarios: {},
+  scenarios: {
+    C1: {
+      category: 'core',
+      passed: corePassed,
+      webToolCalls: 0,
+      duplicateWebToolCalls: 0,
+      sampleCount: 1,
+      passedSampleCount: Number(corePassed),
+      errorSampleCount: 0,
+      isNegativeControl: false,
+      reviewBy: null,
+      failures: corePassed ? [] : ['failed'],
+    },
+  },
   categories: { never_search: categoryMetric(categoryPassed, 10) },
   headline: {
     unnecessarySearchRate: rateMetric(unnecessaryCount, 10),
@@ -49,14 +64,14 @@ const group = ({
   },
 })
 
-const metrics = (groupValue: NecessityMetricsGroup): NecessityMetrics => ({
-  schemaVersion: 1,
+const metrics = (groupValue: EvalMetricsGroup): EvalMetrics => ({
+  schemaVersion: 2,
   generatedAt: '2026-08-04T12:00:00.000Z',
   groups: { 'opus/pi': groupValue },
 })
 
-const baseline = (groupValue: NecessityMetricsGroup): EvalBaseline => ({
-  schemaVersion: 1,
+const baseline = (groupValue: EvalMetricsGroup): EvalBaseline => ({
+  schemaVersion: 2,
   generatedAt: '2026-08-03T12:00:00.000Z',
   groupKey: 'opus/pi',
   group: groupValue,
@@ -78,7 +93,7 @@ describe('baseline files', () => {
     expect(existsSync(stalePath)).toBe(false)
     expect(written).toEqual([join(outputDirectory, 'opus--pi.json')])
     expect(contents).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: source.generatedAt,
       groupKey: 'opus/pi',
       group: source.groups['opus/pi'],
@@ -96,7 +111,9 @@ describe('baseline comparison', () => {
   const baselines = { 'opus/pi': baseline(baselineGroup) }
 
   test('marks only rates outside the baseline Wilson interval as significant', () => {
-    const current = metrics(group({ categoryPassed: 10, unnecessaryCount: 0, missedCount: 8, meanWebCalls: 0.1 }))
+    const current = metrics(
+      group({ categoryPassed: 10, unnecessaryCount: 0, missedCount: 8, meanWebCalls: 0.1, corePassed: false }),
+    )
 
     const comparison = compareMetricsToBaselines(current, baselines).groups['opus/pi']
 
@@ -125,6 +142,11 @@ describe('baseline comparison', () => {
       baseline: 0.4,
       current: 0.1,
       delta: -0.3,
+    })
+    expect(comparison.scenarios.C1).toEqual({
+      baselinePassed: true,
+      currentPassed: false,
+      direction: 'regressed',
     })
   })
 

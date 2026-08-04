@@ -56,21 +56,21 @@ Each scenario checks a combination of criteria depending on the mode:
 
 Necessity scenarios use plain Chat turns, so the production `auto` web budget applies. They multiply across the same model/engine matrix as the core suites.
 
-| Category                | Prompts | Expected behavior                                                 | Gate |
-| ----------------------- | :-----: | ----------------------------------------------------------------- | :--: |
-| `never_search`          |   12    | No web calls; correct answer                                      | 95%  |
-| `answer_then_offer`     |   12    | Answer without web calls, then explicitly offer to verify         | 80%  |
-| `single_search`         |   12    | 1-2 web calls                                                     | 90%  |
-| `research`              |   12    | Search in Chat; explicit deep-research wording exhausts 2 calls   | 85%  |
-| `unknown_entity`        |    8    | 1-2 web calls                                                     | 85%  |
-| `false_premise`         |    8    | Search and explicitly rebut the embedded false premise            | 75%  |
-| `adversarial_no_search` |   16    | Resist lexical/recency bait; no web calls; correct answer         | 90%  |
-| `multi_turn_reuse`      |   12    | Reuse prior results; two negative controls require a fresh search | 90%  |
-| `search_wont_help`      |    4    | Do not fabricate; explicitly admit the answer cannot be verified  | 60%  |
+| Category                | Prompts | Expected behavior                                                  | Gate |
+| ----------------------- | :-----: | ------------------------------------------------------------------ | :--: |
+| `never_search`          |   12    | No web calls; correct answer                                       | 95%  |
+| `answer_then_offer`     |   12    | Answer without web calls, then explicitly offer to verify          | 80%  |
+| `single_search`         |   12    | 1-2 web calls                                                      | 90%  |
+| `research`              |   12    | Search in Chat; deep-research wording requires at least 2 attempts | 85%  |
+| `unknown_entity`        |    8    | 1-2 web calls                                                      | 85%  |
+| `false_premise`         |    8    | Search and explicitly rebut the embedded false premise             | 75%  |
+| `adversarial_no_search` |   16    | Resist lexical/recency bait; no web calls; correct answer          | 90%  |
+| `multi_turn_reuse`      |   12    | Reuse prior results; two negative controls require a fresh search  | 90%  |
+| `search_wont_help`      |    4    | Do not fabricate; explicitly admit the answer cannot be verified   | 60%  |
 
 `search_wont_help` is excluded by default and enabled with `EVAL_NECESSITY_OPTIONAL=1`.
 
-The `research` category measures the decision to search in ordinary Chat, not exhaustive depth. Chat resolves to `auto` and production hard-caps it at two executed web calls. Prompts that explicitly say “research,” “deep dive,” or “comprehensive” therefore require both calls; other multi-source prompts require at least one. The existing `/research` suite measures depth under its 30-call budget.
+The `research` category measures the decision to search in ordinary Chat, not exhaustive depth. Prompts that explicitly say “research,” “deep dive,” or “comprehensive” require at least two web-call attempts; other multi-source prompts require at least one. There is no scored maximum because the model may attempt additional angles after Chat's two-call execution budget is exhausted. The existing `/research` suite measures depth under its 30-call budget.
 
 ### Example Output
 
@@ -257,13 +257,25 @@ Every report writes `eval-metrics.json` beside the Markdown file. The stable sch
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedAt": "2026-08-04T12:00:00.000Z",
   "groups": {
     "opus/pi": {
       "model": "opus",
       "engine": "pi",
       "scenarios": {
+        "C1": {
+          "category": "core",
+          "passed": true,
+          "webToolCalls": 1,
+          "duplicateWebToolCalls": 0,
+          "sampleCount": 1,
+          "passedSampleCount": 1,
+          "errorSampleCount": 0,
+          "isNegativeControl": false,
+          "reviewBy": null,
+          "failures": []
+        },
         "never-search-01": {
           "category": "never_search",
           "passed": true,
@@ -309,7 +321,7 @@ Every report writes `eval-metrics.json` beside the Markdown file. The stable sch
 }
 ```
 
-Rates are fractions from 0 to 1. Groups are keyed by `model/engine`; scenario keys are the human-readable final ID segment. This shape is intended for CI baselines and PR-comment generation.
+Rates are fractions from 0 to 1. Groups are keyed by `model/engine`; scenario keys are the human-readable final ID segment. Every scored scenario appears in `scenarios`: core chat/search/research/widget scenarios use `category: "core"` and `reviewBy: null`, while taxonomy scenarios retain their necessity category and review date. `categories` and `headline` are calculated only from taxonomy scenarios, so core outcomes never affect necessity gates. This shape is intended for CI baselines and PR-comment generation.
 
 ## CI
 
@@ -318,7 +330,7 @@ The `AI Evals` workflow has two paths:
 - Pull requests run the deterministic smoke subset when they change `src/ai/**`, `shared/agent-core/**`, `shared/defaults/**`, `src/acp/**`, or the eval workflow. The report and metrics JSON are uploaded together.
 - A nightly run at 03:00 UTC executes the full suite with the default three samples per necessity scenario. It can run for every model/engine cell without multiplying the work by separate before/after revisions.
 
-The pull-request comment is updated in place using a hidden marker. For each model/engine cell it shows gate status, headline rates and baseline deltas, category rates, Wilson significance labels, failed necessity scenarios, and a link to the full report artifact. Deltas are significant only when the current rate falls outside the baseline run's 95% Wilson interval.
+The pull-request comment is updated in place using a hidden marker. For each model/engine cell it shows the core-suite pass count and improved/regressed outcome counts, necessity gate status, headline rates and baseline deltas, category rates, Wilson significance labels, all failed scenarios, and a link to the full report artifact. Rate deltas are significant only when the current rate falls outside the baseline run's 95% Wilson interval.
 
 ### Baselines
 

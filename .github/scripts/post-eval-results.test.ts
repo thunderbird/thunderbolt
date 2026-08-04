@@ -5,13 +5,25 @@
 import { describe, expect, mock, test } from 'bun:test'
 import { wilsonScoreInterval } from '../../src/ai/eval/stats'
 import type { EvalBaseline } from '../../src/ai/eval/baseline'
-import type { NecessityMetrics, NecessityMetricsGroup } from '../../src/ai/eval/types'
+import type { EvalMetrics, EvalMetricsGroup } from '../../src/ai/eval/types'
 import { evalCommentMarker, renderEvalComment, upsertEvalComment } from './post-eval-results'
 
-const group = (): NecessityMetricsGroup => ({
+const group = (): EvalMetricsGroup => ({
   model: 'opus',
   engine: 'pi',
   scenarios: {
+    C1: {
+      category: 'core',
+      passed: false,
+      webToolCalls: 0,
+      duplicateWebToolCalls: 0,
+      sampleCount: 1,
+      passedSampleCount: 0,
+      errorSampleCount: 0,
+      isNegativeControl: false,
+      reviewBy: null,
+      failures: ['Insufficient citations: 0 found, 1 required'],
+    },
     'never-search-01': {
       category: 'never_search',
       passed: false,
@@ -54,8 +66,8 @@ const group = (): NecessityMetricsGroup => ({
   },
 })
 
-const metrics = (): NecessityMetrics => ({
-  schemaVersion: 1,
+const metrics = (): EvalMetrics => ({
+  schemaVersion: 2,
   generatedAt: '2026-08-04T12:00:00.000Z',
   groups: { 'opus/pi': group() },
 })
@@ -85,8 +97,14 @@ const baseline = (): EvalBaseline => {
     gatePassed: false,
   }
   baselineGroup.headline.meanWebCallsNoSearchExpected = 0
+  baselineGroup.scenarios.C1 = {
+    ...baselineGroup.scenarios.C1,
+    passed: true,
+    passedSampleCount: 1,
+    failures: [],
+  }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: '2026-08-03T12:00:00.000Z',
     groupKey: 'opus/pi',
     group: baselineGroup,
@@ -104,9 +122,11 @@ describe('renderEvalComment', () => {
     expect(comment).toContain('No baseline yet — first scheduled run will create one.')
     expect(comment).toContain('### opus/pi')
     expect(comment).toContain('Gates: **failed**')
+    expect(comment).toContain('Core suite: **0/1 passed** · no baseline')
     expect(comment).toContain('| Unnecessary search | 100.0% | no baseline | no baseline | failed |')
     expect(comment).toContain('| never_search | 0/1 (0.0%) | no baseline | no baseline | failed |')
-    expect(comment).toContain('<summary>Failed scenarios (1)</summary>')
+    expect(comment).toContain('<summary>Failed scenarios (2)</summary>')
+    expect(comment).toContain('`C1`: Insufficient citations: 0 found, 1 required')
     expect(comment).toContain('`never-search-01`: Too many web tool calls: 1 (max: 0)')
     expect(comment).toContain('[Full eval report artifact](https://github.example/artifacts/123)')
     expect(comment).not.toMatch(/✅|❌|🟢|🟡|🔴/)
@@ -119,6 +139,7 @@ describe('renderEvalComment', () => {
     expect(comment).toContain('| Missed search | 0.0% | -10.0 pp | significant improvement | failed |')
     expect(comment).toContain('| never_search | 0/1 (0.0%) | -100.0 pp | significant regression | failed |')
     expect(comment).toContain('| Mean web calls, no-search expected | 1.000 | +1.000 | not applicable | none |')
+    expect(comment).toContain('Core suite: **0/1 passed** · 0 improved, 1 regressed')
   })
 
   test('renders an actionable message when the eval fails before metrics are written', () => {

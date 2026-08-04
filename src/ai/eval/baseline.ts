@@ -5,13 +5,13 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { wilsonScoreInterval } from './stats'
-import type { NecessityCategory, NecessityMetrics, NecessityMetricsGroup, WilsonInterval } from './types'
+import type { EvalMetrics, EvalMetricsGroup, EvalScenarioComparison, NecessityCategory, WilsonInterval } from './types'
 
 export type EvalBaseline = {
-  schemaVersion: 1
+  schemaVersion: 2
   generatedAt: string
   groupKey: string
-  group: NecessityMetricsGroup
+  group: EvalMetricsGroup
 }
 
 export type RateComparison = {
@@ -26,6 +26,7 @@ export type RateComparison = {
 export type EvalGroupComparison = {
   baselineAvailable: boolean
   gatesPassed: boolean
+  scenarios: Record<string, EvalScenarioComparison>
   categories: Partial<Record<NecessityCategory, RateComparison>>
   headline: {
     unnecessarySearchRate: RateComparison
@@ -81,7 +82,7 @@ const compareRate = (
 }
 
 /** Write one deterministic baseline file per model and engine cell. */
-export const writeBaselineFiles = (metrics: NecessityMetrics, outputDirectory: string): string[] => {
+export const writeBaselineFiles = (metrics: EvalMetrics, outputDirectory: string): string[] => {
   mkdirSync(outputDirectory, { recursive: true })
   for (const fileName of readdirSync(outputDirectory).filter((name) => name.endsWith('.json'))) {
     rmSync(join(outputDirectory, fileName))
@@ -91,7 +92,7 @@ export const writeBaselineFiles = (metrics: NecessityMetrics, outputDirectory: s
     .map(([groupKey, group]) => {
       const outputPath = join(outputDirectory, `${groupKey.replace('/', '--')}.json`)
       const baseline: EvalBaseline = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         generatedAt: metrics.generatedAt,
         groupKey,
         group,
@@ -119,13 +120,34 @@ export const loadBaselineFiles = (directory: string): Record<string, EvalBaselin
 
 /** Compare current eval rates with checked-in baselines using each baseline's Wilson interval. */
 export const compareMetricsToBaselines = (
-  metrics: NecessityMetrics,
+  metrics: EvalMetrics,
   baselines: Record<string, EvalBaseline>,
 ): EvalMetricsComparison => ({
   generatedAt: metrics.generatedAt,
   groups: Object.fromEntries(
     Object.entries(metrics.groups).map(([groupKey, current]) => {
       const baseline = baselines[groupKey]?.group
+      const scenarios: Record<string, EvalScenarioComparison> = Object.fromEntries(
+        Object.entries(current.scenarios).map(([scenarioId, scenario]) => {
+          const baselinePassed = baseline?.scenarios[scenarioId]?.passed ?? null
+          const direction: EvalScenarioComparison['direction'] =
+            baselinePassed === null
+              ? 'no-baseline'
+              : scenario.passed === baselinePassed
+                ? 'unchanged'
+                : scenario.passed
+                  ? 'improved'
+                  : 'regressed'
+          return [
+            scenarioId,
+            {
+              baselinePassed,
+              currentPassed: scenario.passed,
+              direction,
+            },
+          ]
+        }),
+      )
       const categories = Object.fromEntries(
         Object.entries(current.categories).map(([category, categoryMetrics]) => {
           const baselineCategory = baseline?.categories[category as NecessityCategory]
@@ -153,6 +175,7 @@ export const compareMetricsToBaselines = (
         {
           baselineAvailable: Boolean(baseline),
           gatesPassed,
+          scenarios,
           categories,
           headline: {
             unnecessarySearchRate: compareRate(

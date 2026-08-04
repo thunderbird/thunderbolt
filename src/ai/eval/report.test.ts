@@ -65,13 +65,22 @@ describe('necessity reports', () => {
     }
     const markdownPath = join(outputDirectory, 'report.md')
 
-    const metricsPath = writeMetricsReport([necessityResult], markdownPath, '2026-08-04T12:00:00.000Z')
+    const coreResult: EvalResult = {
+      ...result('pi', false),
+      scenario: {
+        ...result('pi', false).scenario,
+        id: 'opus/pi/chat/C1',
+        modelName: 'opus',
+      },
+    }
+    const metricsPath = writeMetricsReport([coreResult, necessityResult], markdownPath, '2026-08-04T12:00:00.000Z')
     const metrics = JSON.parse(readFileSync(metricsPath, 'utf8')) as {
       schemaVersion: number
-      groups: Record<string, { scenarios: Record<string, { sampleCount: number }> }>
+      groups: Record<string, { scenarios: Record<string, { category: string; sampleCount: number }> }>
     }
 
-    expect(metrics.schemaVersion).toBe(1)
+    expect(metrics.schemaVersion).toBe(2)
+    expect(metrics.groups['opus/pi'].scenarios.C1).toMatchObject({ category: 'core', sampleCount: 1 })
     expect(metrics.groups['opus/pi'].scenarios['never-search-01'].sampleCount).toBe(3)
     expect(metricsPath).toBe(join(outputDirectory, 'eval-metrics.json'))
   })

@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type {
+  EvalMetrics,
+  EvalMetricsGroup,
   EvalResult,
+  EvalScenarioMetrics,
   NecessityCategory,
-  NecessityMetrics,
-  NecessityMetricsGroup,
   NecessityRateMetric,
   WilsonInterval,
 } from './types'
@@ -108,10 +109,11 @@ const isSearchExpected = (result: EvalResult): boolean =>
   result.scenario.category === 'false_premise' ||
   (result.scenario.category === 'multi_turn_reuse' && result.scenario.isNegativeControl === true)
 
-const aggregateGroup = (results: EvalResult[]): NecessityMetricsGroup => {
+const aggregateGroup = (results: EvalResult[]): EvalMetricsGroup => {
   const first = results[0]
-  const categories: NecessityMetricsGroup['categories'] = {}
-  const categoryNames = [...new Set(results.map(({ scenario }) => scenario.category))]
+  const necessityResults = results.filter(({ scenario }) => scenario.category)
+  const categories: EvalMetricsGroup['categories'] = {}
+  const categoryNames = [...new Set(necessityResults.map(({ scenario }) => scenario.category))]
   for (const category of categoryNames) {
     if (!category) {
       continue
@@ -131,36 +133,34 @@ const aggregateGroup = (results: EvalResult[]): NecessityMetricsGroup => {
     }
   }
 
-  const noSearchExpected = results.filter(isNoSearchExpected)
-  const searchExpected = results.filter(isSearchExpected)
+  const noSearchExpected = necessityResults.filter(isNoSearchExpected)
+  const searchExpected = necessityResults.filter(isSearchExpected)
   const unnecessarySearches = noSearchExpected.filter(({ toolCallCount }) => toolCallCount > 0).length
   const missedSearches = searchExpected.filter(({ toolCallCount }) => toolCallCount === 0).length
   const scenarios = Object.fromEntries(
     results.map((result) => {
-      const category = result.scenario.category
+      const category = result.scenario.category ?? 'core'
       const reviewDate = result.scenario.reviewBy
-      if (!category || !reviewDate) {
+      if (category !== 'core' && !reviewDate) {
         throw new Error(`Missing necessity metadata for ${result.scenario.id}`)
       }
       const id = result.scenario.id.split('/').at(-1)
       if (!id) {
-        throw new Error(`Invalid necessity scenario id: ${result.scenario.id}`)
+        throw new Error(`Invalid eval scenario id: ${result.scenario.id}`)
       }
-      return [
-        id,
-        {
-          category,
-          passed: result.passed,
-          webToolCalls: result.toolCallCount,
-          duplicateWebToolCalls: result.duplicateToolCallCount,
-          sampleCount: result.sampleCount ?? 1,
-          passedSampleCount: result.passedSampleCount ?? Number(result.passed),
-          errorSampleCount: result.errorSampleCount ?? Number(Boolean(result.error)),
-          isNegativeControl: result.scenario.isNegativeControl ?? false,
-          reviewBy: reviewDate,
-          failures: result.failures,
-        },
-      ]
+      const scenarioMetrics: EvalScenarioMetrics = {
+        category,
+        passed: result.passed,
+        webToolCalls: result.toolCallCount,
+        duplicateWebToolCalls: result.duplicateToolCallCount,
+        sampleCount: result.sampleCount ?? 1,
+        passedSampleCount: result.passedSampleCount ?? Number(result.passed),
+        errorSampleCount: result.errorSampleCount ?? Number(Boolean(result.error)),
+        isNegativeControl: result.scenario.isNegativeControl ?? false,
+        reviewBy: category === 'core' ? null : (reviewDate ?? null),
+        failures: result.failures,
+      }
+      return [id, scenarioMetrics]
     }),
   )
 
@@ -180,14 +180,10 @@ const aggregateGroup = (results: EvalResult[]): NecessityMetricsGroup => {
   }
 }
 
-/** Aggregate modal necessity outcomes into the stable metrics artifact schema. */
-export const aggregateNecessityMetrics = (
-  results: EvalResult[],
-  generatedAt = new Date().toISOString(),
-): NecessityMetrics => {
-  const necessityResults = results.filter(({ scenario }) => scenario.category)
+/** Aggregate every scored outcome while limiting necessity gates to taxonomy scenarios. */
+export const aggregateEvalMetrics = (results: EvalResult[], generatedAt = new Date().toISOString()): EvalMetrics => {
   const grouped = new Map<string, EvalResult[]>()
-  for (const result of necessityResults) {
+  for (const result of results) {
     const key = `${result.scenario.modelName}/${result.scenario.engineName}`
     const group = grouped.get(key)
     if (group) {
@@ -197,7 +193,7 @@ export const aggregateNecessityMetrics = (
     }
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt,
     groups: Object.fromEntries(
       [...grouped.entries()].map(([key, groupResults]) => [key, aggregateGroup(groupResults)]),

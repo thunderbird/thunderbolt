@@ -4,8 +4,8 @@
 
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { aggregateNecessityMetrics } from './stats'
-import type { EvalResult, EvalSummary, NecessityMetrics } from './types'
+import { aggregateEvalMetrics } from './stats'
+import type { EvalMetrics, EvalResult, EvalSummary } from './types'
 
 const rateEmoji = (rate: number) => (rate >= 80 ? '🟢' : rate >= 50 ? '🟡' : '🔴')
 
@@ -123,8 +123,8 @@ export const printConsoleReport = (results: EvalResult[], summary: EvalSummary) 
   console.log('\n' + '='.repeat(60))
 }
 
-const buildNecessityLines = (results: EvalResult[], metrics: NecessityMetrics, now: Date): string[] => {
-  if (Object.keys(metrics.groups).length === 0) {
+const buildNecessityLines = (results: EvalResult[], metrics: EvalMetrics, now: Date): string[] => {
+  if (!results.some(({ scenario }) => scenario.category)) {
     return []
   }
   const lines = ['## Search Necessity Gate', '']
@@ -170,7 +170,7 @@ export const writeMetricsReport = (
 ): string => {
   const outputPath = join(dirname(markdownPath), 'eval-metrics.json')
   mkdirSync(dirname(outputPath), { recursive: true })
-  writeFileSync(outputPath, `${JSON.stringify(aggregateNecessityMetrics(results, generatedAt), null, 2)}\n`, 'utf-8')
+  writeFileSync(outputPath, `${JSON.stringify(aggregateEvalMetrics(results, generatedAt), null, 2)}\n`, 'utf-8')
   return outputPath
 }
 
@@ -231,7 +231,7 @@ export const writeMarkdownReport = (
     '',
     '---',
     '',
-    ...buildNecessityLines(results, aggregateNecessityMetrics(results, now.toISOString()), now),
+    ...buildNecessityLines(results, aggregateEvalMetrics(results, now.toISOString()), now),
     ...(results.some(({ scenario }) => scenario.category) ? ['---', ''] : []),
     '## Results',
     '',

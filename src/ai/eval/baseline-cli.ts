@@ -4,7 +4,7 @@
 
 import { readFileSync } from 'node:fs'
 import { compareMetricsToBaselines, loadBaselineFiles, writeBaselineFiles } from './baseline'
-import type { NecessityMetrics } from './types'
+import type { EvalMetrics } from './types'
 
 const defaultMetricsPath = 'evals/eval-metrics.json'
 const defaultBaselineDirectory = 'src/ai/eval/baselines'
@@ -13,7 +13,7 @@ const main = () => {
   const [command, metricsArgument, baselineArgument] = process.argv.slice(2)
   const metricsPath = metricsArgument ?? process.env.EVAL_METRICS_PATH ?? defaultMetricsPath
   const baselineDirectory = baselineArgument ?? process.env.EVAL_BASELINE_DIR ?? defaultBaselineDirectory
-  const metrics = JSON.parse(readFileSync(metricsPath, 'utf8')) as NecessityMetrics
+  const metrics = JSON.parse(readFileSync(metricsPath, 'utf8')) as EvalMetrics
 
   if (command === 'generate') {
     const written = writeBaselineFiles(metrics, baselineDirectory)

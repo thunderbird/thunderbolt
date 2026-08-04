@@ -9,7 +9,7 @@ import {
   type EvalBaseline,
   type RateComparison,
 } from '../../src/ai/eval/baseline'
-import type { NecessityMetrics } from '../../src/ai/eval/types'
+import type { EvalMetrics } from '../../src/ai/eval/types'
 
 export const evalCommentMarker = '<!-- thunderbolt-eval-results -->'
 
@@ -61,7 +61,7 @@ const artifactFooter = (artifactUrl: string, generatedAt?: string): string => {
 
 /** Render the sticky pull-request comment from current metrics and optional checked-in baselines. */
 export const renderEvalComment = (
-  metrics: NecessityMetrics | null,
+  metrics: EvalMetrics | null,
   baselines: Record<string, EvalBaseline>,
   options: RenderOptions,
 ): string => {
@@ -82,11 +82,26 @@ export const renderEvalComment = (
 
   for (const [groupKey, group] of Object.entries(metrics.groups)) {
     const groupComparison = comparison.groups[groupKey]
+    const coreScenarios = Object.entries(group.scenarios).filter(([, scenario]) => scenario.category === 'core')
     lines.push(
       `### ${groupKey}`,
       '',
       `Gates: **${gateLabel(groupComparison.gatesPassed)}**`,
       '',
+    )
+    if (coreScenarios.length > 0) {
+      const corePassed = coreScenarios.filter(([, scenario]) => scenario.passed).length
+      const coreComparisons = coreScenarios.map(([scenarioId]) => groupComparison.scenarios[scenarioId])
+      const improved = coreComparisons.filter(({ direction }) => direction === 'improved').length
+      const regressed = coreComparisons.filter(({ direction }) => direction === 'regressed').length
+      const withoutBaseline = coreComparisons.filter(({ direction }) => direction === 'no-baseline').length
+      const baselineSummary =
+        withoutBaseline === coreComparisons.length
+          ? 'no baseline'
+          : `${improved} improved, ${regressed} regressed${withoutBaseline > 0 ? `, ${withoutBaseline} without baseline` : ''}`
+      lines.push(`Core suite: **${corePassed}/${coreScenarios.length} passed** · ${baselineSummary}`, '')
+    }
+    lines.push(
       '| Headline metric | Current | Delta vs baseline | Significance | Gate |',
       '|---|---:|---:|---|---|',
       `| Unnecessary search | ${formatPercent(group.headline.unnecessarySearchRate.rate)} | ${formatRateDelta(groupComparison.headline.unnecessarySearchRate.delta)} | ${significanceLabel(groupComparison.headline.unnecessarySearchRate)} | ${gateLabel(group.headline.unnecessarySearchRate.gatePassed)} |`,
@@ -171,7 +186,7 @@ const main = async () => {
   const baselineDirectory = process.env.EVAL_BASELINE_DIR ?? 'src/ai/eval/baselines'
   const artifactUrl = process.env.EVAL_ARTIFACT_URL ?? ''
   const metrics = existsSync(metricsPath)
-    ? (JSON.parse(readFileSync(metricsPath, 'utf8')) as NecessityMetrics)
+    ? (JSON.parse(readFileSync(metricsPath, 'utf8')) as EvalMetrics)
     : null
   const body = renderEvalComment(metrics, loadBaselineFiles(baselineDirectory), {
     artifactUrl,

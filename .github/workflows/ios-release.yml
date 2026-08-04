@@ -17,6 +17,21 @@ on:
         required: false
         default: false
         type: boolean
+    secrets:
+      APPLE_CERTIFICATE_P12:
+        required: true
+      APPLE_CERTIFICATE_PASSWORD:
+        required: true
+      APP_STORE_PROVISIONING_PROFILE:
+        required: true
+      APP_STORE_CONNECT_API_KEY:
+        required: true
+      APP_STORE_CONNECT_API_KEY_ID:
+        required: true
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: true
+      APPLE_TEAM_ID:
+        required: true
   workflow_dispatch:
     inputs:
       version:

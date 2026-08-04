@@ -5,9 +5,10 @@
 import { createBuiltInAdapter } from '@/acp/built-in-adapter'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { builtInAgent } from '@/defaults/agents'
+import { setAuthToken } from '@/lib/auth-token'
 import { getNecessityScenarios } from './necessity-scenarios'
 import { generateReport } from './report'
-import { runPool } from './runner'
+import { initializeEvalAuthToken, runPool } from './runner'
 import { getScenarios } from './scenarios'
 import { getScenarioSampleCount, selectSmokeScenarios } from './smoke'
 import { initLayout, printFooter, restoreConsole, silenceConsole, teardownLayout } from './ui'
@@ -16,6 +17,8 @@ export const verbose = process.argv.includes('--verbose')
 export const detailed = process.argv.includes('--detailed')
 
 const main = async () => {
+  initializeEvalAuthToken(process.env.EVAL_AUTH_TOKEN, setAuthToken)
+
   const modelFilter = process.env.EVAL_MODELS?.split(',').map((s) => s.trim())
   const modeFilter = process.env.EVAL_MODES?.split(',').map((s) => s.trim())
   const engineFilter = process.env.EVAL_ENGINES?.split(',').map((s) => s.trim())

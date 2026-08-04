@@ -335,7 +335,7 @@ No baseline files are shipped until the first scheduled run produces real measur
 
 ### CI authentication
 
-Inference, Tinfoil, search, and universal-proxy routes reject unauthenticated requests. The workflow starts an isolated PGlite backend with `AUTH_ALLOW_ANONYMOUS=true`, calls Better Auth's anonymous sign-in endpoint, and reads the signed bearer from its `set-auth-token` response header. It passes that value as `EVAL_AUTH_TOKEN`; the eval attaches it to both its authenticated HTTP client and hosted proxy fetch. This uses the existing test-mode authentication path and does not add an auth bypass.
+Inference, Tinfoil, search, and universal-proxy routes reject unauthenticated requests. The workflow starts an isolated PGlite backend with `AUTH_ALLOW_ANONYMOUS=true`, calls Better Auth's anonymous sign-in endpoint, and reads the signed bearer from its `set-auth-token` response header. It passes that value as `EVAL_AUTH_TOKEN`; the eval seeds the production token store before creating adapters, so direct inference, Tinfoil, search, and hosted-proxy transports all use the same bearer. This uses the existing test-mode authentication path and does not add an auth bypass.
 
 The repository needs these Actions secrets:
 

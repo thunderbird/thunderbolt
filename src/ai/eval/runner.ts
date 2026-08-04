@@ -20,7 +20,7 @@ import { scoreResult } from './scoring'
 import { parseStream } from './stream-parser'
 import type { EvalResult, EvalScenario, ParsedStream } from './types'
 
-const timeout = parseInt(process.env.EVAL_timeout ?? '120000')
+const timeout = parseInt(process.env.EVAL_TIMEOUT ?? '120000')
 
 let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = null
 const getEvalHttpClient = () => {

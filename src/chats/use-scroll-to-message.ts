@@ -62,6 +62,10 @@ export const useScrollToMessage = ({ scrollContainer, scrollToMessage, messages 
       }
 
       if (framesLeft <= 0) {
+        // The list isn't virtualized, so exhausting the retries means the message
+        // genuinely isn't in this thread (stale/soft-deleted/wrong-thread deep
+        // link) — log so a broken jump-to-message link is debuggable.
+        console.warn(`[scroll] message "${target.id}" not found after ${maxRetryFrames} frames; skipping scroll`)
         setTarget(null)
         return
       }

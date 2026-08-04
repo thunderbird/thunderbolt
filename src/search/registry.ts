@@ -4,7 +4,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { SearchEntityType } from './types'
-import { Bot, Box, Laptop, ListTodo, MessageSquare, MessageSquareText, Plug, Sparkles } from 'lucide-react'
+import { Bot, CheckSquare, Cpu, MessageSquare, MessageSquareText, Plug, Smartphone, Zap } from 'lucide-react'
 
 /**
  * Static description of one indexable entity. The data layer builds the FTS
@@ -56,7 +56,7 @@ export const searchEntities: SearchEntityConfig[] = [
     titleField: 'name',
     bodyFields: ['description', 'vendor', 'model'],
     parentIdField: null,
-    icon: Box,
+    icon: Cpu,
     route: () => '/settings/models',
   },
   {
@@ -65,7 +65,7 @@ export const searchEntities: SearchEntityConfig[] = [
     titleField: 'label',
     bodyFields: ['description', 'instruction', 'name'],
     parentIdField: null,
-    icon: Sparkles,
+    icon: Zap,
     route: () => '/settings/skills',
   },
   {
@@ -92,7 +92,7 @@ export const searchEntities: SearchEntityConfig[] = [
     titleField: 'name',
     bodyFields: [],
     parentIdField: null,
-    icon: Laptop,
+    icon: Smartphone,
     route: () => '/settings/devices',
   },
   {
@@ -101,7 +101,7 @@ export const searchEntities: SearchEntityConfig[] = [
     titleField: 'item',
     bodyFields: [],
     parentIdField: null,
-    icon: ListTodo,
+    icon: CheckSquare,
     route: () => '/tasks',
   },
 ]
@@ -109,6 +109,7 @@ export const searchEntities: SearchEntityConfig[] = [
 /**
  * Monotonic schema version for the search index. Bump whenever the registry or
  * FTS schema changes so consumers rebuild the index instead of reading a stale
- * one.
+ * one. (Started at 1; bumped to 2 for the soft-delete guard + the snake_case
+ * message-parent fix, which changed the triggers and backfill.)
  */
 export const searchIndexVersion = 2

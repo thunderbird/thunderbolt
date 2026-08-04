@@ -6,6 +6,9 @@ import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { LogoutModal } from '@/components/logout-modal'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandList } from '@/components/ui/command'
+import { useSidebar } from '@/components/ui/sidebar'
+import { useDatabase } from '@/contexts'
+import { getModel } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
 import { useSettings } from '@/hooks/use-settings'
@@ -75,6 +78,10 @@ export const SearchPalette = ({
   trackEvent = trackEventImpl,
 }: SearchPaletteProps) => {
   const navigate = useNavigate()
+  const db = useDatabase()
+  // No-op on desktop / when the drawer is closed; on mobile it dismisses the
+  // sidebar drawer sitting behind the palette before we navigate.
+  const { closeMobileSidebar } = useSidebar()
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebounce(query, debounceMs)
   const trimmedQuery = debouncedQuery.trim()
@@ -122,12 +129,16 @@ export const SearchPalette = ({
   )
 
   const handleSelect = useCallback(
-    (to: string, entityType: SearchEntityType, id: string) => {
+    async (to: string, entityType: SearchEntityType, id: string) => {
       handleOpenChange(false)
-      // Entities with an inline editor open straight into their edit panel on
-      // click; everything else navigates to its page (messages also carry a
-      // scroll-to-message intent).
-      const editNav = buildActionNav(entityType, { type: 'edit', id })
+      // System-only models can't be edited, so skip the edit intent and just
+      // land on the models page. Entities with an inline editor (non-system
+      // models, skills, agents) open straight into their edit panel; everything
+      // else navigates to its page (messages also carry a scroll-to-message intent).
+      const isSystemModel = entityType === 'model' && (await getModel(db, id).catch(() => null))?.isSystem === 1
+      const editNav = isSystemModel ? null : buildActionNav(entityType, { type: 'edit', id })
+      // Dismiss the mobile sidebar drawer behind the palette before navigating.
+      await closeMobileSidebar()
       if (editNav) {
         trackEvent('search_result_select', { entityType, jumpToMessage: false })
         navigate(editNav.to, { state: editNav.state })
@@ -137,14 +148,16 @@ export const SearchPalette = ({
       trackEvent('search_result_select', { entityType, jumpToMessage })
       navigate(to, jumpToMessage ? { state: { [scrollToMessageStateKey]: id } } : undefined)
     },
-    [handleOpenChange, navigate, trackEvent],
+    [handleOpenChange, navigate, trackEvent, db, closeMobileSidebar],
   )
 
   const handleCommand = useCallback(
-    (command: PaletteCommand) => {
+    async (command: PaletteCommand) => {
       handleOpenChange(false)
       trackEvent('search_command_run', { commandId: command.id })
       if ('to' in command) {
+        // Dismiss the mobile sidebar drawer before navigating (go to page, create…).
+        await closeMobileSidebar()
         navigate(command.to, command.state ? { state: command.state } : undefined)
         return
       }
@@ -152,7 +165,7 @@ export const SearchPalette = ({
         console.error(`[search] command '${command.id}' failed`, error)
       })
     },
-    [handleOpenChange, navigate, trackEvent],
+    [handleOpenChange, navigate, trackEvent, closeMobileSidebar],
   )
 
   const handleClearAllChatsConfirm = useCallback(async () => {

@@ -6,6 +6,9 @@ import '@testing-library/jest-dom'
 import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
+import { SidebarProvider } from '@/components/ui/sidebar'
+import { createModel } from '@/dal'
+import { getDb } from '@/db/database'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -40,8 +43,10 @@ const renderPalette = () => {
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={['/']}>
       <TestProvider>
-        {children}
-        <LocationProbe />
+        <SidebarProvider>
+          {children}
+          <LocationProbe />
+        </SidebarProvider>
       </TestProvider>
     </MemoryRouter>
   )
@@ -88,13 +93,15 @@ describe('SearchPalette commands', () => {
     expect(screen.getByRole('option', { name: /All agents/ })).toBeInTheDocument()
   })
 
-  it('navigates and tracks the run event for a "to" command', () => {
+  it('navigates and tracks the run event for a "to" command', async () => {
     buildCommands = () => [
       { id: 'nav-agents', title: 'All agents', icon: Bot, section: 'navigation', to: '/settings/agents' },
     ]
     renderPalette()
 
-    fireEvent.click(screen.getByRole('option', { name: /All agents/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /All agents/ }))
+    })
 
     expect(mockTrackEvent).toHaveBeenCalledWith('search_command_run', { commandId: 'nav-agents' })
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/agents')
@@ -134,14 +141,16 @@ describe('SearchPalette commands', () => {
     expect(screen.getByRole('option', { name: /Create model/ })).toBeInTheDocument()
   })
 
-  it('navigates with router state when a create command carries state', () => {
+  it('navigates with router state when a create command carries state', async () => {
     const state = { modelsAction: JSON.stringify({ type: 'create' }) }
     buildCommands = () => [
       { id: 'create-model', title: 'Create model', icon: Plus, section: 'create', to: '/settings/models', state },
     ]
     renderPalette()
 
-    fireEvent.click(screen.getByRole('option', { name: /Create model/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /Create model/ }))
+    })
 
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
     expect(screen.getByTestId('location')).toHaveAttribute('data-state', JSON.stringify(state))
@@ -158,7 +167,9 @@ describe('SearchPalette commands', () => {
       await getClock().tickAsync(debounceMs)
     })
 
-    fireEvent.click(screen.getByRole('option', { name: /GPT-4o/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /GPT-4o/ }))
+    })
 
     expect(mockTrackEvent).toHaveBeenCalledWith('search_result_select', { entityType: 'model', jumpToMessage: false })
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
@@ -166,6 +177,26 @@ describe('SearchPalette commands', () => {
       'data-state',
       JSON.stringify({ modelsAction: JSON.stringify({ type: 'edit', id: 'gpt-4o' }) }),
     )
+  })
+
+  it('sends a system-only model to the models page instead of opening the edit form', async () => {
+    await createModel(getDb(), { id: 'sys-1', provider: 'openai', name: 'System Model', model: 'sys', isSystem: 1 })
+    searchResults = [{ id: 'sys-1', entityType: 'model', title: 'System Model', snippet: '', to: '/settings/models' }]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'system' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /System/ }))
+    })
+
+    expect(mockTrackEvent).toHaveBeenCalledWith('search_result_select', { entityType: 'model', jumpToMessage: false })
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
+    // No edit-intent state — a system-only model can't be edited.
+    expect(screen.getByTestId('location')).toHaveAttribute('data-state', 'null')
   })
 
   it('navigates to a message result with scroll-to-message intent state and flags the analytics event', async () => {
@@ -179,7 +210,9 @@ describe('SearchPalette commands', () => {
       await getClock().tickAsync(debounceMs)
     })
 
-    fireEvent.click(screen.getByRole('option', { name: /A matching message/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /A matching message/ }))
+    })
 
     expect(mockTrackEvent).toHaveBeenCalledWith('search_result_select', { entityType: 'message', jumpToMessage: true })
     expect(screen.getByTestId('location')).toHaveTextContent('/chats/thread-9')
@@ -200,7 +233,9 @@ describe('SearchPalette commands', () => {
       await getClock().tickAsync(debounceMs)
     })
 
-    fireEvent.click(screen.getByRole('option', { name: /A matching chat/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /A matching chat/ }))
+    })
 
     expect(mockTrackEvent).toHaveBeenCalledWith('search_result_select', { entityType: 'chat', jumpToMessage: false })
     expect(screen.getByTestId('location')).toHaveTextContent('/chats/thread-9')
@@ -236,7 +271,9 @@ describe('SearchPalette commands', () => {
       await getClock().tickAsync(debounceMs)
     })
 
-    fireEvent.click(screen.getByRole('option', { name: /GPT-4o/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /GPT-4o/ }))
+    })
 
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
   })

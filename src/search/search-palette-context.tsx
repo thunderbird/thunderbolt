@@ -44,7 +44,7 @@ export const SearchPaletteProvider = ({ children }: { children: ReactNode }) => 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'k' && (event.metaKey || event.ctrlKey)) {
+      if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         setOpen(!isOpenRef.current)
       }

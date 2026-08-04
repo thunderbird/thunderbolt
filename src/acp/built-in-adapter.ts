@@ -52,6 +52,7 @@ import {
   resolveOpenAiCompatConnection,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -351,6 +352,21 @@ const prepareHarnessForSend = async (
   )
 }
 
+/** Install the Pi harness floor that disables tools after a denied web-tool call. */
+const installWebToolBudgetFloor = async (harness: AgentHarness, webToolBudget?: WebToolBudget): Promise<() => void> => {
+  if (!webToolBudget) {
+    return () => undefined
+  }
+  const applyBudgetFloor = async () => {
+    if (webToolBudget.probe.exhaustedAttempts) {
+      await harness.setActiveTools([])
+    }
+    return undefined
+  }
+  await applyBudgetFloor()
+  return harness.on('tool_result', applyBudgetFloor)
+}
+
 /** Return the thread's cached harness, building it on first use and REBUILDING it
  *  when the config {@link harnessSignature} drifts (a mid-thread model / provider /
  *  key / thinking switch). On drift the stale harness is evicted and its run
@@ -460,18 +476,7 @@ const fetchViaHarness = async (
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
-        const webToolBudget = context.webToolBudget
-        if (webToolBudget?.probe.exhaustedAttempts) {
-          await harness.setActiveTools([])
-        }
-        const removeBudgetFloor = webToolBudget
-          ? harness.on('tool_result', async () => {
-              if (webToolBudget.probe.exhaustedAttempts) {
-                await harness.setActiveTools([])
-              }
-              return undefined
-            })
-          : () => {}
+        const removeBudgetFloor = await installWebToolBudgetFloor(harness, context.webToolBudget)
         try {
           await harness.prompt(prompt.text, { images: prompt.images })
           await harness.waitForIdle()

@@ -6,7 +6,7 @@ import { createBuiltInAdapter } from '@/acp/built-in-adapter'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { builtInAgent } from '@/defaults/agents'
 import { setAuthToken } from '@/lib/auth-token'
-import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { Storage } from 'happy-dom'
 import { getNecessityScenarios } from './necessity-scenarios'
 import { detailed, verbose } from './options'
 import { generateReport } from './report'
@@ -72,15 +72,10 @@ const main = async (): Promise<number> => {
   return failCount > 0 ? 1 : 0
 }
 
-const nativeTransformStream = globalThis.TransformStream
-// Match the frontend origin accepted by the CI backend while retaining browser storage semantics and native streams.
-GlobalRegistrator.register({ url: 'http://localhost:1420' })
-globalThis.TransformStream = nativeTransformStream
-const run = async (): Promise<number> => {
-  try {
-    return await main()
-  } finally {
-    await GlobalRegistrator.unregister()
-  }
-}
-process.exit(await run())
+// Register only the browser API Zustand needs; happy-dom's fetch buffers
+// streaming Request responses and deadlocks Tinfoil's encrypted SSE transport.
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: new Storage(),
+})
+process.exit(await main())

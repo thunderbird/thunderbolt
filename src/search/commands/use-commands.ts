@@ -136,7 +136,7 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
   })
   const createNewChat = useCreateNewChat()
   const { setTheme } = useTheme()
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, closeMobileSidebar } = useSidebar()
 
   return buildCommands({
     flags: {
@@ -146,7 +146,13 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
     },
     showDownloadApp: showAppDownloads && !isTauri() && isWebDesktopPlatform(),
     isMac: isMacPlatform(),
-    onNewChat: createNewChat,
+    // "New chat" navigates, so dismiss the mobile sidebar drawer first (no-op on
+    // desktop / when closed) — the palette's `handleCommand` only closes it for
+    // `to` commands, and this is a `run` command.
+    onNewChat: async () => {
+      await closeMobileSidebar()
+      createNewChat()
+    },
     onSetTheme: (theme) => {
       setTheme(theme)
       trackEvent('settings_theme_set', { theme })

@@ -100,4 +100,24 @@ describe('parseStream', () => {
     expect(parsed.toolCalls).toHaveLength(1)
     expect(parsed.assistantParts).toEqual([{ type: 'text', text: 'done' }])
   })
+
+  test('captures Pi coding-tool calls while ignoring protocol-only start events', async () => {
+    const toolNames = ['bash', 'read', 'write', 'edit']
+    const response = sseResponse([
+      ...toolNames.flatMap((toolName, index) => [
+        { type: 'tool-input-start', toolCallId: String(index), toolName },
+        { type: 'tool-input-available', toolCallId: String(index), toolName, input: { path: `/file-${index}` } },
+        { type: 'tool-output-available', toolCallId: String(index), output: { ok: true } },
+      ]),
+      { type: 'text-delta', delta: 'Coding work complete.' },
+      { type: 'finish-step' },
+      { type: 'finish' },
+    ])
+
+    const parsed = await parseStream(response)
+
+    expect(parsed.toolCalls.map(({ toolName }) => toolName)).toEqual(toolNames)
+    expect(parsed.assistantParts.filter((part) => part.type === 'dynamic-tool')).toHaveLength(4)
+    expect(parsed.text).toBe('Coding work complete.')
+  })
 })

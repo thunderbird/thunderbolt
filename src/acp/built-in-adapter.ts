@@ -512,9 +512,10 @@ const fetchViaHarness = async (
 }
 
 /**
- * Build the built-in agent's {@link AgentAdapter}. Its `fetch` routes Anthropic
- * models to the in-browser Pi harness and every other provider to the legacy
- * `aiFetchStreamingResponse` pipeline (overridable via `options.aiFetch`).
+ * Build the built-in agent's {@link AgentAdapter}. Its `fetch` routes
+ * tool-capable Pi-serviceable providers to the in-browser harness and every
+ * other model to the legacy `aiFetchStreamingResponse` pipeline (overridable
+ * via `options.aiFetch`).
  *
  * @param agent - the built-in `Agent` row this adapter represents
  * @param options - test/override seam for the legacy fetch engine

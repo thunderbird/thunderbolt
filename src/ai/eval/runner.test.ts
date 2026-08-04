@@ -12,7 +12,7 @@ import { defaultModelOpus48 } from '@shared/defaults/models'
 import { createEvalAdapterContext, fetchAndParseTurn } from './runner'
 
 const model: Model = { ...defaultModelOpus48, apiKey: null }
-const proxyFetch: FetchFn = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init), {
+const proxyFetch: FetchFn = Object.assign(async () => new Response(), {
   preconnect: async () => false,
 })
 const userMessage = (text: string): ThunderboltUIMessage => ({
@@ -38,6 +38,7 @@ const contextFor = (messages: ThunderboltUIMessage[]) =>
     getProxyFetch: () => proxyFetch,
   })
 
+/** Create a deterministic timeout scheduler controlled directly by each test. */
 const manualTimeout = () => {
   const callbacks: Array<() => void> = []
   return {

@@ -89,18 +89,15 @@ export const fetchAndParseTurn = async (
     return parseStream(response, controller.signal)
   }
   const timeoutError = new Error('Scenario timed out')
-  const timeoutControl = { cancel: () => {} }
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutControl.cancel = scheduleTimeout(() => {
+    const cancelTimeout = scheduleTimeout(() => {
       controller.abort(timeoutError)
       reject(timeoutError)
     }, timeoutMs)
+    controller.signal.addEventListener('abort', cancelTimeout, { once: true })
   })
 
-  return Promise.race([operation(), timeoutPromise]).finally(() => {
-    timeoutControl.cancel()
-    controller.abort()
-  })
+  return Promise.race([operation(), timeoutPromise]).finally(() => controller.abort())
 }
 
 const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {

@@ -120,4 +120,25 @@ describe('parseStream', () => {
     expect(parsed.assistantParts.filter((part) => part.type === 'dynamic-tool')).toHaveLength(4)
     expect(parsed.text).toBe('Coding work complete.')
   })
+
+  test('captures web calls whose emitted result is budget exhausted', async () => {
+    const response = sseResponse([
+      { type: 'tool-input-available', toolCallId: 'a', toolName: 'search', input: { query: 'one' } },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'a',
+        output: { status: 'budget_exhausted', message: 'budget reached' },
+      },
+      { type: 'text-delta', delta: 'Using the results already gathered.' },
+      { type: 'finish' },
+    ])
+
+    const parsed = await parseStream(response)
+
+    expect(parsed.toolCalls).toEqual([{ toolCallId: 'a', toolName: 'search', input: { query: 'one' } }])
+    expect(parsed.assistantParts[0]).toMatchObject({
+      type: 'dynamic-tool',
+      output: { status: 'budget_exhausted' },
+    })
+  })
 })

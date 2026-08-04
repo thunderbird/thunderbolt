@@ -38,4 +38,14 @@ describe('getScenarios', () => {
     expect(scenarios.every((scenario) => scenario.id.startsWith('glm/legacy/search/'))).toBe(true)
     expect(getScenarios(['glm'], ['search'], ['pi'])).toEqual([])
   })
+
+  test('does not require citations for stable chat prompts', () => {
+    const stablePromptIds = ['C8', 'C12', 'VC3', 'VC4', 'VC7', 'VC9']
+    const scenarios = getScenarios(['opus'], ['chat'], ['pi'])
+
+    for (const promptId of stablePromptIds) {
+      const scenario = scenarios.find(({ id }) => id.endsWith(`/${promptId}`))
+      expect(scenario?.criteria).toEqual({ mustProduceOutput: true })
+    }
+  })
 })

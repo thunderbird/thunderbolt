@@ -7,6 +7,7 @@ import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Bot, LogOut, Plus } from 'lucide-react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -74,6 +75,7 @@ describe('SearchPalette commands', () => {
 
   afterEach(() => {
     cleanup()
+    restoreViewport()
   })
 
   it('renders commands grouped by section', () => {
@@ -219,6 +221,24 @@ describe('SearchPalette commands', () => {
 
     expect(screen.getByRole('option', { name: /GPT model/ })).toBeInTheDocument()
     expect(screen.queryByText('No results found.')).not.toBeInTheDocument()
+  })
+
+  it('renders as a top-sheet drawer (not a centered dialog) on mobile and still selects results', async () => {
+    forceMobileViewport()
+    searchResults = [{ id: 'gpt-4o', entityType: 'model', title: 'GPT-4o', snippet: '', to: '/settings/models' }]
+    renderPalette()
+
+    // Mobile presentation is the shared MobileCardMenu drawer, matching the agent picker.
+    expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeNull()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'gpt-4o' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    fireEvent.click(screen.getByRole('option', { name: /GPT-4o/ }))
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
   })
 
   it('filters the static command list by the query itself (cmdk filter is off)', async () => {

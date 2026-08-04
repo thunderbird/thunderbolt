@@ -1,6 +1,6 @@
 # AI Eval Runner
 
-Embedded E2E test runner that validates AI response quality across all models and chat modes. Calls the AI pipeline directly — no browser, no Playwright, no MCP server needed.
+Embedded E2E test runner that validates AI response quality across the shipped model and mode matrix. It runs through the production built-in adapter without a browser, Playwright, or MCP server.
 
 ## Quick Start
 
@@ -10,6 +10,9 @@ bun run eval
 
 # Test only Opus
 EVAL_MODELS=opus bun run eval
+
+# Test the legacy engine only
+EVAL_ENGINES=legacy bun run eval
 
 # Test only Chat mode across all models
 EVAL_MODES=chat bun run eval
@@ -25,16 +28,16 @@ EVAL_MODELS=opus EVAL_MODES=search bun run eval
 
 ## How It Works
 
-The runner calls `aiFetchStreamingResponse()` directly — the same function the app uses when you send a chat message. This means it tests the **exact same code path**: prompt assembly, tool calls, retries, nudges, and streaming.
+The matrix is derived from `defaultModels`, so every shipped system model is included automatically. Each turn goes through `createBuiltInAdapter`, which applies the same routing as production:
+
+- Tool-capable `anthropic`, `openai`, `custom`, `openrouter`, and `thunderbolt` models use the Pi harness.
+- Other models, including `tinfoil`, use the legacy AI pipeline.
 
 ```
-User prompt → aiFetchStreamingResponse() → Model API → Stream response → Parse & Score
-                    ↑                                                         ↓
-              Same function                                            Pass/Fail report
-              the app uses
+User prompt → createBuiltInAdapter() → Pi or legacy → UI message stream → Parse & Score
 ```
 
-Each scenario gets its own in-memory database (via `setupTestDatabase()`), so tests are fully isolated and safe to run in parallel.
+One in-memory database is initialized for the run and shared read-only by all scenarios. Each scenario gets a fresh thread id, which is reused across that scenario's turns so persistent Pi harness behavior matches production. The adapter is disconnected after the run.
 
 ## What It Tests
 
@@ -49,25 +52,6 @@ Each scenario checks a combination of criteria depending on the mode:
 ### Example Output
 
 ```
-Thunderbolt AI Eval Runner
-========================================
-Scenarios: 15
-Models: opus
-Modes: chat
-Parallel: 3 (one per model)
-Timeout: 120000ms per scenario
-========================================
-
-Starting batch: opus
-
---- OPUS (15 scenarios) ---
-  PASS opus/chat/C1 (2.1s)
-  PASS opus/chat/C2 (4.3s)
-  PASS opus/chat/C3 (1.8s)
-  FAIL opus/chat/C4 (60.0s) — Empty response — no text output produced
-  PASS opus/chat/C5 (1.2s)
-  ...
-
 ============================================================
 EVAL REPORT
 ============================================================
@@ -77,31 +61,35 @@ Overall: 12/15 passed (80%)
 By Model:
   opus: 12/15 (80%)
 
+By Engine:
+  pi: 12/15 (80%)
+
 By Mode:
   chat: 12/15 (80%)
 
 Failures (3):
-  FAIL opus/chat/C4
+  FAIL opus/pi/chat/C4
     - Empty response — no text output produced
-  FAIL opus/chat/C11
+  FAIL opus/pi/chat/C11
     - Insufficient citations: 0 found, 2 required
-  FAIL opus/chat/C15
+  FAIL opus/pi/chat/C15
     - Empty response — no text output produced
 
 ============================================================
 
-Report saved to: evals/eval-results.md
+Report saved to: evals/eval-results-20260804-164000.md
 ```
 
 ## Environment Variables
 
-| Variable                 | Default                 | Example           | Description                     |
-| ------------------------ | ----------------------- | ----------------- | ------------------------------- |
-| `EVAL_MODELS`            | all                     | `opus`            | Which models to test            |
-| `EVAL_MODES`             | all                     | `chat,search`     | Which modes to test             |
-| `EVAL_SCENARIO_PARALLEL` | `3`                     | `1`               | Concurrent scenarios per worker |
-| `EVAL_TIMEOUT`           | `120000`                | `60000`           | Timeout per scenario (ms)       |
-| `EVAL_OUTPUT`            | `evals/eval-results.md` | `reports/eval.md` | Report file path                |
+| Variable                 | Default                             | Example           | Description               |
+| ------------------------ | ----------------------------------- | ----------------- | ------------------------- |
+| `EVAL_MODELS`            | all                                 | `opus,glm`        | Model short names to test |
+| `EVAL_ENGINES`           | all                                 | `pi`              | Engines to test           |
+| `EVAL_MODES`             | all                                 | `chat,search`     | Modes to test             |
+| `EVAL_SCENARIO_PARALLEL` | `3`                                 | `1`               | Concurrent scenarios      |
+| `EVAL_TIMEOUT`           | `120000`                            | `60000`           | Timeout per turn (ms)     |
+| `EVAL_OUTPUT`            | `evals/eval-results-<timestamp>.md` | `reports/eval.md` | Report file path          |
 
 ### CLI Flags
 
@@ -115,10 +103,10 @@ Example with detailed report:
 ```
 $ EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --detailed
 
-# The markdown report at evals/eval-results.md will include:
+# The timestamped markdown report will include:
 ## Failures
 
-### opus/chat/C4
+### opus/pi/chat/C4
 
 - **Prompt**: Compare the iPhone 16 Pro and Samsung Galaxy S25 Ultra
 - **Duration**: 60.0s
@@ -133,7 +121,7 @@ Example with verbose:
 ```
 $ EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --verbose
 
---- SYSTEM PROMPT (opus/chat/C1) ---
+--- SYSTEM PROMPT (opus/pi/chat/C1) ---
 You are an executive assistant using the **Opus 4.8** model...
 # Principles
 ...
@@ -143,9 +131,9 @@ Make quick decisions—don't overthink...
 What are the top 3 news stories today?
 --- END PROMPT ---
 
-  PASS opus/chat/C1 (2.1s)
+  PASS opus/pi/chat/C1 (2.1s)
 
---- RESPONSE (opus/chat/C1) ---
+--- RESPONSE (opus/pi/chat/C1) ---
 Here are the three leading stories on AP News for February 16, 2026:
 - **Europeans push back at the U.S...** [1]
 - **"First feline" Larry marks 15 years...** [2]
@@ -158,6 +146,17 @@ Here are the three leading stories on AP News for February 16, 2026:
 Use these names in `EVAL_MODELS`:
 
 - `opus` — Opus 4.8
+- `flash` — DeepSeek V4 Flash
+- `glm` — GLM 5.2
+
+The slug map is intentionally explicit. Its unit test fails when `defaultModels` gains an entry without a stable eval slug.
+
+### Engine names
+
+Use these names in `EVAL_ENGINES`:
+
+- `pi` — In-memory Pi harness with coding and app tools
+- `legacy` — Existing AI SDK pipeline
 
 ### Mode names
 
@@ -169,7 +168,7 @@ Use these names in `EVAL_MODES`:
 
 ## Scenarios
 
-Core suites contain 15 prompts per mode, tested against each registered model. Validation, multi-turn, and widget-regression scenarios add focused coverage.
+Core suites contain 15 prompts per mode, tested against every model in `defaultModels`. Validation, multi-turn, and widget-regression scenarios add focused coverage. Scenario ids use `model/engine/mode/ID`, such as `opus/pi/chat/C1` and `glm/legacy/search/S3`.
 
 **Chat mode** covers: news queries, product recommendations, factual lookups, comparisons, multi-part travel queries, medical info, stock market data, and more.
 
@@ -192,16 +191,17 @@ The runner automatically checks:
 - **`mustNotUseWidgets`** — Must not contain any widget tag
 - **`noHomepageLinks`** — URLs must have deep paths (no `/` or `/section/` only)
 - **`noReviewSites`** — No links to pcmag.com, cnet.com, wirecutter.com, etc.
-- **`maxSteps`** — Tool call count must not exceed limit
+- **`maxSteps`** — Completed model steps must not exceed the limit
+- **`maxToolCalls`** — Tool calls in the scored turn must not exceed the limit
 
 ## Architecture
 
 ```
 src/ai/eval/
   run.ts            Entry point (bun run eval)
-  runner.ts         Calls aiFetchStreamingResponse, parses stream, scores result
+  runner.ts         Builds adapter contexts, runs turns, parses streams, scores results
   stream-parser.ts  Parses AI SDK UIMessageStream protocol
-  scenarios.ts      All 135 test scenarios with criteria
+  scenarios.ts      Prompt suites and default-model matrix derivation
   scoring.ts        Citation extraction, URL validation, criteria checking
   report.ts         Console + markdown report generation
   types.ts          Shared type definitions

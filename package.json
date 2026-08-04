@@ -26,6 +26,8 @@
     "analyze": "vite analyze",
     "db": "drizzle-kit",
     "eval": "bun run src/ai/eval/run.ts",
+    "eval:baseline": "bun run src/ai/eval/baseline-cli.ts generate",
+    "eval:compare": "bun run src/ai/eval/baseline-cli.ts compare",
     "lint": "eslint src shared",
     "lint:fix": "eslint src shared --fix",
     "format": "prettier --write \"{src,shared}/**/*.{ts,tsx,js,jsx,json,css,md}\"",

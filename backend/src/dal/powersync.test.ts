@@ -39,6 +39,13 @@ describe('powersync upload gate (applyOperation)', () => {
       const ok = await applyOperation(db, { op: 'PUT', type: 'not_a_table', id: 'x', data: { foo: 1 } }, userId)
       expect(ok).toBe(false)
     })
+
+    it('accepts-and-ignores a legacy (removed) table so an old client can drain its queue', async () => {
+      // A device with a queued write for a dropped table (modes, THU-739) must
+      // not wedge on a 400 retry loop. applyOperation returns true without touching the DB.
+      const ok = await applyOperation(db, { op: 'PUT', type: 'modes', id: 'legacy-1', data: { name: 'x' } }, userId)
+      expect(ok).toBe(true)
+    })
   })
 
   describe('DELETE allowlist (security: protected tables)', () => {

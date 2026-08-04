@@ -9,12 +9,13 @@ import {
   powersyncPkColumn,
   powersyncTablesByName,
 } from '@/db/powersync-schema'
-import { type PowerSyncTableName, powersyncTableNames } from '@shared/powersync-tables'
+import { type PowerSyncTableName, legacyPowerSyncTableNames, powersyncTableNames } from '@shared/powersync-tables'
 import { and, eq } from 'drizzle-orm'
 import type { AnyPgTable } from 'drizzle-orm/pg-core'
 import { bridgeDeviceIdPrefix } from './devices'
 
 const validTables = new Set<string>(powersyncTableNames)
+const legacyTables = new Set<string>(legacyPowerSyncTableNames)
 
 /** DB column names that clients cannot set via PowerSync upload (server-managed fields). */
 const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
@@ -96,6 +97,13 @@ export const applyOperation = async (
   op: PowerSyncOperation,
   userId: string,
 ): Promise<boolean> => {
+  // A table dropped from the synced schema: nothing to apply. Accept so an old
+  // client's queued legacy op drains instead of looping on a 400 — same reason
+  // as the empty-patch no-op below.
+  if (legacyTables.has(op.type)) {
+    return true
+  }
+
   if (!validTables.has(op.type)) {
     return false
   }

@@ -29,6 +29,14 @@ export const powersyncTableNames = [
 export type PowerSyncTableName = (typeof powersyncTableNames)[number]
 
 /**
+ * Tables dropped from the synced schema. The backend accepts and ignores
+ * upload ops for these (see applyOperation) so a device with a queued legacy
+ * write — from before the table was removed — drains its CRUD queue instead
+ * of looping on a 400. Never re-add these to powersyncTableNames. See THU-739.
+ */
+export const legacyPowerSyncTableNames = ['modes'] as const
+
+/**
  * Map of PowerSync table names to React Query keys to invalidate when the table changes.
  * Keys are type-checked against powersyncTableNames; every table must have an entry.
  * Prefix keys (e.g. ['settings']) invalidate all queries starting with that prefix.

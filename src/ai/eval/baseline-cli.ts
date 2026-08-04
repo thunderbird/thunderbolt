@@ -17,12 +17,14 @@ const main = () => {
 
   if (command === 'generate') {
     const written = writeBaselineFiles(metrics, baselineDirectory)
-    console.log(`Wrote ${written.length} eval baseline file${written.length === 1 ? '' : 's'}.`)
+    process.stdout.write(`Wrote ${written.length} eval baseline file${written.length === 1 ? '' : 's'}.\n`)
     return
   }
 
   if (command === 'compare') {
-    console.log(JSON.stringify(compareMetricsToBaselines(metrics, loadBaselineFiles(baselineDirectory)), null, 2))
+    process.stdout.write(
+      `${JSON.stringify(compareMetricsToBaselines(metrics, loadBaselineFiles(baselineDirectory)), null, 2)}\n`,
+    )
     return
   }
 

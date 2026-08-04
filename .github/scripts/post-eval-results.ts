@@ -27,13 +27,19 @@ type RunGh = (args: string[]) => Promise<string>
 
 const formatPercent = (rate: number): string => `${(rate * 100).toFixed(1)}%`
 
-const formatDelta = (delta: number | null, scale: number, suffix: string): string => {
+const formatRateDelta = (delta: number | null): string => {
   if (delta === null) {
     return 'no baseline'
   }
-  const scaled = delta * scale
-  const sign = scaled > 0 ? '+' : ''
-  return `${sign}${scaled.toFixed(scale === 1 ? 3 : 1)}${suffix}`
+  const percentagePoints = delta * 100
+  return `${percentagePoints > 0 ? '+' : ''}${percentagePoints.toFixed(1)} pp`
+}
+
+const formatMeanDelta = (delta: number | null): string => {
+  if (delta === null) {
+    return 'no baseline'
+  }
+  return `${delta > 0 ? '+' : ''}${delta.toFixed(3)}`
 }
 
 const significanceLabel = (comparison: RateComparison): string => {
@@ -83,9 +89,9 @@ export const renderEvalComment = (
       '',
       '| Headline metric | Current | Delta vs baseline | Significance | Gate |',
       '|---|---:|---:|---|---|',
-      `| Unnecessary search | ${formatPercent(group.headline.unnecessarySearchRate.rate)} | ${formatDelta(groupComparison.headline.unnecessarySearchRate.delta, 100, ' pp')} | ${significanceLabel(groupComparison.headline.unnecessarySearchRate)} | ${gateLabel(group.headline.unnecessarySearchRate.gatePassed)} |`,
-      `| Missed search | ${formatPercent(group.headline.missedSearchRate.rate)} | ${formatDelta(groupComparison.headline.missedSearchRate.delta, 100, ' pp')} | ${significanceLabel(groupComparison.headline.missedSearchRate)} | ${gateLabel(group.headline.missedSearchRate.gatePassed)} |`,
-      `| Mean web calls, no-search expected | ${group.headline.meanWebCallsNoSearchExpected.toFixed(3)} | ${formatDelta(groupComparison.headline.meanWebCallsNoSearchExpected.delta, 1, '')} | not applicable | none |`,
+      `| Unnecessary search | ${formatPercent(group.headline.unnecessarySearchRate.rate)} | ${formatRateDelta(groupComparison.headline.unnecessarySearchRate.delta)} | ${significanceLabel(groupComparison.headline.unnecessarySearchRate)} | ${gateLabel(group.headline.unnecessarySearchRate.gatePassed)} |`,
+      `| Missed search | ${formatPercent(group.headline.missedSearchRate.rate)} | ${formatRateDelta(groupComparison.headline.missedSearchRate.delta)} | ${significanceLabel(groupComparison.headline.missedSearchRate)} | ${gateLabel(group.headline.missedSearchRate.gatePassed)} |`,
+      `| Mean web calls, no-search expected | ${group.headline.meanWebCallsNoSearchExpected.toFixed(3)} | ${formatMeanDelta(groupComparison.headline.meanWebCallsNoSearchExpected.delta)} | not applicable | none |`,
       '',
       '| Category | Current | Delta vs baseline | Significance | Gate |',
       '|---|---:|---:|---|---|',
@@ -94,7 +100,7 @@ export const renderEvalComment = (
         if (!categoryComparison) {
           throw new Error(`Missing category comparison for ${groupKey}/${category}`)
         }
-        return `| ${category} | ${categoryMetrics.passed}/${categoryMetrics.total} (${formatPercent(categoryMetrics.rate)}) | ${formatDelta(categoryComparison.delta, 100, ' pp')} | ${significanceLabel(categoryComparison)} | ${gateLabel(categoryMetrics.gatePassed)} |`
+        return `| ${category} | ${categoryMetrics.passed}/${categoryMetrics.total} (${formatPercent(categoryMetrics.rate)}) | ${formatRateDelta(categoryComparison.delta)} | ${significanceLabel(categoryComparison)} | ${gateLabel(categoryMetrics.gatePassed)} |`
       }),
       '',
     )

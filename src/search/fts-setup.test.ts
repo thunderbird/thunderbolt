@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
 import type { SearchEntityConfig } from './registry'
 import { buildBackfillSql, buildCreateSql, buildDropSql, buildTriggerSql } from './fts-setup'
@@ -139,5 +140,113 @@ describe('buildDropSql', () => {
 
   it('drops 3 triggers per entity plus one table statement', () => {
     expect(statements).toHaveLength(searchEntities.length * 3 + 1)
+  })
+})
+
+// End-to-end smoke test: run the generated SQL against a real SQLite handle so a
+// regression in the create/trigger/backfill/query round-trip is caught — the
+// string assertions above can't. Uses a fake backing table that mirrors the
+// PowerSync internal shape (an `id` column + a JSON `data` blob) rather than a
+// real `ps_data__*` table; it can't catch a PowerSync-internal shape change (see
+// the coupling caveat in AGENTS.md), but it proves the SQL itself works.
+describe('FTS SQL end-to-end against real SQLite', () => {
+  const modelCfg = configOf('model') // multi body-field entity: name + description/vendor/model
+  const internalName = 'ps_data__models'
+
+  type IndexRow = { id: string; title: string; snippet: string }
+
+  const makeDb = (installTriggers = true): Database => {
+    const db = new Database(':memory:')
+    db.run(`CREATE TABLE ${internalName} (id TEXT PRIMARY KEY, data TEXT)`)
+    db.run(buildCreateSql())
+    if (installTriggers) {
+      for (const statement of buildTriggerSql(modelCfg, internalName)) {
+        db.run(statement)
+      }
+    }
+    return db
+  }
+
+  const insertRow = (db: Database, id: string, data: Record<string, unknown>) => {
+    db.run(`INSERT INTO ${internalName}(id, data) VALUES (?, ?)`, [id, JSON.stringify(data)])
+  }
+
+  const setData = (db: Database, id: string, data: Record<string, unknown>) => {
+    db.run(`UPDATE ${internalName} SET data = ? WHERE id = ?`, [JSON.stringify(data), id])
+  }
+
+  const search = (db: Database, match: string): IndexRow[] =>
+    db
+      .query(
+        `SELECT id, title, snippet(search_index, 4, '', '', '…', 15) AS snippet ` +
+          `FROM search_index WHERE search_index MATCH ? ORDER BY bm25(search_index, 1.0, 1.0, 1.0, 10.0, 1.0), id`,
+      )
+      .all(match) as IndexRow[]
+
+  it('indexes a row on insert and matches it by title and by every body field', () => {
+    const db = makeDb()
+    insertRow(db, 'gpt-4o', {
+      name: 'GPT-4o',
+      description: 'fast frontier model',
+      vendor: 'openai',
+      model: 'gpt-4o',
+      deleted_at: null,
+    })
+
+    expect(search(db, 'gpt*').map((row) => row.id)).toEqual(['gpt-4o']) // title
+    expect(search(db, 'frontier').map((row) => row.id)).toEqual(['gpt-4o']) // description body field
+    expect(search(db, 'openai').map((row) => row.id)).toEqual(['gpt-4o']) // vendor body field
+    db.close()
+  })
+
+  it('excludes soft-deleted rows from the index', () => {
+    const db = makeDb()
+    insertRow(db, 'live', { name: 'Live Model', deleted_at: null })
+    insertRow(db, 'gone', { name: 'Gone Model', deleted_at: '2026-01-01T00:00:00Z' })
+
+    expect(search(db, 'model*').map((row) => row.id)).toEqual(['live'])
+    db.close()
+  })
+
+  it('re-syncs the index on update (a rename drops the old term and adds the new)', () => {
+    const db = makeDb()
+    insertRow(db, 'm1', { name: 'Alpha', deleted_at: null })
+    setData(db, 'm1', { name: 'Beta', deleted_at: null })
+
+    expect(search(db, 'alpha')).toHaveLength(0)
+    expect(search(db, 'beta').map((row) => row.id)).toEqual(['m1'])
+    db.close()
+  })
+
+  it('drops the index row when a soft-delete lands via update and re-adds it when cleared', () => {
+    const db = makeDb()
+    insertRow(db, 'm1', { name: 'Gamma', deleted_at: null })
+
+    setData(db, 'm1', { name: 'Gamma', deleted_at: 'yes' })
+    expect(search(db, 'gamma')).toHaveLength(0)
+
+    setData(db, 'm1', { name: 'Gamma', deleted_at: null })
+    expect(search(db, 'gamma').map((row) => row.id)).toEqual(['m1'])
+    db.close()
+  })
+
+  it('removes the index row on delete', () => {
+    const db = makeDb()
+    insertRow(db, 'm1', { name: 'Delta', deleted_at: null })
+    db.run(`DELETE FROM ${internalName} WHERE id = ?`, ['m1'])
+
+    expect(search(db, 'delta')).toHaveLength(0)
+    db.close()
+  })
+
+  it('backfills pre-existing rows and skips soft-deleted ones', () => {
+    const db = makeDb(false) // rows pre-exist before any trigger — the backfill must catch them
+    insertRow(db, 'keep', { name: 'Keeper', deleted_at: null })
+    insertRow(db, 'skip', { name: 'Skipper', deleted_at: 'yes' })
+    db.run(buildBackfillSql(modelCfg, internalName))
+
+    expect(search(db, 'keep*').map((row) => row.id)).toEqual(['keep'])
+    expect(search(db, 'skip*')).toHaveLength(0)
+    db.close()
   })
 })

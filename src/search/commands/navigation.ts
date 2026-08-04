@@ -8,7 +8,6 @@ import {
   CheckSquare,
   Cpu,
   Plug,
-  Settings,
   SlidersHorizontal,
   Smartphone,
   Terminal,
@@ -42,7 +41,6 @@ export type NavigationCommand = {
  * same navigation surface.
  */
 export const navigationCommands: NavigationCommand[] = [
-  { id: 'settings', title: 'Settings', icon: Settings, to: '/settings', keywords: ['settings'] },
   { id: 'agents', title: 'All agents', icon: Bot, to: '/settings/agents', keywords: ['agents'] },
   { id: 'skills', title: 'Skills', icon: Zap, to: '/settings/skills' },
   {

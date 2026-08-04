@@ -9,7 +9,6 @@ describe('navigationCommands', () => {
   it('covers every sidebar + top-level route the palette should jump to', () => {
     const routes = navigationCommands.map((command) => command.to)
     expect(routes).toEqual([
-      '/settings',
       '/settings/agents',
       '/settings/skills',
       '/settings/connections',
@@ -30,7 +29,7 @@ describe('navigationCommands', () => {
     expect(gateFor('/settings/dev-settings')).toBe('dev')
     expect(gateFor('/message-simulator')).toBe('dev')
     expect(gateFor('/settings/agents')).toBeUndefined()
-    expect(gateFor('/settings')).toBeUndefined()
+    expect(gateFor('/settings/preferences')).toBeUndefined()
   })
 
   it('assigns a unique id and an icon to every command', () => {

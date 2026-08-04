@@ -43,11 +43,31 @@ One in-memory database is initialized for the run and shared read-only by all sc
 
 Each scenario checks a combination of criteria depending on the mode:
 
-| Mode         | What's Checked                                                           |
-| ------------ | ------------------------------------------------------------------------ |
-| **Chat**     | Must produce output, has `[N]` citations, no review-site links           |
-| **Search**   | Must produce output, uses `<widget:link-preview>` tags, no homepage URLs |
-| **Research** | Must produce output, has 3-5+ citations                                  |
+| Mode         | What's Checked                                                                   |
+| ------------ | -------------------------------------------------------------------------------- |
+| **Chat**     | Must produce output; fresh prompts require citations while stable prompts do not |
+| **Search**   | Must produce output, uses `<widget:link-preview>` tags, no homepage URLs         |
+| **Research** | Must produce output, has 3-5+ citations                                          |
+
+### Search-necessity taxonomy
+
+Necessity scenarios use plain Chat turns, so the production `auto` web budget applies. They multiply across the same model/engine matrix as the core suites.
+
+| Category                | Prompts | Expected behavior                                                 | Gate |
+| ----------------------- | :-----: | ----------------------------------------------------------------- | :--: |
+| `never_search`          |   12    | No web calls; correct answer                                      | 95%  |
+| `answer_then_offer`     |   12    | Answer without web calls, then explicitly offer to verify         | 80%  |
+| `single_search`         |   12    | 1-2 web calls                                                     | 90%  |
+| `research`              |   12    | Search in Chat; explicit deep-research wording exhausts 2 calls   | 85%  |
+| `unknown_entity`        |    8    | 1-2 web calls                                                     | 85%  |
+| `false_premise`         |    8    | Search and explicitly rebut the embedded false premise            | 75%  |
+| `adversarial_no_search` |   16    | Resist lexical/recency bait; no web calls; correct answer         | 90%  |
+| `multi_turn_reuse`      |   12    | Reuse prior results; two negative controls require a fresh search | 90%  |
+| `search_wont_help`      |    4    | Do not fabricate; explicitly admit the answer cannot be verified  | 60%  |
+
+`search_wont_help` is excluded by default and enabled with `EVAL_NECESSITY_OPTIONAL=1`.
+
+The `research` category measures the decision to search in ordinary Chat, not exhaustive depth. Chat resolves to `auto` and production hard-caps it at two executed web calls. Prompts that explicitly say “research,” “deep dive,” or “comprehensive” therefore require both calls; other multi-source prompts require at least one. The existing `/research` suite measures depth under its 30-call budget.
 
 ### Example Output
 
@@ -82,14 +102,16 @@ Report saved to: evals/eval-results-20260804-164000.md
 
 ## Environment Variables
 
-| Variable                 | Default                             | Example           | Description               |
-| ------------------------ | ----------------------------------- | ----------------- | ------------------------- |
-| `EVAL_MODELS`            | all                                 | `opus,glm`        | Model short names to test |
-| `EVAL_ENGINES`           | all                                 | `pi`              | Engines to test           |
-| `EVAL_MODES`             | all                                 | `chat,search`     | Modes to test             |
-| `EVAL_SCENARIO_PARALLEL` | `3`                                 | `1`               | Concurrent scenarios      |
-| `EVAL_TIMEOUT`           | `120000`                            | `60000`           | Timeout per turn (ms)     |
-| `EVAL_OUTPUT`            | `evals/eval-results-<timestamp>.md` | `reports/eval.md` | Report file path          |
+| Variable                  | Default                             | Example           | Description                                              |
+| ------------------------- | ----------------------------------- | ----------------- | -------------------------------------------------------- |
+| `EVAL_MODELS`             | all                                 | `opus,glm`        | Model short names to test                                |
+| `EVAL_ENGINES`            | all                                 | `pi`              | Engines to test                                          |
+| `EVAL_MODES`              | all                                 | `chat,search`     | Modes to test                                            |
+| `EVAL_SCENARIO_PARALLEL`  | `3`                                 | `1`               | Concurrent scenarios                                     |
+| `EVAL_TIMEOUT`            | `120000`                            | `60000`           | Timeout per turn (ms)                                    |
+| `EVAL_OUTPUT`             | `evals/eval-results-<timestamp>.md` | `reports/eval.md` | Report file path                                         |
+| `EVAL_SAMPLES`            | `3`                                 | `5`               | Samples per necessity scenario; core suites always use 1 |
+| `EVAL_NECESSITY_OPTIONAL` | unset                               | `1`               | Include `search_wont_help` scenarios                     |
 
 ### CLI Flags
 
@@ -168,7 +190,7 @@ Use these names in `EVAL_MODES`:
 
 ## Scenarios
 
-Core suites contain 15 prompts per mode, tested against every model in `defaultModels`. Validation, multi-turn, and widget-regression scenarios add focused coverage. Scenario ids use `model/engine/mode/ID`, such as `opus/pi/chat/C1` and `glm/legacy/search/S3`.
+Core suites contain 15 prompts per mode, tested against every model in `defaultModels`. Validation, multi-turn, widget-regression, and search-necessity scenarios add focused coverage. Scenario ids use `model/engine/mode/ID`, such as `opus/pi/chat/C1`, `glm/legacy/search/S3`, and `flash/pi/chat/never-search-03`.
 
 **Chat mode** covers: news queries, product recommendations, factual lookups, comparisons, multi-part travel queries, medical info, stock market data, and more.
 
@@ -192,7 +214,95 @@ The runner automatically checks:
 - **`noHomepageLinks`** — URLs must have deep paths (no `/` or `/section/` only)
 - **`noReviewSites`** — No links to pcmag.com, cnet.com, wirecutter.com, etc.
 - **`maxSteps`** — Completed model steps must not exceed the limit
-- **`maxToolCalls`** — Tool calls in the scored turn must not exceed the limit
+- **`minToolCalls`** — Built-in web calls (`search` and `fetch_content`) must meet the minimum
+- **`maxToolCalls`** — Built-in web calls in the scored turn must not exceed the limit
+- **`noDuplicateToolCalls`** — No repeated web call with the same tool name and finalized input
+- **`expectCorrectAnswer`** — Judge checks factual or functional correctness
+- **`expectSearchOffer`** — Judge checks that the response answered first and explicitly offered to verify
+- **`expectPremiseRebuttal`** — Judge checks that the response explicitly corrected the false premise
+- **`expectVerificationDisclaimer`** — Judge checks that the response admitted the answer could not be verified
+
+Pi coding tools (`bash`, `read`, `write`, and `edit`) never contribute to web-call counts. Calls emitted after the web budget is exhausted still count because they represent a model decision to call the tool, even when the result is `budget_exhausted`.
+
+### Judge design
+
+Only the four semantic assertions above invoke an LLM judge; deterministic web-call counting never does. DeepSeek V4 Flash judges Opus. Opus judges Flash and GLM. A model never judges itself, and GLM is never a judge because its Tinfoil connection cannot be resolved through the OpenAI-compatible connection used here.
+
+Each scenario sample makes at most one judge call containing the user prompt, final response, and only the declared assertions. Verdicts must be strict JSON. Unsupported correctness claims fail. An API or parsing failure marks that sample as an error rather than passing it.
+
+### Sampling, gates, and headline metrics
+
+Core suites run once. Necessity scenarios run three independent fresh-thread samples by default, and their binary result plus web-call count is reduced to the modal outcome. Two passing samples out of three pass; error samples count as failures.
+
+Category gates use the modal outcomes and report a 95% Wilson score interval. Two cross-category gates catch policy drift:
+
+- **Unnecessary-search rate ≤5%** — share of `never_search`, `answer_then_offer`, `adversarial_no_search`, and non-control `multi_turn_reuse` scenarios whose modal outcome made a web call.
+- **Missed-search rate ≤5%** — share of `single_search`, `research`, `unknown_entity`, `false_premise`, and negative-control `multi_turn_reuse` scenarios whose modal outcome made no web call.
+- **Mean web calls per no-search-expected prompt** — secondary metric without a gate.
+
+### Metrics JSON
+
+Every report writes `eval-metrics.json` beside the Markdown file. The stable schema is:
+
+```json
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T12:00:00.000Z",
+  "groups": {
+    "opus/pi": {
+      "model": "opus",
+      "engine": "pi",
+      "scenarios": {
+        "never-search-01": {
+          "category": "never_search",
+          "passed": true,
+          "webToolCalls": 0,
+          "duplicateWebToolCalls": 0,
+          "sampleCount": 3,
+          "passedSampleCount": 3,
+          "errorSampleCount": 0,
+          "isNegativeControl": false,
+          "reviewBy": "2026-11-04",
+          "failures": []
+        }
+      },
+      "categories": {
+        "never_search": {
+          "passed": 12,
+          "total": 12,
+          "rate": 1,
+          "wilson": { "lower": 0.7575, "upper": 1 },
+          "threshold": 0.95,
+          "gatePassed": true
+        }
+      },
+      "headline": {
+        "unnecessarySearchRate": {
+          "count": 0,
+          "total": 50,
+          "rate": 0,
+          "threshold": 0.05,
+          "gatePassed": true
+        },
+        "missedSearchRate": {
+          "count": 0,
+          "total": 42,
+          "rate": 0,
+          "threshold": 0.05,
+          "gatePassed": true
+        },
+        "meanWebCallsNoSearchExpected": 0
+      }
+    }
+  }
+}
+```
+
+Rates are fractions from 0 to 1. Groups are keyed by `model/engine`; scenario keys are the human-readable final ID segment. This shape is intended for CI baselines and PR-comment generation.
+
+### Freshness maintenance
+
+Every necessity prompt carries an ISO `reviewBy` date roughly three months after authoring. The Markdown report warns when a date is past due. Review those prompts quarterly: refresh time-sensitive wording and facts, reclassify prompts whose freshness bucket changed, then move `reviewBy` forward.
 
 ## Architecture
 
@@ -202,8 +312,11 @@ src/ai/eval/
   runner.ts         Builds adapter contexts, runs turns, parses streams, scores results
   stream-parser.ts  Parses AI SDK UIMessageStream protocol
   scenarios.ts      Prompt suites and default-model matrix derivation
+  necessity-scenarios.ts Search-necessity taxonomy and prompt metadata
+  judge.ts          Cross-model semantic assertions
+  stats.ts          Modal sampling, Wilson intervals, gates, and metrics aggregation
   scoring.ts        Citation extraction, URL validation, criteria checking
-  report.ts         Console + markdown report generation
+  report.ts         Console, markdown, and JSON report generation
   types.ts          Shared type definitions
 ```
 

@@ -18,6 +18,7 @@ import { extractLastUserText } from '@/skills/resolve-skill-system-messages'
 import { v7 as uuidv7 } from 'uuid'
 import type { AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
+import { evaluateWithJudge, judgeScenario } from './judge'
 import { getModelId } from './scenarios'
 import { scoreResult } from './scoring'
 import { parseStream } from './stream-parser'
@@ -226,11 +227,13 @@ export const runScenario = async (scenario: EvalScenario, adapter: AgentAdapter)
     const finalUser = userMessage(allTurns.at(-1)!)
     const parsed = await runTurn([...history, finalUser])
 
-    const durationMs = performance.now() - start
-
     await logVerboseResponse(scenario, parsed.text)
 
-    return scoreResult(scenario, parsed, durationMs)
+    const deterministicResult = scoreResult(scenario, parsed, performance.now() - start)
+    const judgedResult = await evaluateWithJudge(deterministicResult, () =>
+      judgeScenario(scenario, parsed.text, () => proxyFetch),
+    )
+    return { ...judgedResult, durationMs: Math.round(performance.now() - start) }
   } catch (err) {
     const durationMs = performance.now() - start
     return {

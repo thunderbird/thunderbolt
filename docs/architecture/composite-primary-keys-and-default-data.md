@@ -58,8 +58,8 @@ If you add a new table that is seeded with default data at initialization:
 
 While some tables have composite primary keys `(id, user_id)`, we **intentionally do not enforce composite foreign key constraints** for references to these tables. For example:
 
-- `chatThreadsTable.modeId` references `modesTable` (which has PK `(id, user_id)`)
-- We use a simple column-level reference: `modeId: text('mode_id')` (no `.references()` or `foreignKey()`)
+- `chatMessagesTable.modelId` references `modelsTable` (which has PK `(id, user_id)`)
+- We use a simple column-level reference: `modelId: text('model_id')` (no `.references()` or `foreignKey()`)
 
 **Rationale:**
 

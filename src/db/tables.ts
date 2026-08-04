@@ -26,7 +26,6 @@ export const chatThreadsTable = sqliteTable(
     triggeredBy: text('triggered_by'),
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
-    modeId: text('mode_id'),
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
     deletedAt: text('deleted_at'),

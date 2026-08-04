@@ -27,12 +27,20 @@ import type { EvalResult, EvalScenario, ParsedStream } from './types'
 
 const timeout = parseInt(process.env.EVAL_TIMEOUT ?? '120000')
 
+/** Prefer the CI-provisioned bearer while preserving local browser-token behavior. */
+export const resolveEvalAuthToken = (
+  environmentToken: string | undefined,
+  readStoredToken: () => string | null,
+): string | null => environmentToken || readStoredToken()
+
+const getEvalAuthToken = () => resolveEvalAuthToken(process.env.EVAL_AUTH_TOKEN, getAuthToken)
+
 let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = null
 const getEvalHttpClient = () => {
   if (!_evalHttpClientPromise) {
     _evalHttpClientPromise = (async () => {
       const cloudUrl = getLocalSetting('cloudUrl')
-      return createAuthenticatedClient(cloudUrl, getAuthToken, {
+      return createAuthenticatedClient(cloudUrl, getEvalAuthToken, {
         credentials: isSsoMode() ? 'include' : undefined,
       })
     })()
@@ -188,7 +196,7 @@ export const runScenario = async (scenario: EvalScenario, adapter: AgentAdapter)
     // Eval runs in Node, not a browser — no React tree, no `ProxyFetchProvider`.
     // Build the proxy fetch directly from the same cloudUrl the HTTP client uses.
     const cloudUrl = getLocalSetting('cloudUrl')
-    const proxyFetch = createProxyFetch({ cloudUrl })
+    const proxyFetch = createProxyFetch({ cloudUrl, getProxyAuthToken: getEvalAuthToken })
 
     const userMessage = (text: string): ThunderboltUIMessage => ({
       id: uuidv7(),

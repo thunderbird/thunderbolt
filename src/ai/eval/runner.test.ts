@@ -9,7 +9,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { AgentAdapter } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { defaultModelOpus48 } from '@shared/defaults/models'
-import { createEvalAdapterContext, fetchAndParseTurn } from './runner'
+import { createEvalAdapterContext, fetchAndParseTurn, resolveEvalAuthToken } from './runner'
 
 const model: Model = { ...defaultModelOpus48, apiKey: null }
 const proxyFetch: FetchFn = Object.assign(async () => new Response(), {
@@ -59,6 +59,16 @@ describe('createEvalAdapterContext', () => {
     expect(search.webToolBudget?.intent).toBe('search')
     expect(research.webToolBudget?.intent).toBe('research')
     expect(chat.webToolBudget?.intent).toBe('auto')
+  })
+})
+
+describe('resolveEvalAuthToken', () => {
+  test('prefers the explicit CI token over browser storage', () => {
+    expect(resolveEvalAuthToken('ci-token', () => 'stored-token')).toBe('ci-token')
+  })
+
+  test('falls back to browser storage for local eval runs', () => {
+    expect(resolveEvalAuthToken(undefined, () => 'stored-token')).toBe('stored-token')
   })
 })
 

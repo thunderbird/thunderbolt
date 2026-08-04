@@ -3,7 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AbstractPowerSyncDatabase } from '@powersync/web'
-import { AppSchema } from '@/db/powersync'
+// Import AppSchema from the schema module directly, NOT the `@/db/powersync`
+// barrel: the barrel re-exports the connector/database SDK, and since this file
+// is pulled into the entry bundle via `use-app-initialization`, the barrel
+// import would drag the whole PowerSync SDK eager and defeat the dynamic import
+// in `src/db/database.ts`.
+import { AppSchema } from '@/db/powersync/schema'
 import type { SearchEntityConfig } from './registry'
 import { searchEntities, searchIndexVersion } from './registry'
 import type { SearchEntityType } from './types'

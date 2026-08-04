@@ -12,7 +12,7 @@ import {
 } from '@shared/defaults/models'
 import type { EvalCriteria, EvalEngine, EvalScenario } from './types'
 
-type EvalModel = {
+export type EvalModel = {
   id: string
   name: string
   engineName: EvalEngine

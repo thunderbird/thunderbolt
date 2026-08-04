@@ -8,6 +8,9 @@ Embedded E2E test runner that validates AI response quality across the shipped m
 # Run all scenarios
 bun run eval
 
+# Run the deterministic pull-request smoke subset
+EVAL_SMOKE=1 bun run eval
+
 # Test only Opus
 EVAL_MODELS=opus bun run eval
 
@@ -24,7 +27,7 @@ EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --verbose
 EVAL_MODELS=opus EVAL_MODES=search bun run eval
 ```
 
-> **Prerequisite**: The backend must be running at `localhost:8000` (or whatever `cloud_url` is configured). The eval runner makes real API calls to the models.
+> **Prerequisite**: The backend must be running at `localhost:8000` (or whatever `cloud_url` is configured). Protected model and proxy routes also require a signed bearer in `EVAL_AUTH_TOKEN` unless the Bun environment's local storage is already seeded. The eval runner makes real API calls to the models.
 
 ## How It Works
 
@@ -110,7 +113,9 @@ Report saved to: evals/eval-results-20260804-164000.md
 | `EVAL_SCENARIO_PARALLEL`  | `3`                                 | `1`               | Concurrent scenarios                                     |
 | `EVAL_TIMEOUT`            | `120000`                            | `60000`           | Timeout per turn (ms)                                    |
 | `EVAL_OUTPUT`             | `evals/eval-results-<timestamp>.md` | `reports/eval.md` | Report file path                                         |
+| `EVAL_AUTH_TOKEN`         | local storage token                 | signed bearer     | Backend bearer used by inference and proxy requests      |
 | `EVAL_SAMPLES`            | `3`                                 | `5`               | Samples per necessity scenario; core suites always use 1 |
+| `EVAL_SMOKE`              | unset                               | `1`               | Run the fixed smoke subset and force all samples to 1    |
 | `EVAL_NECESSITY_OPTIONAL` | unset                               | `1`               | Include `search_wont_help` scenarios                     |
 
 ### CLI Flags
@@ -201,6 +206,12 @@ Core suites contain 15 prompts per mode, tested against every model in `defaultM
 **Widget regression** covers spontaneous weather forecasts, link previews, integration connection prompts, interactive questions, and maps, plus factual and coding prompts that must remain plain text. Citation tags are excluded because citation instructions explicitly forbid them. Document-result tags are excluded because they require Document Search mode and tool results, which this runner does not support.
 
 All scenarios are defined in `scenarios.ts`.
+
+### Smoke subset
+
+`EVAL_SMOKE=1` selects a fixed list rather than sampling randomly. Every shipped model/engine cell runs `C1`, `S1`, and `R1`, plus the first prompt from each enabled search-necessity category. With the current matrix that is 11 scenarios per cell and 33 total. Enabling `EVAL_NECESSITY_OPTIONAL=1` adds `search-wont-help-01` per cell.
+
+Smoke mode always uses one sample, even when `EVAL_SAMPLES` is set. The explicit IDs and invariant tests keep the subset stable and reviewable while limiting pull-request runtime.
 
 ## Scoring
 
@@ -300,6 +311,43 @@ Every report writes `eval-metrics.json` beside the Markdown file. The stable sch
 
 Rates are fractions from 0 to 1. Groups are keyed by `model/engine`; scenario keys are the human-readable final ID segment. This shape is intended for CI baselines and PR-comment generation.
 
+## CI
+
+The `AI Evals` workflow has two paths:
+
+- Pull requests run the deterministic smoke subset when they change `src/ai/**`, `shared/agent-core/**`, `shared/defaults/**`, `src/acp/**`, or the eval workflow. The report and metrics JSON are uploaded together.
+- A nightly run at 03:00 UTC executes the full suite with the default three samples per necessity scenario. It can run for every model/engine cell without multiplying the work by separate before/after revisions.
+
+The pull-request comment is updated in place using a hidden marker. For each model/engine cell it shows gate status, headline rates and baseline deltas, category rates, Wilson significance labels, failed necessity scenarios, and a link to the full report artifact. Deltas are significant only when the current rate falls outside the baseline run's 95% Wilson interval.
+
+### Baselines
+
+Checked-in baselines live in `baselines/` as one `model--engine.json` file per cell. They contain the observed metrics from a full run, not hand-authored targets. Generate or compare them locally from a metrics artifact with:
+
+```bash
+bun run eval:baseline -- evals/eval-metrics.json
+bun run eval:compare -- evals/eval-metrics.json
+```
+
+The nightly workflow regenerates the files and, when they change, force-updates the dedicated `evals/baseline-refresh` branch. It opens a draft pull request if that branch has no open refresh pull request; it never commits directly to `main`.
+
+No baseline files are shipped until the first scheduled run produces real measurements. Before then, comments show `No baseline yet — first scheduled run will create one.` and omit deltas and significance claims.
+
+### CI authentication
+
+Inference, Tinfoil, search, and universal-proxy routes reject unauthenticated requests. The workflow starts an isolated PGlite backend with `AUTH_ALLOW_ANONYMOUS=true`, calls Better Auth's anonymous sign-in endpoint, and reads the signed bearer from its `set-auth-token` response header. It passes that value as `EVAL_AUTH_TOKEN`; the eval attaches it to both its authenticated HTTP client and hosted proxy fetch. This uses the existing test-mode authentication path and does not add an auth bypass.
+
+The repository needs these Actions secrets:
+
+- `ANTHROPIC_API_KEY` — Opus inference and Opus judge calls
+- `FIREWORKS_API_KEY` — DeepSeek V4 Flash inference and judge calls
+- `TINFOIL_API_KEY` — confidential GLM inference
+- `EXA_API_KEY` — web search tool calls
+
+### Manual runs
+
+Open **Actions → AI Evals → Run workflow**. The default `full` choice runs the complete suite; `smoke` runs the pull-request subset, and `both` runs both jobs. The full job checks out `main` so a manual baseline refresh always represents the branch that pull requests compare against.
+
 ### Freshness maintenance
 
 Every necessity prompt carries an ISO `reviewBy` date roughly three months after authoring. The Markdown report warns when a date is past due. Review those prompts quarterly: refresh time-sensitive wording and facts, reclassify prompts whose freshness bucket changed, then move `reviewBy` forward.
@@ -315,6 +363,9 @@ src/ai/eval/
   necessity-scenarios.ts Search-necessity taxonomy and prompt metadata
   judge.ts          Cross-model semantic assertions
   stats.ts          Modal sampling, Wilson intervals, gates, and metrics aggregation
+  baseline.ts       Baseline file generation and Wilson-based comparisons
+  baseline-cli.ts   eval:baseline and eval:compare entry point
+  smoke.ts          Deterministic pull-request subset selection
   scoring.ts        Citation extraction, URL validation, criteria checking
   report.ts         Console, markdown, and JSON report generation
   types.ts          Shared type definitions

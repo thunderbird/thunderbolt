@@ -19,9 +19,8 @@ export type WebToolBudgetProbe = {
 }
 
 export type WebToolBudget = {
-  tryConsume: () => boolean
+  execute: (toolName: string, input: unknown, run: () => Promise<unknown>) => Promise<unknown>
   probe: WebToolBudgetProbe
-  dedupe: Map<string, Promise<unknown>>
   intent: WebToolIntent
 }
 
@@ -44,16 +43,32 @@ export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
   const cap = webToolCaps[intent]
   let consumed = 0
   let exhaustedAttempts = 0
+  const dedupe = new Map<string, Promise<unknown>>()
+
+  const tryConsume = (): boolean => {
+    if (consumed >= cap) {
+      exhaustedAttempts++
+      return false
+    }
+    consumed++
+    return true
+  }
 
   return {
     intent,
-    tryConsume: () => {
-      if (consumed >= cap) {
-        exhaustedAttempts++
-        return false
+    execute: (toolName, input, run) => {
+      const key = normalizeWebToolKey(toolName, input)
+      const cached = dedupe.get(key)
+      if (cached) {
+        return cached
       }
-      consumed++
-      return true
+      if (!tryConsume()) {
+        return Promise.resolve(budgetExhaustedResult())
+      }
+      const result = run()
+      dedupe.set(key, result)
+      result.catch(() => dedupe.delete(key))
+      return result
     },
     probe: {
       get isExhausted() {
@@ -63,7 +78,6 @@ export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
         return exhaustedAttempts
       },
     },
-    dedupe: new Map(),
   }
 }
 

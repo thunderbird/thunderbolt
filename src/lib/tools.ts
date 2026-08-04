@@ -12,7 +12,7 @@ import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsof
 import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import { toolCallKey } from '@/lib/stable-stringify'
-import { budgetExhaustedResult, normalizeWebToolKey, type WebToolBudget } from '@/ai/web-tool-budget'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
@@ -106,20 +106,8 @@ const dedupedExecute =
 
 const budgetedWebExecute =
   (config: ToolConfig, webToolBudget: WebToolBudget, execute: (input: unknown) => Promise<unknown>) =>
-  (input: unknown): Promise<unknown> => {
-    const key = normalizeWebToolKey(config.name, input)
-    const cached = webToolBudget.dedupe.get(key)
-    if (cached) {
-      return cached
-    }
-    if (!webToolBudget.tryConsume()) {
-      return Promise.resolve(budgetExhaustedResult())
-    }
-    const result = execute(input)
-    webToolBudget.dedupe.set(key, result)
-    result.catch(() => webToolBudget.dedupe.delete(key))
-    return result
-  }
+  (input: unknown): Promise<unknown> =>
+    webToolBudget.execute(config.name, input, () => execute(input))
 
 /**
  * Build an AI SDK tool from a {@link ToolConfig}. When a {@link ToolCallCache}

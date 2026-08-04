@@ -26,13 +26,17 @@ describe('resolveWebToolIntent', () => {
 
 describe('createWebToolBudget', () => {
   for (const intent of Object.keys(webToolCaps) as WebToolIntent[]) {
-    it(`enforces the ${intent} cap`, () => {
+    it(`enforces the ${intent} cap`, async () => {
       const budget = createWebToolBudget(intent)
       for (let call = 0; call < webToolCaps[intent]; call++) {
-        expect(budget.tryConsume()).toBe(true)
+        await expect(budget.execute('search', { query: `query ${call}` }, async () => ({ call }))).resolves.toEqual({
+          call,
+        })
       }
       expect(budget.probe.isExhausted).toBe(true)
-      expect(budget.tryConsume()).toBe(false)
+      await expect(
+        budget.execute('search', { query: 'over budget' }, async () => ({ call: 'over budget' })),
+      ).resolves.toMatchObject({ status: 'budget_exhausted' })
       expect(budget.probe.exhaustedAttempts).toBe(1)
     })
   }

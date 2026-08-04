@@ -165,7 +165,7 @@ describe('createBuiltInAdapter persistent harness', () => {
           promptCalls.push({ text, images: promptOptions?.images ?? [] })
           if (promptCalls.length === 1) {
             for (let call = 0; call <= webToolCaps.auto; call++) {
-              context.webToolBudget?.tryConsume()
+              await context.webToolBudget?.execute('search', { query: `query ${call}` }, async () => ({ call }))
             }
             await toolResultHandler?.()
           }

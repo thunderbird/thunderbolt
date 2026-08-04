@@ -54,6 +54,33 @@ describe('necessity scenarios', () => {
     )
   })
 
+  test('applies category-specific web-call maxima without capping research', () => {
+    const scenarios = getNecessityScenarios(['opus'], undefined, true)
+    const maximums = (category: NecessityCategory) =>
+      scenarios.filter((scenario) => scenario.category === category).map(({ criteria }) => criteria.maxToolCalls)
+
+    expect(new Set(maximums('never_search'))).toEqual(new Set([0]))
+    expect(new Set(maximums('answer_then_offer'))).toEqual(new Set([0]))
+    expect(new Set(maximums('single_search'))).toEqual(new Set([2]))
+    expect(new Set(maximums('research'))).toEqual(new Set([undefined]))
+    expect(new Set(maximums('unknown_entity'))).toEqual(new Set([2]))
+    expect(new Set(maximums('false_premise'))).toEqual(new Set([3]))
+    expect(new Set(maximums('adversarial_no_search'))).toEqual(new Set([0]))
+    expect(new Set(maximums('search_wont_help'))).toEqual(new Set([2]))
+
+    const reuseScenarios = scenarios.filter(({ category }) => category === 'multi_turn_reuse')
+    expect(
+      new Set(
+        reuseScenarios.filter(({ isNegativeControl }) => !isNegativeControl).map((item) => item.criteria.maxToolCalls),
+      ),
+    ).toEqual(new Set([0]))
+    expect(
+      new Set(
+        reuseScenarios.filter(({ isNegativeControl }) => isNegativeControl).map((item) => item.criteria.maxToolCalls),
+      ),
+    ).toEqual(new Set([2]))
+  })
+
   test('keeps every necessity scenario in un-tokenized chat mode', () => {
     const scenarios = getNecessityScenarios(undefined, undefined, true)
 

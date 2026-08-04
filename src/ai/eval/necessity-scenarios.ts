@@ -30,6 +30,15 @@ const searchOnce: EvalCriteria = {
   maxToolCalls: 2,
   noDuplicateToolCalls: true,
 }
+const researchSearch: EvalCriteria = {
+  mustProduceOutput: true,
+  minToolCalls: 1,
+  noDuplicateToolCalls: true,
+}
+const deepResearchSearch: EvalCriteria = {
+  ...researchSearch,
+  minToolCalls: 2,
+}
 
 const prompts: NecessityPrompt[] = [
   {
@@ -252,73 +261,73 @@ const prompts: NecessityPrompt[] = [
     id: 'research-01',
     category: 'research',
     prompt: 'Compare four-day work week trials in Iceland, Japan, and the UK, including measured outcomes.',
-    criteria: searchOnce,
+    criteria: researchSearch,
   },
   {
     id: 'research-02',
     category: 'research',
     prompt: 'Research how four-day work week pilots differed across Iceland, Japan, and Britain.',
-    criteria: { ...searchOnce, minToolCalls: 2 },
+    criteria: deepResearchSearch,
   },
   {
     id: 'research-03',
     category: 'research',
     prompt: 'Give me a comprehensive comparison of Icelandic, Japanese, and UK four-day-week trials.',
-    criteria: { ...searchOnce, minToolCalls: 2 },
+    criteria: deepResearchSearch,
   },
   {
     id: 'research-04',
     category: 'research',
     prompt: 'Compare solid-state battery startups and their stated 2026 commercialization timelines.',
-    criteria: searchOnce,
+    criteria: researchSearch,
   },
   {
     id: 'research-05',
     category: 'research',
     prompt: 'Research the leading solid-state battery startups and assess their 2026 milestones.',
-    criteria: { ...searchOnce, minToolCalls: 2 },
+    criteria: deepResearchSearch,
   },
   {
     id: 'research-06',
     category: 'research',
     prompt: 'Do a deep dive on solid-state battery companies and the credibility of their 2026 timelines.',
-    criteria: { ...searchOnce, minToolCalls: 2 },
+    criteria: deepResearchSearch,
   },
   {
     id: 'research-07',
     category: 'research',
     prompt: 'Compare facial-recognition regulation in the EU, United States, and China.',
-    criteria: searchOnce,
+    criteria: researchSearch,
   },
   {
     id: 'research-08',
     category: 'research',
     prompt: 'Research how EU, US, and Chinese rules govern facial recognition.',
-    criteria: { ...searchOnce, minToolCalls: 2 },
+    criteria: deepResearchSearch,
   },
   {
     id: 'research-09',
     category: 'research',
     prompt: 'Give me a comprehensive regulatory comparison of facial recognition in the EU, US, and China.',
-    criteria: { ...searchOnce, minToolCalls: 2 },
+    criteria: deepResearchSearch,
   },
   {
     id: 'research-10',
     category: 'research',
     prompt: 'Compare open-source Figma alternatives using current GitHub stars and latest release dates.',
-    criteria: searchOnce,
+    criteria: researchSearch,
   },
   {
     id: 'research-11',
     category: 'research',
     prompt: 'Research open-source alternatives to Figma, including GitHub popularity and release recency.',
-    criteria: { ...searchOnce, minToolCalls: 2 },
+    criteria: deepResearchSearch,
   },
   {
     id: 'research-12',
     category: 'research',
     prompt: 'Do a deep dive on open-source Figma competitors with current stars and latest releases.',
-    criteria: { ...searchOnce, minToolCalls: 2 },
+    criteria: deepResearchSearch,
   },
   {
     id: 'unknown-entity-01',

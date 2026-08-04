@@ -10,7 +10,7 @@ type EntityActionConfig = {
   page: string
   /** `location.state` key the target page reads via `useEntityActionIntent`. */
   stateKey: string
-  /** Which affordances this entity exposes (drives row buttons + create commands). */
+  /** Which affordances this entity exposes (drives edit-on-click + create commands). */
   supports: {
     create?: boolean
     edit?: boolean
@@ -19,11 +19,12 @@ type EntityActionConfig = {
 }
 
 /**
- * Registry of entities that support inline palette actions. Only entries
- * listed here render edit/remove buttons on result rows or contribute a
+ * Registry of entities that support inline palette actions. Entries listed
+ * here open their edit panel when a result row is clicked and/or contribute a
  * "Create X" command. v1 ships Models + Skills (THU-768); Agents add
- * create + edit (no inline remove — removal stays behind the detail panel's
- * ⋯ menu, which is the only place ownership/flavor gates it).
+ * create + edit. Removal is never triggered from the palette — it stays behind
+ * each detail panel's ⋯ menu, which is where ownership/flavor gates it; the
+ * `remove` intent is retained only as a generic capability of the contract.
  */
 export const entityActions: Partial<Record<SearchEntityType, EntityActionConfig>> = {
   model: {

@@ -12,7 +12,6 @@ import { trackEvent as trackEventImpl } from '@/lib/posthog'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { buildActionNav } from '../actions/entity-actions'
-import type { EntityActionType } from '../actions/types'
 import type { PaletteCommand } from '../commands/types'
 import { useCommands as useCommandsImpl } from '../commands/use-commands'
 import { searchEntities } from '../registry'
@@ -112,9 +111,18 @@ export const SearchPalette = ({
 
   const handleSelect = useCallback(
     (to: string, entityType: SearchEntityType, id: string) => {
+      handleOpenChange(false)
+      // Entities with an inline editor open straight into their edit panel on
+      // click; everything else navigates to its page (messages also carry a
+      // scroll-to-message intent).
+      const editNav = buildActionNav(entityType, { type: 'edit', id })
+      if (editNav) {
+        trackEvent('search_result_select', { entityType, jumpToMessage: false })
+        navigate(editNav.to, { state: editNav.state })
+        return
+      }
       const jumpToMessage = entityType === 'message'
       trackEvent('search_result_select', { entityType, jumpToMessage })
-      handleOpenChange(false)
       navigate(to, jumpToMessage ? { state: { [scrollToMessageStateKey]: id } } : undefined)
     },
     [handleOpenChange, navigate, trackEvent],
@@ -131,19 +139,6 @@ export const SearchPalette = ({
       void Promise.resolve(command.run()).catch((error) => {
         console.error(`[search] command '${command.id}' failed`, error)
       })
-    },
-    [handleOpenChange, navigate, trackEvent],
-  )
-
-  const handleAction = useCallback(
-    (entityType: SearchEntityType, action: EntityActionType, id: string) => {
-      const nav = buildActionNav(entityType, { type: action, id })
-      if (!nav) {
-        return
-      }
-      handleOpenChange(false)
-      trackEvent('search_action_run', { entityType, action })
-      navigate(nav.to, { state: nav.state })
     },
     [handleOpenChange, navigate, trackEvent],
   )
@@ -211,7 +206,6 @@ export const SearchPalette = ({
                       result={result}
                       query={trimmedQuery}
                       onSelect={handleSelect}
-                      onAction={handleAction}
                     />
                   ))}
                 </CommandGroup>

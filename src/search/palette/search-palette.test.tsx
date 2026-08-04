@@ -145,18 +145,20 @@ describe('SearchPalette commands', () => {
     expect(screen.getByTestId('location')).toHaveAttribute('data-state', JSON.stringify(state))
   })
 
-  it('fires an entity action from a result row: navigates with intent state + tracks', async () => {
+  it('routes a click on an edit-supporting result straight to its edit panel', async () => {
     searchResults = [{ id: 'gpt-4o', entityType: 'model', title: 'GPT-4o', snippet: '', to: '/settings/models' }]
     renderPalette()
 
-    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'gpt' } })
+    // Query the whole title so the highlight wraps it in a single <mark> — a
+    // substring match ("gpt") would split the accessible name into "GPT -4o".
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'gpt-4o' } })
     await act(async () => {
       await getClock().tickAsync(debounceMs)
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /Edit/ }))
+    fireEvent.click(screen.getByRole('option', { name: /GPT-4o/ }))
 
-    expect(mockTrackEvent).toHaveBeenCalledWith('search_action_run', { entityType: 'model', action: 'edit' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('search_result_select', { entityType: 'model', jumpToMessage: false })
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/models')
     expect(screen.getByTestId('location')).toHaveAttribute(
       'data-state',

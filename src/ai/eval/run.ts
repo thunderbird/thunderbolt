@@ -9,6 +9,7 @@ import { getNecessityScenarios } from './necessity-scenarios'
 import { generateReport } from './report'
 import { runPool } from './runner'
 import { getScenarios } from './scenarios'
+import { getScenarioSampleCount, selectSmokeScenarios } from './smoke'
 import { initLayout, printFooter, restoreConsole, silenceConsole, teardownLayout } from './ui'
 
 export const verbose = process.argv.includes('--verbose')
@@ -20,13 +21,15 @@ const main = async () => {
   const engineFilter = process.env.EVAL_ENGINES?.split(',').map((s) => s.trim())
   const scenarioParallel = parseInt(process.env.EVAL_SCENARIO_PARALLEL ?? '3')
   const necessitySamples = parseInt(process.env.EVAL_SAMPLES ?? '3')
+  const smoke = process.env.EVAL_SMOKE === '1'
   if (!Number.isInteger(necessitySamples) || necessitySamples < 1) {
     throw new Error('EVAL_SAMPLES must be a positive integer')
   }
 
   const necessityScenarios =
     !modeFilter || modeFilter.includes('chat') ? getNecessityScenarios(modelFilter, engineFilter) : []
-  const scenarios = [...getScenarios(modelFilter, modeFilter, engineFilter), ...necessityScenarios]
+  const filteredScenarios = [...getScenarios(modelFilter, modeFilter, engineFilter), ...necessityScenarios]
+  const scenarios = smoke ? selectSmokeScenarios(filteredScenarios) : filteredScenarios
 
   if (scenarios.length === 0) {
     console.error('No scenarios matched the filters.')
@@ -46,7 +49,7 @@ const main = async () => {
 
     try {
       return await runPool(scenarios, scenarioParallel, adapter, (scenario) =>
-        scenario.category ? necessitySamples : 1,
+        getScenarioSampleCount(scenario, necessitySamples, smoke),
       )
     } finally {
       printFooter()

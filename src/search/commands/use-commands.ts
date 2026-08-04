@@ -3,16 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { themeIcons } from '@/components/theme-icons'
-import { useSidebar } from '@/components/ui/sidebar'
-import { reconnectSync } from '@/db/powersync/sync-state'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useSettings } from '@/hooks/use-settings'
-import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { getDownloadUrl } from '@/lib/download-links'
 import { getWebOsPlatform, isMacDesktop, isTauri, isWebDesktopPlatform } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { useTheme, type Theme } from '@/lib/theme-provider'
-import { Cloud, CloudOff, Download, LogOut, MessageCirclePlus, PanelLeft, RefreshCw, Trash2 } from 'lucide-react'
+import { Download, LogOut, MessageCirclePlus, PanelLeft, Trash2 } from 'lucide-react'
 import { buildCreateCommands } from './create-commands'
 import { navigationCommands, type NavGate } from './navigation'
 import type { PaletteCommand, UseCommandsOptions } from './types'
@@ -32,18 +29,7 @@ const themeOptions: { theme: Theme; title: string }[] = [
   { theme: 'system', title: 'Use System' },
 ]
 
-const gateOpen = (gate: NavGate | undefined, flags: CommandFlags): boolean => {
-  if (gate === 'voice') {
-    return flags.voice
-  }
-  if (gate === 'tasks') {
-    return flags.tasks
-  }
-  if (gate === 'dev') {
-    return flags.dev
-  }
-  return true
-}
+const gateOpen = (gate: NavGate | undefined, flags: CommandFlags): boolean => (gate === undefined ? true : flags[gate])
 
 /**
  * Everything {@link buildCommands} needs, injected as plain values so the
@@ -52,13 +38,11 @@ const gateOpen = (gate: NavGate | undefined, flags: CommandFlags): boolean => {
  */
 export type BuildCommandsDeps = {
   flags: CommandFlags
-  syncEnabled: boolean
   showDownloadApp: boolean
   isMac: boolean
   onNewChat: () => void
   onSetTheme: (theme: Theme) => void
   onToggleSidebar: () => void
-  onToggleSync: (enabled: boolean) => void | Promise<void>
   onSignOut: () => void
   onClearAllChats: () => void
 }
@@ -107,22 +91,6 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
       shortcut: deps.isMac ? '⌘B' : 'Ctrl+B',
       run: deps.onToggleSidebar,
     },
-    {
-      id: 'cloud-sync-toggle',
-      title: deps.syncEnabled ? 'Disable Cloud Sync' : 'Enable Cloud Sync',
-      icon: deps.syncEnabled ? CloudOff : Cloud,
-      section: 'actions',
-      keywords: ['sync', 'cloud'],
-      run: () => deps.onToggleSync(!deps.syncEnabled),
-    },
-    {
-      id: 'reconnect-sync',
-      title: 'Reconnect sync',
-      icon: RefreshCw,
-      section: 'actions',
-      keywords: ['retry', 'sync'],
-      run: reconnectSync,
-    },
     ...downloadCommands,
     {
       id: 'sign-out',
@@ -161,14 +129,13 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
  * to the same hook the sidebar uses — nothing here reimplements behaviour.
  */
 export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
-  const { experimentalFeatureVoice, experimentalFeatureTasks } = useSettings({
+  const { experimentalFeatureVoice, experimentalFeatureTasks, sidebarState } = useSettings({
     experimental_feature_voice: false,
     experimental_feature_tasks: false,
+    sidebar_state: true,
   })
   const createNewChat = useCreateNewChat()
   const { setTheme } = useTheme()
-  const { toggleSidebar } = useSidebar()
-  const { syncEnabled, handleSyncToggle } = useSyncEnabledToggle()
 
   return buildCommands({
     flags: {
@@ -176,7 +143,6 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
       tasks: experimentalFeatureTasks.value,
       dev: import.meta.env.DEV,
     },
-    syncEnabled,
     showDownloadApp: showAppDownloads && !isTauri() && isWebDesktopPlatform(),
     isMac: isMacPlatform(),
     onNewChat: createNewChat,
@@ -184,8 +150,10 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
       setTheme(theme)
       trackEvent('settings_theme_set', { theme })
     },
-    onToggleSidebar: toggleSidebar,
-    onToggleSync: handleSyncToggle,
+    // The visible sidebar is controlled by the persisted `sidebar_state` setting
+    // (layout.tsx), not the app-level SidebarProvider the palette renders under —
+    // toggle the setting so the toggle actually reaches the real sidebar.
+    onToggleSidebar: () => sidebarState.setValue(!sidebarState.value),
     onSignOut: opts.onSignOut,
     onClearAllChats: opts.onClearAllChats,
   })

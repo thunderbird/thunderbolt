@@ -8,8 +8,10 @@ import type { SearchEntityType } from '../types'
 import type { PaletteCommand } from './types'
 
 /**
- * Declarative source for the palette's "Create X" commands. One entry per
- * entity whose {@link buildActionNav} supports a `create` intent; the icon
+ * Declarative source for the palette's "Create X" commands. This is a hardcoded
+ * allow-list: an entity gets a create command only if it appears here AND
+ * {@link buildActionNav} supports a `create` intent for it — adding create
+ * support to the manifest alone won't surface a command; add it here too. The icon
  * mirrors the entity's navigation glyph so the create row reads as the same
  * surface as its "go to" nav command.
  */

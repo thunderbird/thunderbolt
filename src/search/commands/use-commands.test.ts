@@ -9,13 +9,11 @@ import type { PaletteCommand } from './types'
 
 const makeDeps = (overrides: Partial<BuildCommandsDeps> = {}): BuildCommandsDeps => ({
   flags: { voice: false, tasks: false, dev: false },
-  syncEnabled: false,
   showDownloadApp: false,
   isMac: true,
   onNewChat: () => {},
   onSetTheme: () => {},
   onToggleSidebar: () => {},
-  onToggleSync: () => {},
   onSignOut: () => {},
   onClearAllChats: () => {},
   ...overrides,
@@ -39,7 +37,7 @@ describe('buildCommands — navigation gating', () => {
     expect(ids).not.toContain('message-simulator')
     // Ungated core routes are always present.
     expect(ids).toContain('agents')
-    expect(ids).toContain('settings')
+    expect(ids).toContain('preferences')
   })
 
   it('reveals each gated nav command only when its own flag is on', () => {
@@ -84,20 +82,6 @@ describe('buildCommands — action wiring', () => {
     runOf(byId(commands, 'theme-dark'))()
     runOf(byId(commands, 'theme-system'))()
     expect(onSetTheme.mock.calls).toEqual([['light'], ['dark'], ['system']])
-  })
-
-  it('labels and fires the cloud-sync toggle from the current sync state', () => {
-    const onToggleSync = mock(() => {})
-
-    const offCommand = byId(buildCommands(makeDeps({ syncEnabled: false, onToggleSync })), 'cloud-sync-toggle')
-    expect(offCommand?.title).toBe('Enable Cloud Sync')
-    runOf(offCommand)()
-    expect(onToggleSync).toHaveBeenLastCalledWith(true)
-
-    const onCommand = byId(buildCommands(makeDeps({ syncEnabled: true, onToggleSync })), 'cloud-sync-toggle')
-    expect(onCommand?.title).toBe('Disable Cloud Sync')
-    runOf(onCommand)()
-    expect(onToggleSync).toHaveBeenLastCalledWith(false)
   })
 
   it('includes the download command only behind its gate', () => {

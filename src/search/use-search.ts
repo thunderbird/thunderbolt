@@ -51,7 +51,10 @@ const toResult = (row: SearchRow): SearchResult => {
   return {
     id: row.id,
     entityType: row.entity_type,
-    title: row.title || row.snippet,
+    // Titleless entities (messages) index an empty title, so the snippet is the
+    // only text — leave title empty and let the row promote the snippet rather
+    // than duplicating it onto both lines.
+    title: row.title ?? '',
     snippet: row.snippet,
     to: config.route({ id: row.id, parentId: row.parent_id }),
   }

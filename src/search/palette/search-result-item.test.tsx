@@ -53,6 +53,19 @@ describe('SearchResultItem', () => {
     expect(container.textContent).toContain('Ideas for the trip to the coast')
   })
 
+  it('promotes the snippet to the primary line for a titleless (message) result without duplicating it', () => {
+    const messageResult: SearchResult = {
+      id: 'msg-1',
+      entityType: 'message',
+      title: '',
+      snippet: 'the only line for a message',
+      to: '/chats/thread-1',
+    }
+    const { container } = renderRow(messageResult, { query: 'line' })
+    const occurrences = (container.textContent ?? '').split('the only line for a message').length - 1
+    expect(occurrences).toBe(1)
+  })
+
   it('highlights the matched query token in both title and snippet', () => {
     const { container } = renderRow(chatResult, { query: 'trip' })
     const highlighted = Array.from(container.querySelectorAll('mark')).map((m) => m.textContent)

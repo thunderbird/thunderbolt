@@ -43,6 +43,11 @@ export const SearchResultItem = ({
   const Icon = entityIcons[result.entityType]
   const supports = getEntityActions(result.entityType)?.supports
 
+  // Messages have no title, so the snippet is the row's primary text; everything
+  // else shows title as primary with the snippet as a muted secondary line.
+  const primaryText = result.title || result.snippet
+  const secondaryText = result.title ? result.snippet : ''
+
   const renderAction = (action: EntityActionType, ActionIcon: typeof Pencil, label: string) => (
     <button
       type="button"
@@ -69,11 +74,11 @@ export const SearchResultItem = ({
       <Icon className="mt-0.5 size-[var(--icon-size-sm)] shrink-0" />
       <div className="flex min-w-0 flex-col">
         <span className="truncate text-[length:var(--font-size-body)]">
-          <HighlightMatch text={result.title} query={query} />
+          <HighlightMatch text={primaryText} query={query} />
         </span>
-        {result.snippet ? (
+        {secondaryText ? (
           <span className="text-muted-foreground truncate text-[length:var(--font-size-xs)]">
-            <HighlightMatch text={result.snippet} query={query} />
+            <HighlightMatch text={secondaryText} query={query} />
           </span>
         ) : null}
       </div>

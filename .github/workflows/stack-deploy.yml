@@ -52,24 +52,34 @@ on:
         required: false
     secrets:
       PULUMI_ACCESS_TOKEN:
+        description: 'Pulumi Cloud access token'
         required: false
       AWS_DEPLOY_ROLE_ARN:
+        description: 'AWS IAM role ARN used for deployment'
         required: false
       GHCR_PAT:
+        description: 'GitHub Container Registry access token'
         required: false
       CLOUDFLARE_API_TOKEN:
+        description: 'Cloudflare API token for preview DNS'
         required: false
       ANTHROPIC_API_KEY:
+        description: 'Anthropic provider API key'
         required: false
       FIREWORKS_API_KEY:
+        description: 'Fireworks provider API key'
         required: false
       MISTRAL_API_KEY:
+        description: 'Mistral provider API key'
         required: false
       THUNDERBOLT_INFERENCE_API_KEY:
+        description: 'Thunderbolt inference gateway API key'
         required: false
       TINFOIL_API_KEY:
+        description: 'Tinfoil provider API key'
         required: false
       TINFOIL_ENCLAVE_URL:
+        description: 'Tinfoil enclave endpoint URL'
         required: false
       # EXA_API_KEY intentionally comes from the preview environment.
     outputs:

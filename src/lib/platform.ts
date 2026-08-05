@@ -67,7 +67,12 @@ export const isTauriDesktop = (): boolean => isTauri() && isDesktop()
 /** True on the Tauri macOS build. Web (including Safari/mac) returns false. */
 export const isMacDesktop = (): boolean => isTauri() && getPlatform() === 'macos'
 
-/** True on Tauri Windows or Linux desktop — the platforms that need custom window controls. */
+/**
+ * True on the Tauri Windows or Linux desktop build — the frameless platforms
+ * whose native title bar is hidden, so the frontend paints its own window
+ * controls (see `WindowControls`). macOS (overlaid traffic lights) and web
+ * (native chrome) return false.
+ */
 export const isFramelessControlsPlatform = (): boolean => {
   if (!isTauri()) {
     return false

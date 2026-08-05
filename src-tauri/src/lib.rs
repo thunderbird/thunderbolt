@@ -72,10 +72,13 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     // `followsWindowActiveState` flattens the blur while the window is inactive,
     // matching native macOS apps.
 
-    // Frameless main window on Windows/Linux. macOS keeps `titleBarStyle: Overlay`
-    // from tauri.conf.json to preserve native traffic lights; setting
-    // `decorations: false` in the JSON would override Overlay and remove them,
-    // so we scope the borderless flag to platforms that ship custom controls.
+    // Frameless main window on Windows/Linux: hide the native title bar and let
+    // the frontend paint its own min/maximize/close controls at the top-right
+    // (`WindowControls`), matching the platform convention while keeping the
+    // opaque, edge-to-edge canvas. macOS uses `titleBarStyle: Overlay` from
+    // tauri.macos.conf.json instead — setting `decorations: false` there would
+    // strip the native traffic lights, so the borderless flag is scoped to the
+    // custom-controls platforms.
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         builder = builder.setup(|app| {

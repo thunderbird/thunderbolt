@@ -157,10 +157,10 @@ const HistoryNavButtons = () => {
 export const Header = () => {
   const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
-  // Tauri desktop hides the OS title bar; the header row itself doubles as
-  // the drag surface — including when the viewport is narrow enough to fall
-  // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
-  // buttons inline on the right (self-nulls on macOS/web).
+  // Both desktop apps hide the native title bar (macOS overlays it with traffic
+  // lights; Windows/Linux are frameless), so the header row doubles as the drag
+  // surface — including when the viewport is narrow enough to fall into the
+  // mobile-style layout.
   const isDragRegionEnabled = isTauriDesktop()
   const dragProps: TauriDragProps = isDragRegionEnabled ? { 'data-tauri-drag-region': true } : {}
   // The macOS traffic lights (ending at ~x=68) are wider than the collapsed

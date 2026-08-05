@@ -268,6 +268,13 @@
      hidden under the header at rest. */
   --header-inset: calc(var(--header-safe-area-top) + var(--touch-height-xl));
 
+  /* Width of the frameless Windows/Linux caption buttons (WindowControls),
+     pinned top-right. A shared constant so the cluster's own width and the
+     right-padding that top-right surfaces (e.g. the content-view header)
+     reserve to clear it stay in sync — the same idea as the macOS traffic-light
+     left clearance. Only applied on those platforms via `isFramelessControlsPlatform`. */
+  --window-controls-width: 8.25rem;
+
   /* Same idea for the mobile modal shell. Its close / actions controls pin
      --modal-control-inset below the top safe area with a --touch-height-lg
      target; a modal whose content runs edge to edge (see the responsive modal's

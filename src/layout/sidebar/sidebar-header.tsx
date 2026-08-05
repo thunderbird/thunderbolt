@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
+import { isMacDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import type { ReactNode } from 'react'
@@ -30,15 +30,17 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
 
   // On mobile, always treat the sidebar as expanded when it's open
   const isExpanded = isMobile || state === 'expanded'
-  // Tauri desktop hides the OS title bar; the sidebar's top drag strip carries
-  // the traffic lights (macOS) and, while expanded, the collapse toggle.
-  const showChromeStrip = isTauriDesktop() && !isMobile
-  // Mobile-width desktop app: the overlay drawer slides over the content, so
-  // its first row (New Chat) would sit directly under the OS window controls.
-  // A bare drag strip — same height as the content header, no controls —
-  // pushes the list clear of them, the same clearance idea as the content
-  // header's traffic-light padding.
-  const showMobileChromeSpacer = isTauriDesktop() && isMobile
+  // macOS overlays the OS title bar; the sidebar's top drag strip carries the
+  // traffic lights and, while expanded, the collapse toggle. Windows/Linux are
+  // frameless too but follow the web sidebar layout (toggle inside the sidebar);
+  // their window controls sit top-right instead (see WindowControls).
+  const showChromeStrip = isMacDesktop() && !isMobile
+  // Mobile-width macOS app: the overlay drawer slides over the content, so its
+  // first row (New Chat) would sit directly under the traffic lights. A bare
+  // drag strip — same height as the content header, no controls — pushes the
+  // list clear of them, the same clearance idea as the content header's
+  // traffic-light padding.
+  const showMobileChromeSpacer = isMacDesktop() && isMobile
 
   return (
     <>

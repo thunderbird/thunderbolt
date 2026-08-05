@@ -808,14 +808,47 @@ describe('reconcileDefaultsForTable', () => {
 })
 
 describe('Opus 5 data migration', () => {
-  test('upgrades the active legacy row in place even when the defaults marker is current', async () => {
+  test('preserves user customizations while upgrading the legacy model slug', async () => {
     const db = getDb()
-    await db.insert(modelsTable).values({
+    const legacyDefault = {
       ...defaultModelOpus5,
-      name: 'Customized legacy Opus',
+      name: 'Opus 4.8',
       model: 'opus-4.8',
       contextWindow: 200_000,
-      defaultHash: 'customized',
+    }
+    const customizedLegacy = {
+      ...legacyDefault,
+      name: 'My customized Opus',
+      enabled: 0,
+      startWithReasoning: 1,
+      contextWindow: 123_456,
+      defaultHash: hashModel(legacyDefault),
+    }
+    await db.insert(modelsTable).values(customizedLegacy)
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...customizedLegacy,
+      model: defaultModelOpus5.model,
+    })
+  })
+
+  test('fully upgrades an untouched legacy default and refreshes its lineage hash', async () => {
+    const db = getDb()
+    const legacyDefault = {
+      ...defaultModelOpus5,
+      name: 'Opus 4.8',
+      model: 'opus-4.8',
+      contextWindow: 200_000,
+    }
+    await db.insert(modelsTable).values({
+      ...legacyDefault,
+      defaultHash: hashModel(legacyDefault),
     })
     await db.insert(settingsTable).values({
       key: versionMarkerKeys.models,

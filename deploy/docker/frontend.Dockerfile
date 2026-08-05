@@ -44,6 +44,9 @@ COPY deploy/config/nginx.conf.template /etc/nginx/templates/default.conf.templat
 COPY deploy/config/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
+# Keep the final-stage user explicit for Semgrep's container check.
+USER nginx
+
 EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

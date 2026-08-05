@@ -23,6 +23,9 @@ FROM nginxinc/nginx-unprivileged:alpine
 COPY deploy/config/marketing-nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/web/dist /usr/share/nginx/html
 
+# Keep the final-stage user explicit for Semgrep's container check.
+USER nginx
+
 EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

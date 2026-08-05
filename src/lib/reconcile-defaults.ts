@@ -457,20 +457,24 @@ export type ReconcileDefaultsOverrides = {
 
 /** Upgrade the reused model identity so persisted chat references resolve Opus 5. */
 const migrateLegacyOpusModel = async (tx: AnyDrizzleDatabase): Promise<void> => {
-  const existing = await tx
-    .select({ model: modelsTable.model, deletedAt: modelsTable.deletedAt })
-    .from(modelsTable)
-    .where(eq(modelsTable.id, defaultModelOpus5.id))
-    .get()
+  const existing = await tx.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()
   if (!existing || existing.deletedAt !== null || existing.model !== 'opus-4.8') {
     return
   }
 
-  const { id, userId, deletedAt, defaultHash, ...modelValues } = defaultModelOpus5
+  const legacyModel = existing as SharedModel
+  const migratedValues = {
+    model: defaultModelOpus5.model,
+    name: legacyModel.name === 'Opus 4.8' ? defaultModelOpus5.name : legacyModel.name,
+    contextWindow: legacyModel.contextWindow === 200_000 ? defaultModelOpus5.contextWindow : legacyModel.contextWindow,
+  }
+  const wasUnmodified = legacyModel.defaultHash !== null && hashModel(legacyModel) === legacyModel.defaultHash
+  const migratedDefaultHash = wasUnmodified ? hashModel({ ...legacyModel, ...migratedValues }) : legacyModel.defaultHash
+
   await tx
     .update(modelsTable)
-    .set({ ...modelValues, defaultHash: hashModel(defaultModelOpus5) })
-    .where(eq(modelsTable.id, id))
+    .set({ ...migratedValues, defaultHash: migratedDefaultHash })
+    .where(eq(modelsTable.id, defaultModelOpus5.id))
 }
 
 export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: ReconcileDefaultsOverrides) => {

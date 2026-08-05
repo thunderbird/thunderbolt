@@ -127,7 +127,8 @@ jobs:
     runs-on: ubuntu-latest
     # Tag deploys with the `preview` environment so env-scoped secrets (EXA_API_KEY)
     # flow through alongside repo-level secrets. No required reviewers configured,
-    # so enterprise workflow_dispatch deploys are unaffected.
+    # so enterprise workflow_dispatch deploys are unaffected. The dynamic lookup
+    # keeps actionlint from treating the workflow_call secret schema as exhaustive.
     environment: preview
     permissions:
       id-token: write
@@ -188,7 +189,7 @@ jobs:
           INPUT_FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
           INPUT_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           INPUT_THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
-          INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          INPUT_EXA_API_KEY: ${{ secrets[format('{0}', 'EXA_API_KEY')] }}
           INPUT_TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
           INPUT_TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}

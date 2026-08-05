@@ -30,8 +30,10 @@ on:
   workflow_call:
     secrets:
       RELEASE_APP_CLIENT_ID:
+        description: 'GitHub App client ID used to create release commits'
         required: false
       RELEASE_APP_PRIVATE_KEY:
+        description: 'GitHub App private key used to create release commits'
         required: false
     inputs:
       platform:

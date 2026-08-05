@@ -125,7 +125,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
   // to those services in-cluster (postgres) or via shared subdomains (auth, powersync).
   const frontendTg = new aws.lb.TargetGroup(`${name}-frontend-tg`, {
     namePrefix: 'tb-fe',
-    port: 80,
+    port: 8080,
     protocol: 'HTTP',
     targetType: 'ip',
     vpcId: shared.vpcId,
@@ -145,7 +145,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
 
   const marketingTg = new aws.lb.TargetGroup(`${name}-marketing-tg`, {
     namePrefix: 'tb-mk',
-    port: 80,
+    port: 8080,
     protocol: 'HTTP',
     targetType: 'ip',
     vpcId: shared.vpcId,
@@ -407,7 +407,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
         name: 'frontend',
         image: feImage,
         essential: true,
-        portMappings: [{ containerPort: 80 }],
+        portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('frontend'),
         ...(repositoryCredentials && { repositoryCredentials }),
       },
@@ -420,7 +420,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     desiredCount: 1,
     launchType: 'FARGATE',
     networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
-    loadBalancers: [{ targetGroupArn: frontendTg.arn, containerName: 'frontend', containerPort: 80 }],
+    loadBalancers: [{ targetGroupArn: frontendTg.arn, containerName: 'frontend', containerPort: 8080 }],
   })
 
   const mkTaskDef = new aws.ecs.TaskDefinition(`${name}-mk-task`, {
@@ -436,7 +436,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
         name: 'marketing',
         image: mkImage,
         essential: true,
-        portMappings: [{ containerPort: 80 }],
+        portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('marketing'),
         ...(repositoryCredentials && { repositoryCredentials }),
       },
@@ -449,7 +449,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     desiredCount: 1,
     launchType: 'FARGATE',
     networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
-    loadBalancers: [{ targetGroupArn: marketingTg.arn, containerName: 'marketing', containerPort: 80 }],
+    loadBalancers: [{ targetGroupArn: marketingTg.arn, containerName: 'marketing', containerPort: 8080 }],
   })
 
   // -------- 10. Outputs --------

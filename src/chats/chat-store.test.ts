@@ -3,11 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getSettings } from '@/dal'
-import { createChatThread, getChatThread } from '@/dal/chat-threads'
+import { getChatThread } from '@/dal/chat-threads'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { chatThreadsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
-import type { Mode } from '@/types'
+import type { Agent } from '@/types/acp'
+import type { ChatThread } from '@/types'
 import {
   createMockAutomationRun,
   createMockChatInstanceWithValidation,
@@ -18,7 +20,7 @@ import {
   resetStore,
 } from '@/test-utils/chat-store-mocks'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 describe('chat-store', () => {
@@ -107,7 +109,6 @@ describe('chat-store', () => {
 
       // Create session without selected model - need to manually set up
       useChatStore.getState().setModels([])
-      useChatStore.getState().setModes([])
       useChatStore.setState((state) => ({
         ...state,
         sessions: new Map([
@@ -121,7 +122,6 @@ describe('chat-store', () => {
               id: 'test-id',
               pendingPermission: null,
               selectedAgent: builtInAgent,
-              selectedMode: null as unknown as Mode,
               retryCount: 0,
               retriesExhausted: false,
               selectedModel: null as unknown as Model,
@@ -326,6 +326,49 @@ describe('chat-store', () => {
       const session = getCurrentSession()
       expect(session?.selectedModel?.id).toBe('tracked-model')
     })
+
+    it('invokes the prewarm wrapper with the selected model (wrapper owns the tinfoil/system guard)', async () => {
+      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
+      const prewarmSystemModel = mock(async () => {})
+
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'test-id',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmSystemModel })
+
+      expect(prewarmSystemModel).toHaveBeenCalledTimes(1)
+      expect(prewarmSystemModel).toHaveBeenCalledWith(model)
+    })
+
+    it('does not propagate prewarm errors into model selection', async () => {
+      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
+      const prewarmFailure = Promise.reject(new Error('attestation failed'))
+      void prewarmFailure.catch(() => undefined)
+      const prewarmSystemModel = mock(() => prewarmFailure)
+
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'test-id',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await expect(
+        useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmSystemModel }),
+      ).resolves.toBeUndefined()
+      expect(prewarmSystemModel).toHaveBeenCalledTimes(1)
+      expect(getCurrentSession()?.selectedModel).toBe(model)
+    })
   })
 
   describe('setSelectedAgent', () => {
@@ -341,6 +384,24 @@ describe('chat-store', () => {
       enabled: 1 as const,
       deletedAt: null,
       userId: 'u1',
+    }
+
+    /** Seeds a persisted thread and matching hydrated chat session. */
+    const seedThreadSession = async (id: string, agent: Agent, acpSessionId: string): Promise<ChatThread> => {
+      const model = createMockModel()
+      const chatThread = createMockChatThread({ id, agentId: agent.id, acpSessionId })
+      await getDb().insert(chatThreadsTable).values({ id, title: 'x', agentId: agent.id, acpSessionId })
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread,
+        id,
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+      useChatStore.getState().updateSession(id, { selectedAgent: agent })
+      return chatThread
     }
 
     it('updates the in-memory session selectedAgent', async () => {
@@ -361,30 +422,35 @@ describe('chat-store', () => {
       expect(session?.selectedAgent.id).toBe(customAgent.id)
     })
 
-    it('persists agentId on the chat_threads row when a thread exists', async () => {
-      const model = createMockModel()
-      const chatThread = createMockChatThread({ id: 'thread-persist' })
-
-      await createChatThread(
-        getDb(),
-        { id: chatThread.id, title: 'x', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
-        model,
-      )
-
-      hydrateStore({
-        chatInstance: createMockChatInstanceWithValidation(),
-        chatThread,
-        id: chatThread.id,
-        mcpClients: [],
-        models: [model],
-        selectedModel: model,
-        triggerData: null,
-      })
+    it('switches the thread agent and clears its ACP session in memory and storage', async () => {
+      const chatThread = await seedThreadSession('thread-persist', builtInAgent, 'session-from-previous-agent')
 
       await useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)
 
+      const session = getCurrentSession()
       const stored = await getChatThread(getDb(), chatThread.id)
+      expect(session?.chatThread?.agentId).toBe(customAgent.id)
+      expect(session?.chatThread?.acpSessionId).toBeNull()
       expect(stored?.agentId).toBe(customAgent.id)
+      expect(stored?.acpSessionId).toBeNull()
+    })
+
+    it('preserves the ACP session when selecting the current agent', async () => {
+      const chatThread = await seedThreadSession('thread-same-agent', customAgent, 'current-session')
+
+      await useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)
+
+      expect(getCurrentSession()?.chatThread?.acpSessionId).toBe('current-session')
+      expect((await getChatThread(getDb(), chatThread.id))?.acpSessionId).toBe('current-session')
+    })
+
+    it('refreshes active agent wire identity and clears matching in-memory ACP sessions', async () => {
+      await seedThreadSession('thread-wire-edit', customAgent, 'stale-session')
+
+      useChatStore.getState().applyAgentWireIdentityChange({ ...customAgent, url: 'wss://new.example.test/ws' })
+
+      expect(getCurrentSession()?.selectedAgent.url).toBe('wss://new.example.test/ws')
+      expect(getCurrentSession()?.chatThread?.acpSessionId).toBeNull()
     })
 
     it('updates in-memory state and skips the DB write when no chat thread exists yet', async () => {

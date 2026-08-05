@@ -18,11 +18,11 @@ import {
   bridgeAllowedOrigins,
   forwardFrameToStdin,
   generateBridgeToken,
-  MAX_ACTIVE_PROCS,
+  maxActiveProcs,
 } from './bridge.ts'
 
-const TOKEN = generateBridgeToken()
-const ORIGINS = bridgeAllowedOrigins()
+const token = generateBridgeToken()
+const origins = bridgeAllowedOrigins()
 
 /** Build an upgrade request at the given path/query with an optional Origin. */
 const upgradeRequest = (path: string, origin?: string): Request =>
@@ -30,47 +30,63 @@ const upgradeRequest = (path: string, origin?: string): Request =>
 
 describe('authorizeUpgrade', () => {
   test('accepts an allowlisted origin with the exact token', () => {
-    const req = upgradeRequest(`/?token=${TOKEN}`, 'http://localhost:1420')
-    expect(authorizeUpgrade(req, TOKEN, ORIGINS)).toEqual({ ok: true })
+    const req = upgradeRequest(`/?token=${token}`, 'http://localhost:1420')
+    expect(authorizeUpgrade(req, token, origins)).toEqual({ ok: true })
   })
 
   test('accepts every built-in app origin', () => {
     for (const origin of ['http://localhost:1420', 'tauri://localhost', 'http://tauri.localhost']) {
-      const req = upgradeRequest(`/?token=${TOKEN}`, origin)
-      expect(authorizeUpgrade(req, TOKEN, ORIGINS).ok).toBe(true)
+      const req = upgradeRequest(`/?token=${token}`, origin)
+      expect(authorizeUpgrade(req, token, origins).ok).toBe(true)
     }
   })
 
   test('rejects a missing Origin header (non-browser / drive-by client)', () => {
-    const req = upgradeRequest(`/?token=${TOKEN}`)
-    expect(authorizeUpgrade(req, TOKEN, ORIGINS)).toEqual({ ok: false, status: 403, reason: "forbidden origin '(none)'" })
+    const req = upgradeRequest(`/?token=${token}`)
+    expect(authorizeUpgrade(req, token, origins)).toEqual({
+      ok: false,
+      status: 403,
+      reason: "forbidden origin '(none)'",
+    })
   })
 
   test('rejects an off-allowlist origin even with the correct token', () => {
-    const req = upgradeRequest(`/?token=${TOKEN}`, 'https://evil.example')
-    const decision = authorizeUpgrade(req, TOKEN, ORIGINS)
+    const req = upgradeRequest(`/?token=${token}`, 'https://evil.example')
+    const decision = authorizeUpgrade(req, token, origins)
     expect(decision).toEqual({ ok: false, status: 403, reason: "forbidden origin 'https://evil.example'" })
   })
 
   test('rejects a missing token from an allowlisted origin', () => {
     const req = upgradeRequest('/', 'http://localhost:1420')
-    expect(authorizeUpgrade(req, TOKEN, ORIGINS)).toEqual({ ok: false, status: 401, reason: 'missing or invalid token' })
+    expect(authorizeUpgrade(req, token, origins)).toEqual({
+      ok: false,
+      status: 401,
+      reason: 'missing or invalid token',
+    })
   })
 
   test('rejects a wrong token of equal length', () => {
-    const wrong = 'f'.repeat(TOKEN.length)
+    const wrong = 'f'.repeat(token.length)
     const req = upgradeRequest(`/?token=${wrong}`, 'http://localhost:1420')
-    expect(authorizeUpgrade(req, TOKEN, ORIGINS)).toEqual({ ok: false, status: 401, reason: 'missing or invalid token' })
+    expect(authorizeUpgrade(req, token, origins)).toEqual({
+      ok: false,
+      status: 401,
+      reason: 'missing or invalid token',
+    })
   })
 
   test('rejects a token of the wrong length (constant-time compare guard)', () => {
     const req = upgradeRequest('/?token=short', 'http://localhost:1420')
-    expect(authorizeUpgrade(req, TOKEN, ORIGINS).ok).toBe(false)
+    expect(authorizeUpgrade(req, token, origins).ok).toBe(false)
   })
 
   test('rejects any non-root path even with valid origin and token', () => {
-    const req = upgradeRequest(`/admin?token=${TOKEN}`, 'http://localhost:1420')
-    expect(authorizeUpgrade(req, TOKEN, ORIGINS)).toEqual({ ok: false, status: 404, reason: 'unknown path (only / is bridged)' })
+    const req = upgradeRequest(`/admin?token=${token}`, 'http://localhost:1420')
+    expect(authorizeUpgrade(req, token, origins)).toEqual({
+      ok: false,
+      status: 404,
+      reason: 'unknown path (only / is bridged)',
+    })
   })
 })
 
@@ -109,9 +125,9 @@ describe('atProcCapacity — shared live-subprocess cap', () => {
 
   test('allows work below the ceiling and refuses at or above it', () => {
     expect(atProcCapacity(procs(0))).toBe(false)
-    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS - 1))).toBe(false)
-    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS))).toBe(true)
-    expect(atProcCapacity(procs(MAX_ACTIVE_PROCS + 1))).toBe(true)
+    expect(atProcCapacity(procs(maxActiveProcs - 1))).toBe(false)
+    expect(atProcCapacity(procs(maxActiveProcs))).toBe(true)
+    expect(atProcCapacity(procs(maxActiveProcs + 1))).toBe(true)
   })
 })
 

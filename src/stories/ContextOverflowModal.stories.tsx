@@ -7,7 +7,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 
 const meta = {
-  title: 'components/context-overflow-modal',
+  title: 'Components/ContextOverflowModal',
   component: ContextOverflowModal,
   parameters: {
     layout: 'centered',

@@ -5,18 +5,23 @@
 import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 
 import {
+  bridgeDeviceId,
   countActiveDevices,
   getDeviceById,
   linkSessionToDevice,
   registerDevice,
+  registerBridgeDevice,
+  deleteRevokedBridgeDevice,
   denyDevice,
   markDeviceTrusted,
   setDeviceNodeId,
+  getTrustedNodeIds,
   getEnvelopeByDeviceId,
   hasEnvelopesForUser,
   upsertEnvelope,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
+  revokeDeviceSessions,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
@@ -437,7 +442,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'Invalid canary secret' }
         }
 
-        // Caller must be a trusted device (defense-in-depth — Option B1: only a trusted app
+        // Caller must be a trusted device (defense-in-depth: only a trusted app
         // device may attest another device's P2P identity).
         const callerDevice = await getDeviceById(database, callerDeviceId)
         if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
@@ -460,6 +465,144 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           canarySecret: t.String({ maxLength: 500 }),
         }),
       },
+    )
+    // Self-enroll: a device binds its OWN iroh endpoint identity (node_id) — no canary /
+    // Content Key. Proof-of-possession happens at the iroh handshake on connect, so declaring a
+    // node_id you can't dial as grants nothing. The caller is pinned to the session's server-set
+    // deviceId (from linkSessionToDevice), so it can only write the device its session is bound
+    // to — not an arbitrary target the way the canary-gated POST /devices/:deviceId/node-id can.
+    // The trust boundary is the account: a live same-account session may declare its own node_id.
+    // Device revocation plus the bridge's heartbeat re-check mitigate a rogue session rather than
+    // intra-account isolation here.
+    .post(
+      '/devices/me/node-id',
+      async ({ body, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const callerDeviceId = request.headers.get('x-device-id')?.trim()
+
+        if (!callerDeviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
+
+        // Pin to the session's bound device. A null (never-linked) session.deviceId also fails
+        // this, fail-closed. This is the server-side identity — X-Device-ID alone is client-set.
+        if (session.deviceId !== callerDeviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
+        }
+
+        const updated = await setDeviceNodeId(database, callerDeviceId, userId, body.nodeId)
+        if (updated.length === 0) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+
+        return { nodeId: body.nodeId }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          nodeId: t.String({ minLength: 1, maxLength: 2048 }),
+        }),
+      },
+    )
+    // Account allowlist: the trusted, non-revoked node_ids of the caller's account. The
+    // bridge fetches this with a bearer, caches it, and auto-allows same-account iroh peers.
+    // Scoped to the caller's user_id — never leaks another account's rows.
+    .get(
+      '/devices/allowlist',
+      async ({ user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const nodeIds = await getTrustedNodeIds(database, userId)
+        return { nodeIds }
+      },
+      { auth: true },
+    )
+    // Register a BRIDGE device on the caller's account. Adding an ACP/MCP bridge in the
+    // app registers it here as a device with server-set `device_type='bridge'` (clients can't set
+    // device_type — it's deny-listed from PowerSync upload, so a bridge MUST be created via this
+    // route, not raw sync). Inserted trusted + non-revoked because the user deliberately added
+    // their own bridge. Scoped to the caller's account (registerBridgeDevice derives the row id
+    // from userId, and the `bridge-` id namespace is reserved from client uploads), so it can
+    // never write another user's row. node_id here is the bridge's SERVER NodeId; it surfaces in
+    // getTrustedNodeIds (the account allowlist), which is intentional and harmless — no peer can
+    // dial as the bridge's key without its ed25519 private key, so listing it grants nothing.
+    // A revoked bridge is not silently re-added with the same NodeId. Registration reports the
+    // tombstone so the caller can remove it explicitly before pairing again.
+    .post(
+      '/devices/bridge',
+      async ({ body, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const name = body.name?.trim() || 'Bridge'
+        const result = await database.transaction(async (tx) => {
+          const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
+          if (!existingBridge) {
+            const activeCount = await countActiveDevices(tx, userId)
+            if (activeCount >= maxDevicesPerUser) {
+              return { limitReached: true as const }
+            }
+          }
+
+          const [device] = await registerBridgeDevice(tx, { userId, nodeId: body.nodeId, name })
+          if (!device) {
+            const tombstone = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
+            if (tombstone?.userId === userId && tombstone.revokedAt != null) {
+              return { revoked: true as const }
+            }
+            throw new Error('Bridge device registration returned no device')
+          }
+          return { device }
+        })
+
+        if ('limitReached' in result) {
+          set.status = 422
+          return { error: 'Device limit reached' }
+        }
+        if ('revoked' in result) {
+          set.status = 409
+          return { error: 'Bridge device revoked' }
+        }
+        const { device } = result
+        return { id: device.id, nodeId: device.nodeId, deviceType: device.deviceType }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          nodeId: t.String({ minLength: 1, maxLength: 2048 }),
+          name: t.Optional(t.String({ maxLength: 100 })),
+        }),
+      },
+    )
+    .delete(
+      '/devices/:deviceId',
+      async ({ params, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const result = await database.transaction(async (tx) => {
+          const device = await getDeviceById(tx, params.deviceId)
+          if (!device || device.userId !== userId) {
+            return { notFound: true as const }
+          }
+          if (device.deviceType !== 'bridge' || device.revokedAt == null) {
+            return { notRemovable: true as const }
+          }
+
+          await revokeDeviceSessions(tx, params.deviceId, userId)
+          const deleted = await deleteRevokedBridgeDevice(tx, params.deviceId, userId)
+          return deleted.length > 0 ? { success: true as const } : { notFound: true as const }
+        })
+
+        if ('notFound' in result) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+        if ('notRemovable' in result) {
+          set.status = 409
+          return { error: 'Only revoked bridge devices can be removed' }
+        }
+        return { success: true }
+      },
+      { auth: true },
     )
     .post(
       '/devices/me/cancel-pending',

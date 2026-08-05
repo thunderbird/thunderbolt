@@ -48,7 +48,7 @@ export const AvailableTools: FC<AvailableToolsProps> = ({ tools, className }) =>
     <div className={cn(className)}>
       <Accordion type="single" collapsible className="w-full">
         <AccordionItem value="tools" className="border-none">
-          <AccordionTrigger className="py-3 hover:no-underline">
+          <AccordionTrigger className="cursor-pointer py-3 hover:no-underline">
             <div className="flex items-center gap-2">
               <div className="text-sm font-medium text-foreground">Available Tools</div>
               <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">

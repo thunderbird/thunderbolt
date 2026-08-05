@@ -141,9 +141,12 @@ export const SignInForm = ({
     )
   }
 
-  // Initial email entry state
+  // Initial email entry state. The page variant stretches to full height so
+  // its feature cards can flex into the middle; the modal variant hugs its
+  // content so the ResponsiveModal's `centered` block can vertically center
+  // the title + form as one group.
   return (
-    <div className="flex h-full w-full flex-1 flex-col">
+    <div className={variant === 'page' ? 'flex h-full w-full flex-1 flex-col' : 'w-full'}>
       <SignInEmailStep
         email={state.email}
         status={state.status}

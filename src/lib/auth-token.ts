@@ -15,6 +15,7 @@ import { getDeviceDisplayName } from '@/lib/platform'
 
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
+const userCacheSecretKey = 'thunderbolt_user_cache_secret'
 
 /** Get or create device_id (from localStorage). */
 export const getDeviceId = (): string => {
@@ -42,6 +43,33 @@ export const clearAuthToken = (): void => {
 /** Clear the device ID (for revoked devices — forces a new ID on next login). */
 export const clearDeviceId = (): void => {
   localStorage.removeItem(deviceIdKey)
+}
+
+/**
+ * Get or create the Tinfoil prompt-cache secret (from localStorage).
+ * Per-device, never synced (THU-708). Distinct from the device ID: it must
+ * only reach the attested enclave, never our backend.
+ *
+ * Plain localStorage is deliberate: the same store holds the bearer token,
+ * which grants full account access — strictly more than a cache-namespace
+ * key. The SDK needs the plaintext string, so a client-side wrapping key
+ * would add no protection (it would live in the same origin storage). Moves
+ * to encrypted storage together with the auth token (see file TODO).
+ */
+export const getUserCacheSecret = (): string => {
+  const existing = localStorage.getItem(userCacheSecretKey)
+  if (existing) {
+    return existing
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  localStorage.setItem(userCacheSecretKey, secret)
+  return secret
+}
+
+/** Clear the prompt-cache secret (identity teardown — forces a new cache namespace). */
+export const clearUserCacheSecret = (): void => {
+  localStorage.removeItem(userCacheSecretKey)
 }
 
 /**

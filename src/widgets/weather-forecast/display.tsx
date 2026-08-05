@@ -10,6 +10,9 @@ import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from
 
 type WeatherForecastProps = WeatherForecastData
 
+const temperatureUnitItemClass =
+  'h-full aspect-square flex-none rounded-xl px-0 text-[length:var(--font-size-sm)] text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 data-[state=on]:bg-accent data-[state=on]:text-foreground'
+
 export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecastProps) => {
   const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>(temperature_unit)
   const today = days[0]
@@ -25,7 +28,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
   return (
     <div className="my-4 w-full">
       <div className="flex flex-col gap-1.5 md:flex-row">
-        <div className="flex items-center justify-between rounded-2xl border border-border px-4 md:w-auto md:min-w-[280px] md:gap-4">
+        <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 md:w-auto md:min-w-[280px] md:gap-4">
           <div className="flex flex-col py-3 md:gap-1">
             <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
               {dayjs(today.date).format('dddd, MMM D')}
@@ -54,10 +57,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
           {forecastDays.map((day) => {
             const meta = getWeatherMetadata(day.weather_code, day.date)
             return (
-              <div
-                key={day.date}
-                className="flex flex-1 flex-col items-center gap-0.5 rounded-lg bg-secondary/60 px-1.5 py-2 dark:bg-secondary/40"
-              >
+              <div key={day.date} className="flex flex-1 flex-col items-center gap-0.5 rounded-lg bg-card px-1.5 py-2">
                 <p className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">
                   {dayjs(day.date).format('ddd')}
                 </p>
@@ -85,21 +85,12 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
           value={temperatureUnit}
           onValueChange={(value) => value && setTemperatureUnit(value as 'c' | 'f')}
           aria-label="Temperature Unit"
-          variant="outline"
-          className="cursor-pointer"
+          className="h-[var(--touch-height-lg)] gap-0.5 rounded-none md:h-[var(--touch-height-default)] md:p-0.5"
         >
-          <ToggleGroupItem
-            value="c"
-            aria-label="Celsius"
-            className="cursor-pointer data-[state=on]:bg-accent data-[state=on]:text-accent-foreground data-[state=off]:bg-transparent data-[state=off]:text-foreground"
-          >
+          <ToggleGroupItem value="c" aria-label="Celsius" className={temperatureUnitItemClass}>
             °C
           </ToggleGroupItem>
-          <ToggleGroupItem
-            value="f"
-            aria-label="Fahrenheit"
-            className="cursor-pointer data-[state=on]:bg-accent data-[state=on]:text-accent-foreground data-[state=off]:bg-transparent data-[state=off]:text-foreground"
-          >
+          <ToggleGroupItem value="f" aria-label="Fahrenheit" className={temperatureUnitItemClass}>
             °F
           </ToggleGroupItem>
         </ToggleGroup>

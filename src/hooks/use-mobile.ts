@@ -4,6 +4,8 @@
 
 import { useSyncExternalStore } from 'react'
 
+import { isMobile as isPlatformMobile, isTauriDesktop } from '@/lib/platform'
+
 const mobileBreakpoint = 768
 const mql = () => window.matchMedia(`(max-width: ${mobileBreakpoint - 1}px)`)
 
@@ -13,9 +15,21 @@ const subscribe = (callback: () => void) => {
   return () => mediaQuery.removeEventListener('change', callback)
 }
 
-const getSnapshot = () => mql().matches
+// The Tauri desktop app always uses the desktop layout, however narrow the
+// window — mirrors the .force-desktop CSS overrides in src/index.css.
+const getSnapshot = () => !isTauriDesktop() && mql().matches
 
 export const useIsMobile = () => {
   const isMobile = useSyncExternalStore(subscribe, getSnapshot)
   return { isMobile }
+}
+
+/**
+ * True when the viewport is mobile-sized AND the app is the native (Tauri)
+ * iOS/Android build — the combination that gets native-only spacing tweaks
+ * (safe areas, keyboard insets).
+ */
+export const useIsNativeMobile = () => {
+  const { isMobile } = useIsMobile()
+  return isMobile && isPlatformMobile()
 }

@@ -9,8 +9,8 @@
  */
 
 import packageJson from '../package.json' with { type: 'json' }
-import { MODEL_PROVIDERS } from './agent/types.ts'
-import { BUILTIN_PROVIDER_ENV_VARS, DEFAULT_MODEL, DEFAULT_MODELS, DEFAULT_PROVIDER } from './agent/defaults.ts'
+import { isProvider, modelProviders } from './agent/types.ts'
+import { defaultModel, defaultModels, defaultProvider, hasProviderEnvKey } from './agent/defaults.ts'
 import type {
   BridgeConfig,
   BridgeProtocol,
@@ -22,30 +22,32 @@ import type {
   ThinkingLevel,
 } from './agent/types.ts'
 import type { CliConfig } from './config/config.ts'
+import { defaultCloudUrl } from './auth/config.ts'
 
 /** Released version of the CLI, surfaced by `--version` and the banner. */
-export const VERSION = packageJson.version
+export const cliVersion = packageJson.version
 
 /** All valid `--thinking` levels, in increasing depth. */
-const THINKING_LEVELS: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
+const thinkingLevels: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
 
 /** Default `--transport` when omitted (loopback WebSocket). */
-const DEFAULT_TRANSPORT: BridgeTransport = 'wss'
+const defaultTransport: BridgeTransport = 'wss'
 
 /** All supported `--transport` values: `wss` (loopback) and `iroh` (P2P/E2E). */
-const TRANSPORTS: readonly BridgeTransport[] = ['wss', 'iroh']
+const transports: readonly BridgeTransport[] = ['wss', 'iroh']
 
 /** Default `--port` per bridge protocol — distinct so `acp` and `mcp` bridges
  *  can run side by side without colliding on their defaults. */
-const DEFAULT_BRIDGE_PORT: Record<BridgeProtocol, number> = { acp: 8839, mcp: 8840 }
+const defaultBridgePort: Record<BridgeProtocol, number> = { acp: 8839, mcp: 8840 }
 
 /** Usage text printed by `--help`/`-h`. */
-export const HELP_TEXT = `⚡ thunderbolt v${VERSION} — a single-binary terminal coding agent.
+export const helpText = `⚡ thunderbolt v${cliVersion} — a single-binary terminal coding agent.
 
 USAGE
   thunderbolt [options] [prompt]
   thunderbolt agent [options] [prompt]
   thunderbolt config
+  thunderbolt login
   thunderbolt acp serve [options]
   thunderbolt acp --transport <wss|iroh> [--port N] -- <agent-cmd...>
   thunderbolt mcp --transport <wss|iroh> [--port N] -- <server-cmd...>
@@ -58,6 +60,7 @@ USAGE
 SUBCOMMANDS
   agent       run the coding agent (default when omitted)
   config      run guided provider setup and overwrite saved CLI defaults
+  login       authenticate this CLI with your Thunderbolt account (device grant)
   acp serve   expose THIS coding agent, rooted at current directory, as a stdio ACP server
   acp         bridge a local stdio ACP agent over the network the app can reach
   mcp         bridge a local stdio MCP server over the network the app can reach
@@ -71,11 +74,11 @@ TOOLS
 
 OPTIONS
   -m, --model <id>      model id (default: provider-specific;
-                        anthropic uses ${DEFAULT_MODEL})
-      --provider <p>    model backend: ${MODEL_PROVIDERS.join(' | ')} (default: ${DEFAULT_PROVIDER})
+                        anthropic uses ${defaultModel})
+      --provider <p>    model backend: ${modelProviders.join(' | ')} (default: ${defaultProvider})
       --base-url <url>  OpenAI-compatible base URL (required for openai-compat)
       --api-key <key>   explicit provider api key (flag wins over provider env)
-      --thinking <lvl>  reasoning depth: ${THINKING_LEVELS.join(' | ')} (default: medium)
+      --thinking <lvl>  reasoning depth: ${thinkingLevels.join(' | ')} (default: medium)
   -y, --yolo            auto-approve every tool call (alias:
                         --dangerously-skip-permissions)
       --no-tui          use the plain readline REPL, not the interactive TUI
@@ -84,8 +87,8 @@ OPTIONS
   -v, --version         print the version and exit
 
 BRIDGE OPTIONS (acp / mcp)
-      --transport <t>   network transport: ${TRANSPORTS.join(' | ')} (default: ${DEFAULT_TRANSPORT})
-      --port <n>        listen port, wss only (default: acp ${DEFAULT_BRIDGE_PORT.acp}, mcp ${DEFAULT_BRIDGE_PORT.mcp})
+      --transport <t>   network transport: ${transports.join(' | ')} (default: ${defaultTransport})
+      --port <n>        listen port, wss only (default: acp ${defaultBridgePort.acp}, mcp ${defaultBridgePort.mcp})
       --                everything after this is the stdio command to spawn
 
 IROH TRANSPORT (P2P, end-to-end encrypted)
@@ -96,6 +99,12 @@ IROH TRANSPORT (P2P, end-to-end encrypted)
   so the QUIC handshake authenticates and end-to-end encrypts every session.
   iroh id|pair are ACP-only — the MCP bridge has its own NodeId, printed by
   thunderbolt mcp --transport iroh on startup.
+
+LOGIN (device authorization grant)
+  thunderbolt login    open the printed link (or scan the QR) and approve in the
+                       app to bind this CLI to your account. Set THUNDERBOLT_CLOUD_URL
+                       to point at a self-hosted backend (default ${defaultCloudUrl}),
+                       or THUNDERBOLT_TOKEN to a PAT to skip the interactive flow (CI).
 
 EXAMPLES
   thunderbolt "fix the failing test in utils.ts"
@@ -120,11 +129,7 @@ thunderbolt in a terminal for guided first-run setup, or thunderbolt config to
 reconfigure. openai-compat never reads generic provider keys.`
 
 /** Type guard: is `value` one of the supported {@link ThinkingLevel}s? */
-const isThinkingLevel = (value: string): value is ThinkingLevel =>
-  (THINKING_LEVELS as readonly string[]).includes(value)
-
-/** Type guard: is `value` one of the supported {@link ModelProvider}s? */
-const isProvider = (value: string): value is ModelProvider => (MODEL_PROVIDERS as readonly string[]).includes(value)
+const isThinkingLevel = (value: string): value is ThinkingLevel => (thinkingLevels as readonly string[]).includes(value)
 
 /** Flag/positional state accumulated while scanning argv. */
 type Flags = {
@@ -138,7 +143,7 @@ type Flags = {
   readonly positionals: readonly string[]
 }
 
-const DEFAULT_FLAGS: Flags = {
+const defaultFlags: Flags = {
   yolo: false,
   noTui: false,
   thinking: 'medium',
@@ -168,7 +173,7 @@ const scanTokens = (tokens: readonly string[], index: number, flags: Flags): Sca
     if (!isProvider(next)) {
       return {
         ok: false,
-        message: `thunderbolt: invalid --provider '${next}' (expected one of: ${MODEL_PROVIDERS.join(', ')})`,
+        message: `thunderbolt: invalid --provider '${next}' (expected one of: ${modelProviders.join(', ')})`,
       }
     }
     return scanTokens(tokens, index + 2, { ...flags, provider: next })
@@ -189,7 +194,7 @@ const scanTokens = (tokens: readonly string[], index: number, flags: Flags): Sca
     if (!isThinkingLevel(next)) {
       return {
         ok: false,
-        message: `thunderbolt: invalid --thinking level '${next}' (expected one of: ${THINKING_LEVELS.join(', ')})`,
+        message: `thunderbolt: invalid --thinking level '${next}' (expected one of: ${thinkingLevels.join(', ')})`,
       }
     }
     return scanTokens(tokens, index + 2, { ...flags, thinking: next })
@@ -214,7 +219,7 @@ type BridgeScanResult =
   | { readonly ok: false; readonly message: string }
 
 /** Type guard: is `value` a supported {@link BridgeTransport}? */
-const isTransport = (value: string): value is BridgeTransport => (TRANSPORTS as readonly string[]).includes(value)
+const isTransport = (value: string): value is BridgeTransport => (transports as readonly string[]).includes(value)
 
 /**
  * Folds the bridge flag tokens (everything before the `--` separator) into
@@ -232,7 +237,7 @@ const scanBridgeFlags = (tokens: readonly string[], index: number, flags: Bridge
     if (!isTransport(next)) {
       return {
         ok: false,
-        message: `thunderbolt: invalid --transport '${next}' (expected one of: ${TRANSPORTS.join(', ')})`,
+        message: `thunderbolt: invalid --transport '${next}' (expected one of: ${transports.join(', ')})`,
       }
     }
     return scanBridgeFlags(tokens, index + 2, { ...flags, transport: next })
@@ -264,13 +269,13 @@ const parseBridgeArgs = (protocol: BridgeProtocol, rest: string[]): ParsedArgs =
 
   if (flagTokens.includes('--help') || flagTokens.includes('-h')) return { kind: 'help' }
 
-  const scan = scanBridgeFlags(flagTokens, 0, { transport: DEFAULT_TRANSPORT, port: DEFAULT_BRIDGE_PORT[protocol] })
+  const scan = scanBridgeFlags(flagTokens, 0, { transport: defaultTransport, port: defaultBridgePort[protocol] })
   if (!scan.ok) return { kind: 'error', message: scan.message }
 
   if (command.length === 0) {
     return {
       kind: 'error',
-      message: `thunderbolt ${protocol}: missing agent command (e.g. thunderbolt ${protocol} --transport ${DEFAULT_TRANSPORT} -- <command...>)`,
+      message: `thunderbolt ${protocol}: missing agent command (e.g. thunderbolt ${protocol} --transport ${defaultTransport} -- <command...>)`,
     }
   }
 
@@ -326,7 +331,7 @@ const resolveDependencies = (dependencies: ParseArgsDependencies): ResolvedDepen
 
 /** Resolves provider flag against saved provider and built-in default. */
 const resolveProvider = (flags: Flags, config: CliConfig | null): ModelProvider =>
-  flags.provider ?? config?.provider ?? DEFAULT_PROVIDER
+  flags.provider ?? config?.provider ?? defaultProvider
 
 /**
  * Resolves an explicit provider key. Every provider accepts `--api-key`, while
@@ -350,25 +355,30 @@ const resolveApiKey = (
   dependencies: ResolvedDependencies,
 ): string | undefined => {
   if (flagApiKey !== undefined) return flagApiKey
+  const config = dependencies.config
   if (provider === 'openai-compat') {
-    return (
-      dependencies.env.THUNDERBOLT_OPENAI_COMPAT_KEY ||
-      (dependencies.config?.provider === provider && effectiveBaseUrl === dependencies.config.baseUrl
-        ? dependencies.config.apiKey
-        : undefined)
-    )
+    // `||`, not `??`: an empty env string is not a usable credential.
+    const envKey = dependencies.env.THUNDERBOLT_OPENAI_COMPAT_KEY
+    if (envKey) return envKey
+    // The saved key only applies to the endpoint it was saved for.
+    if (config?.provider === provider && effectiveBaseUrl === config.baseUrl) return config.apiKey
+    return undefined
   }
 
-  const hasProviderEnvKey = BUILTIN_PROVIDER_ENV_VARS[provider].some((name) => Boolean(dependencies.env[name]))
-  if (hasProviderEnvKey) return undefined
-  return dependencies.config?.provider === provider ? dependencies.config.apiKey : undefined
+  if (hasProviderEnvKey(provider, dependencies.env)) return undefined
+  return config?.provider === provider ? config.apiKey : undefined
 }
 
-/** Resolves omitted `--model` against selected provider's catalog default. */
-const resolveModelId = (flags: Flags, provider: ModelProvider, config: CliConfig | null): string => {
+/**
+ * Resolves omitted `--model` against saved config and the provider's catalog
+ * default. Returns `null` for openai-compat with no saved model: the endpoint
+ * is arbitrary, so guessing a catalog id would only fail upstream with a
+ * confusing provider error.
+ */
+const resolveModelId = (flags: Flags, provider: ModelProvider, config: CliConfig | null): string | null => {
   if (flags.model !== undefined) return flags.model
   if (config?.provider === provider) return config.model
-  return provider === 'openai-compat' ? DEFAULT_MODEL : DEFAULT_MODELS[provider]
+  return provider === 'openai-compat' ? null : defaultModels[provider]
 }
 
 /** Resolves custom endpoint flag against provider-scoped saved config. */
@@ -377,19 +387,40 @@ const resolveBaseUrl = (flags: Flags, provider: ModelProvider, config: CliConfig
   return config?.provider === provider ? config.baseUrl : undefined
 }
 
+/** Fully-resolved harness fields, or an error when no model can be resolved. */
+type AgentFlagsResult =
+  | { readonly ok: true; readonly base: ReturnType<typeof buildAgentFlags> }
+  | { readonly ok: false; readonly message: string }
+
+const buildAgentFlags = (
+  flags: Flags,
+  dependencies: ResolvedDependencies,
+  provider: ModelProvider,
+  model: string,
+  baseUrl: string | undefined,
+) => ({
+  model,
+  cwd: dependencies.cwd,
+  yolo: flags.yolo,
+  thinking: flags.thinking,
+  provider,
+  baseUrl,
+  apiKey: resolveApiKey(provider, flags.apiKey, baseUrl, dependencies),
+})
+
 /** Resolves harness fields after argv scanning preserves explicit flags. */
-const resolveAgentFlags = (flags: Flags, dependencies: ResolvedDependencies) => {
+const resolveAgentFlags = (flags: Flags, dependencies: ResolvedDependencies): AgentFlagsResult => {
   const provider = resolveProvider(flags, dependencies.config)
   const baseUrl = resolveBaseUrl(flags, provider, dependencies.config)
-  return {
-    model: resolveModelId(flags, provider, dependencies.config),
-    cwd: dependencies.cwd,
-    yolo: flags.yolo,
-    thinking: flags.thinking,
-    provider,
-    baseUrl,
-    apiKey: resolveApiKey(provider, flags.apiKey, baseUrl, dependencies),
+  const model = resolveModelId(flags, provider, dependencies.config)
+  if (model === null) {
+    return {
+      ok: false,
+      message:
+        'thunderbolt: --model is required with --provider openai-compat (or save one with `thunderbolt config`)',
+    }
   }
+  return { ok: true, base: buildAgentFlags(flags, dependencies, provider, model, baseUrl) }
 }
 
 /**
@@ -402,14 +433,27 @@ const resolveAgentFlags = (flags: Flags, dependencies: ResolvedDependencies) => 
 const parseServeArgs = (rest: string[], dependencies: ResolvedDependencies): ParsedArgs => {
   if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' }
 
-  const scan = scanTokens(rest, 0, DEFAULT_FLAGS)
+  const scan = scanTokens(rest, 0, defaultFlags)
   if (!scan.ok) return { kind: 'error', message: scan.message }
   if (scan.flags.positionals.length > 0) {
     return { kind: 'error', message: `thunderbolt acp serve: unexpected argument '${scan.flags.positionals[0]}'` }
   }
 
-  const config: ServeConfig = resolveAgentFlags(scan.flags, dependencies)
+  const resolved = resolveAgentFlags(scan.flags, dependencies)
+  if (!resolved.ok) return { kind: 'error', message: resolved.message }
+  const config: ServeConfig = resolved.base
   return { kind: 'acp-serve', config }
+}
+
+/**
+ * Parses a `thunderbolt login` invocation. Takes no positional arguments — the
+ * device-authorization flow is fully interactive (or driven headlessly by the
+ * `THUNDERBOLT_TOKEN` PAT), so anything extra is a usage error.
+ */
+const parseLoginArgs = (rest: string[]): ParsedArgs => {
+  if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' }
+  if (rest.length > 0) return { kind: 'error', message: `thunderbolt login: unexpected argument '${rest[0]}'` }
+  return { kind: 'login' }
 }
 
 /**
@@ -441,8 +485,9 @@ const parseIrohAdminArgs = (rest: string[]): ParsedArgs => {
  *   fully-resolved {@link RunConfig}, or a `bridge` with a {@link BridgeConfig}
  */
 export const parseArgs = (argv: string[], injected: ParseArgsDependencies = {}): ParsedArgs => {
-  const dependencies = resolveDependencies(injected)
   const subcommand = argv[0]
+  if (subcommand === 'login') return parseLoginArgs(argv.slice(1))
+  const dependencies = resolveDependencies(injected)
   if (subcommand === 'config') {
     const argument = argv[1]
     if (argument === undefined) return { kind: 'config' }
@@ -460,12 +505,15 @@ export const parseArgs = (argv: string[], injected: ParseArgsDependencies = {}):
   if (argv.includes('--version') || argv.includes('-v')) return { kind: 'version' }
 
   const tokens = subcommand === 'agent' ? argv.slice(1) : argv
-  const scan = scanTokens(tokens, 0, DEFAULT_FLAGS)
+  const scan = scanTokens(tokens, 0, defaultFlags)
   if (!scan.ok) return { kind: 'error', message: scan.message }
 
   const prompt = scan.flags.positionals.join(' ')
-  const base = resolveAgentFlags(scan.flags, dependencies)
+  const resolved = resolveAgentFlags(scan.flags, dependencies)
+  if (!resolved.ok) return { kind: 'error', message: resolved.message }
   const config: RunConfig =
-    prompt.length > 0 ? { ...base, mode: 'oneshot', prompt } : { ...base, mode: 'repl', noTui: scan.flags.noTui }
+    prompt.length > 0
+      ? { ...resolved.base, mode: 'oneshot', prompt }
+      : { ...resolved.base, mode: 'repl', noTui: scan.flags.noTui }
   return { kind: 'run', config }
 }

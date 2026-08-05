@@ -20,6 +20,9 @@
 
 import type { AnyMessage, Stream } from '@agentclientprotocol/sdk'
 import { irohAlpnFor } from '@shared/iroh'
+import type { HttpClient } from '@/lib/http'
+import { ensureSelfEnrollment } from '@/lib/iroh-enrollment'
+import { TransportTerminationError } from '../termination'
 import type { AcpTransport } from '../types'
 import { createNdjsonDecoder, encodeNdjsonFrame } from './ndjson'
 import type { IrohClientLike, IrohClientLoader, IrohConnectionLike } from './types'
@@ -37,6 +40,13 @@ const secretStorageKey = 'iroh_acp_client_secret'
 // the relay handshake and the NodeId. All iroh transports share this client and
 // open their own connection on it.
 let sharedClient: Promise<IrohClientLike> | null = null
+
+const defaultDialTimeoutMs = 30_000
+
+// A wasm dial cannot be cancelled once `client.connect()` has started. Queue
+// dials to the same bridge/protocol so every caller waits for the complete chain,
+// not merely the dial that happened to be current when it arrived.
+const dialTails = new Map<string, Promise<void>>()
 
 // Bumped by every wipe (sign-out / account-deletion / device-revocation). A bind
 // samples this before its async work and only persists if it still matches, so a
@@ -202,6 +212,30 @@ const raceAbort = <T>(promise: Promise<T>, signal: AbortSignal, onAbort?: () => 
   })
 }
 
+/** Bound an uncancellable wasm dial and close any connection that resolves after the timeout. */
+const raceDialTimeout = (
+  promise: Promise<IrohConnectionLike>,
+  timeoutMs: number,
+  setTimer: typeof setTimeout,
+  clearTimer: typeof clearTimeout,
+): Promise<IrohConnectionLike> =>
+  new Promise<IrohConnectionLike>((resolve, reject) => {
+    const timer = setTimer(() => {
+      void promise.then((connection) => connection.close()).catch(() => {})
+      reject(new Error(`Iroh dial timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+    promise.then(
+      (connection) => {
+        clearTimer(timer)
+        resolve(connection)
+      },
+      (error: unknown) => {
+        clearTimer(timer)
+        reject(error)
+      },
+    )
+  })
+
 /** This app's iroh NodeId — what a bridge operator runs
  *  `thunderbolt iroh allow <node-id>` against. Binds the shared client on first
  *  call. Surfaced for the agent-settings UI (wired in a later slice). */
@@ -219,6 +253,11 @@ export type DialIrohBridgeOptions = {
   signal: AbortSignal
   /** Test seam — production omits and lazy-loads the wasm client. */
   loadClient?: IrohClientLoader
+  /** Test seam for the bounded uncancellable wasm dial. */
+  dialTimeoutMs?: number
+  /** Test seams for deterministic timeout coverage. */
+  setTimer?: typeof setTimeout
+  clearTimer?: typeof clearTimeout
 }
 
 /**
@@ -247,9 +286,33 @@ export const dialIrohBridge = async (options: DialIrohBridgeOptions): Promise<Ir
   const clientPromise = getSharedClient(options.loadClient ?? defaultLoadClient)
   const client = await raceAbort(clientPromise, signal, () => clearSharedClientIfPending(clientPromise))
 
-  const connectPromise = client.connect(options.target, options.alpn)
-  return raceAbort(connectPromise, signal, () => {
-    void connectPromise.then((conn) => conn.close()).catch(() => {})
+  const dialKey = `${options.target}\u0000${options.alpn}`
+  const precedingTail = dialTails.get(dialKey) ?? Promise.resolve()
+  const operation = (async (): Promise<IrohConnectionLike> => {
+    await precedingTail
+    if (signal.aborted) {
+      throw new DOMException('aborted', 'AbortError')
+    }
+    const connectPromise = client.connect(options.target, options.alpn)
+    return raceDialTimeout(
+      connectPromise,
+      options.dialTimeoutMs ?? defaultDialTimeoutMs,
+      options.setTimer ?? setTimeout,
+      options.clearTimer ?? clearTimeout,
+    )
+  })()
+  const tail = operation.then(
+    () => undefined,
+    () => undefined,
+  )
+  dialTails.set(dialKey, tail)
+  void tail.then(() => {
+    if (dialTails.get(dialKey) === tail) {
+      dialTails.delete(dialKey)
+    }
+  })
+  return raceAbort(operation, signal, () => {
+    void operation.then((connection) => connection.close()).catch(() => {})
   })
 }
 
@@ -263,11 +326,21 @@ export type OpenIrohTransportOptions = {
   alpn?: string
   /** Test seam — production omits and lazy-loads the wasm client. */
   loadClient?: IrohClientLoader
+  /** Authenticated backend client. Omitted only in true Standalone/test paths. */
+  httpClient?: Pick<HttpClient, 'post'>
+  /** Test seam for transparent enrollment ordering/fallback. */
+  ensureEnrollment?: typeof ensureSelfEnrollment
 }
 
 /** Open an ACP transport against an iroh bridge `target`. Dials over the shared
  *  relay endpoint, opens one bidi stream, and frames ACP JSON-RPC as ndjson. */
 export const openIrohTransport = async (options: OpenIrohTransportOptions): Promise<AcpTransport> => {
+  if (options.httpClient) {
+    await (options.ensureEnrollment ?? ensureSelfEnrollment)(options.httpClient, () =>
+      irohClientNodeId(options.loadClient),
+    )
+  }
+
   const connection = await dialIrohBridge({
     target: options.target,
     alpn: options.alpn ?? acpIrohAlpn,
@@ -324,6 +397,15 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
     settleClosedOnce(null)
   }
 
+  const terminate = (error: TransportTerminationError): void => {
+    if (!readableClosed) {
+      readableClosed = true
+      readableController?.error(error)
+    }
+    settleClosedOnce(error)
+    close()
+  }
+
   // Pump iroh recv bytes → ndjson decode → ACP messages, for the session's life.
   const pumpReceive = async (): Promise<void> => {
     const reader = connection.readable().getReader()
@@ -340,26 +422,23 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
       closeReadable()
       settleClosedOnce(null)
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      if (!readableClosed) {
-        readableClosed = true
-        readableController?.error(error)
-      }
-      // Settle `closed` with the error FIRST (so `close()`'s `settleClosedOnce(null)`
-      // no-ops), then route the rest of teardown through the same `close()` the
-      // normal path uses — detaching the abort listener from the adapter's
-      // long-lived signal and closing the QUIC connection. Without this, a recv
-      // read error (or an oversized ndjson frame) would leak both. All of
-      // `close()`'s steps are idempotent, so the double-call is safe.
-      settleClosedOnce(error)
-      close()
+      const cause = err instanceof Error ? err : new Error(String(err))
+      const error = new TransportTerminationError('stream-error', cause.message, { cause })
+      terminate(error)
     }
   }
   void pumpReceive()
 
   const writable = new WritableStream<AnyMessage>({
     async write(message) {
-      await connection.send(encodeNdjsonFrame(message))
+      try {
+        await connection.send(encodeNdjsonFrame(message))
+      } catch (err) {
+        const cause = err instanceof Error ? err : new Error(String(err))
+        const error = new TransportTerminationError('stream-error', cause.message, { cause })
+        terminate(error)
+        throw error
+      }
     },
     close() {
       close()
@@ -380,6 +459,7 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
  *  doesn't leak between cases. */
 export const resetSharedIrohClientForTests = (): void => {
   sharedClient = null
+  dialTails.clear()
   secretGeneration = 0
 }
 

@@ -1,9 +1,10 @@
 # ⚡ thunderbolt
 
 A single-binary terminal coding agent. It operates directly in your working
-directory with four tools — **bash**, **read**, **write**, **edit** — built on
-the [Pi harness](https://www.npmjs.com/package/@earendil-works/pi-agent-core)
-and talking to models from Anthropic, OpenAI, Google, xAI, and other providers.
+directory with five tools — **bash**, **read**, **write**, **edit**, **webfetch**
+— plus provider-native web search where supported. Built on the
+[Pi harness](https://www.npmjs.com/package/@earendil-works/pi-agent-core) and
+talking to models from Anthropic, OpenAI, Google, xAI, and other providers.
 Give it a task as one prompt or drop into an interactive REPL; there's no daemon,
 and nothing to install but the binary.
 
@@ -74,7 +75,7 @@ mv "thunderbolt-cli-$TARGET" ~/.local/bin/thunderbolt
 
 Run `thunderbolt` in a terminal. When no usable API key exists, guided setup
 asks for provider, API key, and model, saves defaults, then continues directly
-into requested REPL or one-shot task. API key input is not echoed.
+into the requested REPL or a one-shot task. API key input is not echoed.
 
 Run setup again anytime:
 
@@ -169,7 +170,7 @@ elsewhere on the machine are outside its workspace and unavailable.
 
 ACP/MCP bridge commands accept `--transport wss|iroh` (default `wss`) and
 `--port <0-65535>` for WSS (defaults: ACP `8839`, MCP `8840`). Arguments after
-`--` form spawned stdio command.
+`--` form the spawned stdio command.
 
 Supported built-in providers:
 
@@ -179,9 +180,9 @@ Supported built-in providers:
 Each built-in provider uses Pi's generated model catalog and standard API-key
 environment variable. `--api-key` overrides that environment key; matching
 saved config supplies fallback credentials. Unknown model errors list valid
-catalog ids for selected provider.
+catalog ids for the selected provider.
 
-`openai-compat` remains custom-endpoint escape hatch:
+`openai-compat` remains the custom-endpoint escape hatch:
 
 ```sh
 THUNDERBOLT_OPENAI_COMPAT_KEY=sk-... thunderbolt \
@@ -234,10 +235,15 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 | `FIREWORKS_API_KEY`                          | Fireworks API key.                                                                                              |
 | `THUNDERBOLT_OPENAI_COMPAT_KEY`              | Dedicated fallback key for arbitrary `openai-compat` URLs.                                                      |
 | `THUNDERBOLT_HOME`                           | CLI state root containing `config.json`, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
+| `THUNDERBOLT_CLOUD_URL`                      | Thunderbolt backend the CLI talks to (local-build default: `http://localhost:8000/v1`). Point it at your cloud or self-hosted `…/v1` base before `thunderbolt login`; the URL is persisted alongside the credential, so later commands need no env. |
+| `THUNDERBOLT_APP_URL`                        | Thunderbolt app base used in bridge pairing instructions (local-build default: `http://localhost:1420`).        |
+| `THUNDERBOLT_TOKEN`                          | Personal access token for headless use (CI, scripts): skips interactive login and authenticates as `x-api-key`. Resolves the backend from `THUNDERBOLT_CLOUD_URL` on every run.  |
 | `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                    |
 | `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                  |
 | `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                             |
 | `NO_COLOR`                                   | Disable terminal color when set.                                                                                |
+
+Official release binaries bake production cloud and app defaults; runtime `THUNDERBOLT_CLOUD_URL` and `THUNDERBOLT_APP_URL` overrides still win.
 
 ## Demo
 

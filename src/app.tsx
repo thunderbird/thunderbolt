@@ -15,11 +15,11 @@ import { SignedOut } from '@/components/signed-out'
 import { StorageUnavailableScreen } from '@/components/storage-unavailable-screen'
 import NotFound from '@/components/not-found'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
+import { WindowControls } from '@/components/window-controls'
 import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
 import WaitlistLayout from '@/waitlist/layout'
 import WaitlistPage from '@/waitlist/waitlist-page'
-import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import {
   AuthProvider,
@@ -46,7 +46,6 @@ import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
 import { UpdateNotification } from './components/update-notification'
-import { WindowChrome } from '@/components/window-chrome'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
@@ -64,8 +63,10 @@ import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useChatStore } from '@/chats/chat-store'
 import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
 import { markAppMounted } from '@/lib/init-timing'
+import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { LazyMotion } from 'framer-motion'
 
 // Loaded after first paint so framer-motion feature code lives in an
@@ -75,15 +76,38 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // Pages below ship in their own async chunk; the layouts that host them are
 // static so route navigation only swaps the inner content. ChatLayout and
 // ChatDetailPage stay in the entry bundle so the landing page is instant.
-const TasksPage = lazy(() => import('@/tasks'))
-const Settings = lazy(() => import('@/settings/index'))
-const PreferencesSettingsPage = lazy(() => import('@/settings/preferences'))
-const ModelsPage = lazy(() => import('@/settings/models'))
-const DevicesSettingsPage = lazy(() => import('@/settings/devices'))
-const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
-const SkillsPage = lazy(() => import('@/settings/skills'))
-const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
-const IntegrationsPage = lazy(() => import('@/settings/integrations'))
+//
+// Every loader in this map is both the `lazy()` source for its route and part
+// of `preloadAllRouteChunks`, so a new lazy route added here is warmed on the
+// Tauri apps automatically. Deliberately-cold chunks (SSO, dev-only routes)
+// live outside the map.
+const routeChunkLoaders = {
+  tasks: () => import('@/tasks'),
+  settings: () => import('@/settings/index'),
+  preferences: () => import('@/settings/preferences'),
+  models: () => import('@/settings/models'),
+  devices: () => import('@/settings/devices'),
+  connections: () => import('@/settings/connections'),
+  skills: () => import('@/settings/skills'),
+  agents: () => import('@/routes/settings/agents'),
+  // The CLI device-authorization approval page is off the chat/landing
+  // critical path (only reached via a QR/link).
+  deviceApproval: () => import('@/components/device-approval'),
+}
+
+const TasksPage = lazy(routeChunkLoaders.tasks)
+const Settings = lazy(routeChunkLoaders.settings)
+const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
+const ModelsPage = lazy(routeChunkLoaders.models)
+const DevicesSettingsPage = lazy(routeChunkLoaders.devices)
+const ConnectionsPage = lazy(routeChunkLoaders.connections)
+const SkillsPage = lazy(routeChunkLoaders.skills)
+const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
+const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
+
+// Voice settings is feature-flagged and hidden by default, so it's a
+// deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
+const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
@@ -93,6 +117,17 @@ const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
 // both the lazy() call and the dynamic import() from production builds.
 const DevSettingsPage = import.meta.env.DEV ? lazy(() => import('@/settings/dev-settings')) : () => null
 const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools/message-simulator')) : () => null
+
+/**
+ * Prefetch every lazily routed chunk. The Tauri apps serve chunks from local
+ * disk, so warming them right after first paint makes every screen render
+ * instantly on navigation while the web build keeps true lazy loading to
+ * protect its first load. Dynamic imports are memoized, so the `lazy()`
+ * components resolve from the same in-flight module records.
+ */
+const preloadAllRouteChunks = () => {
+  void Promise.allSettled(Object.values(routeChunkLoaders).map((load) => load()))
+}
 
 const queryClient = new QueryClient()
 
@@ -119,7 +154,15 @@ const useBootstrapSystemAgents = () => {
     if (!isRealUser || !cloudUrl) {
       return
     }
-    void refreshSystemAgents(db, cloudUrl, httpClient)
+    void (async () => {
+      const result = await refreshSystemAgents(db, cloudUrl, httpClient)
+      if (!result.refreshed) {
+        return
+      }
+      for (const agent of result.wireIdentityChangedAgents) {
+        useChatStore.getState().applyAgentWireIdentityChange(agent)
+      }
+    })()
   }, [isRealUser, cloudUrl, db, httpClient])
 }
 
@@ -139,12 +182,33 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   )
 }
 
+/**
+ * Home shell for the authenticated `/` tree. When the user lands here right after
+ * completing login for a CLI device-approval request, replay the stashed `/device`
+ * URL (see `device-approval-return.ts`) so the approval page reopens pre-filled.
+ * Read once on mount via a lazy initializer, so normal landings are a no-op.
+ */
+const HomeShell = () => {
+  const [deviceReturn] = useState(takeDeviceApprovalReturn)
+  if (deviceReturn) {
+    return <Navigate to={deviceReturn} replace />
+  }
+  return (
+    <>
+      <Layout />
+      <OnboardingDialog />
+      <WelcomeDialog />
+    </>
+  )
+}
+
 const AppRoutes = ({ initData }: { initData: InitData }) => {
   usePageTracking()
   useDeepLinkListener()
 
-  const { experimentalFeatureTasks } = useSettings({
+  const { experimentalFeatureTasks, experimentalFeatureVoice } = useSettings({
     experimental_feature_tasks: initData.experimentalFeatureTasks,
+    experimental_feature_voice: initData.experimentalFeatureVoice,
   })
 
   const ssoMode = isSsoMode()
@@ -156,6 +220,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Auth flow routes - NO guards (must work during auth) */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
+        <Route path="/device" element={<DeviceApproval />} />
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
@@ -172,16 +237,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Main app routes - authenticated only. The gate decides redirect
             targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
         <Route element={<AuthGate require="authenticated" />}>
-          <Route
-            path="/"
-            element={
-              <>
-                <Layout />
-                <OnboardingDialog />
-                <WelcomeDialog />
-              </>
-            }
-          >
+          <Route path="/" element={<HomeShell />}>
             {/* Home routes with HomeLayout */}
             <Route element={<ChatLayout />}>
               <Route index element={<Navigate to="/chats/new" replace />} />
@@ -195,11 +251,14 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route index element={<Settings />} />
               <Route path="preferences" element={<PreferencesSettingsPage />} />
               <Route path="models" element={<ModelsPage />} />
+              {experimentalFeatureVoice.value && <Route path="voice" element={<VoiceSettingsPage />} />}
               <Route path="devices" element={<DevicesSettingsPage />} />
-              <Route path="mcp-servers" element={<McpServersPage />} />
+              <Route path="connections" element={<ConnectionsPage />} />
+              {/* Legacy routes — MCP servers and integrations merged into Connections. */}
+              <Route path="mcp-servers" element={<Navigate to="/settings/connections" replace />} />
+              <Route path="integrations" element={<Navigate to="/settings/connections" replace />} />
               <Route path="skills" element={<SkillsPage />} />
               <Route path="agents" element={<AgentsSettingsPage />} />
-              <Route path="integrations" element={<IntegrationsPage />} />
               {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
             </Route>
           </Route>
@@ -228,6 +287,7 @@ export const App = () => {
   useEffect(() => {
     if (isTauri()) {
       import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
+      preloadAllRouteChunks()
     }
   }, [])
 
@@ -270,13 +330,11 @@ export const App = () => {
                       <ProxyFetchProvider>
                         <MCPProvider>
                           <HapticsProvider>
-                            <SidebarProvider>
-                              <ContentViewProvider>
-                                <ExternalLinkDialogProvider>
-                                  <AppContent initData={initData} />
-                                </ExternalLinkDialogProvider>
-                              </ContentViewProvider>
-                            </SidebarProvider>
+                            <ContentViewProvider>
+                              <ExternalLinkDialogProvider>
+                                <AppContent initData={initData} />
+                              </ExternalLinkDialogProvider>
+                            </ContentViewProvider>
                           </HapticsProvider>
                         </MCPProvider>
                       </ProxyFetchProvider>
@@ -294,7 +352,8 @@ export const App = () => {
   return (
     <ThemeProvider>
       <LazyMotion features={loadMotionFeatures} strict>
-        <WindowChrome>{renderAppContent()}</WindowChrome>
+        {renderAppContent()}
+        <WindowControls />
         <RevokedDeviceModal open={revokedDeviceOpen} />
       </LazyMotion>
     </ThemeProvider>

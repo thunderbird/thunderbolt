@@ -2,14 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useIsMobile } from '@/hooks/use-mobile'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { trackEvent } from '@/lib/posthog'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatToolOutput } from '@/lib/utils'
 import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
 
 /** A tool call (built-in or MCP dynamic-tool) or a reasoning part shown in the object view. */
@@ -67,8 +66,6 @@ const ContentViewContext = createContext<ContentViewContextType | undefined>(und
 export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
   const [previewHidden, setPreviewHidden] = useState(false)
-  const { isMobile } = useIsMobile()
-  const prevIsMobile = useRef(isMobile)
 
   const showObjectView = useCallback((content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
     if (content.type === 'reasoning') {
@@ -121,15 +118,6 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
     }
     setState({ type: null, data: null })
   }, [state.type])
-
-  // Close content view when crossing into mobile mode (only on transition, not continuously)
-  useEffect(() => {
-    const crossedIntoMobileWithContentViewOpen = !prevIsMobile.current && isMobile && state.type !== null
-    if (crossedIntoMobileWithContentViewOpen) {
-      close()
-    }
-    prevIsMobile.current = isMobile
-  }, [isMobile, state.type, close])
 
   return (
     <ContentViewContext.Provider

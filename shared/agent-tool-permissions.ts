@@ -19,9 +19,7 @@ type AcpPermissionOption = {
   kind: 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always'
 }
 
-type AcpRequestPermissionOutcome =
-  | { outcome: 'cancelled' }
-  | { outcome: 'selected'; optionId: string }
+type AcpRequestPermissionOutcome = { outcome: 'cancelled' } | { outcome: 'selected'; optionId: string }
 
 /** Whether a Pi tool is deterministic and side-effect free. */
 export const isReadOnlyAgentTool = (toolName: string): boolean => toolName === 'read'
@@ -49,9 +47,15 @@ export const resolveToolPermission = (
   outcome: AcpRequestPermissionOutcome,
   options: readonly AcpPermissionOption[],
 ): ToolPermissionDecision => {
-  if (outcome.outcome === 'cancelled') return 'reject'
+  if (outcome.outcome === 'cancelled') {
+    return 'reject'
+  }
   const selected = options.find((option) => option.optionId === outcome.optionId)
-  if (selected?.kind === 'allow_always') return 'allow-always'
-  if (selected?.kind === 'allow_once') return 'allow-once'
+  if (selected?.kind === 'allow_always') {
+    return 'allow-always'
+  }
+  if (selected?.kind === 'allow_once') {
+    return 'allow-once'
+  }
   return 'reject'
 }

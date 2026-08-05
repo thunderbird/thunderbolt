@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.108"
+version = "0.1.122"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -34,7 +34,8 @@ tauri-build = { version = "2.6.0", features = [] }
 tauri = { version = "2.11.2", features = [
     "tray-icon",
     "devtools",
-    "unstable",  # Required for webview
+    "unstable",            # Required for webview
+    "macos-private-api",   # Required for the transparent window + sidebar vibrancy
 ] }
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-os = "2.3.2"
@@ -67,7 +68,7 @@ rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] 
 tauri-plugin-single-instance = "2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
-objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIInterface", "UIScene", "UIWindowScene"] }
+objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIView", "UIInterface", "UIScene", "UIWindowScene"] }
 objc2-foundation = "0.3.2"
 
 [profile.dev]

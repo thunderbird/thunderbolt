@@ -4,13 +4,17 @@
 
 // Devices
 export {
+  bridgeDeviceId,
   getDeviceById,
   upsertDevice,
   revokeDevice,
   denyDevice,
   markDeviceTrusted,
   registerDevice,
+  registerBridgeDevice,
+  deleteRevokedBridgeDevice,
   setDeviceNodeId,
+  getTrustedNodeIds,
   countActiveDevices,
 } from './devices'
 

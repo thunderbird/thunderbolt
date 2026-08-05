@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { OnboardingNameStep } from '@/components/onboarding/onboarding-name-step'
-import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 
 export const OnboardingNameStepWrapper = () => {
@@ -38,9 +37,7 @@ export const OnboardingNameStepWrapper = () => {
 
   return (
     <div className="w-[400px] h-[500px] border rounded-lg p-4">
-      {createQueryTestWrapper()({
-        children: <OnboardingNameStep state={mockState} actions={mockActions} />,
-      })}
+      <OnboardingNameStep state={mockState} actions={mockActions} />
     </div>
   )
 }

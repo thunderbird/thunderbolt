@@ -118,30 +118,31 @@ export const spawnAgent = (command: readonly string[]): BridgeProc | null => {
  *  spawn unbounded long-lived agents and exhaust the host. At the cap a new
  *  connection is refused instead of spawning. Generous enough that real
  *  concurrent use never hits it. */
-export const MAX_ACTIVE_PROCS = 16
+export const maxActiveProcs = 16
 
 /** Whether a bridge is at its live-subprocess ceiling and must refuse new work.
  *  The single source of the cap policy for both the WebSocket and iroh bridges. */
-export const atProcCapacity = (activeProcs: ReadonlySet<BridgeProc>): boolean => activeProcs.size >= MAX_ACTIVE_PROCS
+export const atProcCapacity = (activeProcs: ReadonlySet<BridgeProc>): boolean => activeProcs.size >= maxActiveProcs
 
 /** Bearer-style flags whose *following* argv element is a secret to hide. */
-const SECRET_FLAGS = new Set(['--api-key', '--token'])
+const secretFlags = new Set(['--api-key', '--token'])
 /** An env-style `NAME=value` token whose NAME looks like a credential (ends in
  *  one of `KEY`/`TOKEN`/`SECRET`/`PASSWORD`/`PASSWD`/`CREDENTIAL`/`CRED(S)`, e.g.
  *  `OPENAI_API_KEY=sk-…`, `GITHUB_TOKEN=ghp_…`, `DB_SECRET=…`). Case-sensitive
  *  uppercase names only, so benign lowercase words like `monkey=foo` are left
  *  alone; the optional `[A-Z0-9_]*` prefix lets a bare `PASSWORD=…` match too. */
-const KEY_ASSIGNMENT = /^[A-Z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDS?)=/
+const keyAssignmentPattern = /^[A-Z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDS?)=/
 
 /** Redact the value of an env-style credential assignment, leaving its name. */
-const redactKeyAssignment = (arg: string): string => (KEY_ASSIGNMENT.test(arg) ? arg.replace(/=.*/s, '=***') : arg)
+const redactKeyAssignment = (arg: string): string =>
+  keyAssignmentPattern.test(arg) ? arg.replace(/=.*/s, '=***') : arg
 
 /** Redact a joined `--flag=value` secret (e.g. `--api-key=sk-…` / `--token=ghp_…`),
  *  keeping the flag name and hiding everything after the first `=`. Returns `null`
  *  when the prefix isn't a secret flag, so callers can fall through. */
 const redactJoinedFlag = (arg: string): string | null => {
   const eq = arg.indexOf('=')
-  return eq !== -1 && SECRET_FLAGS.has(arg.slice(0, eq)) ? `${arg.slice(0, eq)}=***` : null
+  return eq !== -1 && secretFlags.has(arg.slice(0, eq)) ? `${arg.slice(0, eq)}=***` : null
 }
 
 /** Redact a single argv element in place: joined secret flag, else env assignment. */
@@ -157,23 +158,27 @@ const redactArg = (arg: string): string => redactJoinedFlag(arg) ?? redactKeyAss
  * with `***`. Pure and total — a trailing bare secret
  * flag with no following value is simply left as-is.
  */
-export const redactArgv = (argv: readonly string[]): string =>
-  argv
-    .reduce<{ out: string[]; hide: boolean }>(
-      (acc, arg) =>
-        acc.hide
-          ? { out: [...acc.out, '***'], hide: false }
-          : { out: [...acc.out, redactArg(arg)], hide: SECRET_FLAGS.has(arg) },
-      { out: [], hide: false },
-    )
-    .out.join(' ')
+export const redactArgv = (argv: readonly string[]): string => {
+  const out: string[] = []
+  let hideNext = false
+  for (const arg of argv) {
+    if (hideNext) {
+      out.push('***')
+      hideNext = false
+      continue
+    }
+    out.push(redactArg(arg))
+    hideNext = secretFlags.has(arg)
+  }
+  return out.join(' ')
+}
 
 /** Origins the Thunderbolt app's webview presents as `Origin` on the WebSocket
  *  handshake: the Vite dev server plus the native Tauri webview origins (which
  *  vary by OS). A drive-by page the user visits in a normal browser cannot forge
  *  any of these. A self-hosted/cloud build adds its own origin(s) via the
  *  comma-separated `THUNDERBOLT_APP_ORIGIN`. */
-const DEFAULT_APP_ORIGINS = ['http://localhost:1420', 'tauri://localhost', 'http://tauri.localhost'] as const
+const defaultAppOrigins = ['http://localhost:1420', 'tauri://localhost', 'http://tauri.localhost'] as const
 
 /**
  * The set of `Origin` header values allowed to upgrade the loopback bridge: the
@@ -184,7 +189,7 @@ export const bridgeAllowedOrigins = (): ReadonlySet<string> => {
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0)
-  return new Set([...DEFAULT_APP_ORIGINS, ...configured])
+  return new Set([...defaultAppOrigins, ...configured])
 }
 
 /** Mint the per-run bridge secret: 256 bits of CSPRNG entropy, hex-encoded. It is
@@ -202,7 +207,9 @@ const tokensMatch = (presented: string, expected: string): boolean => {
 }
 
 /** Accept an upgrade, or reject it with an HTTP status + operator-facing reason. */
-export type UpgradeDecision = { readonly ok: true } | { readonly ok: false; readonly status: number; readonly reason: string }
+export type UpgradeDecision =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly status: number; readonly reason: string }
 
 /**
  * Authorize a WebSocket upgrade for the loopback bridge. Three independent gates,
@@ -218,11 +225,7 @@ export type UpgradeDecision = { readonly ok: true } | { readonly ok: false; read
  * can neither guess the token nor forge an allowlisted `Origin`, so it never
  * reaches `srv.upgrade`.
  */
-export const authorizeUpgrade = (
-  req: Request,
-  token: string,
-  allowedOrigins: ReadonlySet<string>,
-): UpgradeDecision => {
+export const authorizeUpgrade = (req: Request, token: string, allowedOrigins: ReadonlySet<string>): UpgradeDecision => {
   const url = new URL(req.url)
   if (url.pathname !== '/') return { ok: false, status: 404, reason: 'unknown path (only / is bridged)' }
 
@@ -232,7 +235,8 @@ export const authorizeUpgrade = (
   }
 
   const presented = url.searchParams.get('token')
-  if (!presented || !tokensMatch(presented, token)) return { ok: false, status: 401, reason: 'missing or invalid token' }
+  if (!presented || !tokensMatch(presented, token))
+    return { ok: false, status: 401, reason: 'missing or invalid token' }
 
   return { ok: true }
 }

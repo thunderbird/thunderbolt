@@ -3,10 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createContext, useContext, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { Search } from 'lucide-react'
-import { Button } from './button'
+import { Button, mutedIconButtonClass } from './button'
+import { useMobileForegroundPortalTarget } from './mobile-foreground-portal'
+import { mobileHeaderControlFillClass } from './modal-styles'
 import { SearchInput, type SearchInputProps } from './search-input'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
 type PageSearchContextValue = {
@@ -38,7 +41,7 @@ type PageSearchProps = {
  *
  * Usage:
  *   <PageSearch onSearch={handleSearch}>
- *     <PageSearch.Button tooltip="Search" />
+ *     <PageSearch.Button />
  *     <PageSearch.Input placeholder="Search..." />
  *   </PageSearch>
  */
@@ -51,7 +54,10 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
     const next = !open
     setOpen(next)
     if (next) {
-      requestAnimationFrame(() => inputRef.current?.focus())
+      // Focus synchronously inside the tap's event handler — the input is
+      // already in the DOM (just collapsed), and staying within the user
+      // gesture is what lets the mobile keyboard open immediately.
+      inputRef.current?.focus()
     } else {
       setSearchValue('')
       onSearch('')
@@ -63,35 +69,65 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
   )
 }
 
-type PageSearchButtonProps = {
-  tooltip?: string
-}
+const PageSearchButton = () => {
+  const { open, toggle } = usePageSearchContext()
+  const { isMobile } = useIsMobile()
+  const portalTarget = useMobileForegroundPortalTarget()
 
-const PageSearchButton = ({ tooltip = 'Search' }: PageSearchButtonProps) => {
-  const { toggle } = usePageSearchContext()
+  if (isMobile) {
+    if (!portalTarget) {
+      return null
+    }
+
+    // Mobile: a top-right circular header control, matching the sidebar
+    // toggle / modal close family and moving with the foreground shell.
+    return createPortal(
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Search"
+        className={cn(
+          mutedIconButtonClass,
+          mobileHeaderControlFillClass,
+          'fixed right-2 z-30',
+          open && 'bg-muted text-foreground',
+        )}
+        style={{ top: 'var(--header-control-top)' }}
+        onClick={toggle}
+      >
+        <Search />
+      </Button>,
+      portalTarget,
+    )
+  }
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" className="rounded-lg" onClick={toggle}>
-            <Search className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Search"
+      className={cn('rounded-lg hover:bg-accent', open && 'bg-accent')}
+      onClick={toggle}
+    >
+      <Search className="h-4 w-4" />
+    </Button>
   )
 }
 
 type PageSearchInputProps = Omit<SearchInputProps, 'onChange' | 'value' | 'debouncedOnChange'> & {
   delay?: number
   onSearch: (value: string) => void
+  wrapperClassName?: string
 }
 
-const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: PageSearchInputProps) => {
+const PageSearchInput = ({
+  delay,
+  onSearch,
+  placeholder,
+  wrapperClassName,
+  className,
+  ...searchInputProps
+}: PageSearchInputProps) => {
   const { open, inputRef, searchValue, setSearchValue } = usePageSearchContext()
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -101,15 +137,16 @@ const PageSearchInput = ({ delay, onSearch, placeholder, ...searchInputProps }: 
   return (
     <div
       className={cn(
-        'transition-all duration-300 ease-in-out flex-shrink-0 pr-2',
-        open ? 'max-h-14 opacity-100' : 'max-h-0 opacity-0 overflow-hidden',
+        'transition-all duration-300 ease-in-out flex-shrink-0',
+        open ? 'max-h-16 pb-2 opacity-100' : 'max-h-0 pb-0 opacity-0 overflow-hidden',
+        wrapperClassName,
       )}
     >
       <SearchInput
         ref={inputRef}
         inputSize="lg"
         showIcon
-        className="rounded-full"
+        className={cn('rounded-xl bg-card', className)}
         placeholder={placeholder}
         value={searchValue}
         onChange={handleChange}

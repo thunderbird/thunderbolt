@@ -3,16 +3,53 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
+import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { edgeSpacing } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Plus, Search } from 'lucide-react'
 import { memo, type ReactNode, useMemo, useState } from 'react'
 import { flushSync } from 'react-dom'
-import type { SearchableMenuGroup, SearchableMenuItem, SearchableMenuProps } from './types'
+import type { SearchableMenuFooterAction, SearchableMenuGroup, SearchableMenuItem, SearchableMenuProps } from './types'
 import { findItemById, flattenItems, isGroupedItems } from './types'
+
+/** Row shell for custom `renderItem` implementations — same geometry as the
+ *  menu's default row (full-width, `--touch-height-sm`, `px-3`, `rounded-lg`)
+ *  so custom rows sit flush with it. Callers append hover/selected tints.
+ *  Mobile steps up to `--touch-height-default` (44px) for easier tapping in
+ *  the slide-in sheets. */
+export const searchableMenuRowClass =
+  'w-full flex items-center gap-2 px-3 h-[var(--touch-height-sm)] max-md:h-[var(--touch-height-default)] rounded-lg transition-colors text-left cursor-pointer text-[length:var(--font-size-body)]'
+
+/** Footer action row (e.g. "Add Model"). Same geometry as the menus' item
+ *  rows (see `searchableMenuRowClass`) so its rounded hover fill lines up with
+ *  the rows above, rather than sitting smaller inside extra padding. */
+const footerActionClass =
+  'flex w-full cursor-pointer items-center justify-start gap-2 rounded-lg px-3 h-[var(--touch-height-sm)] max-md:h-[var(--touch-height-default)] text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+
+type FooterActionRowProps = SearchableMenuFooterAction & {
+  closeMenu: () => void
+}
+
+/** Renders `footerAction`. Close-before-action ordering is an invariant —
+ *  see `SearchableMenuFooterAction` in `./types` for the rationale. */
+const FooterActionRow = ({
+  label,
+  onAction,
+  closeMenu,
+  icon = <Plus className="size-[var(--icon-size-default)]" />,
+}: FooterActionRowProps) => (
+  <button
+    type="button"
+    onClick={() => {
+      closeMenu()
+      onAction()
+    }}
+    className={footerActionClass}
+  >
+    {icon}
+    {label}
+  </button>
+)
 
 type ItemButtonProps<T> = {
   item: SearchableMenuItem<T>
@@ -36,7 +73,7 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       disabled={item.disabled}
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+        'w-full flex items-center gap-2 px-3 py-2 max-md:min-h-[var(--touch-height-default)] rounded-lg transition-colors text-left cursor-pointer',
         'hover:bg-accent/50 focus:bg-accent/50 focus:outline-none',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',
@@ -73,7 +110,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }
           {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
         </div>
       )}
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-0.5">
         {group.items.map((item) => (
           <ItemButton
             key={item.id}
@@ -117,10 +154,11 @@ export const SearchableMenu = <T,>({
   searchable = true,
   searchPlaceholder = 'Search...',
   emptyMessage = 'No items found',
-  blurBackdrop = false,
+  mobileTitle = 'Choose an option',
+  mobileSide = 'bottom',
   trigger,
   renderItem,
-  footer,
+  footerAction,
   width = 320,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
@@ -131,7 +169,6 @@ export const SearchableMenu = <T,>({
 }: SearchableMenuProps<T>) => {
   const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const { isMobile } = useIsMobile()
 
   const isControlled = controlledOpen !== undefined
   const open = isControlled ? controlledOpen : internalOpen
@@ -171,15 +208,18 @@ export const SearchableMenu = <T,>({
     return items.filter(matchesQuery)
   }, [items, searchQuery])
 
-  const handleSelect = (id: string, item: SearchableMenuItem<T>) => {
+  const closeMenu = () => {
     flushSync(() => {
       setOpen(false)
     })
+  }
+
+  const handleSelect = (id: string, item: SearchableMenuItem<T>) => {
+    closeMenu()
     onValueChange(id, item)
   }
 
   const flatFiltered = flattenItems(filteredItems)
-  const showBlur = blurBackdrop && isMobile && open
 
   const triggerContent =
     typeof trigger === 'function' ? (
@@ -190,86 +230,94 @@ export const SearchableMenu = <T,>({
       <DefaultTrigger selected={selected} isOpen={open} />
     )
 
-  const contentWidth = isMobile
-    ? `calc(100vw - ${edgeSpacing.mobile * 2}px)`
-    : typeof width === 'number'
-      ? `${width}px`
-      : width
-
-  return (
-    <Popover open={open} onOpenChange={setOpen} modal={isMobile}>
-      <PopoverTrigger asChild>
-        <button type="button" className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50')}>
-          {triggerContent}
-        </button>
-      </PopoverTrigger>
-
-      {showBlur && <MobileBlurBackdrop onClick={() => setOpen(false)} />}
-
-      <PopoverContent
-        align={isMobile ? 'center' : align}
-        side={side}
-        sideOffset={5}
-        collisionPadding={isMobile ? edgeSpacing.mobile : edgeSpacing.desktop}
-        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
-        style={{ width: contentWidth }}
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
-        <div className="flex flex-col gap-2 bg-background">
-          {searchable && (
-            <div className="px-2 pt-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  placeholder={searchPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 rounded-lg"
-                  autoFocus={false}
-                />
-              </div>
-            </div>
-          )}
-
-          <div
-            className="overflow-y-auto"
-            style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
-          >
-            <div className={cn('flex flex-col gap-4 px-2', !searchable && 'pt-2', !footer && 'pb-2')}>
-              {isGroupedItems(filteredItems) ? (
-                filteredItems.map((group) => (
-                  <GroupSection
-                    key={group.id}
-                    group={group}
-                    value={value}
-                    onSelect={handleSelect}
-                    renderItem={renderItem}
-                    hideLabel={filteredItems.length === 1}
-                  />
-                ))
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
-                    <ItemButton
-                      key={item.id}
-                      item={item}
-                      isSelected={value === item.id}
-                      onClick={() => handleSelect(item.id, item)}
-                      renderItem={renderItem}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {flatFiltered.length === 0 && (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
-              )}
+  const contentWidth = typeof width === 'number' ? `${width}px` : width
+  const menuContent = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-col gap-2">
+        {searchable && (
+          <div className="px-1 pt-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                placeholder={searchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="rounded-lg pl-9"
+                autoFocus={false}
+              />
             </div>
           </div>
+        )}
 
-          {footer && <div className="border-t px-2 py-2">{footer}</div>}
+        <div
+          className="min-h-0 overflow-y-auto"
+          style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
+        >
+          <div className={cn('flex flex-col gap-4 px-1 pb-1', !searchable && 'pt-1')}>
+            {isGroupedItems(filteredItems) ? (
+              filteredItems.map((group) => (
+                <GroupSection
+                  key={group.id}
+                  group={group}
+                  value={value}
+                  onSelect={handleSelect}
+                  renderItem={renderItem}
+                  hideLabel={filteredItems.length === 1}
+                />
+              ))
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
+                  <ItemButton
+                    key={item.id}
+                    item={item}
+                    isSelected={value === item.id}
+                    onClick={() => handleSelect(item.id, item)}
+                    renderItem={renderItem}
+                  />
+                ))}
+              </div>
+            )}
+
+            {flatFiltered.length === 0 && (
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+            )}
+          </div>
         </div>
-      </PopoverContent>
-    </Popover>
+      </div>
+
+      {footerAction && (
+        <div className="border-t p-1 dark:border-border/50">
+          <FooterActionRow {...footerAction} closeMenu={closeMenu} />
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <ResponsivePopover
+      open={open}
+      onOpenChange={setOpen}
+      title={mobileTitle}
+      trigger={
+        // min-w-0 lets a truncating trigger label (e.g. the model selector's)
+        // shrink and ellipsize instead of forcing the row wider.
+        <button type="button" className="flex min-w-0 items-center focus:outline-none">
+          {triggerContent}
+        </button>
+      }
+      mobileMenu={{ side: mobileSide, className: contentClassName, initialFocus: false }}
+      desktopMenu={{
+        align,
+        side,
+        sideOffset: 5,
+        collisionPadding: edgeSpacing.desktop,
+        className: cn('overflow-hidden rounded-xl p-0 shadow-lg duration-100', contentClassName),
+        style: { width: contentWidth },
+        onOpenAutoFocus: (event) => event.preventDefault(),
+      }}
+    >
+      {menuContent}
+    </ResponsivePopover>
   )
 }

@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead, truncateTail } from './truncate.ts'
+import { defaultMaxBytes, defaultMaxLines, formatSize, truncateHead, truncateTail } from './truncate.ts'
 
 describe('formatSize', () => {
   it('renders sub-KB byte counts with a B suffix', () => {
@@ -24,7 +24,7 @@ describe('formatSize', () => {
   it('switches to KB exactly at 1024 bytes with one decimal', () => {
     expect(formatSize(1024)).toBe('1.0KB')
     expect(formatSize(1536)).toBe('1.5KB')
-    expect(formatSize(DEFAULT_MAX_BYTES)).toBe('50.0KB')
+    expect(formatSize(defaultMaxBytes)).toBe('50.0KB')
   })
 
   it('switches to MB exactly at 1024*1024 bytes', () => {
@@ -121,12 +121,12 @@ describe('truncateHead', () => {
   })
 
   it('uses the default limits when no options are passed', () => {
-    const content = Array.from({ length: DEFAULT_MAX_LINES + 1 }, (_, i) => `${i}`).join('\n')
+    const content = Array.from({ length: defaultMaxLines + 1 }, (_, i) => `${i}`).join('\n')
     const r = truncateHead(content)
     expect(r.truncated).toBe(true)
     expect(r.truncatedBy).toBe('lines')
-    expect(r.outputLines).toBe(DEFAULT_MAX_LINES)
-    expect(r.maxBytes).toBe(DEFAULT_MAX_BYTES)
+    expect(r.outputLines).toBe(defaultMaxLines)
+    expect(r.maxBytes).toBe(defaultMaxBytes)
   })
 })
 
@@ -205,13 +205,13 @@ describe('truncateTail', () => {
   })
 
   it('uses the default limits when no options are passed', () => {
-    const content = Array.from({ length: DEFAULT_MAX_LINES + 1 }, (_, i) => `${i}`).join('\n')
+    const content = Array.from({ length: defaultMaxLines + 1 }, (_, i) => `${i}`).join('\n')
     const r = truncateTail(content)
     expect(r.truncated).toBe(true)
     expect(r.truncatedBy).toBe('lines')
-    expect(r.outputLines).toBe(DEFAULT_MAX_LINES)
+    expect(r.outputLines).toBe(defaultMaxLines)
     // The last line is retained, the first dropped.
-    expect(r.content.endsWith(`${DEFAULT_MAX_LINES}`)).toBe(true)
+    expect(r.content.endsWith(`${defaultMaxLines}`)).toBe(true)
     expect(r.content.startsWith('0\n')).toBe(false)
   })
 })

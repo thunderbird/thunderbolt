@@ -19,13 +19,15 @@ import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { mountInMemoryFs } from '../browser-env/mount.ts'
 import { BrowserExecutionEnv } from '../browser-env/browser-execution-env.ts'
 import { createBrowserCodingTools } from './index.ts'
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from './truncate.ts'
+import { defaultMaxBytes, defaultMaxLines } from './truncate.ts'
 
-const WS = '/ws'
+const ws = '/ws'
 
 const textOf = (result: { content: { type: string; text?: string }[] }): string => {
   const block = result.content[0]
-  if (block.type !== 'text' || block.text === undefined) throw new Error('expected a text block')
+  if (block.type !== 'text' || block.text === undefined) {
+    throw new Error('expected a text block')
+  }
   return block.text
 }
 
@@ -40,19 +42,17 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   // Fresh workspace per test so files from one test can't leak into another.
-  await fsp.rm(WS, { recursive: true, force: true })
-  await fsp.mkdir(WS, { recursive: true })
-  const env = new BrowserExecutionEnv({ cwd: WS })
-  ;[bash, read, write, edit] = createBrowserCodingTools(env, { cwd: WS })
+  await fsp.rm(ws, { recursive: true, force: true })
+  await fsp.mkdir(ws, { recursive: true })
+  const env = new BrowserExecutionEnv({ cwd: ws })
+  ;[bash, read, write, edit] = createBrowserCodingTools(env, { cwd: ws })
 })
 
 const run = (tool: AgentTool, args: unknown) =>
   // The Pi AgentTool.execute signature: (toolCallId, args, signal).
-  (tool.execute as (id: string, a: unknown, s?: AbortSignal) => Promise<{ content: { type: string; text?: string }[] }>)(
-    'call-1',
-    args,
-    undefined,
-  )
+  (
+    tool.execute as (id: string, a: unknown, s?: AbortSignal) => Promise<{ content: { type: string; text?: string }[] }>
+  )('call-1', args, undefined)
 
 describe('createBrowserCodingTools', () => {
   it('exposes the four tools in order with the model-visible names', () => {
@@ -67,55 +67,57 @@ describe('createBrowserCodingTools', () => {
 
 describe('read tool', () => {
   it('returns the full file content when small', async () => {
-    await fsp.writeFile(`${WS}/a.txt`, 'line one\nline two')
+    await fsp.writeFile(`${ws}/a.txt`, 'line one\nline two')
     expect(textOf(await run(read, { path: 'a.txt' }))).toBe('line one\nline two')
   })
 
   it('applies offset + limit and appends a continuation hint with the next offset', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'l1\nl2\nl3\nl4\nl5')
+    await fsp.writeFile(`${ws}/f.txt`, 'l1\nl2\nl3\nl4\nl5')
     const out = textOf(await run(read, { path: 'f.txt', offset: 2, limit: 2 }))
     expect(out).toBe('l2\nl3\n\n[2 more lines in file. Use offset=4 to continue.]')
   })
 
   it('does not append a continuation hint when the limit reaches end of file', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'l1\nl2\nl3')
+    await fsp.writeFile(`${ws}/f.txt`, 'l1\nl2\nl3')
     expect(textOf(await run(read, { path: 'f.txt', offset: 1, limit: 3 }))).toBe('l1\nl2\nl3')
   })
 
   it('counts a trailing newline as a line (unlike truncate.ts, which drops it)', async () => {
     // 'a\nb\n' splits into ['a','b',''] here, so the empty trailing entry is a 3rd line.
-    await fsp.writeFile(`${WS}/f.txt`, 'a\nb\n')
+    await fsp.writeFile(`${ws}/f.txt`, 'a\nb\n')
     expect(textOf(await run(read, { path: 'f.txt', offset: 1, limit: 1 }))).toBe(
       'a\n\n[2 more lines in file. Use offset=2 to continue.]',
     )
   })
 
   it('clamps a negative offset to the start of the file', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'l1\nl2\nl3')
+    await fsp.writeFile(`${ws}/f.txt`, 'l1\nl2\nl3')
     expect(textOf(await run(read, { path: 'f.txt', offset: -5, limit: 1 }))).toBe(
       'l1\n\n[2 more lines in file. Use offset=2 to continue.]',
     )
   })
 
   it('handles limit=0 (selects no lines) and still reports the remaining count', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'l1\nl2\nl3')
+    await fsp.writeFile(`${ws}/f.txt`, 'l1\nl2\nl3')
     expect(textOf(await run(read, { path: 'f.txt', offset: 1, limit: 0 }))).toBe(
       '\n\n[3 more lines in file. Use offset=1 to continue.]',
     )
   })
 
   it('throws when the offset is beyond end of file', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'only\ntwo')
+    await fsp.writeFile(`${ws}/f.txt`, 'only\ntwo')
     await expect(run(read, { path: 'f.txt', offset: 10 })).rejects.toThrow(
       'Offset 10 is beyond end of file (2 lines total)',
     )
   })
 
   it('head-truncates very long files and emits a line-based continuation footer', async () => {
-    const content = Array.from({ length: DEFAULT_MAX_LINES + 1 }, (_, i) => `row${i}`).join('\n')
-    await fsp.writeFile(`${WS}/big.txt`, content)
+    const content = Array.from({ length: defaultMaxLines + 1 }, (_, i) => `row${i}`).join('\n')
+    await fsp.writeFile(`${ws}/big.txt`, content)
     const out = textOf(await run(read, { path: 'big.txt' }))
-    expect(out).toContain(`[Showing lines 1-${DEFAULT_MAX_LINES} of ${DEFAULT_MAX_LINES + 1}. Use offset=${DEFAULT_MAX_LINES + 1} to continue.]`)
+    expect(out).toContain(
+      `[Showing lines 1-${defaultMaxLines} of ${defaultMaxLines + 1}. Use offset=${defaultMaxLines + 1} to continue.]`,
+    )
     expect(out).not.toContain('limit)') // line-based truncation has no "(50.0KB limit)" note
   })
 
@@ -123,27 +125,27 @@ describe('read tool', () => {
     // 100 lines × ~600 bytes = ~60KB: under the 2000-line limit but over the 50KB
     // byte limit, so truncation is byte-based and the footer carries the limit note.
     const content = Array.from({ length: 100 }, (_, i) => `${i}:${'y'.repeat(600)}`).join('\n')
-    await fsp.writeFile(`${WS}/wide.txt`, content)
+    await fsp.writeFile(`${ws}/wide.txt`, content)
     const out = textOf(await run(read, { path: 'wide.txt' }))
     expect(out).toContain('(50.0KB limit). Use offset=')
     expect(out.startsWith('0:')).toBe(true) // head truncation keeps the FIRST lines
   })
 
   it('shifts the displayed line numbers and next offset when reading from an offset into a truncated region', async () => {
-    const content = Array.from({ length: DEFAULT_MAX_LINES + 10 }, (_, i) => `row${i}`).join('\n')
-    await fsp.writeFile(`${WS}/big.txt`, content)
+    const content = Array.from({ length: defaultMaxLines + 10 }, (_, i) => `row${i}`).join('\n')
+    await fsp.writeFile(`${ws}/big.txt`, content)
     const out = textOf(await run(read, { path: 'big.txt', offset: 5 }))
-    // From offset 5, the kept window is DEFAULT_MAX_LINES lines: 5 .. 5+2000-1 = 2004.
+    // From offset 5, the kept window is defaultMaxLines lines: 5 .. 5+2000-1 = 2004.
     expect(out).toContain(
-      `[Showing lines 5-${5 + DEFAULT_MAX_LINES - 1} of ${DEFAULT_MAX_LINES + 10}. Use offset=${5 + DEFAULT_MAX_LINES} to continue.]`,
+      `[Showing lines 5-${5 + defaultMaxLines - 1} of ${defaultMaxLines + 10}. Use offset=${5 + defaultMaxLines} to continue.]`,
     )
   })
 
   it('returns the sed escape hint (no content) when a single line exceeds the byte limit', async () => {
-    await fsp.writeFile(`${WS}/wide.txt`, 'x'.repeat(60 * 1024))
+    await fsp.writeFile(`${ws}/wide.txt`, 'x'.repeat(60 * 1024))
     const out = textOf(await run(read, { path: 'wide.txt' }))
     expect(out).toContain('[Line 1 is 60.0KB, exceeds 50.0KB limit.')
-    expect(out).toContain("sed -n '1p' wide.txt | head -c " + DEFAULT_MAX_BYTES)
+    expect(out).toContain("sed -n '1p' wide.txt | head -c " + defaultMaxBytes)
   })
 
   it('rejects an absolute path that escapes the workspace jail', async () => {
@@ -172,24 +174,24 @@ describe('write tool', () => {
   it('writes content and reports the UTF-8 byte count and path', async () => {
     const out = textOf(await run(write, { path: 'out.txt', content: 'hello' }))
     expect(out).toBe('Successfully wrote 5 bytes to out.txt')
-    expect(await fsp.readFile(`${WS}/out.txt`, { encoding: 'utf8' })).toBe('hello')
+    expect(await fsp.readFile(`${ws}/out.txt`, { encoding: 'utf8' })).toBe('hello')
   })
 
   it('reports the UTF-8 byte length for multibyte content', async () => {
     const out = textOf(await run(write, { path: 'mb.txt', content: '€€' }))
     expect(out).toBe('Successfully wrote 6 bytes to mb.txt')
-    expect(Buffer.byteLength(await fsp.readFile(`${WS}/mb.txt`, { encoding: 'utf8' }), 'utf-8')).toBe(6)
+    expect(Buffer.byteLength(await fsp.readFile(`${ws}/mb.txt`, { encoding: 'utf8' }), 'utf-8')).toBe(6)
   })
 
   it('creates missing parent directories', async () => {
     await run(write, { path: 'nested/deep/file.txt', content: 'x' })
-    expect(await fsp.readFile(`${WS}/nested/deep/file.txt`, { encoding: 'utf8' })).toBe('x')
+    expect(await fsp.readFile(`${ws}/nested/deep/file.txt`, { encoding: 'utf8' })).toBe('x')
   })
 
   it('overwrites an existing file', async () => {
-    await fsp.writeFile(`${WS}/o.txt`, 'old')
+    await fsp.writeFile(`${ws}/o.txt`, 'old')
     await run(write, { path: 'o.txt', content: 'new' })
-    expect(await fsp.readFile(`${WS}/o.txt`, { encoding: 'utf8' })).toBe('new')
+    expect(await fsp.readFile(`${ws}/o.txt`, { encoding: 'utf8' })).toBe('new')
   })
 
   it('rejects writing outside the workspace jail', async () => {
@@ -198,8 +200,7 @@ describe('write tool', () => {
 })
 
 describe('edit tool – argument preparation', () => {
-  const prepare = (input: unknown): unknown =>
-    (edit.prepareArguments as (i: unknown) => unknown)(input)
+  const prepare = (input: unknown): unknown => (edit.prepareArguments as (i: unknown) => unknown)(input)
 
   it('parses a JSON-string `edits` into an array (some models stringify it)', () => {
     expect(prepare({ path: 'f', edits: '[{"oldText":"a","newText":"b"}]' })).toEqual({
@@ -216,9 +217,13 @@ describe('edit tool – argument preparation', () => {
   })
 
   it('appends a top-level oldText/newText pair to an existing edits[] array', () => {
-    expect(
-      prepare({ path: 'f', edits: [{ oldText: 'x', newText: 'y' }], oldText: 'a', newText: 'b' }),
-    ).toEqual({ path: 'f', edits: [{ oldText: 'x', newText: 'y' }, { oldText: 'a', newText: 'b' }] })
+    expect(prepare({ path: 'f', edits: [{ oldText: 'x', newText: 'y' }], oldText: 'a', newText: 'b' })).toEqual({
+      path: 'f',
+      edits: [
+        { oldText: 'x', newText: 'y' },
+        { oldText: 'a', newText: 'b' },
+      ],
+    })
   })
 
   it('leaves a non-JSON `edits` string untouched so validation surfaces a clear error', () => {
@@ -233,10 +238,8 @@ describe('edit tool – argument preparation', () => {
 
 describe('edit tool – execution', () => {
   it('throws when no replacements are provided', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'abc')
-    await expect(run(edit, { path: 'f.txt', edits: [] })).rejects.toThrow(
-      'edits must contain at least one replacement',
-    )
+    await fsp.writeFile(`${ws}/f.txt`, 'abc')
+    await expect(run(edit, { path: 'f.txt', edits: [] })).rejects.toThrow('edits must contain at least one replacement')
   })
 
   it('reports a friendly error (with the FS error code) when the file does not exist', async () => {
@@ -252,47 +255,53 @@ describe('edit tool – execution', () => {
   })
 
   it('propagates a match failure and leaves the file unchanged when oldText is absent', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'hello world')
+    await fsp.writeFile(`${ws}/f.txt`, 'hello world')
     await expect(run(edit, { path: 'f.txt', edits: [{ oldText: 'zzz', newText: 'q' }] })).rejects.toThrow()
-    expect(await fsp.readFile(`${WS}/f.txt`, { encoding: 'utf8' })).toBe('hello world')
+    expect(await fsp.readFile(`${ws}/f.txt`, { encoding: 'utf8' })).toBe('hello world')
   })
 
   it('composes prepareArguments with execute (stringified edits applied end-to-end)', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'hello world')
+    await fsp.writeFile(`${ws}/f.txt`, 'hello world')
     const prepared = (edit.prepareArguments as (i: unknown) => unknown)({
       path: 'f.txt',
       edits: '[{"oldText":"world","newText":"pi"}]',
     })
     expect(textOf(await run(edit, prepared))).toBe('Successfully replaced 1 block(s) in f.txt.')
-    expect(await fsp.readFile(`${WS}/f.txt`, { encoding: 'utf8' })).toBe('hello pi')
+    expect(await fsp.readFile(`${ws}/f.txt`, { encoding: 'utf8' })).toBe('hello pi')
   })
 
   it('applies a replacement and reports the block count', async () => {
-    await fsp.writeFile(`${WS}/f.txt`, 'hello world')
+    await fsp.writeFile(`${ws}/f.txt`, 'hello world')
     const out = textOf(await run(edit, { path: 'f.txt', edits: [{ oldText: 'world', newText: 'pi' }] }))
     expect(out).toBe('Successfully replaced 1 block(s) in f.txt.')
-    expect(await fsp.readFile(`${WS}/f.txt`, { encoding: 'utf8' })).toBe('hello pi')
+    expect(await fsp.readFile(`${ws}/f.txt`, { encoding: 'utf8' })).toBe('hello pi')
   })
 
   it('preserves CRLF line endings across the edit', async () => {
-    await fsp.writeFile(`${WS}/crlf.txt`, 'a\r\nb\r\nc')
+    await fsp.writeFile(`${ws}/crlf.txt`, 'a\r\nb\r\nc')
     await run(edit, { path: 'crlf.txt', edits: [{ oldText: 'b', newText: 'B' }] })
-    expect(await fsp.readFile(`${WS}/crlf.txt`, { encoding: 'utf8' })).toBe('a\r\nB\r\nc')
+    expect(await fsp.readFile(`${ws}/crlf.txt`, { encoding: 'utf8' })).toBe('a\r\nB\r\nc')
   })
 
   it('preserves a leading BOM (U+FEFF) across the edit', async () => {
-    await fsp.writeFile(`${WS}/bom.txt`, '\uFEFFhello')
+    await fsp.writeFile(`${ws}/bom.txt`, '\uFEFFhello')
     await run(edit, { path: 'bom.txt', edits: [{ oldText: 'hello', newText: 'bye' }] })
-    expect(await fsp.readFile(`${WS}/bom.txt`, { encoding: 'utf8' })).toBe('\uFEFFbye')
+    expect(await fsp.readFile(`${ws}/bom.txt`, { encoding: 'utf8' })).toBe('\uFEFFbye')
   })
 
   it('reports the count for multiple blocks', async () => {
-    await fsp.writeFile(`${WS}/m.txt`, 'a x c')
+    await fsp.writeFile(`${ws}/m.txt`, 'a x c')
     const out = textOf(
-      await run(edit, { path: 'm.txt', edits: [{ oldText: 'a', newText: 'A' }, { oldText: 'c', newText: 'C' }] }),
+      await run(edit, {
+        path: 'm.txt',
+        edits: [
+          { oldText: 'a', newText: 'A' },
+          { oldText: 'c', newText: 'C' },
+        ],
+      }),
     )
     expect(out).toBe('Successfully replaced 2 block(s) in m.txt.')
-    expect(await fsp.readFile(`${WS}/m.txt`, { encoding: 'utf8' })).toBe('A x C')
+    expect(await fsp.readFile(`${ws}/m.txt`, { encoding: 'utf8' })).toBe('A x C')
   })
 })
 
@@ -328,14 +337,12 @@ describe('bash tool', () => {
 
   it('byte-truncates output and labels the footer with the 50KB limit', async () => {
     // 60 lines × ~1001 bytes ≈ 60KB: under the line limit but over the byte limit.
-    const out = textOf(
-      await run(bash, { command: 'for i in $(seq 1 60); do printf "%01000d\\n" $i; done' }),
-    )
+    const out = textOf(await run(bash, { command: 'for i in $(seq 1 60); do printf "%01000d\\n" $i; done' }))
     expect(out).toContain('(50.0KB limit). Full output:')
   })
 
   it('truncates long output (tail) and persists the FULL output to the temp file it names', async () => {
-    const lineCount = DEFAULT_MAX_LINES + 5
+    const lineCount = defaultMaxLines + 5
     const out = textOf(await run(bash, { command: `for i in $(seq 1 ${lineCount}); do echo line$i; done` }))
     expect(out).toContain('[Showing lines')
     // Tail truncation keeps the END: the last line is present, an early line is dropped.

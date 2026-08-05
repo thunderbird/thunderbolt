@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
+import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
@@ -40,22 +40,17 @@ const requestWithIp = (ip: string) => new Request('http://localhost/v1/test', { 
 
 describe('Rate Limiting', () => {
   let database: typeof DbType
-  let isolatedDb: IsolatedTestDb | undefined
 
   // RateLimiterDrizzle issues its own `client.transaction()` calls, which open a
   // nested raw BEGIN on the connection. On the shared `createTestDb` singleton
   // (which is mid-BEGIN/ROLLBACK and serializes every test file through one WASM
   // mutex) that breaks transaction isolation and, under CI CPU starvation, stalls
-  // the setup hook on the shared lock for tens of seconds. A dedicated isolated
-  // PGlite instance gives the rate limiter its own connection and mutex; each
-  // test still clears the table in beforeEach.
+  // the setup hook on the shared lock. Reuse the suite-wide isolated connection:
+  // creating a fresh PGlite for every `--rerun-each` pass accumulates WASM runtimes
+  // until initialization stalls. Each test still clears the table in beforeEach.
   beforeAll(async () => {
-    isolatedDb = await createIsolatedTestDb()
+    const isolatedDb = await getSharedIsolatedTestDb()
     database = isolatedDb.db
-  })
-
-  afterAll(async () => {
-    await isolatedDb?.close()
   })
 
   beforeEach(async () => {

@@ -11,11 +11,15 @@
 
 import '@/testing-library'
 
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ConnectToAgentContext } from './connect'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { clearAdapterCache, disposeAdapter, disposeAllAdapters, getOrConnectAdapter } from './adapter-cache'
 import { useAgentCommandsStore } from './agent-commands-store'
+import type { ReconnectSchedulerLike } from './reconnect-scheduler'
+import { TransportTerminationError } from './termination'
+import { type ChatSession, useChatStore } from '@/chats/chat-store'
+import type { RequestPermissionRequest } from '@agentclientprotocol/sdk'
 
 const agentA: Agent = {
   id: 'agent-a',
@@ -39,11 +43,12 @@ const ctx: ConnectToAgentContext = {
 }
 
 /** Build a fake adapter for `agent` that tracks disconnect calls. */
-const buildAdapter = (agent: Agent) => {
+const buildAdapter = (agent: Agent, closed?: Promise<void>) => {
   let disconnects = 0
   const adapter: AgentAdapter = {
     agent,
     capabilities: null,
+    closed,
     fetch: async () => new Response('ok'),
     ensureSession: async () => {},
     disconnect: () => {
@@ -51,6 +56,18 @@ const buildAdapter = (agent: Agent) => {
     },
   }
   return { adapter, disconnectCount: () => disconnects }
+}
+
+const buildScheduler = () => {
+  const registered = new Map<string, () => Promise<void>>()
+  const scheduler: ReconnectSchedulerLike = {
+    register: (agentId, reconnect) => registered.set(agentId, reconnect),
+    unregister: (agentId) => {
+      registered.delete(agentId)
+    },
+    wake: () => {},
+  }
+  return { scheduler, registered }
 }
 
 /** A counting fake `connectToAgent`. `delayMs` lets a test hold the connect
@@ -73,9 +90,27 @@ const makeCounter = (
   return { connectToAgent, callCount: () => calls }
 }
 
+/** Install one chat session holding a pending permission prompt for `agent`. */
+const installPermissionSession = (agent: Agent, sessionId: string) => {
+  const resolvePermission = mock(() => {})
+  const permissionSession = {
+    pendingPermission: {
+      agentId: agent.id,
+      requestId: `permission-${sessionId}`,
+      request: { sessionId: 'remote' } as RequestPermissionRequest,
+      resolve: resolvePermission,
+    },
+  } as unknown as ChatSession
+  const sessions = new Map(useChatStore.getState().sessions)
+  sessions.set(sessionId, permissionSession)
+  useChatStore.setState({ sessions })
+  return resolvePermission
+}
+
 describe('adapter-cache', () => {
   beforeEach(() => {
     clearAdapterCache()
+    useChatStore.setState({ sessions: new Map() })
   })
 
   it('reuses ONE adapter for the same agentId across two different sessionIds (connect once)', async () => {
@@ -153,6 +188,37 @@ describe('adapter-cache', () => {
     expect(useAgentCommandsStore.getState().byAgentId[agentA.id]).toBeUndefined()
   })
 
+  it('disposeAdapter cancels pending permission prompts for the agent', async () => {
+    const { adapter } = buildAdapter(agentA)
+    const { connectToAgent } = makeCounter(() => adapter)
+    const resolvePermission = installPermissionSession(agentA, 'permission-session')
+
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent })
+    await disposeAdapter(agentA.id)
+
+    // Slot disposal suppresses onTerminated, so the prompt would hang forever
+    // without the dispose path cancelling it directly.
+    expect(resolvePermission).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get('permission-session')?.pendingPermission).toBeNull()
+  })
+
+  it('disposeAllAdapters cancels pending permission prompts for every agent', async () => {
+    const a = buildAdapter(agentA)
+    const b = buildAdapter(agentB)
+    const { connectToAgent } = makeCounter((agent) => (agent.id === agentA.id ? a.adapter : b.adapter))
+    const resolveA = installPermissionSession(agentA, 'session-a')
+    const resolveB = installPermissionSession(agentB, 'session-b')
+
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent })
+    await getOrConnectAdapter(agentB, ctx, { connectToAgent })
+    await disposeAllAdapters()
+
+    expect(resolveA).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(resolveB).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get('session-a')?.pendingPermission).toBeNull()
+    expect(useChatStore.getState().sessions.get('session-b')?.pendingPermission).toBeNull()
+  })
+
   it('evicts a failed connect so the next call retries', async () => {
     const { adapter } = buildAdapter(agentA)
     const failing = makeCounter(() => adapter, { fail: true })
@@ -167,6 +233,115 @@ describe('adapter-cache', () => {
     const result = await getOrConnectAdapter(agentA, ctx, { connectToAgent: succeeding.connectToAgent })
     expect(result).toBe(adapter)
     expect(succeeding.callCount()).toBe(1)
+  })
+
+  it('rebuilds after an adapter dies following a successful connect', async () => {
+    let rejectClosed: (error: unknown) => void = () => {}
+    const closed = new Promise<void>((_, reject) => {
+      rejectClosed = reject
+    })
+    closed.catch(() => {})
+    const first = buildAdapter(agentA, closed)
+    const second = buildAdapter(agentA)
+    const { scheduler, registered } = buildScheduler()
+    const adapters = [first.adapter, second.adapter]
+    const counter = makeCounter(() => adapters.shift()!)
+    const resolvePermission = mock(() => {})
+    const permissionSession = {
+      pendingPermission: {
+        agentId: agentA.id,
+        requestId: 'permission-1',
+        request: { sessionId: 'remote' } as RequestPermissionRequest,
+        resolve: resolvePermission,
+      },
+    } as unknown as ChatSession
+    useChatStore.setState({ sessions: new Map([['permission-session', permissionSession]]) })
+
+    await expect(
+      getOrConnectAdapter(agentA, ctx, { connectToAgent: counter.connectToAgent, reconnectScheduler: scheduler }),
+    ).resolves.toBe(first.adapter)
+    rejectClosed(new Error('relay dropped'))
+    await Promise.resolve()
+    expect(registered.has(agentA.id)).toBe(true)
+    expect(resolvePermission).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get('permission-session')?.pendingPermission).toBeNull()
+
+    await expect(
+      getOrConnectAdapter(agentA, ctx, { connectToAgent: counter.connectToAgent, reconnectScheduler: scheduler }),
+    ).resolves.toBe(second.adapter)
+    expect(counter.callCount()).toBe(2)
+  })
+
+  it('skips reconnect and logs when the termination is non-retryable', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    let rejectClosed: (error: unknown) => void = () => {}
+    const closed = new Promise<void>((_, reject) => {
+      rejectClosed = reject
+    })
+    closed.catch(() => {})
+    const { adapter } = buildAdapter(agentA, closed)
+    const { scheduler, registered } = buildScheduler()
+    const { connectToAgent } = makeCounter(() => adapter)
+    const resolvePermission = installPermissionSession(agentA, 'permission-session')
+
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent, reconnectScheduler: scheduler })
+
+    // The adapter wraps the transport death in its connection-lost error, so
+    // the non-retryable verdict arrives via the cause chain.
+    const cause = new TransportTerminationError('remote-close', 'ACP transport closed (code 4001)', {
+      retryable: false,
+    })
+    rejectClosed(new Error(JSON.stringify({ error: cause.message, kind: 'connection-lost' }), { cause }))
+    await Promise.resolve()
+
+    expect(registered.has(agentA.id)).toBe(false)
+    expect(resolvePermission).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get('permission-session')?.pendingPermission).toBeNull()
+    expect(warn).toHaveBeenCalledWith('ACP adapter generation terminated', agentA.id, expect.any(Error))
+    expect(errorLog).toHaveBeenCalledWith(
+      'ACP adapter terminated with a non-retryable error; skipping background reconnect',
+      agentA.id,
+      cause.message,
+    )
+  })
+
+  it('keeps recovery registered when the fresh adapter dies before the caller resumes', async () => {
+    // `closed` is already rejected when the slot's ready-handler runs, so the
+    // terminate → onTerminated → register chain is queued ahead of the
+    // awaiting caller's continuation.
+    const closed = Promise.reject(new Error('instant death'))
+    closed.catch(() => {})
+    const { adapter } = buildAdapter(agentA, closed)
+    const { scheduler, registered } = buildScheduler()
+    const { connectToAgent } = makeCounter(() => adapter)
+
+    await expect(getOrConnectAdapter(agentA, ctx, { connectToAgent, reconnectScheduler: scheduler })).resolves.toBe(
+      adapter,
+    )
+    await Promise.resolve()
+
+    // An unfenced unregister here would silently cancel the just-scheduled
+    // recovery and hand back a dead adapter with no rebuild behind it.
+    expect(registered.has(agentA.id)).toBe(true)
+  })
+
+  it('disposeAdapter cancels recovery scheduled for a dead generation', async () => {
+    let rejectClosed: (error: unknown) => void = () => {}
+    const closed = new Promise<void>((_, reject) => {
+      rejectClosed = reject
+    })
+    closed.catch(() => {})
+    const { adapter } = buildAdapter(agentA, closed)
+    const { scheduler, registered } = buildScheduler()
+    const { connectToAgent } = makeCounter(() => adapter)
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent, reconnectScheduler: scheduler })
+
+    rejectClosed(new Error('relay dropped'))
+    await Promise.resolve()
+    expect(registered.has(agentA.id)).toBe(true)
+    await disposeAdapter(agentA.id)
+    expect(registered.has(agentA.id)).toBe(false)
   })
 
   it('disposeAllAdapters disconnects every cached adapter and clears', async () => {

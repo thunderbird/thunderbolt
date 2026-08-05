@@ -43,6 +43,7 @@
 **Treat every `useEffect` as a code smell until proven necessary.** Before writing or reviewing a `useEffect`, consult https://react.dev/learn/you-might-not-need-an-effect and verify it doesn't match a known anti-pattern.
 
 **Never use `useEffect` for:**
+
 - **Deriving state from props/state** — compute during render: `const x = derive(props)` or use `useMemo`
 - **Syncing props into state** — use the prop directly, or use a ref to detect prop changes during render
 - **Notifying parents of state changes** — call the callback in the event handler that caused the change
@@ -52,6 +53,7 @@
 - **Assigning to refs** — assign `ref.current` directly in the render body
 
 **Prefer these hooks over `useEffect` when applicable:**
+
 - `useSyncExternalStore` — for subscribing to external stores, browser APIs (`matchMedia`, `addEventListener`)
 - `useEffectEvent` — to extract handler logic out of effects, eliminating stale closures and dependency bloat
 - `useOptimistic` + `useTransition` — for optimistic UI updates instead of `useState` + `useEffect` + `useMutation`
@@ -65,12 +67,14 @@
 Keep the entry bundle small by lazy-loading routes that aren't on the critical landing path. New top-level routes added to `src/app.tsx` should follow these rules:
 
 **Static (in the entry bundle):**
+
 - Chat (`ChatLayout`, `ChatDetailPage`) — the landing page must feel instant.
 - Layouts (`SettingsLayout`, `WaitlistLayout`) — chrome around their pages. Lazy-loading a layout creates a sequential waterfall (layout chunk → page chunk) before anything paints, and the layouts themselves are tiny.
 - Small auth/error pages (`MagicLinkVerify`, `OAuthCallback`, `AccountDeleted`, `SignedOut`, `NotFound`) — the per-chunk overhead exceeds their payload.
 
 **Lazy (`React.lazy(() => import(...))`):**
-- All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `McpServersPage`, `IntegrationsPage`, dev-only routes).
+
+- All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `ConnectionsPage`, dev-only routes).
 - Secondary features (`TasksPage`, `AutomationsPage`).
 - `WaitlistPage` and SSO flows (only hit by a subset of users).
 
@@ -80,6 +84,7 @@ When adding a new route, default to lazy unless the route is on the chat/landing
 
 - Create test files as `<file>.test.ts` next to source files
 - Test likely edge cases, aiming for useful 80% coverage
+- **Never run bare `bun test` at the repo root** — it discovers every `*.test.*` file in the repo, including `backend/` tests that open real connections (test DB, WebSocket e2e) and hang forever without their services running, and it applies no timeout. Use `bun run test` (scoped to `src/` + `shared/` with a 5s per-test timeout, finishes in ~15s), `bun test <path> --timeout 5000` for a specific file/folder, or `bun run test:backend` for backend tests
 
 ## After Each Task
 
@@ -107,20 +112,22 @@ See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync
 
 **Custom SharedWorker and `@powersync/web` internal path:** `vite.config.ts` defines a `powersync-web-internal` alias pointing to `@powersync/web/lib/src` (an internal, non-public-API path). This is required for the custom `ThunderboltSharedSyncImplementation` to extend `SharedSyncImplementation`. When upgrading `@powersync/web`, verify this internal path still exists — it may break without a TypeScript error.
 
+**FTS search index couples to PowerSync's internal tables:** `src/search/fts-setup.ts` builds the unified `search_index` (THU-766) by attaching SQLite triggers to PowerSync's internal backing tables (`table.internalName`, i.e. `ps_data__*` / `ps_data_local__*`) and reading their JSON `data` blob via `json_extract(data, '$.<snake_case_column>')`. Both the table naming and the blob layout are undocumented `@powersync/web` implementation details. A PowerSync upgrade that renames or restructures them breaks search **silently** — no TypeScript error, and often no runtime error (the index just goes empty/stale). When upgrading `@powersync/web`, verify the internal table names and `data` blob shape still hold. The trigger-count self-heal in `createSearchIndex` (rebuilds when the expected triggers are missing) mitigates PowerSync dropping/recreating those tables at runtime, but not a shape change; bump `searchIndexVersion` to force a rebuild when the registry or FTS schema changes.
+
 ## Reconciled defaults and version bumps
 
 Reconciled default tables ship a monotonic `defaults<X>Version` constant next to the defaults array. Reconciliation uses it as the ordering signal so multi-device sync groups converge without ping-ponging (see THU-637, extended to the other reconciled tables in THU-677): a device only overwrites an existing row when its defaults version is strictly newer than the highest ever applied on this account.
 
 Files that ship a version constant today:
+
 - `shared/defaults/models.ts` — `defaultModelsVersion`
-- `src/defaults/modes.ts` — `defaultModesVersion`
 - `src/defaults/tasks.ts` — `defaultTasksVersion`
 - `src/defaults/skills.ts` — `defaultSkillsVersion`
 - `src/defaults/settings.ts` — `defaultSettingsVersion`
 
 `src/defaults/model-profiles.ts` is also reconciled but does not carry its own version — profiles ride the models gate (`insertMissing: true`, `canOverwrite: modelsGate.canOverwrite`), so bumping `defaultModelsVersion` covers profile changes too.
 
-**When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`, `src/defaults/modes.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
+**When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`, `src/defaults/skills.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
 
 ## CORS and API headers
 
@@ -133,11 +140,25 @@ If you ever need a browser-readable response header in cross-origin code, you mu
 The project overrides Tailwind's CSS theme variables in `/src/index.css` `:root` with responsive mobile/desktop values that switch at the 768px breakpoint. Use standard Tailwind classes — **do NOT** use `var()` syntax for properties that have Tailwind equivalents.
 
 **Standard Tailwind classes (responsive via theme overrides):**
-- Border radius: `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`
+
+- Border radius: `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`, `rounded-3xl`
 - Spacing: Use standard Tailwind spacing (`px-2`, `px-3`, `py-1.5`, `gap-2`, etc.)
 
+**Border-radius tiers (concentric — pick by nesting depth, not by taste):**
+
+- `rounded-md` — **inner**: elements nested inside a rounded parent (menu/list items, chips-in-a-card, thumbnails, skeletons, small toolbar controls)
+- `rounded-lg` — **default**: standalone atoms (buttons, inputs, textareas, select triggers, badges, standalone chips/rows)
+- `rounded-xl` — **container**: surfaces that wrap other content (cards, alerts, popovers, dropdown/select/menu panels, hover-cards)
+- `rounded-2xl` — **hero**: blocking modals/dialogs/sheets and chat message bubbles
+- `rounded-3xl` — **marquee**: the chat composer only
+- `rounded-full` pills/avatars/dots · `rounded-none` flush edges
+
+Corners step **down** as you nest (outer radius − padding ≈ inner radius): an `xl` panel with `p-1` holds `md`/`lg` children. Never hardcode px (`rounded-[12px]`), and avoid bare `rounded` and `rounded-xs` (no responsive theme override) — all three break the responsive mobile→desktop step-down. The `ui/` primitives already encode these tiers; inherit from them rather than overriding.
+
 **Custom CSS variables (no Tailwind equivalent — use `var()` syntax):**
+
 - Text: `text-[length:var(--font-size-body)]`, `text-[length:var(--font-size-sm)]`, `text-[length:var(--font-size-xs)]`
-- Heights: `h-[var(--touch-height-default)]`, `h-[var(--touch-height-sm)]`, `h-[var(--touch-height-lg)]`, `h-[var(--touch-height-xl)]`
+- Heights: `h-[var(--touch-height-default)]`, `h-[var(--touch-height-sm)]`, `h-[var(--touch-height-lg)]`, `h-[var(--touch-height-xl)]`, and `h-[var(--touch-height-control)]` (prompt-area controls)
 - Icons: `size-[var(--icon-size-default)]`, `size-[var(--icon-size-sm)]`
 - Minimum heights: `min-h-[var(--min-touch-height)]`
+- Composer-control radius: `rounded-[var(--radius-control)]` — the one sanctioned `rounded-[var()]` exception, sized between `lg` and `xl` for the compact prompt-area controls (see the rationale in `src/index.css`). Everything else uses the named tiers above.

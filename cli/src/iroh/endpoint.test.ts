@@ -14,10 +14,10 @@ import type { EndpointBuilder, RelayMode } from '@number0/iroh'
 import { EndpointAddr, EndpointId, EndpointTicket, SecretKey } from '@number0/iroh'
 import { configureTransport, relayUrlOverride, resolveTarget } from './endpoint.ts'
 
-const RELAY_ENV = 'THUNDERBOLT_IROH_RELAY_URL'
+const relayEnv = 'THUNDERBOLT_IROH_RELAY_URL'
 
 afterEach(() => {
-  delete process.env[RELAY_ENV]
+  delete process.env[relayEnv]
 })
 
 describe('relayUrlOverride', () => {
@@ -26,12 +26,12 @@ describe('relayUrlOverride', () => {
   })
 
   it('is undefined when the env var is empty or whitespace', () => {
-    expect(relayUrlOverride({ [RELAY_ENV]: '' })).toBeUndefined()
-    expect(relayUrlOverride({ [RELAY_ENV]: '   ' })).toBeUndefined()
+    expect(relayUrlOverride({ [relayEnv]: '' })).toBeUndefined()
+    expect(relayUrlOverride({ [relayEnv]: '   ' })).toBeUndefined()
   })
 
   it('returns the trimmed url when the env var is set', () => {
-    expect(relayUrlOverride({ [RELAY_ENV]: '  wss://relay.example  ' })).toBe('wss://relay.example')
+    expect(relayUrlOverride({ [relayEnv]: '  wss://relay.example  ' })).toBe('wss://relay.example')
   })
 })
 
@@ -59,7 +59,7 @@ describe('configureTransport', () => {
   })
 
   it('threads the custom relay url through to the builder when the env var is set', () => {
-    process.env[RELAY_ENV] = 'wss://relay.example'
+    process.env[relayEnv] = 'wss://relay.example'
     const builder = makeBuilder()
     const cfg = makeConfigurator()
     configureTransport(builder, cfg)
@@ -72,9 +72,7 @@ describe('configureTransport', () => {
 describe('resolveTarget — ticket vs bare NodeId', () => {
   const nodeId = SecretKey.generate().public().toString()
   const relayUrl = 'https://relay.example./'
-  const ticket = EndpointTicket.fromAddr(
-    new EndpointAddr(EndpointId.fromString(nodeId), relayUrl, []),
-  ).toString()
+  const ticket = EndpointTicket.fromAddr(new EndpointAddr(EndpointId.fromString(nodeId), relayUrl, [])).toString()
 
   it('resolves a bare NodeId to an addr for that node with no relay (relies on n0 discovery)', () => {
     const addr = resolveTarget(nodeId)

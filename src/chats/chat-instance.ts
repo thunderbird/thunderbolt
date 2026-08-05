@@ -3,32 +3,48 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { connectToAgent as defaultConnectToAgent } from '@/acp'
-import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
+import {
+  getOrConnectAdapter as defaultGetOrConnectAdapter,
+  wakeAdapterReconnect as defaultWakeAdapterReconnect,
+} from '@/acp/adapter-cache'
 import type { AcpCommand, SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
 import { useAgentCommandsStore } from '@/acp/agent-commands-store'
+import {
+  createTurnBudget as defaultCreateTurnBudget,
+  createTurnBudgetExhaustedError,
+  type TurnBudget,
+} from '@/ai/retry-budget'
+import { createWebToolBudget, resolveWebToolIntent, type WebToolBudget } from '@/ai/web-tool-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
-import { getErrorRetryable, isContentRejectionError, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
+import {
+  getChatErrorKind,
+  getErrorRetryable,
+  isContentRejectionError,
+  isContextOverflowError,
+  isRateLimitError,
+} from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
-import { DefaultChatTransport } from 'ai'
+import { DefaultChatTransport, type ChatInit } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 export const maxRetries = 3
+const baseRetryDelayMs = 2000
 
 /**
  * Calculate retry delay with exponential backoff and jitter.
  * Jitter prevents synchronized retries from overwhelming servers.
  */
-const getRetryDelay = (attempt: number) => 2000 * attempt * (0.5 + Math.random())
+const getRetryDelay = (attempt: number) => baseRetryDelayMs * 2 ** (attempt - 1) * (0.5 + Math.random())
 
 /** Bridge an ACP `requestPermission` call to the chat-store dialog flow.
  *  Auto-approves remembered allowances; otherwise stashes the request until
@@ -55,10 +71,10 @@ const requestPermissionViaStore = (
  *  is the source of truth for ACP-side mode and config option state, so a
  *  mode/config emit always wins over a stale optimistic UI update.
  *
- *  This branch ships the wire but no UI surface reads it yet — the local
- *  mode selector continues to use `selectedMode` from the user's mode list.
- *  When a future PR adds ACP-mode UI it will subscribe to `agentSessionState`
- *  populated here. */
+ *  This branch ships the wire but no UI surface reads it yet — when a future
+ *  PR adds ACP-mode UI it will subscribe to `agentSessionState` populated
+ *  here. (ACP session modes are an agent-protocol concept, unrelated to the
+ *  removed local chat-mode picker.) */
 /** Build the agent-level commands sink wired into the ACP connection. Stashes
  *  the agent's advertised commands so the chat input's slash menu can surface
  *  them (badged with the agent name). Keyed by agent — they're agent-level, so
@@ -89,10 +105,15 @@ export type CreateChatInstanceDeps = {
   updateChatThread?: typeof defaultUpdateChatThread
   getDb?: typeof defaultGetDb
   getAllSkills?: typeof defaultGetAllSkills
+  createChat?: (init: ChatInit<ThunderboltUIMessage>) => Chat<ThunderboltUIMessage>
+  createTurnBudget?: typeof defaultCreateTurnBudget
+  wakeAdapterReconnect?: typeof defaultWakeAdapterReconnect
 }
 
 export type AgentRoutingState = {
   regenerationRevision?: number
+  webToolBudgetRevision?: number
+  getTurnBudget?: () => TurnBudget
 }
 
 /**
@@ -127,8 +148,29 @@ export const createAgentRoutingFetch = (
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
   const getAllSkills = deps.getAllSkills ?? defaultGetAllSkills
+  const getTurnBudget =
+    routingState.getTurnBudget ??
+    (() => {
+      const turnBudget = (deps.createTurnBudget ?? defaultCreateTurnBudget)()
+      return () => turnBudget
+    })()
 
   let routedAgentId: string | null = null
+  let webToolBudgetState: { key: string; budget: WebToolBudget } | undefined
+
+  const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
+    const lastUserMessage = messages.findLast((message) => message.role === 'user')
+    if (!lastUserMessage) {
+      return undefined
+    }
+    const key = `${lastUserMessage.id}#${routingState.webToolBudgetRevision ?? 0}`
+    if (webToolBudgetState?.key === key) {
+      return webToolBudgetState.budget
+    }
+    const budget = createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages)))
+    webToolBudgetState = { key, budget }
+    return budget
+  }
 
   /** Resolve user-skill (`/slug`) instructions from the latest user message, so
    *  ACP agents can receive them in the prompt (the built-in pipeline injects
@@ -169,7 +211,7 @@ export const createAgentRoutingFetch = (
         throw new Error('No session found')
       }
 
-      const { chatThread, selectedAgent, selectedMode, selectedModel } = session
+      const { chatThread, selectedAgent, selectedModel } = session
 
       // Save the user message before invoking the adapter. This serves three
       // purposes that previously only the built-in pipeline got for free:
@@ -181,8 +223,9 @@ export const createAgentRoutingFetch = (
       //      never be generated.
       //   3. Keeps message ordering consistent: the user turn is durable
       //      before the assistant stream starts.
-      const requestBody = JSON.parse(init.body as string) as { messages: ThunderboltUIMessage[] }
-      await saveMessages({ id, messages: requestBody.messages })
+      const requestBody = JSON.parse(init.body as string) as { messages?: ThunderboltUIMessage[] }
+      const requestMessages = requestBody.messages ?? []
+      await saveMessages({ id, messages: requestMessages })
 
       // Persist by `id`, not `chatThread.id`: on a brand-new chat the session's
       // `chatThread` snapshot is still `null` here (PowerSync hasn't re-hydrated
@@ -220,23 +263,29 @@ export const createAgentRoutingFetch = (
       // agents we resolve here and fold them into the prompt via the adapter.
       const skillInstructions = isBuiltInAgent(selectedAgent)
         ? undefined
-        : await resolveAcpSkillInstructions(requestBody.messages)
+        : await resolveAcpSkillInstructions(requestMessages)
       // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
       const requestPermission = isBuiltInAgent(selectedAgent)
         ? undefined
         : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
+
+      const turnBudget = getTurnBudget().consumer
+      if (!turnBudget.tryConsumeRequest()) {
+        throw createTurnBudgetExhaustedError()
+      }
 
       return adapter.fetch(init, {
         threadId: id,
         chatThread,
         acpSessionId: chatThread?.acpSessionId ?? null,
         saveMessages,
-        selectedMode,
         selectedModel,
         mcpClients,
         reconnectClient,
         httpClient,
         getProxyFetch,
+        turnBudget,
+        webToolBudget: getWebToolBudget(requestMessages),
         regenerationRevision: routingState.regenerationRevision ?? 0,
         skillInstructions,
         onAcpSessionId: persistAcpSessionId,
@@ -250,6 +299,11 @@ export const createAgentRoutingFetch = (
   )
 }
 
+/**
+ * Create one chat instance with retry state and request budget scoped to its
+ * closure. New, successful, and aborted turns replace the budget while
+ * automatic retries preserve it.
+ */
 export const createChatInstance = (
   id: string,
   messages: ThunderboltUIMessage[],
@@ -258,14 +312,44 @@ export const createChatInstance = (
   getProxyFetch: () => FetchFn,
   deps: CreateChatInstanceDeps = {},
 ) => {
-  const routingState: AgentRoutingState = { regenerationRevision: 0 }
+  const createTurnBudget = deps.createTurnBudget ?? defaultCreateTurnBudget
+  const wakeAdapterReconnect = deps.wakeAdapterReconnect ?? defaultWakeAdapterReconnect
+  let turnBudget = createTurnBudget()
+  const routingState: AgentRoutingState = {
+    regenerationRevision: 0,
+    webToolBudgetRevision: 0,
+    getTurnBudget: () => turnBudget,
+  }
   const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
+  const createChat = deps.createChat ?? ((init: ChatInit<ThunderboltUIMessage>) => new Chat(init))
 
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
   let lastError: Error | null = null
 
-  const instance = new Chat<ThunderboltUIMessage>({
+  /** Clear retry state and replace the completed turn's request budget. */
+  const resetRetryStateForNewTurn = () => {
+    if (retryTimeout) {
+      clearTimeout(retryTimeout)
+      retryTimeout = null
+    }
+    turnBudget = createTurnBudget()
+    routingState.webToolBudgetRevision = (routingState.webToolBudgetRevision ?? 0) + 1
+    retryCount = 0
+    lastError = null
+    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+  }
+
+  /** Stop retrying this turn and record why it stopped. */
+  const markRetriesExhausted = () => {
+    trackEvent('chat_retries_exhausted', {
+      reason: getChatErrorKind(lastError) ?? 'unknown',
+      attempts: retryCount,
+    })
+    useChatStore.getState().updateSession(id, { retriesExhausted: true })
+  }
+
+  const instance = createChat({
     id,
     messages,
     transport: new DefaultChatTransport({ fetch: customFetch }),
@@ -274,14 +358,7 @@ export const createChatInstance = (
     sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
       if (isAbort) {
-        // Clear any pending retry timer and reset retry state when aborted
-        if (retryTimeout) {
-          clearTimeout(retryTimeout)
-          retryTimeout = null
-        }
-        retryCount = 0
-        lastError = null
-        useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+        resetRetryStateForNewTurn()
 
         // Persist whatever streamed before the user hit Stop. Streaming partial
         // saves are throttled and their pending trailing write is cancelled the
@@ -297,9 +374,10 @@ export const createChatInstance = (
 
       // Handle successful responses: message exists, no error, and has parts
       if (!isError && message && message.parts?.length) {
-        retryCount = 0
-        lastError = null
-        useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+        if (retryCount > 0) {
+          trackEvent('chat_retry_success', { attempts: retryCount })
+        }
+        resetRetryStateForNewTurn()
 
         const { sessions } = useChatStore.getState()
 
@@ -320,10 +398,17 @@ export const createChatInstance = (
         return
       }
 
+      // A transport loss may have interrupted the turn after the agent performed
+      // side effects. Only the user may choose to submit it again.
+      if (getChatErrorKind(lastError) === 'connection-lost') {
+        markRetriesExhausted()
+        return
+      }
+
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
       if (isRateLimitError(lastError)) {
+        markRetriesExhausted()
         lastError = null
-        useChatStore.getState().updateSession(id, { retriesExhausted: true })
         return
       }
 
@@ -344,16 +429,25 @@ export const createChatInstance = (
         isContentRejectionError(lastError) ||
         getErrorRetryable(lastError) === false
       ) {
-        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+        markRetriesExhausted()
         return
       }
 
       if (retryCount < maxRetries) {
+        if (turnBudget.probe.isExhausted) {
+          markRetriesExhausted()
+          return
+        }
+
         retryCount++
         useChatStore.getState().updateSession(id, { retryCount })
         console.info(`Auto-retrying (${retryCount}/${maxRetries})...`)
 
-        trackEvent('chat_auto_retry', { attempt: retryCount, max_retries: maxRetries })
+        trackEvent('chat_auto_retry', {
+          attempt: retryCount,
+          max_retries: maxRetries,
+          reason: getChatErrorKind(lastError) ?? 'unknown',
+        })
 
         retryTimeout = setTimeout(() => {
           retryTimeout = null
@@ -363,8 +457,7 @@ export const createChatInstance = (
           if (!sessions.has(id) || currentSessionId !== id) {
             // Reset retry state when bailing out due to session switch, so the UI
             // doesn't show "Retrying..." when the user switches back to this session.
-            retryCount = 0
-            useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+            resetRetryStateForNewTurn()
             return
           }
           regenerateResponse().catch((err) => {
@@ -376,7 +469,7 @@ export const createChatInstance = (
           })
         }, getRetryDelay(retryCount))
       } else {
-        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+        markRetriesExhausted()
       }
     },
     // Retry logic lives in onFinish (the SDK's finally block), not here.
@@ -401,13 +494,11 @@ export const createChatInstance = (
 
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {
-    if (retryTimeout) {
-      clearTimeout(retryTimeout)
-      retryTimeout = null
+    resetRetryStateForNewTurn()
+    const agentId = useChatStore.getState().sessions.get(id)?.selectedAgent.id
+    if (agentId) {
+      wakeAdapterReconnect(agentId)
     }
-    retryCount = 0
-    lastError = null
-    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
     return regenerateResponse()
   }
 
@@ -416,13 +507,7 @@ export const createChatInstance = (
   // Override the sendMessage method to check if the model is available for the chat thread
   instance.sendMessage = async function (message, options) {
     // Cancel any pending auto-retry and reset error state for the new message
-    if (retryTimeout) {
-      clearTimeout(retryTimeout)
-      retryTimeout = null
-    }
-    retryCount = 0
-    lastError = null
-    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+    resetRetryStateForNewTurn()
 
     const { sessions } = useChatStore.getState()
 

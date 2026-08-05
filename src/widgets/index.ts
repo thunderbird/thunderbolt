@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Central registry for all widget components and their AI instructions
+ * Central registry for all widget components
  *
  * To add a new widget:
  * 1. Create a new directory under src/widgets/ with:
- *    - instructions.ts (AI prompt instructions)
+ *    - instructions.ts (only when a seeded skill supplies model-facing instructions)
  *    - schema.ts (Zod schema + parse function)
  *    - [widget-name].tsx (React component)
  *    - [widget-name].stories.tsx (Storybook stories - optional)
@@ -69,18 +69,6 @@ export const widgetRegistry = [
     module: ask,
   },
 ] as const
-
-/**
- * Aggregated instructions for all widgets to be included in the AI system prompt
- */
-export const widgetPrompts = [
-  '# Widget Components',
-  'Use these XML-like tags in your response to show rich widgets:',
-  '',
-  ...widgetRegistry.flatMap((widget) => [widget.module.instructions, '']),
-]
-  .join('\n')
-  .trim()
 
 /**
  * Widget name type - auto-generated from registry

@@ -159,10 +159,13 @@ export type EventType =
   | 'chat_send_prompt_overflow'
   | 'chat_receive_reply'
   | 'chat_auto_retry'
+  | 'chat_retry_success'
+  | 'chat_retries_exhausted'
   | 'chat_select'
   | 'chat_new_clicked'
   | 'chat_delete'
   | 'chat_clear_all'
+  | 'tinfoil_attestation'
   // Model & Settings
   | 'model_select'
   | 'mode_select'
@@ -211,6 +214,9 @@ export type EventType =
   | 'ui_shortcut_use'
   | 'ui_sidebar_open'
   | 'ui_sidebar_close'
+  | 'search_palette_open'
+  | 'search_result_select'
+  | 'search_command_run'
   // Anonymous session & promotion
   | 'anonymous_user_promoted'
   // Sync Diagnostics

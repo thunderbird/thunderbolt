@@ -19,6 +19,8 @@ export const cn = (...inputs: ClassValue[]) => {
   return twMerge(clsx(inputs))
 }
 
+export { isRecord } from '@shared/lib/is-record'
+
 export const uuidv7ToDate = (uuid: string) => {
   return new Date(parseInt(uuid.slice(0, 8), 16) * 1000)
 }

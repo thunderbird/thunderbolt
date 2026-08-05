@@ -33,7 +33,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator)
+  if (originalNavigator) {
+    Object.defineProperty(globalThis, 'navigator', originalNavigator)
+  }
 })
 
 describe('mountInMemoryFs', () => {

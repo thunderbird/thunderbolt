@@ -132,7 +132,11 @@ export const MemoizedMarkdown = memo(({ content, id, components }: MemoizedMarkd
           '--tw-prose-bold': 'inherit',
           '--tw-prose-counters': 'inherit',
           '--tw-prose-bullets': 'inherit',
-          '--tw-prose-hr': 'inherit',
+          // Subtle divider — full-strength text color (`inherit`) makes <hr>s
+          // read as heavy rules; use the theme's hairline border tone instead.
+          // Light borders are faint against the white page, so light mode
+          // keeps the border at full strength while dark dims it.
+          '--tw-prose-hr': 'var(--color-border)',
           '--tw-prose-quotes': 'inherit',
           '--tw-prose-quote-borders': 'inherit',
           '--tw-prose-captions': 'inherit',
@@ -148,7 +152,7 @@ export const MemoizedMarkdown = memo(({ content, id, components }: MemoizedMarkd
           '--tw-prose-invert-bold': 'inherit',
           '--tw-prose-invert-counters': 'inherit',
           '--tw-prose-invert-bullets': 'inherit',
-          '--tw-prose-invert-hr': 'inherit',
+          '--tw-prose-invert-hr': 'color-mix(in oklab, var(--color-border) 60%, transparent)',
           '--tw-prose-invert-quotes': 'inherit',
           '--tw-prose-invert-quote-borders': 'inherit',
           '--tw-prose-invert-captions': 'inherit',

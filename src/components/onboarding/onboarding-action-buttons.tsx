@@ -45,7 +45,11 @@ export const OnboardingActionButtons = ({
           </Button>
         )}
         {showContinue && onContinue && (
-          <Button onClick={onContinue} disabled={continueDisabled} className={`${!showBack && !showSkip && 'w-full'}`}>
+          <Button
+            onClick={onContinue}
+            disabled={continueDisabled}
+            className={!showBack && !showSkip ? 'w-full' : undefined}
+          >
             {continueText}
           </Button>
         )}

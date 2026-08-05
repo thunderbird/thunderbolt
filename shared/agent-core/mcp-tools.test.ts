@@ -123,7 +123,7 @@ describe('toPiAgentTools — execute routing + result mapping', () => {
   })
 
   it('uses the final chunk of an async-iterable (streaming) execute result', async () => {
-    async function* stream() {
+    const stream = async function* () {
       yield { partial: 1 }
       yield { partial: 2 }
       yield { final: true }
@@ -135,7 +135,7 @@ describe('toPiAgentTools — execute routing + result mapping', () => {
   })
 
   it('treats an EMPTY async-iterable result as a "null" output (no final chunk)', async () => {
-    async function* empty() {
+    const empty = async function* () {
       // yields nothing
     }
     const [pi] = await toPiAgentTools({ t: makeTool({ execute: () => empty() as ReturnType<ToolExecute> }) })

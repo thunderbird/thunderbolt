@@ -153,6 +153,7 @@ describe('Utils - Streaming', () => {
 
     it('should handle streaming errors gracefully', async () => {
       const mockError = new Error('Stream error')
+      const onError = jest.fn()
       const mockCompletion = {
         async *[Symbol.asyncIterator]() {
           yield { id: 'chunk1', choices: [{ delta: { content: 'Hello' } }] }
@@ -160,7 +161,7 @@ describe('Utils - Streaming', () => {
         },
       }
 
-      const stream = createSSEStreamFromCompletion(mockCompletion as any)
+      const stream = createSSEStreamFromCompletion(mockCompletion as any, { onError })
 
       // Stream should error when trying to read
       const reader = stream.getReader()
@@ -174,6 +175,7 @@ describe('Utils - Streaming', () => {
       }).toThrow('Stream error')
 
       expect(mockConsoleError).toHaveBeenCalledWith('OpenAI streaming error:', mockError)
+      expect(onError).toHaveBeenCalledWith(mockError)
     })
 
     it('should properly encode complex JSON data', async () => {
@@ -225,6 +227,7 @@ describe('Utils - Streaming', () => {
 
     it('should handle client disconnection gracefully', async () => {
       const mockAbort = jest.fn()
+      const onError = jest.fn()
       const mockChunks = [
         { id: 'chunk1', choices: [{ delta: { content: 'First' } }] },
         { id: 'chunk2', choices: [{ delta: { content: 'Second' } }] },
@@ -236,7 +239,7 @@ describe('Utils - Streaming', () => {
         controller: { abort: mockAbort },
       }
 
-      const stream = createSSEStreamFromCompletion(mockCompletion as any)
+      const stream = createSSEStreamFromCompletion(mockCompletion as any, { onError })
       const reader = stream.getReader()
 
       // Read first chunk
@@ -247,6 +250,7 @@ describe('Utils - Streaming', () => {
 
       // Verify abort was called on the OpenAI stream
       expect(mockAbort).toHaveBeenCalled()
+      expect(onError).not.toHaveBeenCalled()
       expect(mockConsoleError).not.toHaveBeenCalled()
     })
   })

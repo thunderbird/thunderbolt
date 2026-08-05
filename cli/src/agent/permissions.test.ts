@@ -65,6 +65,20 @@ describe('attachPermissionGate — bypass + passthrough', () => {
     expect(result).toBeUndefined()
     expect(seen).toHaveLength(0)
   })
+
+  test('webfetch runs unguarded while bash remains gated', async () => {
+    const { harness, getHandler } = fakeHarness()
+    const { ask, seen } = constantAsk('deny')
+    attachPermissionGate(harness, { yolo: false, ask })
+    const handler = getHandler()!
+
+    expect(await handler(call('webfetch', { url: 'https://example.com' }))).toBeUndefined()
+    expect(await handler(call('bash', { command: 'curl https://example.com' }))).toEqual({
+      block: true,
+      reason: 'User denied bash',
+    })
+    expect(seen.map((request) => request.toolName)).toEqual(['bash'])
+  })
 })
 
 describe('attachPermissionGate — decisions', () => {

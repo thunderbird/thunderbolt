@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 
 describe('buildSystemPrompt', () => {
@@ -28,8 +29,39 @@ describe('buildSystemPrompt', () => {
     expect(buildSystemPrompt({ cwd: '/work' })).toContain('- bash')
 
     const jailedPrompt = buildSystemPrompt({ cwd: '/work', bashEnabled: false })
-    expect(jailedPrompt).toContain('three filesystem tools')
+    expect(jailedPrompt).toContain('four tools')
     expect(jailedPrompt).not.toContain('- bash')
     expect(jailedPrompt).not.toContain('Prefer bash')
+  })
+
+  test('describes web-access priority and reserves curl for permission-gated fallback', () => {
+    const prompt = buildSystemPrompt({ cwd: '/work' })
+    const ladder = prompt.slice(prompt.indexOf('Web access priority:'))
+    const search = ladder.indexOf('web_search')
+    const fetch = ladder.indexOf('webfetch')
+    const curl = ladder.indexOf('curl')
+
+    expect(search).toBeGreaterThan(-1)
+    expect(fetch).toBeGreaterThan(search)
+    expect(curl).toBeGreaterThan(fetch)
+    expect(ladder.slice(search, curl)).toMatch(/when available/i)
+    expect(ladder.slice(curl)).toMatch(/last resort/i)
+    expect(ladder.slice(curl)).toMatch(/permission/i)
+    expect(prompt).not.toMatch(/no web access/i)
+  })
+
+  test('lists available skills without full instruction bodies', () => {
+    const skills: SkillDefinition[] = [
+      {
+        name: 'daily-brief',
+        description: 'Build a concise daily rundown.',
+        instruction: 'Gather current weather and calendar details.',
+      },
+    ]
+    const prompt = buildSystemPrompt({ cwd: '/work', skills })
+
+    expect(prompt).toContain('- skill')
+    expect(prompt).toContain('- daily-brief: Build a concise daily rundown.')
+    expect(prompt).not.toContain('Gather current weather')
   })
 })

@@ -3,9 +3,25 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { maxRetries } from '@/chats/chat-instance'
-import { isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
+import { type ChatErrorKind, getChatErrorKind, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
 import { Loader2 } from 'lucide-react'
 import { memo } from 'react'
+
+const defaultChatErrorMessage = 'Something went wrong. Please try again.'
+const causeSpecificErrorMessages: Partial<Record<ChatErrorKind, string>> = {
+  attestation: "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment.",
+  timeout: 'The AI provider took too long to respond. Try again.',
+  provider: 'The AI provider is having trouble right now. Try again in a moment.',
+  network: 'Connection problem. Check your internet and try again.',
+  'connection-lost':
+    'The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed.',
+}
+
+/** Resolve final chat error copy after automatic retries stop. */
+const getFinalChatErrorMessage = (error?: Error | null): string => {
+  const kind = getChatErrorKind(error)
+  return (kind && causeSpecificErrorMessages[kind]) || defaultChatErrorMessage
+}
 
 type ErrorMessageProps = {
   retryCount: number
@@ -24,7 +40,7 @@ export const ErrorMessage = memo(
     // Show rate limit message immediately — don't auto-retry since the server told us to slow down
     if (rateLimited) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
+        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
           <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
             Too many requests. Please try again in a moment.
           </p>
@@ -36,7 +52,7 @@ export const ErrorMessage = memo(
     // request rather than show a generic error.
     if (isContextOverflowError(error)) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
+        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
           <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
             This conversation is too large for the model&apos;s context window. Start a new chat, remove some
             attachments, or switch to a model with a larger context window.
@@ -50,7 +66,7 @@ export const ErrorMessage = memo(
     // before onFinish has scheduled a retry — in both cases show the Retry button.
     if (retryCount > 0 && !retriesExhausted) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
+        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
           <div className="flex items-center gap-2">
             <Loader2 className="size-[var(--icon-size-sm)] text-amber-500 animate-spin" />
             <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
@@ -62,12 +78,12 @@ export const ErrorMessage = memo(
     }
 
     return (
-      <div className="px-4 py-3 rounded-2xl bg-destructive/10 border border-destructive/20 mr-auto w-full mt-2">
+      <div className="px-4 py-3 rounded-2xl bg-destructive/10 mr-auto w-full mt-2">
         <div className="flex items-center justify-between gap-2 min-h-[var(--touch-height-sm)]">
           <p className="text-destructive/80 text-[length:var(--font-size-body)]">
             {deliveryExhausted
               ? "This model couldn't read the attached file. Try a different model."
-              : 'Something went wrong. Please try again.'}
+              : getFinalChatErrorMessage(error)}
           </p>
           <div className="flex shrink-0 items-center gap-2">
             {/* No Retry when delivery is exhausted — re-running identical input fails

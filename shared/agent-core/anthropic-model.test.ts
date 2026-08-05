@@ -21,7 +21,7 @@ import { buildAnthropicModel, isKnownAnthropicModel, type AgentFetch } from './a
 
 /** Minimal well-formed Anthropic messages SSE: a start then an immediate stop, so
  *  the SDK parses a clean stream rather than erroring mid-iteration. */
-const SSE = [
+const sse = [
   'event: message_start',
   'data: {"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"x","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}',
   '',
@@ -31,7 +31,7 @@ const SSE = [
   '',
 ].join('\n')
 
-const CONTEXT: Context = { messages: [{ role: 'user', content: 'hi', timestamp: 0 }] }
+const context: Context = { messages: [{ role: 'user', content: 'hi', timestamp: 0 }] }
 
 type CapturedBody = {
   max_tokens?: number
@@ -56,16 +56,20 @@ const drive = async (
     injectedCalls += 1
     headers = init?.headers ? new Headers(init.headers) : null
     body = init?.body ? (JSON.parse(init.body as string) as CapturedBody) : null
-    return new Response(SSE, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })
   }
 
   const { models, model } = buildAnthropicModel({ apiKey: 'test-key', fetch: injectedFetch, modelId })
   const provider = models.getProvider('anthropic')
-  if (!provider) throw new Error('anthropic provider not registered')
+  if (!provider) {
+    throw new Error('anthropic provider not registered')
+  }
 
-  const stream = provider[entry](model, CONTEXT, options)
+  const stream = provider[entry](model, context, options)
   try {
-    for await (const event of stream) void event
+    for await (const event of stream) {
+      void event
+    }
   } catch {
     // Stream-parse hiccups are irrelevant; the captured request body is the contract.
   }

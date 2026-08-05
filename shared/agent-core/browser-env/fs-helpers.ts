@@ -40,7 +40,9 @@ const isErrnoError = (error: unknown): error is { code: string; message: string 
  * @returns a {@link FileError} carrying the mapped code and the original cause
  */
 export const toFileError = (error: unknown, path?: string): FileError => {
-  if (error instanceof FileError) return error
+  if (error instanceof FileError) {
+    return error
+  }
   const cause = toError(error)
   if (isErrnoError(error)) {
     switch (error.code) {
@@ -63,9 +65,15 @@ export const toFileError = (error: unknown, path?: string): FileError => {
 }
 
 const fileKindFrom = (stat: ZenStats): FileKind | undefined => {
-  if (stat.isFile()) return 'file'
-  if (stat.isDirectory()) return 'directory'
-  if (stat.isSymbolicLink()) return 'symlink'
+  if (stat.isFile()) {
+    return 'file'
+  }
+  if (stat.isDirectory()) {
+    return 'directory'
+  }
+  if (stat.isSymbolicLink()) {
+    return 'symlink'
+  }
   return undefined
 }
 
@@ -79,7 +87,9 @@ const fileKindFrom = (stat: ZenStats): FileKind | undefined => {
  */
 export const fileInfoFrom = (path: string, stat: ZenStats): Result<FileInfo, FileError> => {
   const kind = fileKindFrom(stat)
-  if (!kind) return err(new FileError('invalid', 'Unsupported file type', path))
+  if (!kind) {
+    return err(new FileError('invalid', 'Unsupported file type', path))
+  }
   return ok({ name: basename(path) || path, path, kind, size: stat.size, mtimeMs: stat.mtimeMs })
 }
 
@@ -101,8 +111,12 @@ export const abortedResult = (signal: AbortSignal | undefined, path: string): Re
  * @param text - the file contents to split
  */
 export const splitLines = (text: string): string[] => {
-  if (text === '') return []
+  if (text === '') {
+    return []
+  }
   const lines = text.split(/\r?\n/)
-  if (lines[lines.length - 1] === '') lines.pop()
+  if (lines[lines.length - 1] === '') {
+    lines.pop()
+  }
   return lines
 }

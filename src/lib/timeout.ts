@@ -22,3 +22,21 @@ export const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): 
     }
   })
 }
+
+/**
+ * Races a promise against a rejecting deadline and clears the deadline timer
+ * when either promise settles. Creates the timeout error only when needed.
+ */
+export const withDeadline = <T>(promise: Promise<T>, ms: number, createError: () => Error): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  const deadlinePromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(createError()), ms)
+  })
+
+  return Promise.race([promise, deadlinePromise]).finally(() => {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
+    }
+  })
+}

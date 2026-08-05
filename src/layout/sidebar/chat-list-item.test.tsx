@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
-import { type ReactNode } from 'react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { useChat as useChat_default } from '@ai-sdk/react'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -19,35 +21,15 @@ import '@/test-utils/framer-motion-mock'
 // unrelated files under `--randomize` (see docs/development/testing.md).
 const useChatStub = (() => ({ status: 'ready' })) as unknown as typeof useChat_default
 
-// Mock Radix dropdown to render inline (avoids portal issues in tests)
-mock.module('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuItem: ({
-    children,
-    onClick,
-    ...props
-  }: {
-    children: ReactNode
-    onClick?: () => void
-    disabled?: boolean
-    className?: string
-  }) => (
-    <button onClick={onClick} {...props}>
-      {children}
-    </button>
-  ),
-}))
+const chatListItemWithProviders = (props: ChatListItemProps) => (
+  <SidebarProvider>
+    <TooltipProvider>
+      <ChatListItem {...props} useChat={useChatStub} />
+    </TooltipProvider>
+  </SidebarProvider>
+)
 
-const renderWithProviders = (props: ChatListItemProps) =>
-  render(
-    <SidebarProvider>
-      <TooltipProvider>
-        <ChatListItem {...props} useChat={useChatStub} />
-      </TooltipProvider>
-    </SidebarProvider>,
-  )
+const renderWithProviders = (props: ChatListItemProps) => render(chatListItemWithProviders(props))
 
 const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps => ({
   thread: { id: 'thread-1', title: 'My Chat', isEncrypted: 0 },
@@ -62,16 +44,75 @@ const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps 
   ...overrides,
 })
 
+afterEach(() => {
+  restoreViewport()
+})
+
 describe('ChatListItem', () => {
-  it('shows Rename and Delete options', () => {
+  it('shows Rename and Delete options in the right-click context menu', async () => {
     renderWithProviders(createProps())
-    expect(screen.getByText('Rename')).toBeInTheDocument()
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    expect(await waitForElement(() => screen.queryByText('Rename'))).toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
+  })
+
+  it('keeps the rename input focused after the mobile context menu closes', async () => {
+    forceMobileViewport()
+    renderWithProviders(createProps({ isMobile: true }))
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    const rename = await waitForElement(() => screen.queryByText('Rename'))
+    expect(screen.getByText('My Chat', { selector: '[data-slot="drawer-title"]' })).toBeInTheDocument()
+
+    fireEvent.click(rename)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByRole('textbox', { name: 'Chat name' })).toHaveFocus()
+  })
+
+  it('keeps the rename input focused after the desktop context menu closes', async () => {
+    renderWithProviders(createProps())
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    const rename = await waitForElement(() => screen.queryByText('Rename'))
+
+    fireEvent.click(rename)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByRole('textbox', { name: 'Chat name' })).toHaveFocus()
   })
 
   it('displays the chat title', () => {
     renderWithProviders(createProps())
     expect(screen.getByText('My Chat')).toBeInTheDocument()
+  })
+
+  it('shows an optimistic rename until the thread title updates', async () => {
+    const onRename = mock()
+    const props = createProps({ onRename })
+    const view = renderWithProviders(props)
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Rename')))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat name' }), { target: { value: 'Renamed Chat' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onRename).toHaveBeenCalledWith('thread-1', 'Renamed Chat')
+    expect(screen.getByText('Renamed Chat')).toBeInTheDocument()
+
+    view.rerender(
+      chatListItemWithProviders({
+        ...props,
+        thread: { ...props.thread, title: 'Server Title' },
+      }),
+    )
+    expect(screen.getByText('Server Title')).toBeInTheDocument()
+  })
+
+  it('hides the overflow menu on mobile', () => {
+    const { container } = renderWithProviders(createProps({ isMobile: true }))
+    expect(container.querySelector('svg')).toBeNull()
   })
 
   it('navigates when clicking the chat item', () => {

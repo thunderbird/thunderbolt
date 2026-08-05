@@ -6,7 +6,7 @@ import { OnboardingDialogWrapper } from './wrappers/OnboardingDialogWrapper'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 const meta = {
-  title: 'components/onboarding/onboarding-dialog',
+  title: 'Onboarding/OnboardingDialog',
   component: OnboardingDialogWrapper,
   parameters: {
     layout: 'fullscreen',

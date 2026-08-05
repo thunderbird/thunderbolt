@@ -4,14 +4,129 @@
 
 import { getSettings } from '@/config/settings'
 import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
+import { elapsedMs } from '@/utils/timing'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import OpenAI from 'openai'
 
 export type InferenceProvider = 'fireworks' | 'mistral' | 'anthropic'
 
-type InferenceClient = {
+export type InferenceClient = {
   client: OpenAI | PostHogOpenAI
   provider: InferenceProvider
+}
+
+export type InferenceUpstreamAttemptLog = {
+  event: 'inference_upstream_attempt'
+  provider: InferenceProvider
+  attempt: number
+  method: string
+  host: string
+  status: number | null
+  duration_ms: number
+  retry_after?: string
+  rate_limit_headers?: Record<string, string>
+}
+
+export type InferenceLogger = {
+  info: (context: InferenceUpstreamAttemptLog | object, message: string) => void
+}
+
+export type InferenceClientOptions = {
+  fetchFn?: typeof fetch
+  logger?: InferenceLogger
+  /** Monotonic clock used for upstream-attempt instrumentation. */
+  nowFn?: () => number
+}
+
+type InferenceFetchOptions = InferenceClientOptions & {
+  provider: InferenceProvider
+}
+
+export type InferenceAttemptTracker = {
+  attempts: number
+}
+
+const inferenceAttemptStorage = new AsyncLocalStorage<InferenceAttemptTracker>()
+
+/** Create request-local state used to count OpenAI SDK fetch attempts. */
+export const createInferenceAttemptTracker = (): InferenceAttemptTracker => ({ attempts: 0 })
+
+/** Run an inference SDK call with request-local attempt counting enabled. */
+export const runWithInferenceAttemptTracking = <T>(tracker: InferenceAttemptTracker, callback: () => T): T =>
+  inferenceAttemptStorage.run(tracker, callback)
+
+/** Read the one-based attempt index emitted by the OpenAI SDK. */
+const getAttemptIndex = (input: RequestInfo | URL, init?: RequestInit): number => {
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+  const retryCount = Number(headers.get('X-Stainless-Retry-Count') ?? 0)
+  return Number.isFinite(retryCount) ? retryCount + 1 : 1
+}
+
+/** Resolve the upstream HTTP method without inspecting request content. */
+const getRequestMethod = (input: RequestInfo | URL, init?: RequestInit): string =>
+  (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
+
+/** Resolve only the upstream hostname, excluding path, query, and credentials. */
+const getRequestHost = (input: RequestInfo | URL): string =>
+  new URL(input instanceof Request ? input.url : input.toString()).hostname
+
+/** Collect rate-limit diagnostics while preserving upstream header names. */
+const getRateLimitHeaders = (headers: Headers): Record<string, string> =>
+  Object.fromEntries([...headers.entries()].filter(([name]) => name.toLowerCase().startsWith('x-ratelimit-')))
+
+/** Emit one structured, body-free log entry for an upstream attempt. */
+const logUpstreamAttempt = (
+  logger: InferenceLogger | undefined,
+  context: Omit<InferenceUpstreamAttemptLog, 'event'>,
+) => {
+  logger?.info({ event: 'inference_upstream_attempt', ...context }, 'Inference upstream attempt')
+}
+
+/** Wrap fetch with safe, per-attempt upstream telemetry for OpenAI-compatible clients. */
+export const createInferenceFetch = ({
+  provider,
+  fetchFn = globalThis.fetch,
+  logger,
+  nowFn = () => performance.now(),
+}: InferenceFetchOptions): typeof fetch => {
+  const instrumentedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const attempt = getAttemptIndex(input, init)
+    const tracker = inferenceAttemptStorage.getStore()
+    if (tracker) {
+      tracker.attempts = Math.max(tracker.attempts, attempt)
+    }
+
+    const startedAt = nowFn()
+    const requestContext = {
+      provider,
+      attempt,
+      method: getRequestMethod(input, init),
+      host: getRequestHost(input),
+    }
+
+    try {
+      const response = await fetchFn(input, init)
+      const rateLimitHeaders = getRateLimitHeaders(response.headers)
+      const retryAfter = response.headers.get('retry-after')
+      logUpstreamAttempt(logger, {
+        ...requestContext,
+        status: response.status,
+        duration_ms: elapsedMs(startedAt, nowFn()),
+        ...(retryAfter === null ? {} : { retry_after: retryAfter }),
+        ...(Object.keys(rateLimitHeaders).length === 0 ? {} : { rate_limit_headers: rateLimitHeaders }),
+      })
+      return response
+    } catch (error) {
+      logUpstreamAttempt(logger, {
+        ...requestContext,
+        status: null,
+        duration_ms: elapsedMs(startedAt, nowFn()),
+      })
+      throw error
+    }
+  }
+  return instrumentedFetch as unknown as typeof fetch
 }
 
 /**
@@ -32,7 +147,8 @@ let anthropicClient: OpenAI | PostHogOpenAI | null = null
 /**
  * Get the Fireworks AI client
  */
-const getFireworksClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
+const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
+  const { fetchFn, logger, nowFn } = options
   // Don't use cache when fetchFn is provided (primarily for testing)
   if (fireworksClient && !fetchFn) {
     return fireworksClient
@@ -47,7 +163,8 @@ const getFireworksClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
   const params = {
     apiKey: settings.fireworksApiKey,
     baseURL: 'https://api.fireworks.ai/inference/v1',
-    ...(fetchFn && { fetch: fetchFn }),
+    fetch: createInferenceFetch({ provider: 'fireworks', fetchFn, logger, nowFn }),
+    // OpenAI SDK defaults to 2 retries; changing maxRetries is a follow-up decision after collecting attempt data.
   }
 
   const client = isPostHogConfigured()
@@ -68,7 +185,8 @@ const getFireworksClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
 /**
  * Get the Mistral AI client using OpenAI-compatible API
  */
-const getMistralClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
+const getMistralClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
+  const { fetchFn, logger, nowFn } = options
   if (mistralClient && !fetchFn) {
     return mistralClient
   }
@@ -82,7 +200,7 @@ const getMistralClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
   const params = {
     apiKey: settings.mistralApiKey,
     baseURL: 'https://api.mistral.ai/v1',
-    ...(fetchFn && { fetch: fetchFn }),
+    fetch: createInferenceFetch({ provider: 'mistral', fetchFn, logger, nowFn }),
   }
 
   const client = isPostHogConfigured()
@@ -102,7 +220,8 @@ const getMistralClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
 /**
  * Get the Anthropic AI client using OpenAI-compatible API
  */
-const getAnthropicClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
+const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
+  const { fetchFn, logger, nowFn } = options
   if (anthropicClient && !fetchFn) {
     return anthropicClient
   }
@@ -116,7 +235,7 @@ const getAnthropicClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
   const params = {
     apiKey: settings.anthropicApiKey,
     baseURL: 'https://api.anthropic.com/v1/',
-    ...(fetchFn && { fetch: fetchFn }),
+    fetch: createInferenceFetch({ provider: 'anthropic', fetchFn, logger, nowFn }),
   }
 
   const client = isPostHogConfigured()
@@ -137,11 +256,14 @@ const getAnthropicClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
  * Get the appropriate inference client based on provider
  * Clients are lazily initialized and reused across requests
  */
-export const getInferenceClient = (provider: InferenceProvider, fetchFn?: typeof fetch): InferenceClient => {
+export const getInferenceClient = (
+  provider: InferenceProvider,
+  options: InferenceClientOptions = {},
+): InferenceClient => {
   const clientMap: Record<InferenceProvider, () => OpenAI | PostHogOpenAI> = {
-    mistral: () => getMistralClient(fetchFn),
-    anthropic: () => getAnthropicClient(fetchFn),
-    fireworks: () => getFireworksClient(fetchFn),
+    mistral: () => getMistralClient(options),
+    anthropic: () => getAnthropicClient(options),
+    fireworks: () => getFireworksClient(options),
   }
 
   const client = clientMap[provider]()

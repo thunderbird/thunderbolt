@@ -58,10 +58,13 @@ jobs:
       # and the caller workflow gates this job behind a maintainer-approval
       # environment. The version step below reads package.json from the checkout
       # but routes the value through a $GITHUB_OUTPUT → env var, never interpolated
-      # into a shell with ${{ }} syntax.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      # into a shell with ${{ }} syntax. checkout v7 refuses fork refs under
+      # pull_request_target without the explicit opt-in below; it is safe here
+      # because of the sandboxing and approval gating described above.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.ref }}
+          allow-unsafe-pr-checkout: true
 
       - name: Resolve version
         id: version
@@ -81,7 +84,7 @@ jobs:
           fi
 
       - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -90,7 +93,7 @@ jobs:
       # -- Build and push Docker images --
 
       - name: Build and push frontend
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/frontend.Dockerfile
@@ -106,7 +109,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push backend
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/backend.Dockerfile
@@ -119,7 +122,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push postgres
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/postgres.Dockerfile
@@ -132,7 +135,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push keycloak
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/keycloak.Dockerfile
@@ -145,7 +148,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push powersync
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/powersync.Dockerfile
@@ -158,7 +161,7 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push marketing
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/marketing.Dockerfile

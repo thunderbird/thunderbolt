@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Button } from '@/components/ui/button'
-import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { SearchableMenu, searchableMenuRowClass, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
-import { ChevronDown, Globe, Plus, Server, Zap } from 'lucide-react'
-import { useMemo, useState, type ComponentType } from 'react'
+import { iconForAgent } from '@/components/agent-icon'
+import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
+import { ChevronDown } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 export type AgentSelectorProps = {
   selectedAgent: Agent
@@ -17,6 +18,11 @@ export type AgentSelectorProps = {
   onSelect: (agent: Agent) => void
   onAddAgent?: () => void
   disabled?: boolean
+  /** Collapses the trigger into a circular icon-only button (the mobile
+   *  header's top-right control, matching the sidebar toggle's muted circle).
+   *  The label and paddings transition, so toggling this mid-mount morphs the
+   *  pill smoothly instead of swapping shapes. */
+  collapsed?: boolean
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
 }
@@ -25,32 +31,31 @@ type AgentItemData = {
   agent: Agent
 }
 
-/** Visual icon for each agent flavor. Mirrors `agent-row.tsx` so list + selector
- *  stay perceptually consistent across Settings and the chat header. */
-const iconForAgent = (agent: Agent): ComponentType<{ className?: string }> => {
-  if (agent.type === 'built-in') {
-    return Zap
-  }
-  if (agent.isSystem === 1) {
-    return Server
-  }
-  return Globe
-}
-
 const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   const Icon = iconForAgent(agent)
   return {
     id: agent.id,
     label: agent.name,
-    description: agent.description ?? undefined,
-    icon: <Icon className="size-3.5 text-muted-foreground" />,
+    // The logo reads slightly smaller than the lucide glyphs at equal box
+    // size, so it gets a half-step bump.
+    icon: <Icon className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-4' : 'size-3.5')} />,
     data: { agent },
   }
 }
 
-/** Bucket agents by flavor for the dropdown. Order mirrors `composeAllAgents`:
- *  Built-in → System → Custom. Empty buckets are dropped so the menu stays tight. */
-export const categorizeAgents = (agents: Agent[]): SearchableMenuGroup<AgentItemData>[] => {
+/** Compact item renderer — label-only rows (no descriptions) at
+ *  `--font-size-body` (16px mobile / 14px desktop) so the menu stays tight. */
+const renderAgentItem = (item: SearchableMenuItem<AgentItemData>, isSelected: boolean) => (
+  <div className={cn(searchableMenuRowClass, isSelected ? 'bg-accent' : 'hover:bg-accent/50')}>
+    {item.icon && <span className="flex-shrink-0">{item.icon}</span>}
+    <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+  </div>
+)
+
+/** Flatten agents into one unlabeled list. Order mirrors `composeAllAgents`:
+ *  Built-in → System → Custom — no section headers, the flavors just read as
+ *  one continuous menu. */
+export const buildAgentItems = (agents: Agent[]): SearchableMenuItem<AgentItemData>[] => {
   const builtIn: SearchableMenuItem<AgentItemData>[] = []
   const system: SearchableMenuItem<AgentItemData>[] = []
   const custom: SearchableMenuItem<AgentItemData>[] = []
@@ -66,17 +71,7 @@ export const categorizeAgents = (agents: Agent[]): SearchableMenuGroup<AgentItem
     }
   }
 
-  const groups: SearchableMenuGroup<AgentItemData>[] = []
-  if (builtIn.length > 0) {
-    groups.push({ id: 'built-in', label: 'Built-in', items: builtIn })
-  }
-  if (system.length > 0) {
-    groups.push({ id: 'system', label: 'System', items: system })
-  }
-  if (custom.length > 0) {
-    groups.push({ id: 'custom', label: 'Custom', items: custom })
-  }
-  return groups
+  return [...builtIn, ...system, ...custom]
 }
 
 export const AgentSelector = ({
@@ -85,10 +80,11 @@ export const AgentSelector = ({
   onSelect,
   onAddAgent,
   disabled = false,
+  collapsed = false,
   side,
   align,
 }: AgentSelectorProps) => {
-  const groupedItems = useMemo(() => categorizeAgents(agents), [agents])
+  const items = useMemo(() => buildAgentItems(agents), [agents])
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
 
@@ -102,68 +98,96 @@ export const AgentSelector = ({
   }
 
   const renderTrigger = (selected: SearchableMenuItem<AgentItemData> | undefined, isOpen: boolean) => {
-    const Icon = iconForAgent(selected?.data?.agent ?? selectedAgent)
+    const triggerAgent = selected?.data?.agent ?? selectedAgent
+    const Icon = iconForAgent(triggerAgent)
     const triggerInner = (
       <div
         data-testid="agent-selector-trigger"
         aria-disabled={disabled}
         className={cn(
-          'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full transition-colors text-[length:var(--font-size-body)] max-w-[50vw] md:max-w-none',
+          'group relative h-[var(--touch-height-sm)] max-w-[50vw] text-[length:var(--font-size-body)] max-md:h-[var(--touch-height-lg)] md:max-w-none',
           disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-          !disabled && isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
         )}
       >
-        <Icon className="size-3.5 text-muted-foreground shrink-0" />
-        <span className="font-medium truncate">{selected?.label ?? selectedAgent.name}</span>
-        <ChevronDown
+        {/* The fixed-width labeled pill is never resized. On mobile it simply
+            fades away while its parent slides right, avoiding all per-frame
+            layout work and truncation artifacts. It remains in flow (and
+            therefore keeps the trigger width stable) while transparent. */}
+        <div
+          data-testid="agent-selector-pill"
           className={cn(
-            'size-3.5 text-muted-foreground transition-transform shrink-0',
-            !disabled && isOpen && 'rotate-180',
+            'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 md:px-3',
+            mobileHeaderControlFillClass,
+            collapsed ? 'opacity-0' : 'opacity-100',
+            !disabled && isOpen
+              ? 'bg-secondary'
+              : !collapsed && 'hover:bg-accent max-md:group-active:bg-muted-foreground/20 dark:hover:bg-secondary/50',
           )}
-        />
+        >
+          <Icon
+            className={cn(
+              'max-w-none shrink-0 text-muted-foreground',
+              triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5',
+            )}
+          />
+          <span className="min-w-0 truncate pl-2 font-medium text-muted-foreground">
+            {selected?.label ?? selectedAgent.name}
+          </span>
+          {/* Hidden on mobile: the menu opens as an animated card there, so the
+              chevron affordance is redundant. */}
+          <ChevronDown
+            className={cn(
+              'ml-2 size-3.5 shrink-0 text-muted-foreground transition-transform max-md:hidden',
+              !disabled && isOpen && 'rotate-180',
+            )}
+          />
+        </div>
+
+        {/* Independent logo-only circle beneath the pill. Crossfading these
+            layers means the moving element never changes width; only opacity
+            and the header wrapper's translate animate. */}
+        <div
+          aria-hidden="true"
+          data-testid="agent-selector-collapsed-circle"
+          className={cn(
+            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 max-md:group-active:bg-muted-foreground/20 md:hidden',
+            mobileHeaderControlFillClass,
+            collapsed ? 'opacity-100' : 'opacity-0',
+          )}
+        >
+          <Icon className="max-w-none size-[var(--icon-size-default)] text-muted-foreground" />
+        </div>
       </div>
     )
 
-    if (!disabled) {
-      return triggerInner
-    }
-
+    // Keep the wrapper mounted when `disabled` changes on send; remounting the
+    // trigger would cancel its slide and crossfade.
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{triggerInner}</TooltipTrigger>
-          <TooltipContent side="bottom">Cannot change agent during reply</TooltipContent>
+          {disabled && <TooltipContent side="bottom">Cannot change agent during reply</TooltipContent>}
         </Tooltip>
       </TooltipProvider>
     )
   }
 
-  const footer = onAddAgent ? (
-    <Button
-      variant="ghost"
-      onClick={() => {
-        setOpen(false)
-        onAddAgent()
-      }}
-      className="w-full justify-start gap-2 text-muted-foreground"
-    >
-      <Plus className="size-4" />
-      Add Agent
-    </Button>
-  ) : undefined
+  const footerAction = onAddAgent ? { label: 'Add Agent', onAction: onAddAgent } : undefined
 
   return (
     <SearchableMenu
-      items={groupedItems}
+      items={items}
       value={selectedAgent.id}
       onValueChange={handleAgentChange}
       searchable={agents.length > 10}
       searchPlaceholder="Search agents"
       emptyMessage="No agents found"
-      blurBackdrop
+      mobileTitle="Choose agent"
+      mobileSide="top"
       trigger={renderTrigger}
-      footer={footer}
-      width={320}
+      renderItem={renderAgentItem}
+      footerAction={footerAction}
+      width={240}
       maxHeight={340}
       side={side}
       align={align}

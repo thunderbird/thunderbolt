@@ -17,7 +17,7 @@
 import { SecretKey } from '@number0/iroh'
 import type { BridgeProtocol } from '../agent/types.ts'
 import { irohDir, identityPath } from './paths.ts'
-import { enforceSecureFile, readFileOrNull, writeSecureFile } from './storage.ts'
+import { enforceSecureFile, readFileOrNull, writeSecureFile } from '../lib/secure-fs.ts'
 
 /** A loaded node identity: the raw secret-key bytes to pin onto an endpoint,
  *  plus the derived public NodeId (base32) to share and allowlist. */

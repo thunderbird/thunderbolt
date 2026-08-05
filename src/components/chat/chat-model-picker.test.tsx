@@ -8,12 +8,14 @@ import { builtInAgent } from '@/defaults/agents'
 import {
   createMockChatInstance,
   createMockChatThread,
-  createMockMode,
   createMockModel,
   hydrateStore,
   resetStore,
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { CreateItemProvider } from '@/components/create-item/context'
+import { CreateRequestProbe } from '@/test-utils/create-request-probe'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -47,22 +49,25 @@ const gpt5 = createMockModel({ id: 'model-2', name: 'GPT-5', provider: 'thunderb
 
 const QueryWrapper = createQueryTestWrapper()
 
-/** Wraps the query/provider tree in a router since ChatModelPicker navigates. */
+/** Wraps the query/provider tree in the app-wide create context, plus a
+ *  router for the probe's `useLocation` (the picker itself no longer
+ *  navigates). */
 const TestWrapper = ({ children }: { children: ReactNode }) => (
   <MemoryRouter>
-    <QueryWrapper>{children}</QueryWrapper>
+    <CreateItemProvider>
+      <QueryWrapper>{children}</QueryWrapper>
+    </CreateItemProvider>
   </MemoryRouter>
 )
 
-/** Hydrates the store with a built-in session, then patches the agent. Mirrors
- *  the ChatModePicker test: `hydrateStore` always assigns `builtInAgent`, so we
- *  mutate the session map directly to avoid the DB write `setSelectedAgent` does. */
+/** Hydrates the store with a built-in session, then patches the agent.
+ *  `hydrateStore` always assigns `builtInAgent`, so we mutate the session map
+ *  directly to avoid the DB write `setSelectedAgent` does. */
 const setupWithAgent = (agent: Agent, models = [gpt4, gpt5]) => {
   hydrateStore({
     chatInstance: createMockChatInstance(),
     chatThread: createMockChatThread(),
     id: 'thread-1',
-    modes: [createMockMode({ id: 'mode-chat', name: 'chat', label: 'Chat', icon: 'message-square' })],
     models,
     selectedModel: models[0],
     triggerData: null,
@@ -77,6 +82,15 @@ const setupWithAgent = (agent: Agent, models = [gpt4, gpt5]) => {
     nextSessions.set('thread-1', { ...session, selectedAgent: agent })
     return { sessions: nextSessions }
   })
+}
+
+/** The selector's trigger button, located from its visible label. */
+const getModelTrigger = () => {
+  const trigger = screen.getByText('GPT-4').closest('button')
+  if (!trigger) {
+    throw new Error('Model trigger button not found')
+  }
+  return trigger
 }
 
 describe('ChatModelPicker', () => {
@@ -95,6 +109,7 @@ describe('ChatModelPicker', () => {
   afterEach(async () => {
     cleanup()
     resetStore()
+    restoreViewport()
     await resetTestDatabase()
   })
 
@@ -147,5 +162,45 @@ describe('ChatModelPicker', () => {
 
     const session = useChatStore.getState().sessions.get('thread-1')
     expect(session?.selectedModel.id).toBe('model-2')
+  })
+
+  it('opens model creation over the current route', async () => {
+    setupWithAgent(builtInAgent)
+    render(
+      <>
+        <ChatModelPicker />
+        <CreateRequestProbe />
+      </>,
+      { wrapper: TestWrapper },
+    )
+
+    const trigger = getModelTrigger()
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByText('Add Model'))
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
+  })
+
+  it('closes the mobile model drawer before opening creation', async () => {
+    forceMobileViewport()
+    setupWithAgent(builtInAgent)
+    render(
+      <>
+        <ChatModelPicker />
+        <CreateRequestProbe />
+      </>,
+      { wrapper: TestWrapper },
+    )
+
+    const trigger = getModelTrigger()
+    fireEvent.click(trigger)
+    expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeNull()
+    fireEvent.click(await screen.findByText('Add Model'))
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    // The mobile card drawer must be gone before the create surface opens.
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
   })
 })

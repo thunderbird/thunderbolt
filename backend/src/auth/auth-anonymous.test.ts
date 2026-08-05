@@ -15,6 +15,7 @@ import { waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth, type AuthEmailDeps } from '@/auth/auth'
 import { clearSettingsCache } from '@/config/settings'
+import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
@@ -141,6 +142,19 @@ describe('anonymous plugin — session-fixation guard', () => {
     const body = (await result.json()) as { user?: { isAnonymous?: boolean }; token?: string }
     expect(body.user?.isAnonymous).toBe(true)
     expect(body.token).toBeDefined()
+  })
+
+  it('allows an anonymous session to access protected routes', async () => {
+    const app = await createApp({ database: db, auth })
+    const signInResponse = (await auth.api.signInAnonymous({ asResponse: true })) as Response
+    const sessionCookie = signInResponse.headers.get('set-cookie')
+    expect(sessionCookie).toBeTruthy()
+
+    const response = await app.handle(
+      new Request('http://localhost/v1/devices/allowlist', { headers: { Cookie: sessionCookie! } }),
+    )
+
+    expect(response.status).toBe(200)
   })
 
   it('rejects /sign-in/anonymous with 400 when caller is already authenticated (non-anonymous)', async () => {

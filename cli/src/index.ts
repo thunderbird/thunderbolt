@@ -8,7 +8,7 @@
  * and turns uncaught failures into clean terminal errors at one boundary.
  */
 
-import { HELP_TEXT, VERSION, parseArgs } from './cli.ts'
+import { cliVersion, helpText, parseArgs } from './cli.ts'
 import { runAgent } from './agent/run.ts'
 import { runAcpServe } from './acp/serve.ts'
 import { runBridge } from './commands/bridge.ts'
@@ -19,6 +19,7 @@ import { loadConfig } from './config/config.ts'
 import type { CliConfig } from './config/config.ts'
 import { createSetupWizardIO, runSetupWizard, shouldRunSetupWizard } from './config/wizard.ts'
 import type { ModelProvider } from './agent/types.ts'
+import { runLogin } from './auth/login.ts'
 
 /** Runs interactive setup with production terminal I/O and guaranteed cleanup. */
 const configure = async (requiredProvider?: ModelProvider): Promise<CliConfig> => {
@@ -35,15 +36,15 @@ const configure = async (requiredProvider?: ModelProvider): Promise<CliConfig> =
 
 try {
   const argv = Bun.argv.slice(2)
-  const storedConfig = await loadConfig()
+  const storedConfig = argv[0] === 'login' ? null : await loadConfig()
   const parsed = parseArgs(argv, { config: storedConfig })
 
   switch (parsed.kind) {
     case 'help':
-      console.log(HELP_TEXT)
+      console.log(helpText)
       break
     case 'version':
-      console.log(VERSION)
+      console.log(cliVersion)
       break
     case 'error':
       process.stderr.write(parsed.message + '\n')
@@ -82,6 +83,9 @@ try {
       break
     case 'iroh-admin':
       await runIrohAdmin(parsed.action)
+      break
+    case 'login':
+      await runLogin()
       break
   }
 } catch (error) {

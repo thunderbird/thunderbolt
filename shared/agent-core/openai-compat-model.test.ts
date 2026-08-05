@@ -74,6 +74,7 @@ describe('buildOpenAiCompatModel — withInjectedFetch', () => {
       apiKey: 'test-key',
       fetch: injectedFetch,
       reasoning: false,
+      supportsImages: false,
     })
 
     const provider = models.getProvider('openai')
@@ -99,5 +100,27 @@ describe('buildOpenAiCompatModel — withInjectedFetch', () => {
     expect(injectedCalls).toBe(1)
     expect(injectedUrl).toContain('upstream.example')
     expect(sentinelCalls).toBe(0)
+  })
+})
+
+describe('buildOpenAiCompatModel — image modality', () => {
+  const noopFetch = (async () => new Response('')) as Parameters<typeof buildOpenAiCompatModel>[0]['fetch']
+  const build = (supportsImages: boolean) =>
+    buildOpenAiCompatModel({
+      providerId: 'thunderbolt',
+      modelId: 'opus-4.8',
+      baseURL: 'https://cloud.example/v1',
+      apiKey: 'k',
+      fetch: noopFetch,
+      reasoning: false,
+      supportsImages,
+    }).model
+
+  it('advertises image input when the model supports images, so Pi keeps image blocks', () => {
+    expect(build(true).input).toEqual(['text', 'image'])
+  })
+
+  it('advertises text-only when the model does not support images', () => {
+    expect(build(false).input).toEqual(['text'])
   })
 })

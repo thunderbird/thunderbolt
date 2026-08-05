@@ -61,10 +61,24 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         builder = builder.plugin(tauri_plugin_devtools::init());
     }
 
-    // Frameless main window on Windows/Linux. macOS keeps `titleBarStyle: Overlay`
-    // from tauri.conf.json to preserve native traffic lights; setting
-    // `decorations: false` in the JSON would override Overlay and remove them,
-    // so we scope the borderless flag to platforms that ship custom controls.
+    // macOS window vibrancy is configured declaratively in tauri.macos.conf.json
+    // (`windowEffects: hudWindow` + `transparent` + `macOSPrivateApi` +
+    // `titleBarStyle: Overlay` for the overlaid traffic lights), a platform
+    // config Tauri auto-merges over the opaque base window in tauri.conf.json.
+    // These are scoped to macOS on purpose: a transparent WebView2 window would
+    // break compositing on Windows (dead scrollbars). The frontend keeps the
+    // main content pane opaque and paints the left sidebar translucent so only
+    // it reads as glass (see `.mac-vibrancy` in src/index.css).
+    // `followsWindowActiveState` flattens the blur while the window is inactive,
+    // matching native macOS apps.
+
+    // Frameless main window on Windows/Linux: hide the native title bar and let
+    // the frontend paint its own min/maximize/close controls at the top-right
+    // (`WindowControls`), matching the platform convention while keeping the
+    // opaque, edge-to-edge canvas. macOS uses `titleBarStyle: Overlay` from
+    // tauri.macos.conf.json instead — setting `decorations: false` there would
+    // strip the native traffic lights, so the borderless flag is scoped to the
+    // custom-controls platforms.
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         builder = builder.setup(|app| {
@@ -85,6 +99,30 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     #[cfg(target_os = "linux")]
     {
         std::env::set_var("JSC_useOMGJIT", "false");
+    }
+  
+    // `transparent: true` now lives only in tauri.macos.conf.json, so the iOS
+    // WKWebView is opaque by default. This belt-and-suspenders call keeps it
+    // opaque regardless: a non-opaque webview would let the root view
+    // controller's systemBackgroundColor — white in light mode, black in dark —
+    // bleed through the status-bar and home-indicator safe areas, so the status
+    // bar reads as white on the light theme. Forcing opaque makes those regions
+    // paint the web canvas (the themed --color-background) instead.
+    #[cfg(target_os = "ios")]
+    {
+        builder = builder.setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.with_webview(|webview| {
+                    use objc2_ui_kit::UIView;
+                    // SAFETY: on iOS `inner()` returns the WKWebView, a UIView subclass.
+                    unsafe {
+                        let view = &*(webview.inner() as *const UIView);
+                        view.setOpaque(true);
+                    }
+                });
+            }
+            Ok(())
+        });
     }
 
     builder

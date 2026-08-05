@@ -4,12 +4,29 @@
 
 /**
  * Ask widget interaction modes:
- * - `single`   — exactly one designated answer (radio-style)
- * - `multiple` — one or more designated answers (checkbox-style)
- * - `choice`   — no designated answer, an open prompt like "What do you want to do next?"
- * - `free`     — open free-text response; the user types an answer
+ * - `single`   — exactly one designated answer (radio-style, graded)
+ * - `multiple` — one or more designated answers (checkbox-style, graded)
+ * - `choice`   — no designated answer, user picks one (e.g. "What do you want to do next?")
+ * - `choices`  — no designated answer, user picks one or more (a preference/opinion
+ *                question, e.g. "Which of these do you like?")
+ *
+ * (A `free` text-response mode existed briefly and was removed — typing an
+ * answer belongs in the regular composer. Historical `free` widgets still
+ * parse and render read-only (see `schema.ts` / `LegacyFreeAsk`), and cached
+ * `free` entries still report to the model; see {@link formatAskResponsesNote}.)
+ *
+ * The array is the single source for the schema's `z.enum`, so the type and
+ * the wire validation can't drift.
  */
-export type AskMode = 'single' | 'multiple' | 'choice' | 'free'
+export const askModes = ['single', 'multiple', 'choice', 'choices'] as const
+export type AskMode = (typeof askModes)[number]
+
+/** Graded modes have designated answer(s) and reveal right/wrong feedback on
+ *  submit. Ungraded modes (`choice` / `choices`) just record the selection. */
+export const isGradedMode = (mode: AskMode): boolean => mode === 'single' || mode === 'multiple'
+
+/** Modes where the user may select more than one option. */
+export const isMultiSelectMode = (mode: AskMode): boolean => mode === 'multiple' || mode === 'choices'
 
 export type AskOption = {
   id: string
@@ -22,21 +39,21 @@ export type AskData = {
   /** The question or prompt shown above the options. */
   prompt: string
   mode: AskMode
-  /** Selectable options. Empty for `free` (text-response) prompts. */
+  /** Selectable options. */
   options: AskOption[]
   /**
-   * Optional context shown after the user responds. For modes with a designated
-   * answer it explains that answer; for `free` mode it's an optional sample answer.
+   * Optional context shown after the user responds — for modes with a
+   * designated answer it explains that answer.
    */
   explanation?: string
 }
 
 /**
  * Compares a set of selected option ids against the designated answer(s).
- * Returns `null` for modes without a designated answer (`choice`, `free`).
+ * Returns `null` for ungraded modes without a designated answer (`choice` / `choices`).
  */
 export const evaluateAnswer = (data: AskData, selectedIds: Set<string>): boolean | null => {
-  if (data.mode === 'choice' || data.mode === 'free') {
+  if (!isGradedMode(data.mode)) {
     return null
   }
 
@@ -58,7 +75,7 @@ export const askCachePrefix = 'ask'
  * base36-encoded. Deterministic across reloads since it's derived only from the
  * parsed widget args, so the restored cache key always matches.
  */
-const hashAskShape = (data: Pick<AskData, 'mode' | 'options'>): string => {
+const hashAskShape = (data: { mode: AskMode | 'free'; options: AskOption[] }): string => {
   const input = JSON.stringify({ mode: data.mode, options: data.options })
   let hash = 5381
   for (let i = 0; i < input.length; i++) {
@@ -73,7 +90,7 @@ const hashAskShape = (data: Pick<AskData, 'mode' | 'options'>): string => {
  * their options don't collide on `ask/<prompt>` and overwrite each other's
  * answer. (Two byte-identical widgets still share a key, which is harmless.)
  */
-export const askStorageKey = (data: Pick<AskData, 'prompt' | 'mode' | 'options'>): string =>
+export const askStorageKey = (data: { prompt: string; mode: AskMode | 'free'; options: AskOption[] }): string =>
   `${askCachePrefix}/${data.prompt}#${hashAskShape(data)}`
 
 /**
@@ -83,14 +100,15 @@ export const askStorageKey = (data: Pick<AskData, 'prompt' | 'mode' | 'options'>
  */
 export type AskCacheEntry = {
   prompt: string
-  mode: AskMode
-  /** The option ids the user chose — used to restore the widget UI. Empty for `free`. */
+  /** `'free'` appears only in entries persisted before the mode was removed. */
+  mode: AskMode | 'free'
+  /** The option ids the user chose — used to restore the widget UI. */
   selectedIds: string[]
   /** The option texts the user chose — used to report the response to the model. */
   chosen: string[]
-  /** Whether the selection matched the designated answer; `null` for `choice` / `free`. */
+  /** Whether the selection matched the designated answer; `null` for ungraded modes (`choice` / `choices`). */
   matched: boolean | null
-  /** The free-text answer for `free` mode — restores the textarea and is reported to the model. */
+  /** The typed answer of a legacy `free` entry — still reported to the model. */
   text?: string
 }
 
@@ -136,16 +154,19 @@ export const formatAskResponsesNote = (entries: AskCacheEntry[]): string | null 
 
 /**
  * The user-turn text to dispatch when an ask is submitted, or `null` if none
- * should be sent. `choice` (an action pick) and `free` (a typed answer) are
- * conversational responses the model should act on / reply to, so they produce a
- * turn; graded `single`/`multiple` reveal the answer client-side and produce none
- * (auto-sending them would goad single-prompt backends into endlessly asking the
- * next question). Empty input produces `null`.
+ * should be sent. Ungraded modes (`choice` / `choices`) are conversational
+ * responses the model should act on, so they produce a turn — the chosen option
+ * text(s), comma-joined. Graded `single`/`multiple` reveal the answer
+ * client-side and produce none (auto-sending them would goad single-prompt
+ * backends into endlessly asking the next question). Empty input produces `null`.
  */
-export const turnTextForAnswer = (mode: AskMode, chosen: string[], text?: string): string | null => {
-  if (mode !== 'choice' && mode !== 'free') {
+export const turnTextForAnswer = (mode: AskMode, chosen: string[]): string | null => {
+  if (isGradedMode(mode)) {
     return null
   }
-  const answer = (text ?? chosen[0] ?? '').trim()
+  const answer = chosen
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .join(', ')
   return answer || null
 }

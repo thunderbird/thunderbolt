@@ -41,7 +41,9 @@ export const ConnectProviderButton = ({
   setPreferredName = false,
   returnContext = 'integrations',
   className,
-  variant,
+  // Secondary, not the gradient primary: connecting a provider is a setup
+  // step, not the screen's main call to action.
+  variant = 'secondary',
   size,
   connectLabel,
   connectingLabel = 'Connecting...',

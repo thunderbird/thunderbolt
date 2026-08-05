@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useLongPress } from '@/hooks/use-long-press'
 import { extractTextFromParts } from '@/lib/message-utils'
@@ -17,10 +18,17 @@ type MobileUserMessageProps = {
 
 export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMessageProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isPressing, setIsPressing] = useState(false)
   const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
   const { copy } = useCopyToClipboard()
 
-  const longPressHandlers = useLongPress(() => setIsMenuOpen(true))
+  const longPressHandlers = useLongPress(
+    () => {
+      window.getSelection()?.removeAllRanges()
+      setIsMenuOpen(true)
+    },
+    { onPressChange: setIsPressing },
+  )
 
   const handleClose = useCallback(() => setIsMenuOpen(false), [])
   const handleCopy = useCallback(async () => {
@@ -30,7 +38,11 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
 
   return (
     <div data-message-id={message.id}>
-      <div {...longPressHandlers} className={isMenuOpen ? 'relative z-50 select-none' : 'select-none'}>
+      <div
+        {...longPressHandlers}
+        data-long-press={isPressing || isMenuOpen ? '' : undefined}
+        className={isMenuOpen ? 'relative z-50' : undefined}
+      >
         <div className={isMenuOpen ? 'transition-transform scale-[1.02]' : undefined}>
           <MessageBubbles message={message} onResendAttachment={onResendAttachment} />
         </div>
@@ -48,7 +60,17 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
           </div>
         )}
       </div>
-      {isMenuOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={handleClose} />}
+      {isMenuOpen && (
+        <MobileBlurBackdrop
+          // Same 40% black in both modes — the dark: entry overrides the
+          // backdrop's default dark:bg-black/30, it is not redundant.
+          className="bg-black/40 dark:bg-black/40"
+          onClick={handleClose}
+          // Keep the backdrop in the message scroller's stacking context so
+          // the selected message and its action remain above it.
+          disablePortal
+        />
+      )}
     </div>
   )
 }

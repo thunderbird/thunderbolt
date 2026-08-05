@@ -8,14 +8,14 @@ import { createSetting } from '@/dal'
 import { eq, inArray, isNull } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
+import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
-import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
+import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
+import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widget-skill-default-hashes'
 import { nowIso } from './utils'
 
 const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
@@ -32,7 +32,6 @@ const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, d
  */
 export const versionMarkerKeys = {
   models: 'defaults_version.models',
-  modes: 'defaults_version.modes',
   tasks: 'defaults_version.tasks',
   skills: 'defaults_version.skills',
   settings: 'defaults_version.settings',
@@ -144,21 +143,27 @@ const advanceVersionMarker = async (
  *   partial delivery of an authoritative retirement. Defaults to
  *   `canOverwrite` for callers that don't split the two signals.
  * @property frozenFields - Field names that must never change on an existing
- *   row via reconcile. When updating, the existing row's value is kept for
- *   each listed field and the stored `defaultHash` reflects that
- *   post-freeze state. Protects identity-critical columns whose values
- *   establish downstream contracts — e.g. `isConfidential` on models
- *   (encrypted threads bind to it at creation) and `provider` (routing).
- *   A server-shipped OTA payload cannot flip these on a bundle-known id;
- *   a new value ships under a fresh id. Only applies to updates — inserts
- *   use the default as-is.
+ *   row via reconcile, or a selector returning those names per default item.
+ *   When updating, the existing row's value is kept for each listed field and
+ *   the stored `defaultHash` reflects that post-freeze state. Protects
+ *   identity-critical columns whose values establish downstream contracts —
+ *   e.g. `isConfidential` on models (encrypted threads bind to it at creation)
+ *   and `provider` (routing). A server-shipped OTA payload cannot flip these
+ *   on a bundle-known id; a new value ships under a fresh id. Only applies to
+ *   updates — inserts use the default as-is.
+ * @property metadataFields - Server-owned fields intentionally excluded from
+ *   the user-edit hash. Differences in these fields still trigger an update
+ *   after the row's hashed fields are verified as unmodified.
  */
-export type ReconcileDefaultsForTableOptions = {
+type FrozenField<T> = Extract<keyof T, string>
+
+export type ReconcileDefaultsForTableOptions<T> = {
   keyField?: string
   canOverwrite?: boolean
   insertMissing?: boolean
   canResurrect?: boolean
-  frozenFields?: readonly string[]
+  frozenFields?: readonly FrozenField<T>[] | ((defaultItem: T) => readonly FrozenField<T>[])
+  metadataFields?: readonly FrozenField<T>[]
 }
 
 /**
@@ -195,7 +200,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
-  options: ReconcileDefaultsForTableOptions = {},
+  options: ReconcileDefaultsForTableOptions<T> = {},
 ): Promise<ReconcileDefaultsForTableResult> => {
   const {
     keyField = 'id',
@@ -203,6 +208,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     insertMissing = canOverwrite,
     canResurrect = canOverwrite,
     frozenFields = [],
+    metadataFields = [],
   } = options
 
   if (defaults.length === 0) {
@@ -302,17 +308,25 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     // existing row's value instead of the incoming default. Hash covers the
     // effective (post-freeze) state so future reconciles still recognize the
     // row as unedited. Skips the copy entirely when no fields are frozen.
+    const itemFrozenFields = typeof frozenFields === 'function' ? frozenFields(defaultItem) : frozenFields
     const effectiveDefault =
-      frozenFields.length === 0
+      itemFrozenFields.length === 0
         ? defaultItem
-        : (frozenFields.reduce<T>((acc, field) => ({ ...acc, [field]: (existing as any)[field] }), defaultItem) as T)
-    const effectiveHash = frozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
+        : (itemFrozenFields.reduce<T>(
+            (acc, field) => ({ ...acc, [field]: (existing as any)[field] }),
+            defaultItem,
+          ) as T)
+    const effectiveHash = itemFrozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
+    const metadataChanged = metadataFields.some(
+      (field) => (existing as Record<string, unknown>)[field] !== (effectiveDefault as Record<string, unknown>)[field],
+    )
 
     // Skip update if the effective default matches what's already stored
     // (prevents empty PATCH operations, and collapses OTA payloads that only
-    // touch frozen fields to a no-op). Row content genuinely matches target —
-    // keep `everyBundleRowAtTarget` true for this row.
-    if (existing.defaultHash === effectiveHash) {
+    // touch frozen fields to a no-op). Server-owned metadata is intentionally
+    // outside the hash, so compare it explicitly before declaring the row at
+    // target.
+    if (existing.defaultHash === effectiveHash && !metadataChanged) {
       continue
     }
 
@@ -448,7 +462,6 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // gone. Reading all five probes here — before any writes land in this
     // transaction — keeps every table's gate on the same pre-reconcile view.
     const hasAnyModelRow = (await tx.select({ id: modelsTable.id }).from(modelsTable).limit(1)).length > 0
-    const hasAnyModeRow = (await tx.select({ id: modesTable.id }).from(modesTable).limit(1)).length > 0
     const hasAnyTaskRow = (await tx.select({ id: tasksTable.id }).from(tasksTable).limit(1)).length > 0
     const hasAnySkillRow = (await tx.select({ id: skillsTable.id }).from(skillsTable).limit(1)).length > 0
     const hasAnySettingsRow = (await tx.select({ key: settingsTable.key }).from(settingsTable).limit(1)).length > 0
@@ -513,6 +526,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       canOverwrite: modelsGate.canOverwrite,
       canResurrect: initialSyncCompleted,
       frozenFields: ['isConfidential', 'provider'],
+      metadataFields: ['description', 'vendor'],
     })
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
@@ -591,13 +605,13 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionKey: string,
       currentVersion: number,
       hasAnyRow: boolean,
-      keyField?: string,
+      reconcileOptions: Pick<ReconcileDefaultsForTableOptions<T>, 'keyField' | 'frozenFields'> = {},
     ): Promise<void> => {
       const gate = await computeCanOverwrite(tx, versionKey, currentVersion, hasAnyRow, initialSyncCompleted)
       const pass = await reconcileDefaultsForTable(tx, table, defaults, hashFn, {
         canOverwrite: gate.canOverwrite,
         canResurrect: initialSyncCompleted,
-        ...(keyField ? { keyField } : {}),
+        ...reconcileOptions,
       })
       // Advance when we wrote something OR verified every row is at target.
       // See the models-path guard above for the full rationale — single-table
@@ -607,8 +621,11 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       }
     }
 
-    await runGatedPass(modesTable, defaultModes, hashMode, versionMarkerKeys.modes, defaultModesVersion, hasAnyModeRow)
     await runGatedPass(tasksTable, defaultTasks, hashTask, versionMarkerKeys.tasks, defaultTasksVersion, hasAnyTaskRow)
+    // Main shipped weather with a full-row v4 hash before weather became a
+    // locked widget contract. Re-stamp first so v5 can recognize and replace
+    // that pristine row with the canonical widget instructions in this pass.
+    await restampWidgetSkillDefaultHashes.run(tx)
     await runGatedPass(
       skillsTable,
       defaultSkills,
@@ -616,6 +633,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionMarkerKeys.skills,
       defaultSkillsVersion,
       hasAnySkillRow,
+      { frozenFields: (skill) => (isWidgetSkillId(skill.id) ? ['enabled', 'pinnedOrder'] : []) },
     )
     await runGatedPass(
       settingsTable,
@@ -624,7 +642,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionMarkerKeys.settings,
       defaultSettingsVersion,
       hasAnySettingsRow,
-      'key',
+      { keyField: 'key' },
     )
 
     // Initialize anonymous ID for analytics (unique per user)

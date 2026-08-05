@@ -21,8 +21,30 @@ export const edgeSpacing = {
   desktop: 16,
 } as const
 
+/**
+ * CSS `bottom`/inset expression for controls floating at the bottom edge of
+ * the mobile viewport (sidebar footer, floating create pill). Native mobile
+ * pins to the home-indicator safe area with an `edgeSpacing.mobile` (12px)
+ * floor; web mobile adds 8px of breathing room above the safe area.
+ */
+export const getMobileBottomInset = (isNativeMobile: boolean): string =>
+  isNativeMobile
+    ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
+    : 'calc(var(--safe-area-bottom-padding, 0px) + 0.5rem)'
+
 /** Mobile sidebar width as a fraction of viewport width (0–1) */
-export const mobileSidebarWidthRatio = 0.8
+const mobileSidebarWidthRatio = 0.8
+
+/** Maximum mobile sidebar width in pixels. Matches the 360px desktop content
+ *  floor in main-layout.tsx so the sidebar never outgrows a usable pane. */
+const mobileSidebarMaxWidth = 360
+
+/** Mobile sidebar width shared by CSS sizing and overlays rendered in portals. */
+export const mobileSidebarWidthCss = `min(${mobileSidebarWidthRatio * 100}vw, ${mobileSidebarMaxWidth}px)`
+
+/** Calculates the mobile sidebar width for gestures and hit testing. */
+export const getMobileSidebarWidth = (viewportWidth: number) =>
+  Math.min(viewportWidth * mobileSidebarWidthRatio, mobileSidebarMaxWidth)
 
 /** OTP code length — must match backend emailOTP config (otpLength). */
 export const otpLength = 8

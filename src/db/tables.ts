@@ -172,7 +172,10 @@ export const skillsTable = sqliteTable(
   'skills',
   {
     id: text('id').primaryKey(),
+    /** Slash-token slug (`/code-review`) — lowercase, hyphenated, unique per user. */
     name: text('name'),
+    /** Human display name ("Code Review"). Older rows may be null — display falls back to `name`. */
+    label: text('label'),
     description: text('description'),
     instruction: text('instruction'),
     enabled: integer('enabled').default(1),
@@ -242,6 +245,13 @@ export const modelProfilesTable = sqliteTable(
   ],
 )
 
+/**
+ * LEGACY — the chat-modes feature was removed (chat behavior is the default;
+ * Search/Research ship as default skills). The table stays in the synced
+ * schema so this client keeps matching the deployed sync rules; dropping it
+ * requires the backend + sync-rules PR flow (see AGENTS.md, "Deploying new
+ * synced tables"). No application code reads or writes it.
+ */
 export const modesTable = sqliteTable(
   'modes',
   {
@@ -275,10 +285,19 @@ export const devicesTable = sqliteTable('devices', {
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),
-  // iroh P2P endpoint identity. Set only via the canary-gated backend route, then synced down.
-  // Deploy ordering: these ship in the same PR as backend migration 0021, but the `SELECT *`
-  // devices sync rule only replicates them once that migration deploys and PowerSync Cloud rules
-  // are refreshed. Until then nodeId stays null cross-device — pairing is inert, never errors.
+  // Discriminates a normal device from an iroh bridge device (ACP/MCP). Mirrors the backend
+  // `device_type` enum ('normal' | 'bridge', default 'normal'). Nullable here: this is the
+  // frontend half of the two-PR synced-column deploy — the `SELECT *` devices sync rule only
+  // replicates it once the backend migration that adds this column deploys and the PowerSync
+  // Cloud rules refresh. Until then it stays null cross-device and reads as a normal device,
+  // never errors.
+  deviceType: text('device_type', { enum: ['normal', 'bridge'] }),
+  // iroh P2P endpoint identity. Set via the backend node-id routes (self-enroll or the
+  // canary-gated attestation), then synced down.
+  // Deploy ordering: this is the frontend half of the two-PR synced-column deploy — the
+  // `SELECT *` devices sync rule only replicates these once the backend migration that adds
+  // them deploys and the PowerSync Cloud rules are refreshed. Until then nodeId stays null
+  // cross-device — pairing is inert, never errors.
   nodeId: text('node_id'),
   nodeIdAttestedAt: text('node_id_attested_at'),
 })

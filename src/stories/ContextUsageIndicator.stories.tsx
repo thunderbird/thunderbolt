@@ -6,7 +6,7 @@ import { ContextUsageIndicator } from '@/components/context-usage-indicator'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 const meta = {
-  title: 'components/context-usage-indicator',
+  title: 'Components/ContextUsageIndicator',
   component: ContextUsageIndicator,
   parameters: {
     layout: 'centered',

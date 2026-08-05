@@ -249,7 +249,52 @@ describe('runSetupWizard', () => {
 
     expect(requestedKeys).toEqual(['Bearer bad-key', 'Bearer good-key'])
     expect(result).toEqual({ provider: 'openai', model: 'gpt-live', apiKey: 'good-key' })
-    expect(output.join('')).toContain('provider rejected this API key (401) — check it.')
+    expect(output.join('')).toContain('Provider rejected this API key (401) — check it.')
+  })
+
+  test('re-prompts a built-in model choice for an out-of-range number instead of saving the digit', async () => {
+    // Choices: the curated default + two live ids = 3. '9' must not persist as a model id.
+    const { io, output } = scriptedIO(['2', '9', '3'], ['sk-live'])
+
+    const result = await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn: liveModels('gpt-live-a', 'gpt-live-b'),
+    })
+
+    expect(result).toEqual({ provider: 'openai', model: 'gpt-live-b', apiKey: 'sk-live' })
+    expect(output.join('')).toContain('Enter a number from 1 to 3, or a model id.')
+  })
+
+  test('still accepts a non-numeric built-in answer as a free-form model id', async () => {
+    const { io, output } = scriptedIO(['2', 'my-custom-model'], ['sk-live'])
+
+    const result = await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn: liveModels('gpt-live-a'),
+    })
+
+    expect(result).toEqual({ provider: 'openai', model: 'my-custom-model', apiKey: 'sk-live' })
+    expect(output.join('')).not.toContain('Enter a number from 1 to')
+  })
+
+  test('re-prompts a compat model choice for an out-of-range number instead of saving the digit', async () => {
+    const { io, output } = scriptedIO(['15', '9', '2'], ['local-key'])
+
+    const result = await runSetupWizard(io, {
+      path: '/tmp/config.json',
+      save: async () => {},
+      fetchFn: liveModels('custom-live-a', 'custom-live-b'),
+    })
+
+    expect(result).toEqual({
+      provider: 'openai-compat',
+      model: 'custom-live-b',
+      apiKey: 'local-key',
+      baseUrl: 'http://localhost:11434/v1',
+    })
+    expect(output.join('')).toContain('Enter a number from 1 to 2, or a model id.')
   })
 
   test('continues with catalog models after a second authentication rejection', async () => {

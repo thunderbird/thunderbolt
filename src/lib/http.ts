@@ -25,6 +25,8 @@ export type RequestOptions = {
   searchParams?: Record<string, string | number | boolean | undefined> | URLSearchParams
   timeout?: number
   json?: unknown
+  /** Raw request body (e.g. FormData, Blob) for non-JSON posts. Ignored if `json` is set. */
+  body?: BodyInit
   credentials?: RequestCredentials
   signal?: AbortSignal
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -100,16 +102,27 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
     if (options.json !== undefined) {
       headers.set('Content-Type', 'application/json')
       body = JSON.stringify(options.json)
+    } else if (options.body !== undefined) {
+      // Raw body (FormData/Blob/…) — leave Content-Type to the caller/browser
+      // (e.g. FormData needs the auto-generated multipart boundary).
+      body = options.body
     }
 
     const fetchFn = options.fetch ?? config.fetch ?? globalThis.fetch
 
+    // Honor `timeout` even when the caller also passes a `signal` — compose the
+    // two so an aborted turn AND an elapsed timeout both cancel the request.
+    // (Without this, a slow/hung server on a request that carries a signal would
+    // never time out, e.g. a voice STT/TTS turn stuck indefinitely.)
     let signal = options.signal
     let timeoutId: ReturnType<typeof setTimeout> | undefined
-    if (options.timeout && !signal) {
+    if (options.timeout) {
       const controller = new AbortController()
-      signal = controller.signal
-      timeoutId = setTimeout(() => controller.abort(), options.timeout)
+      timeoutId = setTimeout(
+        () => controller.abort(new DOMException('Request timed out', 'TimeoutError')),
+        options.timeout,
+      )
+      signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal
     }
 
     const req = new Request(fullUrl, {

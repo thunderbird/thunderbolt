@@ -3,159 +3,149 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useState } from 'react'
-import { Navigate } from 'react-router'
-import { v7 as uuidv7 } from 'uuid'
-import { Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { PageHeader } from '@/components/ui/page-header'
-import { AgentList } from '@/components/settings/agents/agent-list'
-import { AgentCatalog } from '@/components/settings/agents/agent-catalog'
-import { ThunderboltCliInstallCard } from '@/components/settings/agents/thunderbolt-cli-install-card'
-import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
+
 import { testAcpConnection } from '@/acp'
-import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
-import { useDatabase } from '@/contexts'
-import { useAuth } from '@/contexts'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
-import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
-import type { Agent } from '@/types/acp'
+import { useChatStore } from '@/chats/chat-store'
+import { DetailPanelSurface } from '@/components/detail-panel'
+import { AgentDetail } from '@/components/settings/agents/agent-detail'
+import { AgentList } from '@/components/settings/agents/agent-list'
+import { CreateAgentDetailPanel } from '@/components/settings/agents/create-agent-detail-panel'
+import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
+import { SettingsListBody, settingsListBodyRowsClass, SettingsListPane } from '@/components/settings/settings-list'
+import { PageCreateAction } from '@/components/ui/page-create-action'
+import { PageHeader } from '@/components/ui/page-header'
+import { useAuth, useDatabase } from '@/contexts'
+import { deleteAgent, updateAgent, useAllAgents } from '@/dal'
+import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
 
 type AgentsSettingsPageProps = {
-  /** Test seam — production omits; the hidden-check hook falls back to
-   *  `isTauri()`. Lets tests exercise Tauri Standalone vs. Hosted code paths
-   *  without mocking the shared `@/lib/platform` module (which would leak
-   *  across files — see `docs/development/testing.md`). */
-  isStandalone?: () => boolean
+  /** Test/DI override for reading this app's iroh NodeId. Forwarded to the add
+   *  form's pairing panel and used by the transparent same-account enrollment.
+   *  Production omits and lazy-loads the wasm client. */
+  loadAppNodeId?: () => Promise<string>
+  /** Test/DI override for app NodeId self-enrollment, fired when an iroh agent is added.
+   *  Production omits and binds the authenticated client. */
+  enrollIroh?: () => Promise<void>
 }
 
 /**
  * Settings page listing every agent the user can chat with: the built-in
- * Thunderbolt assistant (always first, immutable), system-provided agents
- * synced from `/agents` discovery (read-only), and user-added custom remote
- * ACP endpoints. The composition lives in `useAllAgents` — this page is just
- * a thin orchestrator wiring DAL writes to UI events.
+ * Thunderbolt assistant, system-provided agents synced from `/agents`
+ * discovery, and user-added custom remote ACP endpoints. Rows are read-only —
+ * clicking one slides in a detail panel (same slide-in idiom as the skills
+ * page) where all viewing and management happens. The only other affordance
+ * is "+" → the Add Custom Agent panel.
  */
-export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageProps = {}) {
+const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) => {
   const db = useDatabase()
   const agents = useAllAgents()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
-  const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
 
-  const [dialogOpen, setDialogOpen] = useState(false)
-  // `null` ⇒ Add mode; an Agent ⇒ Edit mode. The dialog receives a `key`
-  // derived from the agent id so its reducer remounts when switching targets.
-  const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
+  // The add form, the CLI install card, and the agent rows all share the one
+  // slide-in panel slot, so the selection is a single union — the panels are
+  // mutually exclusive by construction (a string sentinel could collide with
+  // a server-chosen agent id).
+  const [activePanel, setActivePanel] = useState<
+    { kind: 'add' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
+  >(null)
+  const cliOpen = activePanel?.kind === 'cli'
+  const addOpen = activePanel?.kind === 'add'
 
-  // Defence against direct URL / bookmark when the entry is hidden in the
-  // sidebar. Anonymous users behind the proxy can't reach managed agents, so
-  // sending them back to the settings index keeps the UI honest.
-  if (agentsHidden) {
-    return <Navigate to="/settings" replace />
-  }
+  // Deriving from the live list means the panel follows sync: if the active
+  // agent is deleted on another device, `activeAgent` turns undefined and the
+  // panel closes on its own.
+  const activeAgent = activePanel?.kind === 'agent' ? agents.find((a) => a.id === activePanel.id) : undefined
+  const panelOpen = addOpen || activeAgent !== undefined || cliOpen
 
-  const handleToggle = async (agent: Agent, enabled: boolean) => {
-    if (agent.type === 'built-in') {
-      // Built-in is hardcoded; the row's toggle is disabled, so this is a
-      // belt-and-braces guard. No DB row exists to update.
-      return
+  const closePanel = () => setActivePanel(null)
+  const openAddPanel = () => setActivePanel({ kind: 'add' })
+  const openAgentPanel = (id: string) => setActivePanel({ kind: 'agent', id })
+  const toggleAgentPanel = (id: string) =>
+    setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
+  const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
+
+  // Palette (Cmd+K) create/edit intents arrive as one-shot router state and
+  // route into the page's existing handlers (THU-768). "Edit" opens the
+  // agent's detail panel — the same read-only-or-editable surface a row click
+  // opens — so built-in/system agents (and ids no longer present) degrade to a
+  // read-only view or no-op rather than forcing an edit. There is no inline
+  // remove: deletion stays behind the detail panel's ownership-gated ⋯ menu.
+  useEntityActionIntent('agent', {
+    onCreate: openAddPanel,
+    onEdit: openAgentPanel,
+  })
+
+  const renderPanel = () => {
+    if (addOpen) {
+      return <CreateAgentDetailPanel onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
     }
-    if (agent.isSystem === 1) {
-      // System agents live in the local-only `agents_system` table —
-      // refreshed by discovery, not user-editable.
-      return
+    if (activeAgent) {
+      return (
+        <AgentDetail
+          // Keyed by id so inline-edit drafts reset when switching agents.
+          key={activeAgent.id}
+          agent={activeAgent}
+          currentUserId={currentUserId}
+          onClose={closePanel}
+          onRemoved={closePanel}
+          onUpdate={async (patch) => {
+            const wireIdentityChanged = await updateAgent(db, activeAgent.id, patch)
+            if (wireIdentityChanged) {
+              // Refresh any live chat sessions pointed at this agent so their next
+              // send reconnects against the new endpoint (THU-695).
+              useChatStore.getState().applyAgentWireIdentityChange({ ...activeAgent, ...patch })
+            }
+          }}
+          onDelete={() => deleteAgent(db, activeAgent.id)}
+          testAcpConnection={testAcpConnection}
+        />
+      )
     }
-    await updateAgent(db, agent.id, { enabled: enabled ? 1 : 0 })
-  }
-
-  const handleDelete = async (agent: Agent) => {
-    await deleteAgent(db, agent.id)
-  }
-
-  const handleEdit = (agent: Agent) => {
-    setEditingAgent(agent)
-    setDialogOpen(true)
-  }
-
-  const handleSubmit = async (payload: AddCustomAgentPayload) => {
-    if (editingAgent) {
-      // Only customs are editable; system / built-in rows never reach this
-      // path (the row hides the Edit affordance).
-      await updateAgent(db, editingAgent.id, {
-        name: payload.name,
-        transport: payload.transport,
-        url: payload.url,
-        description: payload.description,
-      })
-      return
+    if (cliOpen) {
+      return <ThunderboltCliDetail onClose={closePanel} />
     }
-    if (!currentUserId) {
-      // Anonymous sessions can't sync custom agents — the page hides the
-      // dialog trigger in that case, but the guard keeps the write safe.
-      return
-    }
-    await createAgent(db, {
-      id: uuidv7(),
-      name: payload.name,
-      type: 'remote-acp',
-      transport: payload.transport,
-      url: payload.url,
-      description: payload.description,
-      enabled: 1,
-      userId: currentUserId,
-    })
-  }
-
-  const handleDialogOpenChange = (next: boolean) => {
-    setDialogOpen(next)
-    if (!next) {
-      // Drop the edit target so a follow-up "+" opens a fresh Add dialog.
-      setEditingAgent(null)
-    }
+    return null
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
-      <PageHeader title="Agents">
-        {allowCustomAgents && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="rounded-lg"
-            aria-label="Add Custom Agent"
-            onClick={() => {
-              setEditingAgent(null)
-              setDialogOpen(true)
-            }}
-            disabled={!currentUserId}
-          >
-            <Plus />
-          </Button>
-        )}
-      </PageHeader>
+    <div className="relative flex h-full">
+      <div className="min-w-0 flex-1 overflow-hidden">
+        {/* The pane's md:min-w keeps the rows readable when the detail panel
+            is open on a narrow window: the list stops shrinking and slides
+            under the panel (the column's overflow-hidden clips it at the
+            panel edge). */}
+        <SettingsListPane className="gap-6">
+          <PageHeader title="Agents">
+            {allowCustomAgents && (
+              <PageCreateAction label="New Agent" onClick={openAddPanel} disabled={!currentUserId} />
+            )}
+          </PageHeader>
 
-      <AgentList
-        agents={agents}
-        currentUserId={currentUserId}
-        onToggle={handleToggle}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-      />
+          {/* Clicking the already-open row closes the panel — the rows carry
+              aria-pressed, so they behave as the toggles they announce.
+              The CLI row shares the list's row gap so it reads as one list
+              (gap-4, matching the models page). */}
+          <SettingsListBody className={settingsListBodyRowsClass}>
+            <AgentList
+              agents={agents}
+              selectedId={activeAgent?.id ?? null}
+              onOpenAgent={(agent) => toggleAgentPanel(agent.id)}
+            />
 
-      <ThunderboltCliInstallCard />
+            <ThunderboltCliRow isSelected={cliOpen} onOpen={toggleCliPanel} />
+          </SettingsListBody>
+        </SettingsListPane>
+      </div>
 
-      <AgentCatalog />
-
-      <AddCustomAgentDialog
-        key={editingAgent?.id ?? 'new'}
-        open={dialogOpen}
-        onOpenChange={handleDialogOpenChange}
-        onSubmit={handleSubmit}
-        editingAgent={editingAgent}
-        testAcpConnection={testAcpConnection}
-      />
+      <DetailPanelSurface open={panelOpen} onClose={closePanel}>
+        {renderPanel()}
+      </DetailPanelSurface>
     </div>
   )
 }
+
+export default AgentsSettingsPage

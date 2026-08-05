@@ -11,11 +11,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { runAgent, shouldUseTui } from './run.ts'
 import type { RunConfig } from './types.ts'
 
-const KEYS = ['ANTHROPIC_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'] as const
-const saved: Partial<Record<(typeof KEYS)[number], string>> = {}
+const anthropicCredentialEnvVars = ['ANTHROPIC_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'] as const
+const saved: Partial<Record<(typeof anthropicCredentialEnvVars)[number], string>> = {}
 
 beforeEach(() => {
-  for (const key of KEYS) {
+  for (const key of anthropicCredentialEnvVars) {
     const value = process.env[key]
     if (value !== undefined) saved[key] = value
     delete process.env[key]
@@ -23,7 +23,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  for (const key of KEYS) {
+  for (const key of anthropicCredentialEnvVars) {
     const value = saved[key]
     if (value === undefined) delete process.env[key]
     else process.env[key] = value

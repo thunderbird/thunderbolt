@@ -5,7 +5,7 @@
 import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { clearIrohClientSecret } from '@/acp/iroh/iroh-transport'
 import { setSyncEnabled } from '@/db/powersync/sync-state'
-import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
+import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { clearCachedSession } from '@/lib/session-cache'
 import { handleFullWipe } from '@/services/encryption'
@@ -70,6 +70,7 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
   if (clearAuth) {
     clearAuthToken()
     clearDeviceId()
+    clearUserCacheSecret()
     // The iroh client secret is the bridge access credential (plaintext localStorage),
     // so it must be wiped with the other local creds on every identity teardown.
     clearIrohClientSecret()

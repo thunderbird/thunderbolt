@@ -9,6 +9,7 @@ import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
 import { createSsoDesktopCallbackRoutes } from '@/auth/sso-desktop-callback'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
+import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
@@ -22,6 +23,7 @@ import { createSearchRoutes } from '@/api/search'
 import { createPreviewRoutes } from '@/api/preview'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
+import { createTinfoilKeepWarm } from '@/tinfoil/keep-warm'
 import { createTinfoilRoutes } from '@/tinfoil/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
@@ -31,7 +33,6 @@ import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import type { AppDeps } from '@/types'
-import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
 /**
@@ -83,31 +84,20 @@ export const createApp = async (deps?: AppDeps) => {
   )
   const auth = deps?.auth ?? createdAuth
 
+  const appLogger = createStandaloneLogger(settings)
+
   // Build the production observability recorder unless tests injected their own.
   // Proxy events go to Pino + OTel only — not PostHog (proxy traffic is infra
   // plumbing, not product analytics).
   const proxyObservability =
     deps?.proxyObservability ??
     createObservabilityRecorder({
-      logger: createStandaloneLogger(settings),
+      logger: appLogger,
     })
 
   return (
     configuredApp
-      .use(
-        cors({
-          origin: getCorsOriginsList(settings),
-          credentials: settings.corsAllowCredentials,
-          methods: settings.corsAllowMethods,
-          // Echo back the client's Access-Control-Request-Headers. The universal
-          // proxy at /v1/proxy forwards arbitrary upstream headers as
-          // X-Proxy-Passthrough-* (provider SDKs add x-api-key, x-stainless-*,
-          // openai-organization, anthropic-beta, …). A static allowlist can't
-          // enumerate every upstream's header set without breaking preflight.
-          allowedHeaders: true,
-          exposeHeaders: settings.corsExposeHeaders,
-        }),
-      )
+      .use(createCorsMiddleware(settings))
       .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware(settings.trustedProxy))
       .use(createErrorHandlingMiddleware())
@@ -129,7 +119,7 @@ export const createApp = async (deps?: AppDeps) => {
           dnsLookup: deps?.dnsLookup,
         }),
       )
-      .use(createTinfoilRoutes({ auth, fetchFn, rateLimit: proRateLimit }))
+      .use(createTinfoilRoutes({ auth, fetchFn, logger: appLogger, rateLimit: proRateLimit }))
       .use(
         createUniversalProxyWsRoutes({
           auth,
@@ -140,7 +130,14 @@ export const createApp = async (deps?: AppDeps) => {
       )
       .use(createSearchRoutes(auth, proRateLimit, { exaClient: deps?.searchExaClient }))
       .use(createPreviewRoutes({ auth, fetchFn, rateLimit: proRateLimit, dnsLookup: deps?.dnsLookup }))
-      .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
+      .use(
+        createInferenceRoutes({
+          auth,
+          fetchFn: deps?.fetchFn,
+          logger: appLogger,
+          rateLimit: createInferenceRateLimit(database, rateLimitSettings),
+        }),
+      )
       .use(createConfigRoutes(settings))
       .use(createPostHogRoutes(fetchFn))
       .use(
@@ -166,6 +163,7 @@ export const createApp = async (deps?: AppDeps) => {
 const startServer = async () => {
   const settings = getSettings()
   const log = createStandaloneLogger(settings)
+  const tinfoilKeepWarm = createTinfoilKeepWarm(settings, { logger: log })
 
   // Set up logging
   log.info('Starting Thunderbolt Server...')
@@ -196,6 +194,9 @@ const startServer = async () => {
         hostname,
         port: settings.port,
         reusePort: process.env.NODE_ENV === 'production',
+        // Must stay strictly above the ALB idle timeout (60s) — see deploy/pulumi; Bun cap is 255.
+        // If the server closes first, the ALB reuses a dead connection and returns 502.
+        idleTimeout: 120,
       },
       () => {
         log.info(
@@ -206,6 +207,7 @@ const startServer = async () => {
           },
           '🦊 Elysia server started',
         )
+        tinfoilKeepWarm.start()
 
         if (settings.swaggerEnabled) {
           log.info(
@@ -220,11 +222,13 @@ const startServer = async () => {
 
     // Graceful shutdown
     process.on('SIGINT', async () => {
+      tinfoilKeepWarm.stop()
       log.info('Received SIGINT, shutting down gracefully...')
       process.exit(0)
     })
 
     process.on('SIGTERM', async () => {
+      tinfoilKeepWarm.stop()
       log.info('Received SIGTERM, shutting down gracefully...')
       process.exit(0)
     })

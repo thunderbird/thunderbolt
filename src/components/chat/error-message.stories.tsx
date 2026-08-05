@@ -88,3 +88,21 @@ export const RetriesExhaustedNoRetryHandler: Story = {
     },
   },
 }
+
+export const ConnectionLost: Story = {
+  args: {
+    retryCount: 0,
+    retriesExhausted: true,
+    error: new Error(JSON.stringify({ error: 'relay dropped', kind: 'connection-lost' })),
+    onRetry: () => {
+      console.log('Retry clicked')
+    },
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Interrupted-turn warning that makes the duplicate-action risk explicit before manual Retry.',
+      },
+    },
+  },
+}

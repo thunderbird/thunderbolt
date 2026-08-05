@@ -42,10 +42,16 @@ import type {
   ResumeSessionResponse,
   SessionId,
 } from '@agentclientprotocol/sdk'
-import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type {
+  AgentHarnessEvent,
+  Session as PiSession,
+  ToolCallEvent,
+  ToolCallResult,
+} from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { isReadOnlyAgentTool, resolveToolPermission } from '../../../shared/agent-tool-permissions.ts'
-import { VERSION } from '../cli.ts'
+import { readWireSkills, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
+import { cliVersion } from '../cli.ts'
 import { buildHarness } from '../agent/harness.ts'
 import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
 import { isExistingPathInWorkspace } from '../agent/workspace-jail.ts'
@@ -112,12 +118,12 @@ type Session = {
  *  guard exists because the resumed id is client-supplied (ACP `z.string()`) and
  *  flows into the on-disk path builder, which `path.join`s it — a crafted `..`
  *  id would escape the sessions root and overwrite an arbitrary `.jsonl`. */
-const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** The permission choices offered to the ACP client for a gated tool call.
  *  `allow-always` allows that tool for the rest of the session; the others are
  *  one-shot. Mirrors the interactive gate's allow-once/allow-session/deny. */
-const PERMISSION_OPTIONS: PermissionOption[] = [
+const permissionOptions: PermissionOption[] = [
   { optionId: 'allow-once', name: 'Allow', kind: 'allow_once' },
   { optionId: 'allow-always', name: 'Always allow', kind: 'allow_always' },
   { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
@@ -146,7 +152,7 @@ const toToolCallResult = (
   toolName: string,
   sessionAllowed: Set<string>,
 ): ToolCallResult | undefined => {
-  const decision = resolveToolPermission(outcome, PERMISSION_OPTIONS)
+  const decision = resolveToolPermission(outcome, permissionOptions)
   if (decision === 'allow-always') {
     if (toolName !== 'read') sessionAllowed.add(toolName)
     return undefined
@@ -171,6 +177,7 @@ const attachAcpPermissionGate = (
   const sessionAllowed = new Set<string>()
 
   harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
+    if (toolName === 'webfetch' || toolName === 'skill') return undefined
     if (isReadOnlyAgentTool(toolName)) {
       const path =
         typeof input === 'object' && input !== null && 'path' in input && typeof input.path === 'string'
@@ -183,7 +190,7 @@ const attachAcpPermissionGate = (
 
     const { outcome } = await conn.requestPermission({
       sessionId,
-      options: PERMISSION_OPTIONS,
+      options: permissionOptions,
       toolCall: { toolCallId, title: toolName, kind: toToolKind(toolName), rawInput: input, status: 'pending' },
     })
     return toToolCallResult(outcome, toolName, sessionAllowed)
@@ -233,7 +240,9 @@ export const createHarnessAgent = (
         }
       })
       .catch((err) => {
-        process.stderr.write(`⚡ acp serve: connection cleanup error: ${err instanceof Error ? err.message : String(err)}\n`)
+        process.stderr.write(
+          `⚡ acp serve: connection cleanup error: ${err instanceof Error ? err.message : String(err)}\n`,
+        )
       })
   })
 
@@ -248,19 +257,20 @@ export const createHarnessAgent = (
     // the only version we could honestly negotiate. A client that can't speak it
     // disconnects (per ACP initialization).
     protocolVersion: PROTOCOL_VERSION,
-    agentInfo: { name: 'thunderbolt', version: VERSION },
+    agentInfo: { name: 'thunderbolt', version: cliVersion },
     agentCapabilities: {
       // We do not replay history (the app renders from PowerSync), so we
       // advertise `resume` — no-replay context restore — not `loadSession`.
       loadSession: false,
       sessionCapabilities: { resume: {} },
       promptCapabilities: { image: false, audio: false, embeddedContext: false },
+      _meta: skillsCapabilityMeta,
     },
     authMethods: [],
   })
 
   /** Per-session harness config rooted at server-owned launch directory. */
-  const harnessConfigFor = (workspaceRoot: string): HarnessConfig => ({
+  const harnessConfigFor = (workspaceRoot: string, skills: readonly SkillDefinition[]): HarnessConfig => ({
     model: config.model,
     cwd: workspaceRoot,
     workspaceRoot,
@@ -270,6 +280,7 @@ export const createHarnessAgent = (
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
     announceModel: true,
+    skills,
   })
 
   /** Build the harness on `session`, wire its run events + permission gate to the
@@ -279,9 +290,10 @@ export const createHarnessAgent = (
     sessionId: SessionId,
     workspaceRoot: string,
     session: PiSession,
+    skills: readonly SkillDefinition[],
     phase: string,
   ): Promise<void> => {
-    const { harness, dispose } = await buildServeHarness(harnessConfigFor(workspaceRoot), session)
+    const { harness, dispose } = await buildServeHarness(harnessConfigFor(workspaceRoot, skills), session)
 
     // If the client vanished while the harness was being built, the cleanup
     // microtask already ran against a map without this session — dispose now so
@@ -313,11 +325,11 @@ export const createHarnessAgent = (
     }
   }
 
-  const newSession = async (_params: NewSessionRequest): Promise<NewSessionResponse> => {
+  const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
     const sessionId = crypto.randomUUID()
     const workspaceRoot = await trustedWorkspace
     const session = await store.createSession(sessionId, workspaceRoot)
-    await activate(sessionId, workspaceRoot, session, 'session/new')
+    await activate(sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/new')
     return { sessionId }
   }
 
@@ -330,12 +342,12 @@ export const createHarnessAgent = (
   const resumeSession = async (params: ResumeSessionRequest): Promise<ResumeSessionResponse> => {
     // Reject a crafted id at the wire boundary before it reaches the on-disk path
     // builder — a `..` segment would let the write escape the sessions root.
-    if (!SESSION_ID_PATTERN.test(params.sessionId)) {
+    if (!sessionIdPattern.test(params.sessionId)) {
       throw RequestError.invalidParams(undefined, `invalid session id '${params.sessionId}'`)
     }
     const workspaceRoot = await trustedWorkspace
     const session = await store.openSession(params.sessionId, workspaceRoot)
-    await activate(params.sessionId, workspaceRoot, session, 'session/resume')
+    await activate(params.sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/resume')
     return {}
   }
 

@@ -12,7 +12,9 @@
 export const deriveFaviconUrl = (pageUrl: string): string | null => {
   try {
     const { origin, protocol } = new URL(pageUrl)
-    if (protocol !== 'https:') return null
+    if (protocol !== 'https:') {
+      return null
+    }
     return `${origin}/favicon.ico`
   } catch {
     return null

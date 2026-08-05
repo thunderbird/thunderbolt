@@ -52,10 +52,13 @@ import {
   resolveOpenAiCompatConnection,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
+import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
-import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
+import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { vendorSupportsImages } from '@shared/defaults/models'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { prepareBuiltInConversation } from './built-in-conversation'
 
@@ -226,7 +229,7 @@ export type ResolvedPiModel = {
  *  fall back to legacy. Anthropic ids must exist in Pi's built-in catalog;
  *  OpenAI-wire providers must resolve a connection (api key / url present). The
  *  thinking level is derived from the model's profile for both families. */
-const resolvePiModel = (
+export const resolvePiModel = (
   agentCore: AgentCoreModule,
   context: AgentAdapterContext,
   profile: ModelProfile | null,
@@ -265,6 +268,10 @@ const resolvePiModel = (
       fetch: connection.fetch,
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
+      // Pi's openai-compat descriptor is text-only by default; without this a
+      // vision-capable hosted model (e.g. Thunderbolt Opus) has its image blocks
+      // stripped before the wire and only sees the `[Attachment: …]` text label.
+      supportsImages: vendorSupportsImages(model.vendor),
     },
     thinkingLevel,
   }
@@ -283,7 +290,7 @@ const hashSecret = (value: string): string => {
 /** Fingerprint every input baked into a thread's harness at build time — the
  *  descriptor (provider / model id / api key / base url / reasoning / context
  *  window), thinking level, stable system prompt, and regeneration revision.
- *  When it changes mid-thread (a model, provider, key, mode/system-prompt,
+ *  When it changes mid-thread (a model, provider, key, system-prompt,
  *  thinking, or MCP-server switch) the cached harness is stale and
  *  {@link getOrBuildHarness} rebuilds it; an unchanged signature reuses the live
  *  harness. Tools are replaced per send, so live MCP client closures are not
@@ -297,13 +304,14 @@ export const harnessSignature = (
   const model =
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${hashSecret(d.apiKey)}`
-      : `openai-compat|${d.providerId}|${d.modelId}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}`
+      : `openai-compat|${d.providerId}|${d.modelId}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}`
   return `${model}|${resolved.thinkingLevel}|${stableSystemPrompt}|regenerate:${regenerationRevision}`
 }
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
+// Unlike assembleBuiltInModelInput, ACP harness deliberately keeps Pi's single-string system prompt shape.
 const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string =>
-  `${config.stableSystemPrompt}\n\n${APP_HARNESS_ENVIRONMENT_PROMPT}\n\n${config.volatileSystemPrompt}`
+  `${config.stableSystemPrompt}\n\n${appHarnessEnvironmentPrompt}\n\n${config.volatileSystemPrompt}`
 
 /** Build a thread's harness from the lazily-loaded engine and bind it to the
  *  thread's isolated workspace with resolved model + thinking level. Per-send app
@@ -349,9 +357,24 @@ const prepareHarnessForSend = async (
   )
 }
 
+/** Install the Pi harness floor that disables tools after a denied web-tool call. */
+const installWebToolBudgetFloor = async (harness: AgentHarness, webToolBudget?: WebToolBudget): Promise<() => void> => {
+  if (!webToolBudget) {
+    return () => undefined
+  }
+  const applyBudgetFloor = async () => {
+    if (webToolBudget.probe.exhaustedAttempts) {
+      await harness.setActiveTools([])
+    }
+    return undefined
+  }
+  await applyBudgetFloor()
+  return harness.on('tool_result', applyBudgetFloor)
+}
+
 /** Return the thread's cached harness, building it on first use and REBUILDING it
  *  when the config {@link harnessSignature} drifts (a mid-thread model / provider /
- *  key / mode / thinking switch). On drift the stale harness is evicted and its run
+ *  key / thinking switch). On drift the stale harness is evicted and its run
  *  aborted, but its workspace is KEPT — the rebuild re-seeds history from the
  *  request body and reuses the same `threadId`-keyed workspace, so the conversation
  *  context and the agent's files both survive. Concurrent first-turns share one
@@ -429,22 +452,24 @@ const fetchViaHarness = async (
   // chat never crashes on a model Pi can't run.
   const config = await prepareConfig({
     modelId: context.selectedModel.id,
-    modeSystemPrompt: context.selectedMode.systemPrompt ?? undefined,
-    modeName: context.selectedMode.name ?? undefined,
     mcpClients: context.mcpClients,
     reconnectClient: context.reconnectClient,
     httpClient: context.httpClient,
+    webToolBudget: context.webToolBudget,
   })
   const resolved = resolvePiModel(agentCore, context, config.profile)
   if (!resolved) {
     return fallback()
   }
 
-  const { history, prompt } = await prepareBuiltInConversation(parseMessages(init), context.skillInstructions)
+  const messages = parseMessages(init)
+  const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
+  const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
+  const { history, prompt } = await prepareBuiltInConversation(messages, skillInstructions)
 
   // Build the thread's harness on its first turn (seeding `history`); reuse it on
   // every later turn whose config signature is unchanged, and rebuild it when the
-  // signature drifts (a mid-thread model / provider / key / mode / thinking / MCP switch).
+  // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
   const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
     buildHarnessRecord(agentCore, context, resolved, history, config),
@@ -456,8 +481,13 @@ const fetchViaHarness = async (
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
-        await harness.prompt(prompt.text, { images: prompt.images })
-        await harness.waitForIdle()
+        const removeBudgetFloor = await installWebToolBudgetFloor(harness, context.webToolBudget)
+        try {
+          await harness.prompt(prompt.text, { images: prompt.images })
+          await harness.waitForIdle()
+        } finally {
+          removeBudgetFloor()
+        }
       },
       {
         initial: { modelId: context.selectedModel.id },
@@ -501,12 +531,12 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     aiFetch({
       init,
       modelId: context.selectedModel.id,
-      modeSystemPrompt: context.selectedMode.systemPrompt ?? undefined,
-      modeName: context.selectedMode.name ?? undefined,
       mcpClients: context.mcpClients,
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
       getProxyFetch: context.getProxyFetch,
+      turnBudget: context.turnBudget,
+      webToolBudget: context.webToolBudget,
     })
 
   // Route tool-capable Pi-serviceable models (anthropic + the OpenAI-wire family)

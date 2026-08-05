@@ -130,11 +130,11 @@ describe('SignInModal', () => {
       expect(screen.queryByText('Sign In')).not.toBeInTheDocument()
     })
 
-    it('displays feature cards', async () => {
+    it('does not display feature-selling cards (simple sign-in modal)', async () => {
       renderModal()
       await waitForModal()
-      expect(screen.getByText('Access more powerful AI models')).toBeInTheDocument()
-      expect(screen.getByText('Sync chats between devices')).toBeInTheDocument()
+      expect(screen.queryByText('Access more powerful AI models')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sync chats between devices')).not.toBeInTheDocument()
     })
 
     it('displays email input placeholder', async () => {

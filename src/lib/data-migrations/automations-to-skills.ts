@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { deleteTriggersForPrompt, maxPinnedSkills } from '@/dal'
+import { deleteTriggersForPrompt, maxPinnedSkills, slugifySkillName } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { promptsTable, skillsTable } from '@/db/tables'
 import { trackEvent } from '@/lib/posthog'
@@ -10,7 +10,6 @@ import { clearNullableColumns, hashValues, nowIso } from '@/lib/utils'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { DataMigration } from './index'
 import { deriveSkillIdFromAutomationId } from './derive-skill-id'
-import { slugifySkillName } from './slugify-skill-name'
 
 /**
  * Hash the user-editable fields of an automation row. Mirrors the legacy
@@ -182,7 +181,7 @@ const migrateOne = async (
   }
 
   const slug = slugifySkillName(automation.title)
-  if (!slug) {
+  if (slug === '') {
     // Stranded: title has no slugifiable characters at all (e.g. "!!!" or
     // pure CJK). Source stays alive — without a UI to rename it, the user
     // can't unstick it, but we surface the count in telemetry so the
@@ -211,6 +210,9 @@ const migrateOne = async (
     await tx.insert(skillsTable).values({
       id: skillId,
       name: slug,
+      // The automation's human title survives as the display name; the slug
+      // is only the /token derivation of it.
+      label: automation.title,
       description: `Migrated from automation: ${automation.title}`,
       instruction: automation.prompt,
       enabled: 1,

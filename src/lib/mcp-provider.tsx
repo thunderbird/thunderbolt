@@ -4,7 +4,7 @@
 
 import { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { getMcpServerCredentials, type McpServerCredentials } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -14,7 +14,15 @@ import { isUnauthorizedError } from './mcp-errors'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mcp-transport'
 import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
 
-type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
+type SdkMcpClient = Awaited<ReturnType<typeof createMCPClient>>
+type MCPTools = Awaited<ReturnType<SdkMcpClient['tools']>>
+
+/** The application-facing MCP client contract; keep it narrower than the SDK
+ * client so consumers and tests depend only on capabilities Thunderbolt uses. */
+type MCPClient = {
+  tools: () => Promise<MCPTools>
+  close: () => void | Promise<void>
+}
 
 type MCPServer = {
   id: string
@@ -24,7 +32,7 @@ type MCPServer = {
   enabled: boolean
 }
 
-type MCPServerConnection = MCPServer & {
+export type MCPServerConnection = MCPServer & {
   client: MCPClient | null
   isConnected: boolean
   error: Error | null
@@ -124,6 +132,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   const serversRef = useRef<MCPServerConnection[]>([])
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const db = useDatabase()
+  const httpClient = useHttpClient()
 
   /** Update the server list AND `serversRef` in lockstep — this is the SOLE
    *  writer of `servers`, so the ref stays in sync without a render-phase
@@ -141,7 +150,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     const credentials = await getMcpServerCredentials(db, serverId)
     const token = await resolveMcpAccessToken(db, serverId, credentials, cloudUrl)
     const headers = buildMcpHeaders(token)
-    const transport = createMcpTransport(url, type, cloudUrl, headers)
+    const transport = createMcpTransport(url, type, cloudUrl, headers, httpClient)
     const mcpClient = await createMCPClient({ transport })
     return mcpClient
   }

@@ -5,11 +5,16 @@
 import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { loadConfig, saveConfig } from './config.ts'
 import type { CliConfig } from './config.ts'
 
 const tempDirs: string[] = []
+let stderr: ReturnType<typeof spyOn>
+
+beforeEach(() => {
+  stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+})
 
 /** Allocates one nested config path and tracks its temp root for cleanup. */
 const temporaryConfigPath = async (): Promise<string> => {
@@ -25,6 +30,7 @@ const writeRawConfig = async (path: string, contents: string): Promise<void> => 
 }
 
 afterEach(async () => {
+  stderr.mockRestore()
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
 })
 
@@ -51,21 +57,26 @@ describe('CLI config persistence', () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600)
   })
 
-  test('treats a missing file as absent', async () => {
+  test('treats a missing file as absent with no stderr note', async () => {
     expect(await loadConfig(await temporaryConfigPath())).toBeNull()
+    expect(stderr).not.toHaveBeenCalled()
   })
 
-  test('treats malformed JSON as absent', async () => {
+  test('treats malformed JSON as absent and reports the file on stderr', async () => {
     const path = await temporaryConfigPath()
     await writeRawConfig(path, '{not-json')
 
     expect(await loadConfig(path)).toBeNull()
+    expect(stderr).toHaveBeenCalledTimes(1)
+    expect(String(stderr.mock.calls[0]?.[0])).toContain(path)
   })
 
-  test('treats an invalid config shape as absent', async () => {
+  test('treats an invalid config shape as absent and reports the file on stderr', async () => {
     const path = await temporaryConfigPath()
     await writeRawConfig(path, JSON.stringify({ provider: 'bogus', model: 42 }))
 
     expect(await loadConfig(path)).toBeNull()
+    expect(stderr).toHaveBeenCalledTimes(1)
+    expect(String(stderr.mock.calls[0]?.[0])).toContain(path)
   })
 })

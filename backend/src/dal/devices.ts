@@ -2,12 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { db as DbType } from '@/db/client'
+import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { devicesTable } from '@/db/schema'
-import { and, count, eq, isNull, or } from 'drizzle-orm'
+import { and, count, eq, isNotNull, isNull, or } from 'drizzle-orm'
+import { createHash } from 'crypto'
+
+/** Deterministic device id for a bridge, derived from (userId, nodeId). Keying the row on this
+ * makes re-registration of the same bridge an idempotent upsert on (userId, nodeId) without a
+ * dedicated unique constraint, and guarantees one account can never collide with another's id. */
+export const bridgeDeviceIdPrefix = 'bridge-'
+
+export const bridgeDeviceId = (userId: string, nodeId: string) =>
+  `${bridgeDeviceIdPrefix}${createHash('sha256').update(`${userId}:${nodeId}`).digest('hex')}`
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
-export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
+export const getDeviceById = async (database: QueryableDatabase, deviceId: string) =>
   database
     .select({
       userId: devicesTable.userId,
@@ -15,6 +24,7 @@ export const getDeviceById = async (database: typeof DbType, deviceId: string) =
       approvalPending: devicesTable.approvalPending,
       publicKey: devicesTable.publicKey,
       revokedAt: devicesTable.revokedAt,
+      deviceType: devicesTable.deviceType,
     })
     .from(devicesTable)
     .where(eq(devicesTable.id, deviceId))
@@ -86,7 +96,7 @@ export const markDeviceTrusted = async (database: typeof DbType, deviceId: strin
 
 /** Count active (trusted, non-revoked) devices for a user.
  * Pending and limbo devices do NOT count toward the device cap (THU-502). */
-export const countActiveDevices = async (database: typeof DbType, userId: string) => {
+export const countActiveDevices = async (database: QueryableDatabase, userId: string) => {
   const rows = await database
     .select({ count: count() })
     .from(devicesTable)
@@ -122,6 +132,79 @@ export const setDeviceNodeId = async (database: typeof DbType, deviceId: string,
         eq(devicesTable.userId, userId),
         isNull(devicesTable.revokedAt),
         or(eq(devicesTable.trusted, true), eq(devicesTable.approvalPending, true)),
+      ),
+    )
+    .returning()
+
+/**
+ * List the account's iroh allowlist: the endpoint identities (node_id) of every trusted,
+ * non-revoked device that has bound one. Scoped to `userId`, so it never returns another
+ * account's rows. A headless bridge fetches this (bearer-auth) to auto-allow same-account
+ * peers without embedding PowerSync or holding the E2EE Content Key. Denied/pending devices
+ * are excluded (only `trusted` rows), as are revoked ones and rows with a null node_id.
+ */
+export const getTrustedNodeIds = async (database: typeof DbType, userId: string) =>
+  database
+    .select({ nodeId: devicesTable.nodeId, deviceType: devicesTable.deviceType })
+    .from(devicesTable)
+    .where(
+      and(
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, true),
+        isNull(devicesTable.revokedAt),
+        isNotNull(devicesTable.nodeId),
+      ),
+    )
+
+/**
+ * Register (or idempotently re-register) a BRIDGE device on the caller's account.
+ * A bridge is a device with `device_type='bridge'`, keyed by its server NodeId. The user
+ * deliberately added their own ACP/MCP bridge, so it is inserted trusted and non-revoked.
+ * `device_type` is set here on the server — clients can never set it (it's deny-listed from
+ * PowerSync upload). The row id is derived from (userId, nodeId), so re-adding the same bridge
+ * upserts the same row instead of duplicating. The `bridge-` id namespace is reserved from client
+ * uploads (see powersync.ts), so the conflict is always the caller's own row.
+ *
+ * A REVOKED bridge is never silently resurrected: `setWhere` requires `revoked_at IS NULL`, so an
+ * upsert onto a revoked row updates nothing and `.returning()` is empty — mirroring how a revoked
+ * normal device is refused re-registration. Callers treat the empty result as "revoked".
+ */
+export const registerBridgeDevice = async (
+  database: QueryableDatabase,
+  bridge: { userId: string; nodeId: string; name: string },
+) => {
+  const now = new Date()
+  const fields = {
+    name: bridge.name,
+    deviceType: 'bridge' as const,
+    trusted: true,
+    approvalPending: false,
+    nodeId: bridge.nodeId,
+    nodeIdAttestedAt: now,
+    lastSeen: now,
+  }
+  return database
+    .insert(devicesTable)
+    .values({ id: bridgeDeviceId(bridge.userId, bridge.nodeId), userId: bridge.userId, createdAt: now, ...fields })
+    .onConflictDoUpdate({
+      target: devicesTable.id,
+      set: fields,
+      setWhere: and(eq(devicesTable.userId, bridge.userId), isNull(devicesTable.revokedAt)),
+    })
+    .returning()
+}
+
+/** Permanently remove a revoked bridge owned by `userId`.
+ * Guards all eligibility conditions in the DELETE so callers cannot remove active or normal devices. */
+export const deleteRevokedBridgeDevice = async (database: QueryableDatabase, deviceId: string, userId: string) =>
+  database
+    .delete(devicesTable)
+    .where(
+      and(
+        eq(devicesTable.id, deviceId),
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.deviceType, 'bridge'),
+        isNotNull(devicesTable.revokedAt),
       ),
     )
     .returning()

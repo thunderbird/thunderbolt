@@ -4,6 +4,12 @@
 
 import { z } from 'zod'
 
+const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
+  message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
+})
+const defaultCorsExposeHeaders =
+  'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing'
+
 /**
  * Settings schema for environment variables validation
  */
@@ -51,6 +57,21 @@ const settingsSchema = z
     betterAuthUrl: z.string().default('http://localhost:8000'),
     betterAuthSecret: z.string().min(1),
 
+    // Device Authorization Grant (RFC 8628) — used by the `thunderbolt` CLI to log in
+    // headless. `deviceAuthExpiresIn` is how long the device/user code stays valid before
+    // the CLI must restart the flow; `deviceAuthInterval` is the minimum client polling
+    // gap. Better Auth time strings ('30m', '5s', '1h'). Defaults follow RFC 8628 §3.2.
+    deviceAuthExpiresIn: betterAuthTimeString.default('30m'),
+    deviceAuthInterval: betterAuthTimeString.default('5s'),
+
+    // Better Auth API-key expiry values use seconds at runtime. New PATs expire after
+    // 90 days by default; callers may request a different supported lifetime at creation.
+    apiKeyDefaultExpiresInSeconds: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(90 * 24 * 60 * 60),
+
     // General settings
     logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
     port: z.coerce.number().default(8000),
@@ -83,11 +104,7 @@ const settingsSchema = z
     corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
     corsAllowHeaders: z.string().default(''),
     // Protocol-required: frontend proxy-fetch.ts unwrap needs these visible cross-origin (cors does not echo expose-headers).
-    corsExposeHeaders: z
-      .string()
-      .default(
-        'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate',
-      ),
+    corsExposeHeaders: z.string().default(defaultCorsExposeHeaders),
 
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
@@ -177,6 +194,9 @@ const parseSettings = (): Settings => {
     samlCert: process.env.SAML_CERT || '',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
+    deviceAuthExpiresIn: process.env.DEVICE_AUTH_EXPIRES_IN || '30m',
+    deviceAuthInterval: process.env.DEVICE_AUTH_INTERVAL || '5s',
+    apiKeyDefaultExpiresInSeconds: process.env.API_KEY_DEFAULT_EXPIRES_IN,
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',
@@ -196,9 +216,7 @@ const parseSettings = (): Settings => {
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
-    corsExposeHeaders:
-      process.env.CORS_EXPOSE_HEADERS ||
-      'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate',
+    corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import { AgentList } from './agent-list'
-import { agentToggleDisabled, canDeleteAgent, canEditAgent } from './agent-row'
+import { agentProvenanceLine } from './agent-provenance'
 
 afterEach(() => {
   cleanup()
@@ -44,156 +44,92 @@ const customAgent: Agent = {
 
 const noop = () => {}
 
-describe('canDeleteAgent', () => {
-  it('returns false for the built-in agent', () => {
-    expect(canDeleteAgent(builtInAgent, 'user-42')).toBe(false)
+describe('agentProvenanceLine', () => {
+  it('labels the built-in agent as built into the app', () => {
+    expect(agentProvenanceLine(builtInAgent)).toBe('Your agent · built into the app')
   })
 
-  it('returns false for system agents', () => {
-    expect(canDeleteAgent(systemAgent, 'user-42')).toBe(false)
+  it('labels system agents as always available', () => {
+    expect(agentProvenanceLine(systemAgent)).toBe('System agent · always available')
   })
 
-  it('returns true for customs owned by the current user', () => {
-    expect(canDeleteAgent(customAgent, 'user-42')).toBe(true)
+  it('labels custom agents with the endpoint host', () => {
+    expect(agentProvenanceLine(customAgent)).toBe('Connected agent · my.example.com')
   })
 
-  it('returns false for customs owned by a different user', () => {
-    expect(canDeleteAgent(customAgent, 'someone-else')).toBe(false)
-  })
-
-  it('returns false when no user is signed in', () => {
-    expect(canDeleteAgent(customAgent, null)).toBe(false)
-  })
-})
-
-describe('canEditAgent', () => {
-  it('mirrors canDeleteAgent — built-in and system are non-editable, customs are owned by the user', () => {
-    expect(canEditAgent(builtInAgent, 'user-42')).toBe(false)
-    expect(canEditAgent(systemAgent, 'user-42')).toBe(false)
-    expect(canEditAgent(customAgent, 'user-42')).toBe(true)
-    expect(canEditAgent(customAgent, 'someone-else')).toBe(false)
-    expect(canEditAgent(customAgent, null)).toBe(false)
+  it('falls back to a generic label for non-URL (iroh) targets', () => {
+    // iroh targets are bare base32 NodeIds / tickets, not parseable URLs.
+    expect(agentProvenanceLine({ ...customAgent, transport: 'iroh', url: 'a'.repeat(52) })).toBe(
+      'Connected agent · iroh peer',
+    )
   })
 })
 
 describe('AgentList', () => {
-  it('renders rows for built-in, system, and custom agents in the given order', () => {
-    render(
-      <AgentList
-        agents={[builtInAgent, systemAgent, customAgent]}
-        currentUserId="user-42"
-        onToggle={noop}
-        onEdit={noop}
-        onDelete={noop}
-      />,
-    )
+  it('renders every agent as a row with its provenance line', () => {
+    render(<AgentList agents={[builtInAgent, systemAgent, customAgent]} onOpenAgent={noop} />)
 
     expect(screen.getByTestId(`agent-row-${builtInAgent.id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`agent-row-${systemAgent.id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`agent-row-${customAgent.id}`)).toBeInTheDocument()
 
-    expect(screen.getByTestId(`agent-badge-${builtInAgent.id}`)).toHaveTextContent('Built-in')
-    expect(screen.getByTestId(`agent-badge-${systemAgent.id}`)).toHaveTextContent('System')
-    expect(screen.getByTestId(`agent-badge-${customAgent.id}`)).toHaveTextContent('Remote')
-  })
-
-  it('only renders the delete button on custom agents owned by the user', () => {
-    render(
-      <AgentList
-        agents={[builtInAgent, systemAgent, customAgent]}
-        currentUserId="user-42"
-        onToggle={noop}
-        onEdit={noop}
-        onDelete={noop}
-      />,
+    expect(screen.getByTestId(`agent-provenance-${builtInAgent.id}`)).toHaveTextContent(
+      'Your agent · built into the app',
     )
-
-    expect(screen.queryByTestId(`agent-delete-${builtInAgent.id}`)).not.toBeInTheDocument()
-    expect(screen.queryByTestId(`agent-delete-${systemAgent.id}`)).not.toBeInTheDocument()
-    expect(screen.getByTestId(`agent-delete-${customAgent.id}`)).toBeInTheDocument()
-  })
-
-  it('only renders the edit button on custom agents owned by the user', () => {
-    render(
-      <AgentList
-        agents={[builtInAgent, systemAgent, customAgent]}
-        currentUserId="user-42"
-        onToggle={noop}
-        onEdit={noop}
-        onDelete={noop}
-      />,
+    expect(screen.getByTestId(`agent-provenance-${systemAgent.id}`)).toHaveTextContent(
+      'System agent · always available',
     )
-
-    expect(screen.queryByTestId(`agent-edit-${builtInAgent.id}`)).not.toBeInTheDocument()
-    expect(screen.queryByTestId(`agent-edit-${systemAgent.id}`)).not.toBeInTheDocument()
-    expect(screen.getByTestId(`agent-edit-${customAgent.id}`)).toBeInTheDocument()
-  })
-
-  it('calls onEdit with the agent when the edit button is clicked', () => {
-    const onEdit = mock<(agent: Agent) => void>(() => {})
-
-    render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={noop} onEdit={onEdit} onDelete={noop} />)
-
-    fireEvent.click(screen.getByTestId(`agent-edit-${customAgent.id}`))
-
-    expect(onEdit).toHaveBeenCalledTimes(1)
-    expect(onEdit.mock.calls[0][0].id).toBe(customAgent.id)
-  })
-
-  it('calls onToggle with the new enabled value when a custom agent toggle flips', () => {
-    const onToggle = mock<(agent: Agent, enabled: boolean) => void>(() => {})
-
-    render(
-      <AgentList agents={[customAgent]} currentUserId="user-42" onToggle={onToggle} onEdit={noop} onDelete={noop} />,
+    expect(screen.getByTestId(`agent-provenance-${customAgent.id}`)).toHaveTextContent(
+      'Connected agent · my.example.com',
     )
-
-    const toggle = screen.getByTestId(`agent-toggle-${customAgent.id}`)
-    fireEvent.click(toggle)
-
-    expect(onToggle).toHaveBeenCalledTimes(1)
-    const [agentArg, enabledArg] = onToggle.mock.calls[0]
-    expect(agentArg.id).toBe(customAgent.id)
-    expect(enabledArg).toBe(false)
   })
 
-  it('disables the toggle for the built-in agent', () => {
-    render(<AgentList agents={[builtInAgent]} currentUserId="user-42" onToggle={noop} onEdit={noop} onDelete={noop} />)
+  it('splits into "Your agents" and "System agents" sections when system agents exist', () => {
+    render(<AgentList agents={[builtInAgent, systemAgent, customAgent]} onOpenAgent={noop} />)
 
-    expect(screen.getByTestId(`agent-toggle-${builtInAgent.id}`)).toBeDisabled()
+    const yours = screen.getByTestId('agent-section-yours')
+    const system = screen.getByTestId('agent-section-system')
+
+    expect(yours).toHaveTextContent('Your agents')
+    expect(system).toHaveTextContent('System agents')
+
+    // Built-in + custom live under "Your agents"; the managed agent under "System agents".
+    expect(yours.querySelector(`[data-testid="agent-row-${builtInAgent.id}"]`)).not.toBeNull()
+    expect(yours.querySelector(`[data-testid="agent-row-${customAgent.id}"]`)).not.toBeNull()
+    expect(system.querySelector(`[data-testid="agent-row-${systemAgent.id}"]`)).not.toBeNull()
   })
 
-  it('disables the toggle for system agents', () => {
-    render(<AgentList agents={[systemAgent]} currentUserId="user-42" onToggle={noop} onEdit={noop} onDelete={noop} />)
+  it('renders a flat list without section labels when there are no system agents', () => {
+    render(<AgentList agents={[builtInAgent, customAgent]} onOpenAgent={noop} />)
 
-    expect(screen.getByTestId(`agent-toggle-${systemAgent.id}`)).toBeDisabled()
+    expect(screen.queryByTestId('agent-section-yours')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('agent-section-system')).not.toBeInTheDocument()
+    expect(screen.queryByText('Your agents')).not.toBeInTheDocument()
   })
 
-  it('keeps the toggle enabled for custom agents', () => {
-    render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={noop} onEdit={noop} onDelete={noop} />)
+  it('calls onOpenAgent with the agent when a row is clicked', () => {
+    const onOpenAgent = mock<(agent: Agent) => void>(() => {})
 
-    expect(screen.getByTestId(`agent-toggle-${customAgent.id}`)).not.toBeDisabled()
-  })
-})
+    render(<AgentList agents={[builtInAgent, customAgent]} onOpenAgent={onOpenAgent} />)
 
-describe('agentToggleDisabled', () => {
-  it('disables the toggle for the built-in agent with the built-in tooltip', () => {
-    expect(agentToggleDisabled(builtInAgent)).toEqual({
-      disabled: true,
-      disabledTooltip: 'Built-in agent is always available',
-    })
+    fireEvent.click(screen.getByRole('button', { name: `Open ${customAgent.name}` }))
+
+    expect(onOpenAgent).toHaveBeenCalledTimes(1)
+    expect(onOpenAgent.mock.calls[0][0].id).toBe(customAgent.id)
   })
 
-  it('disables the toggle for system agents with the system tooltip', () => {
-    expect(agentToggleDisabled(systemAgent)).toEqual({
-      disabled: true,
-      disabledTooltip: 'System agent is always available',
-    })
+  it('marks the open row as selected', () => {
+    render(<AgentList agents={[builtInAgent, customAgent]} selectedId={customAgent.id} onOpenAgent={noop} />)
+
+    expect(screen.getByRole('button', { name: `Open ${customAgent.name}` })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: `Open ${builtInAgent.name}` })).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('keeps the toggle enabled for custom agents and emits no tooltip', () => {
-    expect(agentToggleDisabled(customAgent)).toEqual({
-      disabled: false,
-      disabledTooltip: null,
-    })
+  it('shows a Disabled suffix on disabled custom agents', () => {
+    render(<AgentList agents={[{ ...customAgent, enabled: 0 }]} onOpenAgent={noop} />)
+
+    expect(screen.getByTestId(`agent-provenance-${customAgent.id}`)).toHaveTextContent(
+      'Connected agent · my.example.com · Disabled',
+    )
   })
 })

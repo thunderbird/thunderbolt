@@ -4,7 +4,7 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { useEffect } from 'react'
-import { isDesktop, isTauri } from '@/lib/platform'
+import { isTauri, isTauriDesktop } from '@/lib/platform'
 
 type AndroidInsets = {
   adjustedInsetTop: number
@@ -27,7 +27,7 @@ const defaultDeps: SafeAreaInsetDeps = {
  * would just add empty space above that strip. Zero it out — the chrome
  * component itself reserves the room.
  */
-const topFallback = (): string => (isTauri() && isDesktop() ? '0px' : 'env(safe-area-inset-top, 24px)')
+const topFallback = (): string => (isTauriDesktop() ? '0px' : 'env(safe-area-inset-top, 24px)')
 
 export const createCSSVars = (insets: { bottom: number; top: number }) => {
   document.documentElement.style.setProperty(

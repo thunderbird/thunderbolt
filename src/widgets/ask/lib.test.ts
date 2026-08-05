@@ -8,6 +8,8 @@ import {
   collectAskEntriesFromCache,
   evaluateAnswer,
   formatAskResponsesNote,
+  isGradedMode,
+  isMultiSelectMode,
   optionLetter,
   turnTextForAnswer,
   type AskCacheEntry,
@@ -49,8 +51,24 @@ describe('evaluateAnswer', () => {
     expect(evaluateAnswer({ ...singleAsk, mode: 'choice' }, new Set(['a']))).toBeNull()
   })
 
-  test('free: no designated answer', () => {
-    expect(evaluateAnswer({ prompt: 'Explain photosynthesis', mode: 'free', options: [] }, new Set())).toBeNull()
+  test('choices: no designated answer even with several selected', () => {
+    expect(evaluateAnswer({ ...multiAsk, mode: 'choices' }, new Set(['a', 'b']))).toBeNull()
+  })
+})
+
+describe('mode helpers', () => {
+  test('isGradedMode: only single/multiple are graded', () => {
+    expect(isGradedMode('single')).toBe(true)
+    expect(isGradedMode('multiple')).toBe(true)
+    expect(isGradedMode('choice')).toBe(false)
+    expect(isGradedMode('choices')).toBe(false)
+  })
+
+  test('isMultiSelectMode: multiple and choices allow several selections', () => {
+    expect(isMultiSelectMode('multiple')).toBe(true)
+    expect(isMultiSelectMode('choices')).toBe(true)
+    expect(isMultiSelectMode('single')).toBe(false)
+    expect(isMultiSelectMode('choice')).toBe(false)
   })
 })
 
@@ -138,7 +156,20 @@ describe('formatAskResponsesNote', () => {
     expect(note).toContain('"What next?" — chose "Draft a reply"')
   })
 
-  test('reports free-text answers verbatim', () => {
+  test('reports a multi-select (choices) response with every pick', () => {
+    const note = formatAskResponsesNote([
+      {
+        prompt: 'Which do you like?',
+        mode: 'choices',
+        selectedIds: ['a', 'b'],
+        chosen: ['Coffee', 'Tea'],
+        matched: null,
+      },
+    ])
+    expect(note).toContain('"Which do you like?" — chose "Coffee", "Tea"')
+  })
+
+  test('reports legacy free-text answers verbatim', () => {
     const note = formatAskResponsesNote([
       {
         prompt: 'Define photosynthesis',
@@ -152,7 +183,7 @@ describe('formatAskResponsesNote', () => {
     expect(note).toContain('"Define photosynthesis" — answered "Plants making food from light"')
   })
 
-  test('free-text with no answer shows (no response)', () => {
+  test('legacy free-text with no answer shows (no response)', () => {
     const note = formatAskResponsesNote([
       { prompt: 'Define X', mode: 'free', selectedIds: [], chosen: [], matched: null },
     ])
@@ -165,8 +196,9 @@ describe('turnTextForAnswer', () => {
     expect(turnTextForAnswer('choice', ['Draft a reply'])).toBe('Draft a reply')
   })
 
-  test('free dispatches the typed text (takes precedence over chosen)', () => {
-    expect(turnTextForAnswer('free', ['ignored'], 'In my own words…')).toBe('In my own words…')
+  test('choices dispatches all chosen option texts, comma-joined', () => {
+    expect(turnTextForAnswer('choices', ['Coffee', 'Tea'])).toBe('Coffee, Tea')
+    expect(turnTextForAnswer('choices', [])).toBeNull()
   })
 
   test('graded modes never dispatch a turn (no quiz loop)', () => {
@@ -176,6 +208,6 @@ describe('turnTextForAnswer', () => {
 
   test('empty / whitespace-only answers dispatch nothing', () => {
     expect(turnTextForAnswer('choice', [])).toBeNull()
-    expect(turnTextForAnswer('free', [], '   ')).toBeNull()
+    expect(turnTextForAnswer('choice', ['   '])).toBeNull()
   })
 })

@@ -5,11 +5,10 @@
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
+import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
 import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
@@ -40,7 +39,7 @@ export const WaitlistPage = () => {
         <div className="flex w-full flex-1 flex-col items-center p-4">
           <WaitlistHeader />
 
-          <div className="my-auto flex flex-col items-center text-center">
+          <div className="mt-auto flex flex-col items-center text-center md:my-auto">
             <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Check your email</p>
             <p className="mt-2 text-base text-muted-foreground">
               We&apos;ve sent an email to <span className="font-medium text-foreground">{state.email}</span> with your
@@ -48,7 +47,7 @@ export const WaitlistPage = () => {
             </p>
           </div>
 
-          <div className="flex w-full flex-col items-center gap-4">
+          <div className="mb-auto mt-8 flex w-full flex-col items-center gap-4 md:mb-0 md:mt-0">
             <p className="text-sm text-muted-foreground">If you received a code to log in, enter it here:</p>
             <InputOTP
               maxLength={otpLength}
@@ -64,11 +63,7 @@ export const WaitlistPage = () => {
               data-form-type="other"
               containerClassName="w-full"
             >
-              <InputOTPGroup className="w-full gap-2">
-                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                  <InputOTPSlot key={i} index={i} className="flex-1 rounded-lg" />
-                ))}
-              </InputOTPGroup>
+              <InputOTPSlots />
             </InputOTP>
 
             {state.errorMessage && <p className="text-sm text-destructive">{state.errorMessage}</p>}
@@ -76,17 +71,12 @@ export const WaitlistPage = () => {
             <Button
               type="button"
               onClick={() => actions.handleOtpComplete(state.otp)}
-              disabled={isVerifying || state.otp.length !== otpLength}
-              className="h-[46px] w-full rounded-[12px] text-base"
+              isLoading={isVerifying}
+              loadingLabel="Verifying…"
+              disabled={state.otp.length !== otpLength}
+              className="h-[46px] w-full rounded-xl text-base"
             >
-              {isVerifying ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verifying...
-                </>
-              ) : (
-                'Continue'
-              )}
+              Continue
             </Button>
           </div>
         </div>
@@ -101,7 +91,7 @@ export const WaitlistPage = () => {
 
         <div className="flex w-full flex-col items-center gap-8">
           <div className="text-center font-sans">
-            <p className="text-[28px] font-medium leading-normal text-foreground">Wanna try the beta?</p>
+            <p className="text-[28px] font-medium leading-normal text-foreground">Want early access?</p>
           </div>
 
           <form onSubmit={actions.handleSubmit} className="flex w-full flex-col gap-4">
@@ -122,17 +112,12 @@ export const WaitlistPage = () => {
 
             <Button
               type="submit"
-              disabled={state.status === 'joining' || !isValidEmail}
-              className="h-[46px] w-full rounded-[12px] text-base"
+              isLoading={state.status === 'joining'}
+              loadingLabel="Sending…"
+              disabled={!isValidEmail}
+              className="h-[46px] w-full rounded-xl text-base"
             >
-              {state.status === 'joining' ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                'Continue'
-              )}
+              Continue
             </Button>
           </form>
         </div>

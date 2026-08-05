@@ -2,33 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { mock } from 'bun:test'
-import * as authUtils from '@/auth/utils'
-import * as waitlistUtils from '@/waitlist/utils'
 import * as settingsModule from '@/config/settings'
 import { createTestSettings } from '@/test-utils/settings'
 
-// createAuth transitively imports email-sending functions at the module level.
-// Until createAuth accepts these as injectable dependencies, we mock them here
-// to prevent real emails from being sent during tests.
-mock.module('@/auth/utils', () => ({
-  ...authUtils,
-  sendSignInEmail: mock(() => Promise.resolve()),
-}))
-
-mock.module('@/waitlist/utils', () => ({
-  ...waitlistUtils,
-  sendWaitlistNotReadyEmail: mock(() => Promise.resolve()),
-  sendWaitlistJoinedEmail: mock(() => Promise.resolve()),
-  sendWaitlistReminderEmail: mock(() => Promise.resolve()),
-}))
-
-import { OAuth2Server } from 'oauth2-mock-server'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestDb } from '@/test-utils/db'
 
-const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
+const oidcIssuerUrl = 'https://oidc.test'
+
+const oidcDiscoveryFetchImpl = async (input: RequestInfo | URL) => {
+  const url = input instanceof Request ? input.url : input.toString()
+  if (url !== `${oidcIssuerUrl}/.well-known/openid-configuration`) {
+    throw new Error(`Unexpected OIDC request: ${url}`)
+  }
+  return Response.json({
+    issuer: oidcIssuerUrl,
+    authorization_endpoint: `${oidcIssuerUrl}/authorize`,
+    token_endpoint: `${oidcIssuerUrl}/token`,
+    jwks_uri: `${oidcIssuerUrl}/jwks`,
+  })
+}
+const oidcDiscoveryFetch = Object.assign(oidcDiscoveryFetchImpl, { preconnect: () => {} }) as unknown as typeof fetch
 
 /** Base settings for OIDC tests — issuer URL is overridden per-suite */
 const baseSettings = createTestSettings({
@@ -40,10 +35,10 @@ const baseSettings = createTestSettings({
 })
 
 /** Save and restore globalThis.fetch + process.env.TRUSTED_ORIGINS around a test body. */
-const withRealFetch = async (oidcIssuerUrl: string, fn: () => Promise<void>) => {
+const withOidcFetch = async (fn: () => Promise<void>) => {
   const savedFetch = globalThis.fetch
   const savedOrigins = process.env.TRUSTED_ORIGINS
-  globalThis.fetch = realFetch
+  globalThis.fetch = oidcDiscoveryFetch
   process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl}`
 
   try {
@@ -55,28 +50,17 @@ const withRealFetch = async (oidcIssuerUrl: string, fn: () => Promise<void>) => 
 }
 
 describe('OIDC Integration', () => {
-  let oidcServer: OAuth2Server
-  let oidcIssuerUrl: string
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
   let getSettingsSpy: ReturnType<typeof spyOn>
 
   beforeAll(async () => {
-    oidcServer = new OAuth2Server()
-    await oidcServer.issuer.keys.generate('RS256')
-    await oidcServer.start(0, 'localhost')
-
-    oidcIssuerUrl = oidcServer.issuer.url!
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
   }, 60_000)
 
   afterAll(async () => {
-    if (oidcServer && (oidcServer as unknown as { listening: boolean }).listening) {
-      await oidcServer.stop().catch(() => {})
-    }
-
     if (cleanup) {
       await cleanup().catch(() => {})
     }
@@ -95,7 +79,7 @@ describe('OIDC Integration', () => {
     })
 
     it('should return a redirect URL pointing to the OIDC provider', async () => {
-      await withRealFetch(oidcIssuerUrl, async () => {
+      await withOidcFetch(async () => {
         const { createAuth } = await import('./auth')
         const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
@@ -121,7 +105,7 @@ describe('OIDC Integration', () => {
     })
 
     it('should include PKCE code_challenge in the redirect URL', async () => {
-      await withRealFetch(oidcIssuerUrl, async () => {
+      await withOidcFetch(async () => {
         const { createAuth } = await import('./auth')
         const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
@@ -146,7 +130,7 @@ describe('OIDC Integration', () => {
     })
 
     it('should include openid, profile, and email scopes', async () => {
-      await withRealFetch(oidcIssuerUrl, async () => {
+      await withOidcFetch(async () => {
         const { createAuth } = await import('./auth')
         const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)

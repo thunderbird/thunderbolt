@@ -189,6 +189,8 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     loadBalancerType: 'application',
     securityGroups: [albSg.id],
     subnets: publicSubnets.map((s) => s.id),
+    // Must stay strictly below the backend keep-alive timeout — see backend/src/index.ts (120s).
+    idleTimeout: 60,
     tags: { Name: `${name}-alb` },
   })
 

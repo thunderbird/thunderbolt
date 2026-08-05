@@ -124,14 +124,14 @@ describe('ReasoningItem', () => {
       expect(screen.getByText('...')).toBeInTheDocument()
     })
 
-    it('should display "—" when not loading and no duration', () => {
+    it('should display "-" when not loading and no duration', () => {
       const reasoningPart = createMockReasoningPart('complete')
       const part: ReasoningGroupItem = { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }
       const mockOnClick = mock()
 
       render(<ReasoningItem part={part} onClick={mockOnClick} isGroupReasoning={false} />)
 
-      expect(screen.getByText('—')).toBeInTheDocument()
+      expect(screen.getByText('-')).toBeInTheDocument()
     })
 
     it('should call onClick when clicked', () => {
@@ -253,14 +253,14 @@ describe('ReasoningItem', () => {
       expect(screen.getByText('...')).toBeInTheDocument()
     })
 
-    it('should display "—" when not loading and no duration', () => {
+    it('should display "-" when not loading and no duration', () => {
       const toolPart = createMockToolPart('test_tool', 'output-available')
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
       const mockOnClick = mock()
 
       render(<ReasoningItem part={part} onClick={mockOnClick} isGroupReasoning={false} />)
 
-      expect(screen.getByText('—')).toBeInTheDocument()
+      expect(screen.getByText('-')).toBeInTheDocument()
     })
 
     it('should call onClick when clicked', () => {

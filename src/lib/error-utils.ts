@@ -3,6 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
+import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
+
+const chatErrorKinds = ['attestation', 'timeout', 'rate-limit', 'provider', 'network', 'connection-lost'] as const
+export type ChatErrorKind = (typeof chatErrorKinds)[number]
+
+const isChatErrorKind = (value: unknown): value is ChatErrorKind => chatErrorKinds.includes(value as ChatErrorKind)
 
 const parseJson = (str: string): Record<string, unknown> | undefined => {
   try {
@@ -10,6 +16,103 @@ const parseJson = (str: string): Record<string, unknown> | undefined => {
   } catch {
     return undefined
   }
+}
+const providerErrorNames = new Set(['KeyConfigMismatchError', 'ProtocolError', 'DecryptionError'])
+const timeoutMarkers = [tinfoilUpstreamTimeoutMessage, tinfoilUpstreamIdleTimeoutMessage]
+const networkErrorMarkers = ['failed to fetch', 'load failed', 'networkerror']
+
+type ErrorClassificationFields = {
+  name?: string
+  status?: number
+  message?: string
+}
+
+const firstNumber = (...values: unknown[]): number | undefined =>
+  values.find((value): value is number => typeof value === 'number')
+
+const firstString = (...values: unknown[]): string | undefined =>
+  values.find((value): value is string => typeof value === 'string')
+
+/** Normalize raw error fields used by chat error classification. */
+const getErrorClassificationFields = (error: unknown): ErrorClassificationFields => {
+  if (typeof error === 'string') {
+    return { message: error }
+  }
+  if (typeof error !== 'object' || error === null) {
+    return {}
+  }
+
+  const value = error as Record<string, unknown>
+  const response = (value.response ?? {}) as Record<string, unknown>
+  return {
+    name: getErrorName(value),
+    status: firstNumber(value.status, value.statusCode, response.status),
+    message: firstString(value.responseBody, value.message),
+  }
+}
+
+/**
+ * Classify a raw pipeline error into a stable user-facing chat error kind.
+ * Classification uses only normalized error name, HTTP status, and message.
+ */
+export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => {
+  const { name, status, message } = getErrorClassificationFields(error)
+  const normalizedMessage = message?.toLowerCase()
+
+  if (name === 'TinfoilAttestationTimeoutError') {
+    return 'timeout'
+  }
+  if (name === 'TinfoilAttestationError') {
+    return 'attestation'
+  }
+  if (status === 429) {
+    return 'rate-limit'
+  }
+  if (status === 408 || (normalizedMessage && timeoutMarkers.some((marker) => normalizedMessage.includes(marker)))) {
+    return 'timeout'
+  }
+  if ((name && providerErrorNames.has(name)) || (status !== undefined && status >= 500)) {
+    return 'provider'
+  }
+  if (
+    name === 'TypeError' &&
+    normalizedMessage &&
+    networkErrorMarkers.some((marker) => normalizedMessage.includes(marker))
+  ) {
+    return 'network'
+  }
+  return undefined
+}
+
+/**
+ * Read a serialized chat error kind, falling back to legacy status/message
+ * classification when older payloads do not carry one.
+ */
+export const getChatErrorKind = (error?: Error | null): ChatErrorKind | undefined => {
+  if (!error?.message) {
+    return undefined
+  }
+
+  const parsed = parseJson(error.message)
+  if (!parsed) {
+    return classifyErrorKind(error)
+  }
+  if (isChatErrorKind(parsed.kind)) {
+    return parsed.kind
+  }
+
+  return classifyErrorKind({
+    status: firstNumber(parsed.status, parsed.statusCode),
+    message: firstString(parsed.error),
+  })
+}
+
+/** Return an error-like value's string name, when present. */
+export const getErrorName = (error: unknown): string | undefined => {
+  if (typeof error !== 'object' || error === null || !('name' in error)) {
+    return undefined
+  }
+  return typeof error.name === 'string' ? error.name : undefined
 }
 
 /** Check whether an error represents a rate-limit (HTTP 429) response. */
@@ -39,13 +142,7 @@ export const getErrorStatusCode = (error?: Error | null): number | undefined => 
     return undefined
   }
   const parsed = parseJson(error.message)
-  if (typeof parsed?.status === 'number') {
-    return parsed.status
-  }
-  if (typeof parsed?.statusCode === 'number') {
-    return parsed.statusCode
-  }
-  return undefined
+  return firstNumber(parsed?.status, parsed?.statusCode)
 }
 
 /**

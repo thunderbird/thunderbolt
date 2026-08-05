@@ -5,6 +5,8 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { MobileActionSheet, MobileActionSheetFooter } from '@/components/ui/mobile-action-sheet'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { defaultChatTitle } from '@/lib/constants'
 import { useRef, useState } from 'react'
 
@@ -15,55 +17,110 @@ type RenameChatDialogProps = {
   onRename: (title: string) => void
 }
 
-const RenameChatForm = ({ title, onOpenChange, onRename }: Omit<RenameChatDialogProps, 'open'>) => {
-  const [value, setValue] = useState(title ?? defaultChatTitle)
+export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: RenameChatDialogProps) => {
+  const { isMobile } = useIsMobile()
+  const initialTitle = title ?? defaultChatTitle
+  const [value, setValue] = useState(initialTitle)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Reset the draft to the current title on each open (the sanctioned
+  // previous-value-in-state pattern, so a discarded StrictMode/concurrent
+  // render can't lose the reset).
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open && value !== initialTitle) {
+      setValue(initialTitle)
+    }
+  }
+
+  const focusInput = () => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }
 
   const handleSave = () => {
     const trimmed = value.trim()
     const newTitle = trimmed || defaultChatTitle
-    if (newTitle !== (title ?? defaultChatTitle)) {
+    if (newTitle !== initialTitle) {
       onRename(newTitle)
     }
     onOpenChange(false)
   }
 
-  return (
-    <DialogContent
-      showCloseButton={false}
-      className="top-[30%]"
-      onOpenAutoFocus={(e) => {
-        e.preventDefault()
-        inputRef.current?.focus()
-        inputRef.current?.select()
+  const handleCancel = () => {
+    inputRef.current?.blur()
+    onOpenChange(false)
+  }
+
+  const input = (
+    <Input
+      ref={inputRef}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          handleSave()
+        }
       }}
-    >
-      <DialogHeader>
-        <DialogTitle>Rename chat</DialogTitle>
-      </DialogHeader>
-      <Input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            handleSave()
+      aria-label="Chat name"
+      placeholder="Chat name"
+    />
+  )
+
+  const actions = (
+    <>
+      <Button
+        variant="outline"
+        onPointerDown={(event) => {
+          if (event.pointerType === 'touch') {
+            event.preventDefault()
+            handleCancel()
           }
         }}
-        placeholder="Chat name"
-      />
-      <DialogFooter>
-        <Button variant="outline" onClick={() => onOpenChange(false)}>
-          Cancel
-        </Button>
-        <Button onClick={handleSave}>Save</Button>
-      </DialogFooter>
-    </DialogContent>
+        onClick={handleCancel}
+      >
+        Cancel
+      </Button>
+      <Button onClick={handleSave}>Save</Button>
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <MobileActionSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Rename chat"
+        initialFocus={() => {
+          const input = inputRef.current
+          requestAnimationFrame(() => input?.select())
+          return input
+        }}
+      >
+        {input}
+        <MobileActionSheetFooter>{actions}</MobileActionSheetFooter>
+      </MobileActionSheet>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          // The dialog opens from a menu item, whose closing focus restoration
+          // runs after this event and can otherwise move focus back to the menu.
+          requestAnimationFrame(focusInput)
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Rename chat</DialogTitle>
+        </DialogHeader>
+        {input}
+        <DialogFooter>{actions}</DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
-
-export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: RenameChatDialogProps) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    {open && <RenameChatForm key={title} title={title} onOpenChange={onOpenChange} onRename={onRename} />}
-  </Dialog>
-)

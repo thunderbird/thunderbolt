@@ -98,7 +98,6 @@ describe('openTransport — agent-type routing', () => {
       signal: new AbortController().signal,
       isStandalone: () => false,
       readProxyEnabled: () => null,
-      backoffMs: () => 1,
       httpClient: stubHttpClient,
       getAuthToken: () => 'token-abc',
     })
@@ -126,7 +125,6 @@ describe('openTransport — agent-type routing', () => {
       signal: new AbortController().signal,
       isStandalone: () => true,
       readProxyEnabled: () => 'false',
-      backoffMs: () => 1,
       httpClient: stubHttpClient,
       getAuthToken: () => 'tauri-token-456',
     })
@@ -146,7 +144,6 @@ describe('openTransport — agent-type routing', () => {
       signal: new AbortController().signal,
       isStandalone: () => false,
       readProxyEnabled: () => null,
-      backoffMs: () => 1,
     })
 
     expect(FakeBrowserSocket.instances).toHaveLength(1)
@@ -167,7 +164,6 @@ describe('openTransport — agent-type routing', () => {
       signal: new AbortController().signal,
       isStandalone: () => false,
       readProxyEnabled: () => null,
-      backoffMs: () => 1,
       httpClient: stubHttpClient,
       getAuthToken: () => null,
     })
@@ -187,7 +183,6 @@ describe('openTransport — agent-type routing', () => {
       signal: new AbortController().signal,
       isStandalone: () => false,
       readProxyEnabled: () => null,
-      backoffMs: () => 1,
       // Browser WS can't attach `Authorization` headers — the proxy upgrade is
       // authenticated by the bearer token as a Sec-WebSocket-Protocol entry.
       httpClient: stubHttpClient,
@@ -213,7 +208,6 @@ describe('openTransport — agent-type routing', () => {
       signal: new AbortController().signal,
       isStandalone: () => true,
       readProxyEnabled: () => null,
-      backoffMs: () => 1,
     })
 
     expect(FakeBrowserSocket.instances).toHaveLength(1)

@@ -12,6 +12,7 @@
  */
 
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
+import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 
 /**
  * A constructed harness paired with a teardown function. `buildHarness`
@@ -27,7 +28,7 @@ export type HarnessBundle = {
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
 /** Built-in Pi providers exposed by thunderbolt. */
-export const BUILTIN_PROVIDERS = [
+export const builtinProviders = [
   'anthropic',
   'openai',
   'google',
@@ -45,13 +46,17 @@ export const BUILTIN_PROVIDERS = [
 ] as const
 
 /** Built-in Pi provider exposed by thunderbolt. */
-export type BuiltinProvider = (typeof BUILTIN_PROVIDERS)[number]
+export type BuiltinProvider = (typeof builtinProviders)[number]
 
 /** All model backends accepted by `--provider`. */
-export const MODEL_PROVIDERS = [...BUILTIN_PROVIDERS, 'openai-compat'] as const
+export const modelProviders = [...builtinProviders, 'openai-compat'] as const
 
 /** Model backend selected for a harness. */
-export type ModelProvider = (typeof MODEL_PROVIDERS)[number]
+export type ModelProvider = (typeof modelProviders)[number]
+
+/** Narrows an unknown value to a supported {@link ModelProvider}. */
+export const isProvider = (value: unknown): value is ModelProvider =>
+  typeof value === 'string' && (modelProviders as readonly string[]).includes(value)
 
 /** Wire protocol whose local stdio process the bridge exposes over the network.
  *  Drives only logging — the stdio↔transport pump is byte-identical for both. */
@@ -124,6 +129,8 @@ export type HarnessConfig = {
   /** When true, the system prompt names the underlying model so an exposed ACP
    *  agent can self-identify. The standalone CLI leaves this off. */
   readonly announceModel?: boolean
+  /** Skill definitions delivered by ACP session metadata. */
+  readonly skills?: readonly SkillDefinition[]
 }
 
 /**
@@ -148,7 +155,7 @@ export type RunConfig =
     })
 
 /** Result of parsing argv: a run, config setup, bridge, connect, ACP server,
- *  iroh admin action, or terminal info action. */
+ *  iroh admin action, login, or terminal info action. */
 export type ParsedArgs =
   | { readonly kind: 'run'; readonly config: RunConfig }
   | { readonly kind: 'config' }
@@ -156,6 +163,7 @@ export type ParsedArgs =
   | { readonly kind: 'connect'; readonly config: ConnectConfig }
   | { readonly kind: 'acp-serve'; readonly config: ServeConfig }
   | { readonly kind: 'iroh-admin'; readonly action: IrohAdminAction }
+  | { readonly kind: 'login' }
   | { readonly kind: 'help' }
   | { readonly kind: 'version' }
   | { readonly kind: 'error'; readonly message: string }

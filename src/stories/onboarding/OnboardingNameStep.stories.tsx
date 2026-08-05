@@ -6,7 +6,7 @@ import { OnboardingNameStepWrapper } from './wrappers/OnboardingNameStepWrapper'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 const meta = {
-  title: 'components/onboarding/onboarding-name-step',
+  title: 'Onboarding/OnboardingNameStep',
   component: OnboardingNameStepWrapper,
   parameters: {
     layout: 'centered',

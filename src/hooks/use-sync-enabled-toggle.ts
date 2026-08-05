@@ -8,7 +8,7 @@ import { trackEvent } from '@/lib/posthog'
 import { useEffect, useState } from 'react'
 
 /**
- * Shared hook for sync toggle state and handlers used by PowerSyncStatus and
+ * Shared hook for sync toggle state and handlers used by SidebarFooter and
  * PreferencesSettingsPage. Manages syncEnabled state, the sync setup modal,
  * and event listener for external changes (e.g. sign-in flow).
  *

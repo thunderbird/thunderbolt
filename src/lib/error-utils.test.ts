@@ -4,7 +4,11 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  type ChatErrorKind,
+  classifyErrorKind,
   createHandleError,
+  getChatErrorKind,
+  getErrorName,
   getErrorRetryable,
   getErrorStatusCode,
   isContentRejectionError,
@@ -12,6 +16,138 @@ import {
   isRateLimitError,
 } from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
+
+describe('classifyErrorKind', () => {
+  const cases: { label: string; error: unknown; expected: ChatErrorKind }[] = [
+    {
+      label: 'wrapped Tinfoil attestation fetch failures',
+      error: Object.assign(new Error('Tinfoil attestation failed: TypeError: Failed to fetch'), {
+        name: 'TinfoilAttestationError',
+        cause: new TypeError('Failed to fetch'),
+      }),
+      expected: 'attestation',
+    },
+    {
+      label: 'Tinfoil attestation deadline errors',
+      error: Object.assign(new Error('Attestation timed out'), { name: 'TinfoilAttestationTimeoutError' }),
+      expected: 'timeout',
+    },
+    {
+      label: 'Tinfoil key configuration transport errors',
+      error: Object.assign(new Error('Key configuration mismatch'), { name: 'KeyConfigMismatchError' }),
+      expected: 'provider',
+    },
+    {
+      label: 'Tinfoil protocol transport errors',
+      error: Object.assign(new Error('Protocol failed'), { name: 'ProtocolError' }),
+      expected: 'provider',
+    },
+    {
+      label: 'Tinfoil decryption transport errors',
+      error: Object.assign(new Error('Decryption failed'), { name: 'DecryptionError' }),
+      expected: 'provider',
+    },
+    {
+      label: 'HTTP 429 responses',
+      error: { statusCode: 429, message: 'Too many requests' },
+      expected: 'rate-limit',
+    },
+    {
+      label: 'HTTP 500 responses',
+      error: { status: 500, message: 'Internal Server Error' },
+      expected: 'provider',
+    },
+    {
+      label: 'HTTP 502 responses',
+      error: { response: { status: 502 }, message: 'Bad Gateway' },
+      expected: 'provider',
+    },
+    {
+      label: 'HTTP 408 responses',
+      error: { status: 408, message: 'Request Timeout' },
+      expected: 'timeout',
+    },
+    {
+      label: 'Tinfoil 504 upstream timeout responses',
+      error: { statusCode: 504, responseBody: 'tinfoil upstream timeout' },
+      expected: 'timeout',
+    },
+    {
+      label: 'Tinfoil upstream idle timeout stream errors',
+      error: new Error('tinfoil upstream idle timeout'),
+      expected: 'timeout',
+    },
+    {
+      label: 'bare non-attestation Chrome fetch failures',
+      error: new TypeError('Failed to fetch'),
+      expected: 'network',
+    },
+    {
+      label: 'Safari fetch failures',
+      error: new TypeError('Load failed'),
+      expected: 'network',
+    },
+    {
+      label: 'Firefox fetch failures',
+      error: new TypeError('NetworkError when attempting to fetch resource.'),
+      expected: 'network',
+    },
+  ]
+
+  for (const { label, error, expected } of cases) {
+    it(`classifies ${label}`, () => {
+      expect(classifyErrorKind(error)).toBe(expected)
+    })
+  }
+
+  it('returns undefined for unknown errors', () => {
+    expect(classifyErrorKind(new Error('Unknown failure'))).toBeUndefined()
+    expect(classifyErrorKind(null)).toBeUndefined()
+  })
+})
+
+describe('getChatErrorKind', () => {
+  it('uses the kind carried by a serialized stream error', () => {
+    const error = new Error(JSON.stringify({ error: 'Bad Gateway', status: 502, kind: 'timeout' }))
+
+    expect(getChatErrorKind(error)).toBe('timeout')
+  })
+
+  it('preserves a serialized ACP connection-lost kind', () => {
+    const error = new Error(JSON.stringify({ error: 'relay dropped', kind: 'connection-lost' }))
+
+    expect(getChatErrorKind(error)).toBe('connection-lost')
+  })
+
+  it('classifies kind-less legacy payloads from their status and message', () => {
+    expect(getChatErrorKind(new Error(JSON.stringify({ error: 'Bad Gateway', status: 502 })))).toBe('provider')
+    expect(getChatErrorKind(new Error(JSON.stringify({ error: 'tinfoil upstream timeout', statusCode: 504 })))).toBe(
+      'timeout',
+    )
+  })
+
+  it('classifies raw browser network errors', () => {
+    expect(getChatErrorKind(new TypeError('Failed to fetch'))).toBe('network')
+  })
+
+  it('returns undefined for unknown, null, and missing errors', () => {
+    expect(getChatErrorKind(new Error('Unknown failure'))).toBeUndefined()
+    expect(getChatErrorKind(null)).toBeUndefined()
+    expect(getChatErrorKind()).toBeUndefined()
+  })
+})
+
+describe('getErrorName', () => {
+  it('returns string names from error-like values', () => {
+    expect(getErrorName(new TypeError('failed'))).toBe('TypeError')
+    expect(getErrorName({ name: 'SdkError' })).toBe('SdkError')
+  })
+
+  it('returns undefined when no string name exists', () => {
+    expect(getErrorName({ name: 42 })).toBeUndefined()
+    expect(getErrorName(null)).toBeUndefined()
+  })
+})
 
 describe('isRateLimitError', () => {
   it('detects 429 from JSON response body (DefaultChatTransport path)', () => {

@@ -8,15 +8,18 @@ import { forwardRef, type InputHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
 const inputVariants = cva(
-  'border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex min-w-0 rounded-lg border bg-transparent px-3 py-1 text-[length:var(--font-size-body)] outline-none file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+  // dark:bg-input (matching Textarea) — a translucent white fill that lifts
+  // the field one step off whatever dark surface it sits on (page, card,
+  // modal, panel); light mode stays transparent, its borders carry enough
+  // contrast.
+  'border-border file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input flex min-w-0 rounded-lg border bg-transparent px-3 py-1 text-[length:var(--font-size-body)] outline-none file:inline-flex file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-        filled:
-          'bg-muted/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-        outline: 'border-2 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[2px]',
-        ghost: 'border-none focus-visible:bg-accent/50 focus-visible:ring-0',
+        default: 'focus-visible:border-border-strong',
+        filled: 'bg-muted/50 focus-visible:bg-transparent focus-visible:border-border-strong',
+        outline: 'border-2 focus-visible:border-border-strong',
+        ghost: 'border-none focus-visible:bg-accent/50',
       },
       inputSize: {
         default: 'h-[var(--touch-height-default)] w-full',
@@ -26,8 +29,8 @@ const inputVariants = cva(
       },
       state: {
         default: '',
-        error: 'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
-        success: 'border-green-500 focus-visible:border-green-600 focus-visible:ring-green-300/50',
+        error: 'aria-invalid:border-destructive',
+        success: 'border-green-500 focus-visible:border-green-600',
       },
     },
     defaultVariants: {

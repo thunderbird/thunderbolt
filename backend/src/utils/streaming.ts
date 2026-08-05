@@ -5,13 +5,20 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 
 type CompletionStream = AsyncIterable<ChatCompletionChunk> & { controller: AbortController }
+type CreateSSEStreamOptions = {
+  onError?: (error: unknown) => void
+}
 
 /**
  * Creates a ReadableStream from an OpenAI completion stream with SSE formatting
  * @param completion - The OpenAI completion stream
+ * @param options - Optional stream lifecycle callbacks
  * @returns ReadableStream formatted for Server-Sent Events
  */
-export const createSSEStreamFromCompletion = (completion: CompletionStream): ReadableStream<Uint8Array> => {
+export const createSSEStreamFromCompletion = (
+  completion: CompletionStream,
+  options: CreateSSEStreamOptions = {},
+): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
   let isCancelled = false
 
@@ -50,6 +57,7 @@ export const createSSEStreamFromCompletion = (completion: CompletionStream): Rea
       } catch (error) {
         if (!isCancelled) {
           console.error('OpenAI streaming error:', error)
+          options.onError?.(error)
           controller.error(error)
         }
       }

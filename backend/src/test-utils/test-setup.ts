@@ -55,7 +55,7 @@ globalThis.fetch = Object.assign(
 afterAll(async () => {
   await Promise.all([
     testDbManager.close(),
-    // Release the shared isolated instance used by the real-`.listen()` WS tests.
+    // Release the shared isolated instance used by suites that need their own connection.
     closeSharedIsolatedTestDb(),
     // Also close the db/client singleton if it was lazily loaded (e.g. swagger.test.ts)
     import('@/db/client').then(({ closeDb }) => closeDb()),

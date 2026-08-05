@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getSettings } from '@/config/settings'
+import type { InferenceErrorKind } from '@/inference/error-kind'
 import { PostHog } from 'posthog-node'
 
 let phClient: PostHog | null = null
@@ -59,6 +60,56 @@ export const shutdownPostHog = async (timeoutMs = 3000): Promise<void> => {
 export const isPostHogConfigured = (): boolean => {
   const settings = getSettings()
   return !!settings.posthogApiKey
+}
+
+export type InferenceErrorEvent = {
+  provider: string
+  status: number
+  distinctId: string
+  errorKind: InferenceErrorKind
+  model?: string
+  errorType?: string
+  errorCode?: string
+  requestId?: string
+  subpath?: string
+  phase?: 'stream'
+}
+
+/**
+ * Records an upstream inference failure without shipping request or response
+ * content. Every property is a constant, identifier, or provider-issued ID;
+ * free text is forbidden. No-op when PostHog is unconfigured.
+ */
+export const captureInferenceError = ({
+  provider,
+  status,
+  distinctId,
+  errorKind,
+  model,
+  errorType,
+  errorCode,
+  requestId,
+  subpath,
+  phase,
+}: InferenceErrorEvent): void => {
+  if (!isPostHogConfigured()) {
+    return
+  }
+  getPostHogClient().capture({
+    distinctId,
+    event: 'inference_upstream_error',
+    properties: {
+      provider,
+      status,
+      errorKind,
+      ...(model !== undefined && { model }),
+      ...(errorType !== undefined && { errorType }),
+      ...(errorCode !== undefined && { errorCode }),
+      ...(requestId !== undefined && { requestId }),
+      ...(subpath !== undefined && { subpath }),
+      ...(phase !== undefined && { phase }),
+    },
+  })
 }
 
 /**

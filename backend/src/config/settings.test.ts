@@ -52,7 +52,7 @@ describe('Config Settings', () => {
   })
 
   describe('CORS default security', () => {
-    const corsEnvKeys = ['CORS_ORIGINS'] as const
+    const corsEnvKeys = ['CORS_ORIGINS', 'CORS_EXPOSE_HEADERS'] as const
 
     let savedEnv: Partial<Record<string, string | undefined>>
 
@@ -97,6 +97,15 @@ describe('Config Settings', () => {
       const settings = getSettings()
 
       expect(isOriginAllowed('http://localhost:1420', settings)).toBe(true)
+    })
+
+    it('should expose proxy and server timing to cross-origin clients by default', () => {
+      delete process.env.CORS_EXPOSE_HEADERS
+      const settings = getSettings()
+
+      expect(settings.corsExposeHeaders.split(',')).toContain('X-Proxy-Timing')
+      expect(settings.corsExposeHeaders.split(',')).toContain('Server-Timing')
+      expect(settings.corsExposeHeaders.split(',')).not.toContain('Timing-Allow-Origin')
     })
 
     it('should not match non-Tauri origins by default', () => {
@@ -491,6 +500,72 @@ describe('Config Settings', () => {
     it('rejects malformed numeric values like "0,2,0"', () => {
       process.env.MIN_APP_VERSION = '0,2,0'
       expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+  })
+
+  describe('auth lifetime settings', () => {
+    const authLifetimeEnvKeys = [
+      'DEVICE_AUTH_EXPIRES_IN',
+      'DEVICE_AUTH_INTERVAL',
+      'API_KEY_DEFAULT_EXPIRES_IN',
+    ] as const
+
+    let savedEnv: Partial<Record<(typeof authLifetimeEnvKeys)[number], string>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of authLifetimeEnvKeys) {
+        if (process.env[key] !== undefined) {
+          savedEnv[key] = process.env[key]
+        }
+      }
+    })
+
+    afterEach(() => {
+      for (const key of authLifetimeEnvKeys) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('accepts Better Auth time strings for device authorization', () => {
+      process.env.DEVICE_AUTH_EXPIRES_IN = '12h'
+      process.env.DEVICE_AUTH_INTERVAL = '30s'
+
+      const settings = getSettings()
+
+      expect(settings.deviceAuthExpiresIn).toBe('12h')
+      expect(settings.deviceAuthInterval).toBe('30s')
+    })
+
+    it('rejects malformed device authorization expiry', () => {
+      process.env.DEVICE_AUTH_EXPIRES_IN = '30 minutes'
+      expect(() => getSettings()).toThrow(/Better Auth time string/)
+    })
+
+    it('rejects malformed device authorization interval', () => {
+      process.env.DEVICE_AUTH_INTERVAL = 'seconds'
+      expect(() => getSettings()).toThrow(/Better Auth time string/)
+    })
+
+    it('defaults API key expiry to 90 days in seconds', () => {
+      delete process.env.API_KEY_DEFAULT_EXPIRES_IN
+      expect(getSettings().apiKeyDefaultExpiresInSeconds).toBe(90 * 24 * 60 * 60)
+    })
+
+    it('coerces API key expiry from environment seconds', () => {
+      process.env.API_KEY_DEFAULT_EXPIRES_IN = '86400'
+      expect(getSettings().apiKeyDefaultExpiresInSeconds).toBe(86_400)
+    })
+
+    it('rejects invalid API key expiry', () => {
+      process.env.API_KEY_DEFAULT_EXPIRES_IN = 'never'
+      expect(() => getSettings()).toThrow()
     })
   })
 

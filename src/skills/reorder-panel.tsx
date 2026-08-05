@@ -23,9 +23,15 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, X } from 'lucide-react'
 
 import type { Skill } from '@/types'
+import { verticalAxisModifiers } from '@/lib/dnd'
+import { cn } from '@/lib/utils'
+import { skillDisplayName } from './display'
 
-const SortableRow = ({ skill }: { skill: Skill }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: skill.id })
+const SortableRow = ({ skill, locked }: { skill: Skill; locked: boolean }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: skill.id,
+    disabled: locked,
+  })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -36,12 +42,12 @@ const SortableRow = ({ skill }: { skill: Skill }) => {
       style={style}
       {...attributes}
       {...listeners}
-      className={`flex h-9 touch-none cursor-grab items-center gap-2 rounded-md px-2 active:cursor-grabbing ${
-        isDragging ? 'opacity-40' : 'hover:bg-accent'
-      }`}
+      className={`flex h-9 touch-none items-center gap-2 rounded-md px-2 ${
+        locked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+      } ${isDragging ? 'opacity-40' : 'hover:bg-accent'}`}
     >
-      <GripVertical size={16} className="shrink-0 text-muted-foreground" />
-      <span className="text-[length:var(--font-size-body)] text-foreground">/{skill.name}</span>
+      <GripVertical size={16} className={`shrink-0 text-muted-foreground ${locked ? 'invisible' : ''}`} />
+      <span className="truncate text-[length:var(--font-size-body)] text-foreground">{skillDisplayName(skill)}</span>
     </div>
   )
 }
@@ -54,7 +60,8 @@ export type ReorderMove = { id: string; from: number; to: number }
  * entire new order is reported to the parent along with the moved item's
  * id and indices (sourced from dnd-kit's `active.id` — the ground truth,
  * unambiguous even for adjacent swaps). Caller commits via `reorderPins(ids)`
- * (single transaction in the DAL).
+ * (single transaction in the DAL). Locked rows stay fixed and cannot be
+ * crossed by a drag.
  *
  * TouchSensor uses a 120ms delay so vertical page-scroll still works when
  * the user isn't actually dragging.
@@ -63,10 +70,14 @@ export const ReorderPanel = ({
   pinned,
   onReorder,
   onClose,
+  embedded = false,
+  lockedIds = new Set<string>(),
 }: {
   pinned: Skill[]
   onReorder: (ids: string[], move: ReorderMove) => void
   onClose: () => void
+  embedded?: boolean
+  lockedIds?: ReadonlySet<string>
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -84,6 +95,12 @@ export const ReorderPanel = ({
     if (oldIndex < 0 || newIndex < 0) {
       return
     }
+    const crossesLockedSkill = pinned
+      .slice(Math.min(oldIndex, newIndex), Math.max(oldIndex, newIndex) + 1)
+      .some((skill) => lockedIds.has(skill.id))
+    if (crossesLockedSkill) {
+      return
+    }
     const next = arrayMove(pinned, oldIndex, newIndex)
     onReorder(
       next.map((s) => s.id),
@@ -92,22 +109,35 @@ export const ReorderPanel = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-md">
-      <div className="flex h-8 items-center gap-2 px-2">
-        <span className="flex-1 text-[length:var(--font-size-sm)] text-muted-foreground">Reorder skills</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close reorder"
-          className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <X size={16} />
-        </button>
-      </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <div
+      data-base-ui-swipe-ignore
+      className={cn(
+        'flex flex-col gap-2',
+        embedded ? 'px-1 pb-2' : 'rounded-xl border border-border bg-card p-2 shadow-md',
+      )}
+    >
+      {!embedded && (
+        <div className="flex h-8 items-center gap-2 px-2">
+          <span className="flex-1 text-[length:var(--font-size-sm)] text-muted-foreground">Reorder skills</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close reorder"
+            className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={verticalAxisModifiers}
+        onDragEnd={handleDragEnd}
+      >
         <SortableContext items={pinned.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           {pinned.map((skill) => (
-            <SortableRow key={skill.id} skill={skill} />
+            <SortableRow key={skill.id} skill={skill} locked={lockedIds.has(skill.id)} />
           ))}
         </SortableContext>
       </DndContext>

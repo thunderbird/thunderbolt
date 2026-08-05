@@ -6,6 +6,7 @@ import { type ComponentProps, useContext } from 'react'
 import { OTPInput, OTPInputContext } from 'input-otp'
 import { MinusIcon } from 'lucide-react'
 
+import { otpLength } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 const InputOTP = ({
@@ -44,7 +45,7 @@ const InputOTPSlot = ({
       data-slot="input-otp-slot"
       data-active={isActive}
       className={cn(
-        'data-[active=true]:border-ring data-[active=true]:ring-ring/50 data-[active=true]:aria-invalid:ring-destructive/20 dark:data-[active=true]:aria-invalid:ring-destructive/40 aria-invalid:border-destructive data-[active=true]:aria-invalid:border-destructive dark:bg-input/30 border-input relative flex h-[var(--touch-height-default)] w-[var(--touch-height-default)] items-center justify-center border text-[length:var(--font-size-body)] shadow-xs transition-all outline-none first:rounded-l-md last:rounded-r-md data-[active=true]:z-10 data-[active=true]:ring-[3px]',
+        'data-[active=true]:border-ring data-[active=true]:ring-ring/50 data-[active=true]:aria-invalid:ring-destructive/20 dark:data-[active=true]:aria-invalid:ring-destructive/40 aria-invalid:border-destructive data-[active=true]:aria-invalid:border-destructive dark:bg-input border-input relative flex h-[var(--touch-height-default)] w-[var(--touch-height-default)] items-center justify-center border text-[length:var(--font-size-body)] shadow-xs transition-all outline-none first:rounded-l-md last:rounded-r-md data-[active=true]:z-10 data-[active=true]:ring-[3px]',
         className,
       )}
       {...props}
@@ -67,4 +68,27 @@ const InputOTPSeparator = ({ ...props }: ComponentProps<'div'>) => {
   )
 }
 
-export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator }
+/**
+ * The app's standard code-entry slot row (sign-in and waitlist): one square,
+ * shrinkable slot per digit of `otpLength`, centered in its container.
+ * Render inside an `InputOTP`.
+ */
+const InputOTPSlots = () => (
+  <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
+    {Array.from({ length: otpLength }, (_, i) => (
+      // w-10.5 (42px) keeps all slots plus gaps within a 320px viewport while
+      // staying close to the 44px touch target (`shrink` absorbs the rest).
+      // `first:rounded-l-lg last:rounded-r-lg` is required, not redundant: the
+      // base slot ships `first:rounded-l-md last:rounded-r-md`, and the
+      // unprefixed `rounded-lg` cannot override those variant classes under
+      // tailwind-merge.
+      <InputOTPSlot
+        key={i}
+        index={i}
+        className="aspect-square h-auto w-10.5 min-w-0 shrink rounded-lg first:rounded-l-lg last:rounded-r-lg"
+      />
+    ))}
+  </InputOTPGroup>
+)
+
+export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator, InputOTPSlots }

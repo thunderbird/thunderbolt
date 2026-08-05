@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { SidebarProvider } from '@/components/ui/sidebar'
+import { SidebarMenu, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ChatListItem } from './chat-list-item'
 import type { ChatThread } from './types'
 
 const meta = {
-  title: 'layout/sidebar/ChatListItem',
+  title: 'Sidebar/ChatListItem',
   component: ChatListItem,
   parameters: {
     layout: 'padded',
@@ -24,7 +24,11 @@ const meta = {
       <SidebarProvider>
         <TooltipProvider>
           <div className="w-64 border rounded-lg p-2 bg-sidebar">
-            <Story />
+            {/* ChatListItem renders a SidebarMenuItem (<li>); without the
+                SidebarMenu (<ul>) parent the browser draws a list marker. */}
+            <SidebarMenu>
+              <Story />
+            </SidebarMenu>
           </div>
         </TooltipProvider>
       </SidebarProvider>

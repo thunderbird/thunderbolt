@@ -4,14 +4,12 @@
 
 /** Typed persistence for user-editable CLI defaults. */
 
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { MODEL_PROVIDERS } from '../agent/types.ts'
+import { isProvider } from '../agent/types.ts'
 import type { ModelProvider } from '../agent/types.ts'
+import { isRecord } from '../lib/json.ts'
+import { readFileOrNull, writeSecureFile } from '../lib/secure-fs.ts'
 import { configPath } from '../paths.ts'
-
-const FILE_MODE = 0o600
-const DIR_MODE = 0o700
 
 /** Minimal persisted CLI profile. */
 export type CliConfig = {
@@ -20,14 +18,6 @@ export type CliConfig = {
   readonly apiKey?: string
   readonly baseUrl?: string
 }
-
-/** Narrows unknown JSON values to object records. */
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-/** Narrows user input to supported model providers. */
-const isProvider = (value: unknown): value is ModelProvider =>
-  typeof value === 'string' && (MODEL_PROVIDERS as readonly string[]).includes(value)
 
 /** Validates unknown JSON and returns a minimal canonical config. */
 const parseConfig = (value: unknown): CliConfig | null => {
@@ -38,32 +28,39 @@ const parseConfig = (value: unknown): CliConfig | null => {
   return {
     provider: value.provider,
     model: value.model,
-    ...(value.apiKey === undefined ? {} : { apiKey: value.apiKey }),
-    ...(value.baseUrl === undefined ? {} : { baseUrl: value.baseUrl }),
+    apiKey: value.apiKey,
+    baseUrl: value.baseUrl,
   }
 }
 
-/** Loads config, treating missing, malformed, or invalid user input as absent. */
-export const loadConfig = async (path: string = configPath()): Promise<CliConfig | null> => {
+/** Parses JSON, mapping malformed user-edited text to `undefined`. */
+const parseJsonOrUndefined = (contents: string): unknown => {
   try {
-    const contents = await readFile(path, 'utf8')
-    try {
-      return parseConfig(JSON.parse(contents) as unknown)
-    } catch (error) {
-      if (error instanceof SyntaxError) return null
-      throw error
-    }
+    return JSON.parse(contents) as unknown
   } catch (error) {
-    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    if (error instanceof SyntaxError) return undefined
     throw error
   }
 }
 
-/** Saves config in an owner-only directory and forces file mode to `0600`. */
+/** Loads config. A missing file is silently absent; an existing file that fails
+ *  to parse or validate is also treated as absent, but reported on stderr so a
+ *  saved provider/model/key never vanishes without explanation. */
+export const loadConfig = async (path: string = configPath()): Promise<CliConfig | null> => {
+  const contents = await readFileOrNull(path)
+  if (contents === null) return null
+
+  const parsed = parseJsonOrUndefined(contents)
+  const config = parsed === undefined ? null : parseConfig(parsed)
+  if (config === null) {
+    process.stderr.write(
+      `thunderbolt: ignoring invalid config at ${path} — run \`thunderbolt config\` to recreate it.\n`,
+    )
+  }
+  return config
+}
+
+/** Saves config in an owner-only directory (`0700`) and forces file mode to `0600`. */
 export const saveConfig = async (config: CliConfig, path: string = configPath()): Promise<void> => {
-  const dir = dirname(path)
-  await mkdir(dir, { recursive: true, mode: DIR_MODE })
-  await chmod(dir, DIR_MODE)
-  await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, { mode: FILE_MODE })
-  await chmod(path, FILE_MODE)
+  await writeSecureFile(dirname(path), path, `${JSON.stringify(config, null, 2)}\n`)
 }

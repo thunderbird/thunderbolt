@@ -15,7 +15,7 @@ import * as fsp from '@zenfs/core/promises'
 import { BrowserExecutionEnv } from './browser-execution-env.ts'
 import { mountInMemoryFs } from './mount.ts'
 
-const JAIL = '/workspace/t1'
+const jail = '/workspace/t1'
 
 beforeAll(async () => {
   await mountInMemoryFs()
@@ -27,7 +27,7 @@ beforeAll(async () => {
   await fsp.writeFile('/etc/passwd', 'root')
 })
 
-const env = new BrowserExecutionEnv({ cwd: JAIL })
+const env = new BrowserExecutionEnv({ cwd: jail })
 
 describe('BrowserExecutionEnv filesystem jail', () => {
   it('reads files inside the workspace (absolute and relative)', async () => {
@@ -40,19 +40,25 @@ describe('BrowserExecutionEnv filesystem jail', () => {
   it('blocks reading a sibling thread workspace without leaking content', async () => {
     const result = await env.readTextFile('/workspace/t2/secret.txt')
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.code).toBe('permission_denied')
+    if (!result.ok) {
+      expect(result.error.code).toBe('permission_denied')
+    }
   })
 
   it('blocks reading an absolute system path', async () => {
     const result = await env.readTextFile('/etc/passwd')
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.code).toBe('permission_denied')
+    if (!result.ok) {
+      expect(result.error.code).toBe('permission_denied')
+    }
   })
 
   it('blocks `..` traversal into a sibling', async () => {
     const result = await env.readTextFile('../t2/secret.txt')
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.code).toBe('permission_denied')
+    if (!result.ok) {
+      expect(result.error.code).toBe('permission_denied')
+    }
   })
 
   it('blocks readBinaryFile and readTextLines outside the jail', async () => {
@@ -65,7 +71,9 @@ describe('BrowserExecutionEnv filesystem jail', () => {
   it('blocks writing outside the workspace and does not create the file', async () => {
     const result = await env.writeFile('/workspace/t2/pwned.txt', 'x')
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.code).toBe('permission_denied')
+    if (!result.ok) {
+      expect(result.error.code).toBe('permission_denied')
+    }
     expect(await fsp.exists('/workspace/t2/pwned.txt')).toBe(false)
   })
 
@@ -84,7 +92,9 @@ describe('BrowserExecutionEnv filesystem jail', () => {
   it('blocks listing the parent workspace root', async () => {
     const result = await env.listDir('/workspace')
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.code).toBe('permission_denied')
+    if (!result.ok) {
+      expect(result.error.code).toBe('permission_denied')
+    }
   })
 
   it('blocks fileInfo, canonicalPath and createDir outside the jail', async () => {
@@ -100,7 +110,9 @@ describe('BrowserExecutionEnv filesystem jail', () => {
   it('reports exists() as a permission error for out-of-jail paths (no existence oracle)', async () => {
     const escape = await env.exists('/etc/passwd')
     expect(escape.ok).toBe(false)
-    if (!escape.ok) expect(escape.error.code).toBe('permission_denied')
+    if (!escape.ok) {
+      expect(escape.error.code).toBe('permission_denied')
+    }
 
     const insideMissing = await env.exists('nope.txt')
     expect(insideMissing.ok && insideMissing.value).toBe(false)
@@ -129,12 +141,14 @@ describe('BrowserExecutionEnv filesystem jail', () => {
   it('blocks a shell whose cwd escapes the workspace', async () => {
     const result = await env.exec('echo hi', { cwd: '../t2' })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.message).toContain('cwd escapes workspace')
+    if (!result.ok) {
+      expect(result.error.message).toContain('cwd escapes workspace')
+    }
   })
 
   it('emits output produced before a command times out', async () => {
     const timeoutEnv = new BrowserExecutionEnv({
-      cwd: JAIL,
+      cwd: jail,
       createBash: () => ({
         exec: async () => {
           await new Promise((resolve) => setTimeout(resolve, 10))
@@ -151,7 +165,9 @@ describe('BrowserExecutionEnv filesystem jail', () => {
     })
 
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.code).toBe('timeout')
+    if (!result.ok) {
+      expect(result.error.code).toBe('timeout')
+    }
     expect(stdout.join('')).toBe('partial\n')
     expect(stderr.join('')).toBe('warning\n')
   })

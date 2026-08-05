@@ -34,8 +34,13 @@ const buildEmailDeps = (): AuthEmailDeps => ({
 const parseSetCookie = (raw: string) => {
   const [nameValue, ...attrParts] = raw.split(';').map((p) => p.trim())
   const name = nameValue.split('=')[0]
-  const flags = new Set(attrParts.map((p) => p.split('=')[0].toLowerCase()))
-  return { name, flags }
+  const attributes = new Map(
+    attrParts.map((part) => {
+      const [key, value = ''] = part.split('=', 2)
+      return [key.toLowerCase(), value] as const
+    }),
+  )
+  return { name, attributes, flags: new Set(attributes.keys()) }
 }
 
 /** Find the session-token cookie among all Set-Cookie lines (tolerates the `__Secure-` prefix). */
@@ -86,7 +91,7 @@ describe('session cookie HttpOnly (CWE-1004 regression)', () => {
     }
   })
 
-  it('email-OTP sign-in issues an HttpOnly, SameSite session cookie (and no JS-readable __session cookie)', async () => {
+  it('email-OTP sign-in issues an HttpOnly session cookie', async () => {
     const email = `httponly-otp-${crypto.randomUUID()}@example.com`
     await db.insert(waitlist).values({ id: crypto.randomUUID(), email, status: 'approved' })
 

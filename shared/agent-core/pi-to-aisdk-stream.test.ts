@@ -22,7 +22,12 @@ describe('piHarnessToUiMessageStream metadata', () => {
       async () => {
         emit({ type: 'agent_start' } as AgentHarnessEvent)
         emit({ type: 'turn_start' } as AgentHarnessEvent)
-        emit({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'search_web', args: {} } as AgentHarnessEvent)
+        emit({
+          type: 'tool_execution_start',
+          toolCallId: 'call-1',
+          toolName: 'search_web',
+          args: {},
+        } as AgentHarnessEvent)
         emit({
           type: 'tool_execution_end',
           toolCallId: 'call-1',

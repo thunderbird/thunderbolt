@@ -70,10 +70,7 @@ export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: A
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={onClearDatabase}
-                  className="bg-destructive text-white hover:bg-destructive/90"
-                >
+                <AlertDialogAction onClick={onClearDatabase} variant="destructive">
                   Clear Database
                 </AlertDialogAction>
               </AlertDialogFooter>

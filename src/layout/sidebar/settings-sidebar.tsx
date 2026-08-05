@@ -11,138 +11,135 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
-import { ArrowLeft, Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
+import { useSettings } from '@/hooks/use-settings'
+import { cn } from '@/lib/utils'
+import { AudioLines, Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import { Fragment } from 'react'
 import { useLocation } from 'react-router'
+import { SidebarNavToggle } from './nav-toggle'
+import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
+import type { SidebarSection } from './types'
+
+type NavItem = {
+  path: string
+  label: string
+  icon: LucideIcon
+  /** Match sub-routes too (e.g. /settings/models/:id). Default: exact match. */
+  matchPrefix?: boolean
+}
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Agents',
+    items: [{ path: '/settings/agents', label: 'All agents', icon: Bot }],
+  },
+  {
+    label: 'What agents use',
+    items: [
+      { path: '/settings/skills', label: 'Skills', icon: Zap },
+      { path: '/settings/connections', label: 'Connections', icon: Plug },
+      { path: '/settings/models', label: 'Models', icon: Cpu, matchPrefix: true },
+      { path: '/settings/voice', label: 'Voice', icon: AudioLines },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { path: '/settings/preferences', label: 'Preferences', icon: SlidersHorizontal },
+      { path: '/settings/devices', label: 'Devices', icon: Smartphone },
+    ],
+  },
+]
 
 type SettingsSidebarContentProps = {
-  onBackClick: () => void
+  isCollapsed: boolean
+  onSectionChange: (section: SidebarSection) => void
   onSettingsNavigate: (path: string) => void
-  /** Test seam — production omits; the hook falls back to `isTauri()`. Lets
-   *  tests exercise Tauri Standalone vs. Hosted code paths without mocking
-   *  the shared `@/lib/platform` module (which would leak across files —
-   *  see `docs/development/testing.md`). */
-  isStandalone?: () => boolean
 }
 
 export const SettingsSidebarContent = ({
-  onBackClick,
+  isCollapsed,
+  onSectionChange,
   onSettingsNavigate,
-  isStandalone,
 }: SettingsSidebarContentProps) => {
-  const { toggleSidebar } = useSidebar()
+  const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
-  const agentsHidden = useAgentsSettingsHidden({ isStandalone })
+  const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
+
+  const isItemActive = ({ path, matchPrefix }: NavItem) =>
+    matchPrefix ? location.pathname.startsWith(path) : location.pathname === path
+
+  // Voice settings only exist to configure a custom (non-Thunderbolt) provider,
+  // which is gated behind the experimental flag — hide the nav item otherwise.
+  const groups = experimentalFeatureVoice.value
+    ? navGroups
+    : navGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.path !== '/settings/voice') }))
 
   return (
     <SidebarContent className="flex flex-col h-full">
-      <SidebarHeader onToggle={toggleSidebar} />
+      <SidebarHeader
+        onToggle={toggleSidebar}
+        navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />}
+      />
 
-      <SidebarGroup>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={onBackClick} tooltip="Back to Chat" className="cursor-pointer">
-                <ArrowLeft className="size-4" />
-                <span>Back</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
+      {isCollapsed && (
+        // pb-0: the next group's own top padding provides the 8px gap,
+        // matching the toggle→New Chat spacing on the chats rail. pt-2 gives
+        // the toggle the same 8px above as the rail leaves on its sides.
+        <SidebarGroup className="pt-2 pb-0">
+          <SidebarGroupContent>
+            <SidebarNavToggle vertical activeSection="settings" onSectionChange={onSectionChange} />
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
 
-      <SidebarSeparator className="m-0" />
-
-      <SidebarGroup className="flex-1">
-        <SidebarGroupLabel>Settings</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/preferences')}
-                tooltip="Preferences"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/preferences'}
-              >
-                <SlidersHorizontal className="size-4" />
-                <span>Preferences</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/integrations')}
-                tooltip="Integrations"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/integrations'}
-              >
-                <Plug className="size-4" />
-                <span>Integrations</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/devices')}
-                tooltip="Devices"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/devices'}
-              >
-                <Smartphone className="size-4" />
-                <span>Devices</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/models')}
-                tooltip="Models"
-                className="cursor-pointer"
-                isActive={location.pathname.startsWith('/settings/models')}
-              >
-                <Cpu className="size-4" />
-                <span>Models</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/mcp-servers')}
-                tooltip="MCP Servers"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/mcp-servers'}
-              >
-                <Server className="size-4" />
-                <span>MCP Servers</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/skills')}
-                tooltip="Skills"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/skills'}
-              >
-                <Zap className="size-4" />
-                <span>Skills</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {!agentsHidden && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onSettingsNavigate('/settings/agents')}
-                  tooltip="Agents"
-                  className="cursor-pointer"
-                  isActive={location.pathname === '/settings/agents'}
-                >
-                  <Bot className="size-4" />
-                  <span>Agents</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+      {groups.map((group, index) => (
+        <Fragment key={group.label}>
+          {/* Collapsed rail: the group labels are hidden, so a hairline
+              divider takes over as the section boundary. */}
+          {index > 0 && isCollapsed && <RailDivider />}
+          {/* Collapsed: SidebarContent's gap-2 alone spaces the groups and
+              their dividers, so the groups' own vertical padding would double
+              it. The last group keeps its bottom padding against the footer. */}
+          <SidebarGroup
+            className={cn(
+              isCollapsed ? (index === groups.length - 1 ? 'pt-0' : 'py-0') : undefined,
+              isMobile && index === 0 && 'pt-[calc(var(--header-safe-area-top)+0.5rem)]',
             )}
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
+          >
+            {isMobile && index === 0 && (
+              <div className="flex h-[var(--touch-height-lg)] items-center">
+                <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
+              </div>
+            )}
+            <SidebarGroupLabel className={isMobile && index === 0 ? 'mt-1' : undefined}>
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      onClick={() => onSettingsNavigate(item.path)}
+                      tooltip={item.label}
+                      className="cursor-pointer"
+                      isActive={isItemActive(item)}
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </Fragment>
+      ))}
+
+      <div className="flex-1" />
 
       <SidebarFooter />
     </SidebarContent>

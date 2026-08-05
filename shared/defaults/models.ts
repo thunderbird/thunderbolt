@@ -36,6 +36,21 @@ export type SharedModel = {
 }
 
 /**
+ * Vendors whose models accept image input. The built-in Pi openai-compat
+ * transport can't know an arbitrary custom endpoint's capabilities, so it
+ * advertises text-only by default and strips image blocks. For the providers we
+ * host/control we instead key image support off the model's `vendor` — otherwise
+ * images are silently dropped before reaching a vision-capable hosted model
+ * (e.g. Thunderbolt-hosted Opus, `vendor: 'anthropic'`).
+ */
+export const imageCapableVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
+
+/** Whether a model's vendor is known to accept image input. Unknown/absent
+ *  vendors (custom or local endpoints) return false — we don't guess. */
+export const vendorSupportsImages = (vendor: string | null | undefined): boolean =>
+  vendor != null && imageCapableVendors.has(vendor)
+
+/**
  * Compute hash of user-editable fields for a model.
  * Includes deletedAt to treat soft-delete as a user configuration choice.
  */
@@ -123,6 +138,8 @@ export const defaultModelDeepseekV4Flash: SharedModel = {
 export const defaultModelGlm52: SharedModel = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
   name: 'GLM 5.2',
+  // `provider` is the internal transport. The UI presents system-managed
+  // Tinfoil models as Thunderbolt so infrastructure does not leak into branding.
   provider: 'tinfoil',
   model: 'glm-5-2',
   isSystem: 1,
@@ -136,7 +153,7 @@ export const defaultModelGlm52: SharedModel = {
   url: null,
   defaultHash: null,
   vendor: 'zhipu',
-  description: 'Confidential chat via Tinfoil',
+  description: 'Confidential chat via Thunderbolt',
   userId: null,
 }
 
@@ -167,4 +184,4 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 2
+export const defaultModelsVersion = 3

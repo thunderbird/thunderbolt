@@ -84,6 +84,9 @@ const postgresDb = postgresUrl
 
 export const db = pgliteDb ?? postgresDb!
 
+/** Query-builder surface shared by root databases and transaction clients. */
+export type QueryableDatabase = Pick<typeof db, 'delete' | 'insert' | 'select' | 'update'>
+
 /** Close the database connection — call this during test teardown to release WASM resources */
 export const closeDb = async () => {
   if (pgliteClient && !pgliteClient.closed) {

@@ -1,0 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* The app locks page scrolling (html, body { overflow: hidden } in
+   src/index.css) because it renders inside its own scroll containers. The
+   Storybook preview iframe relies on body scrolling — docs pages and tall
+   stories are unscrollable otherwise. Imported after ../src/index.css so
+   these equal-specificity rules win the cascade. */
+html,
+body {
+  overflow: auto;
+}

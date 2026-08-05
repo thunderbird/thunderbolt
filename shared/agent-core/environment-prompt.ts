@@ -6,7 +6,7 @@
  * Browser-only execution constraints for the Pi app harness. This stays outside
  * the base app prompt so legacy and CLI model paths do not receive it.
  */
-export const APP_HARNESS_ENVIRONMENT_PROMPT = `# Environment
+export const appHarnessEnvironmentPrompt = `# Environment
 The \`bash\`, \`read\`, \`write\`, and \`edit\` tools operate in an isolated virtual workspace private to this conversation. \`bash\` is a simulated shell with no network access; \`curl\` and \`wget\` are unavailable.
 Available inside \`bash\`: coreutils, \`grep\`, \`find\`, \`sed\`, \`awk\`, \`rg\`, \`jq\`, \`sqlite3\`, and \`tar\`. Use it for computation and data processing.
 For anything on the web, use web search or fetch tools when available; never use \`bash\` for network access.

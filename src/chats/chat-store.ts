@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 import { updateSettings } from '@/dal'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
 import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { Agent } from '@/types/acp'
-import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
+import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
 import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
@@ -49,7 +50,6 @@ export type ChatSession = {
   retryCount: number
   retriesExhausted: boolean
   selectedAgent: Agent
-  selectedMode: Mode
   selectedModel: Model
   triggerData: AutomationRun | null
 }
@@ -60,7 +60,6 @@ type ChatStoreState = {
   currentSessionId: string | null
   getMcpClients: () => NamedMCPClient[]
   reconnectClient: ReconnectClient
-  modes: Mode[]
   models: Model[]
   sessions: Map<string, ChatSession>
 }
@@ -69,18 +68,22 @@ type ChatStoreActions = {
   allowAlwaysForAgent(agentId: string): void
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
+  applyAgentWireIdentityChange(agent: Agent): void
+  cancelPendingPermissionsForAgent(agentId: string): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
   setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
   setReconnectClient(reconnectClient: ReconnectClient): void
-  setModes(modes: Mode[]): void
   setModels(models: Model[]): void
   setPendingPermission(id: string, permission: PendingPermission | null): void
   resolvePendingPermission(id: string, response: RequestPermissionResponse): void
   setSelectedAgent(id: string, agent: Agent): Promise<void>
-  setSelectedMode(id: string, modeId: string | null): Promise<void>
-  setSelectedModel(id: string, modelId: string | null): Promise<void>
+  setSelectedModel(id: string, modelId: string | null, deps?: SetSelectedModelDeps): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
+}
+
+type SetSelectedModelDeps = {
+  prewarmSystemModel?: typeof prewarmSystemModel
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
@@ -98,7 +101,6 @@ const initialState: ChatStoreState = {
   // no-op (returns null) makes `mergeMcpTools` skip a dropped server rather than
   // reconnect — correct for the pre-hydration / no-provider case.
   reconnectClient: async () => null,
-  modes: [],
   models: [],
   sessions: new Map(),
 }
@@ -129,6 +131,49 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ sessions: nextSessions })
   },
 
+  applyAgentWireIdentityChange: (agent) => {
+    const nextSessions = new Map(get().sessions)
+    let changed = false
+
+    for (const [id, session] of nextSessions) {
+      const threadMatches = session.chatThread?.agentId === agent.id
+      const agentMatches = session.selectedAgent.id === agent.id
+      if (!threadMatches && !agentMatches) {
+        continue
+      }
+      changed = true
+      nextSessions.set(id, {
+        ...session,
+        chatThread: threadMatches ? { ...session.chatThread!, acpSessionId: null } : session.chatThread,
+        selectedAgent: agentMatches ? agent : session.selectedAgent,
+      })
+    }
+
+    if (changed) {
+      set({ sessions: nextSessions })
+    }
+  },
+
+  cancelPendingPermissionsForAgent: (agentId) => {
+    const matching = [...get().sessions.entries()].filter(
+      ([, session]) => session.pendingPermission?.agentId === agentId,
+    )
+    if (matching.length === 0) {
+      return
+    }
+
+    const nextSessions = new Map(get().sessions)
+    for (const [id, session] of matching) {
+      nextSessions.set(id, { ...session, pendingPermission: null })
+    }
+    set({ sessions: nextSessions })
+
+    const cancelled: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } }
+    for (const [, session] of matching) {
+      session.pendingPermission?.resolve(cancelled)
+    }
+  },
+
   setCurrentSessionId: (id) => {
     set({ currentSessionId: id })
   },
@@ -145,10 +190,6 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   setReconnectClient: (reconnectClient) => {
     set({ reconnectClient })
-  },
-
-  setModes: (modes) => {
-    set({ modes })
   },
 
   setModels: (models) => {
@@ -196,8 +237,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
+    const agentChanged = session.selectedAgent.id !== agent.id
+    const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
     const nextSessions = new Map(sessions)
-    const nextChatThread = session.chatThread ? { ...session.chatThread, agentId: agent.id } : session.chatThread
+    const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
     nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent })
 
     set({ sessions: nextSessions })
@@ -205,44 +248,18 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const db = getDb()
 
     if (session.chatThread) {
-      await updateChatThread(db, session.chatThread.id, { agentId: agent.id })
+      await updateChatThread(db, session.chatThread.id, threadPatch)
     }
 
     // Persist the global last-used agent so new chats default to it (mirrors
-    // `setSelectedModel`/`setSelectedMode`). The per-thread write above keeps
-    // existing chats pinned to their own agent.
+    // `setSelectedModel`). The per-thread write above keeps existing chats
+    // pinned to their own agent.
     await updateSettings(db, { selected_agent: agent.id })
 
     trackEvent('agent_select', { agent: agent.id })
   },
 
-  setSelectedMode: async (id, modeId) => {
-    const { modes, sessions } = get()
-
-    const mode = modes.find((m) => m.id === modeId)
-
-    if (!mode) {
-      throw new Error('Mode not found')
-    }
-
-    const session = sessions.get(id)
-
-    if (!session) {
-      throw new Error('No session found')
-    }
-
-    const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, selectedMode: mode })
-
-    set({ sessions: nextSessions })
-
-    const db = getDb()
-    await updateSettings(db, { selected_mode: mode.id })
-
-    trackEvent('mode_select', { mode: mode.id })
-  },
-
-  setSelectedModel: async (id, modelId) => {
+  setSelectedModel: async (id, modelId, deps = {}) => {
     const { models, sessions } = get()
 
     const model = models.find((m) => m.id === modelId)
@@ -261,6 +278,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     nextSessions.set(id, { ...session, selectedModel: model })
 
     set({ sessions: nextSessions })
+
+    // Fire-and-forget: the wrapper no-ops (before any dynamic import) unless
+    // this is a Tinfoil system model, so the first send finds a warm client.
+    void (deps.prewarmSystemModel ?? prewarmSystemModel)(model)
 
     const db = getDb()
     await updateSettings(db, { selected_model: model.id })

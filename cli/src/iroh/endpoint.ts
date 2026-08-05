@@ -23,13 +23,13 @@ import { loadOrCreateIdentity } from './identity.ts'
 /** Env var that overrides the iroh relay. Unset/empty keeps the n0 public relays
  *  (today's behavior); set it to a self-hosted iroh-relay wss URL to switch with
  *  no code change. Read at runtime, so the CLI binary needs no rebuild. */
-const RELAY_URL_ENV = 'THUNDERBOLT_IROH_RELAY_URL'
+const relayUrlEnv = 'THUNDERBOLT_IROH_RELAY_URL'
 
-/** The self-hosted relay override from {@link RELAY_URL_ENV}, or `undefined` to
+/** The self-hosted relay override from {@link relayUrlEnv}, or `undefined` to
  *  keep the n0 public relays. Whitespace-only is treated as unset, so an exported
  *  but blank var is byte-for-byte the default. */
 export const relayUrlOverride = (env: NodeJS.ProcessEnv = process.env): string | undefined => {
-  const url = env[RELAY_URL_ENV]?.trim()
+  const url = env[relayUrlEnv]?.trim()
   return url ? url : undefined
 }
 
@@ -48,7 +48,7 @@ const defaultConfigurator: TransportConfigurator = {
 
 /**
  * Apply the n0 transport preset (relays + n0 DNS discovery + crypto), then — only
- * when {@link RELAY_URL_ENV} is set — swap ONLY the relay for that self-hosted
+ * when {@link relayUrlEnv} is set — swap ONLY the relay for that self-hosted
  * URL. n0 DNS discovery + crypto stay intact, so a bare NodeId still resolves and
  * tickets still dial; only the relay hop changes. Unset/empty env leaves the n0
  * default untouched (zero regression to the proven flows).

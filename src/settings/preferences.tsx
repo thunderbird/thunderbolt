@@ -16,18 +16,18 @@ import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { clearLocalData } from '@/lib/cleanup'
+import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
-import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
 import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
+import { ThemeToggleGroup } from '@/components/theme-toggle-group'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
-import { ThemeToggle } from '@/components/theme-toggle'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,8 +37,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { AppVersionSection } from './app-version-section'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
@@ -52,6 +52,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePostHogClient } from '@/lib/posthog'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
+import { SettingsPageShell } from '@/components/settings/settings-list'
 
 type PendingImport = { payload: unknown } & ExportSummary
 
@@ -64,6 +65,8 @@ type PreferencesState = {
   importError: string | null
   importSuccess: string | null
   pendingImport: PendingImport | null
+  resetDialogOpen: boolean
+  deleteAccountDialogOpen: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
 }
@@ -77,6 +80,8 @@ type PreferencesAction =
   | { type: 'SET_IMPORT_ERROR'; payload: string | null }
   | { type: 'SET_IMPORT_SUCCESS'; payload: string | null }
   | { type: 'SET_PENDING_IMPORT'; payload: PendingImport | null }
+  | { type: 'SET_RESET_DIALOG_OPEN'; payload: boolean }
+  | { type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN'; payload: boolean }
   | { type: 'CLEAR_IMPORT_FEEDBACK' }
   | { type: 'RESET_STATE' }
   | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
@@ -91,6 +96,8 @@ const initialState: PreferencesState = {
   importError: null,
   importSuccess: null,
   pendingImport: null,
+  resetDialogOpen: false,
+  deleteAccountDialogOpen: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
 }
@@ -113,6 +120,10 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, importSuccess: action.payload }
     case 'SET_PENDING_IMPORT':
       return { ...state, pendingImport: action.payload }
+    case 'SET_RESET_DIALOG_OPEN':
+      return { ...state, resetDialogOpen: action.payload }
+    case 'SET_DELETE_ACCOUNT_DIALOG_OPEN':
+      return { ...state, deleteAccountDialogOpen: action.payload }
     case 'CLEAR_IMPORT_FEEDBACK':
       return { ...state, importError: null, importSuccess: null }
     case 'RESET_STATE':
@@ -137,6 +148,8 @@ export default function PreferencesSettingsPage() {
     importError,
     importSuccess,
     pendingImport,
+    resetDialogOpen,
+    deleteAccountDialogOpen,
     localizationDialogOpen,
     pendingCountryUnits,
   } = state
@@ -147,6 +160,17 @@ export default function PreferencesSettingsPage() {
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
+  const runningInTauri = isTauri()
+  const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
+  const effectiveProxyEnabled = computeEffectiveProxyEnabled(
+    () => runningInTauri,
+    () => proxyEnabledStr,
+  )
+  const proxyDisabled = !runningInTauri || !isAuthenticated
+  const proxyTooltipReason = !runningInTauri
+    ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
+    : 'Sign in to enable cloud proxy.'
+  const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
 
   const { fetchCountryUnits } = useCountryUnits()
 
@@ -155,24 +179,6 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHogClient()
   const telemetryAvailable = useTelemetryAvailable()
-
-  // Network: `proxy_enabled` is device-local (localStorage) because it controls
-  // request transport (privacy on Tauri vs. CORS bypass on Web), not a synced
-  // user preference. Web ignores the stored value — browser CORS forces the
-  // proxy path — so the toggle is UI-disabled with an explanatory tooltip.
-  const onTauri = isTauri()
-  const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
-  const effectiveProxyEnabled = computeEffectiveProxyEnabled(
-    () => onTauri,
-    () => proxyEnabledStr,
-  )
-  const proxyDisabled = !onTauri || !isAuthenticated
-  const tooltipReason = !onTauri
-    ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
-    : 'Sign in to enable cloud proxy.'
-  // When the toggle is auth-disabled, render it as OFF so the UI honestly reflects
-  // that the user can't use the proxy until they sign in.
-  const proxyChecked = proxyDisabled && onTauri ? false : effectiveProxyEnabled
 
   const httpClient = useHttpClient()
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
@@ -188,6 +194,7 @@ export default function PreferencesSettingsPage() {
     locationLng,
     dataCollection,
     experimentalFeatureTasks,
+    experimentalFeatureVoice,
     distanceUnit,
     temperatureUnit,
     dateFormat,
@@ -200,6 +207,7 @@ export default function PreferencesSettingsPage() {
     location_lng: '',
     data_collection: false,
     experimental_feature_tasks: false,
+    experimental_feature_voice: false,
     distance_unit: 'imperial',
     temperature_unit: 'f',
     date_format: 'MM/DD/YYYY',
@@ -514,14 +522,14 @@ export default function PreferencesSettingsPage() {
   }, [unitsOptionsData?.currencies, currency.value])
 
   return (
-    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
+    <SettingsPageShell className="gap-6 md:pb-12">
       <PageHeader title="Preferences" />
 
       <SectionCard title="User Experience">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Theme</label>
-            <ThemeToggle />
+            <ThemeToggleGroup />
           </div>
 
           <div className="h-px bg-border -mx-6" />
@@ -778,42 +786,6 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Network">
-        <div className="flex flex-row items-center gap-4">
-          <div className="flex-1">
-            <label className="text-sm font-medium">Use Cloud Proxy</label>
-            <p className="text-sm text-muted-foreground">
-              When enabled, requests are routed through Thunderbolt's cloud proxy.
-            </p>
-          </div>
-          {proxyDisabled ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0} aria-label={tooltipReason}>
-                  <Switch
-                    checked={proxyChecked}
-                    disabled
-                    aria-label="Use Cloud Proxy"
-                    className="pointer-events-none"
-                  />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                <p>{tooltipReason}</p>
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <Switch
-              checked={proxyChecked}
-              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
-              aria-label="Use Cloud Proxy"
-            />
-          )}
-        </div>
-      </SectionCard>
-
-      <div className="h-6" />
-
       <SectionCard title="Help Thunderbolt Improve">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
@@ -834,6 +806,24 @@ export default function PreferencesSettingsPage() {
                 checked={experimentalFeatureTasks.value}
                 onCheckedChange={handleExperimentalFeaturesToggle}
                 aria-label="Tasks"
+              />
+            </div>
+
+            <div className="flex-row flex items-center gap-4">
+              <div className="flex-1">
+                <ModificationIndicator
+                  as="label"
+                  className="text-sm font-medium"
+                  hasModifications={experimentalFeatureVoice.isModified}
+                  onReset={experimentalFeatureVoice.reset}
+                >
+                  Custom voice provider
+                </ModificationIndicator>
+              </div>
+              <Switch
+                checked={experimentalFeatureVoice.value}
+                onCheckedChange={(value) => experimentalFeatureVoice.setValue(value)}
+                aria-label="Custom voice provider"
               />
             </div>
           </div>
@@ -878,6 +868,42 @@ export default function PreferencesSettingsPage() {
               aria-label="Anonymous Usage Data"
             />
           </div>
+        </div>
+      </SectionCard>
+
+      <div className="h-6" />
+
+      <SectionCard title="Network">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">Use Cloud Proxy</label>
+            <p className="text-sm text-muted-foreground">
+              When enabled, requests are routed through Thunderbolt's cloud proxy.
+            </p>
+          </div>
+          {proxyDisabled ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} aria-label={proxyTooltipReason}>
+                  <Switch
+                    checked={proxyChecked}
+                    disabled
+                    aria-label="Use Cloud Proxy"
+                    className="pointer-events-none"
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>{proxyTooltipReason}</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Switch
+              checked={proxyChecked}
+              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+              aria-label="Use Cloud Proxy"
+            />
+          )}
         </div>
       </SectionCard>
 
@@ -984,31 +1010,25 @@ export default function PreferencesSettingsPage() {
 
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Delete All Local Data</label>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="secondary" disabled={isResetting}>
-                      {isResetting ? 'Resetting...' : 'Reset Database'}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Reset Local Database?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete all of your local data including settings, chat history, and cached
-                        information. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleResetDatabase}
-                        className="bg-destructive text-white hover:bg-destructive/90"
-                      >
-                        Reset Database
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <Button
+                  variant="secondary"
+                  disabled={isResetting}
+                  onClick={() => dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: true })}
+                >
+                  {isResetting ? 'Resetting...' : 'Reset Database'}
+                </Button>
+                <ConfirmActionDialog
+                  open={resetDialogOpen}
+                  title="Reset Local Database?"
+                  description="This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
+                  confirmLabel="Reset Database"
+                  isPending={isResetting}
+                  onConfirm={() => {
+                    dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: false })
+                    void handleResetDatabase()
+                  }}
+                  onCancel={() => dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: false })}
+                />
               </div>
             </>
           )}
@@ -1027,31 +1047,27 @@ export default function PreferencesSettingsPage() {
                     {deleteAccountError}
                   </p>
                 )}
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" disabled={isDeletingAccount}>
-                      {isDeletingAccount ? 'Deleting...' : 'Delete My Account'}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete your account?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete your account and all of your data on our servers and on this
-                        device, including settings, chat history, and cached information. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleDeleteAccount}
-                        className="bg-destructive text-white hover:bg-destructive/90"
-                      >
-                        Delete account
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                {/* Secondary on the page; the red danger styling lives on the
+                    confirm button inside the dialog. */}
+                <Button
+                  variant="secondary"
+                  disabled={isDeletingAccount}
+                  onClick={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: true })}
+                >
+                  {isDeletingAccount ? 'Deleting...' : 'Delete My Account'}
+                </Button>
+                <ConfirmActionDialog
+                  open={deleteAccountDialogOpen}
+                  title="Delete your account?"
+                  description="This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
+                  confirmLabel="Delete account"
+                  isPending={isDeletingAccount}
+                  onConfirm={() => {
+                    dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })
+                    void handleDeleteAccount()
+                  }}
+                  onCancel={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })}
+                />
               </div>
             </>
           )}
@@ -1087,7 +1103,7 @@ export default function PreferencesSettingsPage() {
           {pendingImport?.accountMismatch && (
             <p className="text-sm text-destructive font-medium" role="alert">
               ⚠ This export was made by a different account ({pendingImport.sourceEmail}). Importing it here will mix
-              that data into your account — confirm only if you intend to.
+              that data into your account. Confirm only if you intend to.
             </p>
           )}
           {importError && (
@@ -1101,7 +1117,7 @@ export default function PreferencesSettingsPage() {
               onClick={handleConfirmImport}
               disabled={isImporting}
               aria-busy={isImporting}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
             >
               {isImporting ? 'Importing...' : 'Import'}
             </AlertDialogAction>
@@ -1125,6 +1141,6 @@ export default function PreferencesSettingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SettingsPageShell>
   )
 }

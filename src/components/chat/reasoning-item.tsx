@@ -107,7 +107,7 @@ export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning, 
         </span>
       </div>
       <span className="text-xs text-muted-foreground flex-shrink-0">
-        {reasoningTime ? formatDuration(reasoningTime) : isLoading ? '...' : '—'}
+        {reasoningTime ? formatDuration(reasoningTime) : isLoading ? '...' : '-'}
       </span>
     </button>
   )

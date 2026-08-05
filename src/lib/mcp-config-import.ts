@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
+import { isRecord } from '@/lib/utils'
 
 /** A remote MCP server parsed from an mcpServers JSON config. */
 export type ParsedMcpServer = {
@@ -16,9 +17,6 @@ export type ParsedMcpServer = {
 type ParseResult = { ok: true; servers: ParsedMcpServer[] } | { ok: false; errors: string[] }
 
 const bearerPattern = /^Bearer\s+(.+)$/i
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** Returns the value as a server-entries record only when it is a non-empty object. */
 const pickEntries = (value: unknown): Record<string, unknown> | undefined =>

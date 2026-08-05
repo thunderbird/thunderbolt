@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createChatThread,
+  clearAcpSessionIdsForAgent,
   deleteAllChatThreads,
   deleteChatThread,
   getAllChatThreads,
@@ -61,6 +62,27 @@ describe('Chat Threads DAL', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  describe('clearAcpSessionIdsForAgent', () => {
+    it('clears live thread sessions while preserving soft-deleted thread sessions', async () => {
+      const db = getDb()
+      await db.insert(chatThreadsTable).values([
+        { id: 'live-thread', agentId: 'agent-1', acpSessionId: 'live-session' },
+        {
+          id: 'deleted-thread',
+          agentId: 'agent-1',
+          acpSessionId: 'deleted-session',
+          deletedAt: nowIso(),
+        },
+      ])
+
+      await clearAcpSessionIdsForAgent(db, 'agent-1')
+
+      const rows = await db.select().from(chatThreadsTable).all()
+      expect(rows.find((row) => row.id === 'live-thread')?.acpSessionId).toBeNull()
+      expect(rows.find((row) => row.id === 'deleted-thread')?.acpSessionId).toBe('deleted-session')
+    })
   })
 
   describe('createChatThread', () => {

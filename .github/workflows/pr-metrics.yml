@@ -42,9 +42,11 @@ jobs:
       # --- Line count (excludes tests, migrations, lockfiles) ---
       - name: Compute line count
         id: lines
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin ${{ github.base_ref }}
-          STATS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD -- \
+          git fetch origin "$BASE_REF"
+          STATS=$(git diff --numstat "origin/${BASE_REF}...HEAD" -- \
             ':!*.test.ts' ':!*.test.tsx' ':!*.spec.ts' ':!*.spec.tsx' \
             ':!backend/drizzle/**' ':!bun.lock' ':!*.lock')
           ADDED=$(echo "$STATS" | awk '{sum += $1} END {print sum+0}')

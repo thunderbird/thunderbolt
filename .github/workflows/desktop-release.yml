@@ -3,6 +3,27 @@ run-name: Desktop release for v${{ inputs.version }}
 
 on:
   workflow_call:
+    secrets:
+      APPLE_DEVELOPER_CERTIFICATE:
+        required: false
+      APPLE_DEVELOPER_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_SIGNING_IDENTITY:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      APP_STORE_CONNECT_API_KEY:
+        required: false
+      APP_STORE_CONNECT_API_KEY_ID:
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: false
+      CRABNEBULA_CLOUD_API_KEY:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
     inputs:
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'

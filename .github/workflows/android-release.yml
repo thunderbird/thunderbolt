@@ -2,6 +2,15 @@ name: Android Release
 
 on:
   workflow_call:
+    secrets:
+      ANDROID_UPLOAD_KEY:
+        required: false
+      ANDROID_UPLOAD_KEY_ALIAS:
+        required: false
+      ANDROID_UPLOAD_KEY_PASSWORD:
+        required: false
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:
+        required: false
     inputs:
       version:
         description: 'Version to build (e.g., 1.2.3 without v prefix)'

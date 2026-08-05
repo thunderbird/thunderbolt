@@ -2,6 +2,21 @@ name: iOS Release
 
 on:
   workflow_call:
+    secrets:
+      APPLE_CERTIFICATE_P12:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      APP_STORE_CONNECT_API_KEY:
+        required: false
+      APP_STORE_CONNECT_API_KEY_ID:
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: false
+      APP_STORE_PROVISIONING_PROFILE:
+        required: false
     inputs:
       version:
         description: 'Version to build (e.g., 1.2.3 without v prefix)'

@@ -24,6 +24,8 @@ const judgeVerdictSchema = z
 export type JudgeVerdict = z.infer<typeof judgeVerdictSchema>
 export type JudgeModelName = 'opus' | 'flash'
 
+class RetryableJudgeError extends Error {}
+
 const judgeModels: Record<JudgeModelName, Model> = {
   opus: { ...defaultModelOpus48, apiKey: null },
   flash: { ...defaultModelDeepseekV4Flash, apiKey: null },
@@ -63,10 +65,25 @@ export const getJudgeModelName = (testedModelName: string): JudgeModelName => {
 /** Whether a scenario declares at least one semantic assertion. */
 export const requiresJudge = (criteria: EvalCriteria): boolean => declaredAssertions(criteria).length > 0
 
-/** Parse the judge's strict JSON response, rejecting prose, missing fields, and extra fields. */
+/** Extract the judge's outermost JSON object while leaving schema validation strict. */
+const extractJudgeJson = (text: string): string => {
+  const firstBrace = text.indexOf('{')
+  const lastBrace = text.lastIndexOf('}')
+  return firstBrace >= 0 && lastBrace > firstBrace ? text.slice(firstBrace, lastBrace + 1) : text.trim()
+}
+
+/** Parse the judge's JSON response, tolerating formatting noise but rejecting schema drift. */
 export const parseJudgeVerdict = (text: string): JudgeVerdict => {
+  let parsed: unknown
   try {
-    return judgeVerdictSchema.parse(JSON.parse(text))
+    parsed = JSON.parse(extractJudgeJson(text))
+  } catch (error) {
+    throw new RetryableJudgeError(`Invalid judge verdict: ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
+    })
+  }
+  try {
+    return judgeVerdictSchema.parse(parsed)
   } catch (error) {
     throw new Error(`Invalid judge verdict: ${error instanceof Error ? error.message : String(error)}`, {
       cause: error,
@@ -79,7 +96,7 @@ export const applyJudgeVerdict = (result: EvalResult, verdict: JudgeVerdict): Ev
   const judgeFailures = declaredAssertions(result.scenario.criteria).flatMap(({ verdictKey, label }) => {
     const value = verdict[verdictKey]
     if (value === null) {
-      throw new Error(`Judge omitted declared assertion: ${verdictKey}`)
+      throw new RetryableJudgeError(`Judge omitted declared assertion: ${verdictKey}`)
     }
     return value ? [] : [`Judge rejected ${label}: ${verdict.explanation}`]
   })
@@ -96,7 +113,15 @@ export const evaluateWithJudge = async (
     return result
   }
   try {
-    return applyJudgeVerdict(result, await evaluate())
+    const evaluateOnce = async (): Promise<EvalResult> => applyJudgeVerdict(result, await evaluate())
+    try {
+      return await evaluateOnce()
+    } catch (error) {
+      if (!(error instanceof RetryableJudgeError)) {
+        throw error
+      }
+      return await evaluateOnce()
+    }
   } catch (error) {
     const message = `Judge error: ${error instanceof Error ? error.message : String(error)}`
     return {
@@ -114,7 +139,8 @@ export const buildJudgePrompt = (scenario: EvalScenario, responseText: string): 
   const userPrompt = scenario.followUps?.at(-1) ?? scenario.prompt
   return `Grade only these assertions: ${assertions.join(', ')}.
 Be strict and factual. Unsupported claims make correctness fail. A search offer must include an actual answer first. A premise rebuttal must explicitly correct the false premise. A verification disclaimer must explicitly admit the answer cannot be verified.
-Set unrequested assertion fields to null. Return only JSON with exactly: correct, searchOffer, premiseRebuttal, verificationDisclaimer, explanation.
+Every DECLARED assertion MUST be true or false; never return null for a declared assertion. ONLY UNDECLARED assertion fields may be null, and every undeclared assertion field MUST be null.
+Return only JSON with exactly: correct, searchOffer, premiseRebuttal, verificationDisclaimer, explanation.
 User prompt: ${JSON.stringify(userPrompt)}
 Assistant response: ${JSON.stringify(responseText)}`
 }

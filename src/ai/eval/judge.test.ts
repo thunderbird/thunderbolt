@@ -41,6 +41,14 @@ const result: EvalResult = {
   durationMs: 1,
 }
 
+const acceptedVerdict = {
+  correct: true,
+  searchOffer: null,
+  premiseRebuttal: null,
+  verificationDisclaimer: null,
+  explanation: 'The year is correct.',
+}
+
 describe('judge model assignment', () => {
   test('uses Flash for Opus and Opus for Flash and GLM', () => {
     expect(getJudgeModelName('opus')).toBe('flash')
@@ -59,17 +67,21 @@ describe('judge model assignment', () => {
 
 describe('judge verdict parsing', () => {
   test('parses a strict JSON verdict', () => {
-    expect(
-      parseJudgeVerdict(
-        JSON.stringify({
-          correct: true,
-          searchOffer: null,
-          premiseRebuttal: null,
-          verificationDisclaimer: null,
-          explanation: 'The year is correct.',
-        }),
-      ),
-    ).toMatchObject({ correct: true })
+    expect(parseJudgeVerdict(JSON.stringify(acceptedVerdict))).toMatchObject({ correct: true })
+  })
+
+  test('parses JSON wrapped in a markdown fence', () => {
+    expect(parseJudgeVerdict(`\`\`\`json\n${JSON.stringify(acceptedVerdict)}\n\`\`\``)).toEqual(acceptedVerdict)
+  })
+
+  test('parses fenced JSON with another language tag and surrounding prose', () => {
+    const response = `Here is the requested verdict:
+\`\`\`javascript
+${JSON.stringify(acceptedVerdict)}
+\`\`\`
+This is the final result.`
+
+    expect(parseJudgeVerdict(response)).toEqual(acceptedVerdict)
   })
 
   test('rejects malformed JSON instead of treating it as a pass', () => {
@@ -92,13 +104,6 @@ describe('judge verdict parsing', () => {
   })
 
   test('requests and aggregates a streaming OpenAI-compatible verdict', async () => {
-    const verdict = {
-      correct: true,
-      searchOffer: null,
-      premiseRebuttal: null,
-      verificationDisclaimer: null,
-      explanation: 'The year is correct.',
-    }
     const requestBodies: Array<Record<string, unknown>> = []
     const judgeFetch: typeof fetch = Object.assign(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -110,7 +115,7 @@ describe('judge verdict parsing', () => {
             created: 0,
             model: 'judge',
             choices: [
-              { index: 0, delta: { role: 'assistant', content: JSON.stringify(verdict) }, finish_reason: null },
+              { index: 0, delta: { role: 'assistant', content: JSON.stringify(acceptedVerdict) }, finish_reason: null },
             ],
           },
           {
@@ -134,7 +139,7 @@ describe('judge verdict parsing', () => {
       fetch: judgeFetch,
     })
 
-    await expect(requestJudgeVerdict(provider('judge'), 'Grade this.')).resolves.toEqual(verdict)
+    await expect(requestJudgeVerdict(provider('judge'), 'Grade this.')).resolves.toEqual(acceptedVerdict)
     expect(requestBodies).toHaveLength(1)
     expect(requestBodies[0].stream).toBe(true)
   })
@@ -172,13 +177,37 @@ describe('judge-backed criteria', () => {
   })
 
   test('marks judge failures as sample errors instead of passing', async () => {
+    let attempts = 0
     const judged = await evaluateWithJudge(result, async () => {
+      attempts++
       throw new Error('upstream unavailable')
     })
 
+    expect(attempts).toBe(1)
     expect(judged.passed).toBe(false)
     expect(judged.error).toBe('Judge error: upstream unavailable')
     expect(judged.failures).toContain('Judge error: upstream unavailable')
+  })
+
+  test('retries an omitted declared assertion once before reporting the error', async () => {
+    let attempts = 0
+    const judged = await evaluateWithJudge(result, async () => {
+      attempts++
+      return { ...acceptedVerdict, correct: null }
+    })
+
+    expect(attempts).toBe(2)
+    expect(judged.error).toBe('Judge error: Judge omitted declared assertion: correct')
+  })
+
+  test('retries a JSON parse failure once and accepts the second verdict', async () => {
+    const responses = ['not JSON', JSON.stringify(acceptedVerdict)]
+    let attempts = 0
+    const judged = await evaluateWithJudge(result, async () => parseJudgeVerdict(responses[attempts++]))
+
+    expect(attempts).toBe(2)
+    expect(judged.passed).toBe(true)
+    expect(judged.error).toBeUndefined()
   })
 
   test('grades a multi-turn response against the final follow-up', () => {
@@ -186,5 +215,7 @@ describe('judge-backed criteria', () => {
 
     expect(prompt).toContain('User prompt: "What year was that?"')
     expect(prompt).not.toContain('User prompt: "When did the Berlin Wall fall?"')
+    expect(prompt).toContain('Every DECLARED assertion MUST be true or false')
+    expect(prompt).toContain('ONLY UNDECLARED assertion fields may be null')
   })
 })

@@ -810,7 +810,7 @@ describe('reconcileDefaultsForTable', () => {
 describe('Opus 5 data migration', () => {
   test('preserves user customizations while upgrading the legacy model slug', async () => {
     const db = getDb()
-    const legacyDefault = {
+    const legacyDefault: SharedModel = {
       ...defaultModelOpus5,
       name: 'Opus 4.8',
       model: 'opus-4.8',
@@ -861,6 +861,81 @@ describe('Opus 5 data migration', () => {
       ...defaultModelOpus5,
       defaultHash: hashModel(defaultModelOpus5),
     })
+  })
+
+  test.each([
+    {
+      customizedField: 'name',
+      name: 'My customized Opus',
+      contextWindow: 200_000,
+      expectedName: 'My customized Opus',
+      expectedContextWindow: 1_000_000,
+    },
+    {
+      customizedField: 'context window',
+      name: 'Opus 4.8',
+      contextWindow: 123_456,
+      expectedName: 'Opus 5',
+      expectedContextWindow: 123_456,
+    },
+  ])('preserves a custom $customizedField under an open defaults gate', async (scenario) => {
+    const db = getDb()
+    const legacyDefault: SharedModel = {
+      ...defaultModelOpus5,
+      name: 'Opus 4.8',
+      model: 'opus-4.8',
+      contextWindow: 200_000,
+    }
+    const customizedLegacy = {
+      ...legacyDefault,
+      name: scenario.name,
+      contextWindow: scenario.contextWindow,
+      defaultHash: hashModel(legacyDefault),
+    }
+    await db.insert(modelsTable).values(customizedLegacy)
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion - 1),
+    })
+
+    await reconcileDefaults(db)
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...customizedLegacy,
+      model: defaultModelOpus5.model,
+      name: scenario.expectedName,
+      contextWindow: scenario.expectedContextWindow,
+    })
+  })
+
+  test('prevents a newer OTA payload from restoring the legacy model slug', async () => {
+    const db = getDb()
+    const legacyDefault: SharedModel = {
+      ...defaultModelOpus5,
+      name: 'Opus 4.8',
+      model: 'opus-4.8',
+      contextWindow: 200_000,
+    }
+    await db.insert(modelsTable).values({
+      ...legacyDefault,
+      defaultHash: hashModel(legacyDefault),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+    const otaVersion = defaultModelsVersion + 1
+    const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus5.id ? legacyDefault : model))
+
+    await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels } })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...defaultModelOpus5,
+      defaultHash: hashModel(defaultModelOpus5),
+    })
+    expect(
+      await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.models)).get(),
+    ).toMatchObject({ value: String(otaVersion) })
   })
 })
 

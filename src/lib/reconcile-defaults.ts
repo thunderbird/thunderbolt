@@ -455,6 +455,19 @@ export type ReconcileDefaultsOverrides = {
   initialSyncCompleted?: boolean
 }
 
+/** Normalize the reused identity so stale OTA payloads cannot restore Opus 4.8. */
+const normalizeLegacyOpusModel = (model: SharedModel): SharedModel => {
+  if (model.id !== defaultModelOpus5.id || model.model !== 'opus-4.8') {
+    return model
+  }
+  return {
+    ...model,
+    model: defaultModelOpus5.model,
+    name: model.name === 'Opus 4.8' ? defaultModelOpus5.name : model.name,
+    contextWindow: model.contextWindow === 200_000 ? defaultModelOpus5.contextWindow : model.contextWindow,
+  }
+}
+
 /** Upgrade the reused model identity so persisted chat references resolve Opus 5. */
 const migrateLegacyOpusModel = async (tx: AnyDrizzleDatabase): Promise<void> => {
   const existing = await tx.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()
@@ -463,13 +476,14 @@ const migrateLegacyOpusModel = async (tx: AnyDrizzleDatabase): Promise<void> => 
   }
 
   const legacyModel = existing as SharedModel
+  const migratedModel = normalizeLegacyOpusModel(legacyModel)
   const migratedValues = {
-    model: defaultModelOpus5.model,
-    name: legacyModel.name === 'Opus 4.8' ? defaultModelOpus5.name : legacyModel.name,
-    contextWindow: legacyModel.contextWindow === 200_000 ? defaultModelOpus5.contextWindow : legacyModel.contextWindow,
+    model: migratedModel.model,
+    name: migratedModel.name,
+    contextWindow: migratedModel.contextWindow,
   }
   const wasUnmodified = legacyModel.defaultHash !== null && hashModel(legacyModel) === legacyModel.defaultHash
-  const migratedDefaultHash = wasUnmodified ? hashModel({ ...legacyModel, ...migratedValues }) : legacyModel.defaultHash
+  const migratedDefaultHash = wasUnmodified ? hashModel(migratedModel) : legacyModel.defaultHash
 
   await tx
     .update(modelsTable)
@@ -478,7 +492,11 @@ const migrateLegacyOpusModel = async (tx: AnyDrizzleDatabase): Promise<void> => 
 }
 
 export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: ReconcileDefaultsOverrides) => {
-  const modelsSource = overrides?.models ?? bundledModelsDefaults
+  const pickedModelsSource = overrides?.models ?? bundledModelsDefaults
+  const modelsSource = {
+    ...pickedModelsSource,
+    data: pickedModelsSource.data.map(normalizeLegacyOpusModel),
+  }
   const initialSyncCompleted = overrides?.initialSyncCompleted ?? true
 
   await db.transaction(async (tx) => {

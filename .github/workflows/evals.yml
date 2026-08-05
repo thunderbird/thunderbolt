@@ -114,6 +114,12 @@ jobs:
           EVAL_SMOKE: '1'
           EVAL_OUTPUT: evals/eval-report.md
 
+      - name: Collect backend log
+        if: always()
+        run: |
+          mkdir -p evals
+          cp /tmp/eval-backend.log evals/backend.log
+
       - name: Upload eval report
         id: eval-artifact
         if: always()
@@ -224,6 +230,12 @@ jobs:
         run: bun run eval -- --detailed
         env:
           EVAL_OUTPUT: evals/eval-report.md
+
+      - name: Collect backend log
+        if: always()
+        run: |
+          mkdir -p evals
+          cp /tmp/eval-backend.log evals/backend.log
 
       - name: Upload eval report
         if: always()

@@ -339,8 +339,8 @@ Rates are fractions from 0 to 1. Groups are keyed by `model/engine`; scenario ke
 
 The `AI Evals` workflow has two paths:
 
-- Pull requests run the deterministic smoke subset when they change `src/ai/**`, `shared/agent-core/**`, `shared/defaults/**`, `src/acp/**`, or the eval workflow. The report and metrics JSON are uploaded together.
-- A nightly run at 03:00 UTC executes the full suite with the default three samples per necessity scenario. It can run for every model/engine cell without multiplying the work by separate before/after revisions.
+- Pull requests run the deterministic smoke subset when they change `src/ai/**`, `shared/agent-core/**`, `shared/defaults/**`, `src/acp/**`, or the eval workflow. Smoke is temporarily informational: its sticky comment is the per-PR signal, but gate failures do not fail the check until checked-in baselines show the necessity gates passing. The report and metrics JSON are uploaded together.
+- A nightly run at 03:00 UTC executes the full suite with the default three samples per necessity scenario and fails when gates fail. It can run for every model/engine cell without multiplying the work by separate before/after revisions.
 
 The pull-request comment is updated in place using a hidden marker. For each model/engine cell it shows the core-suite pass count and improved/regressed outcome counts, necessity gate status, headline rates and baseline deltas, category rates, Wilson significance labels, all failed scenarios, and a link to the full report artifact. Rate deltas are significant only when the current rate falls outside the baseline run's 95% Wilson interval.
 

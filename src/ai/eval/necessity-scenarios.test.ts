@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import { getNecessityScenarios } from './necessity-scenarios'
-import type { NecessityCategory } from './types'
+import type { EvalCriteria, NecessityCategory } from './types'
 
 const expectedCounts: Record<NecessityCategory, number> = {
   never_search: 12,
@@ -16,6 +16,30 @@ const expectedCounts: Record<NecessityCategory, number> = {
   adversarial_no_search: 16,
   multi_turn_reuse: 12,
   search_wont_help: 4,
+}
+
+type JudgeAssertion = keyof Pick<
+  EvalCriteria,
+  'expectCorrectAnswer' | 'expectSearchOffer' | 'expectPremiseRebuttal' | 'expectVerificationDisclaimer'
+>
+
+const judgeAssertions: JudgeAssertion[] = [
+  'expectCorrectAnswer',
+  'expectSearchOffer',
+  'expectPremiseRebuttal',
+  'expectVerificationDisclaimer',
+]
+
+const expectedJudgeAssertions: Record<NecessityCategory, JudgeAssertion[]> = {
+  never_search: ['expectCorrectAnswer'],
+  answer_then_offer: ['expectSearchOffer'],
+  single_search: [],
+  research: [],
+  unknown_entity: [],
+  false_premise: ['expectPremiseRebuttal'],
+  adversarial_no_search: ['expectCorrectAnswer'],
+  multi_turn_reuse: [],
+  search_wont_help: ['expectVerificationDisclaimer'],
 }
 
 describe('necessity scenarios', () => {
@@ -79,6 +103,16 @@ describe('necessity scenarios', () => {
         reuseScenarios.filter(({ isNegativeControl }) => isNegativeControl).map((item) => item.criteria.maxToolCalls),
       ),
     ).toEqual(new Set([2]))
+  })
+
+  test('declares only the semantic assertions approved for each category', () => {
+    const scenarios = getNecessityScenarios(['opus'], undefined, true)
+
+    for (const scenario of scenarios) {
+      const declared = judgeAssertions.filter((assertion) => scenario.criteria[assertion])
+
+      expect(declared).toEqual(expectedJudgeAssertions[scenario.category!])
+    }
   })
 
   test('keeps every necessity scenario in un-tokenized chat mode', () => {

@@ -210,7 +210,51 @@ describe('judge-backed criteria', () => {
     expect(judged.error).toBeUndefined()
   })
 
-  test('grades a multi-turn response against the final follow-up', () => {
+  test('scopes strict factual grading to the correctness assertion', () => {
+    const prompt = buildJudgePrompt(scenario, 'The Berlin Wall fell in 1989.')
+
+    expect(prompt).toContain('against your own knowledge of the timeless fact or task')
+    expect(prompt).toContain('Unsupported claims fail only the correct assertion')
+    expect(prompt).toContain('Sources and citations are not required')
+    expect(prompt).not.toContain('searchOffer:')
+    expect(prompt).not.toContain('premiseRebuttal:')
+    expect(prompt).not.toContain('verificationDisclaimer:')
+  })
+
+  test('judges a search offer only by whether an answer precedes the offer', () => {
+    const prompt = buildJudgePrompt(
+      { ...scenario, criteria: { mustProduceOutput: true, expectSearchOffer: true } },
+      'São Paulo has roughly 12 million residents. I can search for the latest estimate.',
+    )
+
+    expect(prompt).toContain('searchOffer: Judge only whether the response actually answered first')
+    expect(prompt).toContain('then offered to search or verify')
+    expect(prompt).not.toContain('Unsupported claims')
+  })
+
+  test('judges a premise rebuttal only by whether the response explicitly corrects it', () => {
+    const prompt = buildJudgePrompt(
+      { ...scenario, criteria: { mustProduceOutput: true, expectPremiseRebuttal: true } },
+      'Mozilla did not discontinue Thunderbird in 2024.',
+    )
+
+    expect(prompt).toContain('premiseRebuttal: Judge only whether the response explicitly corrected the false premise')
+    expect(prompt).not.toContain('Unsupported claims')
+  })
+
+  test('judges a verification disclaimer only by whether inability to verify is explicit', () => {
+    const prompt = buildJudgePrompt(
+      { ...scenario, criteria: { mustProduceOutput: true, expectVerificationDisclaimer: true } },
+      'I cannot verify what number you are thinking of.',
+    )
+
+    expect(prompt).toContain(
+      'verificationDisclaimer: Judge only whether the response explicitly admitted it could not verify the answer',
+    )
+    expect(prompt).not.toContain('Unsupported claims')
+  })
+
+  test('uses the final follow-up as the prompt for a judged response', () => {
     const prompt = buildJudgePrompt({ ...scenario, followUps: ['What year was that?'] }, '1989.')
 
     expect(prompt).toContain('User prompt: "What year was that?"')

@@ -35,16 +35,35 @@ type SemanticAssertion = {
   criteriaKey: 'expectCorrectAnswer' | 'expectSearchOffer' | 'expectPremiseRebuttal' | 'expectVerificationDisclaimer'
   verdictKey: Exclude<keyof JudgeVerdict, 'explanation'>
   label: string
+  guidance: string
 }
 
 const semanticAssertions: SemanticAssertion[] = [
-  { criteriaKey: 'expectCorrectAnswer', verdictKey: 'correct', label: 'answer correctness' },
-  { criteriaKey: 'expectSearchOffer', verdictKey: 'searchOffer', label: 'search offer' },
-  { criteriaKey: 'expectPremiseRebuttal', verdictKey: 'premiseRebuttal', label: 'premise rebuttal' },
+  {
+    criteriaKey: 'expectCorrectAnswer',
+    verdictKey: 'correct',
+    label: 'answer correctness',
+    guidance:
+      'correct: Judge factual or functional correctness strictly against your own knowledge of the timeless fact or task. Unsupported claims fail only the correct assertion. Sources and citations are not required.',
+  },
+  {
+    criteriaKey: 'expectSearchOffer',
+    verdictKey: 'searchOffer',
+    label: 'search offer',
+    guidance: 'searchOffer: Judge only whether the response actually answered first, then offered to search or verify.',
+  },
+  {
+    criteriaKey: 'expectPremiseRebuttal',
+    verdictKey: 'premiseRebuttal',
+    label: 'premise rebuttal',
+    guidance: 'premiseRebuttal: Judge only whether the response explicitly corrected the false premise.',
+  },
   {
     criteriaKey: 'expectVerificationDisclaimer',
     verdictKey: 'verificationDisclaimer',
     label: 'verification disclaimer',
+    guidance:
+      'verificationDisclaimer: Judge only whether the response explicitly admitted it could not verify the answer.',
   },
 ]
 
@@ -135,10 +154,10 @@ export const evaluateWithJudge = async (
 
 /** Build the terse semantic grading prompt for a scenario's scored turn. */
 export const buildJudgePrompt = (scenario: EvalScenario, responseText: string): string => {
-  const assertions = declaredAssertions(scenario.criteria).map(({ verdictKey }) => verdictKey)
+  const assertions = declaredAssertions(scenario.criteria)
   const userPrompt = scenario.followUps?.at(-1) ?? scenario.prompt
-  return `Grade only these assertions: ${assertions.join(', ')}.
-Be strict and factual. Unsupported claims make correctness fail. A search offer must include an actual answer first. A premise rebuttal must explicitly correct the false premise. A verification disclaimer must explicitly admit the answer cannot be verified.
+  return `Grade only these assertions: ${assertions.map(({ verdictKey }) => verdictKey).join(', ')}.
+${assertions.map(({ guidance }) => guidance).join('\n')}
 Every DECLARED assertion MUST be true or false; never return null for a declared assertion. ONLY UNDECLARED assertion fields may be null, and every undeclared assertion field MUST be null.
 Return only JSON with exactly: correct, searchOffer, premiseRebuttal, verificationDisclaimer, explanation.
 User prompt: ${JSON.stringify(userPrompt)}

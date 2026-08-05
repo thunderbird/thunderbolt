@@ -239,7 +239,19 @@ Pi coding tools (`bash`, `read`, `write`, and `edit`) never contribute to web-ca
 
 Only the four semantic assertions above invoke an LLM judge; deterministic web-call counting never does. DeepSeek V4 Flash judges Opus. Opus judges Flash and GLM. A model never judges itself, and GLM is never a judge because its Tinfoil connection cannot be resolved through the OpenAI-compatible connection used here.
 
-Each scenario sample makes at most one judge call containing the user prompt, final response, and only the declared assertions. Verdicts must be strict JSON. Unsupported correctness claims fail. An API or parsing failure marks that sample as an error rather than passing it.
+Judge scope is fixed by category:
+
+| Category                                              | Judge assertion                  |
+| ----------------------------------------------------- | -------------------------------- |
+| `never_search`, `adversarial_no_search`               | Strict answer correctness        |
+| `answer_then_offer`                                   | Answer-first search offer only   |
+| `false_premise`                                       | Explicit premise rebuttal only   |
+| `search_wont_help`                                    | Verification disclaimer only     |
+| `multi_turn_reuse` and all other necessity categories | None; deterministic scoring only |
+
+Correctness is checked against the judge's own knowledge of the timeless fact or task. Incorrect or unsupported claims fail that assertion, but the response does not need sources or citations. The other assertions are independent: correctness requirements do not affect whether the response offered to search, rebutted a false premise, or admitted it could not verify an answer.
+
+Each judged scenario sample normally makes one judge call containing the user prompt, final response, and only the declared assertion. Verdicts must be strict JSON; malformed JSON or an omitted declared field is retried once. An API failure or invalid verdict after the retry marks that sample as an error rather than passing it. Multi-turn reuse scenarios never invoke the judge because the scored follow-up depends on context from the earlier turn; their reuse and negative-control behavior is measured only by web-call counts.
 
 ### Sampling, gates, and headline metrics
 

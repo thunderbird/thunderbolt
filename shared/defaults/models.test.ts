@@ -30,7 +30,7 @@ const computeMetadataHash = () =>
 
 const expected = {
   version: 4,
-  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-lo3iv3|1:019f227e-d640-727d-ba12-d51bd7d0a3d6:bvaax2|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
+  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:n56kdk|1:019f227e-d640-727d-ba12-d51bd7d0a3d6:bvaax2|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
   metadataHash: '0:vzhyk4|1:-x2wlw2|2:-cajkcl',
 }
 
@@ -41,7 +41,7 @@ describe('defaultModels version snapshot', () => {
       name: 'Opus 5',
       provider: 'thunderbolt',
       model: 'opus-5',
-      contextWindow: 1_000_000,
+      contextWindow: 200_000,
       isSystem: 1,
       enabled: 1,
       toolUsage: 1,

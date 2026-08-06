@@ -11,7 +11,7 @@ import type { AnyColumn } from 'drizzle-orm'
 import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
-import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
+import { defaultModelProfileOpus5, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import {
   defaultModelGlm52,
   defaultModelOpus5,
@@ -808,47 +808,19 @@ describe('reconcileDefaultsForTable', () => {
 })
 
 describe('Opus 5 data migration', () => {
-  test('preserves user customizations while upgrading the legacy model slug', async () => {
-    const db = getDb()
-    const legacyDefault: SharedModel = {
-      ...defaultModelOpus5,
-      name: 'Opus 4.8',
-      model: 'opus-4.8',
-      contextWindow: 200_000,
-    }
-    const customizedLegacy = {
-      ...legacyDefault,
-      name: 'My customized Opus',
-      enabled: 0,
-      startWithReasoning: 1,
-      contextWindow: 123_456,
-      defaultHash: hashModel(legacyDefault),
-    }
-    await db.insert(modelsTable).values(customizedLegacy)
-    await db.insert(settingsTable).values({
-      key: versionMarkerKeys.models,
-      value: String(defaultModelsVersion),
-    })
-
-    await reconcileDefaults(db, { initialSyncCompleted: false })
-
-    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
-      ...customizedLegacy,
-      model: defaultModelOpus5.model,
-    })
+  const legacyDefault = (): SharedModel => ({
+    ...defaultModelOpus5,
+    name: 'Opus 4.8',
+    model: 'opus-4.8',
+    contextWindow: 200_000,
   })
 
   test('fully upgrades an untouched legacy default and refreshes its lineage hash', async () => {
     const db = getDb()
-    const legacyDefault = {
-      ...defaultModelOpus5,
-      name: 'Opus 4.8',
-      model: 'opus-4.8',
-      contextWindow: 200_000,
-    }
+    const legacyModel = legacyDefault()
     await db.insert(modelsTable).values({
-      ...legacyDefault,
-      defaultHash: hashModel(legacyDefault),
+      ...legacyModel,
+      defaultHash: hashModel(legacyModel),
     })
     await db.insert(settingsTable).values({
       key: versionMarkerKeys.models,
@@ -863,69 +835,44 @@ describe('Opus 5 data migration', () => {
     })
   })
 
-  test.each([
-    {
-      customizedField: 'name',
-      name: 'My customized Opus',
-      contextWindow: 200_000,
-      expectedName: 'My customized Opus',
-      expectedContextWindow: 1_000_000,
-    },
-    {
-      customizedField: 'context window',
-      name: 'Opus 4.8',
-      contextWindow: 123_456,
-      expectedName: 'Opus 5',
-      expectedContextWindow: 123_456,
-    },
-  ])('preserves a custom $customizedField under an open defaults gate', async (scenario) => {
+  test('preserves custom fields while upgrading the legacy model slug', async () => {
     const db = getDb()
-    const legacyDefault: SharedModel = {
-      ...defaultModelOpus5,
-      name: 'Opus 4.8',
-      model: 'opus-4.8',
-      contextWindow: 200_000,
-    }
+    const legacyModel = legacyDefault()
     const customizedLegacy = {
-      ...legacyDefault,
-      name: scenario.name,
-      contextWindow: scenario.contextWindow,
-      defaultHash: hashModel(legacyDefault),
+      ...legacyModel,
+      name: 'My customized Opus',
+      enabled: 0,
+      startWithReasoning: 1,
+      contextWindow: 123_456,
+      defaultHash: hashModel(legacyModel),
     }
     await db.insert(modelsTable).values(customizedLegacy)
     await db.insert(settingsTable).values({
       key: versionMarkerKeys.models,
-      value: String(defaultModelsVersion - 1),
+      value: String(defaultModelsVersion),
     })
 
-    await reconcileDefaults(db)
+    await reconcileDefaults(db, { initialSyncCompleted: false })
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
       ...customizedLegacy,
       model: defaultModelOpus5.model,
-      name: scenario.expectedName,
-      contextWindow: scenario.expectedContextWindow,
     })
   })
 
-  test('prevents a newer OTA payload from restoring the legacy model slug', async () => {
+  test('normalizes a legacy OTA default before reconciliation', async () => {
     const db = getDb()
-    const legacyDefault: SharedModel = {
-      ...defaultModelOpus5,
-      name: 'Opus 4.8',
-      model: 'opus-4.8',
-      contextWindow: 200_000,
-    }
+    const legacyModel = legacyDefault()
     await db.insert(modelsTable).values({
-      ...legacyDefault,
-      defaultHash: hashModel(legacyDefault),
+      ...legacyModel,
+      defaultHash: hashModel(legacyModel),
     })
     await db.insert(settingsTable).values({
       key: versionMarkerKeys.models,
       value: String(defaultModelsVersion),
     })
     const otaVersion = defaultModelsVersion + 1
-    const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus5.id ? legacyDefault : model))
+    const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus5.id ? legacyModel : model))
 
     await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels } })
 
@@ -936,6 +883,33 @@ describe('Opus 5 data migration', () => {
     expect(
       await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.models)).get(),
     ).toMatchObject({ value: String(otaVersion) })
+  })
+
+  test('resurrects and upgrades a cleanup-shaped legacy row in one boot', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    await db.insert(modelsTable).values({
+      ...legacyModel,
+      deletedAt: '2026-01-01T00:00:00.000Z',
+      defaultHash: hashModel(legacyModel),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db)
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...defaultModelOpus5,
+      defaultHash: hashModel(defaultModelOpus5),
+    })
+    expect(
+      await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, defaultModelOpus5.id)).get(),
+    ).toEqual({
+      ...defaultModelProfileOpus5,
+      defaultHash: hashModelProfile(defaultModelProfileOpus5),
+    })
   })
 })
 

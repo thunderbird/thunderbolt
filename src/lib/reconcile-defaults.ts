@@ -10,18 +10,13 @@ import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import {
-  defaultModelOpus5,
-  defaultModels,
-  defaultModelsVersion,
-  hashModel,
-  type SharedModel,
-} from '@shared/defaults/models'
+import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
 import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widget-skill-default-hashes'
+import { normalizeOpusDefault, upgradeOpusDefault } from './data-migrations/upgrade-opus-default'
 import { nowIso } from './utils'
 
 const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
@@ -455,47 +450,11 @@ export type ReconcileDefaultsOverrides = {
   initialSyncCompleted?: boolean
 }
 
-/** Normalize the reused identity so stale OTA payloads cannot restore Opus 4.8. */
-const normalizeLegacyOpusModel = (model: SharedModel): SharedModel => {
-  if (model.id !== defaultModelOpus5.id || model.model !== 'opus-4.8') {
-    return model
-  }
-  return {
-    ...model,
-    model: defaultModelOpus5.model,
-    name: model.name === 'Opus 4.8' ? defaultModelOpus5.name : model.name,
-    contextWindow: model.contextWindow === 200_000 ? defaultModelOpus5.contextWindow : model.contextWindow,
-  }
-}
-
-/** Upgrade the reused model identity so persisted chat references resolve Opus 5. */
-const migrateLegacyOpusModel = async (tx: AnyDrizzleDatabase): Promise<void> => {
-  const existing = await tx.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()
-  if (!existing || existing.deletedAt !== null || existing.model !== 'opus-4.8') {
-    return
-  }
-
-  const legacyModel = existing as SharedModel
-  const migratedModel = normalizeLegacyOpusModel(legacyModel)
-  const migratedValues = {
-    model: migratedModel.model,
-    name: migratedModel.name,
-    contextWindow: migratedModel.contextWindow,
-  }
-  const wasUnmodified = legacyModel.defaultHash !== null && hashModel(legacyModel) === legacyModel.defaultHash
-  const migratedDefaultHash = wasUnmodified ? hashModel(migratedModel) : legacyModel.defaultHash
-
-  await tx
-    .update(modelsTable)
-    .set({ ...migratedValues, defaultHash: migratedDefaultHash })
-    .where(eq(modelsTable.id, defaultModelOpus5.id))
-}
-
 export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: ReconcileDefaultsOverrides) => {
   const pickedModelsSource = overrides?.models ?? bundledModelsDefaults
   const modelsSource = {
     ...pickedModelsSource,
-    data: pickedModelsSource.data.map(normalizeLegacyOpusModel),
+    data: pickedModelsSource.data.map(normalizeOpusDefault),
   }
   const initialSyncCompleted = overrides?.initialSyncCompleted ?? true
 
@@ -525,7 +484,6 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       hasAnyModelRow,
       initialSyncCompleted,
     )
-    await migrateLegacyOpusModel(tx)
 
     // OTA can ship models whose id isn't in this bundle's `defaultModelProfiles`
     // — profiles are not part of the OTA channel, so we have no profile to
@@ -575,6 +533,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       frozenFields: ['isConfidential', 'provider'],
       metadataFields: ['description', 'vendor'],
     })
+    await upgradeOpusDefault(tx)
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
     // they ride the same authority gate as models — otherwise an older-bundle

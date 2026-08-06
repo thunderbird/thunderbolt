@@ -78,7 +78,7 @@ export const hashModel = (model: SharedModel): string => {
  */
 
 /**
- * Opus 5 reuses the row id originally assigned to Sonnet 4.5 and inherited by prior upgrades.
+ * This default keeps a stable row identity so persisted model references remain valid.
  * Generic defaults reconciliation upgrades unmodified rows in place.
  */
 export const defaultModelOpus5: SharedModel = {
@@ -89,7 +89,7 @@ export const defaultModelOpus5: SharedModel = {
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
-  contextWindow: 1_000_000,
+  contextWindow: 200_000,
   toolUsage: 1,
   startWithReasoning: 0,
   supportsParallelToolCalls: 1,

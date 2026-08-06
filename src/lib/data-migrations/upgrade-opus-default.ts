@@ -26,11 +26,7 @@ export const normalizeOpusDefault = (model: SharedModel): SharedModel => {
   }
 }
 
-/**
- * Upgrade the active canonical row while preserving user customizations.
- *
- * DELETE ME: remove after legacy defaults are no longer in use.
- */
+/** Upgrade the active canonical row while preserving user customizations. */
 export const upgradeOpusDefault = async (db: AnyDrizzleDatabase): Promise<void> => {
   const existing = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()
   if (!existing || existing.deletedAt !== null || existing.model !== legacyModelSlug) {

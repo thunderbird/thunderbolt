@@ -33,4 +33,11 @@ psql -v ON_ERROR_STOP=1 \
   -- Separate database for PowerSync bucket storage (avoids schema conflicts with app data).
   -- See https://docs.powersync.com/configuration/powersync-service/self-hosted-instances
   CREATE DATABASE powersync_storage OWNER postgres;
+
+  -- Keycloak's own database, for deployments that run the bundled IdP in
+  -- production mode (`start` rather than `start-dev`). Its own database rather
+  -- than a schema in this one: Keycloak owns ~95 tables and manages them with
+  -- Liquibase, which has no business sharing a namespace with the app's Drizzle
+  -- migrations. Harmless when unused -- an empty database costs nothing.
+  CREATE DATABASE keycloak OWNER postgres;
 EOSQL

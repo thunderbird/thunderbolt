@@ -15,7 +15,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { defaultModelOpus48, hashModel } from '@shared/defaults/models'
+import { defaultModelOpus5, hashModel } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import {
@@ -933,7 +933,7 @@ describe('Models DAL', () => {
   describe('resetModelToDefault', () => {
     it('restores default fields and refreshes defaultHash', async () => {
       const db = getDb()
-      const defaultModel = defaultModelOpus48
+      const defaultModel = defaultModelOpus5
 
       await db.insert(modelsTable).values({
         ...defaultModel,
@@ -956,7 +956,7 @@ describe('Models DAL', () => {
 
     it('clears the local-only api key on reset', async () => {
       const db = getDb()
-      const defaultModel = defaultModelOpus48
+      const defaultModel = defaultModelOpus5
 
       await db.insert(modelsTable).values({ ...defaultModel })
       await db.insert(modelsSecretsTable).values({ modelId: defaultModel.id, apiKey: 'sk-user-supplied' })
@@ -973,7 +973,7 @@ describe('Models DAL', () => {
 
     it('preserves the row userId (does not overwrite with null from the default template)', async () => {
       const db = getDb()
-      const defaultModel = defaultModelOpus48
+      const defaultModel = defaultModelOpus5
 
       // The default template carries `userId: null`. A row that has already
       // been synced has a real user_id — reset must not overwrite it, otherwise
@@ -1046,22 +1046,22 @@ describe('Models DAL', () => {
     it('should auto-create a default profile for a known seeded model', async () => {
       const db = getDb()
 
-      // Create a model with the same ID as a seeded default (Opus 4.8)
+      // Create a model with the same ID as a seeded default (Opus 5)
       await createModel(getDb(), {
-        id: defaultModelOpus48.id,
+        id: defaultModelOpus5.id,
         provider: 'thunderbolt',
-        name: 'Opus 4.8',
-        model: 'opus-4.8',
+        name: 'Opus 5',
+        model: 'opus-5',
       })
 
       // Verify a profile was auto-created
       const profile = await db
         .select()
         .from(modelProfilesTable)
-        .where(eq(modelProfilesTable.modelId, defaultModelOpus48.id))
+        .where(eq(modelProfilesTable.modelId, defaultModelOpus5.id))
         .get()
       expect(profile).not.toBeUndefined()
-      expect(profile?.temperature).toBe(0.2)
+      expect(profile?.temperature).toBeNull()
     })
 
     it('should not create a profile for an unknown model ID', async () => {

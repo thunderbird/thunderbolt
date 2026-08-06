@@ -6,6 +6,7 @@ import type { InitialSyncOutcome } from '@/db/database-interface'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getInitTimingPayload, resetInitTiming } from '@/lib/init-timing'
 import { createMockHttpClient } from '@/test-utils/http-client'
+import { restoreIndexedDb, stubIndexedDb } from '@/test-utils/indexed-db'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
@@ -28,35 +29,18 @@ const mockPostHogConfig = {
 // happydom has no IndexedDB, so the boot pipeline's storage pre-flight
 // (isIndexedDbAvailable) would short-circuit to STORAGE_UNAVAILABLE. Stub a
 // working factory so the success path is exercised, mirroring a real browser.
-const realIndexedDb = globalThis.indexedDB
-
-const stubWorkingIndexedDb = (): void => {
-  const factory = {
-    open: () => {
-      const request = {
-        onsuccess: null as (() => void) | null,
-        onerror: null as (() => void) | null,
-        onupgradeneeded: null as (() => void) | null,
-        onblocked: null as (() => void) | null,
-        result: { close: () => {} },
-      }
-      queueMicrotask(() => request.onsuccess?.())
-      return request
-    },
-    deleteDatabase: () => ({}),
-  } as unknown as IDBFactory
-  Object.defineProperty(globalThis, 'indexedDB', { value: factory, configurable: true, writable: true })
-}
-
+// `restoreIndexedDb` deletes the global again rather than setting it to
+// `undefined`, so later test files see the same absence they would have seen had
+// this file never run.
 describe('useAppInitialization', () => {
   beforeAll(async () => {
-    stubWorkingIndexedDb()
+    stubIndexedDb()
     await setupTestDatabase()
   })
 
   afterAll(async () => {
     await teardownTestDatabase()
-    Object.defineProperty(globalThis, 'indexedDB', { value: realIndexedDb, configurable: true, writable: true })
+    restoreIndexedDb()
   })
 
   it('provides correct hook interface', async () => {

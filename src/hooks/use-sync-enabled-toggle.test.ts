@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
@@ -29,11 +30,15 @@ mock.module('@/lib/posthog', () => ({
 
 const mockGetCK = mock(() => Promise.resolve(null))
 
+// Both overrides are gated on the real config store (seeded per test below) so
+// a leaked registration under `--randomize` mirrors the real module's semantics
+// once other files reset the store — never a constant `() => true`.
+const encryptionEnabledViaStore = () => useConfigStore.getState().config.e2eeEnabled === true
 const realEncryption = await import('@/db/encryption')
 mock.module('@/db/encryption', () => ({
   ...realEncryption,
-  isEncryptionEnabled: () => true,
-  needsSyncSetupWizard: async () => !(await mockGetCK()),
+  isEncryptionEnabled: encryptionEnabledViaStore,
+  needsSyncSetupWizard: async () => encryptionEnabledViaStore() && !(await mockGetCK()),
 }))
 
 const realKeyStorage = await import('@/crypto/key-storage')
@@ -50,12 +55,14 @@ describe('useSyncEnabledToggle', () => {
     mockTrackEvent.mockClear()
     mockGetCK.mockClear()
     mockGetCK.mockImplementation(() => Promise.resolve(null))
+    useConfigStore.setState({ config: { e2eeEnabled: true } })
   })
 
   afterEach(() => {
     mockSetSyncEnabled.mockRestore?.()
     mockTrackEvent.mockRestore?.()
     mockGetCK.mockRestore?.()
+    useConfigStore.setState({ config: {} })
   })
 
   it('returns sync toggle state and handlers', () => {

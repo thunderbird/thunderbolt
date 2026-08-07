@@ -1,0 +1,12 @@
+# Keep image build contexts lean: every Dockerfile in deploy/docker builds from
+# the repository root, and without this file the context upload would drag in
+# every package's node_modules and build outputs.
+**/node_modules
+**/dist
+**/.git
+.git
+src-tauri/target
+crates/**/target
+e2e/test-results
+e2e/playwright-report
+**/*.log

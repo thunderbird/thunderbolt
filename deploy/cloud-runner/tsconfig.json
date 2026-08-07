@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "ignoreDeprecations": "6.0",
+    "outDir": "bin",
+    "target": "es2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "experimentalDecorators": true,
+    "pretty": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "files": ["index.ts"]
+}

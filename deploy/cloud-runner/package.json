@@ -1,0 +1,14 @@
+{
+  "name": "thunderbolt-cloud-runner-pulumi",
+  "private": true,
+  "version": "0.0.1",
+  "main": "index.ts",
+  "dependencies": {
+    "@pulumi/aws": "^7.27.0",
+    "@pulumi/docker-build": "^0.0.20",
+    "@pulumi/pulumi": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

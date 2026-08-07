@@ -1,0 +1,3 @@
+name: thunderbolt-cloud-runner
+runtime: nodejs
+description: Thunderbolt cloud runner (remote execution target for the built-in agent) on a single AWS ECS Fargate task behind CloudFront (wss)

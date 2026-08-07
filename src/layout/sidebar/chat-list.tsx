@@ -5,14 +5,12 @@
 import { DeleteAllChatsDialog } from '@/components/delete-all-chats-dialog'
 import { DeleteChatDialog } from '@/components/delete-chat-dialog'
 import { MobileSidebarScrim } from '@/components/ui/scrim'
-import { SearchInput } from '@/components/ui/search-input'
 import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { Flame, Loader2, Search } from 'lucide-react'
@@ -87,81 +85,33 @@ export const ChatList = ({
   currentChatThreadId,
   isCollapsed,
   isMobile,
-  debouncedSearchQuery,
   deleteAllChatsMutation,
   deleteChatMutation,
   deleteAllChatsDialogRef,
   deleteChatDialogRef,
   threadIdRef,
-  searchQuery,
-  showSearch,
-  searchInputRef,
   mobileNavToggle,
   mobileSecondaryNavigation,
   onChatClick,
   onRename,
   onSearchClick,
-  onSearchQueryChange,
 }: ChatListProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const { forceCollapsed } = useSidebar()
   const {
     headerRef: mobileHeaderRef,
     labelRef: mobileLabelRef,
     metrics: mobileListMetrics,
   } = useMobileListMetrics(isMobile)
-  // The list has something to show either when threads exist or when a search
-  // is active (an empty result set still renders the "no matches" note).
-  const hasListContent = chatThreads.length > 0 || Boolean(debouncedSearchQuery)
+  const hasListContent = chatThreads.length > 0
 
   const chatActions = (
     <ChatActions
       isCollapsed={isCollapsed}
-      debouncedSearchQuery={debouncedSearchQuery}
-      showSearch={showSearch}
+      showClearAll={hasListContent}
       deleteAllChatsMutation={deleteAllChatsMutation}
       deleteAllChatsDialogRef={deleteAllChatsDialogRef}
       onSearchClick={onSearchClick}
     />
-  )
-
-  const searchField = (
-    <SearchInput
-      ref={searchInputRef}
-      containerClassName={isMobile ? undefined : 'mb-1'}
-      className="rounded-xl border-transparent bg-sidebar-accent focus-visible:border-border dark:bg-sidebar-accent"
-      placeholder="Search chats..."
-      value={searchQuery}
-      onChange={(e) => onSearchQueryChange(e.target.value)}
-    />
-  )
-
-  // Desktop search remains in flow. On mobile the field is positioned below
-  // the measured fixed chrome, so opening it overlays recent chats instead of
-  // changing Virtua's start margin and pushing every row down.
-  const desktopSearchInput = (
-    <div
-      className={`overflow-hidden transition-[max-height,opacity,margin-top] duration-300 ease-in-out flex-shrink-0 ${
-        showSearch && !isCollapsed && hasListContent ? 'max-h-12 opacity-100 mt-2' : 'max-h-0 opacity-0'
-      }`}
-    >
-      {searchField}
-    </div>
-  )
-
-  const mobileSearchInput = (
-    <div
-      data-slot="mobile-chat-search"
-      className={cn(
-        'absolute inset-x-2 z-20 pt-2 transition-[opacity,transform] duration-200',
-        showSearch && hasListContent
-          ? 'pointer-events-auto translate-y-0 opacity-100'
-          : 'pointer-events-none -translate-y-1 opacity-0',
-      )}
-      style={{ top: mobileListMetrics.headerHeight }}
-    >
-      {searchField}
-    </div>
   )
 
   // Mobile: a pinned, measured header floats over the list (nav toggle,
@@ -176,7 +126,7 @@ export const ChatList = ({
       <div className="relative z-10">
         <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
           {mobileNavToggle}
-          {hasListContent && chatActions}
+          {chatActions}
         </div>
         {mobileSecondaryNavigation}
       </div>
@@ -184,60 +134,53 @@ export const ChatList = ({
   )
 
   // Desktop: an in-flow label row while expanded, or the icon rail while
-  // collapsed.
+  // collapsed. Search is always shown; the clear-all action, rail divider, and
+  // "Recent Chats" label only appear once there are chats.
   const desktopChrome = isCollapsed ? (
-    hasListContent && (
-      <SidebarMenu className="flex-shrink-0">
-        {/* Search works by expanding the sidebar to reveal the input, so
-            it's hidden while a narrow window pins the sidebar collapsed. */}
-        {!forceCollapsed && (
+    <SidebarMenu className="flex-shrink-0">
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          onClick={onSearchClick}
+          tooltip="Search"
+          className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
+        >
+          <Search className="size-[var(--icon-size-default)]" />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      {hasListContent && (
+        <>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={(e) => onSearchClick(e)}
-              tooltip="Search chats"
+              onClick={() => deleteAllChatsDialogRef.current?.open()}
+              disabled={deleteAllChatsMutation.isPending}
+              tooltip="Clear all chats"
               className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
             >
-              <Search className={`size-[var(--icon-size-default)] ${debouncedSearchQuery ? 'text-primary' : ''}`} />
+              {deleteAllChatsMutation.isPending ? (
+                <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
+              ) : (
+                <Flame className="size-[var(--icon-size-default)]" />
+              )}
             </SidebarMenuButton>
           </SidebarMenuItem>
-        )}
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={() => deleteAllChatsDialogRef.current?.open()}
-            disabled={deleteAllChatsMutation.isPending}
-            tooltip="Clear all chats"
-            className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-          >
-            {deleteAllChatsMutation.isPending ? (
-              <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
-            ) : (
-              <Flame className="size-[var(--icon-size-default)]" />
-            )}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
-        <li aria-hidden>
-          <RailDivider className="my-1.5" />
-        </li>
-      </SidebarMenu>
-    )
-  ) : (
-    <>
-      {hasListContent && (
-        <div className="flex items-center justify-between flex-shrink-0">
-          <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
-          {chatActions}
-        </div>
+          {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
+          <li aria-hidden>
+            <RailDivider className="my-1.5" />
+          </li>
+        </>
       )}
-      {desktopSearchInput}
-    </>
+    </SidebarMenu>
+  ) : (
+    <div className="flex items-center justify-between flex-shrink-0">
+      {hasListContent ? <SidebarGroupLabel>Recent Chats</SidebarGroupLabel> : <span aria-hidden />}
+      {chatActions}
+    </div>
   )
 
   return (
     <>
       <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0', (isMobile || isCollapsed) && 'pt-0')}>
         {isMobile ? mobileChrome : desktopChrome}
-        {isMobile && mobileSearchInput}
         <div
           ref={scrollContainerRef}
           data-slot="chat-list-scroll"
@@ -290,11 +233,6 @@ export const ChatList = ({
                 />
               ))}
             </Virtualizer>
-          )}
-          {chatThreads.length === 0 && debouncedSearchQuery && !isCollapsed && (
-            <div className="text-center text-sm py-12 px-4 text-muted-foreground">
-              No matches for "{debouncedSearchQuery}"
-            </div>
           )}
         </div>
       </SidebarGroup>

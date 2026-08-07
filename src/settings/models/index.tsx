@@ -19,6 +19,7 @@ import {
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { StatusCard } from '@/components/ui/status-card'
+import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
 import { AddModelForm } from './add-model-form'
 import { EditModelForm } from './edit-model-form'
 import { ModelDetail } from './model-detail'
@@ -28,6 +29,14 @@ import { useModelsPageState } from './use-models-page-state'
 const ModelsPage = () => {
   const page = useModelsPageState()
   const { activeModel, editingModel } = page
+
+  // Palette (Cmd+K) create/edit/remove intents arrive as one-shot router
+  // state and route straight into the page's existing handlers (THU-768).
+  useEntityActionIntent('model', {
+    onCreate: page.openAddPanel,
+    onEdit: (id) => page.openEditPanel(id),
+    onRemove: (id) => page.requestDelete(id),
+  })
 
   // Mutation errors surface where the mutation was triggered — the delete
   // dialog, add form, and edit form each render `mutationError` themselves, so

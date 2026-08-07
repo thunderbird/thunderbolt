@@ -8,6 +8,8 @@ import type { HttpClient } from '@/contexts'
 import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
+import { getPowerSyncInstance } from '@/db/powersync/sync-state'
+import { createSearchIndex } from '@/search/fts-setup'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
@@ -205,6 +207,20 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   await time('step2b_db_ready', async () => {
     await db.get(sql`select 1`)
   })
+
+  // Step 2d: Build the unified full-text search index (THU-766). Idempotent —
+  // rebuilds only when missing or the schema version bumped. Runs against the
+  // raw SQLite handle, which only PowerSync exposes; other backends (e.g.
+  // bun-sqlite in tests) return null here and skip it. Non-critical: a failed
+  // build must never block boot, so it logs and continues.
+  const powerSyncInstance = getPowerSyncInstance()
+  if (powerSyncInstance) {
+    try {
+      await time('step2d_build_search_index', () => createSearchIndex(powerSyncInstance))
+    } catch (error) {
+      console.warn('[init] Failed to build search index:', error)
+    }
+  }
 
   // Read the persisted `/config` cache once, up front. `pickModelsDefaults`
   // returns whichever of (bundled models, OTA models) declares the higher

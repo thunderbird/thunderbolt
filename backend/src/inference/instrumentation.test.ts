@@ -62,7 +62,7 @@ describe('inference attempt instrumentation', () => {
       apiKey: 'test-fireworks-key',
     },
     {
-      model: 'opus-4.8',
+      model: 'opus-5',
       provider: 'anthropic' as const,
       host: 'api.anthropic.com',
       apiKey: 'test-anthropic-key',

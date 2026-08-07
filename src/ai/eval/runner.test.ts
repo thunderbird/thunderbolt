@@ -8,10 +8,10 @@ import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { AgentAdapter } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { defaultModelOpus48 } from '@shared/defaults/models'
+import { defaultModelOpus5 } from '@shared/defaults/models'
 import { createEvalAdapterContext, fetchAndParseTurn } from './runner'
 
-const model: Model = { ...defaultModelOpus48, apiKey: null }
+const model: Model = { ...defaultModelOpus5, apiKey: null }
 const proxyFetch: FetchFn = Object.assign(async () => new Response(), {
   preconnect: async () => false,
 })

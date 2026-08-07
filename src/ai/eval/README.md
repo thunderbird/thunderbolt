@@ -149,7 +149,7 @@ Example with verbose:
 $ EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --verbose
 
 --- SYSTEM PROMPT (opus/pi/chat/C1) ---
-You are an executive assistant using the **Opus 4.8** model...
+You are an executive assistant using the **Opus 5** model...
 # Principles
 ...
 # Active Mode (follow these instructions)
@@ -172,7 +172,7 @@ Here are the three leading stories on AP News for February 16, 2026:
 
 Use these names in `EVAL_MODELS`:
 
-- `opus` — Opus 4.8
+- `opus` — Opus 5
 - `flash` — DeepSeek V4 Flash
 - `glm` — GLM 5.2
 

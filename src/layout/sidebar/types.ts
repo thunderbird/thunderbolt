@@ -5,7 +5,7 @@
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import type { UseMutationResult } from '@tanstack/react-query'
-import type { MouseEvent, ReactNode, RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 
 /** Top-level sidebar sections switchable via the nav toggle. */
 export type SidebarSection = 'chats' | 'settings'
@@ -22,12 +22,11 @@ export type DeleteAllChatsMutationType = UseMutationResult<void, Error, void, un
 
 export type ChatActionsProps = {
   isCollapsed: boolean
-  debouncedSearchQuery: string
-  /** Whether the search input is currently expanded — tints the search button. */
-  showSearch: boolean
+  /** Whether to render the "Clear all chats" action — hidden when there are no chats. */
+  showClearAll: boolean
   deleteAllChatsMutation: DeleteAllChatsMutationType
   deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
-  onSearchClick: (e?: MouseEvent) => void
+  onSearchClick: () => void
 }
 
 export type ChatListProps = {
@@ -35,21 +34,16 @@ export type ChatListProps = {
   currentChatThreadId?: string
   isCollapsed: boolean
   isMobile: boolean
-  debouncedSearchQuery: string
   deleteAllChatsMutation: DeleteAllChatsMutationType
   deleteChatMutation: DeleteChatMutationType
   deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   threadIdRef: RefObject<string | null>
-  searchQuery: string
-  showSearch: boolean
-  searchInputRef: RefObject<HTMLInputElement | null>
   mobileNavToggle: ReactNode
   mobileSecondaryNavigation: ReactNode
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
-  onSearchClick: (e?: MouseEvent) => void
-  onSearchQueryChange: (value: string) => void
+  onSearchClick: () => void
 }
 
 export type ChatListItemProps = {

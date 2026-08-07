@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import { hashValues } from '../lib/hash'
-import { defaultModels, defaultModelsVersion, hashModel, vendorSupportsImages } from './models'
+import { defaultModelOpus5, defaultModels, defaultModelsVersion, hashModel, vendorSupportsImages } from './models'
 
 /**
  * Snapshot pinning the shipped defaults to their declared version. When you
@@ -29,12 +29,28 @@ const computeMetadataHash = () =>
   defaultModels.map((model, index) => `${index}:${hashValues([model.vendor, model.description])}`).join('|')
 
 const expected = {
-  version: 3,
-  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-1vf2pk|1:019f227e-d640-727d-ba12-d51bd7d0a3d6:bvaax2|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
+  version: 4,
+  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:n56kdk|1:019f227e-d640-727d-ba12-d51bd7d0a3d6:bvaax2|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
   metadataHash: '0:vzhyk4|1:-x2wlw2|2:-cajkcl',
 }
 
 describe('defaultModels version snapshot', () => {
+  test('ships Opus 5 as the sole model using its canonical id', () => {
+    expect(defaultModelOpus5).toMatchObject({
+      id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
+      name: 'Opus 5',
+      provider: 'thunderbolt',
+      model: 'opus-5',
+      contextWindow: 200_000,
+      isSystem: 1,
+      enabled: 1,
+      toolUsage: 1,
+      supportsParallelToolCalls: 1,
+      isConfidential: 0,
+    })
+    expect(defaultModels.filter(({ id }) => id === defaultModelOpus5.id)).toEqual([defaultModelOpus5])
+  })
+
   test('version and content are in sync — read the file header if this fails', () => {
     expect({
       version: defaultModelsVersion,

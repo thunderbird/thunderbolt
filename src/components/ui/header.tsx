@@ -157,10 +157,10 @@ const HistoryNavButtons = () => {
 export const Header = () => {
   const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
-  // Tauri desktop hides the OS title bar; the header row itself doubles as
-  // the drag surface — including when the viewport is narrow enough to fall
-  // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
-  // buttons inline on the right (self-nulls on macOS/web).
+  // Both desktop apps hide the native title bar (macOS overlays it with traffic
+  // lights; Windows/Linux are frameless), so the header row doubles as the drag
+  // surface — including when the viewport is narrow enough to fall into the
+  // mobile-style layout.
   const isDragRegionEnabled = isTauriDesktop()
   const dragProps: TauriDragProps = isDragRegionEnabled ? { 'data-tauri-drag-region': true } : {}
   // The macOS traffic lights (ending at ~x=68) are wider than the collapsed
@@ -260,12 +260,12 @@ export const Header = () => {
   // right of the arrows in the app). Theme and sync/account controls live in
   // the sidebar footer, so the right side stays empty (it remains a drag
   // surface on the Tauri desktop app).
-  // On the Tauri desktop app the expand toggle lives here while the sidebar is
-  // collapsed to a rail — just right of the macOS traffic lights, the same
-  // spot the collapse toggle occupies in the expanded sidebar's strip. On web
+  // On macOS the expand toggle lives here while the sidebar is collapsed to a
+  // rail — just right of the traffic lights, the same spot the collapse toggle
+  // occupies in the expanded sidebar's strip. On web and the Windows/Linux apps
   // the toggle stays inside the sidebar itself. Hidden while the collapse is
   // forced by a narrow window — expanding is a no-op there.
-  const showSidebarToggle = isTauriDesktop() && sidebarState === 'collapsed' && !forceCollapsed
+  const showSidebarToggle = isMacDesktop() && sidebarState === 'collapsed' && !forceCollapsed
 
   return (
     <header

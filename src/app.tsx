@@ -15,11 +15,11 @@ import { SignedOut } from '@/components/signed-out'
 import { StorageUnavailableScreen } from '@/components/storage-unavailable-screen'
 import NotFound from '@/components/not-found'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
+import { WindowControls } from '@/components/window-controls'
 import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
 import WaitlistLayout from '@/waitlist/layout'
 import WaitlistPage from '@/waitlist/waitlist-page'
-import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import {
   AuthProvider,
@@ -46,7 +46,6 @@ import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
 import { UpdateNotification } from './components/update-notification'
-import { WindowChrome } from '@/components/window-chrome'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
@@ -331,13 +330,11 @@ export const App = () => {
                       <ProxyFetchProvider>
                         <MCPProvider>
                           <HapticsProvider>
-                            <SidebarProvider>
-                              <ContentViewProvider>
-                                <ExternalLinkDialogProvider>
-                                  <AppContent initData={initData} />
-                                </ExternalLinkDialogProvider>
-                              </ContentViewProvider>
-                            </SidebarProvider>
+                            <ContentViewProvider>
+                              <ExternalLinkDialogProvider>
+                                <AppContent initData={initData} />
+                              </ExternalLinkDialogProvider>
+                            </ContentViewProvider>
                           </HapticsProvider>
                         </MCPProvider>
                       </ProxyFetchProvider>
@@ -355,7 +352,8 @@ export const App = () => {
   return (
     <ThemeProvider>
       <LazyMotion features={loadMotionFeatures} strict>
-        <WindowChrome>{renderAppContent()}</WindowChrome>
+        {renderAppContent()}
+        <WindowControls />
         <RevokedDeviceModal open={revokedDeviceOpen} />
       </LazyMotion>
     </ThemeProvider>

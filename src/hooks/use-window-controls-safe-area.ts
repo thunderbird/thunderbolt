@@ -12,8 +12,9 @@ import { isMacDesktop } from '@/lib/platform'
  * Returns true when a full-window surface's top-left corner sits under them:
  * the Tauri macOS app at mobile (single-column) width, where overlays and
  * panels cover the whole window. At desktop widths the sidebar/header strips
- * already carry the clearance, and Windows/Linux never need any —
- * `WindowChrome` reserves a dedicated top strip for its custom controls.
+ * already carry the clearance, and Windows/Linux never need this macOS
+ * clearance — their custom window controls sit top-right (see WindowControls),
+ * cleared separately, not top-left.
  *
  * Consumers pad their header row (e.g. `pl-24` in `src/content-view/header.tsx`
  * — the lights end at ~x=68, plus breathing room) when this is true.

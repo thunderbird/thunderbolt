@@ -180,7 +180,7 @@ const SidebarProvider = forwardRef<
     // Adds a keyboard shortcut to toggle the sidebar.
     useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === sidebarKeyboardShortcut && (event.metaKey || event.ctrlKey)) {
+        if (event.key.toLowerCase() === sidebarKeyboardShortcut && (event.metaKey || event.ctrlKey)) {
           event.preventDefault()
           toggleSidebar()
         }

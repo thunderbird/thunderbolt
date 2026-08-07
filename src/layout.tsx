@@ -7,6 +7,7 @@ import { SidebarProvider, useSidebar } from '@/components/ui/sidebar'
 import { LazyCreateItemHost } from '@/components/create-item/lazy-create-item-host'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { useSettings } from '@/hooks/use-settings'
+import { SearchPaletteProvider } from '@/search/search-palette-context'
 import SidebarComponent from '@/layout/sidebar'
 import { Outlet } from 'react-router'
 import './index.css'
@@ -50,7 +51,12 @@ const Layout = () => {
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
-      <LayoutContent />
+      {/* Inside the SidebarProvider so the palette's "Toggle sidebar" command can
+          call the real `useSidebar().toggleSidebar()` (mobile drawer + desktop
+          collapse). The palette's only opener lives in this sidebar too. */}
+      <SearchPaletteProvider>
+        <LayoutContent />
+      </SearchPaletteProvider>
     </SidebarProvider>
   )
 }

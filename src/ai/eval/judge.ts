@@ -6,7 +6,7 @@ import { resolveOpenAiCompatConnection } from '@/ai/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { defaultModelDeepseekV4Flash, defaultModelOpus48 } from '@shared/defaults/models'
+import { defaultModelDeepseekV4Flash, defaultModelOpus5 } from '@shared/defaults/models'
 import { streamText, type LanguageModel } from 'ai'
 import { z } from 'zod'
 import type { EvalCriteria, EvalResult, EvalScenario } from './types'
@@ -27,7 +27,7 @@ export type JudgeModelName = 'opus' | 'flash'
 class RetryableJudgeError extends Error {}
 
 const judgeModels: Record<JudgeModelName, Model> = {
-  opus: { ...defaultModelOpus48, apiKey: null },
+  opus: { ...defaultModelOpus5, apiKey: null },
   flash: { ...defaultModelDeepseekV4Flash, apiKey: null },
 }
 

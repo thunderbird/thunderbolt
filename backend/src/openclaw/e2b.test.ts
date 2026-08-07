@@ -5,33 +5,61 @@
 import { describe, expect, test } from 'bun:test'
 import {
   deployOpenclawSandbox,
+  extendOpenclawSandboxTimeout,
   killOpenclawSandboxForUser,
   openclawSandboxStatusForUser,
   resolveOpenclawSandboxForUser,
   type E2bClient,
   type E2bSandbox,
+  type OpenclawDeployHooks,
   type OpenclawE2bConfig,
 } from './e2b'
 
 const config: OpenclawE2bConfig = {
   apiKey: 'e2b-key',
-  model: 'openrouter/some-model',
-  openrouterApiKey: 'or-key',
+  publicApiUrl: 'https://api.thunderbolt.example',
+  model: 'opus-4.8',
+}
+
+/** Deploy hooks that record their order + arguments and hand back a scripted token. */
+const fakeHooks = (): OpenclawDeployHooks & {
+  events: string[]
+  recordedSandboxId?: string
+  mintedSandboxId?: string
+} => {
+  const state = {
+    events: [] as string[],
+    recordedSandboxId: undefined as string | undefined,
+    mintedSandboxId: undefined as string | undefined,
+    recordDeployment: async (sandboxId: string) => {
+      state.events.push('record')
+      state.recordedSandboxId = sandboxId
+    },
+    mintToken: async (sandboxId: string) => {
+      state.events.push('mint')
+      state.mintedSandboxId = sandboxId
+      return 'agent-token'
+    },
+  }
+  return state
 }
 
 /** A fake E2B client that records calls and serves scripted metadata. */
 const fakeClient = (overrides: Partial<E2bClient> & { metadataById?: Record<string, Record<string, string>> } = {}) => {
   const created: { template: string; opts: Parameters<E2bClient['create']>[1] }[] = []
-  const ran: string[] = []
+  const ran: { cmd: string; envs?: Record<string, string> }[] = []
   const killed: string[] = []
   const connected: string[] = []
+  const timeouts: { sandboxId: string; timeoutMs: number }[] = []
+  const events: string[] = []
 
   const makeSandbox = (sandboxId: string): E2bSandbox => ({
     sandboxId,
     getHost: (port) => `${port}-${sandboxId}.e2b.app`,
     commands: {
-      run: async (cmd) => {
-        ran.push(cmd)
+      run: async (cmd, opts) => {
+        events.push('run')
+        ran.push({ cmd, envs: opts.envs })
       },
     },
     kill: async () => {
@@ -52,31 +80,84 @@ const fakeClient = (overrides: Partial<E2bClient> & { metadataById?: Record<stri
     kill: async (sandboxId) => {
       killed.push(sandboxId)
     },
+    setTimeout: async (sandboxId, timeoutMs) => {
+      timeouts.push({ sandboxId, timeoutMs })
+    },
     ...overrides,
   }
-  return { client, created, ran, killed, connected }
+  return { client, created, ran, killed, connected, timeouts, events }
 }
 
-describe('deployOpenclawSandbox', () => {
-  test('stamps owner metadata + envs, launches the entrypoint, returns the handle without waiting', async () => {
-    const fake = fakeClient()
+const idleTimeoutMs = 15 * 60 * 1000
 
-    const result = await deployOpenclawSandbox('user-a', config, { client: fake.client })
+describe('deployOpenclawSandbox', () => {
+  test('injects managed-inference env, auto-pause + idle timeout, mints before launch, returns the handle', async () => {
+    const fake = fakeClient()
+    const hooks = fakeHooks()
+
+    const result = await deployOpenclawSandbox('user-a', config, hooks, { client: fake.client })
 
     expect(result).toEqual({ sandboxId: 'sbx-1', wsUrl: 'wss://8790-sbx-1.e2b.app' })
+
+    const createOpts = fake.created[0]?.opts
     expect(fake.created[0]?.template).toBe('thunderbolt-openclaw')
-    expect(fake.created[0]?.opts.metadata).toEqual({ userId: 'user-a', kind: 'openclaw' })
-    expect(fake.created[0]?.opts.envs.OPENROUTER_API_KEY).toBe('or-key')
-    expect(fake.created[0]?.opts.envs.MODEL).toBe('openrouter/some-model')
-    expect(fake.created[0]?.opts.secure).toBe(false)
-    expect(fake.ran).toEqual([
-      "sh -c 'setsid nohup bash /opt/docker-entrypoint.sh >/tmp/openclaw-boot.log 2>&1 </dev/null & sleep 2'",
-    ])
+    expect(createOpts?.metadata).toEqual({ userId: 'user-a', kind: 'openclaw' })
+    expect(createOpts?.secure).toBe(false)
+    expect(createOpts?.autoPause).toBe(true)
+    expect(createOpts?.timeoutMs).toBe(idleTimeoutMs)
+
+    // We run our own launch script (custom OpenAI-compatible provider), NOT the
+    // image's OpenRouter-wired entrypoint.
+    expect(fake.ran[0]?.cmd).toContain('/tmp/openclaw-launch.sh')
+    expect(fake.ran[0]?.cmd).not.toContain('docker-entrypoint.sh')
+
+    // The launch (not create) carries the minted token as OPENAI_API_KEY, and the
+    // bare model id (the launch onboards it as the custom provider's model).
+    const launchEnvs = fake.ran[0]?.envs ?? {}
+    expect(launchEnvs.OPENAI_BASE_URL).toBe('https://api.thunderbolt.example/v1')
+    expect(launchEnvs.OPENAI_API_KEY).toBe('agent-token')
+    expect(launchEnvs.MODEL).toBe('opus-4.8')
+    expect(launchEnvs.PORT).toBe('8790')
+    expect(launchEnvs.OPENROUTER_API_KEY).toBeUndefined()
+
+    // Recorded, then minted (with the created sandbox id), then launched.
+    expect(hooks.events).toEqual(['record', 'mint'])
+    expect(fake.events).toEqual(['run'])
+    expect(hooks.recordedSandboxId).toBe('sbx-1')
+    expect(hooks.mintedSandboxId).toBe('sbx-1')
+  })
+
+  test('kills the sandbox when recording the deployment fails, before minting or launching', async () => {
+    const fake = fakeClient()
+    const hooks: OpenclawDeployHooks = {
+      recordDeployment: async () => {
+        throw new Error('db down')
+      },
+      mintToken: async () => 'unused',
+    }
+
+    await expect(deployOpenclawSandbox('user-a', config, hooks, { client: fake.client })).rejects.toThrow('db down')
+    expect(fake.killed).toEqual(['sbx-1'])
+    expect(fake.ran).toEqual([])
+  })
+
+  test('kills the sandbox when minting the token fails', async () => {
+    const fake = fakeClient()
+    const hooks: OpenclawDeployHooks = {
+      recordDeployment: async () => {},
+      mintToken: async () => {
+        throw new Error('mint failed')
+      },
+    }
+
+    await expect(deployOpenclawSandbox('user-a', config, hooks, { client: fake.client })).rejects.toThrow('mint failed')
+    expect(fake.killed).toEqual(['sbx-1'])
+    expect(fake.ran).toEqual([])
   })
 
   test('kills the sandbox when the launch command fails', async () => {
     let killedSelf = false
-    const client = {
+    const client: E2bClient = {
       ...fakeClient().client,
       create: async (): Promise<E2bSandbox> => ({
         sandboxId: 'sbx-1',
@@ -92,8 +173,26 @@ describe('deployOpenclawSandbox', () => {
       }),
     }
 
-    await expect(deployOpenclawSandbox('user-a', config, { client })).rejects.toThrow('launch failed')
+    await expect(deployOpenclawSandbox('user-a', config, fakeHooks(), { client })).rejects.toThrow('launch failed')
     expect(killedSelf).toBe(true)
+  })
+})
+
+describe('extendOpenclawSandboxTimeout', () => {
+  test('pushes the idle timeout back out to the idle window', async () => {
+    const fake = fakeClient()
+    await extendOpenclawSandboxTimeout('sbx-9', config.apiKey, { client: fake.client })
+    expect(fake.timeouts).toEqual([{ sandboxId: 'sbx-9', timeoutMs: idleTimeoutMs }])
+  })
+
+  test('swallows failures so a transient E2B hiccup never drops the relay', async () => {
+    const client: E2bClient = {
+      ...fakeClient().client,
+      setTimeout: async () => {
+        throw new Error('e2b unreachable')
+      },
+    }
+    await expect(extendOpenclawSandboxTimeout('sbx-9', config.apiKey, { client })).resolves.toBeUndefined()
   })
 })
 

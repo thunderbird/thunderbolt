@@ -377,8 +377,9 @@ curl -s http://localhost:8000/v1/agents/catalog -H "Authorization: Bearer $TOKEN
 ```
 
 A provider only appears when it's configured (Haystack needs
-`HAYSTACK_TEMPLATE_PIPELINE`; OpenClaw needs `E2B_API_KEY` + `OPENCLAW_MODEL` +
-`OPENCLAW_OPENROUTER_API_KEY`).
+`HAYSTACK_TEMPLATE_PIPELINE`; OpenClaw needs `E2B_API_KEY` + `PUBLIC_API_URL`).
+OpenClaw runs on Thunderbolt's managed models, so it no longer takes an OpenRouter
+key — the model is chosen in the deploy form instead (see the note below).
 
 ### Deploy Haystack
 
@@ -408,7 +409,7 @@ URL. Haystack deploys are quick, so status is often `running` immediately.
 ```bash
 curl -s -X POST http://localhost:8000/v1/agents/deploy \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{ "descriptorId": "openclaw", "schemaVersion": 1, "spec": { "name": "OpenClaw" } }'
+  -d '{ "descriptorId": "openclaw", "schemaVersion": 2, "spec": { "name": "OpenClaw", "model": "opus-4.8" } }'
 ```
 
 ```json
@@ -427,6 +428,34 @@ agent daemon, but does _not_ block on the ~15–30s boot. Status starts `pending
 the client polls until the sandbox's ACP endpoint answers. The sandbox is
 stamped with the caller's `userId` in E2B metadata (the ownership source of
 truth — no backend table).
+
+> **OpenClaw runs on Thunderbolt's managed models.** At deploy the sandbox is
+> booted with a scoped, per-deployment inference token (signed with
+> `AGENT_INFERENCE_JWT_SECRET`) and onboards OpenClaw's custom OpenAI-compatible
+> provider pointed at `${PUBLIC_API_URL}/v1` — no provider/model key ever enters
+> the sandbox. The model is the one picked in the deploy form (the managed
+> `isSystem` models). The token is non-expiring and is revoked (with the sandbox
+> killed) on undeploy.
+>
+> **`PUBLIC_API_URL` must be reachable _from the sandbox_.** The sandbox runs on
+> E2B's cloud, so this has to be a public origin: `http://localhost:8000` is fine
+> for the backend itself, but a deployed sandbox can't reach your machine at
+> `localhost`. In local dev, expose the backend with a tunnel and point
+> `PUBLIC_API_URL` at it:
+>
+> ```bash
+> # Tunnel localhost:8000 — no account needed (or: ngrok http 8000)
+> cloudflared tunnel --url http://localhost:8000
+> # → prints https://<random>.trycloudflare.com
+>
+> # Set the printed URL in backend/.env, then restart the backend:
+> #   PUBLIC_API_URL=https://<random>.trycloudflare.com
+> ```
+>
+> Quick tunnels are ephemeral — the URL changes on each restart, so update
+> `PUBLIC_API_URL` and **redeploy** the agent when it does (a running sandbox has
+> the old URL baked in). For a stable loop, use a named cloudflared tunnel or an
+> authenticated ngrok reserved domain.
 
 ### Poll status
 

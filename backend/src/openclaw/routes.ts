@@ -11,17 +11,28 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import type { User } from '@shared/types/auth'
 import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia } from 'elysia'
-import { resolveOpenclawSandboxForUser, type OpenclawE2bDeps } from './e2b'
-import { createOpenclawProvider, parseSandboxRef } from './provider'
+import { extendOpenclawSandboxTimeout, resolveOpenclawSandboxForUser } from './e2b'
+import { createOpenclawProvider, parseSandboxRef, type OpenclawProviderDeps } from './provider'
 import { createSandboxRelay, type SandboxRelay } from './relay'
 
 /**
  * Per-connection state on `ws.data`. `relay` is created once the async `open()`
  * resolves; `pending` buffers frames that arrive during that window so the FE's
  * eager `initialize` isn't dropped (same fix as `haystack/routes.ts`). `request`
- * is Bun's original upgrade request.
+ * is Bun's original upgrade request. `sandboxId` + `lastExtendAt` drive the
+ * throttled keep-alive that pushes the sandbox's idle-pause timeout out on
+ * activity so an in-use chat never pauses mid-turn.
  */
-type WsSlot = { request?: Request; relay?: SandboxRelay; pending?: string[] }
+type WsSlot = {
+  request?: Request
+  relay?: SandboxRelay
+  pending?: string[]
+  sandboxId?: string
+  lastExtendAt?: number
+}
+
+/** Minimum gap between keep-alive timeout extensions — one bump covers a burst of frames. */
+const extendThrottleMs = 60_000
 
 /**
  * Mount the OpenClaw ACP relay.
@@ -39,7 +50,7 @@ type WsSlot = { request?: Request; relay?: SandboxRelay; pending?: string[] }
  * instance closes the socket without ever dialing the sandbox. `deps` injects a
  * fake E2B client in tests.
  */
-export const createOpenclawRoutes = (settings: Settings, auth: Auth, deps: OpenclawE2bDeps = {}) => {
+export const createOpenclawRoutes = (settings: Settings, auth: Auth, deps: OpenclawProviderDeps = {}) => {
   registerAgentProvider(createOpenclawProvider(deps))
 
   return new Elysia({ name: 'openclaw-routes', prefix: '/openclaw' }).onError(safeErrorHandler).ws('/ws', {
@@ -90,6 +101,12 @@ export const createOpenclawRoutes = (settings: Settings, auth: Auth, deps: Openc
         () => ws.close(),
       )
       slot.relay = relay
+      // Keep the sandbox alive while this chat is open: opening a connection is
+      // itself activity, so bump the idle-pause timeout now and again (throttled)
+      // on each inbound frame. Best-effort — a failed extend never drops the relay.
+      slot.sandboxId = sandboxId
+      slot.lastExtendAt = Date.now()
+      void extendOpenclawSandboxTimeout(sandboxId, settings.e2bApiKey, deps)
       // Drain buffered frames in arrival order; frames arriving mid-drain append
       // to the same queue (see `message`), so ordering is preserved.
       while (slot.pending.length > 0) {
@@ -101,6 +118,14 @@ export const createOpenclawRoutes = (settings: Settings, auth: Auth, deps: Openc
     message(ws, message) {
       const slot = ws.data as unknown as WsSlot
       const frame = typeof message === 'string' ? message : JSON.stringify(message)
+      // Throttled keep-alive: any client frame is activity, so push the idle-pause
+      // timeout back out — but at most once per window so a chatty session doesn't
+      // spam E2B.
+      const now = Date.now()
+      if (slot.sandboxId && now - (slot.lastExtendAt ?? 0) >= extendThrottleMs) {
+        slot.lastExtendAt = now
+        void extendOpenclawSandboxTimeout(slot.sandboxId, settings.e2bApiKey, deps)
+      }
       // Still inside (or draining after) open() — queue to preserve order.
       if (slot.pending) {
         slot.pending.push(frame)
@@ -113,6 +138,7 @@ export const createOpenclawRoutes = (settings: Settings, auth: Auth, deps: Openc
       slot.relay?.close()
       slot.relay = undefined
       slot.pending = undefined
+      slot.sandboxId = undefined
     },
   })
 }

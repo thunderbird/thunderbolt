@@ -4,9 +4,10 @@
 
 /**
  * Resolves the `account-models` option source for descriptor `select` fields:
- * the user's servable managed system models, read reactively from the already-
- * synced local `models` table. `value` is the provider-side model id the backend
- * validates against; `label` is the human name shown in the picker.
+ * the user's deployable account models, read reactively from the already-synced
+ * local `models` table. `value` is the model's local id (so the submit step can
+ * resolve the full model + its local-only apiKey to build the deploy connection);
+ * `label` is the human name shown in the picker.
  */
 
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -15,16 +16,30 @@ import { useMemo } from 'react'
 
 import { useDatabase } from '@/contexts'
 import { getAllModels } from '@/dal'
+import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import type { AgentFieldOption } from '@shared/agent-descriptors'
 import type { Model } from '@/types'
 
 /**
- * A model is servable to a deployed agent's sandbox only when it's a managed
- * system model served by Thunderbolt's gateway. This deliberately excludes
- * confidential/tinfoil models (e.g. GLM), which are not reachable from a sandbox.
- * Kept as one predicate so the servable set is easy to narrow later.
+ * A model is deployable to a sandbox agent when the sandbox can dial it directly:
+ *  - managed Thunderbolt system models (backend mints a scoped token),
+ *  - BYOK providers with a reachable base URL (`openai`/`openrouter`/`anthropic`),
+ *  - `custom` models whose URL is set and NOT loopback.
+ * Excludes `tinfoil` (HPKE enclave, no plain base URL) and loopback `custom` URLs
+ * (LM Studio / Ollama on the user's machine — unreachable from a cloud sandbox).
  */
-const isServableSystemModel = (model: Model): boolean => model.isSystem === 1 && model.provider === 'thunderbolt'
+const isDeployableModel = (model: Model): boolean => {
+  if (model.provider === 'thunderbolt') {
+    return model.isSystem === 1
+  }
+  if (model.provider === 'openai' || model.provider === 'openrouter' || model.provider === 'anthropic') {
+    return true
+  }
+  if (model.provider === 'custom') {
+    return Boolean(model.url) && URL.canParse(model.url!) && !isLoopbackHost(new URL(model.url!).hostname)
+  }
+  return false
+}
 
 export const useAccountModelOptions = (): { options: AgentFieldOption[]; isLoading: boolean } => {
   const db = useDatabase()
@@ -36,7 +51,7 @@ export const useAccountModelOptions = (): { options: AgentFieldOption[]; isLoadi
   })
 
   const options = useMemo<AgentFieldOption[]>(
-    () => models.filter(isServableSystemModel).map((model) => ({ value: model.model ?? '', label: model.name ?? '' })),
+    () => models.filter(isDeployableModel).map((model) => ({ value: model.id, label: model.name ?? '' })),
     [models],
   )
 

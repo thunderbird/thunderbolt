@@ -31,6 +31,7 @@ import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { createAgent } from '@/dal'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentDescriptor, AgentSpec } from '@shared/agent-descriptors'
+import { buildDeployModelConnection } from './descriptor-form/build-deploy-model-connection'
 import { DescriptorForm } from './descriptor-form/descriptor-form'
 import { useDescriptorOptionSources } from './descriptor-form/option-sources'
 
@@ -75,10 +76,16 @@ export const AddAgentPanel = ({ onClose, allowConnect, loadAppNodeId, enrollIroh
     setIsDeploying(true)
     setError(null)
     try {
+      // The model select's value is the model's local id; resolve it to a deploy
+      // connection (base URL + BYOK key) the sandbox dials. Absent for
+      // non-model providers (e.g. haystack), which ignore it.
+      const modelId = typeof spec.model === 'string' ? spec.model : undefined
+      const modelConnection = modelId ? await buildDeployModelConnection(db, modelId) : undefined
       const result = await deployAgent(cloudUrl, httpClient, {
         descriptorId: selected.id,
         schemaVersion: selected.schemaVersion,
         spec,
+        modelConnection,
       })
       if (!result.connection) {
         setError('Deploy did not return a connection endpoint.')

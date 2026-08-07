@@ -330,10 +330,15 @@ optional with a default.
   id: 'openclaw', provider: 'openclaw',
   name: 'OpenClaw',
   description: 'Deploy a sandboxed OpenClaw coding agent.',
-  icon: 'terminal', schemaVersion: 1, action: 'deploy',
-  steps: [{ id: 'basics', title: 'Name your agent', fields: [
-    { key: 'name', label: 'Name', widget: 'text', required: false, maxLength: 60, placeholder: 'OpenClaw', default: 'OpenClaw' },
-  ]}],
+  icon: 'terminal', schemaVersion: 3, action: 'deploy',
+  steps: [
+    { id: 'basics', title: 'Name your agent', fields: [
+      { key: 'name', label: 'Name', widget: 'text', required: false, maxLength: 60, placeholder: 'OpenClaw', default: 'OpenClaw' },
+    ]},
+    { id: 'model', title: 'Choose a model', fields: [
+      { key: 'model', label: 'Model', widget: 'select', required: true, source: { kind: 'fetched', sourceId: 'account-models' } },
+    ]},
+  ],
 }
 ```
 
@@ -378,8 +383,8 @@ curl -s http://localhost:8000/v1/agents/catalog -H "Authorization: Bearer $TOKEN
 
 A provider only appears when it's configured (Haystack needs
 `HAYSTACK_TEMPLATE_PIPELINE`; OpenClaw needs `E2B_API_KEY` + `PUBLIC_API_URL`).
-OpenClaw runs on Thunderbolt's managed models, so it no longer takes an OpenRouter
-key — the model is chosen in the deploy form instead (see the note below).
+OpenClaw runs on any model you've added — managed or BYO-key — chosen in the
+deploy form (see the note below).
 
 ### Deploy Haystack
 
@@ -409,7 +414,7 @@ URL. Haystack deploys are quick, so status is often `running` immediately.
 ```bash
 curl -s -X POST http://localhost:8000/v1/agents/deploy \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{ "descriptorId": "openclaw", "schemaVersion": 2, "spec": { "name": "OpenClaw", "model": "opus-4.8" } }'
+  -d '{ "descriptorId": "openclaw", "schemaVersion": 3, "spec": { "name": "OpenClaw", "model": "opus-4.8" } }'
 ```
 
 ```json
@@ -429,13 +434,20 @@ the client polls until the sandbox's ACP endpoint answers. The sandbox is
 stamped with the caller's `userId` in E2B metadata (the ownership source of
 truth — no backend table).
 
-> **OpenClaw runs on Thunderbolt's managed models.** At deploy the sandbox is
-> booted with a scoped, per-deployment inference token (signed with
-> `AGENT_INFERENCE_JWT_SECRET`) and onboards OpenClaw's custom OpenAI-compatible
-> provider pointed at `${PUBLIC_API_URL}/v1` — no provider/model key ever enters
-> the sandbox. The model is the one picked in the deploy form (the managed
-> `isSystem` models). The token is non-expiring and is revoked (with the sandbox
-> killed) on undeploy.
+> **OpenClaw runs on any deployable account model**, picked in the deploy form.
+> The frontend resolves the choice to a connection the backend re-validates:
+>
+> - **Managed** (Thunderbolt `isSystem` models): the sandbox boots with a scoped,
+>   per-deployment inference token (signed with `AGENT_INFERENCE_JWT_SECRET`) and
+>   onboards a custom OpenAI-compatible provider pointed at `${PUBLIC_API_URL}/v1`
+>   — no provider key enters the sandbox. The token is non-expiring and is revoked
+>   (with the sandbox killed) on undeploy.
+> - **BYO-key** (`openai`/`openrouter`/`anthropic`/non-loopback `custom`): the
+>   frontend sends the provider base URL + the user's own key (from the local-only
+>   secrets store); the sandbox onboards that provider and dials it directly. No
+>   token is minted — the key lives in the sandbox, so **undeploy/kill is the
+>   revocation**. Confidential (tinfoil/GLM) and loopback custom endpoints are
+>   excluded — a cloud sandbox can't reach them.
 >
 > **`PUBLIC_API_URL` must be reachable _from the sandbox_.** The sandbox runs on
 > E2B's cloud, so this has to be a public origin: `http://localhost:8000` is fine

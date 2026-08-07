@@ -69,7 +69,10 @@ const CommandDialog = ({
         onOpenChange={onOpenChange ?? (() => {})}
         side="top"
         title={title}
-        initialFocus={false}
+        // Focus the search input on open, matching the desktop dialog (which
+        // Radix auto-focuses). `true` targets the drawer's first tabbable
+        // element — the CommandInput — so the keyboard is ready to type.
+        initialFocus
       >
         {command}
       </MobileCardMenu>

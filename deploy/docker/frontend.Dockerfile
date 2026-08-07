@@ -26,7 +26,7 @@ RUN bunx vite build && \
     find dist -name '*.map' -delete
 
 # Stage 2: Serve with nginx
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 
 # Backend upstream — resolved at container start via the official nginx
 # image's `envsubst` entrypoint over /etc/nginx/templates/*.template.
@@ -44,6 +44,9 @@ COPY deploy/config/nginx.conf.template /etc/nginx/templates/default.conf.templat
 COPY deploy/config/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+# Keep the final-stage user explicit for Semgrep's container check.
+USER nginx
+
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

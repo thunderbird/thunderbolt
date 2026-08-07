@@ -7,6 +7,7 @@ import type { RemoteAgentDescriptor } from '@shared/acp-types'
 import type {
   AgentDescriptor,
   AgentSpec,
+  DeployModelConnection,
   DeployResponse,
   DeploymentStatusResponse,
   UndeployResponse,
@@ -21,6 +22,9 @@ export type ProviderContext = {
   request: Request
   settings: Settings
   userId: string
+  /** The resolved deploy target the client sends, re-validated per-provider by
+   *  the deploying provider. */
+  modelConnection?: DeployModelConnection
 }
 
 /**

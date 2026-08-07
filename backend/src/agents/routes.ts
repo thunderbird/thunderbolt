@@ -113,7 +113,12 @@ export const createAgentsRoutes = (auth: Auth) =>
         set.status = 400
         return { error: 'Invalid deploy request' }
       }
-      const ctx: ProviderContext = { request, settings, userId: user.id }
+      const ctx: ProviderContext = {
+        request,
+        settings,
+        userId: user.id,
+        modelConnection: parsed.data.modelConnection,
+      }
       const descriptor = collectCatalog(ctx).find((d) => d.id === parsed.data.descriptorId)
       if (!descriptor) {
         set.status = 404

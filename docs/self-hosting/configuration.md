@@ -46,8 +46,40 @@ Set any subset; the app exposes each provider whose key is present.
 | `EXA_API_KEY`                    | Exa search (for web-grounded retrieval)              |
 | `THUNDERBOLT_INFERENCE_URL`      | Custom OpenAI-compatible inference endpoint          |
 | `THUNDERBOLT_INFERENCE_API_KEY`  | Key for the custom inference endpoint                |
+| `THUNDERBOLT_INFERENCE_MODELS`   | Optional allowlist / labels for that endpoint         |
 
 User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not as backend env vars. For local inference, point `THUNDERBOLT_INFERENCE_URL` at an Ollama or llama.cpp server.
+
+### Custom inference endpoint
+
+Include the `/v1` prefix in the URL. Models are **discovered** from the endpoint's
+`GET /models`, so listing them is not required:
+
+```sh
+THUNDERBOLT_INFERENCE_URL=https://gateway.example.com/v1
+THUNDERBOLT_INFERENCE_API_KEY=sk-...
+```
+
+Everything the endpoint advertises shows up in the model picker, with no client release
+needed. Discovery is cached for five minutes and refreshed when the app fetches
+`/config`, so adding a model upstream needs no redeploy. If the endpoint is unreachable
+its models are simply omitted; the built-in models keep working.
+
+`THUNDERBOLT_INFERENCE_MODELS` is optional and does two things when set: it restricts
+which discovered models are exposed, and it supplies display names. Same
+comma-separated `id` or `id=Label` form:
+
+```sh
+# Expose only these two, and give them nicer labels
+THUNDERBOLT_INFERENCE_MODELS=llama-3.3-70b=Llama 3.3 70B,qwen-2.5-coder=Qwen Coder
+```
+
+Entries naming a model the endpoint does not serve are ignored. Requests are proxied
+through the backend, so the key stays server-side and the endpoint needs no CORS
+configuration. A model id that collides with a built-in one is ignored in favour of the
+built-in.
+
+Capabilities are advertised conservatively, because the endpoint cannot be introspected: no image input, the default context window, and no parallel tool calls.
 
 ## PowerSync
 

@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
+import { clearGatewayModelCache, ensureGatewayModels } from '@/inference/gateway-models'
 import { createTestSettings } from '@/test-utils/settings'
 import { defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { createConfigRoutes } from './config'
@@ -15,6 +16,10 @@ const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) =
 }
 
 describe('Config Routes', () => {
+  beforeEach(() => {
+    clearGatewayModelCache()
+  })
+
   describe('GET /config', () => {
     it('reflects e2eeEnabled', async () => {
       const disabled = await fetchConfig(createTestSettings({ e2eeEnabled: false }))
@@ -59,6 +64,41 @@ describe('Config Routes', () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.defaults.models.version).toBe(defaultModelsVersion)
       expect(body.defaults.models.data).toEqual(defaultModels)
+    })
+
+    it('leaves models defaults untouched when no inference gateway is configured', async () => {
+      const { body } = await fetchConfig(createTestSettings({ thunderboltInferenceModels: 'ignored' }))
+      expect(body.defaults.models.version).toBe(defaultModelsVersion)
+      expect(body.defaults.models.data).toEqual(defaultModels)
+    })
+
+    it('appends inference gateway models and out-versions the bundled defaults', async () => {
+      const settings = createTestSettings({
+        thunderboltInferenceUrl: 'https://gateway.example.com/v1',
+        thunderboltInferenceApiKey: 'key',
+        thunderboltInferenceModels: 'llama-3.3-70b=Llama 3.3 70B',
+      })
+      // Models are discovered from the gateway, so prime the cache with a stubbed
+      // /models response; the route then reads it without any network access.
+      await ensureGatewayModels(settings, {
+        fetchFn: mock(
+          async () => new Response(JSON.stringify({ data: [{ id: 'llama-3.3-70b' }] }), { status: 200 }),
+        ) as never,
+      })
+      const { body } = await fetchConfig(settings)
+
+      // A higher version is what makes the client prefer this payload over its
+      // bundled copy, and keeping the shipped defaults preserves the id overlap
+      // `pickDefaults` requires before it trusts the server.
+      expect(body.defaults.models.version).toBe(defaultModelsVersion + 1)
+      expect(body.defaults.models.data).toHaveLength(defaultModels.length + 1)
+      expect(body.defaults.models.data.slice(0, defaultModels.length)).toEqual(defaultModels)
+
+      const gatewayModel = body.defaults.models.data.at(-1)
+      expect(gatewayModel.name).toBe('Llama 3.3 70B')
+      expect(gatewayModel.model).toBe('llama-3.3-70b')
+      expect(gatewayModel.provider).toBe('thunderbolt')
+      expect(gatewayModel.url).toBeNull()
     })
   })
 })

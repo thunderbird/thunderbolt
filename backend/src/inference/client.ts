@@ -9,7 +9,10 @@ import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import OpenAI from 'openai'
 
-export type InferenceProvider = 'fireworks' | 'mistral' | 'anthropic'
+/** `thunderbolt-inference` is the operator's own OpenAI-compatible gateway
+ *  (`THUNDERBOLT_INFERENCE_URL`). Distinct from the frontend's `thunderbolt`
+ *  provider value, which only means "route through this backend". */
+export type InferenceProvider = 'fireworks' | 'mistral' | 'anthropic' | 'thunderbolt-inference'
 
 export type InferenceClient = {
   client: OpenAI | PostHogOpenAI
@@ -145,6 +148,11 @@ let mistralClient: OpenAI | PostHogOpenAI | null = null
 let anthropicClient: OpenAI | PostHogOpenAI | null = null
 
 /**
+ * Lazily initialized self-hosted inference gateway client
+ */
+let thunderboltInferenceClient: OpenAI | PostHogOpenAI | null = null
+
+/**
  * Get the Fireworks AI client
  */
 const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
@@ -253,6 +261,50 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
 }
 
 /**
+ * Get the self-hosted inference gateway client.
+ *
+ * Unlike the three hosted providers above, the base URL is operator-supplied
+ * rather than hardcoded, so both the URL and the key are checked here. This is
+ * the only place they are read, which is what keeps the gateway credential on
+ * the server: the browser reaches these models through /v1/chat/completions.
+ */
+const getThunderboltInferenceClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
+  const { fetchFn, logger, nowFn } = options
+  if (thunderboltInferenceClient && !fetchFn) {
+    return thunderboltInferenceClient
+  }
+
+  const settings = getSettings()
+
+  if (!settings.thunderboltInferenceUrl) {
+    throw new Error('Thunderbolt inference URL not configured')
+  }
+
+  if (!settings.thunderboltInferenceApiKey) {
+    throw new Error('Thunderbolt inference API key not configured')
+  }
+
+  const params = {
+    apiKey: settings.thunderboltInferenceApiKey,
+    baseURL: settings.thunderboltInferenceUrl,
+    fetch: createInferenceFetch({ provider: 'thunderbolt-inference', fetchFn, logger, nowFn }),
+  }
+
+  const client = isPostHogConfigured()
+    ? new PostHogOpenAI({
+        ...params,
+        posthog: getPostHogClient(fetchFn),
+      })
+    : new OpenAI(params)
+
+  if (!fetchFn) {
+    thunderboltInferenceClient = client
+  }
+
+  return client
+}
+
+/**
  * Get the appropriate inference client based on provider
  * Clients are lazily initialized and reused across requests
  */
@@ -264,6 +316,7 @@ export const getInferenceClient = (
     mistral: () => getMistralClient(options),
     anthropic: () => getAnthropicClient(options),
     fireworks: () => getFireworksClient(options),
+    'thunderbolt-inference': () => getThunderboltInferenceClient(options),
   }
 
   const client = clientMap[provider]()
@@ -282,6 +335,7 @@ export const clearInferenceClientCache = () => {
   fireworksClient = null
   mistralClient = null
   anthropicClient = null
+  thunderboltInferenceClient = null
 }
 
 /**

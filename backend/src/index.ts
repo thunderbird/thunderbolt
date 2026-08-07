@@ -134,6 +134,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(
         createInferenceRoutes({
           auth,
+          database,
           fetchFn: deps?.fetchFn,
           logger: appLogger,
           rateLimit: createInferenceRateLimit(database, rateLimitSettings),

@@ -2,10 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { mintAgentInferenceToken } from '@/agents/inference-token'
+import * as settingsModule from '@/config/settings'
+import { recordAgentDeployment, revokeAgentDeployment } from '@/dal'
+import { user } from '@/db/auth-schema'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { createTestSettings } from '@/test-utils/settings'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import type OpenAI from 'openai'
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
@@ -25,6 +31,7 @@ describe('Thunderbolt model catalog parity', () => {
 
 describe('Inference Routes', () => {
   let app: { handle: Elysia['handle'] }
+  let db: Awaited<ReturnType<typeof getSharedIsolatedTestDb>>['db']
   let consoleSpies: ConsoleSpies
 
   // Mock OpenAI client
@@ -54,9 +61,11 @@ describe('Inference Routes', () => {
 
   beforeAll(async () => {
     consoleSpies = setupConsoleSpy()
+    db = (await getSharedIsolatedTestDb()).db
     app = new Elysia().use(
       createInferenceRoutes({
         auth: mockAuth,
+        database: db,
         getClient: getInferenceClientMock,
         isPostHogConfiguredFn: isPostHogConfiguredMock,
       }),
@@ -260,6 +269,7 @@ describe('Inference Routes', () => {
       const captureApp = new Elysia().use(
         createInferenceRoutes({
           auth: mockAuth,
+          database: db,
           getClient: getInferenceClientMock,
           isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
@@ -303,6 +313,7 @@ describe('Inference Routes', () => {
       const captureApp = new Elysia().use(
         createInferenceRoutes({
           auth: mockAuth,
+          database: db,
           getClient: getInferenceClientMock,
           isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
@@ -356,6 +367,7 @@ describe('Inference Routes', () => {
       const captureApp = new Elysia().use(
         createInferenceRoutes({
           auth: mockAuth,
+          database: db,
           getClient: getInferenceClientMock,
           isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
@@ -400,6 +412,7 @@ describe('Inference Routes', () => {
       const captureApp = new Elysia().use(
         createInferenceRoutes({
           auth: mockAuth,
+          database: db,
           getClient: getInferenceClientMock,
           isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
@@ -436,6 +449,7 @@ describe('Inference Routes', () => {
       const captureApp = new Elysia().use(
         createInferenceRoutes({
           auth: mockAuth,
+          database: db,
           getClient: getInferenceClientMock,
           isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
@@ -473,6 +487,7 @@ describe('Inference Routes', () => {
       const captureApp = new Elysia().use(
         createInferenceRoutes({
           auth: mockAuth,
+          database: db,
           getClient: getInferenceClientMock,
           isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
@@ -504,6 +519,7 @@ describe('Inference Routes', () => {
       const timingApp = new Elysia().use(
         createInferenceRoutes({
           auth: mockAuth,
+          database: db,
           getClient: getInferenceClientMock,
           logger: {
             info: (context, message) => entries.push({ context: context as InferenceProxyLatencyLog, message }),
@@ -548,6 +564,7 @@ describe('Inference Routes', () => {
       const timingApp = new Elysia().use(
         createInferenceRoutes({
           auth: mockAuth,
+          database: db,
           getClient: getInferenceClientMock,
           logger: {
             info: (context, message) => entries.push({ context: context as InferenceProxyLatencyLog, message }),
@@ -637,7 +654,9 @@ describe('Inference Routes', () => {
   describe('authentication', () => {
     it('should return 401 when session is null', async () => {
       mockCreateCompletion.mockClear()
-      const unauthenticatedApp = new Elysia().use(createInferenceRoutes({ auth: mockAuthUnauthenticated }))
+      const unauthenticatedApp = new Elysia().use(
+        createInferenceRoutes({ auth: mockAuthUnauthenticated, database: db }),
+      )
 
       const response = await unauthenticatedApp.handle(
         new Request('http://localhost/chat/completions', {
@@ -650,6 +669,129 @@ describe('Inference Routes', () => {
           }),
         }),
       )
+
+      expect(response.status).toBe(401)
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('agent inference token auth', () => {
+    const secret = 'agent-inference-routes-test-secret-32ch'
+    // Unauthenticated session so a session token never yields 200 — an agent
+    // token is the only path to success, and a bad token falls through to 401.
+    let agentApp: { handle: Elysia['handle'] }
+    let getSettingsSpy: ReturnType<typeof spyOn>
+
+    const ownerId = 'agent-owner-1'
+    const liveDeployment = 'openclaw:live-1'
+    const revokedDeployment = 'openclaw:revoked-1'
+    const unrecordedDeployment = 'openclaw:unrecorded-1'
+    const deletedOwnerId = 'agent-owner-deleted-1'
+    const deletedOwnerDeployment = 'openclaw:deleted-owner-1'
+
+    const insertUser = (id: string) => {
+      const now = new Date()
+      return db.insert(user).values({
+        id,
+        name: 'Owner',
+        email: `${id}@test.com`,
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+
+    const post = (token: string | null) =>
+      agentApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'Hi' }], stream: true }),
+        }),
+      )
+
+    beforeAll(async () => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(
+        createTestSettings({ agentInferenceJwtSecret: secret }),
+      )
+      agentApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuthUnauthenticated,
+          database: db,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+        }),
+      )
+
+      await insertUser(ownerId)
+      await recordAgentDeployment(db, { deploymentId: liveDeployment, userId: ownerId })
+      await recordAgentDeployment(db, { deploymentId: revokedDeployment, userId: ownerId })
+      await revokeAgentDeployment(db, revokedDeployment)
+      await recordAgentDeployment(db, { deploymentId: deletedOwnerDeployment, userId: ownerId })
+    })
+
+    afterAll(() => {
+      getSettingsSpy.mockRestore()
+    })
+
+    beforeEach(() => {
+      mockCreateCompletion.mockClear()
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream()))
+    })
+
+    it('accepts a valid token for a recorded, non-revoked deployment', async () => {
+      const token = await mintAgentInferenceToken({
+        userId: ownerId,
+        deploymentId: liveDeployment,
+        expiresInSeconds: null,
+      })
+      const response = await post(token)
+
+      expect(response.status).toBe(200)
+      expect(mockCreateCompletion).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects a token for a revoked deployment', async () => {
+      const token = await mintAgentInferenceToken({
+        userId: ownerId,
+        deploymentId: revokedDeployment,
+        expiresInSeconds: null,
+      })
+      const response = await post(token)
+
+      expect(response.status).toBe(401)
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
+    })
+
+    it('rejects a token for an unrecorded deployment', async () => {
+      const token = await mintAgentInferenceToken({
+        userId: ownerId,
+        deploymentId: unrecordedDeployment,
+        expiresInSeconds: null,
+      })
+      const response = await post(token)
+
+      expect(response.status).toBe(401)
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
+    })
+
+    it('rejects a token whose owner no longer exists', async () => {
+      const token = await mintAgentInferenceToken({
+        userId: deletedOwnerId,
+        deploymentId: deletedOwnerDeployment,
+        expiresInSeconds: null,
+      })
+      const response = await post(token)
+
+      expect(response.status).toBe(401)
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
+    })
+
+    it('rejects a garbage bearer token with no session', async () => {
+      const response = await post('not-a-real-token')
 
       expect(response.status).toBe(401)
       expect(mockCreateCompletion).not.toHaveBeenCalled()

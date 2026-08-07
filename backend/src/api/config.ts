@@ -17,8 +17,10 @@ import { Elysia } from 'elysia'
  * by comparing versions, so shipped defaults changes don't require a client
  * release. See "Reconciled defaults and version bumps" in AGENTS.md.
  */
-export const createConfigRoutes = (settings: Settings) =>
-  new Elysia({ prefix: '/config' }).onError(safeErrorHandler).get('/', () => ({
+export const createConfigRoutes = (settings: Settings) => {
+  const cloudRunnerWsUrl = settings.cloudRunnerWsUrl.trim()
+
+  return new Elysia({ prefix: '/config' }).onError(safeErrorHandler).get('/', () => ({
     e2eeEnabled: settings.e2eeEnabled,
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
@@ -26,6 +28,10 @@ export const createConfigRoutes = (settings: Settings) =>
     allowCustomAgents: settings.allowCustomAgents,
     // Omit when unset so the frontend treats it as "no enforcement" without parsing an empty string as semver.
     minAppVersion: settings.minAppVersion || undefined,
+    // Where the built-in agent's turns can run instead of on the client, so they
+    // survive the tab closing. Omitted when no runner is deployed. Not a
+    // credential — the runner authenticates every socket it accepts.
+    cloudRunner: cloudRunnerWsUrl ? { wsUrl: cloudRunnerWsUrl } : undefined,
     defaults: {
       models: {
         version: defaultModelsVersion,
@@ -33,3 +39,4 @@ export const createConfigRoutes = (settings: Settings) =>
       },
     },
   }))
+}

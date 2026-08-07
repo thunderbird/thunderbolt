@@ -56,7 +56,7 @@ const customDescriptor: RemoteAgentDescriptor = {
 
 describe('GET /agents', () => {
   /** Env-var keys this suite mutates. Saved + restored to avoid cross-file leakage. */
-  const envKeys = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS'] as const
+  const envKeys = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS', 'CLOUD_RUNNER_WS_URL'] as const
   let savedEnv: Partial<Record<(typeof envKeys)[number], string | undefined>>
 
   beforeEach(() => {
@@ -145,6 +145,19 @@ describe('GET /agents', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.agents).toEqual([haystackDescriptor, customDescriptor])
+  })
+
+  it('does not advertise the cloud runner as an agent when CLOUD_RUNNER_WS_URL is set', async () => {
+    // The runner is a placement target for the built-in agent, not an agent of
+    // its own — its URL reaches clients through GET /config, never discovery.
+    process.env.CLOUD_RUNNER_WS_URL = 'wss://runner.example/'
+    clearSettingsCache()
+    registerAgentProvider({ id: 'haystack', list: () => [haystackDescriptor] })
+
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await app.handle(new Request('http://localhost/agents'))
+    const body = await res.json()
+    expect(body.agents).toEqual([haystackDescriptor])
   })
 
   it('isolates failures: a throwing provider does not poison other providers', async () => {

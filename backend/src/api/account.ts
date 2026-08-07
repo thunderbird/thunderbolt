@@ -4,6 +4,8 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
+import { purgeCloudRunnerData } from '@/cloud-runner/purge'
+import { getSettings, type Settings } from '@/config/settings'
 import {
   deleteUser,
   revokeDevice,
@@ -17,8 +19,24 @@ import { verifyCanaryProofWithMetadata } from '@/lib/canary'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 
+/** Minimal logger surface these routes use — narrower than Pino so tests can
+ *  pass a one-method recorder without dragging in the full type. */
+export type AccountLogger = {
+  error: (context: Record<string, unknown>, message: string) => void
+}
+
+export type AccountRoutesDeps = {
+  settings?: Settings
+  fetchFn?: typeof fetch
+  logger?: AccountLogger
+}
+
 /** Account API routes. All routes require authentication. */
-export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
+export const createAccountRoutes = (auth: Auth, database: typeof DbType, deps: AccountRoutesDeps = {}) => {
+  const settings = deps.settings ?? getSettings()
+  const fetchFn = deps.fetchFn ?? globalThis.fetch
+  const logger = deps.logger
+
   return new Elysia({ prefix: '/account' })
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
@@ -75,7 +93,19 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
     )
     .delete(
       '/',
-      async ({ set, user }) => {
+      async ({ request, set, user }) => {
+        const purgeFailure = await purgeCloudRunnerData({
+          settings,
+          authorization: request.headers.get('authorization'),
+          fetchFn,
+        })
+        if (purgeFailure) {
+          // Deleting the account wins over purging the runner: a runner outage
+          // must not leave the user unable to delete, and the runner's retention
+          // TTL reclaims whatever this call failed to remove.
+          logger?.error({ userId: user.id, reason: purgeFailure }, 'cloud runner purge failed; deleting account anyway')
+        }
+
         // tables have cascade delete on user_id and they will be deleted automatically
         await deleteUser(database, user.id)
 

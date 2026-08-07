@@ -28,8 +28,8 @@ import type { AgentsErrorResponse } from './types'
  * Settings are read on every request via {@link getSettings} so tests can
  * tweak env vars + `clearSettingsCache()` between cases.
  */
-export const createAgentsRoutes = (auth: Auth) =>
-  new Elysia({ name: 'agents-routes', prefix: '/agents' })
+export const createAgentsRoutes = (auth: Auth) => {
+  return new Elysia({ name: 'agents-routes', prefix: '/agents' })
     .onError(safeErrorHandler)
     .derive(async ({ request }) => {
       const session = await auth.api.getSession({ headers: request.headers })
@@ -60,6 +60,7 @@ export const createAgentsRoutes = (auth: Auth) =>
         allowCustomAgents: settings.allowCustomAgents,
       }
     })
+}
 
 /**
  * Asks every registered provider for its descriptors and concatenates the

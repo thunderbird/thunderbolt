@@ -77,6 +77,7 @@ const powersyncSettings: Settings = {
   haystackApiKey: '',
   haystackWorkspace: '',
   haystackPipelines: '',
+  cloudRunnerWsUrl: '',
   minAppVersion: '',
 }
 

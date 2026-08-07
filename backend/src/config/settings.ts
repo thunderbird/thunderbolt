@@ -148,6 +148,11 @@ const settingsSchema = z
     // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
     // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
     haystackPipelines: z.string().default(''),
+    // Public WebSocket URL of the cloud runner (`cloud-runner/`), the remote
+    // execution target for the built-in agent, e.g. `wss://xxxx.cloudfront.net/`.
+    // Surfaced to clients via GET /config as `cloudRunner.wsUrl`. Empty = no
+    // runner deployed, so turns run on the client.
+    cloudRunnerWsUrl: z.string().default(''),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -229,6 +234,7 @@ const parseSettings = (): Settings => {
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
     haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
+    cloudRunnerWsUrl: process.env.CLOUD_RUNNER_WS_URL || '',
   }
 
   return settingsSchema.parse(env)

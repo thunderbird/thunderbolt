@@ -50,6 +50,26 @@ describe('Config Routes', () => {
       expect(body.minAppVersion).toBe('0.2.0')
     })
 
+    it('exposes cloudRunner.wsUrl when CLOUD_RUNNER_WS_URL is set', async () => {
+      const { body } = await fetchConfig(createTestSettings({ cloudRunnerWsUrl: 'wss://runner.example/' }))
+      expect(body.cloudRunner).toEqual({ wsUrl: 'wss://runner.example/' })
+    })
+
+    it('trims whitespace around the configured runner URL', async () => {
+      const { body } = await fetchConfig(createTestSettings({ cloudRunnerWsUrl: '  wss://runner.example/  ' }))
+      expect(body.cloudRunner).toEqual({ wsUrl: 'wss://runner.example/' })
+    })
+
+    it('omits cloudRunner when CLOUD_RUNNER_WS_URL is unset', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body).not.toHaveProperty('cloudRunner')
+    })
+
+    it('omits cloudRunner when CLOUD_RUNNER_WS_URL is only whitespace', async () => {
+      const { body } = await fetchConfig(createTestSettings({ cloudRunnerWsUrl: '   ' }))
+      expect(body).not.toHaveProperty('cloudRunner')
+    })
+
     it('does not require authentication', async () => {
       const { status } = await fetchConfig(createTestSettings())
       expect(status).toBe(200)

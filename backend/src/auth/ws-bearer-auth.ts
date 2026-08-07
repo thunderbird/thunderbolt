@@ -22,32 +22,13 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import type { User } from '@shared/types/auth'
-import { decodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
+import { extractBearerSubprotocol, wsCloseUnauthorized } from '@shared/ws-bearer'
 
-/** Close code (app-defined 4000–4999 range) emitted when the server accepts the
- *  WebSocket upgrade but then refuses the socket, so the client distinguishes
- *  "the server refused me" (re-login flow) from "I never reached the server"
- *  (network-error toast). */
-export const wsCloseUnauthorized = 4001
-
-/**
- * Extract and decode the bearer token from a comma-separated
- * `Sec-WebSocket-Protocol` value. The entry payload is base64url-encoded (the
- * raw bearer contains `.`/`+`/`/`/`=`, which aren't RFC 6455 subprotocol-safe).
- * Returns `null` when no decodable bearer entry is present.
- */
-export const extractBearerSubprotocol = (header: string | null): string | null => {
-  if (!header) {
-    return null
-  }
-  for (const raw of header.split(',')) {
-    const entry = raw.trim()
-    if (entry.startsWith(wsBearerSubprotocolPrefix)) {
-      return decodeWsBearer(entry.slice(wsBearerSubprotocolPrefix.length))
-    }
-  }
-  return null
-}
+// The subprotocol contract itself lives in `shared/ws-bearer.ts` — the cloud
+// runner terminates the same scheme, and drift between the two servers is
+// silent breakage. Re-exported so WS routes get the close code alongside
+// `authorizeWsBearer` from one import.
+export { wsCloseUnauthorized }
 
 /**
  * Resolve and authorize a WebSocket upgrade from its offered subprotocols.

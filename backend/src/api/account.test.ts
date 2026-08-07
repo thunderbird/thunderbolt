@@ -8,11 +8,12 @@ import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
 import { hashCanarySecret } from '@/lib/canary'
 import { createTestDb } from '@/test-utils/db'
+import { createTestSettings } from '@/test-utils/settings'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
-import { createAccountRoutes } from './account'
+import { createAccountRoutes, type AccountRoutesDeps } from './account'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
 const signToken = (token: string): string => {
@@ -42,6 +43,8 @@ describe('Account API', () => {
   let app: ReturnType<typeof createAccountRoutes>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
+  /** Built per test alongside the app so purge cases can mount their own deps. */
+  let buildApp: (deps?: AccountRoutesDeps) => ReturnType<typeof createAccountRoutes>
   /** Prefix IDs with the current runId — see top-of-file comment for why. */
   let p: (id: string) => string
 
@@ -52,9 +55,11 @@ describe('Account API', () => {
     db = testEnv.db
     cleanup = testEnv.cleanup
     const auth = createAuth(db)
-    app = new Elysia({ prefix: '/v1' }).use(createAccountRoutes(auth, db)) as unknown as ReturnType<
-      typeof createAccountRoutes
-    >
+    buildApp = (deps?: AccountRoutesDeps) =>
+      new Elysia({ prefix: '/v1' }).use(createAccountRoutes(auth, db, deps)) as unknown as ReturnType<
+        typeof createAccountRoutes
+      >
+    app = buildApp()
   })
 
   afterEach(async () => {
@@ -457,6 +462,102 @@ describe('Account API', () => {
 
       const threadsLeft = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.userId, userId))
       expect(threadsLeft).toHaveLength(0)
+    })
+  })
+
+  describe('DELETE /v1/account (cloud runner purge)', () => {
+    type PurgeCall = { url: string; authorization: string | undefined; userStillExists: boolean }
+
+    /** Captures each purge request plus whether the user row still exists at that
+     *  moment — the runner authorizes /purge by introspecting the forwarded
+     *  bearer, so the call must land before the session rows are gone. */
+    const capturePurge = (calls: PurgeCall[], userId: string, status: number): typeof fetch => {
+      const impl = async (input: URL | RequestInfo, init?: RequestInit): Promise<Response> => {
+        const rows = await db.select().from(user).where(eq(user.id, userId))
+        calls.push({
+          url: input.toString(),
+          authorization: (init?.headers as Record<string, string>)?.authorization,
+          userStillExists: rows.length > 0,
+        })
+        return new Response(null, { status })
+      }
+      return Object.assign(impl, { preconnect: () => {} }) as unknown as typeof fetch
+    }
+
+    const deleteAccount = (appUnderTest: ReturnType<typeof createAccountRoutes>, token: string): Promise<Response> =>
+      appUnderTest.handle(
+        new Request('http://localhost/v1/account', {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${signToken(token)}` },
+        }),
+      )
+
+    it('purges the runner with the forwarded bearer before deleting the user', async () => {
+      const userId = p('purge-user')
+      const token = p('purge-token')
+      await createUserSessionAndDevice(userId, token, p('purge-device'))
+
+      const calls: PurgeCall[] = []
+      const purgeApp = buildApp({
+        settings: createTestSettings({ cloudRunnerWsUrl: 'wss://runner.example/' }),
+        fetchFn: capturePurge(calls, userId, 204),
+      })
+
+      const response = await deleteAccount(purgeApp, token)
+      expect(response.status).toBe(204)
+
+      expect(calls).toEqual([
+        {
+          url: 'https://runner.example/purge',
+          authorization: `Bearer ${signToken(token)}`,
+          userStillExists: true,
+        },
+      ])
+      expect(await db.select().from(user).where(eq(user.id, userId))).toHaveLength(0)
+    })
+
+    it('deletes the account and logs an error when the runner purge keeps failing', async () => {
+      const userId = p('purge-fail-user')
+      const token = p('purge-fail-token')
+      await createUserSessionAndDevice(userId, token, p('purge-fail-device'))
+
+      const calls: PurgeCall[] = []
+      const logged: { context: Record<string, unknown>; message: string }[] = []
+      const purgeApp = buildApp({
+        settings: createTestSettings({ cloudRunnerWsUrl: 'wss://runner.example/' }),
+        fetchFn: capturePurge(calls, userId, 503),
+        logger: { error: (context, message) => logged.push({ context, message }) },
+      })
+
+      const response = await deleteAccount(purgeApp, token)
+      expect(response.status).toBe(204)
+
+      // One retry before giving up.
+      expect(calls).toHaveLength(2)
+      expect(logged).toHaveLength(1)
+      expect(logged[0].context).toEqual({ userId, reason: 'status 503' })
+      expect(await db.select().from(user).where(eq(user.id, userId))).toHaveLength(0)
+    })
+
+    it('does not call the runner when no runner is configured', async () => {
+      const userId = p('purge-unset-user')
+      const token = p('purge-unset-token')
+      await createUserSessionAndDevice(userId, token, p('purge-unset-device'))
+
+      const calls: PurgeCall[] = []
+      const logged: { context: Record<string, unknown>; message: string }[] = []
+      const purgeApp = buildApp({
+        settings: createTestSettings(),
+        fetchFn: capturePurge(calls, userId, 204),
+        logger: { error: (context, message) => logged.push({ context, message }) },
+      })
+
+      const response = await deleteAccount(purgeApp, token)
+      expect(response.status).toBe(204)
+
+      expect(calls).toHaveLength(0)
+      expect(logged).toHaveLength(0)
+      expect(await db.select().from(user).where(eq(user.id, userId))).toHaveLength(0)
     })
   })
 

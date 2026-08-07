@@ -19,3 +19,6 @@ export * from './encryption-schema'
 
 // Re-export OTP challenge schema (session binding for OTP verification)
 export * from './otp-challenge-schema'
+
+// Re-export agent deployment schema (server-only, not synced — revocation authority for inference JWTs)
+export * from './agent-deployment-schema'

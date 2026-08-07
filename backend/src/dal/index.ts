@@ -38,6 +38,9 @@ export {
   deletePersistedSignInOtp,
 } from './otp-challenge'
 
+// Agent deployments (revocation authority for inference JWTs)
+export { recordAgentDeployment, revokeAgentDeployment, getAgentDeployment } from './agent-deployments'
+
 // Encryption
 export {
   getEnvelopeByDeviceId,

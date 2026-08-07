@@ -11,11 +11,13 @@ type BuildSystemPromptParams = {
   skills?: readonly SkillDefinition[]
 }
 
-/** Describe only tools registered on the harness. */
+/** Describe the core tools registered on the harness. The list is deliberately
+ *  uncounted: hosts may register extra tools after harness creation (the cloud
+ *  runner adds `render_html`), and those self-describe through their schemas. */
 const toolInstructions = (bashEnabled: boolean, skillEnabled: boolean): string => {
   const skillInstruction = skillEnabled ? '\n- skill — load full instructions for an available skill' : ''
   if (!bashEnabled) {
-    return `You have ${skillEnabled ? 'five' : 'four'} tools:
+    return `Your core tools:
 - read  — read a file
 - write — create or overwrite a file
 - edit  — replace a span within a file
@@ -29,7 +31,7 @@ Bash is unavailable in this workspace-confined session, so do not try curl.
 Use read before edit. Make the smallest change that fully solves the task.`
   }
 
-  return `You have ${skillEnabled ? 'six' : 'five'} tools:
+  return `Your core tools:
 - bash  — run shell commands (grep, sed, find, git, language toolchains, tests, …)
 - read  — read a file
 - write — create or overwrite a file

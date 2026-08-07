@@ -29,7 +29,7 @@ describe('buildSystemPrompt', () => {
     expect(buildSystemPrompt({ cwd: '/work' })).toContain('- bash')
 
     const jailedPrompt = buildSystemPrompt({ cwd: '/work', bashEnabled: false })
-    expect(jailedPrompt).toContain('four tools')
+    expect(jailedPrompt).toContain('Your core tools:')
     expect(jailedPrompt).not.toContain('- bash')
     expect(jailedPrompt).not.toContain('Prefer bash')
   })

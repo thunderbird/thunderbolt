@@ -1,0 +1,28 @@
+{
+  "name": "@thunderbolt/cloud-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "description": "thunderbolt cloud runner — hosts the built-in coding agent as a managed ACP WebSocket service with detached (background) turns.",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test ./src ../shared/artifacts --timeout 5000 --randomize"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "0.22.1",
+    "@earendil-works/pi-agent-core": "0.80.7",
+    "@earendil-works/pi-ai": "0.80.7",
+    "@earendil-works/pi-coding-agent": "0.80.7",
+    "acorn": "^8.18.0",
+    "css-tree": "^3.2.1",
+    "htmlparser2": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.20",
+    "@types/css-tree": "^3.2.0",
+    "typescript": "^6.0.3"
+  }
+}

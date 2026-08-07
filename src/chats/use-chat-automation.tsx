@@ -12,7 +12,7 @@ type UseChatAutomationProps = {
 }
 
 export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomationProps = {}) => {
-  const { chatInstance } = useCurrentChatSession()
+  const { chatInstance, chatThread } = useCurrentChatSession()
 
   const { messages } = useChat({ chat: chatInstance, experimental_throttle: messageBookkeepingThrottleMs })
 
@@ -20,10 +20,18 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
 
   const hasTriggeredRef = useRef(false)
 
-  // Auto-run assistant if thread ends with user message (e.g., automation) and no assistant response yet
+  // Auto-run assistant if thread ends with user message (e.g., automation) and no assistant response yet.
+  //
+  // Runner-owned threads (acpSessionId set) are excluded: their missing reply
+  // may already exist on the runner, and detached-turn catch-up owns that
+  // recovery (`shouldCatchUpOnDetachedTurn`). Catch-up's reconnect phase runs
+  // while the chat still reports `ready` with a trailing user message —
+  // exactly this trigger — so firing here would re-submit a prompt whose turn
+  // already ran, duplicating it on the runner.
   useEffect(() => {
     if (
       !hasTriggeredRef.current &&
+      !chatThread?.acpSessionId &&
       chatInstance?.status === 'ready' &&
       hasMessages &&
       chatInstance?.messages[chatInstance?.messages.length - 1].role === 'user'
@@ -34,5 +42,5 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
         console.error('Auto regenerate error', err)
       })
     }
-  }, [chatInstance, hasMessages])
+  }, [chatInstance, chatThread?.acpSessionId, hasMessages])
 }

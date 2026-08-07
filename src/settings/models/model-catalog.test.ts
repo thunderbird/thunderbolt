@@ -41,6 +41,8 @@ describe('model catalog policy', () => {
     it('blocks key-gated providers until an API key is present', () => {
       expect(canFetchCatalog({ provider: 'openai' })).toBe(false)
       expect(canFetchCatalog({ provider: 'openrouter', apiKey: '' })).toBe(false)
+      expect(canFetchCatalog({ provider: 'orcarouter', apiKey: '' })).toBe(false)
+      expect(canFetchCatalog({ provider: 'orcarouter', apiKey: 'sk-orca-test' })).toBe(true)
       expect(canFetchCatalog({ provider: 'anthropic', apiKey: 'sk-test' })).toBe(true)
       expect(canFetchCatalog({ provider: 'openai', apiKey: 'sk-test' })).toBe(true)
     })

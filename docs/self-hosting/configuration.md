@@ -47,7 +47,7 @@ Set any subset; the app exposes each provider whose key is present.
 | `THUNDERBOLT_INFERENCE_URL`      | Custom OpenAI-compatible inference endpoint          |
 | `THUNDERBOLT_INFERENCE_API_KEY`  | Key for the custom inference endpoint                |
 
-User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not as backend env vars. For local inference, point `THUNDERBOLT_INFERENCE_URL` at an Ollama or llama.cpp server.
+User-level keys (e.g. OpenAI, OpenRouter, OrcaRouter) are configured in the app itself, not as backend env vars. For local inference, point `THUNDERBOLT_INFERENCE_URL` at an Ollama or llama.cpp server.
 
 ## PowerSync
 

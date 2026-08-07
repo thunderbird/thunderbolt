@@ -65,7 +65,7 @@ export const needsApiKey = (model: Pick<Model, 'provider' | 'isSystem' | 'apiKey
  * catalog loads without one.
  */
 export const catalogRequiresApiKey = (provider: Model['provider']): boolean =>
-  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic'
+  provider === 'openai' || provider === 'openrouter' || provider === 'orcarouter' || provider === 'anthropic'
 
 /** Providers whose catalog loads without credentials, so forms fetch it eagerly. */
 export const providerAutoFetchesCatalog = (provider: Model['provider']): boolean =>

@@ -65,7 +65,7 @@ export const workspaceDirFor = (threadId: string): string => {
  *   - `anthropic` resolves a model from Pi's built-in catalog and wires the
  *     `@anthropic-ai/sdk` client through `fetch` ({@link buildAnthropicModel}).
  *   - `openai-compat` synthesizes an `openai-completions` model for the app's
- *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`) and
+ *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`orcarouter`/`thunderbolt`) and
  *     injects `fetch` around client construction ({@link buildOpenAiCompatModel}).
  */
 export type PiModelDescriptor =

@@ -114,7 +114,7 @@ export type BuiltInAdapterOptions = {
 
 /** Providers the in-browser Pi harness can serve. Everything else (tinfoil, plus
  *  any future provider) stays on the legacy pipeline. */
-const piProviders = new Set<Model['provider']>(['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'])
+const piProviders = new Set<Model['provider']>(['anthropic', 'openai', 'custom', 'openrouter', 'orcarouter', 'thunderbolt'])
 
 /** Valid Pi thinking levels, used to validate a profile-supplied effort string. */
 const piThinkingLevels = new Set<ThinkingLevel>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])

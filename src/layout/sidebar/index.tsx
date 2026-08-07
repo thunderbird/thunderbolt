@@ -2,16 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { purgeRunnerSession } from '@/acp/runner-session-purge'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useDatabase } from '@/contexts'
-import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
+import { useDatabase, useHttpClient } from '@/contexts'
+import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, getChatThread, updateChatThread } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
+import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
+import type { ChatThread } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { type MouseEvent, useCallback, useMemo, useRef, useState } from 'react'
@@ -26,6 +29,8 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
  */
 export default function Sidebar() {
   const db = useDatabase()
+  const httpClient = useHttpClient()
+  const getProxyFetch = useProxyFetchGetter()
   const navigate = useNavigate()
   const location = useLocation()
   const { closeMobileSidebar, state, toggleSidebar } = useSidebar()
@@ -63,9 +68,23 @@ export default function Sidebar() {
     return data.filter((thread) => thread.title?.toLowerCase().includes(debouncedSearchQuery?.toLowerCase()))
   }, [data, debouncedSearchQuery])
 
+  // A runner-owned thread must be read BEFORE the delete: the soft delete
+  // scrubs `acpSessionId`, which is the only handle on the remote session. The
+  // remote hard delete is fire-and-forget — the local delete already succeeded.
+  const purgeRunnerSessions = useCallback(
+    (threads: readonly ChatThread[]) => {
+      for (const thread of threads) {
+        void purgeRunnerSession(thread, { httpClient, getProxyFetch })
+      }
+    },
+    [httpClient, getProxyFetch],
+  )
+
   const deleteChatMutation = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
+      const thread = await getChatThread(db, id)
       await deleteChatThread(db, id)
+      purgeRunnerSessions(thread ? [thread] : [])
     },
     onSuccess: async () => {
       const deletedChatId = threadIdRef.current
@@ -95,7 +114,9 @@ export default function Sidebar() {
 
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
+      const threads = data ?? []
       await deleteAllChatThreads(db)
+      purgeRunnerSessions(threads)
     },
     onSuccess: async () => {
       trackEvent('chat_clear_all')

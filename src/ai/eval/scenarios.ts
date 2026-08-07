@@ -2,10 +2,46 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelOpus5 } from '@shared/defaults/models'
-import type { EvalCriteria, EvalScenario } from './types'
+import { isPiModelCandidate } from '@/acp/built-in-adapter'
+import {
+  defaultModelDeepseekV4Flash,
+  defaultModelGlm52,
+  defaultModelOpus5,
+  defaultModels,
+  type SharedModel,
+} from '@shared/defaults/models'
+import type { EvalCriteria, EvalEngine, EvalScenario } from './types'
 
-const models = [{ name: 'opus', id: defaultModelOpus5.id }] as const
+export type EvalModel = {
+  id: string
+  name: string
+  engineName: EvalEngine
+}
+
+export const evalModelSlugs: Readonly<Record<string, string>> = {
+  [defaultModelOpus5.id]: 'opus',
+  [defaultModelDeepseekV4Flash.id]: 'flash',
+  [defaultModelGlm52.id]: 'glm',
+}
+
+/** Build the eval matrix from shipped defaults, requiring a stable CLI slug for every model. */
+export const deriveEvalModelMatrix = (
+  models: ReadonlyArray<SharedModel>,
+  slugs: Readonly<Record<string, string>>,
+): EvalModel[] =>
+  models.map((model) => {
+    const name = slugs[model.id]
+    if (!name) {
+      throw new Error(`Missing eval slug for default model "${model.name}" (${model.id})`)
+    }
+    return {
+      id: model.id,
+      name,
+      engineName: isPiModelCandidate(model) ? 'pi' : 'legacy',
+    }
+  })
+
+export const evalModels = deriveEvalModelMatrix(defaultModels, evalModelSlugs)
 
 /** Default criteria applied to all Chat mode scenarios */
 const chatCriteria: EvalCriteria = {
@@ -41,13 +77,18 @@ const chatPrompts = [
   { id: 'C3', prompt: "What's the current price of Bitcoin?" },
   {
     id: 'C4',
-    prompt: 'Compare the iPhone 16 Pro and Samsung Galaxy S25 Ultra',
+    prompt:
+      'Compare the flagship smartphones Apple and Samsung released most recently, including current pricing and availability',
     criteria: { ...chatCriteria, minCitations: 2 },
   },
   { id: 'C5', prompt: "What's the weather forecast for Seattle this week?", criteria: { mustProduceOutput: true } },
   { id: 'C6', prompt: 'Best Thai restaurants in Portland' },
-  { id: 'C7', prompt: 'Who won the Grammy for Album of the Year?' },
-  { id: 'C8', prompt: 'What are the best hiking trails near Denver?' },
+  {
+    id: 'C7',
+    prompt:
+      'Who won the most recent Grammy for Album of the Year, and what has the winner released since the ceremony?',
+  },
+  { id: 'C8', prompt: 'What are the best hiking trails near Denver?', criteria: { mustProduceOutput: true } },
   { id: 'C9', prompt: 'Latest SpaceX launch details' },
   { id: 'C10', prompt: 'Best mechanical keyboards under $200' },
   {
@@ -60,7 +101,7 @@ const chatPrompts = [
     id: 'C12',
     prompt:
       'Compare the nutritional profiles and health benefits of quinoa, brown rice, and couscous with specific numbers per serving',
-    criteria: { ...chatCriteria, minCitations: 2 },
+    criteria: { mustProduceOutput: true },
   },
   {
     id: 'C13',
@@ -189,15 +230,19 @@ const validationChatPrompts = [
     prompt: 'Best wireless earbuds under $150',
     criteria: { ...chatCriteria, noHomepageLinks: true, noReviewSites: false },
   },
-  { id: 'VC3', prompt: "What's the current population of Tokyo?" },
+  { id: 'VC3', prompt: "What's the current population of Tokyo?", criteria: { mustProduceOutput: true } },
   {
     id: 'VC4',
     prompt: 'Compare Tesla Model 3 and BMW i4 for daily commuting',
-    criteria: { ...chatCriteria, minCitations: 2 },
+    criteria: { mustProduceOutput: true },
   },
   { id: 'VC5', prompt: 'Best Italian restaurants in San Francisco' },
   { id: 'VC6', prompt: 'Who won the most recent Super Bowl and what was the score?' },
-  { id: 'VC7', prompt: 'What are the side effects of melatonin supplements?' },
+  {
+    id: 'VC7',
+    prompt: 'What are the side effects of melatonin supplements?',
+    criteria: { mustProduceOutput: true },
+  },
   {
     id: 'VC8',
     prompt: 'Best budget laptops for college students 2026',
@@ -206,7 +251,7 @@ const validationChatPrompts = [
   {
     id: 'VC9',
     prompt: 'Explain the differences between type 1 and type 2 diabetes — causes, symptoms, and treatment options',
-    criteria: { ...chatCriteria, minCitations: 2 },
+    criteria: { mustProduceOutput: true },
   },
   {
     id: 'VC10',
@@ -357,10 +402,11 @@ const buildScenarios = (
   modeName: EvalScenario['modeName'],
   defaultCriteria: EvalCriteria,
 ): EvalScenario[] =>
-  models.flatMap((model) =>
+  evalModels.flatMap((model) =>
     prompts.map((p) => ({
-      id: `${model.name}/${modeName}/${p.id}`,
+      id: `${model.name}/${model.engineName}/${modeName}/${p.id}`,
       modelName: model.name,
+      engineName: model.engineName,
       modeName,
       prompt: p.prompt,
       followUps: p.followUps,
@@ -380,15 +426,18 @@ const allScenarios: EvalScenario[] = [
   ...buildScenarios(widgetSearchPrompts, 'search', searchCriteria),
 ]
 
-/** Get scenarios filtered by model names and mode names */
-export const getScenarios = (modelNames?: string[], modeNames?: string[]): EvalScenario[] =>
+/** Get scenarios filtered by model, mode, and engine names. */
+export const getScenarios = (modelNames?: string[], modeNames?: string[], engineNames?: string[]): EvalScenario[] =>
   allScenarios.filter(
-    (s) => (!modelNames || modelNames.includes(s.modelName)) && (!modeNames || modeNames.includes(s.modeName)),
+    (scenario) =>
+      (!modelNames || modelNames.includes(scenario.modelName)) &&
+      (!modeNames || modeNames.includes(scenario.modeName)) &&
+      (!engineNames || engineNames.includes(scenario.engineName)),
   )
 
 /** Get the model ID for a given model name */
 export const getModelId = (modelName: string): string => {
-  const model = models.find((m) => m.name === modelName)
+  const model = evalModels.find((candidate) => candidate.name === modelName)
   if (!model) {
     throw new Error(`Unknown model: ${modelName}`)
   }

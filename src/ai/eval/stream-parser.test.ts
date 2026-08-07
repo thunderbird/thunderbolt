@@ -100,4 +100,45 @@ describe('parseStream', () => {
     expect(parsed.toolCalls).toHaveLength(1)
     expect(parsed.assistantParts).toEqual([{ type: 'text', text: 'done' }])
   })
+
+  test('captures Pi coding-tool calls while ignoring protocol-only start events', async () => {
+    const toolNames = ['bash', 'read', 'write', 'edit']
+    const response = sseResponse([
+      ...toolNames.flatMap((toolName, index) => [
+        { type: 'tool-input-start', toolCallId: String(index), toolName },
+        { type: 'tool-input-available', toolCallId: String(index), toolName, input: { path: `/file-${index}` } },
+        { type: 'tool-output-available', toolCallId: String(index), output: { ok: true } },
+      ]),
+      { type: 'text-delta', delta: 'Coding work complete.' },
+      { type: 'finish-step' },
+      { type: 'finish' },
+    ])
+
+    const parsed = await parseStream(response)
+
+    expect(parsed.toolCalls.map(({ toolName }) => toolName)).toEqual(toolNames)
+    expect(parsed.assistantParts.filter((part) => part.type === 'dynamic-tool')).toHaveLength(4)
+    expect(parsed.text).toBe('Coding work complete.')
+  })
+
+  test('captures web calls whose emitted result is budget exhausted', async () => {
+    const response = sseResponse([
+      { type: 'tool-input-available', toolCallId: 'a', toolName: 'search', input: { query: 'one' } },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'a',
+        output: { status: 'budget_exhausted', message: 'budget reached' },
+      },
+      { type: 'text-delta', delta: 'Using the results already gathered.' },
+      { type: 'finish' },
+    ])
+
+    const parsed = await parseStream(response)
+
+    expect(parsed.toolCalls).toEqual([{ toolCallId: 'a', toolName: 'search', input: { query: 'one' } }])
+    expect(parsed.assistantParts[0]).toMatchObject({
+      type: 'dynamic-tool',
+      output: { status: 'budget_exhausted' },
+    })
+  })
 })

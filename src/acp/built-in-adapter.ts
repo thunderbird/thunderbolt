@@ -116,6 +116,10 @@ export type BuiltInAdapterOptions = {
  *  any future provider) stays on the legacy pipeline. */
 const piProviders = new Set<Model['provider']>(['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'])
 
+/** Whether production routes a tool-capable model to the Pi harness. */
+export const isPiModelCandidate = (model: Pick<Model, 'provider' | 'toolUsage'>): boolean =>
+  piProviders.has(model.provider) && model.toolUsage !== 0
+
 /** Valid Pi thinking levels, used to validate a profile-supplied effort string. */
 const piThinkingLevels = new Set<ThinkingLevel>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
 
@@ -508,9 +512,10 @@ const fetchViaHarness = async (
 }
 
 /**
- * Build the built-in agent's {@link AgentAdapter}. Its `fetch` routes Anthropic
- * models to the in-browser Pi harness and every other provider to the legacy
- * `aiFetchStreamingResponse` pipeline (overridable via `options.aiFetch`).
+ * Build the built-in agent's {@link AgentAdapter}. Its `fetch` routes
+ * tool-capable Pi-serviceable providers to the in-browser harness and every
+ * other model to the legacy `aiFetchStreamingResponse` pipeline (overridable
+ * via `options.aiFetch`).
  *
  * @param agent - the built-in `Agent` row this adapter represents
  * @param options - test/override seam for the legacy fetch engine
@@ -544,9 +549,8 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   // the harness can't honor since it always activates coding tools) stays on the
   // legacy pipeline. fetchViaHarness itself falls back when a candidate model
   // turns out to be unresolvable (unknown id / missing api key or url).
-  const isPiCandidate = (model: Model): boolean => piProviders.has(model.provider) && model.toolUsage !== 0
   const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> =>
-    isPiCandidate(context.selectedModel)
+    isPiModelCandidate(context.selectedModel)
       ? fetchViaHarness(
           init,
           context,

@@ -10,6 +10,15 @@ import {
 import type { AcpCommand, SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
 import { useAgentCommandsStore } from '@/acp/agent-commands-store'
 import {
+  builtInPlacementRefusalMessage,
+  decideBuiltInPlacement as defaultDecideBuiltInPlacement,
+} from '@/acp/built-in-placement'
+import { announceCloudExecution as defaultAnnounceCloudExecution } from '@/acp/cloud-execution-notice'
+import { resolveRunSpec as defaultResolveRunSpec } from '@/acp/runner-run-spec'
+import { buildRunnerWireTarget } from '@/acp/runner-target'
+import { selectCloudRunnerWsUrl, useConfigStore } from '@/api/config-store'
+import { getAttachments } from '@/lib/attachments'
+import {
   createTurnBudget as defaultCreateTurnBudget,
   createTurnBudgetExhaustedError,
   type TurnBudget,
@@ -30,11 +39,18 @@ import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { RunSpec } from '@shared/acp-types'
 import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport, type ChatInit } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
-import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
+import {
+  deriveToolKey,
+  encryptedThreadAgentErrorMessage,
+  findAllowOption,
+  isRemoteAgentOnEncryptedThread,
+  useChatStore,
+} from './chat-store'
 
 export const maxRetries = 3
 const baseRetryDelayMs = 2000
@@ -107,6 +123,10 @@ export type CreateChatInstanceDeps = {
   createChat?: (init: ChatInit<ThunderboltUIMessage>) => Chat<ThunderboltUIMessage>
   createTurnBudget?: typeof defaultCreateTurnBudget
   wakeAdapterReconnect?: typeof defaultWakeAdapterReconnect
+  decideBuiltInPlacement?: typeof defaultDecideBuiltInPlacement
+  resolveRunSpec?: typeof defaultResolveRunSpec
+  announceCloudExecution?: typeof defaultAnnounceCloudExecution
+  getRunnerWsUrl?: () => string | null
 }
 
 export type AgentRoutingState = {
@@ -146,6 +166,10 @@ export const createAgentRoutingFetch = (
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
   const getAllSkills = deps.getAllSkills ?? defaultGetAllSkills
+  const decideBuiltInPlacement = deps.decideBuiltInPlacement ?? defaultDecideBuiltInPlacement
+  const resolveRunSpec = deps.resolveRunSpec ?? defaultResolveRunSpec
+  const announceCloudExecution = deps.announceCloudExecution ?? defaultAnnounceCloudExecution
+  const getRunnerWsUrl = deps.getRunnerWsUrl ?? (() => selectCloudRunnerWsUrl(useConfigStore.getState().config))
   const getTurnBudget =
     routingState.getTurnBudget ??
     (() => {
@@ -154,6 +178,105 @@ export const createAgentRoutingFetch = (
     })()
 
   let routedAgentId: string | null = null
+  // This thread ran a turn on the runner during this instance's life. The
+  // persisted marker is authoritative across reloads, but its write round-trips
+  // through sync before the store can read it back — without remembering it
+  // here, a quick second send could read a stale thread and fork the
+  // conversation onto this device.
+  let placedOnRunner = false
+
+  /**
+   * Runner detached-turn catch-up. `chat.resumeStream()` issues a GET through
+   * this same custom fetch (the AI SDK transport's `reconnectToStream`); route
+   * it to the adapter's `reattach` instead of the prompt path. When the thread
+   * ends in a crash-recovery partial, that message is lifted out of the chat
+   * state and its id is handed to `reattach`, so the replayed turn streams
+   * under the same id — replacing the partial in the UI and, via the normal
+   * `onFinish` save, in the DB. Returns 204 when there is nothing to catch up
+   * on (the SDK treats it as a quiet no-op).
+   */
+  const handleRunnerReattach = async (): Promise<Response> => {
+    const noCatchUp = () => new Response(null, { status: 204 })
+    const session = useChatStore.getState().sessions.get(id)
+    if (!session) {
+      return noCatchUp()
+    }
+    const { chatThread, selectedAgent, selectedModel, chatInstance } = session
+    // Only a runner-owned built-in thread has a detached turn to replay, and
+    // this runs before any connection exists — a looser gate would dial
+    // arbitrary remote agents (including dead ones) just to learn they cannot
+    // replay.
+    const runnerWsUrl = getRunnerWsUrl()
+    if (!isBuiltInAgent(selectedAgent) || !chatThread?.acpSessionId || !runnerWsUrl) {
+      return noCatchUp()
+    }
+    // Corrupted state that pairs an encrypted thread with off-device execution
+    // must not reach the wire. Catch-up is a background side effect the user
+    // never asked for, so it stays a quiet no-op rather than raising an error.
+    if (chatThread.isEncrypted === 1) {
+      return noCatchUp()
+    }
+
+    const wireTarget = buildRunnerWireTarget(runnerWsUrl)
+    const adapter = await getOrConnectAdapter(
+      wireTarget,
+      { httpClient, getProxyFetch, onAvailableCommands: makeCommandSink(wireTarget.id) },
+      { connectToAgent: deps.connectToAgent },
+    ).catch((err: unknown) => {
+      // A runner outage must stay a quiet 204 for the user, but not invisible
+      // to whoever is diagnosing why catch-up never happens.
+      console.warn('runner reattach: adapter connect failed', err)
+      return null
+    })
+    if (!adapter?.reattach) {
+      return noCatchUp()
+    }
+
+    // Lift a trailing crash-recovery partial out of the chat state so the
+    // replayed turn (streamed under the same message id) replaces it instead
+    // of appending to it. Restored verbatim when nothing gets replayed.
+    const messages = chatInstance.messages
+    const last = messages[messages.length - 1]
+    const partial = last?.role === 'assistant' && last.metadata?.partial === true ? last : undefined
+    if (partial) {
+      chatInstance.messages = messages.slice(0, -1)
+    }
+
+    // A resumed session still needs its run spec: the runner never picks a
+    // model, so restoring execution state without one would leave the session
+    // unable to run its next turn.
+    const runSpec = await resolveRunSpec(selectedModel).catch((err: unknown) => {
+      console.warn('runner reattach: run spec resolution failed', err)
+      return undefined
+    })
+
+    const response = await adapter
+      .reattach(
+        {
+          threadId: id,
+          acpSessionId: chatThread.acpSessionId,
+          runSpec,
+          onAcpSessionId: async (newSessionId) => {
+            await updateChatThread(getDb(), id, { acpSessionId: newSessionId })
+          },
+          requestPermission: (request) => requestPermissionViaStore(id, wireTarget.id, request),
+          onSessionSideEffect: applySessionSideEffect,
+        },
+        partial?.id,
+      )
+      .catch((err: unknown) => {
+        console.warn('runner reattach failed', err)
+        return null
+      })
+
+    if (!response) {
+      if (partial) {
+        chatInstance.messages = messages
+      }
+      return noCatchUp()
+    }
+    return response
+  }
 
   /** Resolve user-skill (`/slug`) instructions from the latest user message, so
    *  ACP agents can receive them in the prompt (the built-in pipeline injects
@@ -182,6 +305,12 @@ export const createAgentRoutingFetch = (
         throw new Error('Missing init')
       }
 
+      // `resumeStream()` reconnects via GET (no body); everything else is the
+      // POST prompt path.
+      if (init.method === 'GET') {
+        return handleRunnerReattach()
+      }
+
       const { getMcpClients, reconnectClient, sessions } = useChatStore.getState()
 
       // Read clients fresh per send (not a hydrate-time snapshot) so a server
@@ -195,6 +324,10 @@ export const createAgentRoutingFetch = (
       }
 
       const { chatThread, selectedAgent, selectedModel } = session
+
+      if (isRemoteAgentOnEncryptedThread(chatThread, selectedAgent)) {
+        throw new Error(encryptedThreadAgentErrorMessage)
+      }
 
       // Save the user message before invoking the adapter. This serves three
       // purposes that previously only the built-in pipeline got for free:
@@ -218,61 +351,128 @@ export const createAgentRoutingFetch = (
         await updateChatThread(getDb(), id, { acpSessionId: newSessionId })
       }
 
-      // Surface `connecting` only when routing to a different agent than this
-      // thread last used — a warm cache resolves instantly, but the per-thread
-      // UI still needs the transition for the cold-connect spinner.
-      const isNewAgent = selectedAgent.id !== routedAgentId
-      if (isNewAgent) {
-        useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
+      // Selecting a different agent clears the thread's ACP session id, so a
+      // remembered pin from an earlier built-in turn no longer describes this
+      // thread — drop it and let a later built-in send decide placement afresh.
+      if (!isBuiltInAgent(selectedAgent)) {
+        placedOnRunner = false
       }
 
-      const adapter = await getOrConnectAdapter(
-        selectedAgent,
-        { httpClient, getProxyFetch, onAvailableCommands: makeCommandSink(selectedAgent.id) },
-        { connectToAgent: deps.connectToAgent },
-      ).catch((err) => {
-        const error = err instanceof Error ? err : new Error(String(err))
-        useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
-        throw error
+      // Where this thread's turns run. Built-in threads may execute on the cloud
+      // runner instead of this device; the selected agent — and everything the
+      // UI shows — is the built-in agent either way.
+      const runnerWsUrl = getRunnerWsUrl()
+      const placement = await decideBuiltInPlacement({
+        agent: selectedAgent,
+        isRunnerOwned: placedOnRunner || chatThread?.acpSessionId != null,
+        isEncryptedThread: chatThread?.isEncrypted === 1,
+        model: selectedModel,
+        runnerWsUrl,
+        hasPriorTurns: requestBody.messages.length > 1,
+        hasMcpClients: mcpClients.length > 0,
+        hasAttachments: requestBody.messages.some((message) => getAttachments(message).length > 0),
       })
-
-      routedAgentId = selectedAgent.id
-      if (isNewAgent) {
-        useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
+      if (placement.placement === 'refuse') {
+        throw new Error(builtInPlacementRefusalMessage(placement.reason))
       }
-
-      // Built-in re-resolves skill instructions itself (ai/fetch.ts); for ACP
-      // agents we resolve here and fold them into the prompt via the adapter.
-      const skillInstructions = isBuiltInAgent(selectedAgent)
-        ? undefined
-        : await resolveAcpSkillInstructions(requestBody.messages)
-      // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
-      const requestPermission = isBuiltInAgent(selectedAgent)
-        ? undefined
-        : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
 
       const turnBudget = getTurnBudget().consumer
       if (!turnBudget.tryConsumeRequest()) {
         throw createTurnBudgetExhaustedError()
       }
 
-      return adapter.fetch(init, {
-        threadId: id,
-        chatThread,
-        acpSessionId: chatThread?.acpSessionId ?? null,
-        saveMessages,
-        selectedModel,
-        mcpClients,
-        reconnectClient,
-        httpClient,
-        getProxyFetch,
-        turnBudget,
-        regenerationRevision: routingState.regenerationRevision ?? 0,
-        skillInstructions,
-        onAcpSessionId: persistAcpSessionId,
-        requestPermission,
-        onSessionSideEffect: applySessionSideEffect,
-      })
+      // The runner owning this thread's session is exactly "the marker was
+      // written", so the persist callback is where the pin is taken.
+      let ownedByRunner = placement.reason === 'runner-owned'
+      const persistRunnerSessionId = async (newSessionId: string): Promise<void> => {
+        await persistAcpSessionId(newSessionId)
+        placedOnRunner = true
+        ownedByRunner = true
+      }
+
+      /** Run this send against one wire target. `runSpec` travels only to the
+       *  runner, which executes the model we name; every other agent owns its
+       *  own model. */
+      const sendVia = async (target: typeof selectedAgent, runSpec?: RunSpec): Promise<Response> => {
+        // Surface `connecting` only when routing somewhere other than where this
+        // thread last went — a warm cache resolves instantly, but the per-thread
+        // UI still needs the transition for the cold-connect spinner.
+        const isNewTarget = target.id !== routedAgentId
+        if (isNewTarget) {
+          useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
+        }
+
+        const adapter = await getOrConnectAdapter(
+          target,
+          { httpClient, getProxyFetch, onAvailableCommands: makeCommandSink(target.id) },
+          { connectToAgent: deps.connectToAgent },
+        ).catch((err) => {
+          const error = err instanceof Error ? err : new Error(String(err))
+          useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
+          throw error
+        })
+
+        routedAgentId = target.id
+        if (isNewTarget) {
+          useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
+        }
+
+        // The in-process built-in pipeline re-resolves skill instructions itself
+        // (ai/fetch.ts); every ACP target — including the runner — only receives
+        // prompt text, so they are resolved here and folded into the prompt.
+        const isInProcess = isBuiltInAgent(target)
+        const skillInstructions = isInProcess ? undefined : await resolveAcpSkillInstructions(requestBody.messages)
+        // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
+        const requestPermission = isInProcess
+          ? undefined
+          : (request: RequestPermissionRequest) => requestPermissionViaStore(id, target.id, request)
+
+        return adapter.fetch(init, {
+          threadId: id,
+          chatThread,
+          acpSessionId: chatThread?.acpSessionId ?? null,
+          saveMessages,
+          selectedModel,
+          mcpClients,
+          reconnectClient,
+          httpClient,
+          getProxyFetch,
+          turnBudget,
+          regenerationRevision: routingState.regenerationRevision ?? 0,
+          skillInstructions,
+          runSpec,
+          onAcpSessionId: runSpec ? persistRunnerSessionId : persistAcpSessionId,
+          requestPermission,
+          onSessionSideEffect: applySessionSideEffect,
+        })
+      }
+
+      if (placement.placement === 'local') {
+        return sendVia(selectedAgent)
+      }
+
+      // `runnerWsUrl` is non-null on every runner placement — the decision
+      // requires it — but the compiler can't see that through the module seam.
+      const wireTarget = buildRunnerWireTarget(runnerWsUrl ?? '')
+      const runSpec = await resolveRunSpec(selectedModel)
+      try {
+        const response = await sendVia(wireTarget, runSpec)
+        placedOnRunner = true
+        announceCloudExecution()
+        return response
+      } catch (error) {
+        // Connecting or creating the session can fail before the runner holds
+        // anything for this thread. On that first turn the send is still
+        // unplaced, so running it here is safe and beats failing outright. Once
+        // the thread is pinned there is no safe local equivalent — the runner
+        // may already have executed side effects — so the error surfaces.
+        if (ownedByRunner) {
+          throw error
+        }
+        console.warn('runner placement failed on first turn; running locally', error)
+        useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
+        return sendVia(selectedAgent)
+      }
     },
     {
       preconnect: () => Promise.resolve(false),

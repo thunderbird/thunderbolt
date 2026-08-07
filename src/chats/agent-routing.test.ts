@@ -138,7 +138,7 @@ describe('createAgentRoutingFetch', () => {
       connectToAgent: connectToAgent as never,
     })
 
-    const init: RequestInit = { method: 'POST', body: '{}' }
+    const init: RequestInit = { method: 'POST', body: '{"messages":[]}' }
     await customFetch('/chat', init)
 
     expect(connectToAgent).toHaveBeenCalledTimes(1)
@@ -157,7 +157,7 @@ describe('createAgentRoutingFetch', () => {
       connectToAgent: connectToAgent as never,
     })
 
-    await customFetch('/chat', { method: 'POST', body: '{}' })
+    await customFetch('/chat', { method: 'POST', body: '{"messages":[]}' })
 
     expect(connectToAgent).toHaveBeenCalledTimes(1)
     expect(connectToAgent.mock.calls[0]?.[0]?.type).toBe('remote-acp')
@@ -174,9 +174,9 @@ describe('createAgentRoutingFetch', () => {
       connectToAgent: connectToAgent as never,
     })
 
-    await customFetch('/chat', { method: 'POST', body: '{}' })
-    await customFetch('/chat', { method: 'POST', body: '{}' })
-    await customFetch('/chat', { method: 'POST', body: '{}' })
+    await customFetch('/chat', { method: 'POST', body: '{"messages":[]}' })
+    await customFetch('/chat', { method: 'POST', body: '{"messages":[]}' })
+    await customFetch('/chat', { method: 'POST', body: '{"messages":[]}' })
 
     expect(connectToAgent).toHaveBeenCalledTimes(1)
     expect(adapterFetch).toHaveBeenCalledTimes(3)
@@ -195,7 +195,7 @@ describe('createAgentRoutingFetch', () => {
       connectToAgent: connectToAgent as never,
     })
 
-    await customFetch('/chat', { method: 'POST', body: '{}' })
+    await customFetch('/chat', { method: 'POST', body: '{"messages":[]}' })
     expect(first.fetch).toHaveBeenCalledTimes(1)
     expect(first.disconnect).not.toHaveBeenCalled()
 
@@ -206,7 +206,7 @@ describe('createAgentRoutingFetch', () => {
     // via the DAL, which routing doesn't depend on).
     hydrateSessionWith('t-switch', otherRemoteAgent)
 
-    await customFetch('/chat', { method: 'POST', body: '{}' })
+    await customFetch('/chat', { method: 'POST', body: '{"messages":[]}' })
     expect(first.disconnect).not.toHaveBeenCalled()
     expect(connectToAgent).toHaveBeenCalledTimes(2)
     expect(second.fetch).toHaveBeenCalledTimes(1)
@@ -246,7 +246,7 @@ describe('createAgentRoutingFetch', () => {
       getDb: (() => fakeDb) as never,
     })
 
-    await customFetch('/chat', { method: 'POST', body: '{}' })
+    await customFetch('/chat', { method: 'POST', body: '{"messages":[]}' })
 
     expect(capturedOnAcpSessionId).not.toBeNull()
 
@@ -360,7 +360,7 @@ describe('createAgentRoutingFetch', () => {
       getDb: (() => fakeDb) as never,
     })
 
-    await customFetch('/chat', { method: 'POST', body: '{}' })
+    await customFetch('/chat', { method: 'POST', body: '{"messages":[]}' })
     await capturedOnAcpSessionId!('any-sess')
 
     expect(updateChatThread).toHaveBeenCalledTimes(1)

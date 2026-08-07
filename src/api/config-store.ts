@@ -16,6 +16,13 @@ export type AppConfig = {
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */
   minAppVersion?: string
+  /** Where the cloud runner accepts ACP WebSocket connections, when the
+   *  deployment runs one. This is execution placement for the built-in agent —
+   *  NOT an agent to pick — so it is a bare endpoint, never a descriptor.
+   *  Absent means every built-in turn runs on this device. */
+  cloudRunner?: {
+    wsUrl: string
+  }
   /** Server-shipped default sets, versioned so the client can pick between
    *  server and bundled by whichever declares the higher version. See
    *  "Reconciled defaults and version bumps" in AGENTS.md. */
@@ -51,3 +58,13 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false
+
+/** The cloud runner's ACP WebSocket URL, or `null` when this deployment runs
+ *  no runner (so built-in turns stay on the device). `updateConfig` replaces
+ *  the whole object, so a later response that drops `cloudRunner` also drops
+ *  the persisted URL — placement must never outlive the server telling us it
+ *  exists. */
+export const selectCloudRunnerWsUrl = (config: AppConfig): string | null => {
+  const wsUrl = config.cloudRunner?.wsUrl?.trim()
+  return wsUrl ? wsUrl : null
+}

@@ -66,6 +66,7 @@ describe('testAcpConnection', () => {
         loadSession: true,
         skills: false,
         resume: false,
+        detachedTurns: false,
         promptCapabilities: { image: true, audio: false, embeddedContext: true },
       },
     })
@@ -88,6 +89,7 @@ describe('testAcpConnection', () => {
         loadSession: false,
         skills: false,
         resume: false,
+        detachedTurns: false,
         promptCapabilities: { image: false, audio: false, embeddedContext: false },
       },
     })

@@ -33,6 +33,9 @@ export const defaultVoiceProvider: VoiceProviderConfig = {
 type LocalSettingsState = {
   cloudUrl: string
   debugPosthog: boolean
+  /** Whether this device has already seen the disclosure that eligible chats
+   *  are processed on Thunderbolt's servers. */
+  hasSeenCloudExecutionNotice: boolean
   isNativeFetchEnabled: boolean
   hapticsEnabled: boolean
   syncEnabled: boolean
@@ -49,6 +52,7 @@ type LocalSettingsStore = LocalSettingsState & LocalSettingsActions
 export const initialLocalSettings: LocalSettingsState = {
   cloudUrl: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
   debugPosthog: false,
+  hasSeenCloudExecutionNotice: false,
   isNativeFetchEnabled: false,
   hapticsEnabled: true,
   syncEnabled: false,
@@ -70,6 +74,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
       partialize: (s): LocalSettingsState => ({
         cloudUrl: s.cloudUrl,
         debugPosthog: s.debugPosthog,
+        hasSeenCloudExecutionNotice: s.hasSeenCloudExecutionNotice,
         isNativeFetchEnabled: s.isNativeFetchEnabled,
         hapticsEnabled: s.hapticsEnabled,
         syncEnabled: s.syncEnabled,

@@ -8,6 +8,7 @@ import { builtInAgent } from '@/defaults/agents'
 import { HttpError, type HttpClient, type ResponsePromise } from '@/lib/http'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { clearAdapterCache, getOrConnectAdapter } from '@/acp/adapter-cache'
+import { runnerWireAgentId } from '@/acp/runner-target'
 import type { AgentAdapter } from '@/types/acp'
 import type { AgentDiscoveryResponse } from '@shared/acp-types'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -323,6 +324,13 @@ describe('agents DAL', () => {
 
     it('returns an empty list when built-in disabled and there are no other agents', () => {
       expect(composeAllAgents([], [], { includeBuiltIn: false })).toEqual([])
+    })
+
+    it('never surfaces the runner wire target — cloud execution is placement, not an agent', () => {
+      const result = composeAllAgents([systemAgent('sys-a', 'Alpha System')], [customAgent('c-a', 'Alpha Custom')])
+
+      expect(result.map((a) => a.id)).not.toContain(runnerWireAgentId)
+      expect(result.some((a) => a.name.toLowerCase().includes('cloud'))).toBe(false)
     })
   })
 

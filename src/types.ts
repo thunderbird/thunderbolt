@@ -164,6 +164,15 @@ export type UIMessageMetadata = {
   modelId?: string
   usage?: LanguageModelV2Usage
   oauthRetry?: boolean
+  /**
+   * Present (true) only on rows written by the throttled crash-recovery save
+   * while the message was still streaming (`saveStreamingAssistantMessage`).
+   * The authoritative `onFinish` save writes the message's own metadata —
+   * which never carries this flag — so a completed turn clears it. A trailing
+   * assistant message that still has it after hydration was interrupted
+   * mid-stream, which is what triggers runner turn catch-up.
+   */
+  partial?: boolean
   reasoningTime?: Record<string, number>
   reasoningStartTimes?: Record<string, number>
   sources?: SourceMetadata[]

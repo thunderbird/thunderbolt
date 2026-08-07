@@ -68,7 +68,7 @@ const getRemoteRequestPermission = async (): Promise<NonNullable<AgentAdapterCon
     getDb: (() => ({})) as never,
   })
 
-  await fetch('https://x', { body: '{}' } as RequestInit)
+  await fetch('https://x', { body: '{"messages":[]}' } as RequestInit)
 
   const requestPermission = contexts[0].requestPermission
   if (!requestPermission) {
@@ -110,7 +110,7 @@ describe('requestPermission bridge', () => {
       getDb: (() => ({})) as never,
     })
 
-    await fetch('https://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{"messages":[]}' } as RequestInit)
 
     expect(contexts[0].requestPermission).toBeUndefined()
   })

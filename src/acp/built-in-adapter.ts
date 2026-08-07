@@ -59,6 +59,7 @@ import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { prepareBuiltInConversation } from './built-in-conversation'
+import { deriveThinkingLevel, hasExplicitReasoning } from './thinking-level'
 
 /** The type of the lazily-imported Pi engine module. A pure type reference — it
  *  resolves the module's shape for the compiler without emitting a runtime
@@ -113,98 +114,6 @@ export type BuiltInAdapterOptions = {
 /** Providers the in-browser Pi harness can serve. Everything else (tinfoil, plus
  *  any future provider) stays on the legacy pipeline. */
 const piProviders = new Set<Model['provider']>(['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'])
-
-/** Valid Pi thinking levels, used to validate a profile-supplied effort string. */
-const piThinkingLevels = new Set<ThinkingLevel>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
-
-/** Reasoning depth used when a model carries no explicit profile config. Mirrors
- *  the adaptive default the anthropic path has always used, so deriving the level
- *  never regresses a model that didn't configure one. */
-const fallbackThinkingLevel: ThinkingLevel = 'medium'
-
-/** Maps an Anthropic-style thinking budget (tokens) to a Pi level by upper bound:
- *  ≤0 → off, ≤1024 → minimal, ≤4096 → low, ≤12288 → medium, else high. */
-const budgetToThinkingLevel = (budget: number): ThinkingLevel => {
-  if (budget <= 0) {
-    return 'off'
-  }
-  if (budget <= 1024) {
-    return 'minimal'
-  }
-  if (budget <= 4096) {
-    return 'low'
-  }
-  if (budget <= 12288) {
-    return 'medium'
-  }
-  return 'high'
-}
-
-/** Coerce a profile effort string to a Pi level. Maps the explicit "off" signals
- *  ('off'/'none') to `off`, accepts the Pi levels verbatim, and rejects anything
- *  else (returning null so the caller can keep looking / fall back). */
-const effortToThinkingLevel = (value: unknown): ThinkingLevel | null => {
-  if (typeof value !== 'string') {
-    return null
-  }
-  if (value === 'none') {
-    return 'off'
-  }
-  return piThinkingLevels.has(value as ThinkingLevel) ? (value as ThinkingLevel) : null
-}
-
-/** Pull a Pi thinking level out of a profile's `providerOptions`, the only
- *  per-model reasoning signal in the data model (there is no thinking-level
- *  column). Recognizes the OpenAI `reasoningEffort`/`reasoning_effort` strings,
- *  a nested `reasoning.effort`, and the Anthropic-style `thinking` object
- *  (`{ type: 'disabled' }` → off; `{ budgetTokens }` → bucketed level). Returns
- *  null when no reasoning config is present. */
-const readProfileThinkingLevel = (
-  providerOptions: Record<string, unknown> | null | undefined,
-): ThinkingLevel | null => {
-  if (!providerOptions) {
-    return null
-  }
-  const direct =
-    effortToThinkingLevel(providerOptions.reasoningEffort) ?? effortToThinkingLevel(providerOptions.reasoning_effort)
-  if (direct) {
-    return direct
-  }
-  const reasoning = providerOptions.reasoning
-  if (reasoning && typeof reasoning === 'object') {
-    const nested = effortToThinkingLevel((reasoning as { effort?: unknown }).effort)
-    if (nested) {
-      return nested
-    }
-  }
-  const thinking = providerOptions.thinking
-  if (thinking && typeof thinking === 'object') {
-    const { type, budgetTokens } = thinking as { type?: unknown; budgetTokens?: unknown }
-    if (type === 'disabled') {
-      return 'off'
-    }
-    if (typeof budgetTokens === 'number') {
-      return budgetToThinkingLevel(budgetTokens)
-    }
-  }
-  return null
-}
-
-/** The Pi thinking level for a model: its explicit profile reasoning config, else
- *  the adaptive fallback. Used for the anthropic path (whose catalog model is
- *  natively adaptive) and as the effort for OpenAI-wire reasoning models. */
-const deriveThinkingLevel = (profile: ModelProfile | null): ThinkingLevel =>
-  readProfileThinkingLevel(profile?.providerOptions) ?? fallbackThinkingLevel
-
-/** Whether an OpenAI-wire model should request reasoning at all. Only models
- *  whose profile configures a non-`off` effort opt in; without config (or with an
- *  explicit `off`/`disabled`) the synthetic Pi model stays non-reasoning (Pi then
- *  sends no `reasoning_effort`, matching the legacy pipeline, which only forwards
- *  configured providerOptions). */
-const hasExplicitReasoning = (profile: ModelProfile | null): boolean => {
-  const level = readProfileThinkingLevel(profile?.providerOptions)
-  return level !== null && level !== 'off'
-}
 
 /** Parse the AI SDK request transcript for Pi-specific content preparation. */
 const parseMessages = (init: RequestInit): ThunderboltUIMessage[] => {

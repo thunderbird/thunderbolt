@@ -46,6 +46,7 @@ import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
 import { UpdateNotification } from './components/update-notification'
+import { CloudExecutionNotice } from './components/cloud-execution-notice'
 import { WindowChrome } from '@/components/window-chrome'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
@@ -178,6 +179,7 @@ const AppContent = ({ initData }: { initData: InitData }) => {
     <BrowserRouter>
       <AppRoutes initData={initData} />
       <UpdateNotification />
+      <CloudExecutionNotice />
       <PendingDeviceModal />
     </BrowserRouter>
   )

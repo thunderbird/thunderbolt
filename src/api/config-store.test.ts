@@ -3,7 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { selectAllowCustomAgents, selectBuiltInAgentEnabled, useConfigStore } from './config-store'
+import {
+  selectAllowCustomAgents,
+  selectBuiltInAgentEnabled,
+  selectCloudRunnerWsUrl,
+  useConfigStore,
+} from './config-store'
 
 const storageKey = 'thunderbolt-config'
 
@@ -47,6 +52,15 @@ describe('config store', () => {
 
     expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: false })
   })
+
+  it('drops the runner endpoint when a later response omits it', () => {
+    // A deployment that turns its runner off must stop placing turns there,
+    // even though the previous response is what localStorage still holds.
+    useConfigStore.getState().updateConfig({ cloudRunner: { wsUrl: 'wss://runner.test/ws' } })
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+
+    expect(selectCloudRunnerWsUrl(useConfigStore.getState().config)).toBeNull()
+  })
 })
 
 describe('selectBuiltInAgentEnabled', () => {
@@ -70,5 +84,19 @@ describe('selectAllowCustomAgents', () => {
 
   it('is forbidden only when explicitly false', () => {
     expect(selectAllowCustomAgents({ allowCustomAgents: false })).toBe(false)
+  })
+})
+
+describe('selectCloudRunnerWsUrl', () => {
+  it('is null when the deployment runs no runner', () => {
+    expect(selectCloudRunnerWsUrl({})).toBeNull()
+  })
+
+  it('returns the configured endpoint', () => {
+    expect(selectCloudRunnerWsUrl({ cloudRunner: { wsUrl: 'wss://runner.test/ws' } })).toBe('wss://runner.test/ws')
+  })
+
+  it('treats a blank endpoint as absent', () => {
+    expect(selectCloudRunnerWsUrl({ cloudRunner: { wsUrl: '   ' } })).toBeNull()
   })
 })

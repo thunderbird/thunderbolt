@@ -6,6 +6,7 @@ import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 import { updateSettings } from '@/dal'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
+import { isBuiltInAgent } from '@/defaults/agents'
 import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { Agent } from '@/types/acp'
@@ -35,6 +36,18 @@ export const findAllowOption = (options: PermissionOption[]): PermissionOption |
 
 /** Builds the stored key for an agent-specific tool allowance. */
 const getToolAllowanceKey = (agentId: string, toolKey: string): string => `${agentId}::${toolKey}`
+
+/** Whether routing this thread to this agent would take an encrypted
+ *  conversation off-device. Encrypted threads are started with a confidential
+ *  (secure-enclave) model, and only the built-in in-process agent keeps the
+ *  prompt inside that boundary — every other agent is a remote ACP endpoint.
+ *  The UI already prevents the selection; this is the invariant behind it,
+ *  re-checked at each point where a prompt could leave. */
+export const isRemoteAgentOnEncryptedThread = (chatThread: ChatThread | null, agent: Agent): boolean =>
+  chatThread?.isEncrypted === 1 && !isBuiltInAgent(agent)
+
+/** Message of the error thrown when {@link isRemoteAgentOnEncryptedThread} holds. */
+export const encryptedThreadAgentErrorMessage = 'Encrypted conversations can only run on the built-in agent.'
 
 /** Connection state for the per-agent ACP adapter. `idle` covers built-in
  *  agents (no handshake) and the initial state before the first send. */
@@ -235,6 +248,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     if (!session) {
       throw new Error('No session found')
+    }
+
+    if (isRemoteAgentOnEncryptedThread(session.chatThread, agent)) {
+      throw new Error(encryptedThreadAgentErrorMessage)
     }
 
     const agentChanged = session.selectedAgent.id !== agent.id

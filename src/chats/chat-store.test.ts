@@ -501,6 +501,40 @@ describe('chat-store', () => {
     it('throws when the session is missing', async () => {
       await expect(useChatStore.getState().setSelectedAgent('nope', customAgent)).rejects.toThrow('No session found')
     })
+
+    describe('encrypted-thread guard', () => {
+      /** Hydrates a session on an encrypted thread without persisting a row —
+       *  the guard runs before any DB work, so the row is irrelevant. */
+      const seedEncryptedSession = (id: string) => {
+        const model = createMockModel({ isConfidential: 1 })
+        hydrateStore({
+          chatInstance: createMockChatInstanceWithValidation(),
+          chatThread: createMockChatThread({ id, isEncrypted: 1 }),
+          id,
+          mcpClients: [],
+          models: [model],
+          selectedModel: model,
+          triggerData: null,
+        })
+      }
+
+      it('refuses a remote agent on an encrypted thread', async () => {
+        seedEncryptedSession('thread-encrypted')
+
+        await expect(useChatStore.getState().setSelectedAgent('thread-encrypted', customAgent)).rejects.toThrow(
+          'Encrypted conversations can only run on the built-in agent.',
+        )
+        expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+      })
+
+      it('allows re-selecting the built-in agent on an encrypted thread', async () => {
+        seedEncryptedSession('thread-encrypted-builtin')
+
+        await useChatStore.getState().setSelectedAgent('thread-encrypted-builtin', builtInAgent)
+
+        expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+      })
+    })
   })
 
   describe('session permission allowances', () => {

@@ -42,6 +42,19 @@ export const computeEffectiveProxyEnabled = (
 ): boolean => (isStandalone() ? read() === 'true' : true)
 
 /**
+ * Whether this client is running with no cloud backend reachable — the desktop
+ * app with its proxy toggle off. Everything that needs our servers (ACP
+ * transports, cloud execution placement) is unavailable in that mode.
+ *
+ * @param isStandalone - platform probe; defaults to the Tauri check
+ * @param read - reads the persisted proxy toggle
+ */
+export const isStandaloneMode = (
+  isStandalone: () => boolean = defaultIsStandalone,
+  read: () => string | null = defaultReadProxyEnabled,
+): boolean => isStandalone() && !computeEffectiveProxyEnabled(isStandalone, read)
+
+/**
  * Canonical fetch-function shape used across the proxy / AI plumbing.
  *
  * `typeof fetch` is ambiguous in this codebase: Bun's globals declare a

@@ -33,11 +33,21 @@ export const wsCarrierSubprotocol = 'thunderbolt.v1'
 /** Bearer subprotocol entries start with this prefix; the rest is the base64url-encoded token. */
 export const wsBearerSubprotocolPrefix = 'thunderbolt.bearer.'
 
-/** Encode a raw bearer token to an RFC 6455 subprotocol-safe base64url string. */
+/** Close code (app-defined 4000–4999 range) emitted when a server accepts the
+ *  WebSocket upgrade but then refuses the socket, so the client distinguishes
+ *  "the server refused me" (re-login flow) from "I never reached the server"
+ *  (network-error toast). Shared by the backend WS routes and the cloud
+ *  runner — the client's reconnect logic keys on the exact value. */
+export const wsCloseUnauthorized = 4001
+
+/** Encode a raw bearer token to an RFC 6455 subprotocol-safe base64url string.
+ *
+ *  Deliberately avoids `Buffer`: bundlers can inject the npm `buffer` polyfill
+ *  as a global (the Tauri webview does), and that polyfill rejects the
+ *  `base64url` encoding — a `typeof Buffer` branch would throw at runtime on
+ *  exactly those platforms. `btoa`/`atob` + `TextEncoder` exist natively in
+ *  every runtime this module targets (browsers, Bun, Node ≥ 16). */
 export const encodeWsBearer = (token: string): string => {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(token, 'utf-8').toString('base64url')
-  }
   const bytes = new TextEncoder().encode(token)
   let binary = ''
   for (const b of bytes) {
@@ -52,14 +62,6 @@ export const decodeWsBearer = (encoded: string): string | null => {
   if (!encoded) {
     return null
   }
-  if (typeof Buffer !== 'undefined') {
-    try {
-      const decoded = Buffer.from(encoded, 'base64url').toString('utf-8')
-      return decoded || null
-    } catch {
-      return null
-    }
-  }
   try {
     const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/')
     const binary = atob(normalized)
@@ -69,4 +71,23 @@ export const decodeWsBearer = (encoded: string): string | null => {
   } catch {
     return null
   }
+}
+
+/**
+ * Extract and decode the bearer token from a comma-separated
+ * `Sec-WebSocket-Protocol` value. Returns `null` when no decodable bearer
+ * entry is present. Shared by every server that terminates the subprotocol
+ * scheme (backend WS routes, cloud runner).
+ */
+export const extractBearerSubprotocol = (header: string | null): string | null => {
+  if (!header) {
+    return null
+  }
+  for (const raw of header.split(',')) {
+    const entry = raw.trim()
+    if (entry.startsWith(wsBearerSubprotocolPrefix)) {
+      return decodeWsBearer(entry.slice(wsBearerSubprotocolPrefix.length))
+    }
+  }
+  return null
 }

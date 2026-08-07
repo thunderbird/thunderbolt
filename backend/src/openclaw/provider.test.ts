@@ -104,7 +104,7 @@ describe('createOpenclawProvider', () => {
   test('deploy records the deployment, mints a non-expiring token, and returns the relay as pending', async () => {
     const deps = fakeDeps()
     const provider = createOpenclawProvider(deps)
-    const result = await provider.deploy!({ model: 'opus-4.8' }, ctx('user-a'))
+    const result = await provider.deploy!({ model: 'deepseek-v4-flash' }, ctx('user-a'))
 
     expect(result.deploymentId).toBe(`${openclawProviderId}:e2b:sbx-1`)
     expect(result.status).toBe('pending')

@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { useMobileForegroundPortalTarget } from '@/components/ui/mobile-foreground-portal'
 import { Scrim } from '@/components/ui/scrim'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { getMobileBottomInset } from '@/lib/constants'
 
@@ -41,22 +42,34 @@ export const PageCreateAction = ({ label, onClick, disabled }: PageCreateActionP
   const portalTarget = useMobileForegroundPortalTarget()
 
   if (!isMobile) {
+    // Icon-only on desktop: aria-label covers a11y; tooltip covers hover discovery
+    // (same pattern as other settings + controls). Wrap in a span so the tooltip
+    // still works when the button is disabled.
     return (
-      <Button
-        variant="ghost"
-        size="icon"
-        // PageHeader pulls general actions in by 8px to align with row controls.
-        // The primary create action instead aligns its outer edge with the
-        // content surface itself, so compensate for that shared inset.
-        // Match the surrounding settings cards while retaining the ghost
-        // button's hover treatment.
-        className="-mr-2 border bg-card hover:bg-accent"
-        aria-label={label}
-        onClick={onClick}
-        disabled={disabled}
-      >
-        <Plus />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              // PageHeader pulls general actions in by 8px to align with row controls.
+              // The primary create action instead aligns its outer edge with the
+              // content surface itself, so compensate for that shared inset.
+              // Match the surrounding settings cards while retaining the ghost
+              // button's hover treatment.
+              className="-mr-2 border bg-card hover:bg-accent"
+              aria-label={label}
+              onClick={onClick}
+              disabled={disabled}
+            >
+              <Plus />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p>{label}</p>
+        </TooltipContent>
+      </Tooltip>
     )
   }
 

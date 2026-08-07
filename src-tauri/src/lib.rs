@@ -100,7 +100,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     {
         std::env::set_var("JSC_useOMGJIT", "false");
     }
-  
+
     // `transparent: true` now lives only in tauri.macos.conf.json, so the iOS
     // WKWebView is opaque by default. This belt-and-suspenders call keeps it
     // opaque regardless: a non-opaque webview would let the root view

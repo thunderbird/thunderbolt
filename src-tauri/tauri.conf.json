@@ -20,6 +20,7 @@
         "visible": false
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": {
         "default-src": "'self' tauri: asset:",

@@ -254,6 +254,9 @@ describe('ReasoningGroup', () => {
       // ReasoningDisplay should render the reasoning text when streaming
       // It might be in a specific container, so check the container
       expect(container.textContent).toContain('Let me think about this...')
+      // Thinking-only turns must keep a visible status label (empty title + spinner
+      // reads as a hung chat).
+      expect(screen.getByTestId('tool-status')).toHaveTextContent('Thinking')
     })
 
     it('should not render ReasoningDisplay when hasTextPart is true', () => {

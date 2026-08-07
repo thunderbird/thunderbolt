@@ -668,9 +668,18 @@ export const aiFetchStreamingResponse = async ({
       providerId: model.provider,
       model: baseModel,
       middleware: [
+        // Extract `<think>...</think>` from content when present. Do NOT pass
+        // `startWithReasoning` from `model.startWithReasoning` — that DB flag
+        // means “model can think / show Thinking chip”, while the middleware
+        // option means “treat all content as reasoning until </think>”.
+        // Ollama thinking models emit a native `reasoning` field and plain
+        // answer `content` with no closing tag; wiring the chip flag through
+        // here classifies the answer as reasoning forever and never emits
+        // reasoning-end (stuck spinner with the reply stuck in the muted
+        // Thinking pane).
         extractReasoningMiddleware({
           tagName: 'think',
-          startWithReasoning: Boolean(model.startWithReasoning),
+          startWithReasoning: false,
         }),
       ],
     })

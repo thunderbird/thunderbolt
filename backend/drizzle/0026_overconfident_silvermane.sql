@@ -1,0 +1,6 @@
+-- This Source Code Form is subject to the terms of the Mozilla Public
+-- License, v. 2.0. If a copy of the MPL was not distributed with this
+-- file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+DROP TABLE "powersync"."modes" CASCADE;--> statement-breakpoint
+ALTER TABLE "powersync"."chat_threads" DROP COLUMN "mode_id";

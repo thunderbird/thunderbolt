@@ -132,11 +132,34 @@ export const agentConnectionSchema = z.object({
 })
 export type AgentConnection = z.infer<typeof agentConnectionSchema>
 
+/** Wire compatibility the deployed sandbox dials the model with. `anthropic` maps
+ *  to OpenClaw's `--custom-compatibility anthropic`; everything else uses `openai`. */
+export const deployCompatibilitySchema = z.enum(['openai', 'anthropic'])
+export type DeployCompatibility = z.infer<typeof deployCompatibilitySchema>
+
+/**
+ * Resolved model connection a deploy targets. Managed models omit `apiKey` (the
+ * backend mints a scoped token and overrides `baseUrl`); BYOK models carry the
+ * provider `baseUrl` + the user's key (read from the local-only secrets table —
+ * the only place it exists).
+ */
+export const deployModelConnectionSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  baseUrl: z.string(),
+  compatibility: deployCompatibilitySchema,
+  apiKey: z.string().optional(),
+})
+export type DeployModelConnection = z.infer<typeof deployModelConnectionSchema>
+
 /** Body of `POST /agents/deploy`. */
 export const deployRequestSchema = z.object({
   descriptorId: z.string(),
   schemaVersion: z.number().int().nonnegative(),
   spec: agentSpecSchema,
+  /** The resolved deploy target. Optional — non-model providers (e.g. haystack)
+   *  ignore it. */
+  modelConnection: deployModelConnectionSchema.optional(),
 })
 export type DeployRequest = z.infer<typeof deployRequestSchema>
 

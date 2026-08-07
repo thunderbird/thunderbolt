@@ -17,8 +17,19 @@ import {
 
 const config: OpenclawE2bConfig = {
   apiKey: 'e2b-key',
-  publicApiUrl: 'https://api.thunderbolt.example',
-  model: 'opus-4.8',
+  inference: { kind: 'managed', publicApiUrl: 'https://api.thunderbolt.example', model: 'opus-4.8' },
+}
+
+const byokConfig: OpenclawE2bConfig = {
+  apiKey: 'e2b-key',
+  inference: {
+    kind: 'byok',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: 'sk-user-byok',
+    model: 'gpt-5',
+    providerId: 'openai',
+    compatibility: 'openai',
+  },
 }
 
 /** Deploy hooks that record their order + arguments and hand back a scripted token. */
@@ -117,6 +128,8 @@ describe('deployOpenclawSandbox', () => {
     expect(launchEnvs.OPENAI_BASE_URL).toBe('https://api.thunderbolt.example/v1')
     expect(launchEnvs.OPENAI_API_KEY).toBe('agent-token')
     expect(launchEnvs.MODEL).toBe('opus-4.8')
+    expect(launchEnvs.PROVIDER_ID).toBe('thunderbolt')
+    expect(launchEnvs.COMPATIBILITY).toBe('openai')
     expect(launchEnvs.PORT).toBe('8790')
     expect(launchEnvs.OPENROUTER_API_KEY).toBeUndefined()
 
@@ -125,6 +138,29 @@ describe('deployOpenclawSandbox', () => {
     expect(fake.events).toEqual(['run'])
     expect(hooks.recordedSandboxId).toBe('sbx-1')
     expect(hooks.mintedSandboxId).toBe('sbx-1')
+  })
+
+  test('byok deploy dials the provider directly with the user key and never mints', async () => {
+    const fake = fakeClient()
+    const hooks = fakeHooks()
+
+    const result = await deployOpenclawSandbox('user-a', byokConfig, hooks, { client: fake.client })
+    expect(result).toEqual({ sandboxId: 'sbx-1', wsUrl: 'wss://8790-sbx-1.e2b.app' })
+
+    const launchEnvs = fake.ran[0]?.envs ?? {}
+    expect(launchEnvs.OPENAI_BASE_URL).toBe('https://api.openai.com/v1')
+    expect(launchEnvs.OPENAI_API_KEY).toBe('sk-user-byok')
+    expect(launchEnvs.MODEL).toBe('gpt-5')
+    expect(launchEnvs.PROVIDER_ID).toBe('openai')
+    expect(launchEnvs.COMPATIBILITY).toBe('openai')
+    expect(launchEnvs.PORT).toBe('8790')
+
+    // The BYOK key never lands in create metadata (only owner + kind).
+    expect(fake.created[0]?.opts.metadata).toEqual({ userId: 'user-a', kind: 'openclaw' })
+
+    // Recorded but NOT minted — the key comes from the connection, not our inference.
+    expect(hooks.events).toEqual(['record'])
+    expect(hooks.mintedSandboxId).toBeUndefined()
   })
 
   test('kills the sandbox when recording the deployment fails, before minting or launching', async () => {

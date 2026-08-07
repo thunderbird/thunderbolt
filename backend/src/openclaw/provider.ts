@@ -14,16 +14,19 @@ import type {
   AgentConnection,
   AgentDescriptor,
   AgentSpec,
+  DeployModelConnection,
   DeploymentStatusResponse,
   DeployResponse,
   UndeployResponse,
 } from '@shared/agent-descriptors'
+import { isManagedProvider } from '@shared/agent-model-connection'
 import {
   deployOpenclawSandbox,
   killOpenclawSandboxForUser,
   openclawSandboxStatusForUser,
   type OpenclawE2bConfig,
   type OpenclawE2bDeps,
+  type OpenclawInference,
 } from './e2b'
 
 /**
@@ -58,16 +61,95 @@ export const openclawProviderId = 'openclaw'
 /** The sandbox backend encoded in a deployment ref (`<backend>:<sandboxId>`). Only E2B for now. */
 const e2bRefPrefix = 'e2b'
 
-/** Version of {@link openclawDescriptor}; bump when its fields change. */
-const openclawSchemaVersion = 2
+/**
+ * Version of {@link openclawDescriptor}; bump when its fields change. Bumped to 3
+ * when the model select's option VALUE changed from the model string to the model
+ * id: the connection (base URL + BYOK key vs. managed token) is resolved
+ * client-side from that id and sent as `modelConnection`, which the deploy
+ * re-validates here per provider.
+ */
+const openclawSchemaVersion = 3
+
+/** BYOK providers a sandbox can dial directly (fixed base URLs + `custom`). */
+const byokProviders = new Set(['openai', 'openrouter', 'anthropic', 'custom'])
+
+/**
+ * A loopback host a cloud sandbox could never reach (LM Studio / Ollama on the
+ * user's own machine): `localhost`, `*.localhost`, the 127.0.0.0/8 range, and
+ * `::1`. Such `custom` models are excluded from deploy.
+ */
+const isLoopbackHost = (host: string): boolean => {
+  const bare = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host
+  const lower = bare.toLowerCase()
+  if (lower === 'localhost' || lower.endsWith('.localhost')) {
+    return true
+  }
+  if (bare.includes(':')) {
+    return lower === '::1'
+  }
+  const octets = bare.split('.')
+  return octets.length === 4 && octets[0] === '127' && octets.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)
+}
+
+/** Whether a BYOK base URL is dialable from a cloud sandbox: https + non-loopback. */
+const isReachableByokUrl = (url: string): boolean => {
+  const parsed = URL.canParse(url) ? new URL(url) : null
+  return Boolean(parsed && parsed.protocol === 'https:' && !isLoopbackHost(parsed.hostname))
+}
+
+/**
+ * Resolve the sandbox's inference target from the (client-sent) connection,
+ * re-validating it here as the authority. Managed deploys (no connection, or the
+ * Thunderbolt provider) must name a model in the managed catalog; BYOK deploys
+ * must carry a non-empty key + model, a reachable https base URL, and the wire
+ * compatibility that matches the provider. Anything unservable — `tinfoil`, a
+ * loopback `custom` URL, an unknown provider — throws {@link UnsupportedModelError}.
+ */
+const resolveOpenclawInference = (
+  spec: AgentSpec,
+  modelConnection: DeployModelConnection | undefined,
+  settings: Settings,
+): OpenclawInference => {
+  const provider = modelConnection?.provider ?? 'thunderbolt'
+  if (!modelConnection || isManagedProvider(provider)) {
+    const specModel = typeof spec.model === 'string' ? spec.model : ''
+    const model = (modelConnection?.model ?? specModel).trim()
+    if (!(model in supportedModels)) {
+      throw new UnsupportedModelError(model)
+    }
+    return { kind: 'managed', publicApiUrl: settings.publicApiUrl, model }
+  }
+  const label = `${provider}/${modelConnection.model}`
+  const apiKey = modelConnection.apiKey?.trim() ?? ''
+  const model = modelConnection.model.trim()
+  const expectedCompatibility = provider === 'anthropic' ? 'anthropic' : 'openai'
+  if (
+    !byokProviders.has(provider) ||
+    !apiKey ||
+    !model ||
+    !isReachableByokUrl(modelConnection.baseUrl) ||
+    modelConnection.compatibility !== expectedCompatibility
+  ) {
+    throw new UnsupportedModelError(label)
+  }
+  return {
+    kind: 'byok',
+    baseUrl: modelConnection.baseUrl,
+    apiKey,
+    model,
+    providerId: provider,
+    compatibility: modelConnection.compatibility,
+  }
+}
 
 /**
  * Curated "Add agent" form for OpenClaw. Owner-managed sandbox: the backend fixes
- * the provider (E2B) and wires inference to our managed models, so the user picks
- * only a display name and which managed model to run. The `model` options are
- * resolved by the frontend from the `account-models` source (the same managed
- * catalog `/v1/chat/completions` serves), so the descriptor stays serverless of
- * the model list.
+ * the provider (E2B), so the user picks only a display name and which deployable
+ * account model to run. The `model` options are resolved by the frontend from the
+ * `account-models` source (managed + BYOK providers, excluding tinfoil and loopback
+ * custom URLs), so the descriptor stays serverless of the model list. The chosen
+ * model's connection (managed token vs. BYOK base URL + key) is resolved
+ * client-side and re-validated on deploy — see {@link resolveOpenclawInference}.
  */
 const openclawDescriptor: AgentDescriptor = {
   id: openclawProviderId,
@@ -141,15 +223,16 @@ export const createOpenclawProvider = (deps: OpenclawProviderDeps = {}): AgentPr
   list: (): RemoteAgentDescriptor[] => [],
   catalog: ({ settings }: ProviderContext): AgentDescriptor[] =>
     isOpenclawConfigured(settings) ? [openclawDescriptor] : [],
-  deploy: async (spec: AgentSpec, { request, settings, userId }: ProviderContext): Promise<DeployResponse> => {
-    const model = typeof spec.model === 'string' ? spec.model.trim() : ''
-    // Reject anything we can't serve (empty, or a model outside the managed
-    // catalog — e.g. GLM) before we ever create a sandbox.
-    if (!(model in supportedModels)) {
-      throw new UnsupportedModelError(model)
-    }
+  deploy: async (
+    spec: AgentSpec,
+    { request, settings, userId, modelConnection }: ProviderContext,
+  ): Promise<DeployResponse> => {
+    // Resolve + validate the target before we ever create a sandbox: an unservable
+    // model (empty / outside the managed catalog, tinfoil, a loopback custom URL,
+    // or a malformed BYOK connection) throws here and never provisions a microVM.
+    const inference = resolveOpenclawInference(spec, modelConnection, settings)
     const database = deps.database ?? db
-    const config: OpenclawE2bConfig = { apiKey: settings.e2bApiKey, publicApiUrl: settings.publicApiUrl, model }
+    const config: OpenclawE2bConfig = { apiKey: settings.e2bApiKey, inference }
     const deploymentIdFor = (sandboxId: string) =>
       encodeDeploymentId(openclawProviderId, `${e2bRefPrefix}:${sandboxId}`)
     const sandbox = await deployOpenclawSandbox(

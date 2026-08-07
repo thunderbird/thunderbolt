@@ -63,10 +63,20 @@ const fakeDeps = (
   }
 }
 
-const ctx = (userId: string): ProviderContext => ({
+const ctx = (userId: string, modelConnection?: ProviderContext['modelConnection']): ProviderContext => ({
   request: new Request('http://localhost:8000/v1/agents/deploy'),
   settings: configuredSettings(),
   userId,
+  modelConnection,
+})
+
+const byokConnection = (overrides: Partial<NonNullable<ProviderContext['modelConnection']>> = {}) => ({
+  provider: 'openai',
+  model: 'gpt-5',
+  baseUrl: 'https://api.openai.com/v1',
+  compatibility: 'openai' as const,
+  apiKey: 'sk-user-byok',
+  ...overrides,
 })
 
 describe('createOpenclawProvider', () => {
@@ -78,9 +88,9 @@ describe('createOpenclawProvider', () => {
     ).toEqual([])
   })
 
-  test('catalog ships schemaVersion 2 with a required fetched model field', () => {
+  test('catalog ships schemaVersion 3 with a required fetched model field', () => {
     const [descriptor] = createOpenclawProvider().catalog?.({ ...ctx('user-a'), settings: configuredSettings() }) ?? []
-    expect(descriptor?.schemaVersion).toBe(2)
+    expect(descriptor?.schemaVersion).toBe(3)
     const modelField = descriptor?.steps.flatMap((s) => s.fields).find((f) => f.key === 'model')
     expect(modelField?.required).toBe(true)
     expect(modelField?.source).toEqual({ kind: 'fetched', sourceId: 'account-models' })
@@ -120,6 +130,88 @@ describe('createOpenclawProvider', () => {
 
     await expect(provider.deploy!({ model: 'glm-5-2' }, ctx('user-a'))).rejects.toThrow(/unsupported model/i)
     await expect(provider.deploy!({}, ctx('user-a'))).rejects.toThrow(/unsupported model/i)
+    expect(created).toBe(false)
+    expect(deps.recorded).toEqual([])
+  })
+
+  test('byok deploy records but never mints — the sandbox dials the provider with the user key', async () => {
+    const launched: (Record<string, string> | undefined)[] = []
+    const deps = fakeDeps({
+      client: {
+        ...fakeClient(),
+        create: async () => ({
+          ...makeSandbox('sbx-1'),
+          commands: {
+            run: async (_cmd, opts) => {
+              launched.push(opts.envs)
+            },
+          },
+        }),
+      },
+    })
+    const provider = createOpenclawProvider(deps)
+
+    const result = await provider.deploy!({ model: 'model-id' }, ctx('user-a', byokConnection()))
+    expect(result.status).toBe('pending')
+    expect(result.deploymentId).toBe(`${openclawProviderId}:e2b:sbx-1`)
+
+    expect(deps.recorded).toEqual([{ deploymentId: `${openclawProviderId}:e2b:sbx-1`, userId: 'user-a' }])
+    expect(deps.minted).toEqual([])
+    expect(launched[0]?.OPENAI_BASE_URL).toBe('https://api.openai.com/v1')
+    expect(launched[0]?.OPENAI_API_KEY).toBe('sk-user-byok')
+    expect(launched[0]?.PROVIDER_ID).toBe('openai')
+    expect(launched[0]?.COMPATIBILITY).toBe('openai')
+  })
+
+  test('anthropic byok deploy uses anthropic compatibility', async () => {
+    const launched: (Record<string, string> | undefined)[] = []
+    const deps = fakeDeps({
+      client: {
+        ...fakeClient(),
+        create: async () => ({
+          ...makeSandbox('sbx-1'),
+          commands: { run: async (_cmd, opts) => void launched.push(opts.envs) },
+        }),
+      },
+    })
+    const provider = createOpenclawProvider(deps)
+
+    const connection = byokConnection({
+      provider: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      compatibility: 'anthropic',
+    })
+    await provider.deploy!({ model: 'model-id' }, ctx('user-a', connection))
+    expect(launched[0]?.COMPATIBILITY).toBe('anthropic')
+    expect(deps.minted).toEqual([])
+  })
+
+  test('byok deploy rejects tinfoil, loopback custom, missing key, and mismatched compatibility', async () => {
+    let created = false
+    const deps = fakeDeps({
+      client: {
+        ...fakeClient(),
+        create: async () => {
+          created = true
+          return makeSandbox('sbx-1')
+        },
+      },
+    })
+    const provider = createOpenclawProvider(deps)
+
+    const cases = [
+      byokConnection({ provider: 'tinfoil' }),
+      byokConnection({ provider: 'custom', baseUrl: 'http://localhost:1234/v1' }),
+      byokConnection({ provider: 'custom', baseUrl: 'https://127.0.0.1/v1' }),
+      byokConnection({ apiKey: '' }),
+      byokConnection({ baseUrl: 'http://api.openai.com/v1' }), // non-https
+      byokConnection({ provider: 'openai', compatibility: 'anthropic' }), // wrong compatibility
+    ]
+    for (const connection of cases) {
+      await expect(provider.deploy!({ model: 'model-id' }, ctx('user-a', connection))).rejects.toThrow(
+        /unsupported model/i,
+      )
+    }
     expect(created).toBe(false)
     expect(deps.recorded).toEqual([])
   })

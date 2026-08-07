@@ -24,11 +24,12 @@ const acpPort = 8790
  * Our own OpenClaw launch, run in place of the image's baked
  * `/opt/docker-entrypoint.sh`. That entrypoint hard-wires OpenRouter (requires
  * `OPENROUTER_API_KEY` and onboards with `--auth-choice openrouter-api-key`), so
- * it can't run on our managed inference. Instead we drive the `openclaw` CLI
- * (already in the image at `~/.openclaw/bin`) to onboard a *custom*
- * OpenAI-compatible provider pointed at `${OPENAI_BASE_URL}` with the
- * per-deployment token as its API key — no provider key ever enters the sandbox.
- * The gateway + ACP↔WS shim start exactly as the baked entrypoint does.
+ * it can't run on an arbitrary target. Instead we drive the `openclaw` CLI
+ * (already in the image at `~/.openclaw/bin`) to onboard a *custom* provider
+ * pointed at `${OPENAI_BASE_URL}` with `${OPENAI_API_KEY}` as its key, using the
+ * runtime-supplied `${PROVIDER_ID}` and `${COMPATIBILITY}` (managed inference vs.
+ * a BYOK provider). The gateway + ACP↔WS shim start exactly as the baked
+ * entrypoint does.
  *
  * `~/.openclaw/bin` is only on PATH via `.bashrc` (not our non-login
  * `commands.run` shell), so the script exports it explicitly.
@@ -44,13 +45,13 @@ if [ ! -f "\${STATE_DIR}/openclaw.json" ]; then
     --auth-choice custom-api-key \\
     --custom-base-url "\${OPENAI_BASE_URL}" \\
     --custom-api-key "\${OPENAI_API_KEY}" \\
-    --custom-compatibility openai \\
-    --custom-provider-id thunderbolt \\
+    --custom-compatibility "\${COMPATIBILITY}" \\
+    --custom-provider-id "\${PROVIDER_ID}" \\
     --custom-model-id "\${MODEL}" \\
     --skip-channels --skip-daemon --skip-ui --skip-health \\
     --workspace "\${STATE_DIR}/workspace"
 fi
-openclaw config set agents.defaults.model.primary "thunderbolt/\${MODEL}" >/dev/null 2>&1 || true
+openclaw config set agents.defaults.model.primary "\${PROVIDER_ID}/\${MODEL}" >/dev/null 2>&1 || true
 
 openclaw gateway run --auth none --bind loopback --force &
 for _ in $(seq 1 60); do
@@ -96,15 +97,31 @@ const idleTimeoutMs = 15 * 60 * 1000
 export type OpenclawSandbox = { sandboxId: string; wsUrl: string }
 
 /**
- * Everything a deploy needs, mapped from settings at the call site so this module
- * stays settings-agnostic. The sandbox runs on OUR managed inference: `publicApiUrl`
- * is the externally-resolvable backend origin it dials, `model` is the managed
- * model id the deploy targets (e.g. `opus-4.8`).
+ * The resolved inference target a sandbox dials, discriminated by ownership of the
+ * key. `managed` runs on OUR inference: `publicApiUrl` is the externally-resolvable
+ * backend origin, and the backend mints the sandbox's key at deploy time. `byok`
+ * carries a provider's own base URL + the user's key, dialed directly — no token is
+ * minted. The provider (`provider.ts`) validates and builds this before deploy.
+ */
+export type OpenclawInference =
+  | { kind: 'managed'; publicApiUrl: string; model: string }
+  | {
+      kind: 'byok'
+      baseUrl: string
+      apiKey: string
+      model: string
+      providerId: string
+      compatibility: 'openai' | 'anthropic'
+    }
+
+/**
+ * Everything a deploy needs, mapped from settings + the resolved model connection
+ * at the call site so this module stays settings-agnostic. `apiKey` is the E2B key;
+ * `inference` is the target the sandbox dials (see {@link OpenclawInference}).
  */
 export type OpenclawE2bConfig = {
   apiKey: string
-  publicApiUrl: string
-  model: string
+  inference: OpenclawInference
 }
 
 /**
@@ -205,21 +222,42 @@ export type OpenclawE2bDeps = {
 /** E2B's `getHost(port)` returns a host that already encodes the port, so the relay dials `wss://<host>` (TLS/443). */
 const wsUrlFor = (sandbox: E2bSandbox): string => `wss://${sandbox.getHost(acpPort)}`
 
+/** Map the resolved inference target to the launch envs the entrypoint reads (the
+ *  key is added separately so it never lands in create metadata or logs). */
+const baseEnvsFor = (inference: OpenclawInference): Record<string, string> =>
+  inference.kind === 'managed'
+    ? {
+        OPENAI_BASE_URL: `${inference.publicApiUrl}/v1`,
+        MODEL: inference.model,
+        PROVIDER_ID: 'thunderbolt',
+        COMPATIBILITY: 'openai',
+        PORT: String(acpPort),
+      }
+    : {
+        OPENAI_BASE_URL: inference.baseUrl,
+        MODEL: inference.model,
+        PROVIDER_ID: inference.providerId,
+        COMPATIBILITY: inference.compatibility,
+        PORT: String(acpPort),
+      }
+
 /**
- * Provision a fresh OpenClaw sandbox for `userId`, wired to our managed inference.
+ * Provision a fresh OpenClaw sandbox for `userId`, wired to the resolved inference
+ * target (managed or BYOK — see {@link OpenclawInference}).
  *
- * Ordering resolves the chicken-and-egg (the token must name the deployment,
- * whose id encodes the sandbox id): create the sandbox → record the deployment →
- * mint the scoped token → launch the stack with the token in `envs`. The launch
- * onboards OpenClaw's custom OpenAI-compatible provider against `${publicApiUrl}/v1`
- * with that token as its API key (see {@link openclawLaunchScript}). No provider
- * key ever enters the sandbox.
+ * Ordering resolves the chicken-and-egg for managed deploys (the minted token must
+ * name the deployment, whose id encodes the sandbox id): create the sandbox →
+ * record the deployment → resolve the API key → launch the stack with the key in
+ * `envs`. For `managed` the key is `hooks.mintToken(sandboxId)` (a scoped token for
+ * our inference); for `byok` it is the user's own key carried on the connection and
+ * `mintToken` is never called. The launch onboards a custom provider against
+ * `${OPENAI_BASE_URL}` (see {@link openclawLaunchScript}).
  *
  * Returns immediately — it does NOT wait for ACP to come up (that ~15-30s boot is
  * observed via {@link openclawSandboxStatusForUser}, so the client persists the
  * agent up front and the status badge tracks readiness). Tears the sandbox down
  * if anything after create fails (record / mint / launch), so a failed deploy
- * never leaks a running microVM.
+ * never leaks a running microVM. The API key is never logged or stored in metadata.
  */
 export const deployOpenclawSandbox = async (
   userId: string,
@@ -228,11 +266,7 @@ export const deployOpenclawSandbox = async (
   deps: OpenclawE2bDeps = {},
 ): Promise<OpenclawSandbox> => {
   const client = deps.client ?? defaultE2bClient
-  const baseEnvs = {
-    OPENAI_BASE_URL: `${config.publicApiUrl}/v1`,
-    MODEL: config.model,
-    PORT: String(acpPort),
-  }
+  const baseEnvs = baseEnvsFor(config.inference)
   const sandbox = await client.create(openclawTemplate, {
     apiKey: config.apiKey,
     timeoutMs: idleTimeoutMs,
@@ -246,8 +280,9 @@ export const deployOpenclawSandbox = async (
   })
   try {
     await hooks.recordDeployment(sandbox.sandboxId)
-    const token = await hooks.mintToken(sandbox.sandboxId)
-    const envs = { ...baseEnvs, OPENAI_API_KEY: token }
+    const apiKey =
+      config.inference.kind === 'managed' ? await hooks.mintToken(sandbox.sandboxId) : config.inference.apiKey
+    const envs = { ...baseEnvs, OPENAI_API_KEY: apiKey }
     await sandbox.commands.run(entrypointCommand, { background: true, envs })
     return { sandboxId: sandbox.sandboxId, wsUrl: wsUrlFor(sandbox) }
   } catch (err) {

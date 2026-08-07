@@ -17,6 +17,7 @@ import {
   visibleFields,
   type AgentDescriptor,
   type AgentField,
+  type AgentFieldOption,
   type AgentSpec,
 } from '@shared/agent-descriptors'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { submittableSpec } from './submittable-spec'
+import { fieldOptions, fieldOptionsLoading, type OptionSources } from './option-sources'
 
 type DescriptorFormProps = {
   descriptor: AgentDescriptor
@@ -37,12 +39,19 @@ type DescriptorFormProps = {
   isSubmitting?: boolean
   /** A submit-time error (e.g. a failed deploy) shown next to the buttons. */
   error?: string | null
+  /** Resolved `fetched` option sources (e.g. `account-models`); inline sources ignore this. */
+  optionSources?: OptionSources
 }
 
-const inlineOptions = (field: AgentField) => (field.source?.kind === 'inline' ? field.source.options : [])
+type FieldControlProps = {
+  field: AgentField
+  rhf: ControllerRenderProps<AgentSpec, string>
+  options: AgentFieldOption[]
+  isLoading: boolean
+}
 
 /** Render the control for a single field's widget. Unknown widgets degrade to a note. */
-const FieldControl = ({ field, rhf }: { field: AgentField; rhf: ControllerRenderProps<AgentSpec, string> }) => {
+const FieldControl = ({ field, rhf, options, isLoading }: FieldControlProps) => {
   const value = typeof rhf.value === 'string' ? rhf.value : ''
   switch (field.widget) {
     case 'textarea':
@@ -52,14 +61,32 @@ const FieldControl = ({ field, rhf }: { field: AgentField; rhf: ControllerRender
         <Input {...rhf} value={value} type="password" placeholder={field.placeholder} maxLength={field.maxLength} />
       )
     case 'select':
-    case 'option-cards':
+    case 'option-cards': {
+      if (isLoading) {
+        return (
+          <Select disabled>
+            <SelectTrigger>
+              <SelectValue placeholder="Loading…" />
+            </SelectTrigger>
+          </Select>
+        )
+      }
+      if (options.length === 0) {
+        return (
+          <Select disabled>
+            <SelectTrigger>
+              <SelectValue placeholder="No models available" />
+            </SelectTrigger>
+          </Select>
+        )
+      }
       return (
         <Select value={value} onValueChange={rhf.onChange}>
           <SelectTrigger>
             <SelectValue placeholder={field.placeholder ?? 'Select an option'} />
           </SelectTrigger>
           <SelectContent>
-            {inlineOptions(field).map((option) => (
+            {options.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -67,6 +94,7 @@ const FieldControl = ({ field, rhf }: { field: AgentField; rhf: ControllerRender
           </SelectContent>
         </Select>
       )
+    }
     case 'text':
       return <Input {...rhf} value={value} placeholder={field.placeholder} maxLength={field.maxLength} />
     default:
@@ -84,6 +112,7 @@ export const DescriptorForm = ({
   submitLabel = 'Deploy',
   isSubmitting = false,
   error,
+  optionSources = {},
 }: DescriptorFormProps) => {
   const form = useForm<AgentSpec>({
     // zod v4's resolver infers `Record<string, unknown>`; the descriptor's spec
@@ -111,7 +140,12 @@ export const DescriptorForm = ({
                 <FormItem>
                   <FormLabel>{field.label}</FormLabel>
                   <FormControl>
-                    <FieldControl field={field} rhf={rhf} />
+                    <FieldControl
+                      field={field}
+                      rhf={rhf}
+                      options={fieldOptions(field, optionSources)}
+                      isLoading={fieldOptionsLoading(field, optionSources)}
+                    />
                   </FormControl>
                   {field.helpText && <FormDescription>{field.helpText}</FormDescription>}
                   <FormMessage />

@@ -32,6 +32,7 @@ import { createAgent } from '@/dal'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentDescriptor, AgentSpec } from '@shared/agent-descriptors'
 import { DescriptorForm } from './descriptor-form/descriptor-form'
+import { useDescriptorOptionSources } from './descriptor-form/option-sources'
 
 type AddAgentPanelProps = {
   onClose: () => void
@@ -64,6 +65,7 @@ export const AddAgentPanel = ({ onClose, allowConnect, loadAppNodeId, enrollIroh
   const [error, setError] = useState<string | null>(null)
 
   const addCustomAgent = useAddCustomAgent({ loadAppNodeId, enrollIroh })
+  const optionSources = useDescriptorOptionSources()
 
   const handleDeploy = async (spec: AgentSpec) => {
     if (!cloudUrl || !userId || !selected) {
@@ -119,6 +121,7 @@ export const AddAgentPanel = ({ onClose, allowConnect, loadAppNodeId, enrollIroh
           submitLabel="Deploy"
           isSubmitting={isDeploying}
           error={error}
+          optionSources={optionSources}
         />
       )
     }

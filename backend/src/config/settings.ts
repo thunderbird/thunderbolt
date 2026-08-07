@@ -79,6 +79,14 @@ const settingsSchema = z
       .string()
       .default('http://localhost:1420')
       .transform((s) => s.replace(/\/$/, '')),
+    // Externally-resolvable origin of THIS backend — the URL a deployed sandbox
+    // agent dials to reach our managed inference (`${publicApiUrl}/v1`). Distinct
+    // from `appUrl` (the frontend) and `betterAuthUrl`: a sandbox on E2B cannot
+    // reach `localhost`, so production must set this to the public backend host.
+    publicApiUrl: z
+      .string()
+      .default('http://localhost:8000')
+      .transform((s) => s.replace(/\/$/, '')),
 
     // Analytics settings
     posthogHost: z.string().default('https://us.i.posthog.com'),
@@ -93,6 +101,11 @@ const settingsSchema = z
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
+
+    // Agent inference settings — HMAC secret for the per-deployment inference JWTs
+    // (backend/src/agents/inference-token.ts) that let deployed sandbox agents call
+    // our managed models as the owning user. Must be ≥32 chars when agentDeploy is on.
+    agentInferenceJwtSecret: z.string().default(''),
 
     // CORS settings — comma-separated list of exact origins.
     // `corsAllowHeaders` is no longer consumed by any production mount: both
@@ -173,6 +186,17 @@ const settingsSchema = z
         input: '[REDACTED]',
       })
     }
+    if (data.agentDeploy && data.agentInferenceJwtSecret.length < 32) {
+      ctx.addIssue({
+        code: 'too_small',
+        origin: 'string',
+        minimum: 32,
+        inclusive: true,
+        message: 'agentInferenceJwtSecret must be at least 32 characters when agentDeploy is enabled',
+        path: ['agentInferenceJwtSecret'],
+        input: '[REDACTED]',
+      })
+    }
   })
 
 export type Settings = z.infer<typeof settingsSchema>
@@ -212,6 +236,7 @@ const parseSettings = (): Settings => {
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',
+    publicApiUrl: process.env.PUBLIC_API_URL || 'http://localhost:8000',
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
@@ -224,6 +249,9 @@ const parseSettings = (): Settings => {
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),
     powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
+    agentInferenceJwtSecret:
+      process.env.AGENT_INFERENCE_JWT_SECRET ||
+      (isDevelopment ? 'agent-inference-dev-secret-change-in-production' : ''),
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',

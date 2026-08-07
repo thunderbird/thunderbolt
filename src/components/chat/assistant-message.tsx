@@ -11,6 +11,7 @@ import {
   type ReasoningGroupUIPart,
   type ToolOrDynamicToolUIPart,
 } from '@/lib/assistant-message'
+import { deriveSourcesFromToolParts } from '@/integrations/thunderbolt-pro/tool-part-sources'
 import { extractTextFromParts } from '@/lib/message-utils'
 import { splitPartType } from '@/lib/utils'
 import type { HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
@@ -127,9 +128,18 @@ export const AssistantMessage = memo(
     const metadata = message.metadata
     const reasoningTime = metadata?.reasoningTime ?? emptyReasoningTime
     const reasoningStartTimes = metadata?.reasoningStartTimes
-    const sources = metadata?.sources
     const haystackReferences = metadata?.haystackReferences
     const mcpTools = metadata?.mcpTools
+
+    // Local turns accumulate the citation registry into metadata while their
+    // tools run; runner turns carry it on each tool result instead, so when the
+    // metadata has none, rebuild it from the tool parts (live, replayed, and
+    // reloaded runner turns all render the same [N] chips).
+    const metadataSources = metadata?.sources
+    const sources = useMemo(
+      () => metadataSources ?? deriveSourcesFromToolParts(message.parts),
+      [metadataSources, message.parts],
+    )
 
     // Memoize part element creation to prevent recreating React nodes unnecessarily
     const partElements: ReactNode[] = useMemo(

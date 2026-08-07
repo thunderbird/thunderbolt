@@ -7,6 +7,14 @@ import { http } from '@/lib/http'
 import { deriveSiteName } from '@/lib/source-utils'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
+import {
+  fetchContentToolDescription,
+  fetchContentToolName,
+  formatSourceLabel,
+  searchToolDescription,
+  searchToolName,
+  sourceRegistryCap,
+} from '@shared/tools/pro-tools-contract'
 import { fetchContent, fetchLinkPreview, search } from './api'
 import {
   fetchContentSchema,
@@ -20,8 +28,6 @@ import {
 export { fetchContent, fetchContentSchema, search, searchSchema }
 export type { FetchContentParams, SearchParams, SearchResultData }
 
-const sourceRegistryCap = 200
-
 /**
  * Thunderbolt Pro Tools Configuration Factory
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
@@ -32,8 +38,8 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
 
   return [
     {
-      name: 'search',
-      description: 'Search the web. Each result has a [Source N] label. Cite with [N] at end of sentence.',
+      name: searchToolName,
+      description: searchToolDescription,
       verb: 'searching for {query}',
       cacheable: true,
       parameters: searchSchema,
@@ -67,14 +73,13 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
             nextIndex++
           }
 
-          return { sourceLabel: `[Source ${sourceIndex}] (cite as [${sourceIndex}])`, sourceIndex, ...result }
+          return { sourceLabel: formatSourceLabel(sourceIndex), sourceIndex, ...result }
         })
       },
     },
     {
-      name: 'fetch_content',
-      description:
-        'Fetch and parse content from a PUBLIC webpage URL. Result has a [Source N] label. Cite with [N] at end of sentence. Do NOT use for Google Drive, Docs, Sheets, or Slides links. Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
+      name: fetchContentToolName,
+      description: fetchContentToolDescription,
       verb: 'fetching {url}',
       cacheable: true,
       parameters: fetchContentSchema,
@@ -139,7 +144,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           nextIndex++
         }
 
-        return { sourceLabel: `[Source ${sourceIndex}] (cite as [${sourceIndex}])`, sourceIndex, ...result }
+        return { sourceLabel: formatSourceLabel(sourceIndex), sourceIndex, ...result }
       },
     },
   ]

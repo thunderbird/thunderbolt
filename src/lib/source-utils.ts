@@ -4,6 +4,11 @@
 
 import type { CitationSource } from '@/types/citation'
 import type { SourceMetadata } from '@/types/source'
+import { deriveSiteName } from '@shared/tools/pro-tools-contract'
+
+// Now part of the shared tool contract (the runner derives site names the same
+// way); re-exported so existing app imports stay put.
+export { deriveSiteName }
 
 /**
  * Converts a SourceMetadata entry to a CitationSource for the rendering pipeline.
@@ -18,17 +23,3 @@ export const sourceToCitation = (source: SourceMetadata, isPrimary = true): Cita
   favicon: source.favicon ?? undefined,
   isPrimary,
 })
-
-/**
- * Derives a site name from a URL's hostname.
- * Strips "www." prefix and returns the remaining hostname.
- * Returns undefined if the URL is invalid.
- */
-export const deriveSiteName = (url: string): string | undefined => {
-  try {
-    const hostname = new URL(url).hostname
-    return hostname.startsWith('www.') ? hostname.slice(4) : hostname
-  } catch {
-    return undefined
-  }
-}

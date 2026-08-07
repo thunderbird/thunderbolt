@@ -5,57 +5,6 @@
 import { z } from 'zod'
 
 /**
- * Haystack pipeline descriptor as configured via the `HAYSTACK_PIPELINES`
- * environment variable. The variable is a JSON array of these objects. Each
- * pipeline becomes one {@link RemoteAgentDescriptor} on `GET /agents`.
- *
- * Deepset Cloud surfaces pipelines under two identifiers:
- *  - `pipelineName` — URL slug used in `/pipelines/${pipelineName}/chat-stream`.
- *  - `pipelineId`   — the workspace-scoped UUID, used as the `pipeline_id`
- *                     body field when bootstrapping a `search_session`.
- *
- * We keep them as separate fields because Deepset can rename a pipeline (slug
- * changes) without re-issuing its UUID, and vice versa.
- *
- *  - `id`          — public slug we surface to the FE (`rag-chat`, etc). The
- *                    only identifier the FE sees.
- *  - `name`        — human-readable label for the agent picker.
- *  - `pipelineName`— Deepset URL slug.
- *  - `pipelineId`  — Deepset UUID.
- *  - `description` — optional one-line description shown in the picker.
- *  - `icon`        — optional Phosphor icon name; defaults applied by the
- *                    provider when omitted.
- *  - `supportedContent` — which prompt content the pipeline accepts. `files:
- *                    true` is load-bearing: it both advertises ACP
- *                    `promptCapabilities.embeddedContext` to the client AND
- *                    switches the run path to `temporary_files` upload +
- *                    `search-stream` (generative pipelines), instead of the
- *                    `search_sessions` + `chat-stream` path used by chat
- *                    pipelines. Absent → `{ text: true, files: false }`, so
- *                    existing chat configs need no change.
- */
-const supportedContentSchema = z
-  .object({
-    text: z.boolean().default(true),
-    files: z.boolean().default(false),
-  })
-  .default({ text: true, files: false })
-
-export const haystackPipelineDescriptorSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  pipelineName: z.string().min(1),
-  pipelineId: z.string().min(1),
-  description: z.string().optional(),
-  icon: z.string().optional(),
-  supportedContent: supportedContentSchema,
-})
-
-export type HaystackPipelineDescriptor = z.infer<typeof haystackPipelineDescriptorSchema>
-
-export const haystackPipelinesEnvSchema = z.array(haystackPipelineDescriptorSchema)
-
-/**
  * SSE event types emitted by Deepset's `/chat-stream` endpoint. Mirrors the
  * shape exercised by Deepset Cloud production traffic and the upstream
  * reference client (PR #531 `backend/src/haystack/client.ts:parseSSE`):

@@ -8,18 +8,28 @@
  * `initialize` handshake, and report success (with the agent's capabilities) or
  * a user-facing error.
  *
- * Unlike {@link connectAcpAdapter}, this opens the endpoint via
- * `openWebSocketTransport` *directly* — skipping the managed-ACP bearer /
- * subprotocol routing in `openTransport`. Remote custom agents carry their own
- * auth (or none), so the probe never needs a backend credential. The transport
- * is always torn down in a `finally`, even on timeout, so no socket leaks.
+ * Opens the endpoint via `openWebSocketTransport` *directly* — not the full
+ * `openTransport` proxy routing. For `managed-acp` agents (deployed catalog
+ * agents whose endpoint is the backend relay) it attaches the same
+ * `thunderbolt.bearer` subprotocol the live transport uses, so the relay
+ * authenticates the probe; without it the relay closes the socket as
+ * unauthorized. Remote custom agents carry their own auth (or none), so they
+ * connect natively with no backend credential. The transport is always torn
+ * down in a `finally`, even on timeout, so no socket leaks.
  */
 
 import type { Agent as AcpSdkAgent, ClientSideConnection, Client } from '@agentclientprotocol/sdk'
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
+import { getAuthToken } from '@/lib/auth-token'
 import type { AgentCapabilities } from '@/types/acp'
+import type { AgentType } from '@shared/acp-types'
 import { adaptCapabilities } from './acp-adapter'
-import { openWebSocketTransport, type WebSocketFactory } from './transports/websocket'
+import {
+  managedAcpSubprotocols,
+  openWebSocketTransport,
+  type WebSocketFactory,
+  type WebSocketLike,
+} from './transports/websocket'
 import type { AcpTransport } from './types'
 
 const protocolVersion = 1
@@ -44,16 +54,37 @@ type ClientSideConnectionCtor = new (
 
 export type TestAcpConnectionOptions = {
   url: string
+  /** The agent's type. `managed-acp` endpoints are the backend relay and need the
+   *  `thunderbolt.bearer` subprotocol; omitted / `remote-acp` probes connect natively. */
+  agentType?: AgentType
   /** Caller-owned signal — aborting tears the probe's transport down. */
   signal?: AbortSignal
-  /** Test seam — production omits and the factory builds a native WebSocket. */
+  /** Test seam — production omits and the factory is derived from `agentType`. */
   webSocketFactory?: WebSocketFactory
+  /** Test seam — production reads the in-memory `getAuthToken()`. */
+  getAuthToken?: () => string | null
   /** Override the handshake timeout. Defaults to 10s, matching the model flow. */
   timeoutMs?: number
   /** Test seam — DI the transport opener. */
   openTransport?: OpenWebSocketTransport
   /** Test seam — DI the SDK connection constructor. */
   ClientSideConnection?: ClientSideConnectionCtor
+}
+
+/**
+ * Pick the WebSocket factory for the probe. An explicit `webSocketFactory`
+ * (tests) wins; otherwise `managed-acp` targets get a bearer-carrying socket and
+ * everything else falls through to `openWebSocketTransport`'s native default.
+ */
+const resolveProbeFactory = (opts: TestAcpConnectionOptions): WebSocketFactory | undefined => {
+  if (opts.webSocketFactory) {
+    return opts.webSocketFactory
+  }
+  if (opts.agentType === 'managed-acp') {
+    const protocols = managedAcpSubprotocols((opts.getAuthToken ?? getAuthToken)())
+    return (url) => new WebSocket(url, protocols) as unknown as WebSocketLike
+  }
+  return undefined
 }
 
 export type TestAcpConnectionResult =
@@ -92,7 +123,7 @@ export const testAcpConnection = async (opts: TestAcpConnectionOptions): Promise
     transport = await openTransport({
       url: opts.url,
       signal,
-      webSocketFactory: opts.webSocketFactory,
+      webSocketFactory: resolveProbeFactory(opts),
     })
 
     const connection = new ConnectionCtor(() => probeClient, transport.stream)

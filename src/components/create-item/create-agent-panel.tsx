@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AddAgentBody } from '@/components/agents/add-agent-body'
 import { DetailPanelSurface } from '@/components/detail-panel'
-import { CreateAgentDetailPanel } from '@/components/settings/agents/create-agent-detail-panel'
 
 type CreateAgentPanelProps = {
   open: boolean
@@ -11,11 +11,11 @@ type CreateAgentPanelProps = {
   onCloseComplete: () => void
 }
 
-/** Adds a custom agent over the current screen without changing routes.
- *  Thin surface wrapper only — the panel body (`CreateAgentDetailPanel`) is
- *  shared with the settings/agents route, so don't inline the form here. */
+/** Adds an agent over the current screen without changing routes. Thin surface
+ *  wrapper only — the panel body (`AddAgentBody`) is shared with the
+ *  settings/agents route, so don't inline the form here. */
 export const CreateAgentPanel = ({ open, onClose, onCloseComplete }: CreateAgentPanelProps) => (
   <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
-    <CreateAgentDetailPanel onClose={onClose} />
+    <AddAgentBody onClose={onClose} />
   </DetailPanelSurface>
 )

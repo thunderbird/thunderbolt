@@ -14,8 +14,14 @@ import { act } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import type { Agent as AcpSdkAgent, Client, InitializeRequest, InitializeResponse } from '@agentclientprotocol/sdk'
+import { encodeWsBearer } from '@shared/ws-bearer'
 import { testAcpConnection, type TestAcpConnectionResult } from './connection-test'
 import type { AcpTransport } from './types'
+
+/** Read the `webSocketFactory` a mocked `openTransport` was invoked with. */
+const factoryPassedTo = (openTransport: unknown): ((url: string) => unknown) | undefined =>
+  (openTransport as { mock: { calls: Array<[{ webSocketFactory?: (url: string) => unknown }]> } }).mock.calls[0][0]
+    .webSocketFactory
 
 type FakeAgentCapabilities = NonNullable<InitializeResponse['agentCapabilities']>
 
@@ -176,5 +182,42 @@ describe('testAcpConnection', () => {
 
     expect(resolved).toEqual({ success: false, error: 'Connection timed out' })
     expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('attaches the carrier + bearer subprotocol for managed-acp agents', async () => {
+    const { openTransport, FakeConnection } = buildFakeDeps({ capabilities: {} })
+    const created: Array<{ url: string; protocols?: string | string[] }> = []
+    const originalWs = globalThis.WebSocket
+    class FakeWs {
+      constructor(url: string, protocols?: string | string[]) {
+        created.push({ url, protocols })
+      }
+    }
+    globalThis.WebSocket = FakeWs as unknown as typeof WebSocket
+    try {
+      await testAcpConnection({
+        url: 'wss://relay.test/v1/openclaw/ws?instance=e2b%3Asbx-1',
+        agentType: 'managed-acp',
+        getAuthToken: () => 'tok-123',
+        openTransport: openTransport as never,
+        ClientSideConnection: FakeConnection as never,
+      })
+      factoryPassedTo(openTransport)?.('wss://relay.test/ws')
+      expect(created[0]?.protocols).toEqual(['thunderbolt.v1', `thunderbolt.bearer.${encodeWsBearer('tok-123')}`])
+    } finally {
+      globalThis.WebSocket = originalWs
+    }
+  })
+
+  it('connects natively (no bearer factory) for remote-acp agents', async () => {
+    const { openTransport, FakeConnection } = buildFakeDeps({ capabilities: {} })
+    await testAcpConnection({
+      url: 'wss://custom.test/ws',
+      agentType: 'remote-acp',
+      openTransport: openTransport as never,
+      ClientSideConnection: FakeConnection as never,
+    })
+    // No explicit factory → openWebSocketTransport builds its native default.
+    expect(factoryPassedTo(openTransport)).toBeUndefined()
   })
 })

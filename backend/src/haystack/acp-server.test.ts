@@ -30,7 +30,6 @@ const buildSettings = (overrides: Partial<Settings> = {}): Settings =>
     haystackBaseUrl: 'https://haystack.test',
     haystackApiKey: 'test-key',
     haystackWorkspace: 'ws-test',
-    haystackPipelines: '',
     logLevel: 'INFO',
     ...overrides,
   }) as Settings

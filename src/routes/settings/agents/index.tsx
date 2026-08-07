@@ -5,19 +5,21 @@
 import { useState } from 'react'
 
 import { testAcpConnection } from '@/acp'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { deploymentIdForAgent, undeployAgent } from '@/api/agent-deploy'
+import { selectAgentDeploy, selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
+import { AddAgentBody } from '@/components/agents/add-agent-body'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
 import { AgentList } from '@/components/settings/agents/agent-list'
-import { CreateAgentDetailPanel } from '@/components/settings/agents/create-agent-detail-panel'
 import { ThunderboltCliDetail, ThunderboltCliRow } from '@/components/settings/agents/thunderbolt-cli'
 import { SettingsListBody, settingsListBodyRowsClass, SettingsListPane } from '@/components/settings/settings-list'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
-import { useAuth, useDatabase } from '@/contexts'
+import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 type AgentsSettingsPageProps = {
   /** Test/DI override for reading this app's iroh NodeId. Forwarded to the add
@@ -35,20 +37,24 @@ type AgentsSettingsPageProps = {
  * discovery, and user-added custom remote ACP endpoints. Rows are read-only —
  * clicking one slides in a detail panel (same slide-in idiom as the skills
  * page) where all viewing and management happens. The only other affordance
- * is "+" → the Add Custom Agent panel.
+ * is "+" → add a new agent, which opens the shared {@link AddAgentBody} (catalog
+ * + connect when managed deploy is enabled, connect form otherwise).
  */
 const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) => {
   const db = useDatabase()
   const agents = useAllAgents()
+  const httpClient = useHttpClient()
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const agentDeploy = useConfigStore((state) => selectAgentDeploy(state.config))
 
-  // The add form, the CLI install card, and the agent rows all share the one
+  // The add panel, the CLI install card, and the agent rows all share the one
   // slide-in panel slot, so the selection is a single union — the panels are
-  // mutually exclusive by construction (a string sentinel could collide with
-  // a server-chosen agent id).
+  // mutually exclusive by construction (a string sentinel could collide with a
+  // server-chosen agent id).
   const [activePanel, setActivePanel] = useState<
     { kind: 'add' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
   >(null)
@@ -62,8 +68,8 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const panelOpen = addOpen || activeAgent !== undefined || cliOpen
 
   const closePanel = () => setActivePanel(null)
-  const openAddPanel = () => setActivePanel({ kind: 'add' })
   const openAgentPanel = (id: string) => setActivePanel({ kind: 'agent', id })
+  const openCreatePanel = () => setActivePanel({ kind: 'add' })
   const toggleAgentPanel = (id: string) =>
     setActivePanel((current) => (current?.kind === 'agent' && current.id === id ? null : { kind: 'agent', id }))
   const toggleCliPanel = () => setActivePanel((current) => (current?.kind === 'cli' ? null : { kind: 'cli' }))
@@ -75,13 +81,13 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   // read-only view or no-op rather than forcing an edit. There is no inline
   // remove: deletion stays behind the detail panel's ownership-gated ⋯ menu.
   useEntityActionIntent('agent', {
-    onCreate: openAddPanel,
+    onCreate: openCreatePanel,
     onEdit: openAgentPanel,
   })
 
   const renderPanel = () => {
     if (addOpen) {
-      return <CreateAgentDetailPanel onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
+      return <AddAgentBody onClose={closePanel} loadAppNodeId={loadAppNodeId} enrollIroh={enrollIroh} />
     }
     if (activeAgent) {
       return (
@@ -100,7 +106,16 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
               useChatStore.getState().applyAgentWireIdentityChange({ ...activeAgent, ...patch })
             }
           }}
-          onDelete={() => deleteAgent(db, activeAgent.id)}
+          onDelete={async () => {
+            // Managed agents own a host deployment — trigger its teardown first.
+            // If the undeploy trigger fails we throw, so the local row is kept and
+            // the detail panel surfaces the error (nothing is silently orphaned).
+            const deploymentId = deploymentIdForAgent(activeAgent)
+            if (deploymentId) {
+              await undeployAgent(cloudUrl, httpClient, deploymentId)
+            }
+            await deleteAgent(db, activeAgent.id)
+          }}
           testAcpConnection={testAcpConnection}
         />
       )
@@ -120,8 +135,8 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             panel edge). */}
         <SettingsListPane className="gap-6">
           <PageHeader title="Agents">
-            {allowCustomAgents && (
-              <PageCreateAction label="New Agent" onClick={openAddPanel} disabled={!currentUserId} />
+            {(agentDeploy || allowCustomAgents) && (
+              <PageCreateAction label="New Agent" onClick={openCreatePanel} disabled={!currentUserId} />
             )}
           </PageHeader>
 

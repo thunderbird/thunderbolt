@@ -165,7 +165,7 @@ describe('AgentDetail — connection test', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
     })
 
-    expect(probe).toHaveBeenCalledWith({ url: 'wss://example.com/ws' })
+    expect(probe).toHaveBeenCalledWith({ url: 'wss://example.com/ws', agentType: 'remote-acp' })
     expect(screen.getByText(/^Reachable/)).toBeInTheDocument()
   })
 

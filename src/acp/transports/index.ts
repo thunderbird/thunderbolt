@@ -34,10 +34,9 @@ import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-fetch'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentType } from '@shared/acp-types'
-import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { openIrohTransport } from '../iroh/iroh-transport'
 import type { AcpTransport } from '../types'
-import { openWebSocketTransport, type WebSocketFactory, type WebSocketLike } from './websocket'
+import { managedAcpSubprotocols, openWebSocketTransport, type WebSocketFactory, type WebSocketLike } from './websocket'
 
 export type OpenTransportInputs = {
   url: string
@@ -132,10 +131,7 @@ const resolveManagedAcpFactory = (inputs: OpenTransportInputs): WebSocketFactory
   if (!inputs.httpClient) {
     return nativeWebSocketFactory
   }
-  const token = (inputs.getAuthToken ?? getAuthToken)()
-  const protocols = token
-    ? [wsCarrierSubprotocol, `${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`]
-    : [wsCarrierSubprotocol]
+  const protocols = managedAcpSubprotocols((inputs.getAuthToken ?? getAuthToken)())
   return (url) => new WebSocket(url, protocols) as unknown as WebSocketLike
 }
 

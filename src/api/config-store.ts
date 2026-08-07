@@ -13,6 +13,9 @@ export type AppConfig = {
    *  built-in agent shown, custom agents allowed. */
   builtInAgentEnabled?: boolean
   allowCustomAgents?: boolean
+  /** Whether the descriptor-driven agent deploy flow (THU-743) is exposed. Opt-in:
+   *  absent/false = hidden, unlike the sibling flags which default to enabled. */
+  agentDeploy?: boolean
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */
   minAppVersion?: string
@@ -51,3 +54,7 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false
+
+/** Whether the descriptor-driven agent deploy flow is exposed. Opt-in — absent
+ *  config (offline/standalone) reads as OFF, unlike the sibling capability flags. */
+export const selectAgentDeploy = (config: AppConfig): boolean => config.agentDeploy === true

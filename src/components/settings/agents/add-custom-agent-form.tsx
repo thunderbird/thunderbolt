@@ -16,6 +16,7 @@ import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
 import { validateAgentUrl } from '@/components/settings/agents/validate-agent-url'
 import type { CustomAgentTransport } from '@/dal/agents'
+import type { AgentType } from '@shared/acp-types'
 
 export type AddCustomAgentPayload = {
   name: string
@@ -28,6 +29,8 @@ export type AddCustomAgentPayload = {
  *  Production wires the real `testAcpConnection`; tests inject a stub. */
 export type TestAcpConnectionFn = (opts: {
   url: string
+  /** Managed agents pass their type so the probe attaches the backend bearer. */
+  agentType?: AgentType
 }) => Promise<{ success: true } | { success: false; error: string }>
 
 type AddCustomAgentFormProps = {

@@ -3,14 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export { createHaystackRoutes } from './routes'
-export { createHaystackProvider, haystackProviderId, parsePipelinesEnv } from './provider'
+export { createHaystackProvider, haystackProviderId, resolveHaystackPipeline } from './provider'
 export { HaystackAcpServer, type HaystackAcpDeps } from './acp-server'
 export { parseHaystackSseStream, HaystackSseParseError } from './sse-parser'
-export {
-  haystackEventSchema,
-  haystackPipelineDescriptorSchema,
-  haystackPipelinesEnvSchema,
-  type HaystackEvent,
-  type HaystackPipelineDescriptor,
-  type HaystackSessionContext,
-} from './types'
+export { haystackEventSchema, type HaystackEvent, type HaystackSessionContext } from './types'

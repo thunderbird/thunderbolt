@@ -79,6 +79,14 @@ const settingsSchema = z
       .string()
       .default('http://localhost:1420')
       .transform((s) => s.replace(/\/$/, '')),
+    // Externally-resolvable origin of THIS backend — the URL a deployed sandbox
+    // agent dials to reach our managed inference (`${publicApiUrl}/v1`). Distinct
+    // from `appUrl` (the frontend) and `betterAuthUrl`: a sandbox on E2B cannot
+    // reach `localhost`, so production must set this to the public backend host.
+    publicApiUrl: z
+      .string()
+      .default('http://localhost:8000')
+      .transform((s) => s.replace(/\/$/, '')),
 
     // Analytics settings
     posthogHost: z.string().default('https://us.i.posthog.com'),
@@ -93,6 +101,11 @@ const settingsSchema = z
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
+
+    // Agent inference settings — HMAC secret for the per-deployment inference JWTs
+    // (backend/src/agents/inference-token.ts) that let deployed sandbox agents call
+    // our managed models as the owning user. Must be ≥32 chars when agentDeploy is on.
+    agentInferenceJwtSecret: z.string().default(''),
 
     // CORS settings — comma-separated list of exact origins.
     // `corsAllowHeaders` is no longer consumed by any production mount: both
@@ -140,14 +153,26 @@ const settingsSchema = z
     // list (not just disabled) — for deployments that ship only their own agents (e.g. Deepset).
     // Surfaced to the UI via GET /config as `builtInAgentEnabled`.
     disableBuiltInAgent: z.boolean().default(false),
+    // When true, exposes the descriptor-driven "Add agent" deploy flow (THU-743).
+    // Opt-in: absent/false hides it. Surfaced to the UI via GET /config as `agentDeploy`.
+    agentDeploy: z.boolean().default(false),
     // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
     haystackBaseUrl: z.string().default(''),
     haystackApiKey: z.string().default(''),
     // Deepset workspace slug. URLs are `${baseUrl}/api/v1/workspaces/${workspace}/...`.
     haystackWorkspace: z.string().default(''),
-    // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
-    // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
-    haystackPipelines: z.string().default(''),
+    // Name of an existing Deepset pipeline whose query_yaml is cloned as the template
+    // for descriptor-driven deploys (THU-743). Empty = Haystack is not deployable.
+    haystackTemplatePipeline: z.string().default(''),
+    // OpenClaw-specific config (consumed by the OpenClaw provider). OpenClaw is a
+    // sandbox-hosted managed-acp agent: we spin a per-user E2B microVM from a
+    // static, prebuilt template and relay ACP frames to it. Owner-managed / one-click:
+    // the owner fixes the sandbox + model here; the user just clicks Deploy.
+    e2bApiKey: z.string().default(''),
+    // OpenClaw "provider/model" string the deployed agent runs (e.g. openrouter/...). Empty = not deployable.
+    openclawModel: z.string().default(''),
+    // Shared OpenRouter key injected into the sandbox env for inference. Empty = not deployable.
+    openclawOpenrouterApiKey: z.string().default(''),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -158,6 +183,17 @@ const settingsSchema = z
         inclusive: true,
         message: 'powersyncJwtSecret must be at least 32 characters when powersyncUrl is set',
         path: ['powersyncJwtSecret'],
+        input: '[REDACTED]',
+      })
+    }
+    if (data.agentDeploy && data.agentInferenceJwtSecret.length < 32) {
+      ctx.addIssue({
+        code: 'too_small',
+        origin: 'string',
+        minimum: 32,
+        inclusive: true,
+        message: 'agentInferenceJwtSecret must be at least 32 characters when agentDeploy is enabled',
+        path: ['agentInferenceJwtSecret'],
         input: '[REDACTED]',
       })
     }
@@ -200,6 +236,7 @@ const parseSettings = (): Settings => {
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',
+    publicApiUrl: process.env.PUBLIC_API_URL || 'http://localhost:8000',
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
@@ -212,6 +249,9 @@ const parseSettings = (): Settings => {
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),
     powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
+    agentInferenceJwtSecret:
+      process.env.AGENT_INFERENCE_JWT_SECRET ||
+      (isDevelopment ? 'agent-inference-dev-secret-change-in-production' : ''),
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
@@ -225,10 +265,14 @@ const parseSettings = (): Settings => {
     enabledAgents: process.env.ENABLED_AGENTS || '',
     allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
     disableBuiltInAgent: process.env.DISABLE_BUILT_IN_AGENT === 'true',
+    agentDeploy: process.env.AGENT_DEPLOY === 'true',
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
-    haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
+    haystackTemplatePipeline: process.env.HAYSTACK_TEMPLATE_PIPELINE || '',
+    e2bApiKey: process.env.E2B_API_KEY || '',
+    openclawModel: process.env.OPENCLAW_MODEL || '',
+    openclawOpenrouterApiKey: process.env.OPENCLAW_OPENROUTER_API_KEY || '',
   }
 
   return settingsSchema.parse(env)

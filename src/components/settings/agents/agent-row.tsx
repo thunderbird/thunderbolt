@@ -5,6 +5,7 @@
 import { iconForAgent } from '@/components/agent-icon'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
+import { AgentDeployBadge } from './agent-deploy-badge'
 import { AgentListRow } from './agent-list-row'
 import { agentProvenanceLine } from './agent-provenance'
 
@@ -28,6 +29,9 @@ type AgentRowProps = {
 export const AgentRow = ({ agent, isSelected, onOpen }: AgentRowProps) => {
   const Icon = iconForAgent(agent)
   const disabled = agent.enabled !== 1
+  // Only user deploys carry a live status; system-discovered pipelines are
+  // already running (isSystem).
+  const isUserDeploy = agent.type === 'managed-acp' && agent.isSystem !== 1
 
   return (
     <AgentListRow
@@ -47,10 +51,13 @@ export const AgentRow = ({ agent, isSelected, onOpen }: AgentRowProps) => {
       title={agent.name}
       subtitleTestId={`agent-provenance-${agent.id}`}
       subtitle={
-        <>
-          {agentProvenanceLine(agent)}
-          {disabled && ' · Disabled'}
-        </>
+        <span className="inline-flex max-w-full items-center gap-1 align-middle">
+          <span className="truncate">
+            {agentProvenanceLine(agent)}
+            {disabled && ' · Disabled'}
+          </span>
+          {isUserDeploy && <AgentDeployBadge agent={agent} />}
+        </span>
       }
       chevronTestId={`agent-chevron-${agent.id}`}
     />

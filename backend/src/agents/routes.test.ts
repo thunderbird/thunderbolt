@@ -16,6 +16,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { clearSettingsCache } from '@/config/settings'
 import type { RemoteAgentDescriptor } from '@shared/acp-types'
+import { schemaVersionMismatch, type AgentDescriptor } from '@shared/agent-descriptors'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { registerAgentProvider, resetAgentProvidersForTesting } from './discovery'
@@ -161,5 +162,186 @@ describe('GET /agents', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.agents).toEqual([customDescriptor])
+  })
+})
+
+describe('agent deploy endpoints', () => {
+  const envKeys = ['AGENT_DEPLOY', 'ENABLED_AGENTS'] as const
+  let savedEnv: Partial<Record<(typeof envKeys)[number], string | undefined>>
+
+  const descriptor: AgentDescriptor = {
+    id: 'haystack',
+    provider: 'haystack',
+    name: 'Haystack',
+    description: null,
+    icon: null,
+    schemaVersion: 3,
+    action: 'deploy',
+    steps: [
+      { id: 'basics', title: 'Basics', fields: [{ key: 'name', label: 'Name', widget: 'text', required: true }] },
+    ],
+  }
+
+  /** A deployable provider whose verbs echo their inputs so tests can assert dispatch. */
+  const registerDeployable = () =>
+    registerAgentProvider({
+      id: 'haystack',
+      list: () => [],
+      catalog: () => [descriptor],
+      deploy: (spec) =>
+        Promise.resolve({ deploymentId: `haystack:tb-${String(spec.name)}`, status: 'pending', connection: null }),
+      status: (ref) => Promise.resolve({ deploymentId: `haystack:${ref}`, status: 'running', connection: null }),
+      undeploy: (ref) => Promise.resolve({ deploymentId: `haystack:${ref}`, status: 'gone' }),
+    })
+
+  const post = (app: Elysia, path: string, body: unknown) =>
+    app.handle(
+      new Request(`http://localhost${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    )
+
+  beforeEach(() => {
+    resetAgentProvidersForTesting()
+    savedEnv = {}
+    for (const key of envKeys) {
+      savedEnv[key] = process.env[key]
+      delete process.env[key]
+    }
+    process.env.AGENT_DEPLOY = 'true'
+    clearSettingsCache()
+  })
+
+  afterEach(() => {
+    resetAgentProvidersForTesting()
+    for (const key of envKeys) {
+      const saved = savedEnv[key]
+      if (saved === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = saved
+      }
+    }
+    clearSettingsCache()
+  })
+
+  it('GET /catalog returns the descriptors when the flag is on', async () => {
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await app.handle(new Request('http://localhost/agents/catalog'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.version).toBe('1')
+    expect(body.descriptors.map((d: AgentDescriptor) => d.id)).toEqual(['haystack'])
+  })
+
+  it('GET /catalog returns 404 when the agentDeploy flag is off', async () => {
+    delete process.env.AGENT_DEPLOY
+    clearSettingsCache()
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await app.handle(new Request('http://localhost/agents/catalog'))
+    expect(res.status).toBe(404)
+  })
+
+  it('GET /catalog returns 403 for anonymous users', async () => {
+    const app = buildApp(buildAuth({ id: 'anon-1', isAnonymous: true }))
+    const res = await app.handle(new Request('http://localhost/agents/catalog'))
+    expect(res.status).toBe(403)
+  })
+
+  it('POST /deploy dispatches a valid spec to the provider', async () => {
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await post(app, '/agents/deploy', { descriptorId: 'haystack', schemaVersion: 3, spec: { name: 'Bot' } })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ deploymentId: 'haystack:tb-Bot', status: 'pending', connection: null })
+  })
+
+  it('POST /deploy returns 409 on a stale schema version', async () => {
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await post(app, '/agents/deploy', { descriptorId: 'haystack', schemaVersion: 2, spec: { name: 'Bot' } })
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.code).toBe(schemaVersionMismatch)
+  })
+
+  it('POST /deploy returns 400 when the spec fails re-validation', async () => {
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    // `name` is required by the descriptor but missing here.
+    const res = await post(app, '/agents/deploy', { descriptorId: 'haystack', schemaVersion: 3, spec: {} })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /deploy returns 404 for an unknown descriptor', async () => {
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await post(app, '/agents/deploy', { descriptorId: 'ghost', schemaVersion: 3, spec: { name: 'x' } })
+    expect(res.status).toBe(404)
+  })
+
+  it('GET /deployments/:id returns live status from the provider', async () => {
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await app.handle(new Request('http://localhost/agents/deployments/haystack:tb-bot'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ deploymentId: 'haystack:tb-bot', status: 'running', connection: null })
+  })
+
+  it('GET /deployments/:id returns 400 for a malformed id', async () => {
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await app.handle(new Request('http://localhost/agents/deployments/nocolon'))
+    expect(res.status).toBe(400)
+  })
+
+  it('GET /deployments/:id returns 404 for an unknown provider', async () => {
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await app.handle(new Request('http://localhost/agents/deployments/ghost:ref'))
+    expect(res.status).toBe(404)
+  })
+
+  const del = (app: Elysia, path: string) => app.handle(new Request(`http://localhost${path}`, { method: 'DELETE' }))
+
+  it('DELETE /deployments/:id dispatches undeploy to the provider', async () => {
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await del(app, '/agents/deployments/haystack:tb-bot')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ deploymentId: 'haystack:tb-bot', status: 'gone' })
+  })
+
+  it('DELETE /deployments/:id returns 404 when the feature is off', async () => {
+    delete process.env.AGENT_DEPLOY
+    clearSettingsCache()
+    registerDeployable()
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await del(app, '/agents/deployments/haystack:tb-bot')
+    expect(res.status).toBe(404)
+  })
+
+  it('DELETE /deployments/:id returns 400 for a malformed id', async () => {
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await del(app, '/agents/deployments/nocolon')
+    expect(res.status).toBe(400)
+  })
+
+  it('DELETE /deployments/:id returns 404 when the provider has no undeploy', async () => {
+    registerAgentProvider({ id: 'haystack', list: () => [] }) // discovery-only, no undeploy
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await del(app, '/agents/deployments/haystack:tb-bot')
+    expect(res.status).toBe(404)
+  })
+
+  it('DELETE /deployments/:id returns 403 for anonymous users', async () => {
+    const app = buildApp(buildAuth({ id: 'anon-1', isAnonymous: true }))
+    const res = await del(app, '/agents/deployments/haystack:tb-bot')
+    expect(res.status).toBe(403)
   })
 })

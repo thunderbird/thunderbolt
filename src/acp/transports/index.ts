@@ -30,8 +30,7 @@
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 import { getAuthToken } from '@/lib/auth-token'
 import type { HttpClient } from '@/lib/http'
-import { isTauri } from '@/lib/platform'
-import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-fetch'
+import { createProxyWebSocket, isStandaloneMode } from '@/lib/proxy-fetch'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentType } from '@shared/acp-types'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
@@ -60,18 +59,6 @@ export type OpenTransportInputs = {
 }
 
 const cloudWsUrl = (): string => useLocalSettingsStore.getState().cloudUrl
-
-/** Decide if the transport should use the native (Standalone) path or the
- *  cloud-proxy path. Mirrors `computeEffectiveProxyEnabled` exactly — when the
- *  proxy is OFF *and* we're on Tauri, the transport is native. */
-export const isStandaloneTransport = (
-  isStandalone: () => boolean = isTauri,
-  readProxyEnabled: () => string | null = () =>
-    typeof localStorage === 'undefined' ? null : localStorage.getItem('proxy_enabled'),
-): boolean => {
-  const proxyEnabled = computeEffectiveProxyEnabled(isStandalone, readProxyEnabled)
-  return isStandalone() && !proxyEnabled
-}
 
 /** Open a transport for the given ACP agent URL. The returned `AcpTransport`
  *  is the bidirectional stream `ClientSideConnection` expects.
@@ -109,7 +96,7 @@ const resolveWebSocketFactory = (inputs: OpenTransportInputs): WebSocketFactory 
   if (inputs.agentType === 'managed-acp') {
     return resolveManagedAcpFactory(inputs)
   }
-  if (isStandaloneTransport(inputs.isStandalone, inputs.readProxyEnabled)) {
+  if (isStandaloneMode(inputs.isStandalone, inputs.readProxyEnabled)) {
     return nativeWebSocketFactory
   }
   const proxyWs = createProxyWebSocket({

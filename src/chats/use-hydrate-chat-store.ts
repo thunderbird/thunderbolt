@@ -20,13 +20,19 @@ import {
 } from '@/dal'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
 import { markChatReady } from '@/lib/init-timing'
 import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
+import type {
+  ChatThread,
+  Model,
+  SaveMessagesFunction,
+  SaveStreamingMessageFunction,
+  ThunderboltUIMessage,
+} from '@/types'
 import type { Agent } from '@/types/acp'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -61,6 +67,36 @@ const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
   if (agent.type === 'built-in') {
     void prewarmSystemModel(model)
   }
+}
+
+/**
+ * Whether a freshly hydrated thread should attempt a detached-turn catch-up.
+ * True when the thread is runner-owned — a built-in thread carrying an ACP
+ * session id, the marker for turns that keep running on Thunderbolt's servers —
+ * and its transcript ends interrupted: a trailing user message with no reply, or
+ * an assistant partial left by the crash-recovery save.
+ *
+ * Gating on the runner-owned marker (not just "has a session") matters: this
+ * runs before any connection exists, so a looser predicate would dial every
+ * custom/managed agent on thread open just to learn it cannot replay —
+ * including dead endpoints that then churn the reconnect scheduler.
+ *
+ * An encrypted thread is excluded: pairing one with off-device execution is
+ * corrupted state, and catch-up must not be the thing that takes it off-device.
+ */
+export const shouldCatchUpOnDetachedTurn = (
+  chatThread: ChatThread | null,
+  selectedAgent: Agent,
+  messages: ThunderboltUIMessage[],
+): boolean => {
+  if (!chatThread?.acpSessionId || !isBuiltInAgent(selectedAgent) || chatThread.isEncrypted === 1) {
+    return false
+  }
+  const last = messages[messages.length - 1]
+  if (!last) {
+    return false
+  }
+  return last.role === 'user' || (last.role === 'assistant' && last.metadata?.partial === true)
 }
 
 export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
@@ -237,13 +273,8 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       return
     }
 
-    const chatInstance = createChatInstance(
-      id,
-      initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[],
-      saveMessages,
-      httpClient,
-      getProxyFetch,
-    )
+    const uiMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
+    const chatInstance = createChatInstance(id, uiMessages, saveMessages, httpClient, getProxyFetch)
 
     createSession({
       chatInstance,
@@ -272,6 +303,16 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     setIsReady(true)
     trackChatReadyOnce()
     maybePrewarmBuiltInAgent(selectedAgent, defaultModel)
+
+    // `resumeStream()` routes to the adapter's reattach through the chat
+    // instance's custom fetch and resolves as a quiet no-op (204) when the
+    // agent has nothing to replay. Fire-and-forget: hydration never blocks on
+    // the wire.
+    if (shouldCatchUpOnDetachedTurn(chatThread, selectedAgent, uiMessages)) {
+      void chatInstance.resumeStream().catch((err) => {
+        console.error('Runner turn catch-up failed:', err)
+      })
+    }
   }
 
   return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }

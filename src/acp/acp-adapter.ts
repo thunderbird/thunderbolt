@@ -46,8 +46,26 @@ import type {
   SessionNotification,
 } from '@agentclientprotocol/sdk'
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
-import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
+import type {
+  Agent,
+  AgentAdapter,
+  AgentAdapterContext,
+  AgentCapabilities,
+  EnsureSessionContext,
+  ReattachContext,
+} from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
+import {
+  buildRunSpecMeta,
+  mergeAcpMeta,
+  runnerAwaitTurnMethod,
+  runnerDeleteSessionMethod,
+  runnerReplayMethod,
+  supportsDetachedTurns,
+  type RunnerAwaitTurnResponse,
+  type RunnerReplayResponse,
+  type RunSpec,
+} from '@shared/acp-types'
 import {
   buildFallbackSkillDisclosure,
   buildWireSkillsMeta,
@@ -112,6 +130,7 @@ export const adaptCapabilities = (response: InitializeResponse): AgentCapabiliti
     // object (`{}`) when supported, `null`/absent otherwise — so presence, not
     // truthiness, is the signal.
     resume: caps?.sessionCapabilities?.resume != null,
+    detachedTurns: supportsDetachedTurns(caps?._meta),
     promptCapabilities: {
       image: caps?.promptCapabilities?.image ?? false,
       audio: caps?.promptCapabilities?.audio ?? false,
@@ -499,6 +518,20 @@ export const connectAcpAdapter = async (
 
   const guardHandshake = <T>(step: Promise<T>): Promise<T> => withHandshakeGuard(step, closed, handshakeTimeoutMs)
 
+  /** Combine the session's skills payload with the caller's run spec. Both live
+   *  under the same `_meta` namespace, so they must be merged rather than spread
+   *  — a plain spread would silently drop whichever came first. `undefined` when
+   *  neither is present, so the call omits `_meta` entirely. */
+  const buildSessionMeta = (
+    skillsMeta: Record<string, unknown> | undefined,
+    runSpec: RunSpec | undefined,
+  ): Record<string, unknown> | undefined => {
+    if (!skillsMeta && !runSpec) {
+      return undefined
+    }
+    return mergeAcpMeta(skillsMeta, runSpec ? buildRunSpecMeta(runSpec) : undefined)
+  }
+
   /** Resolve (and cache) the ACP session id for the calling thread. First send
    *  on a thread with a stored id + a capable agent tries, in order,
    *  `session/resume` → `session/load`; a runtime rejection from either (the
@@ -515,14 +548,14 @@ export const connectAcpAdapter = async (
     }
     const resolveNew = async (
       skills: readonly SkillDefinition[],
-      skillsMeta: Record<string, unknown> | undefined,
+      sessionMeta: Record<string, unknown> | undefined,
     ): Promise<string> => {
       throwIfConnectionLost()
       const newSession = await guardHandshake(
         connection.newSession({
           cwd: sessionCwd,
           mcpServers: [],
-          ...(skillsMeta ? { _meta: skillsMeta } : {}),
+          ...(sessionMeta ? { _meta: sessionMeta } : {}),
         }),
       )
       // Defer persistence + transcript seeding to the first real send.
@@ -550,6 +583,7 @@ export const connectAcpAdapter = async (
       const skills = await getEnabledSkills()
       throwIfConnectionLost()
       const skillsMeta = capabilities.skills ? buildWireSkillsMeta(skills) : undefined
+      const sessionMeta = buildSessionMeta(skillsMeta, context.runSpec)
       // `resume` restores execution state with no replay; `load` has the agent
       // replay its own transcript over `session/update`. Resume is tried first.
       if (
@@ -560,7 +594,7 @@ export const connectAcpAdapter = async (
             sessionId: stored,
             cwd: sessionCwd,
             mcpServers: [],
-            ...(skillsMeta ? { _meta: skillsMeta } : {}),
+            ...(sessionMeta ? { _meta: sessionMeta } : {}),
           }),
         ))
       ) {
@@ -574,13 +608,13 @@ export const connectAcpAdapter = async (
             sessionId: stored,
             cwd: sessionCwd,
             mcpServers: [],
-            ...(skillsMeta ? { _meta: skillsMeta } : {}),
+            ...(sessionMeta ? { _meta: sessionMeta } : {}),
           }),
         ))
       ) {
         return stored
       }
-      return resolveNew(skills, skillsMeta)
+      return resolveNew(skills, sessionMeta)
     })()
     // Evict on failure so a transient handshake error doesn't poison the thread
     // — the next send retries a fresh resolution.
@@ -688,9 +722,14 @@ export const connectAcpAdapter = async (
     // synchronous return value so the AI SDK can attach immediately.
     void (async () => {
       try {
+        // The run spec rides every prompt, not just session creation: the model
+        // or reasoning depth can change between turns of a live session, and the
+        // runner must execute the one this turn selected.
+        const promptMeta = context.runSpec ? buildRunSpecMeta(context.runSpec) : undefined
         const response = await connection.prompt({
           sessionId,
           prompt,
+          ...(promptMeta ? { _meta: promptMeta } : {}),
         })
         // The Haystack adapter mirrors citation metadata on the terminal
         // `agent_message_chunk` AND on the `PromptResponse._meta`. Ingesting
@@ -716,6 +755,91 @@ export const connectAcpAdapter = async (
     })
   }
 
+  /**
+   * Catch up on a detached turn (see `shared/acp-types.ts`): resolve the
+   * thread's stored session, replay the latest turn's journaled updates as a
+   * fresh UI message stream, keep streaming live updates while the turn still
+   * runs, and finish when it ends. Resolves `null` — no stream — when there is
+   * nothing to catch up on: capability absent, no stored session id, the
+   * stored session could not be restored (resolution minted a fresh one), or
+   * the runner has no turn to replay (e.g. it restarted).
+   *
+   * The sink is registered BEFORE the replay call: the runner emits the
+   * replayed notifications ahead of the method's response on the same ordered
+   * connection, so registering after would drop them.
+   */
+  const reattach = async (context: ReattachContext, replaceMessageId?: string): Promise<Response | null> => {
+    if (!capabilities.detachedTurns || !context.acpSessionId || terminationError) {
+      return null
+    }
+    const stored = context.acpSessionId
+    const sessionId = await resolveThreadSession(context).catch((err: unknown) => {
+      console.warn('runner reattach: session resolution failed', err)
+      return null
+    })
+    if (sessionId !== stored) {
+      return null
+    }
+
+    const { body, translator, close } = createTranslatorStream({
+      textDeltaThrottleMs: deps.textDeltaThrottleMs,
+      onSideEffect: context.onSessionSideEffect,
+      startMessageId: replaceMessageId,
+    })
+    sessionUpdateSinks.set(sessionId, (notification) => translator.handle(notification))
+    if (context.requestPermission) {
+      permissionHandlers.set(sessionId, context.requestPermission)
+    }
+    translator.start()
+
+    let tornDown = false
+    const teardown = (): void => {
+      if (tornDown) {
+        return
+      }
+      tornDown = true
+      sessionUpdateSinks.delete(sessionId)
+      permissionHandlers.delete(sessionId)
+      translator.finish()
+      close()
+    }
+
+    const replay = await guardHandshake(
+      connection.extMethod(runnerReplayMethod, { sessionId }) as Promise<RunnerReplayResponse>,
+    ).catch((err: unknown) => {
+      console.warn('runner reattach: replay request failed', err)
+      return null
+    })
+    if (!replay?.turn) {
+      teardown()
+      return null
+    }
+
+    // Resolve the turn's outcome off the request thread — the stream is the
+    // synchronous return value. A turn that FAILED while we were away surfaces
+    // as a non-retryable error (the failure already happened; auto-resubmitting
+    // a tool-executing agent's prompt on thread-open would be surprising).
+    void (async () => {
+      try {
+        const finished = replay.turnActive
+          ? ((await connection.extMethod(runnerAwaitTurnMethod, { sessionId })) as RunnerAwaitTurnResponse).turn
+          : replay.turn
+        if (finished?.errorMessage) {
+          translator.error(JSON.stringify({ error: finished.errorMessage, isRetryable: false }))
+        }
+      } catch (err) {
+        translator.error(err instanceof Error ? err.message : String(err))
+      } finally {
+        teardown()
+      }
+    })()
+
+    return new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }
+
   // Warm the thread's session ahead of the first prompt so the agent emits its
   // `available_commands_update` (captured by `routeSessionUpdate`) before the
   // user sends anything. The session is cached per thread, so the subsequent
@@ -726,6 +850,17 @@ export const connectAcpAdapter = async (
   const ensureSession = async (context: EnsureSessionContext): Promise<void> => {
     throwIfConnectionLost()
     await resolveThreadSession(context)
+  }
+
+  /** Erase the runner's state for a session whose thread the user deleted.
+   *  Bypasses `resolveThreadSession` on purpose: the target session is being
+   *  destroyed, so restoring or minting one would be backwards. */
+  const deleteRunnerSession = async (sessionId: string): Promise<void> => {
+    if (!capabilities.detachedTurns) {
+      return
+    }
+    throwIfConnectionLost()
+    await guardHandshake(connection.extMethod(runnerDeleteSessionMethod, { sessionId }))
   }
 
   const disconnect = (): void => {
@@ -740,6 +875,8 @@ export const connectAcpAdapter = async (
     closed,
     fetch,
     ensureSession,
+    reattach,
+    deleteRunnerSession,
     disconnect,
   }
 }

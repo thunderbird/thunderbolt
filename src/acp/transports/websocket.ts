@@ -82,15 +82,24 @@ const defaultIsTauriIos: IsTauriIosFn = () => {
   return getPlatform() === 'ios'
 }
 
+/** ATS exempts loopback, so a cleartext socket to these hosts (local dev,
+ *  simulator) connects fine — only non-loopback cleartext is rejected below. */
+const isLoopbackHost = (hostname: string): boolean =>
+  hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname.endsWith('.localhost')
+
 /** Reject cleartext WebSockets on Tauri iOS, where ATS blocks them. */
 export const validateWebSocketUrl = (url: string, isTauriIos: IsTauriIosFn = defaultIsTauriIos): void => {
   if (!isTauriIos()) {
     return
   }
   const lower = url.toLowerCase()
-  if (lower.startsWith('ws://') || lower.startsWith('http://')) {
-    throw new Error(`Insecure WebSocket URL not allowed on iOS: ${url}. Use wss:// instead.`)
+  if (!lower.startsWith('ws://') && !lower.startsWith('http://')) {
+    return
   }
+  if (isLoopbackHost(new URL(url).hostname)) {
+    return
+  }
+  throw new Error(`Insecure WebSocket URL not allowed on iOS: ${url}. Use wss:// instead.`)
 }
 
 export type WebSocketTransportOptions = {

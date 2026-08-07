@@ -91,6 +91,14 @@ describe('validateWebSocketUrl', () => {
     expect(() => validateWebSocketUrl('wss://example.com/ws', () => true)).not.toThrow()
     expect(() => validateWebSocketUrl('ws://example.com/ws', () => false)).not.toThrow()
   })
+
+  it('allows cleartext loopback sockets on iOS (ATS loopback exemption)', () => {
+    expect(() => validateWebSocketUrl('ws://localhost:8080/', () => true)).not.toThrow()
+    expect(() => validateWebSocketUrl('ws://127.0.0.1:8080/', () => true)).not.toThrow()
+    expect(() => validateWebSocketUrl('ws://[::1]:8080/', () => true)).not.toThrow()
+    expect(() => validateWebSocketUrl('ws://runner.localhost/', () => true)).not.toThrow()
+    expect(() => validateWebSocketUrl('ws://localhost.evil.com/', () => true)).toThrow(/Insecure WebSocket URL/)
+  })
 })
 
 describe('openWebSocketTransport', () => {

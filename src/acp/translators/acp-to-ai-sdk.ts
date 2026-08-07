@@ -135,6 +135,11 @@ export type SessionSideEffect =
 export type SessionSideEffectSink = (effect: SessionSideEffect) => void
 
 export type TranslateOptions = {
+  /** Stamp the `start` chunk with an existing UI message id, so the streamed
+   *  assistant message REPLACES that message (same id → same DB row on save)
+   *  instead of appending a new one. Used by runner reattach to swap a
+   *  persisted partial for the full replayed turn. */
+  startMessageId?: string
   /** Stable id for the assistant text message. Defaults to `'acp-text-0'`. */
   textMessageId?: string
   /** Stable id for the assistant reasoning message. Defaults to `'acp-reasoning-0'`. */
@@ -367,7 +372,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
   }
 
   const start = (): void => {
-    emit({ type: 'start' })
+    emit(options.startMessageId ? { type: 'start', messageId: options.startMessageId } : { type: 'start' })
     emit({ type: 'start-step' })
   }
 

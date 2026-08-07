@@ -153,7 +153,15 @@ export const saveStreamingAssistantMessage = async (
   message: ThunderboltUIMessage,
   parentId: string | null,
 ): Promise<void> => {
-  const dbMessage = convertUIMessageToDbChatMessage(message, threadId, parentId)
+  // Mark the row as a mid-stream snapshot. The authoritative `onFinish` save
+  // writes the message's own metadata (never carrying `partial`), so the flag
+  // survives only when the stream was interrupted — the signal runner turn
+  // catch-up keys on after reload.
+  const partialMessage: ThunderboltUIMessage = {
+    ...message,
+    metadata: { ...message.metadata, partial: true },
+  }
+  const dbMessage = convertUIMessageToDbChatMessage(partialMessage, threadId, parentId)
 
   // Insert-first (PowerSync views don't support ON CONFLICT). The first partial
   // save inserts the row; every later save falls through to the update.

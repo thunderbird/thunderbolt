@@ -4,6 +4,7 @@
 
 import ChatUI from '@/components/chat/chat-ui'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
+import { useRunnerWakeCatchUp } from './use-runner-wake-catch-up'
 import { type PropsWithChildren, useEffect, useMemo } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 import { useParams } from 'react-router'
@@ -21,6 +22,7 @@ const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) =>
   const { hydrateChatStore, isReady, saveMessages, saveStreamingMessage } = useHydrateChatStore({ id, isNew })
 
   useHandleIntegrationCompletion({ saveMessages })
+  useRunnerWakeCatchUp(id)
 
   useEffect(() => {
     hydrateChatStore()

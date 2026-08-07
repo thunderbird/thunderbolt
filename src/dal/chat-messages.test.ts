@@ -498,6 +498,77 @@ describe('Chat Messages DAL', () => {
       const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
       expect(saved?.content).toBe('Orphan-safe')
     })
+
+    it('stamps metadata.partial so an interrupted stream is recognizable after reload', async () => {
+      const threadId = uuidv7()
+      const assistantMessageId = uuidv7()
+      const db = getDb()
+
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Half a th' }],
+          metadata: { modelId: 'model-1' },
+        },
+        null,
+      )
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      // Stamped alongside — not instead of — the message's own metadata.
+      expect(saved?.metadata).toMatchObject({ modelId: 'model-1', partial: true })
+    })
+
+    it('keeps the partial flag on repeat saves through the update path', async () => {
+      const threadId = uuidv7()
+      const assistantMessageId = uuidv7()
+      const db = getDb()
+      const message = {
+        id: assistantMessageId,
+        role: 'assistant' as const,
+        parts: [{ type: 'text' as const, text: '' }],
+      }
+
+      await saveStreamingAssistantMessage(getDb(), threadId, message, null)
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { ...message, parts: [{ type: 'text', text: 'more text' }] },
+        null,
+      )
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.metadata).toMatchObject({ partial: true })
+    })
+
+    it('the authoritative save clears the flag so a finished turn is never caught up on', async () => {
+      const threadId = uuidv7()
+      const assistantMessageId = uuidv7()
+      const db = getDb()
+
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Test Thread', isEncrypted: 0 })
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Half a th' }] },
+        null,
+      )
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Half a thought, now complete.' }],
+          metadata: { modelId: 'model-1' },
+        },
+      ])
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.content).toBe('Half a thought, now complete.')
+      expect(saved?.metadata).toEqual({ modelId: 'model-1' })
+    })
   })
 
   describe('cascade delete with parent_id', () => {

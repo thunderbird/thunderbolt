@@ -507,3 +507,20 @@ describe('createTranslator — haystack metadata', () => {
     })
   })
 })
+
+describe('createTranslator — startMessageId', () => {
+  it('stamps the start chunk so a replayed turn replaces an existing message', () => {
+    // Detached-turn catch-up streams the replayed turn under the id of the
+    // partial assistant row it replaces; without the id the AI SDK appends a
+    // second assistant message alongside the partial.
+    const { emit, chunks } = collect()
+    createTranslator(emit, { startMessageId: 'msg-partial-1' }).start()
+    expect(chunks[0]).toEqual({ type: 'start', messageId: 'msg-partial-1' })
+  })
+
+  it('omits messageId from the start chunk when not provided', () => {
+    const { emit, chunks } = collect()
+    createTranslator(emit).start()
+    expect(chunks[0]).toEqual({ type: 'start' })
+  })
+})

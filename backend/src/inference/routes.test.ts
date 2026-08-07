@@ -709,7 +709,11 @@ describe('Inference Routes', () => {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'Hi' }], stream: true }),
+          body: JSON.stringify({
+            model: 'deepseek-v4-flash',
+            messages: [{ role: 'user', content: 'Hi' }],
+            stream: true,
+          }),
         }),
       )
 

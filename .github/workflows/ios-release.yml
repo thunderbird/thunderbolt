@@ -2,6 +2,28 @@ name: iOS Release
 
 on:
   workflow_call:
+    secrets:
+      APPLE_CERTIFICATE_P12:
+        description: 'Apple signing certificate used for iOS builds'
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        description: 'Password for the Apple iOS signing certificate'
+        required: false
+      APPLE_TEAM_ID:
+        description: 'Apple Developer team ID used for iOS releases'
+        required: false
+      APP_STORE_CONNECT_API_KEY:
+        description: 'App Store Connect API private key used for iOS uploads'
+        required: false
+      APP_STORE_CONNECT_API_KEY_ID:
+        description: 'App Store Connect API key ID used for iOS uploads'
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        description: 'App Store Connect issuer ID used for iOS uploads'
+        required: false
+      APP_STORE_PROVISIONING_PROFILE:
+        description: 'Apple provisioning profile used for iOS builds'
+        required: false
     inputs:
       version:
         description: 'Version to build (e.g., 1.2.3 without v prefix)'

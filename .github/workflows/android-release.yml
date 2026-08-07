@@ -2,6 +2,19 @@ name: Android Release
 
 on:
   workflow_call:
+    secrets:
+      ANDROID_UPLOAD_KEY:
+        description: 'Android upload key used to sign release builds'
+        required: false
+      ANDROID_UPLOAD_KEY_ALIAS:
+        description: 'Alias for the Android upload signing key'
+        required: false
+      ANDROID_UPLOAD_KEY_PASSWORD:
+        description: 'Password for the Android upload signing key'
+        required: false
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:
+        description: 'Google Play service account credentials used for uploads'
+        required: false
     inputs:
       version:
         description: 'Version to build (e.g., 1.2.3 without v prefix)'

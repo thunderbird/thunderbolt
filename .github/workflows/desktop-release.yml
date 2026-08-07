@@ -3,6 +3,37 @@ run-name: Desktop release for v${{ inputs.version }}
 
 on:
   workflow_call:
+    secrets:
+      APPLE_DEVELOPER_CERTIFICATE:
+        description: 'Apple developer certificate used to sign desktop builds'
+        required: false
+      APPLE_DEVELOPER_CERTIFICATE_PASSWORD:
+        description: 'Password for the Apple developer certificate'
+        required: false
+      APPLE_SIGNING_IDENTITY:
+        description: 'Apple signing identity used for desktop code signing'
+        required: false
+      APPLE_TEAM_ID:
+        description: 'Apple Developer team ID used for desktop releases'
+        required: false
+      APP_STORE_CONNECT_API_KEY:
+        description: 'App Store Connect API private key used for notarization'
+        required: false
+      APP_STORE_CONNECT_API_KEY_ID:
+        description: 'App Store Connect API key ID used for notarization'
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        description: 'App Store Connect issuer ID used for notarization'
+        required: false
+      CRABNEBULA_CLOUD_API_KEY:
+        description: 'CrabNebula Cloud API key used to publish desktop releases'
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY:
+        description: 'Tauri private key used to sign desktop updates'
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        description: 'Password for the Tauri update signing key'
+        required: false
     inputs:
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'

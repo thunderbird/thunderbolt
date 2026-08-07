@@ -49,7 +49,6 @@ export const chatThreadsTable = powersyncSchema.table(
     triggeredBy: text('triggered_by'),
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
-    modeId: text('mode_id'),
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
     deletedAt: timestamp('deleted_at'),
@@ -173,31 +172,6 @@ export const triggersTable = powersyncSchema.table(
       .references(() => user.id, { onDelete: 'cascade' }),
   },
   (table) => [index('idx_triggers_user_id').on(table.userId)],
-)
-
-/**
- * LEGACY — the chat-modes feature was removed. No longer synced (dropped from
- * the sync rules and PowerSync table maps). The def stays so the postgres table
- * persists until the DROP migration lands, after the powersync service has been
- * rolled off the modes sync rule. See THU-739.
- */
-export const modesTable = powersyncSchema.table(
-  'modes',
-  {
-    id: text('id').notNull(),
-    name: text('name'),
-    label: text('label'),
-    icon: text('icon'),
-    systemPrompt: text('system_prompt'),
-    isDefault: integer('is_default').default(0),
-    order: integer('order').default(0),
-    defaultHash: text('default_hash'),
-    deletedAt: timestamp('deleted_at'),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
-  },
-  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_modes_user_id').on(table.userId)],
 )
 
 export const modelProfilesTable = powersyncSchema.table(

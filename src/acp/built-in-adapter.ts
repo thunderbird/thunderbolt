@@ -53,6 +53,7 @@ import {
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -225,16 +226,21 @@ export type ResolvedPiModel = {
   readonly thinkingLevel: ThinkingLevel
 }
 
-/** Resolve the selected model to a Pi descriptor + thinking level, or null to
- *  fall back to legacy. Anthropic ids must exist in Pi's built-in catalog;
- *  OpenAI-wire providers must resolve a connection (api key / url present). The
- *  thinking level is derived from the model's profile for both families. */
+/** Resolve a model to a Pi descriptor + thinking level, or null to fall back to
+ *  legacy. Takes `model` explicitly rather than reading `context.selectedModel` —
+ *  callers must pass the row just fetched by `prepareAiRequestConfig`, not the
+ *  session-captured object, which only updates on session-create or an explicit
+ *  user pick and otherwise goes stale for the life of an open thread (e.g. a
+ *  built-in model's `model` alias renamed server-side). Anthropic ids must exist
+ *  in Pi's built-in catalog; OpenAI-wire providers must resolve a connection (api
+ *  key / url present). The thinking level is derived from the model's profile for
+ *  both families. */
 export const resolvePiModel = (
   agentCore: AgentCoreModule,
-  context: AgentAdapterContext,
+  model: Model,
+  getProxyFetch: () => FetchFn,
   profile: ModelProfile | null,
 ): ResolvedPiModel | null => {
-  const model = context.selectedModel
   const thinkingLevel = deriveThinkingLevel(profile)
   if (model.provider === 'anthropic') {
     if (!agentCore.isKnownAnthropicModel(model.model)) {
@@ -245,12 +251,12 @@ export const resolvePiModel = (
         kind: 'anthropic',
         modelId: model.model,
         apiKey: model.apiKey ?? '',
-        fetch: context.getProxyFetch(),
+        fetch: getProxyFetch(),
       },
       thinkingLevel,
     }
   }
-  const connection = resolveOpenAiCompatConnection(model, context.getProxyFetch)
+  const connection = resolveOpenAiCompatConnection(model, getProxyFetch)
   // Pi's openai-completions client requires a bearer key (it throws on an empty
   // one with no auth header). A `custom` model pointing at a no-auth local
   // endpoint (ollama / llama.cpp) has no key, so it stays on the legacy pipeline
@@ -457,7 +463,7 @@ const fetchViaHarness = async (
     httpClient: context.httpClient,
     webToolBudget: context.webToolBudget,
   })
-  const resolved = resolvePiModel(agentCore, context, config.profile)
+  const resolved = resolvePiModel(agentCore, config.model, context.getProxyFetch, config.profile)
   if (!resolved) {
     return fallback()
   }

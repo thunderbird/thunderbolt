@@ -15,6 +15,7 @@ import '@/testing-library'
 import { describe, expect, it, mock } from 'bun:test'
 import type { PreparedAiRequestConfig } from '@/ai/fetch'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
+import { mockProxyFetch } from '@/test-utils/proxy-fetch'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model } from '@/types'
 import {
@@ -28,7 +29,10 @@ import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-co
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import type { AgentHarness, AgentTool } from '@earendil-works/pi-agent-core'
 
-const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
+// `mockProxyFetch` is a `FetchFn`, a superset of Pi's descriptor `fetch` shape
+// (`PiModelDescriptor['fetch']` has no `preconnect`), so it satisfies both —
+// used as a descriptor's `fetch` below and as `getProxyFetch()`'s return value.
+const noopFetch = mockProxyFetch
 
 const anthropic = (overrides: Partial<Extract<PiModelDescriptor, { kind: 'anthropic' }>> = {}): ResolvedPiModel => ({
   descriptor: { kind: 'anthropic', modelId: 'claude-opus-4-8', apiKey: 'sk-a', fetch: noopFetch, ...overrides },
@@ -51,6 +55,25 @@ const openaiCompat = (
   },
   thinkingLevel: 'medium',
 })
+
+/** Adapts a stub harness's `prompt`/`waitForIdle` run into the `ReadableStream`
+ *  `piHarnessToUiMessageStream` normally returns, closing once the run settles.
+ *  Shared by every `agentCore` stub below — none of these tests assert on the
+ *  stream's bytes, only on side effects the run produces. */
+const drainPromptToStream = (_harness: AgentHarness, runPrompt: () => Promise<unknown>): ReadableStream<Uint8Array> =>
+  new ReadableStream<Uint8Array>({
+    start: (controller) => {
+      void runPrompt().then(() => controller.close())
+    },
+  })
+
+/** Fields identical across this file's `agentCore` stubs — every test overrides
+ *  at least `buildAppHarness` and `toPiAgentTools` to capture what it asserts on. */
+const sharedAgentCoreStub = {
+  isKnownAnthropicModel: () => true,
+  workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+  piHarnessToUiMessageStream: drainPromptToStream,
+}
 
 describe('harnessSignature', () => {
   it('is stable for identical config', () => {
@@ -113,20 +136,98 @@ describe('harnessSignature', () => {
 })
 
 describe('resolvePiModel — image capability (vendor-gated)', () => {
-  const contextFor = (model: Model): AgentAdapterContext =>
-    ({ selectedModel: model, getProxyFetch: () => noopFetch }) as unknown as AgentAdapterContext
   const agentCore = {} as Parameters<typeof resolvePiModel>[0]
   const openaiModel = (vendor: string | null): Model =>
     ({ id: 'm', name: 'M', provider: 'openai', model: 'gpt-4o', apiKey: 'sk-o', vendor, toolUsage: 1 }) as Model
 
   it('advertises image support for a vision-vendor model', () => {
-    const resolved = resolvePiModel(agentCore, contextFor(openaiModel('openai')), null)
+    const resolved = resolvePiModel(agentCore, openaiModel('openai'), () => noopFetch, null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: true })
   })
 
   it('does not advertise image support when the vendor is unknown (custom/local)', () => {
-    const resolved = resolvePiModel(agentCore, contextFor(openaiModel(null)), null)
+    const resolved = resolvePiModel(agentCore, openaiModel(null), () => noopFetch, null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: false })
+  })
+})
+
+describe('fetchViaHarness — model resolution', () => {
+  it('resolves the wire model from the fresh DB row, not the stale session-captured selectedModel', async () => {
+    // Reproduces the production incident: the default Opus row's `model` alias
+    // was renamed server-side (opus-4.8 -> opus-5) while a thread stayed open.
+    // `context.selectedModel` is session-captured and never re-hydrates mid-thread
+    // (see use-hydrate-chat-store.ts), so it keeps reporting the dead alias for
+    // the life of the send context — only the config `prepareConfig` fetches
+    // fresh from the DB on every send should reach the wire.
+    const baseModel = { id: 'model-1', name: 'Opus', provider: 'anthropic', apiKey: 'sk-a', toolUsage: 1 } as Model
+    const staleSelectedModel: Model = { ...baseModel, model: 'opus-4.8' }
+    const agent = { id: 'built-in', type: 'built-in' } as Agent
+
+    const freshConfig = (modelAlias: string): PreparedAiRequestConfig => ({
+      model: { ...baseModel, model: modelAlias },
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable prompt',
+      volatileSystemPrompt: 'now',
+    })
+    // Two sends, each fetching its own fresh row — the second alias (opus-6)
+    // simulates a further rename mid-thread, which must drift the harness
+    // signature and rebuild rather than reuse the first send's cached harness.
+    const configs = [freshConfig('opus-5'), freshConfig('opus-6')]
+    const prepareConfig = mock(async () => configs.shift()!)
+
+    const buildModelIds: string[] = []
+    const buildHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
+      buildModelIds.push(options.model.kind === 'anthropic' ? options.model.modelId : 'n/a')
+      return {
+        getTools: () => [],
+        setTools: async () => {},
+        setActiveTools: async () => {},
+        prompt: async () => {},
+        waitForIdle: async () => {},
+        on: () => () => {},
+        abort: async () => {},
+        env: { remove: async () => {} },
+      } as unknown as AgentHarness
+    }
+    const agentCore = {
+      ...sharedAgentCoreStub,
+      buildAppHarness: buildHarness,
+      toPiAgentTools: async () => [],
+    } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
+
+    const adapter = createBuiltInAdapter(agent, {
+      loadAgentCore: async () => agentCore,
+      prepareConfig: prepareConfig as NonNullable<BuiltInAdapterOptions['prepareConfig']>,
+    })
+    const context = {
+      threadId: 'thread-1',
+      selectedModel: staleSelectedModel,
+      mcpClients: [],
+      reconnectClient: async () => null,
+      httpClient: {},
+      getProxyFetch: () => noopFetch,
+      regenerationRevision: 0,
+    } as unknown as AgentAdapterContext
+    const send = async (): Promise<void> => {
+      const response = await adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }) },
+        context,
+      )
+      await response.text()
+    }
+
+    await send()
+    await send()
+
+    // Both sends used the fresh alias fetched for that send — never the stale
+    // 'opus-4.8' the session captured — and the second send rebuilt the harness
+    // (two build calls) because the fresh row's alias drifted between sends.
+    expect(buildModelIds).toEqual(['opus-5', 'opus-6'])
   })
 })
 
@@ -212,19 +313,12 @@ describe('createBuiltInAdapter persistent harness', () => {
       return harness
     }
     const agentCore = {
-      isKnownAnthropicModel: () => true,
+      ...sharedAgentCoreStub,
       buildAppHarness: buildHarness,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
       toPiAgentTools: async (toolset: PreparedAiRequestConfig['toolset']) => {
         toPiCalls.push(toolset)
         return Object.keys(toolset).map((name) => ({ name }) as AgentTool)
       },
-      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<unknown>) =>
-        new ReadableStream<Uint8Array>({
-          start: (controller) => {
-            void runPrompt().then(() => controller.close())
-          },
-        }),
     } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
     const adapter = createBuiltInAdapter(agent, {
       loadAgentCore: async () => agentCore,

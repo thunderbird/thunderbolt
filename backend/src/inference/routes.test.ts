@@ -148,6 +148,34 @@ describe('Inference Routes', () => {
       })
     })
 
+    it('routes the legacy opus-4.8 alias to the same Anthropic config as opus-5', async () => {
+      expect(supportedModels['opus-4.8']).toEqual(supportedModels['opus-5'])
+
+      const mockCompletion = createMockStream()
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
+
+      const response = await app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...validRequestBody, model: 'opus-4.8' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(getInferenceClientMock).toHaveBeenCalledWith('anthropic')
+      // Exact (non-partial) match: omitTemperature means the key is absent from the
+      // upstream payload entirely, not just undefined — a missing `temperature` field here
+      // would fail this assertion the same way an unexpected one would.
+      expect(mockCreateCompletion).toHaveBeenCalledWith({
+        model: 'claude-opus-5',
+        messages: validRequestBody.messages,
+        tools: undefined,
+        tool_choice: undefined,
+        stream: true,
+      })
+    })
+
     it('should handle request with tools and tool_choice', async () => {
       const mockCompletion = createMockStream()
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
@@ -222,7 +250,7 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).not.toHaveBeenCalled()
     })
 
-    it('should reject unsupported models', async () => {
+    it('should reject unsupported models with a 400 naming the rejected model', async () => {
       const unsupportedModelRequest = {
         ...validRequestBody,
         model: 'unsupported-model',
@@ -236,8 +264,10 @@ describe('Inference Routes', () => {
         }),
       )
 
-      expect(response.status).toBe(500)
+      expect(response.status).toBe(400)
       expect(mockCreateCompletion).not.toHaveBeenCalled()
+      const body = await response.json()
+      expect(body.error).toContain('unsupported-model')
     })
 
     it('should handle inference API errors gracefully', async () => {
@@ -586,6 +616,50 @@ describe('Inference Routes', () => {
       ])
     })
 
+    it('emits phase timing headers and a structured latency log when rejecting an unknown model', async () => {
+      const entries: Array<{ context: InferenceProxyLatencyLog; message: string }> = []
+      const timestamps = [200, 230, 310]
+      const timingApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          logger: {
+            info: (context, message) => entries.push({ context: context as InferenceProxyLatencyLog, message }),
+          },
+          nowFn: () => timestamps.shift() ?? 0,
+        }),
+      )
+
+      const response = await timingApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...validRequestBody, model: 'unsupported-model' }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
+      expect(response.headers.get('x-proxy-timing')).toBe('pre=30;upstream=80;total=110;attempts=0')
+      expect(response.headers.get('server-timing')).toBe('pre;dur=30, upstream;dur=80, total;dur=110')
+      expect(entries).toEqual([
+        {
+          context: {
+            event: 'inference_proxy_latency',
+            route: '/chat/completions',
+            provider: 'unknown',
+            model: 'unsupported-model',
+            status: 400,
+            preMs: 30,
+            upstreamMs: 80,
+            totalMs: 110,
+            attempts: 0,
+          },
+          message: 'Inference proxy latency',
+        },
+      ])
+    })
+
     it('should handle malformed JSON requests', async () => {
       const response = await app.handle(
         new Request('http://localhost/chat/completions', {
@@ -600,7 +674,7 @@ describe('Inference Routes', () => {
     })
 
     it('exposes only Thunderbolt models handled by the inference proxy', () => {
-      expect(Object.keys(supportedModels)).toEqual(['opus-5', 'deepseek-v4-flash'])
+      expect(Object.keys(supportedModels)).toEqual(['opus-5', 'opus-4.8', 'deepseek-v4-flash'])
     })
 
     it('should handle requests with has_tools flag correctly', async () => {

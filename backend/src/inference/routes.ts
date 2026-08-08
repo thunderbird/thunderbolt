@@ -4,8 +4,9 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
+import { BadRequestError } from '@/errors/http-errors'
 import { classifyInferenceError } from '@/inference/error-kind'
-import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
+import { createErrorResponse, getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import { elapsedMs } from '@/utils/timing'
@@ -45,6 +46,16 @@ export const supportedModels: Record<string, ModelConfig> = {
     internalName: 'claude-opus-5',
     omitTemperature: true,
   },
+  // Legacy alias for the pre-rename model id. Stale clients (an open tab whose session
+  // captured the old model object, a desynced device) keep sending 'opus-4.8' after the
+  // default model was renamed to 'opus-5'; routing it to the same upstream keeps those
+  // clients working instead of 500ing on every send. The rename that caused this incident
+  // shipped without this alias — any future default-model rename must add one too.
+  'opus-4.8': {
+    provider: 'anthropic',
+    internalName: 'claude-opus-5',
+    omitTemperature: true,
+  },
   'deepseek-v4-flash': {
     provider: 'fireworks',
     internalName: 'accounts/fireworks/models/deepseek-v4-flash',
@@ -54,7 +65,8 @@ export const supportedModels: Record<string, ModelConfig> = {
 export type InferenceProxyLatencyLog = {
   event: 'inference_proxy_latency'
   route: string
-  provider: InferenceProvider
+  /** 'unknown' when the request was rejected before a provider could be resolved (e.g. bad model id). */
+  provider: InferenceProvider | 'unknown'
   model: string
   status: number
   preMs: number
@@ -125,18 +137,10 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         throw new Error('Non-streaming requests are not supported')
       }
 
-      const modelConfig = supportedModels[body.model]
-      if (!modelConfig) {
-        throw new Error('Model not found')
-      }
-
-      const { provider, internalName, omitTemperature } = modelConfig
-
-      const { client } = getClient(provider)
-      const attemptTracker = createInferenceAttemptTracker()
       const route = new URL(ctx.request.url).pathname
+      const attemptTracker = createInferenceAttemptTracker()
       /** Emit route phase telemetry in structured logs and response headers. */
-      const recordLatency = (status: number, completedAt: number) => {
+      const recordLatency = (provider: InferenceProvider | 'unknown', status: number, completedAt: number) => {
         const upstreamMs = elapsedMs(handlerStartedAt, completedAt)
         const totalMs = elapsedMs(ctx.inferenceRequestStartedAt, completedAt)
         const latency: InferenceProxyLatencyLog = {
@@ -156,6 +160,22 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         ctx.set.headers[serverTimingHeader] = formatServerTiming(preMs, upstreamMs, totalMs)
         logger?.info(latency, 'Inference proxy latency')
       }
+
+      const modelConfig = supportedModels[body.model]
+      if (!modelConfig) {
+        // Caller error, not an upstream failure — no provider was ever reached, so this only
+        // feeds the proxy latency log (captureInferenceErrorFn's inference_upstream_error event
+        // doesn't apply). Echoing the model id back is safe: it's the caller's own input.
+        // Must NOT `throw` here — that would route through `.onError(safeErrorHandler)`, which
+        // replaces the message with a generic HTTP reason phrase and drops the model id.
+        const error = new BadRequestError(`Unknown model: ${body.model}`)
+        recordLatency('unknown', error.status, nowFn())
+        ctx.set.status = error.status
+        return createErrorResponse(error.message)
+      }
+
+      const { provider, internalName, omitTemperature } = modelConfig
+      const { client } = getClient(provider)
 
       try {
         const completion = await runWithInferenceAttemptTracking(attemptTracker, () =>
@@ -178,7 +198,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           }),
         )
         const upstreamResolvedAt = nowFn()
-        recordLatency(200, upstreamResolvedAt)
+        recordLatency(provider, 200, upstreamResolvedAt)
 
         const stream = createSSEStreamFromCompletion(completion, {
           onError: (error) => {
@@ -211,7 +231,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         return new Response(stream, { headers: responseHeaders })
       } catch (error) {
         const status = getErrorStatus(error)
-        recordLatency(status, nowFn())
+        recordLatency(provider, status, nowFn())
         // Keep failures diagnosable using body-free structured metadata only.
         captureInferenceErrorFn({
           provider,

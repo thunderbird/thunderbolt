@@ -1,6 +1,6 @@
 # User Data Export Format
 
-Versioned, table-keyed JSON snapshot produced by **Settings → Preferences → Export My Data**. The export is a backup of the signed-in user's local data — chats, tasks, models, MCP servers, agents, skills, prompts, modes, settings, and the user-typed API keys that pair with those rows.
+Versioned, table-keyed JSON snapshot produced by **Settings → Preferences → Export My Data**. The export is a backup of the signed-in user's local data — chats, tasks, models, MCP servers, agents, skills, prompts, settings, and the user-typed API keys that pair with those rows.
 
 The companion import flow (THU-597) consumes the same format and reads `schemaVersion` to branch its restore logic.
 
@@ -28,7 +28,6 @@ The importer detects gzip by magic bytes (`1f 8b`, RFC 1952), so a hand-decompre
     "prompts":         [ /* full rows */ ],
     "skills":          [ /* full rows */ ],
     "triggers":        [ /* full rows */ ],
-    "modes":           [ /* full rows */ ],
     "agents":          [ /* full rows */ ],
     "models_secrets":  [ /* full rows */ ],
     "mcp_servers":     [ /* full rows */ ],
@@ -60,7 +59,7 @@ The exporter walks the same name → Drizzle table map PowerSync uses (`syncedTa
 
 **Synced (PowerSync) tables.** Soft-deleted rows are included — the importer decides whether to restore them as soft-deleted, fully deleted, or live.
 
-- `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `model_profiles`, `prompts`, `skills`, `triggers`, `modes`, `agents`.
+- `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `model_profiles`, `prompts`, `skills`, `triggers`, `agents`.
 
 **Local-only tables** — user-typed credentials and config that don't sync.
 

@@ -228,7 +228,7 @@ export const hasSetting = async (db: AnyDrizzleDatabase, key: string): Promise<b
  *
  * Callers supply `targets` so the DAL doesn't have to know which
  * versions are relevant to this boot: the hook passes bundled versions
- * for modes/tasks/skills/settings and the picked models version from
+ * for tasks/skills/settings and the picked models version from
  * `pickModelsDefaults(useConfigStore.getState().config.defaults?.models)`
  * — that's `max(bundle, OTA)`, which is exactly the version reconcile
  * will compare against.

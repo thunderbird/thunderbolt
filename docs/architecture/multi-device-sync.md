@@ -47,7 +47,6 @@ From [`shared/powersync-tables.ts`](../shared/powersync-tables.ts):
 | `chat_messages`  | Individual messages within threads                                | `id`             |
 | `tasks`          | Todo / task items (defaults seeded per user)                      | `(id, user_id)`  |
 | `models`         | Configured model profiles (defaults seeded per user)              | `(id, user_id)`  |
-| `modes`          | Custom conversational modes (defaults seeded per user)            | `(id, user_id)`  |
 | `prompts`        | Saved prompt templates (defaults seeded per user)                 | `(id, user_id)`  |
 | `model_profiles` | Per-model tuning (temperature, prompt overrides) seeded per user  | `(id, user_id)`  |
 | `mcp_servers`    | Registered Model Context Protocol servers                         | `id`             |

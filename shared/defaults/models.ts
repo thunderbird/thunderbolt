@@ -78,18 +78,18 @@ export const hashModel = (model: SharedModel): string => {
  */
 
 /**
- * Opus 4.8 reuses the row id originally assigned to Sonnet 4.5 (and inherited by 4.7).
- * Reconciliation upgrades unmodified rows in place; edited rows survive.
+ * This default keeps a stable row identity so persisted model references remain valid.
+ * Generic defaults reconciliation upgrades unmodified rows in place.
  */
-export const defaultModelOpus48: SharedModel = {
+export const defaultModelOpus5: SharedModel = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-  name: 'Opus 4.8',
+  name: 'Opus 5',
   provider: 'thunderbolt',
-  model: 'opus-4.8',
+  model: 'opus-5',
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
-  contextWindow: 200000,
+  contextWindow: 200_000,
   toolUsage: 1,
   startWithReasoning: 0,
   supportsParallelToolCalls: 1,
@@ -169,7 +169,7 @@ export const defaultModelGlm52: SharedModel = {
  * will surface upstream errors when used.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
-  defaultModelOpus48,
+  defaultModelOpus5,
   defaultModelDeepseekV4Flash,
   defaultModelGlm52,
 ] as const
@@ -184,4 +184,4 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 3
+export const defaultModelsVersion = 4

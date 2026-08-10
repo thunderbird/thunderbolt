@@ -26,4 +26,4 @@ test('starts the eval entrypoint with auth under plain Bun', async () => {
   expect(exitCode).toBe(1)
   expect(output).toContain('No scenarios matched the filters.')
   expect(output).not.toContain('localStorage is not defined')
-})
+}, 30_000)

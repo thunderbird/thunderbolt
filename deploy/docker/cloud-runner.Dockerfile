@@ -23,6 +23,13 @@ ENV NODE_ENV=production
 ENV PORT=8080
 ENV CLOUD_RUNNER_DATA_DIR=/data
 
+# Drop root before runtime: the runner executes agent tool calls over untrusted
+# input, so the process runs as the base image's non-root `bun` user (uid 1000,
+# matching the EFS access point's posixUser in deploy/cloud-runner). The chown
+# covers running without a mount; in production the EFS mount shadows /data.
+RUN mkdir -p /data && chown bun:bun /data
+USER bun
+
 EXPOSE 8080
 
 CMD ["bun", "run", "src/index.ts"]

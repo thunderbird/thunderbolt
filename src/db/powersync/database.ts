@@ -48,7 +48,7 @@ const initialSyncTimeoutMs = 10_000
 /**
  * Sync rule priority we block app init on. Matches the `user_essentials` bucket in
  * `powersync-service/config/config.yaml` (and the PowerSync Cloud dashboard rules):
- * settings, models, modes, model_profiles, devices, chat_threads. Lower-priority buckets
+ * settings, models, model_profiles, devices, chat_threads. Lower-priority buckets
  * (chat_messages, tasks, etc.) stream in the background after the app is interactive.
  *
  * Falls back to global `hasSynced` if the deployed sync rules don't declare priorities yet
@@ -405,7 +405,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
   /**
    * Wait for PowerSync's priority-1 buckets to complete their initial sync (essentials —
-   * settings, models, modes, model_profiles, devices, chat_threads). Lower-priority data
+   * settings, models, model_profiles, devices, chat_threads). Lower-priority data
    * (chat_messages, tasks, etc.) continues streaming in the background.
    *
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).

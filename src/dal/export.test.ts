@@ -54,7 +54,6 @@ describe('Export DAL', () => {
       'model_profiles',
       'models',
       'models_secrets',
-      'modes',
       'prompts',
       'settings',
       'skills',

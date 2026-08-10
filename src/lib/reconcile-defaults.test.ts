@@ -11,9 +11,10 @@ import type { AnyColumn } from 'drizzle-orm'
 import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
-import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
+import { defaultModelProfileOpus5, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import {
   defaultModelGlm52,
+  defaultModelOpus5,
   defaultModels,
   defaultModelsVersion,
   hashModel,
@@ -806,6 +807,112 @@ describe('reconcileDefaultsForTable', () => {
   })
 })
 
+describe('Opus 5 data migration', () => {
+  const legacyDefault = (): SharedModel => ({
+    ...defaultModelOpus5,
+    name: 'Opus 4.8',
+    model: 'opus-4.8',
+    contextWindow: 200_000,
+  })
+
+  test('fully upgrades an untouched legacy default and refreshes its lineage hash', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    await db.insert(modelsTable).values({
+      ...legacyModel,
+      defaultHash: hashModel(legacyModel),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...defaultModelOpus5,
+      defaultHash: hashModel(defaultModelOpus5),
+    })
+  })
+
+  test('preserves custom fields while upgrading the legacy model slug', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    const customizedLegacy = {
+      ...legacyModel,
+      name: 'My customized Opus',
+      enabled: 0,
+      startWithReasoning: 1,
+      contextWindow: 123_456,
+      defaultHash: hashModel(legacyModel),
+    }
+    await db.insert(modelsTable).values(customizedLegacy)
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...customizedLegacy,
+      model: defaultModelOpus5.model,
+    })
+  })
+
+  test('normalizes a legacy OTA default before reconciliation', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    await db.insert(modelsTable).values({
+      ...legacyModel,
+      defaultHash: hashModel(legacyModel),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+    const otaVersion = defaultModelsVersion + 1
+    const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus5.id ? legacyModel : model))
+
+    await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels } })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...defaultModelOpus5,
+      defaultHash: hashModel(defaultModelOpus5),
+    })
+    expect(
+      await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.models)).get(),
+    ).toMatchObject({ value: String(otaVersion) })
+  })
+
+  test('resurrects and upgrades a cleanup-shaped legacy row in one boot', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    await db.insert(modelsTable).values({
+      ...legacyModel,
+      deletedAt: '2026-01-01T00:00:00.000Z',
+      defaultHash: hashModel(legacyModel),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db)
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+      ...defaultModelOpus5,
+      defaultHash: hashModel(defaultModelOpus5),
+    })
+    expect(
+      await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, defaultModelOpus5.id)).get(),
+    ).toEqual({
+      ...defaultModelProfileOpus5,
+      defaultHash: hashModelProfile(defaultModelProfileOpus5),
+    })
+  })
+})
+
 /**
  * Regression tests for THU-637 ("Models are janky"): older-bundle devices used
  * to overwrite rows authored by newer-bundle devices via sync, causing every
@@ -1045,7 +1152,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
 
     // Seed at the current bundle so every row has a matching defaultHash.
     // This models the state of a pre-THU-677 device on its first boot after
-    // upgrading to this build: the four new markers (modes/tasks/skills/
+    // upgrading to this build: the four new markers (models/tasks/skills/
     // settings) don't exist yet, but the rows themselves were already
     // seeded by earlier reconcile runs and their hashes match the bundle.
     await reconcileDefaults(db)
@@ -1534,7 +1641,7 @@ describe('widget skill reconciliation', () => {
 
 /**
  * THU-677 extends the THU-637 version-gate pattern from models to every
- * other reconciled table (modes, tasks, skills, settings). The scenarios
+ * other reconciled table (tasks, skills, settings). The scenarios
  * per table mirror the models coverage above but at reduced depth — the
  * shared `reconcileDefaultsForTable` and `computeCanOverwrite` behaviour
  * is already exercised by the models suite. Here we prove each table
@@ -1796,7 +1903,7 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
 
   test('per-table marker writes do not poison the settings hasAnyRow probe on fresh install', async () => {
     // Regression guard for the intra-transaction ordering hazard: the models/
-    // modes/tasks/skills passes each land a marker row in `settingsTable` via
+    // tasks/skills passes each land a marker row in `settingsTable` via
     // `advanceVersionMarker`. If `hasAnySettingsRow` were read inline before
     // the settings block instead of at the top of the transaction, those
     // earlier marker writes would flip the probe to `true` on a fresh install

@@ -552,7 +552,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (model: Model, length: number, prompt_number: number) => {
         setShowOverflowModal(true)
         trackEvent('chat_send_prompt_overflow', {
-          model,
+          model_id: model.id,
+          model_name: model.model,
+          provider: model.provider,
           length,
           prompt_number,
         })

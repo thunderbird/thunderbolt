@@ -54,6 +54,24 @@ export const sanitizeUrl = (url: string): string => {
   return url
 }
 
+/** Remove API keys from a PostHog property tree before it leaves the app. */
+export const stripApiKeys = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(stripApiKeys)
+  }
+
+  const record = value as Record<string, unknown>
+  const removedHere = Object.hasOwn(record, 'apiKey')
+  if (removedHere) {
+    delete record.apiKey
+  }
+  return Object.values(record).some(stripApiKeys) || removedHere
+}
+
 /**
  * Initialize Posthog analytics and return the client
  * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a client with cloudUrl from settings as prefixUrl
@@ -111,6 +129,10 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
           }
           if (typeof event.properties?.$pathname === 'string') {
             event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
+          }
+
+          if (stripApiKeys(event.properties) && import.meta.env.DEV) {
+            console.warn('Removed apiKey from PostHog event properties')
           }
 
           return event

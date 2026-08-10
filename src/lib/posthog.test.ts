@@ -6,7 +6,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createClient, type HttpClient } from '@/lib/http'
 import type { HandleError } from '@/types/handle-errors'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { initPosthog, resetPosthogClient, sanitizeUrl, trackError } from './posthog'
+import { initPosthog, resetPosthogClient, sanitizeUrl, stripApiKeys, trackError } from './posthog'
 
 type PosthogOptions = {
   before_send: (event: PosthogEvent) => PosthogEvent
@@ -128,6 +128,30 @@ describe('analytics before_send sanitization', () => {
     expect(result.properties.$current_url).toBe(123)
     expect(result.properties.url).toEqual({ href: '/chats/1' })
     expect(result.properties.$pathname).toBeNull()
+  })
+
+  it('removes nested API keys and preserves other properties', () => {
+    const properties = {
+      model: {
+        id: 'model-1',
+        apiKey: 'secret',
+        nested: [{ apiKey: 'another-secret', provider: 'openai' }],
+      },
+      attempts: 2,
+    }
+
+    expect(stripApiKeys(properties)).toBe(true)
+    expect(properties).toEqual({
+      model: {
+        id: 'model-1',
+        nested: [{ provider: 'openai' }],
+      },
+      attempts: 2,
+    })
+  })
+
+  it('reports when no API key was present', () => {
+    expect(stripApiKeys({ model_id: 'model-1' })).toBe(false)
   })
 })
 

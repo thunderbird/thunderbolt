@@ -390,7 +390,9 @@ export const createChatInstance = (
         await saveMessages({ id, messages: [message] })
 
         trackEvent('chat_receive_reply', {
-          model: session.selectedModel,
+          model_id: session.selectedModel.id,
+          model_name: session.selectedModel.model,
+          provider: session.selectedModel.provider,
           length: message.parts.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0),
           reply_number: instance.messages.length + 1,
         })
@@ -530,7 +532,9 @@ export const createChatInstance = (
     }
 
     trackEvent('chat_send_prompt', {
-      model: selectedModel,
+      model_id: selectedModel.id,
+      model_name: selectedModel.model,
+      provider: selectedModel.provider,
       length: message && 'text' in message ? (message.text?.length ?? 0) : 0,
       prompt_number: instance.messages.length + 1,
     })

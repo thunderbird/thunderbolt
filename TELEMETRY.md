@@ -8,6 +8,8 @@ Event tracking respects user privacy settings and can be disabled through the ap
 
 Thunderbolt uses PostHog for analytics to track user interactions and application usage. All events follow a structured naming convention for better organization and analysis.
 
+Event properties must never include prompts, responses, API keys, or other user-authored content. Use non-secret scalar identifiers such as `model_id`, `model_name`, and `provider`; a final egress scrub removes any property named `apiKey` before sending.
+
 ### Event Naming Convention
 
 Events follow the pattern: `<feature>_<action>`
@@ -19,8 +21,9 @@ Events follow the pattern: `<feature>_<action>`
 
 #### Chat & Messaging (`chat_*`)
 
-- `chat_send_prompt` - User sends a message to the AI
-- `chat_receive_reply` - AI generates a response
+- `chat_send_prompt` - User sends a message to the AI (with `model_id`, `model_name`, `provider`, `length`, and `prompt_number`)
+- `chat_send_prompt_overflow` - User attempts a prompt that exceeds the model context (with the same scalar model properties, `length`, and `prompt_number`)
+- `chat_receive_reply` - AI generates a response (with `model_id`, `model_name`, `provider`, `length`, and `reply_number`)
 - `chat_select` - User selects a chat thread
 - `chat_new_clicked` - User creates a new chat
 - `chat_delete` - User deletes a chat
@@ -119,7 +122,9 @@ trackEvent('chat_send_prompt')
 
 // Track an event with properties
 trackEvent('chat_send_prompt', {
-  model: 'gpt-4',
+  model_id: 'model-row-id',
+  model_name: 'gpt-4',
+  provider: 'openai',
   length: 150,
 })
 ```

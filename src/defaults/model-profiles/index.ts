@@ -6,11 +6,11 @@ import { hashValues } from '@/lib/utils'
 import type { ModelProfile } from '@/types'
 import { defaultModelProfileDeepseekV4Flash } from './deepseek'
 import { defaultModelProfileGlm52 } from './glm'
-import { defaultModelProfileOpus48 } from './opus'
+import { defaultModelProfileOpus5 } from './opus'
 
 export { defaultModelProfileDeepseekV4Flash } from './deepseek'
 export { defaultModelProfileGlm52 } from './glm'
-export { defaultModelProfileOpus48 } from './opus'
+export { defaultModelProfileOpus5 } from './opus'
 
 /**
  * Compute hash of user-editable fields for a model profile.
@@ -43,7 +43,7 @@ export const hashModelProfile = (profile: ModelProfile): string =>
 
 /** All default model profiles for iteration */
 export const defaultModelProfiles: ReadonlyArray<ModelProfile> = [
-  defaultModelProfileOpus48,
+  defaultModelProfileOpus5,
   defaultModelProfileDeepseekV4Flash,
   defaultModelProfileGlm52,
 ] as const

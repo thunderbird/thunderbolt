@@ -110,7 +110,6 @@ export {
   getAllTriggersForPrompt,
 } from './triggers'
 
-// Modes
 // Model Profiles
 export {
   createDefaultModelProfile,

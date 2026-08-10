@@ -22,6 +22,7 @@ ENV PORT=8000
 
 EXPOSE 8000
 
-USER bun
+# The base image already runs as user 1000 (bun); keep this explicit for clarity and scanners.
+USER 1000
 
 ENTRYPOINT ["./entrypoint.sh"]

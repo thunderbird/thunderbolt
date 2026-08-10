@@ -9,7 +9,7 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
-import { defaultModelOpus48 } from '@shared/defaults/models'
+import { defaultModelOpus5 } from '@shared/defaults/models'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
@@ -25,7 +25,7 @@ const run = async () => {
   await setupTestDatabase()
   console.log('[1/5] Database ready.\n')
 
-  const modelId = defaultModelOpus48.id
+  const modelId = defaultModelOpus5.id
   const prompt = "What's the current price of Bitcoin?"
 
   const body = JSON.stringify({
@@ -33,7 +33,7 @@ const run = async () => {
     id: uuidv7(),
   })
 
-  console.log(`[2/5] Model: ${defaultModelOpus48.name} (${modelId})`)
+  console.log(`[2/5] Model: ${defaultModelOpus5.name} (${modelId})`)
   console.log(`[2/5] Prompt: "${prompt}"\n`)
 
   const cloudUrl = getLocalSetting('cloudUrl')

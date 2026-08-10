@@ -26,7 +26,6 @@ export const chatThreadsTable = sqliteTable(
     triggeredBy: text('triggered_by'),
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
-    modeId: text('mode_id'),
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
     deletedAt: text('deleted_at'),
@@ -241,34 +240,6 @@ export const modelProfilesTable = sqliteTable(
   (table) => [
     index('idx_model_profiles_active')
       .on(table.modelId)
-      .where(sql`${table.deletedAt} IS NULL`),
-  ],
-)
-
-/**
- * LEGACY — the chat-modes feature was removed (chat behavior is the default;
- * Search/Research ship as default skills). The table stays in the synced
- * schema so this client keeps matching the deployed sync rules; dropping it
- * requires the backend + sync-rules PR flow (see AGENTS.md, "Deploying new
- * synced tables"). No application code reads or writes it.
- */
-export const modesTable = sqliteTable(
-  'modes',
-  {
-    id: text('id').primaryKey(),
-    name: text('name'),
-    label: text('label'),
-    icon: text('icon'),
-    systemPrompt: text('system_prompt'),
-    isDefault: integer('is_default').default(0),
-    order: integer('order').default(0),
-    defaultHash: text('default_hash'),
-    deletedAt: text('deleted_at'),
-    userId: text('user_id'),
-  },
-  (table) => [
-    index('idx_modes_active')
-      .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )

@@ -113,6 +113,6 @@ describe('SkillsView palette action intents', () => {
 
     const dialog = await waitForElement(() => screen.queryByRole('alertdialog'))
     expect(within(dialog).getByText('Delete Skill A?')).toBeInTheDocument()
-    expect(within(dialog).getByText('Skill B')).toBeInTheDocument()
+    expect(within(dialog).getByText(/One skill references this/)).toBeInTheDocument()
   })
 })

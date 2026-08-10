@@ -600,7 +600,7 @@ The realm `thunderbolt` is auto-imported from `config/keycloak-realm.json` on fi
 
 Sync rules are defined in `config/powersync-config.yaml`. The `user_data` bucket syncs these tables scoped by `user_id`:
 
-settings, chat_threads, chat_messages, tasks, models, mcp_servers, prompts, triggers, modes, model_profiles, devices
+settings, chat_threads, chat_messages, tasks, models, mcp_servers, prompts, triggers, model_profiles, devices
 
 The PowerSync JWT secret must match between the backend (`POWERSYNC_JWT_SECRET`) and the PowerSync config.
 

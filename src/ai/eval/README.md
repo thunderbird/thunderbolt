@@ -112,6 +112,7 @@ Report saved to: evals/eval-results-20260804-164000.md
 | `EVAL_MODES`              | all                                 | `chat,search`     | Modes to test                                            |
 | `EVAL_SCENARIO_PARALLEL`  | `3`                                 | `1`               | Concurrent scenarios                                     |
 | `EVAL_TIMEOUT`            | `120000`                            | `60000`           | Timeout per turn (ms)                                    |
+| `EVAL_JUDGE_TIMEOUT`      | `60000`                             | `30000`           | Timeout per judge attempt (ms)                           |
 | `EVAL_OUTPUT`             | `evals/eval-results-<timestamp>.md` | `reports/eval.md` | Report file path                                         |
 | `EVAL_AUTH_TOKEN`         | local storage token                 | signed bearer     | Backend bearer used by inference and proxy requests      |
 | `EVAL_SAMPLES`            | `3`                                 | `5`               | Samples per necessity scenario; core suites always use 1 |
@@ -251,7 +252,7 @@ Judge scope is fixed by category:
 
 Correctness is checked against the judge's own knowledge of the timeless fact or task. Incorrect or unsupported claims fail that assertion, but the response does not need sources or citations. The other assertions are independent: correctness requirements do not affect whether the response offered to search, rebutted a false premise, or admitted it could not verify an answer.
 
-Each judged scenario sample normally makes one judge call containing the user prompt, final response, and only the declared assertion. Verdicts must be strict JSON; malformed JSON or an omitted declared field is retried once. An API failure or invalid verdict after the retry marks that sample as an error rather than passing it. Multi-turn reuse scenarios never invoke the judge because the scored follow-up depends on context from the earlier turn; their reuse and negative-control behavior is measured only by web-call counts.
+Each judged scenario sample normally makes one judge call containing the user prompt, final response, and only the declared assertion. Verdicts must be strict JSON; malformed JSON or an omitted declared field is retried once. Each attempt is abortable and limited by `EVAL_JUDGE_TIMEOUT`; both attempts share an overall deadline of twice that value. An API failure, timeout, or invalid verdict after the retry marks that sample as an error rather than passing it. Multi-turn reuse scenarios never invoke the judge because the scored follow-up depends on context from the earlier turn; their reuse and negative-control behavior is measured only by web-call counts.
 
 ### Sampling, gates, and headline metrics
 

@@ -189,6 +189,43 @@ describe('judge-backed criteria', () => {
     expect(judged.failures).toContain('Judge error: upstream unavailable')
   })
 
+  test('aborts a hanging judge attempt when its timeout expires', async () => {
+    let triggerTimeout: (() => void) | undefined
+    let aborted = false
+    const judgedPromise = evaluateWithJudge(
+      result,
+      (signal) =>
+        new Promise((_, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              aborted = true
+              reject(signal.reason)
+            },
+            { once: true },
+          )
+        }),
+      {
+        attemptTimeoutMs: 60_000,
+        scheduleTimeout: (callback) => {
+          triggerTimeout = callback
+          return () => {
+            triggerTimeout = undefined
+          }
+        },
+      },
+    )
+    await Promise.resolve()
+
+    expect(triggerTimeout).toBeDefined()
+    triggerTimeout?.()
+    const judged = await judgedPromise
+
+    expect(aborted).toBe(true)
+    expect(judged.passed).toBe(false)
+    expect(judged.error).toBe('Judge error: Judge timed out')
+  })
+
   test('retries an omitted declared assertion once before reporting the error', async () => {
     let attempts = 0
     const judged = await evaluateWithJudge(result, async () => {
@@ -198,6 +235,30 @@ describe('judge-backed criteria', () => {
 
     expect(attempts).toBe(2)
     expect(judged.error).toBe('Judge error: Judge omitted declared assertion: correct')
+  })
+
+  test('caps a retry to the remaining overall judge deadline', async () => {
+    const scheduledDelays: number[] = []
+    const nowValues = [0, 0, 90_000]
+    let attempts = 0
+    const judged = await evaluateWithJudge(
+      result,
+      async () => {
+        attempts++
+        return attempts === 1 ? { ...acceptedVerdict, correct: null } : acceptedVerdict
+      },
+      {
+        attemptTimeoutMs: 60_000,
+        now: () => nowValues.shift() ?? 90_000,
+        scheduleTimeout: (_callback, delayMs) => {
+          scheduledDelays.push(delayMs)
+          return () => {}
+        },
+      },
+    )
+
+    expect(judged.passed).toBe(true)
+    expect(scheduledDelays).toEqual([60_000, 30_000])
   })
 
   test('retries a JSON parse failure once and accepts the second verdict', async () => {

@@ -26,6 +26,20 @@ export type JudgeModelName = 'opus' | 'flash'
 
 class RetryableJudgeError extends Error {}
 
+type ScheduleTimeout = (callback: () => void, delayMs: number) => () => void
+
+type JudgeTimeoutOptions = {
+  attemptTimeoutMs?: number
+  now?: () => number
+  scheduleTimeout?: ScheduleTimeout
+}
+
+const judgeAttemptTimeoutMs = Number.parseInt(process.env.EVAL_JUDGE_TIMEOUT ?? '60000', 10)
+const defaultScheduleTimeout: ScheduleTimeout = (callback, delayMs) => {
+  const timer = setTimeout(callback, delayMs)
+  return () => clearTimeout(timer)
+}
+
 const judgeModels: Record<JudgeModelName, Model> = {
   opus: { ...defaultModelOpus5, apiKey: null },
   flash: { ...defaultModelDeepseekV4Flash, apiKey: null },
@@ -123,16 +137,47 @@ export const applyJudgeVerdict = (result: EvalResult, verdict: JudgeVerdict): Ev
   return { ...result, passed: failures.length === 0, failures }
 }
 
+/** Run one judge attempt with an abort signal and reject when its time budget expires. */
+const runAbortableJudgeAttempt = async (
+  evaluate: (signal: AbortSignal) => Promise<JudgeVerdict>,
+  timeoutMs: number,
+  scheduleTimeout: ScheduleTimeout,
+): Promise<JudgeVerdict> => {
+  const controller = new AbortController()
+  const timeoutError = new Error('Judge timed out')
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    const cancelTimeout = scheduleTimeout(() => {
+      controller.abort(timeoutError)
+      reject(timeoutError)
+    }, timeoutMs)
+    controller.signal.addEventListener('abort', cancelTimeout, { once: true })
+  })
+
+  return Promise.race([evaluate(controller.signal), timeoutPromise]).finally(() => controller.abort())
+}
+
 /** Run a declared judge check and surface judge failures as sample errors. */
 export const evaluateWithJudge = async (
   result: EvalResult,
-  evaluate: () => Promise<JudgeVerdict>,
+  evaluate: (signal: AbortSignal) => Promise<JudgeVerdict>,
+  options: JudgeTimeoutOptions = {},
 ): Promise<EvalResult> => {
   if (!requiresJudge(result.scenario.criteria)) {
     return result
   }
+  const attemptTimeoutMs = options.attemptTimeoutMs ?? judgeAttemptTimeoutMs
+  const now = options.now ?? (() => performance.now())
+  const scheduleTimeout = options.scheduleTimeout ?? defaultScheduleTimeout
+  const deadline = now() + attemptTimeoutMs * 2
   try {
-    const evaluateOnce = async (): Promise<EvalResult> => applyJudgeVerdict(result, await evaluate())
+    const evaluateOnce = async (): Promise<EvalResult> => {
+      const remainingMs = deadline - now()
+      if (remainingMs <= 0) {
+        throw new Error('Judge timed out')
+      }
+      const verdict = await runAbortableJudgeAttempt(evaluate, Math.min(attemptTimeoutMs, remainingMs), scheduleTimeout)
+      return applyJudgeVerdict(result, verdict)
+    }
     try {
       return await evaluateOnce()
     } catch (error) {
@@ -165,12 +210,17 @@ Assistant response: ${JSON.stringify(responseText)}`
 }
 
 /** Request a judge verdict through the streaming transport required by the app backend. */
-export const requestJudgeVerdict = async (model: LanguageModel, prompt: string): Promise<JudgeVerdict> => {
+export const requestJudgeVerdict = async (
+  model: LanguageModel,
+  prompt: string,
+  signal?: AbortSignal,
+): Promise<JudgeVerdict> => {
   const result = streamText({
     model,
     prompt,
     temperature: 0,
     maxRetries: 0,
+    abortSignal: signal,
   })
   return parseJudgeVerdict(await result.text)
 }
@@ -180,6 +230,7 @@ export const judgeScenario = async (
   scenario: EvalScenario,
   responseText: string,
   getProxyFetch: () => FetchFn,
+  signal: AbortSignal,
 ): Promise<JudgeVerdict> => {
   const judgeName = getJudgeModelName(scenario.modelName)
   const judgeModel = judgeModels[judgeName]
@@ -193,5 +244,5 @@ export const judgeScenario = async (
     apiKey: connection.apiKey,
     fetch: connection.fetch,
   })
-  return requestJudgeVerdict(provider(judgeModel.model), buildJudgePrompt(scenario, responseText))
+  return requestJudgeVerdict(provider(judgeModel.model), buildJudgePrompt(scenario, responseText), signal)
 }

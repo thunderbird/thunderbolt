@@ -230,8 +230,8 @@ export const runScenario = async (scenario: EvalScenario, adapter: AgentAdapter)
     await logVerboseResponse(scenario, parsed.text)
 
     const deterministicResult = scoreResult(scenario, parsed, performance.now() - start)
-    const judgedResult = await evaluateWithJudge(deterministicResult, () =>
-      judgeScenario(scenario, parsed.text, () => proxyFetch),
+    const judgedResult = await evaluateWithJudge(deterministicResult, (signal) =>
+      judgeScenario(scenario, parsed.text, () => proxyFetch, signal),
     )
     return { ...judgedResult, durationMs: Math.round(performance.now() - start) }
   } catch (err) {

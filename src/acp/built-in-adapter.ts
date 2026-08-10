@@ -445,7 +445,9 @@ const fetchViaHarness = async (
   // several MB) must NOT sit in the chat entry chunk on the critical landing path.
   // This dynamic import keeps it in a separate async chunk that loads only when a
   // built-in Pi agent actually runs; the legacy path's imports stay static.
+  context.telemetry?.startPhase('agent_core_load')
   const agentCore = await loadAgentCore()
+  context.telemetry?.endPhase('agent_core_load')
 
   // Resolve the model to a Pi descriptor; an unknown anthropic id or an
   // unconfigured OpenAI-wire provider falls back to the legacy pipeline so the
@@ -456,9 +458,11 @@ const fetchViaHarness = async (
     reconnectClient: context.reconnectClient,
     httpClient: context.httpClient,
     webToolBudget: context.webToolBudget,
+    telemetry: context.telemetry,
   })
   const resolved = resolvePiModel(agentCore, context, config.profile)
   if (!resolved) {
+    context.telemetry?.setDimensions({ engine: 'legacy' })
     return fallback()
   }
 
@@ -470,12 +474,15 @@ const fetchViaHarness = async (
   // Build the thread's harness on its first turn (seeding `history`); reuse it on
   // every later turn whose config signature is unchanged, and rebuild it when the
   // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
+  context.telemetry?.startPhase('harness_build')
   const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
   const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
     buildHarnessRecord(agentCore, context, resolved, history, config),
   )
   await prepareHarnessForSend(agentCore, record, config)
+  context.telemetry?.endPhase('harness_build')
   const { harness } = record
+  context.telemetry?.setDimensions({ engine: 'pi' })
 
   return new Response(
     agentCore.piHarnessToUiMessageStream(
@@ -537,6 +544,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       getProxyFetch: context.getProxyFetch,
       turnBudget: context.turnBudget,
       webToolBudget: context.webToolBudget,
+      telemetry: context.telemetry,
     })
 
   // Route tool-capable Pi-serviceable models (anthropic + the OpenAI-wire family)
@@ -545,17 +553,20 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   // legacy pipeline. fetchViaHarness itself falls back when a candidate model
   // turns out to be unresolvable (unknown id / missing api key or url).
   const isPiCandidate = (model: Model): boolean => piProviders.has(model.provider) && model.toolUsage !== 0
-  const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> =>
-    isPiCandidate(context.selectedModel)
-      ? fetchViaHarness(
-          init,
-          context,
-          harnessCache,
-          () => fetchViaLegacyPipeline(init, context),
-          loadAgentCore,
-          prepareConfig,
-        )
-      : fetchViaLegacyPipeline(init, context)
+  const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+    if (isPiCandidate(context.selectedModel)) {
+      return fetchViaHarness(
+        init,
+        context,
+        harnessCache,
+        () => fetchViaLegacyPipeline(init, context),
+        loadAgentCore,
+        prepareConfig,
+      )
+    }
+    context.telemetry?.setDimensions({ engine: 'legacy' })
+    return fetchViaLegacyPipeline(init, context)
+  }
 
   return {
     agent,

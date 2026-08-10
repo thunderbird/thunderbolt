@@ -12,6 +12,7 @@ import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retr
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import type { EventType } from '@/lib/posthog'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
@@ -52,6 +53,7 @@ const createRetryHarness = () => {
   let onFinish: ChatOnFinishCallback<ThunderboltUIMessage> | undefined
   let onError: ((error: Error) => void) | undefined
   const wakeAdapterReconnect = mock(() => {})
+  const trackEvent = mock((_eventName: EventType, _properties?: Record<string, unknown>) => {})
 
   const createTrackedTurnBudget = () => {
     const budget = createTurnBudget()
@@ -74,12 +76,19 @@ const createRetryHarness = () => {
     createChat,
     createTurnBudget: createTrackedTurnBudget,
     wakeAdapterReconnect,
+    trackEvent,
   })
   hydrateStore({
     chatInstance: instance,
     chatThread: null,
     id: sessionId,
-    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    selectedModel: {
+      id: 'm1',
+      model: 'claude-opus',
+      provider: 'anthropic',
+      apiKey: 'secret',
+      isConfidential: 0,
+    } as never,
     triggerData: null,
   })
 
@@ -109,15 +118,30 @@ const createRetryHarness = () => {
       isError: false,
     })
 
+  const finishAborted = () =>
+    onFinish!({
+      message: {
+        id: 'aborted-assistant',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Partial' }],
+      },
+      messages: [],
+      isAbort: true,
+      isDisconnect: false,
+      isError: false,
+    })
+
   const getTurnBudget = () => budgets.at(-1)!
 
   return {
     finishSuccessfully,
+    finishAborted,
     finishWithError,
     getTurnBudget,
     instance,
     regenerate,
     sendMessage,
+    trackEvent,
     wakeAdapterReconnect,
   }
 }
@@ -351,5 +375,81 @@ describe('createChatInstance — retry policy', () => {
     expect(getTurnBudget()).not.toBe(exhaustedBudget)
     expect(getTurnBudget().probe.isExhausted).toBe(false)
     expect(sendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('tracks scalar model identifiers and one correlated success summary', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+
+    await instance.sendMessage({ text: 'new turn' })
+    await finishSuccessfully()
+
+    const sendCall = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')!
+    const receiveCall = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')!
+    const summaryCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    const sendProperties = sendCall[1] as Record<string, unknown>
+    const receiveProperties = receiveCall[1] as Record<string, unknown>
+    const summaryProperties = summaryCalls[0]![1] as Record<string, unknown>
+
+    expect(sendProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
+    expect(receiveProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
+    expect(JSON.stringify(sendProperties)).not.toContain('secret')
+    expect(summaryCalls).toHaveLength(1)
+    expect(summaryProperties.outcome).toBe('success')
+    expect(sendProperties.trace_id).toBe(receiveProperties.trace_id)
+    expect(receiveProperties.trace_id).toBe(summaryProperties.trace_id)
+  })
+
+  it('emits one terminal summary for abort and non-retryable error outcomes', async () => {
+    const abortHarness = createRetryHarness()
+    await abortHarness.instance.sendMessage({ text: 'abort turn' })
+    await abortHarness.finishAborted()
+    expect(
+      abortHarness.trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed').map((call) => call[1]),
+    ).toEqual([expect.objectContaining({ outcome: 'abort' })])
+
+    const errorHarness = createRetryHarness()
+    await errorHarness.instance.sendMessage({ text: 'error turn' })
+    await errorHarness.finishWithError(
+      new Error(JSON.stringify({ error: 'private provider message', kind: 'provider-error', isRetryable: false })),
+    )
+    const summaries = errorHarness.trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]![1]).toEqual(expect.objectContaining({ outcome: 'error', error_class: 'Error' }))
+    expect(JSON.stringify(summaries[0]![1])).not.toContain('private provider message')
+  })
+
+  it('keeps one trace across auto-retry attempts', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishSuccessfully, finishWithError, instance, trackEvent } = createRetryHarness()
+
+    try {
+      await instance.sendMessage({ text: 'retry turn' })
+      await finishWithError()
+      await getClock().tickAsync(2_000)
+      await finishSuccessfully()
+
+      const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+      expect(summary).toEqual(expect.objectContaining({ attempts: 2, retry_layers: ['auto_retry'] }))
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('does not emit built-in turn summaries for external ACP agents', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+    useChatStore.getState().updateSession(sessionId, {
+      selectedAgent: {
+        ...builtInAgent,
+        id: 'external-agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://agent.test',
+      },
+    })
+
+    await instance.sendMessage({ text: 'external turn' })
+    await finishSuccessfully()
+
+    expect(trackEvent.mock.calls.some(([event]) => event === 'chat_turn_completed')).toBe(false)
   })
 })

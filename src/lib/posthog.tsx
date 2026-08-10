@@ -61,7 +61,7 @@ export const stripApiKeys = (value: unknown): boolean => {
   }
 
   if (Array.isArray(value)) {
-    return value.some(stripApiKeys)
+    return value.reduce<boolean>((removed, item) => stripApiKeys(item) || removed, false)
   }
 
   const record = value as Record<string, unknown>
@@ -69,7 +69,7 @@ export const stripApiKeys = (value: unknown): boolean => {
   if (removedHere) {
     delete record.apiKey
   }
-  return Object.values(record).some(stripApiKeys) || removedHere
+  return Object.values(record).reduce<boolean>((removed, item) => stripApiKeys(item) || removed, removedHere)
 }
 
 /**
@@ -183,6 +183,7 @@ export type EventType =
   | 'chat_auto_retry'
   | 'chat_retry_success'
   | 'chat_retries_exhausted'
+  | 'chat_turn_completed'
   | 'chat_select'
   | 'chat_new_clicked'
   | 'chat_delete'

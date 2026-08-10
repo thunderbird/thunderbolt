@@ -24,6 +24,7 @@ Events follow the pattern: `<feature>_<action>`
 - `chat_send_prompt` - User sends a message to the AI (with `model_id`, `model_name`, `provider`, `length`, and `prompt_number`)
 - `chat_send_prompt_overflow` - User attempts a prompt that exceeds the model context (with the same scalar model properties, `length`, and `prompt_number`)
 - `chat_receive_reply` - AI generates a response (with `model_id`, `model_name`, `provider`, `length`, and `reply_number`)
+- `chat_turn_completed` - One privacy-safe summary per built-in turn, including `trace_id`, actual `engine`, scalar model/provider identifiers, outcome/error class, attempts/retry layers, phase timings, user-perceived TTFT, step/tool counts, capped tool-name timings, and total duration. TTFT is measured at the adapter response stream and includes translator/smoothing overhead.
 - `chat_select` - User selects a chat thread
 - `chat_new_clicked` - User creates a new chat
 - `chat_delete` - User deletes a chat

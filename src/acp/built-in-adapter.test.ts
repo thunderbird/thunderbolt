@@ -14,6 +14,7 @@ import '@/testing-library'
 
 import { describe, expect, it, mock } from 'bun:test'
 import type { PreparedAiRequestConfig } from '@/ai/fetch'
+import { createTurnTelemetry } from '@/ai/turn-telemetry'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model } from '@/types'
@@ -130,6 +131,52 @@ describe('resolvePiModel — image capability (vendor-gated)', () => {
   })
 })
 
+describe('createBuiltInAdapter engine telemetry', () => {
+  it('records legacy when a Pi candidate falls back after model resolution', async () => {
+    const model = {
+      id: 'model-1',
+      name: 'Unknown Claude',
+      model: 'claude-unknown',
+      provider: 'anthropic',
+      apiKey: 'sk-a',
+      toolUsage: 1,
+    } as Model
+    const config = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+    } satisfies PreparedAiRequestConfig
+    const aiFetch = mock(async () => new Response('legacy'))
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      aiFetch,
+      loadAgentCore: async () => ({ isKnownAnthropicModel: () => false }) as never,
+      prepareConfig: async () => config,
+    })
+    const telemetry = createTurnTelemetry({ generateId: () => 'trace-1' })
+    const context = {
+      threadId: 'thread-1',
+      selectedModel: model,
+      mcpClients: [],
+      reconnectClient: async () => null,
+      httpClient: {},
+      getProxyFetch: () => noopFetch,
+      onAcpSessionId: async () => {},
+      telemetry,
+    } as unknown as AgentAdapterContext
+
+    await adapter.fetch({ body: '{}' }, context)
+
+    expect(aiFetch).toHaveBeenCalledTimes(1)
+    expect(telemetry.getEngine()).toBe('legacy')
+  })
+})
+
 describe('createBuiltInAdapter persistent harness', () => {
   it('refreshes prompt/tools, rebuilds for regeneration, and applies the Pi web-budget floor', async () => {
     const model = {
@@ -230,6 +277,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       loadAgentCore: async () => agentCore,
       prepareConfig: prepareConfig as NonNullable<BuiltInAdapterOptions['prepareConfig']>,
     })
+    const telemetry = createTurnTelemetry({ generateId: () => 'trace-pi' })
     const context = {
       threadId: 'thread-1',
       selectedModel: model,
@@ -240,6 +288,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       onAcpSessionId: async () => {},
       regenerationRevision: 0,
       webToolBudget: createWebToolBudget('auto'),
+      telemetry,
     } as unknown as AgentAdapterContext
     const request = (messages: unknown[]): RequestInit => ({ body: JSON.stringify({ messages }) })
     const send = async (init: RequestInit): Promise<void> => {
@@ -288,5 +337,6 @@ describe('createBuiltInAdapter persistent harness', () => {
     expect(secondSystemPrompt()).toBe(expectedPrompt('timestamp 3'))
     expect(harnesses).toHaveLength(2)
     expect(activeToolCalls).toEqual([[]])
+    expect(telemetry.getEngine()).toBe('pi')
   })
 })

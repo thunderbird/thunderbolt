@@ -131,11 +131,14 @@ describe('analytics before_send sanitization', () => {
   })
 
   it('removes nested API keys and preserves other properties', () => {
-    const properties = {
+    const properties: Record<string, unknown> = {
       model: {
         id: 'model-1',
         apiKey: 'secret',
-        nested: [{ apiKey: 'another-secret', provider: 'openai' }],
+        nested: [
+          { apiKey: 'another-secret', provider: 'openai' },
+          { apiKey: 'third-secret', provider: 'anthropic' },
+        ],
       },
       attempts: 2,
     }
@@ -144,7 +147,7 @@ describe('analytics before_send sanitization', () => {
     expect(properties).toEqual({
       model: {
         id: 'model-1',
-        nested: [{ provider: 'openai' }],
+        nested: [{ provider: 'openai' }, { provider: 'anthropic' }],
       },
       attempts: 2,
     })

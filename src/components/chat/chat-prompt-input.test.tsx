@@ -233,6 +233,34 @@ describe('ChatPromptInput', () => {
       // On mobile, Enter should NOT be prevented (it creates a newline naturally)
       expect(preventDefaultSpy).not.toHaveBeenCalled()
     })
+
+    it('tracks overflow with scalar model properties only', async () => {
+      const { mockUseChat } = setupStore()
+      const trackEvent = mock(() => {})
+      const { container } = render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useContextTracking={createMockUseContextTracking(true)}
+          trackEvent={trackEvent}
+        />,
+        { wrapper: TestWrapper },
+      )
+      const textarea = screen.getByPlaceholderText('Ask me anything...')
+
+      fireEvent.change(textarea, { target: { value: 'too long' } })
+      await act(async () => {
+        fireEvent.submit(container.querySelector('form')!)
+      })
+
+      expect(trackEvent).toHaveBeenCalledWith('chat_send_prompt_overflow', {
+        model_id: 'model-1',
+        model_name: 'gpt-4',
+        provider: 'openai',
+        length: 8,
+        prompt_number: 1,
+      })
+    })
   })
 
   describe('backspace atomic chip deletion', () => {

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { webToolNames } from '@/lib/tools'
 import { countDuplicateToolCalls, scoreResult } from './scoring'
 import type { EvalScenario, ParsedStream, ToolCallInfo } from './types'
 
@@ -87,6 +88,16 @@ describe('scoreResult — maxToolCalls + duplicate reporting', () => {
 
     expect(result.passed).toBe(true)
     expect(result.toolCallCount).toBe(0)
+  })
+
+  test('counts every production-budgeted web tool', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true } },
+      makeParsed({ toolCalls: [...webToolNames].map((toolName) => call(toolName, {})) }),
+      100,
+    )
+
+    expect(result.toolCallCount).toBe(webToolNames.size)
   })
 
   test('enforces minimum web calls', () => {

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { toolCallKey } from '@/lib/stable-stringify'
+import { webToolNames } from '@/lib/tools'
 import type { EvalCriteria, EvalResult, EvalScenario, ParsedStream, ToolCallInfo } from './types'
 
 const reviewSiteDomains = [
@@ -14,8 +15,6 @@ const reviewSiteDomains = [
   'tomsguide.com',
   'consumerreports.org',
 ]
-
-const webToolNames = new Set(['search', 'fetch_content'])
 
 /** Extract [N] citation references from text (matches both ASCII [1] and fullwidth 【1】 brackets) */
 export const extractCitations = (text: string): string[] => {

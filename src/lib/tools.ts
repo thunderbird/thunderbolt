@@ -76,7 +76,8 @@ export const tools = [...Object.values(tasksTools)]
  */
 export type ToolCallCache = Map<string, Promise<unknown>>
 
-const webToolNames = new Set(['search', 'fetch_content'])
+/** Built-in web tools governed by the production per-turn web budget. */
+export const webToolNames: ReadonlySet<string> = new Set(['search', 'fetch_content'])
 
 /**
  * Wrap a `cacheable` tool's executor so identical calls within one streaming

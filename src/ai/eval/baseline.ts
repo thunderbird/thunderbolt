@@ -19,6 +19,7 @@ export type RateComparison = {
   currentRate: number
   delta: number | null
   baselineWilson: WilsonInterval | null
+  currentWilson: WilsonInterval | null
   significant: boolean
   direction: 'improved' | 'regressed' | 'unchanged' | 'no-baseline'
 }
@@ -48,6 +49,7 @@ const roundedDelta = (current: number, baseline: number): number => Number((curr
 
 const compareRate = (
   currentRate: number,
+  currentWilson: WilsonInterval | null,
   baselineRate: number | null,
   baselineWilson: WilsonInterval | null,
   favorableDirection: 'higher' | 'lower',
@@ -58,6 +60,7 @@ const compareRate = (
       currentRate,
       delta: null,
       baselineWilson: null,
+      currentWilson,
       significant: false,
       direction: 'no-baseline',
     }
@@ -76,7 +79,10 @@ const compareRate = (
     currentRate,
     delta,
     baselineWilson,
-    significant: currentRate < baselineWilson.lower || currentRate > baselineWilson.upper,
+    currentWilson,
+    significant:
+      currentWilson !== null &&
+      (currentWilson.upper < baselineWilson.lower || currentWilson.lower > baselineWilson.upper),
     direction,
   }
 }
@@ -118,7 +124,7 @@ export const loadBaselineFiles = (directory: string): Record<string, EvalBaselin
   )
 }
 
-/** Compare current eval rates with checked-in baselines using each baseline's Wilson interval. */
+/** Compare current eval rates with checked-in baselines using both runs' Wilson intervals. */
 export const compareMetricsToBaselines = (
   metrics: EvalMetrics,
   baselines: Record<string, EvalBaseline>,
@@ -155,8 +161,11 @@ export const compareMetricsToBaselines = (
             category,
             compareRate(
               categoryMetrics.rate,
+              categoryMetrics.total > 0 ? categoryMetrics.wilson : null,
               baselineCategory?.rate ?? null,
-              baselineCategory ? wilsonScoreInterval(baselineCategory.passed, baselineCategory.total) : null,
+              baselineCategory && baselineCategory.total > 0
+                ? wilsonScoreInterval(baselineCategory.passed, baselineCategory.total)
+                : null,
               'higher',
             ),
           ]
@@ -180,14 +189,27 @@ export const compareMetricsToBaselines = (
           headline: {
             unnecessarySearchRate: compareRate(
               current.headline.unnecessarySearchRate.rate,
+              current.headline.unnecessarySearchRate.total > 0
+                ? wilsonScoreInterval(
+                    current.headline.unnecessarySearchRate.count,
+                    current.headline.unnecessarySearchRate.total,
+                  )
+                : null,
               baselineUnnecessary?.rate ?? null,
-              baselineUnnecessary ? wilsonScoreInterval(baselineUnnecessary.count, baselineUnnecessary.total) : null,
+              baselineUnnecessary && baselineUnnecessary.total > 0
+                ? wilsonScoreInterval(baselineUnnecessary.count, baselineUnnecessary.total)
+                : null,
               'lower',
             ),
             missedSearchRate: compareRate(
               current.headline.missedSearchRate.rate,
+              current.headline.missedSearchRate.total > 0
+                ? wilsonScoreInterval(current.headline.missedSearchRate.count, current.headline.missedSearchRate.total)
+                : null,
               baselineMissed?.rate ?? null,
-              baselineMissed ? wilsonScoreInterval(baselineMissed.count, baselineMissed.total) : null,
+              baselineMissed && baselineMissed.total > 0
+                ? wilsonScoreInterval(baselineMissed.count, baselineMissed.total)
+                : null,
               'lower',
             ),
             meanWebCallsNoSearchExpected: {

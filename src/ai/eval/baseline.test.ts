@@ -33,12 +33,14 @@ const group = ({
   missedCount,
   meanWebCalls,
   corePassed = true,
+  total = 10,
 }: {
   categoryPassed: number
   unnecessaryCount: number
   missedCount: number
   meanWebCalls: number
   corePassed?: boolean
+  total?: number
 }): EvalMetricsGroup => ({
   model: 'opus',
   engine: 'pi',
@@ -56,10 +58,10 @@ const group = ({
       failures: corePassed ? [] : ['failed'],
     },
   },
-  categories: { never_search: categoryMetric(categoryPassed, 10) },
+  categories: { never_search: categoryMetric(categoryPassed, total) },
   headline: {
-    unnecessarySearchRate: rateMetric(unnecessaryCount, 10),
-    missedSearchRate: rateMetric(missedCount, 10),
+    unnecessarySearchRate: rateMetric(unnecessaryCount, total),
+    missedSearchRate: rateMetric(missedCount, total),
     meanWebCallsNoSearchExpected: meanWebCalls,
   },
 })
@@ -110,31 +112,43 @@ describe('baseline comparison', () => {
   const baselineGroup = group({ categoryPassed: 8, unnecessaryCount: 2, missedCount: 2, meanWebCalls: 0.4 })
   const baselines = { 'opus/pi': baseline(baselineGroup) }
 
-  test('marks only rates outside the baseline Wilson interval as significant', () => {
+  test('marks rates as significant when current and baseline Wilson intervals are disjoint', () => {
+    const fullBaseline = {
+      'opus/pi': baseline(
+        group({ categoryPassed: 6, unnecessaryCount: 6, missedCount: 6, meanWebCalls: 0.4, total: 12 }),
+      ),
+    }
     const current = metrics(
-      group({ categoryPassed: 10, unnecessaryCount: 0, missedCount: 8, meanWebCalls: 0.1, corePassed: false }),
+      group({
+        categoryPassed: 12,
+        unnecessaryCount: 0,
+        missedCount: 12,
+        meanWebCalls: 0.1,
+        corePassed: false,
+        total: 12,
+      }),
     )
 
-    const comparison = compareMetricsToBaselines(current, baselines).groups['opus/pi']
+    const comparison = compareMetricsToBaselines(current, fullBaseline).groups['opus/pi']
 
     expect(comparison.categories.never_search).toMatchObject({
-      baselineRate: 0.8,
+      baselineRate: 0.5,
       currentRate: 1,
-      delta: 0.2,
+      delta: 0.5,
       direction: 'improved',
       significant: true,
     })
     expect(comparison.headline.unnecessarySearchRate).toMatchObject({
-      baselineRate: 0.2,
+      baselineRate: 0.5,
       currentRate: 0,
-      delta: -0.2,
+      delta: -0.5,
       direction: 'improved',
       significant: true,
     })
     expect(comparison.headline.missedSearchRate).toMatchObject({
-      baselineRate: 0.2,
-      currentRate: 0.8,
-      delta: 0.6,
+      baselineRate: 0.5,
+      currentRate: 1,
+      delta: 0.5,
       direction: 'regressed',
       significant: true,
     })
@@ -147,6 +161,33 @@ describe('baseline comparison', () => {
       baselinePassed: true,
       currentPassed: false,
       direction: 'regressed',
+    })
+  })
+
+  test('does not label a one-sample smoke change significant when its interval overlaps the baseline', () => {
+    const smoke = metrics(group({ categoryPassed: 0, unnecessaryCount: 1, missedCount: 0, meanWebCalls: 1, total: 1 }))
+    const fullBaseline = {
+      'opus/pi': baseline(
+        group({ categoryPassed: 10, unnecessaryCount: 0, missedCount: 10, meanWebCalls: 0, total: 10 }),
+      ),
+    }
+
+    const comparison = compareMetricsToBaselines(smoke, fullBaseline).groups['opus/pi']
+
+    expect(comparison.categories.never_search).toMatchObject({
+      delta: -1,
+      direction: 'regressed',
+      significant: false,
+    })
+    expect(comparison.headline.unnecessarySearchRate).toMatchObject({
+      delta: 1,
+      direction: 'regressed',
+      significant: false,
+    })
+    expect(comparison.headline.missedSearchRate).toMatchObject({
+      delta: -1,
+      direction: 'improved',
+      significant: false,
     })
   })
 

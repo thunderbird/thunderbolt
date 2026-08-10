@@ -132,12 +132,12 @@ describe('renderEvalComment', () => {
     expect(comment).not.toMatch(/✅|❌|🟢|🟡|🔴/)
   })
 
-  test('labels significant improvements and regressions against a baseline Wilson interval', () => {
+  test('does not claim significance for one-sample smoke rates that overlap the baseline interval', () => {
     const comment = renderEvalComment(metrics(), { 'opus/pi': baseline() }, { artifactUrl: 'artifact-url' })
 
-    expect(comment).toContain('| Unnecessary search | 100.0% | +100.0 pp | significant regression | failed |')
-    expect(comment).toContain('| Missed search | 0.0% | -10.0 pp | significant improvement | failed |')
-    expect(comment).toContain('| never_search | 0/1 (0.0%) | -100.0 pp | significant regression | failed |')
+    expect(comment).toContain('| Unnecessary search | 100.0% | +100.0 pp | not significant | failed |')
+    expect(comment).toContain('| Missed search | 0.0% | -10.0 pp | not significant | failed |')
+    expect(comment).toContain('| never_search | 0/1 (0.0%) | -100.0 pp | not significant | failed |')
     expect(comment).toContain('| Mean web calls, no-search expected | 1.000 | +1.000 | not applicable | none |')
     expect(comment).toContain('Core suite: **0/1 passed** · 0 improved, 1 regressed')
   })

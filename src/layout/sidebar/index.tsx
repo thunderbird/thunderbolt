@@ -8,16 +8,18 @@ import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase, useHttpClient } from '@/contexts'
-import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, getChatThread, updateChatThread } from '@/dal'
-import { useDebounce } from '@/hooks/use-debounce'
+import { deleteChatThread, getAllChatThreads, getChatThread, updateChatThread } from '@/dal'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
+import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
+import { useSearchPalette } from '@/search/search-palette-context'
 import type { ChatThread } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { type MouseEvent, useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -33,8 +35,9 @@ export default function Sidebar() {
   const getProxyFetch = useProxyFetchGetter()
   const navigate = useNavigate()
   const location = useLocation()
-  const { closeMobileSidebar, state, toggleSidebar } = useSidebar()
+  const { closeMobileSidebar, state } = useSidebar()
   const { isMobile } = useIsMobile()
+  const { open: openSearchPalette } = useSearchPalette()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
@@ -44,11 +47,7 @@ export default function Sidebar() {
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
-  const [showSearch, setShowSearch] = useState(false)
   const { activeSection, setActiveSection } = useSidebarSection(location.pathname)
-  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
@@ -60,13 +59,7 @@ export default function Sidebar() {
     placeholderData: (previousData) => previousData,
   })
 
-  const chatThreads = useMemo(() => {
-    if (!data) {
-      return []
-    }
-
-    return data.filter((thread) => thread.title?.toLowerCase().includes(debouncedSearchQuery?.toLowerCase()))
-  }, [data, debouncedSearchQuery])
+  const chatThreads = useMemo(() => data ?? [], [data])
 
   // A runner-owned thread must be read BEFORE the delete: the soft delete
   // scrubs `acpSessionId`, which is the only handle on the remote session. The
@@ -112,16 +105,15 @@ export default function Sidebar() {
     [renameMutate],
   )
 
+  const deleteAllChats = useDeleteAllChats()
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
       const threads = data ?? []
-      await deleteAllChatThreads(db)
+      await deleteAllChats()
       purgeRunnerSessions(threads)
     },
-    onSuccess: async () => {
-      trackEvent('chat_clear_all')
+    onSuccess: () => {
       deleteAllChatsDialogRef.current?.close()
-      navigate('/chats/new')
     },
   })
 
@@ -139,9 +131,12 @@ export default function Sidebar() {
     [closeMobileSidebar, isMobile, navigate],
   )
 
-  const createNewChat = () => {
-    trackEvent('chat_new_clicked')
-    void navigateAndCloseSidebar('/chats/new')
+  const startNewChat = useCreateNewChat()
+  const createNewChat = async () => {
+    if (isMobile) {
+      await closeMobileSidebar()
+    }
+    startNewChat()
   }
 
   const handleChatClick = useCallback(
@@ -154,27 +149,6 @@ export default function Sidebar() {
 
   const handleNavigate = (path: string) => {
     void navigateAndCloseSidebar(path)
-  }
-
-  const handleSearchClick = (e?: MouseEvent) => {
-    e?.preventDefault()
-    e?.stopPropagation()
-
-    if (isCollapsed) {
-      toggleSidebar()
-      setShowSearch(true)
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus()
-      })
-    } else if (!showSearch) {
-      setShowSearch(true)
-      // Focus synchronously inside the tap's event handler — the input is
-      // already in the DOM (just collapsed), and staying within the user
-      // gesture is what lets the mobile keyboard open immediately.
-      searchInputRef.current?.focus()
-    } else {
-      setShowSearch(false)
-    }
   }
 
   return (
@@ -192,10 +166,6 @@ export default function Sidebar() {
             isCollapsed={isCollapsed}
             chatThreads={chatThreads}
             currentChatThreadId={currentChatThreadId}
-            searchQuery={searchQuery}
-            debouncedSearchQuery={debouncedSearchQuery}
-            showSearch={showSearch}
-            searchInputRef={searchInputRef}
             deleteAllChatsMutation={deleteAllChatsMutation}
             deleteChatMutation={deleteChatMutation}
             deleteAllChatsDialogRef={deleteAllChatsDialogRef}
@@ -208,8 +178,7 @@ export default function Sidebar() {
             onTasksClick={() => handleNavigate('/tasks')}
             onRename={handleRename}
             onChatClick={handleChatClick}
-            onSearchClick={handleSearchClick}
-            onSearchQueryChange={setSearchQuery}
+            onSearchClick={openSearchPalette}
           />
         )}
       </TooltipProvider>

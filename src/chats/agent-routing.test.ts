@@ -101,6 +101,44 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
 }
 
 describe('createAgentRoutingFetch', () => {
+  it('reuses a web-tool budget across revision-incrementing retries and refreshes it for restarted turns', async () => {
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
+    const connectToAgent = mock(async () => adapter)
+    hydrateSessionWith('t-web-budget', builtInAgent)
+    const routingState = { regenerationRevision: 0, webToolBudgetRevision: 0 }
+    const customFetch = createAgentRoutingFetch(
+      't-web-budget',
+      saveMessages,
+      httpClient,
+      getProxyFetch,
+      { connectToAgent: connectToAgent as never },
+      routingState,
+    )
+    const request = (id: string, text: string): RequestInit => ({
+      method: 'POST',
+      body: JSON.stringify({ messages: [{ id, role: 'user', parts: [{ type: 'text', text }] }] }),
+    })
+
+    await customFetch('/chat', request('message-1', '/search topic'))
+    routingState.regenerationRevision++
+    await customFetch('/chat', request('message-1', '/search topic'))
+    await customFetch('/chat', request('message-2', 'new topic'))
+    routingState.webToolBudgetRevision++
+    routingState.regenerationRevision++
+    await customFetch('/chat', request('message-2', 'new topic'))
+
+    const budgets = adapterFetch.mock.calls.map(
+      (call) => (call as unknown as [RequestInit, AgentAdapterContext])[1].webToolBudget,
+    )
+    expect(budgets[0]).toBeDefined()
+    expect(budgets[1]).toBe(budgets[0])
+    expect(budgets[2]).not.toBe(budgets[1])
+    expect(budgets[3]).not.toBe(budgets[2])
+    expect(budgets[0]?.intent).toBe('search')
+    expect(budgets[2]?.intent).toBe('auto')
+  })
+
   it('passes the current regenerate revision without changing it on normal sends', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)

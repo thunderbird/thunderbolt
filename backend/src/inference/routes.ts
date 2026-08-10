@@ -4,13 +4,14 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
+import { classifyInferenceError } from '@/inference/error-kind'
 import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
-import { isPostHogConfigured } from '@/posthog/client'
+import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import { elapsedMs } from '@/utils/timing'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { Elysia, type AnyElysia } from 'elysia'
-import { APIConnectionError, APIConnectionTimeoutError } from 'openai'
+import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import {
   createInferenceAttemptTracker,
@@ -34,27 +35,14 @@ const sanitizeMessageRoles = (messages: Message[]): Message[] =>
 type ModelConfig = {
   provider: InferenceProvider
   internalName: string
-  /** Newer reasoning-tuned models (e.g. Claude Opus 4.8) reject `temperature`
-   *  with a 400. Set true to drop the field from the upstream payload. */
+  /** Whether to omit `temperature` from the upstream payload. */
   omitTemperature?: boolean
 }
 
 export const supportedModels: Record<string, ModelConfig> = {
-  'mistral-medium-3.1': {
-    provider: 'mistral',
-    internalName: 'mistral-medium-2508',
-  },
-  'mistral-large-3': {
-    provider: 'mistral',
-    internalName: 'mistral-large-2512',
-  },
-  'sonnet-4.5': {
+  'opus-5': {
     provider: 'anthropic',
-    internalName: 'claude-sonnet-4-5',
-  },
-  'opus-4.8': {
-    provider: 'anthropic',
-    internalName: 'claude-opus-4-8',
+    internalName: 'claude-opus-5',
     omitTemperature: true,
   },
   'deepseek-v4-flash': {
@@ -67,6 +55,7 @@ export type InferenceProxyLatencyLog = {
   event: 'inference_proxy_latency'
   route: string
   provider: InferenceProvider
+  model: string
   status: number
   preMs: number
   upstreamMs: number
@@ -76,6 +65,7 @@ export type InferenceProxyLatencyLog = {
 
 export type CreateInferenceRoutesOptions = {
   auth: Auth
+  captureInferenceErrorFn?: typeof captureInferenceError
   fetchFn?: typeof fetch
   getClient?: (provider: InferenceProvider) => InferenceClient
   isPostHogConfiguredFn?: () => boolean
@@ -89,6 +79,15 @@ export type CreateInferenceRoutesOptions = {
 const formatServerTiming = (preMs: number, upstreamMs: number, totalMs: number): string =>
   `pre;dur=${preMs}, upstream;dur=${upstreamMs}, total;dur=${totalMs}`
 
+const getApiErrorMetadata = (error: unknown) => {
+  const apiError = error instanceof APIError ? error : undefined
+  return {
+    errorType: apiError?.type,
+    errorCode: apiError?.code ?? undefined,
+    requestId: apiError?.requestID ?? undefined,
+  }
+}
+
 /**
  * Inference API routes
  */
@@ -96,6 +95,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
   const { auth, fetchFn, logger, rateLimit } = options
   const nowFn = options.nowFn ?? (() => performance.now())
   const isPostHogConfiguredFn = options.isPostHogConfiguredFn ?? isPostHogConfigured
+  const captureInferenceErrorFn = options.captureInferenceErrorFn ?? captureInferenceError
   const getClient =
     options.getClient ?? ((provider: InferenceProvider) => getInferenceClient(provider, { fetchFn, logger, nowFn }))
   const app = new Elysia({
@@ -143,6 +143,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           event: 'inference_proxy_latency',
           route,
           provider,
+          model: body.model,
           status,
           preMs,
           upstreamMs,
@@ -179,7 +180,19 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         const upstreamResolvedAt = nowFn()
         recordLatency(200, upstreamResolvedAt)
 
-        const stream = createSSEStreamFromCompletion(completion)
+        const stream = createSSEStreamFromCompletion(completion, {
+          onError: (error) => {
+            captureInferenceErrorFn({
+              provider,
+              status: getErrorStatus(error),
+              model: body.model,
+              errorKind: classifyInferenceError(error),
+              ...getApiErrorMetadata(error),
+              distinctId: ctx.user.id,
+              phase: 'stream',
+            })
+          },
+        })
 
         // Merge rate-limit headers (set by middleware on ctx.set.headers) into the
         // streaming Response so clients can read them. Elysia skips ctx.set.headers
@@ -197,14 +210,24 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
 
         return new Response(stream, { headers: responseHeaders })
       } catch (error) {
-        recordLatency(getErrorStatus(error), nowFn())
-        if (error instanceof APIConnectionError) {
-          console.error('Failed to connect to inference provider', error.cause)
-          throw new Error('Failed to connect to inference provider', { cause: error })
-        }
+        const status = getErrorStatus(error)
+        recordLatency(status, nowFn())
+        // Keep failures diagnosable using body-free structured metadata only.
+        captureInferenceErrorFn({
+          provider,
+          status,
+          model: body.model,
+          errorKind: classifyInferenceError(error),
+          ...getApiErrorMetadata(error),
+          distinctId: ctx.user.id,
+        })
         if (error instanceof APIConnectionTimeoutError) {
           console.error('Connection timeout to inference provider', error.cause)
           throw new Error('Connection timeout to inference provider', { cause: error })
+        }
+        if (error instanceof APIConnectionError) {
+          console.error('Failed to connect to inference provider', error.cause)
+          throw new Error('Failed to connect to inference provider', { cause: error })
         }
         throw error
       }

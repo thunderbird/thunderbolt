@@ -7,6 +7,7 @@ import type { ToolCallOptions } from 'ai'
 import { z } from 'zod'
 import type { HttpClient } from '@/contexts'
 import type { ToolConfig } from '@/types'
+import { createWebToolBudget } from '@/ai/web-tool-budget'
 import { createTool, createToolset, getAvailableTools, type ToolAvailabilityContext, type ToolCallCache } from './tools'
 
 const options: ToolCallOptions = { toolCallId: 't1', messages: [] }
@@ -129,6 +130,74 @@ describe('createToolset dedupe', () => {
     await set.beta.execute!({ q: 'x' }, options)
     expect(alphaCalls).toHaveLength(1)
     expect(betaCalls).toHaveLength(1)
+  })
+})
+
+describe('createTool web budget', () => {
+  test('web tools share one budget and normalized turn cache', async () => {
+    const budget = createWebToolBudget('auto')
+    const { config: search, calls: searchCalls } = makeConfig({ name: 'search' })
+    const { config: fetchContent, calls: fetchCalls } = makeConfig({ name: 'fetch_content' })
+    const set = createToolset([search, fetchContent], new Map(), budget)
+
+    const first = await set.search.execute!({ query: ' Foo  Bar ' }, options)
+    const duplicate = await set.search.execute!({ query: 'foo bar' }, options)
+    await set.fetch_content.execute!({ url: 'https://example.com/' }, options)
+    const exhausted = await set.search.execute!({ query: 'new query' }, options)
+
+    expect(duplicate).toEqual(first)
+    expect(searchCalls).toHaveLength(1)
+    expect(fetchCalls).toHaveLength(1)
+    expect(exhausted).toMatchObject({ status: 'budget_exhausted' })
+    expect(budget.probe.exhaustedAttempts).toBe(1)
+  })
+
+  test('evicts rejected executions from the turn cache', async () => {
+    const budget = createWebToolBudget('search')
+    let attempts = 0
+    const { config } = makeConfig({
+      name: 'search',
+      execute: async () => {
+        attempts++
+        if (attempts === 1) {
+          throw new Error('boom')
+        }
+        return { ok: true }
+      },
+    })
+    const t = createTool(config, new Map(), budget)
+
+    await expect(t.execute!({ query: 'same' }, options)).rejects.toThrow('boom')
+    await expect(t.execute!({ query: 'same' }, options)).resolves.toEqual({ ok: true })
+    expect(attempts).toBe(2)
+  })
+
+  test('passes unparseable URLs through to the tool error path', async () => {
+    const budget = createWebToolBudget('auto')
+    const { config, calls } = makeConfig({
+      name: 'fetch_content',
+      execute: async (params: unknown) => {
+        calls.push(params)
+        return { error: 'Invalid URL' }
+      },
+    })
+    const t = createTool(config, new Map(), budget)
+
+    await expect(t.execute!({ url: 'not a url' }, options)).resolves.toEqual({ error: 'Invalid URL' })
+    expect(calls).toEqual([{ url: 'not a url' }])
+  })
+
+  test('non-web tools never consume the web budget', async () => {
+    const budget = createWebToolBudget('auto')
+    const { config, calls } = makeConfig({ name: 'calendar' })
+    const t = createTool(config, new Map(), budget)
+
+    await t.execute!({ q: 'x' }, options)
+    await t.execute!({ q: 'y' }, options)
+    await t.execute!({ q: 'z' }, options)
+
+    expect(calls).toHaveLength(3)
+    expect(budget.probe.isExhausted).toBe(false)
   })
 })
 

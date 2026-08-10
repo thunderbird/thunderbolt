@@ -102,6 +102,7 @@ describe('createTinfoilRoutes', () => {
       upstreamHeadersTimeoutMs?: number
       upstreamIdleTimeoutMs?: number
       upstreamOriginStore?: TinfoilUpstreamOriginStore
+      captureInferenceErrorFn?: Parameters<typeof createTinfoilRoutes>[0]['captureInferenceErrorFn']
     } = {},
   ) =>
     new Elysia().use(
@@ -115,6 +116,7 @@ describe('createTinfoilRoutes', () => {
         upstreamHeadersTimeoutMs: overrides.upstreamHeadersTimeoutMs,
         upstreamIdleTimeoutMs: overrides.upstreamIdleTimeoutMs,
         upstreamOriginStore: overrides.upstreamOriginStore,
+        captureInferenceErrorFn: overrides.captureInferenceErrorFn,
       }),
     )
 
@@ -337,6 +339,180 @@ describe('createTinfoilRoutes', () => {
 
       const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
       expect(init.body).toBeNull()
+    })
+  })
+
+  describe('upstream error telemetry', () => {
+    const statusCases = [
+      { status: 404, errorKind: 'bad_request' },
+      { status: 422, errorKind: 'bad_request' },
+      { status: 429, errorKind: 'rate_limit' },
+      { status: 401, errorKind: 'auth' },
+      { status: 500, errorKind: 'upstream_error' },
+    ] as const
+
+    for (const { status, errorKind } of statusCases) {
+      it(`captures status ${status} as ${errorKind}`, async () => {
+        const captureInferenceErrorMock = mock(() => {})
+        mockFetch.mockResolvedValueOnce(new Response('enclave error', { status }))
+        const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })
+
+        const res = await drain(
+          await app.handle(
+            new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }),
+          ),
+        )
+
+        expect(res.status).toBe(status)
+        expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+          provider: 'tinfoil',
+          status,
+          errorKind,
+          subpath: '/v1/chat/completions',
+          distinctId: 'test-user',
+        })
+      })
+    }
+
+    it('captures upstream fetch rejection as a connection failure', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+      const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(res.status).toBe(500)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'tinfoil',
+        status: 500,
+        errorKind: 'connection',
+        subpath: '/v1/models',
+        distinctId: 'test-user',
+      })
+    })
+
+    it('captures upstream headers timeout as a connection failure', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const upstream = createAbortableFetch()
+      const app = buildApp({
+        captureInferenceErrorFn: captureInferenceErrorMock,
+        fetchFn: upstream.fetchFn,
+        upstreamHeadersTimeoutMs: 0,
+      })
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+
+      expect(res.status).toBe(504)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'tinfoil',
+        status: 504,
+        errorKind: 'connection',
+        subpath: '/v1/models',
+        distinctId: 'test-user',
+      })
+    })
+
+    it('does not capture downstream client aborts', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const upstream = createAbortableFetch()
+      const clientController = new AbortController()
+      const app = buildApp({
+        captureInferenceErrorFn: captureInferenceErrorMock,
+        fetchFn: upstream.fetchFn,
+      })
+      const response = app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          body: 'opaque-bytes',
+          signal: clientController.signal,
+        }),
+      )
+
+      await upstream.started
+      clientController.abort()
+      await response
+
+      expect(captureInferenceErrorMock).not.toHaveBeenCalled()
+    })
+
+    it('captures one mid-stream idle timeout', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const firstChunk = new Uint8Array([0x01, 0xff])
+      const upstream = createAbortableFetch(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(firstChunk)
+            },
+          }),
+        ),
+      )
+      const app = buildApp({
+        captureInferenceErrorFn: captureInferenceErrorMock,
+        fetchFn: upstream.fetchFn,
+        upstreamIdleTimeoutMs: 0,
+      })
+
+      const res = await app.handle(new Request('http://localhost/tinfoil/v1/models'))
+      const reader = res.body!.getReader()
+
+      expect(await reader.read()).toEqual({ done: false, value: firstChunk })
+      await expect(reader.read()).rejects.toThrow(upstreamIdleTimeoutMessage)
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'tinfoil',
+        status: 504,
+        errorKind: 'connection',
+        subpath: '/v1/models',
+        distinctId: 'test-user',
+        phase: 'stream',
+      })
+    })
+
+    it('does not capture a downstream client abort mid-stream', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const firstChunk = new Uint8Array([0x01, 0xff])
+      const upstream = createAbortableFetch(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(firstChunk)
+            },
+          }),
+        ),
+      )
+      const clientController = new AbortController()
+      const app = buildApp({
+        captureInferenceErrorFn: captureInferenceErrorMock,
+        fetchFn: upstream.fetchFn,
+        upstreamIdleTimeoutMs: 100,
+      })
+      const res = await app.handle(
+        new Request('http://localhost/tinfoil/v1/models', {
+          signal: clientController.signal,
+        }),
+      )
+      const reader = res.body!.getReader()
+
+      expect(await reader.read()).toEqual({ done: false, value: firstChunk })
+      clientController.abort()
+      await upstream.aborted
+      await expect(reader.read()).rejects.toThrow()
+      expect(captureInferenceErrorMock).not.toHaveBeenCalled()
+    })
+
+    it('does not capture 2xx enclave responses', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const app = buildApp({ captureInferenceErrorFn: captureInferenceErrorMock })
+
+      const res = await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }),
+        ),
+      )
+
+      expect(res.status).toBe(200)
+      expect(captureInferenceErrorMock).not.toHaveBeenCalled()
     })
   })
 

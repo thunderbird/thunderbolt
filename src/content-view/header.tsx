@@ -6,7 +6,7 @@ import { mobileHeaderControlFillDescendantClass } from '@/components/ui/modal-st
 import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 import { ResponsiveModalActions, useResponsiveModalContext } from '@/components/ui/responsive-modal'
 import { useMacWindowControlsClearance } from '@/hooks/use-window-controls-safe-area'
-import { isTauriDesktop } from '@/lib/platform'
+import { isFramelessControlsPlatform, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { type ReactNode } from 'react'
 
@@ -32,10 +32,17 @@ export const ContentViewHeader = ({ title, onClose, actions, className = '' }: C
   // same as every other header strip. Children (title, buttons) still receive
   // clicks; only the empty area initiates a drag.
   const dragProps = isTauriDesktop() ? { 'data-tauri-drag-region': true } : {}
+  // When this panel is open it occupies the window's top-right corner — where
+  // the frameless Windows/Linux caption buttons live — so reserve their width
+  // (plus the header's own right inset) to keep the close button clear of them.
+  const framelessControlsClearance = isFramelessControlsPlatform()
+    ? { paddingRight: 'calc(var(--window-controls-width) + 0.5rem)' }
+    : undefined
 
   return (
     <div
       {...dragProps}
+      style={framelessControlsClearance}
       className={cn(
         'flex w-full flex-shrink-0 items-center',
         // Desktop headers sit atop a scrolling panel and always draw the

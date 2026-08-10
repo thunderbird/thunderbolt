@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Registers the framer-motion `mock.module` (side effect) so `animate` resolves
+// Registers the framer-motion `mock.module` so `animate` resolves
 // synchronously and `useMotionValue`/`useDragControls` return inert values. The
 // named import also lets tests assert on the animations the component starts.
-import { animateSpy } from '@/test-utils/framer-motion-mock'
+import { animateSpy, registerFramerMotionMock } from '@/test-utils/framer-motion-mock'
 
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
@@ -16,6 +16,13 @@ import { useState, type ReactNode } from 'react'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getClock, webHapticsTriggerMock } from '@/testing-library'
+
+// Re-register here rather than relying on the side-effect import above: when
+// another test file evaluated framer-motion-mock first (randomized suite
+// order), this file's import is a cache hit that re-runs nothing, and a
+// registration made before real framer-motion was linked elsewhere no longer
+// intercepts new imports (see framer-motion-mock.ts).
+registerFramerMotionMock()
 
 // Import the module under test dynamically — after the framer-motion mock above
 // has registered — so the shared `mock.module('framer-motion')` intercepts its

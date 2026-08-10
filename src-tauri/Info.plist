@@ -15,5 +15,10 @@
              macOS/iOS TCC — without it the OS blocks (and can crash) mic access. -->
         <key>NSMicrophoneUsageDescription</key>
         <string>Thunderbolt uses your microphone for voice mode, so you can talk to the assistant.</string>
+        <!-- Attachments: the image-accepting file input surfaces iOS's "Take Photo"
+             option, which opens the camera. Required by macOS/iOS TCC — without it
+             the OS aborts the process the instant the camera is invoked (THU-770). -->
+        <key>NSCameraUsageDescription</key>
+        <string>Thunderbolt uses your camera so you can take a photo to attach to a message.</string>
     </dict>
 </plist>

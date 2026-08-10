@@ -37,8 +37,7 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   args: {
     isCollapsed: false,
-    showSearch: false,
-    debouncedSearchQuery: '',
+    showClearAll: true,
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),
       isPending: false,
@@ -60,8 +59,7 @@ export const Default: Story = {
 export const WithActiveSearch: Story = {
   args: {
     isCollapsed: false,
-    showSearch: true,
-    debouncedSearchQuery: 'test query',
+    showClearAll: true,
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),
       isPending: false,
@@ -83,8 +81,7 @@ export const WithActiveSearch: Story = {
 export const DeletingAllChats: Story = {
   args: {
     isCollapsed: false,
-    showSearch: false,
-    debouncedSearchQuery: '',
+    showClearAll: true,
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),
       isPending: true,
@@ -106,8 +103,7 @@ export const DeletingAllChats: Story = {
 export const Collapsed: Story = {
   args: {
     isCollapsed: true,
-    showSearch: false,
-    debouncedSearchQuery: '',
+    showClearAll: true,
     deleteAllChatsMutation: {
       mutate: () => console.log('Delete all clicked'),
       isPending: false,

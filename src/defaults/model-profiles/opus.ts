@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelOpus48 } from '@shared/defaults/models'
+import { defaultModelOpus5 } from '@shared/defaults/models'
 
-export const defaultModelProfileOpus48: ModelProfile = {
-  modelId: defaultModelOpus48.id,
-  temperature: 0.2,
+export const defaultModelProfileOpus5: ModelProfile = {
+  modelId: defaultModelOpus5.id,
+  temperature: null,
   maxSteps: 20,
   maxAttempts: 2,
   nudgeThreshold: 6,

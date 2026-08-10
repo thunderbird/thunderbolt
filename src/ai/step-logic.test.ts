@@ -260,6 +260,11 @@ describe('nudgeMessages', () => {
     expect(nudgeMessages.retry).toBeTruthy()
     expect(nudgeMessages.retry.length).toBeGreaterThan(0)
   })
+
+  test('web budget message is defined and non-empty', () => {
+    expect(nudgeMessages.webBudget).toBeTruthy()
+    expect(nudgeMessages.webBudget.length).toBeGreaterThan(0)
+  })
 })
 
 describe('getNudgeMessagesFromProfile', () => {
@@ -277,6 +282,7 @@ describe('getNudgeMessagesFromProfile', () => {
     expect(result.finalStep).toBe('custom final')
     expect(result.preventive).toBe('custom preventive')
     expect(result.retry).toBe('custom retry')
+    expect(result.webBudget).toBe(nudgeMessages.webBudget)
   })
 
   test('falls back to defaults for null nudge fields in partial override', () => {
@@ -285,6 +291,7 @@ describe('getNudgeMessagesFromProfile', () => {
     expect(result.finalStep).toBe('custom final')
     expect(result.preventive).toBe(nudgeMessages.preventive)
     expect(result.retry).toBe(nudgeMessages.retry)
+    expect(result.webBudget).toBe(nudgeMessages.webBudget)
   })
 
   test('returns default nudges when profile has no nudge overrides', () => {
@@ -353,6 +360,41 @@ describe('buildStepOverrides', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })
     expect(result?.activeTools).toEqual([])
+  })
+
+  test('forces a response after a post-exhaustion web-tool attempt', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      steps: toolCallSteps(2),
+      messages: [{ role: 'user', content: 'hello' }],
+      webBudgetProbe: { isExhausted: true, exhaustedAttempts: 1 },
+    })
+
+    expect(result?.toolChoice).toBe('none')
+    expect(result?.messages?.[result.messages.length - 1]?.content).toBe(nudgeMessages.webBudget)
+  })
+
+  test('does not floor tools before a post-exhaustion attempt', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      steps: toolCallSteps(2),
+      messages: [{ role: 'user', content: 'hello' }],
+      webBudgetProbe: { isExhausted: true, exhaustedAttempts: 0 },
+    })
+
+    expect(result).toBeUndefined()
+  })
+
+  test('final step takes priority over the web budget floor', () => {
+    const result = buildStepOverrides({
+      ...baseParams,
+      steps: toolCallSteps(19),
+      messages: [{ role: 'user', content: 'hello' }],
+      webBudgetProbe: { isExhausted: true, exhaustedAttempts: 1 },
+    })
+
+    expect(result?.activeTools).toEqual([])
+    expect(result?.messages?.[result.messages.length - 1]?.content).toBe(nudgeMessages.finalStep)
   })
 
   test('appends citation reinforcement when enabled and tool calls occurred', () => {

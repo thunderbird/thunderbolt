@@ -6,14 +6,24 @@ import { isFramelessControlsPlatform } from '@/lib/platform'
 import { Maximize2, Minus, X } from 'lucide-react'
 
 /**
- * Custom min/maximize/close buttons for Windows and Linux, where the main
- * window is frameless (`decorations: false`) and there's no native chrome to
- * fall back on. Renders `null` on macOS (Overlay title bar keeps the native
- * traffic lights) and on non-Tauri surfaces.
+ * Custom min/maximize/close controls for the frameless Windows and Linux apps,
+ * where the native title bar is hidden. Rendered once at the app root as a fixed
+ * cluster pinned to the window's top-right corner — the platform-native spot for
+ * caption buttons — so it stays present on every screen (including the
+ * pre-database loading/auth/error screens that have no app header), mirroring
+ * how macOS keeps its OS traffic lights top-left.
+ *
+ * It's a thin overlay, not a layout-consuming strip, so it never shifts the
+ * `h-svh` content height (a full-width top strip is what previously broke chat
+ * scrolling). Surfaces whose own controls reach the top-right corner (e.g. the
+ * content-view panel header) reserve `--window-controls-width` of right padding
+ * so they don't slide under this cluster.
+ *
+ * Renders `null` on macOS, mobile, and non-Tauri (web) surfaces.
  *
  * Close mirrors the tray-driven hide-instead-of-quit behavior in `tray.tsx` —
- * dispatching the same `close-requested` event so the tray teardown path stays
- * authoritative rather than duplicating the hide+dock logic here.
+ * `close()` triggers the tray's `onCloseRequested` handler, which hides the
+ * window rather than quitting.
  */
 export const WindowControls = () => {
   if (!isFramelessControlsPlatform()) {
@@ -32,22 +42,20 @@ export const WindowControls = () => {
 
   const handleClose = async () => {
     const { getCurrentWindow } = await import('@tauri-apps/api/window')
-    // Fire close instead of hide/exit directly — the tray's onCloseRequested
-    // handler intercepts, hides the window, and updates the taskbar/dock state.
     await getCurrentWindow().close()
   }
 
   return (
     <div
       data-tauri-drag-region="false"
-      className="flex items-center h-full -mr-2 shrink-0"
+      className="fixed right-0 top-0 z-50 flex h-[var(--touch-height-xl)] w-[var(--window-controls-width)] items-stretch"
       aria-label="Window controls"
     >
       <button
         type="button"
         onClick={handleMinimize}
         aria-label="Minimize"
-        className="h-full w-11 flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
+        className="flex flex-1 items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
       >
         <Minus className="size-3.5" aria-hidden="true" />
       </button>
@@ -55,7 +63,7 @@ export const WindowControls = () => {
         type="button"
         onClick={handleMaximize}
         aria-label="Maximize"
-        className="h-full w-11 flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
+        className="flex flex-1 items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
       >
         <Maximize2 className="size-3.5" aria-hidden="true" />
       </button>
@@ -63,7 +71,7 @@ export const WindowControls = () => {
         type="button"
         onClick={handleClose}
         aria-label="Close"
-        className="h-full w-11 flex items-center justify-center text-muted-foreground hover:bg-destructive hover:text-white cursor-pointer"
+        className="flex flex-1 items-center justify-center text-muted-foreground hover:bg-destructive hover:text-white cursor-pointer"
       >
         <X className="size-3.5" aria-hidden="true" />
       </button>

@@ -52,11 +52,13 @@ import {
   resolveOpenAiCompatConnection,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { vendorSupportsImages } from '@shared/defaults/models'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { prepareBuiltInConversation } from './built-in-conversation'
 import { deriveThinkingLevel, hasExplicitReasoning } from './thinking-level'
@@ -136,7 +138,7 @@ export type ResolvedPiModel = {
  *  fall back to legacy. Anthropic ids must exist in Pi's built-in catalog;
  *  OpenAI-wire providers must resolve a connection (api key / url present). The
  *  thinking level is derived from the model's profile for both families. */
-const resolvePiModel = (
+export const resolvePiModel = (
   agentCore: AgentCoreModule,
   context: AgentAdapterContext,
   profile: ModelProfile | null,
@@ -175,6 +177,10 @@ const resolvePiModel = (
       fetch: connection.fetch,
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
+      // Pi's openai-compat descriptor is text-only by default; without this a
+      // vision-capable hosted model (e.g. Thunderbolt Opus) has its image blocks
+      // stripped before the wire and only sees the `[Attachment: …]` text label.
+      supportsImages: vendorSupportsImages(model.vendor),
     },
     thinkingLevel,
   }
@@ -207,7 +213,7 @@ export const harnessSignature = (
   const model =
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${hashSecret(d.apiKey)}`
-      : `openai-compat|${d.providerId}|${d.modelId}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}`
+      : `openai-compat|${d.providerId}|${d.modelId}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}`
   return `${model}|${resolved.thinkingLevel}|${stableSystemPrompt}|regenerate:${regenerationRevision}`
 }
 
@@ -258,6 +264,21 @@ const prepareHarnessForSend = async (
     allTools,
     allTools.map((tool) => tool.name),
   )
+}
+
+/** Install the Pi harness floor that disables tools after a denied web-tool call. */
+const installWebToolBudgetFloor = async (harness: AgentHarness, webToolBudget?: WebToolBudget): Promise<() => void> => {
+  if (!webToolBudget) {
+    return () => undefined
+  }
+  const applyBudgetFloor = async () => {
+    if (webToolBudget.probe.exhaustedAttempts) {
+      await harness.setActiveTools([])
+    }
+    return undefined
+  }
+  await applyBudgetFloor()
+  return harness.on('tool_result', applyBudgetFloor)
 }
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it
@@ -343,6 +364,7 @@ const fetchViaHarness = async (
     mcpClients: context.mcpClients,
     reconnectClient: context.reconnectClient,
     httpClient: context.httpClient,
+    webToolBudget: context.webToolBudget,
   })
   const resolved = resolvePiModel(agentCore, context, config.profile)
   if (!resolved) {
@@ -368,8 +390,13 @@ const fetchViaHarness = async (
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
-        await harness.prompt(prompt.text, { images: prompt.images })
-        await harness.waitForIdle()
+        const removeBudgetFloor = await installWebToolBudgetFloor(harness, context.webToolBudget)
+        try {
+          await harness.prompt(prompt.text, { images: prompt.images })
+          await harness.waitForIdle()
+        } finally {
+          removeBudgetFloor()
+        }
       },
       {
         initial: { modelId: context.selectedModel.id },
@@ -418,6 +445,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       httpClient: context.httpClient,
       getProxyFetch: context.getProxyFetch,
       turnBudget: context.turnBudget,
+      webToolBudget: context.webToolBudget,
     })
 
   // Route tool-capable Pi-serviceable models (anthropic + the OpenAI-wire family)

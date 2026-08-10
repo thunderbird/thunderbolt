@@ -16,6 +16,7 @@ import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SessionSideEffectSink } from '@/acp/translators/acp-to-ai-sdk'
 import type { TurnBudgetConsumer } from '@/ai/retry-budget'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
 import type { RunSpec } from '@shared/acp-types'
 
@@ -80,6 +81,7 @@ export type AgentAdapterContext = {
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
   turnBudget?: TurnBudgetConsumer
+  webToolBudget?: WebToolBudget
   /** Increments only when the current assistant response is regenerated. Built-in
    *  persistent harnesses use it to rebuild from the edited transcript without
    *  rebuilding during ordinary transcript growth. */

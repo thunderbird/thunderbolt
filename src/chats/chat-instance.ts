@@ -23,6 +23,7 @@ import {
   createTurnBudgetExhaustedError,
   type TurnBudget,
 } from '@/ai/retry-budget'
+import { createWebToolBudget, resolveWebToolIntent, type WebToolBudget } from '@/ai/web-tool-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
@@ -131,6 +132,7 @@ export type CreateChatInstanceDeps = {
 
 export type AgentRoutingState = {
   regenerationRevision?: number
+  webToolBudgetRevision?: number
   getTurnBudget?: () => TurnBudget
 }
 
@@ -178,6 +180,22 @@ export const createAgentRoutingFetch = (
     })()
 
   let routedAgentId: string | null = null
+  let webToolBudgetState: { key: string; budget: WebToolBudget } | undefined
+
+  const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
+    const lastUserMessage = messages.findLast((message) => message.role === 'user')
+    if (!lastUserMessage) {
+      return undefined
+    }
+    const key = `${lastUserMessage.id}#${routingState.webToolBudgetRevision ?? 0}`
+    if (webToolBudgetState?.key === key) {
+      return webToolBudgetState.budget
+    }
+    const budget = createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages)))
+    webToolBudgetState = { key, budget }
+    return budget
+  }
+
   // This thread ran a turn on the runner during this instance's life. The
   // persisted marker is authoritative across reloads, but its write round-trips
   // through sync before the store can read it back — without remembering it
@@ -339,8 +357,9 @@ export const createAgentRoutingFetch = (
       //      never be generated.
       //   3. Keeps message ordering consistent: the user turn is durable
       //      before the assistant stream starts.
-      const requestBody = JSON.parse(init.body as string) as { messages: ThunderboltUIMessage[] }
-      await saveMessages({ id, messages: requestBody.messages })
+      const requestBody = JSON.parse(init.body as string) as { messages?: ThunderboltUIMessage[] }
+      const requestMessages = requestBody.messages ?? []
+      await saveMessages({ id, messages: requestMessages })
 
       // Persist by `id`, not `chatThread.id`: on a brand-new chat the session's
       // `chatThread` snapshot is still `null` here (PowerSync hasn't re-hydrated
@@ -368,9 +387,9 @@ export const createAgentRoutingFetch = (
         isEncryptedThread: chatThread?.isEncrypted === 1,
         model: selectedModel,
         runnerWsUrl,
-        hasPriorTurns: requestBody.messages.length > 1,
+        hasPriorTurns: requestMessages.length > 1,
         hasMcpClients: mcpClients.length > 0,
-        hasAttachments: requestBody.messages.some((message) => getAttachments(message).length > 0),
+        hasAttachments: requestMessages.some((message) => getAttachments(message).length > 0),
       })
       if (placement.placement === 'refuse') {
         throw new Error(builtInPlacementRefusalMessage(placement.reason))
@@ -438,6 +457,7 @@ export const createAgentRoutingFetch = (
           httpClient,
           getProxyFetch,
           turnBudget,
+          webToolBudget: getWebToolBudget(requestMessages),
           regenerationRevision: routingState.regenerationRevision ?? 0,
           skillInstructions,
           runSpec,
@@ -498,6 +518,7 @@ export const createChatInstance = (
   let turnBudget = createTurnBudget()
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
+    webToolBudgetRevision: 0,
     getTurnBudget: () => turnBudget,
   }
   const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
@@ -514,6 +535,7 @@ export const createChatInstance = (
       retryTimeout = null
     }
     turnBudget = createTurnBudget()
+    routingState.webToolBudgetRevision = (routingState.webToolBudgetRevision ?? 0) + 1
     retryCount = 0
     lastError = null
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })

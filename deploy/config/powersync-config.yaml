@@ -20,7 +20,6 @@ sync_rules:
         data:
           - SELECT * FROM powersync.settings WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.models WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.modes WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.model_profiles WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.devices WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.chat_threads WHERE user_id = bucket.user_id

@@ -8,6 +8,7 @@ import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
 import type OpenAI from 'openai'
+import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import { createInferenceRoutes, supportedModels, type InferenceProxyLatencyLog } from './routes'
 import { defaultModels } from '@shared/defaults/models'
 
@@ -39,7 +40,7 @@ describe('Inference Routes', () => {
 
   const getInferenceClientMock = mock(() => ({
     client: mockOpenAIClient as unknown as OpenAI,
-    provider: 'mistral' as const,
+    provider: 'fireworks' as const,
   }))
   const isPostHogConfiguredMock = mock(() => false)
 
@@ -68,7 +69,7 @@ describe('Inference Routes', () => {
 
   describe('POST /chat/completions', () => {
     const validRequestBody = {
-      model: 'mistral-large-3',
+      model: 'deepseek-v4-flash',
       messages: [{ role: 'user', content: 'Hello' }],
       stream: true,
       temperature: 0.7,
@@ -79,10 +80,11 @@ describe('Inference Routes', () => {
       mockCreateCompletion.mockClear()
       getInferenceClientMock.mockClear()
       isPostHogConfiguredMock.mockClear()
+      consoleSpies.error.mockClear()
       isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
         client: mockOpenAIClient as unknown as OpenAI,
-        provider: 'mistral' as const,
+        provider: 'fireworks' as const,
       }))
     })
 
@@ -108,7 +110,7 @@ describe('Inference Routes', () => {
       expect(response.headers.get('Connection')).toBe('keep-alive')
 
       expect(mockCreateCompletion).toHaveBeenCalledWith({
-        model: 'mistral-large-2512',
+        model: 'accounts/fireworks/models/deepseek-v4-flash',
         messages: validRequestBody.messages,
         temperature: validRequestBody.temperature,
         tools: undefined,
@@ -117,7 +119,7 @@ describe('Inference Routes', () => {
       })
     })
 
-    it('should route mistral models to mistral provider', async () => {
+    it('should route DeepSeek V4 Flash to the Fireworks provider', async () => {
       const mockCompletion = createMockStream()
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
 
@@ -130,12 +132,20 @@ describe('Inference Routes', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(getInferenceClientMock).toHaveBeenCalledWith('mistral')
+      expect(getInferenceClientMock).toHaveBeenCalledWith('fireworks')
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'mistral-large-2512',
+          model: 'accounts/fireworks/models/deepseek-v4-flash',
         }),
       )
+    })
+
+    it('configures Opus 5 for Anthropic without temperature', () => {
+      expect(supportedModels['opus-5']).toEqual({
+        provider: 'anthropic',
+        internalName: 'claude-opus-5',
+        omitTemperature: true,
+      })
     })
 
     it('should handle request with tools and tool_choice', async () => {
@@ -182,7 +192,7 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
           posthogProperties: expect.objectContaining({
-            model_provider: 'mistral',
+            model_provider: 'fireworks',
             endpoint: '/chat/completions',
             has_tools: false,
             temperature: validRequestBody.temperature,
@@ -245,6 +255,249 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
     })
 
+    it('captures body-free structured metadata from an API error', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const apiError = new APIError(
+        400,
+        {
+          message: 'prompt is too long',
+          code: 'context_length_exceeded',
+          type: 'invalid_request_error',
+        },
+        undefined,
+        new Headers({ 'x-request-id': 'provider-request-123' }),
+      )
+      mockCreateCompletion.mockImplementation(() => Promise.reject(apiError))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'fireworks',
+        status: 400,
+        model: 'deepseek-v4-flash',
+        errorKind: 'context_length',
+        errorType: 'invalid_request_error',
+        errorCode: 'context_length_exceeded',
+        requestId: 'provider-request-123',
+        distinctId: 'test-user',
+      })
+    })
+
+    it('captures body-free structured metadata from a mid-stream API error', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const apiError = new APIError(
+        529,
+        {
+          message: 'Overloaded',
+          type: 'overloaded_error',
+        },
+        undefined,
+        new Headers({ 'x-request-id': 'provider-stream-request-123' }),
+      )
+      const completionController = new AbortController()
+      const mockCompletion = {
+        controller: completionController,
+        async *[Symbol.asyncIterator]() {
+          yield { choices: [{ delta: { content: 'Hello' } }] }
+          throw apiError
+        },
+      }
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...validRequestBody, model: 'opus-5' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.text()).rejects.toThrow('Overloaded')
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'anthropic',
+        status: 529,
+        model: 'opus-5',
+        errorKind: 'upstream_error',
+        errorType: 'overloaded_error',
+        errorCode: undefined,
+        requestId: 'provider-stream-request-123',
+        distinctId: 'test-user',
+        phase: 'stream',
+      })
+    })
+
+    it('does not capture downstream cancellation as a stream error', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const completionController = new AbortController()
+      const iterationSettled = Promise.withResolvers<void>()
+      const mockCompletion = {
+        controller: completionController,
+        async *[Symbol.asyncIterator]() {
+          try {
+            yield { choices: [{ delta: { content: 'Hello' } }] }
+            await new Promise<void>((_resolve, reject) => {
+              completionController.signal.addEventListener('abort', () => reject(new Error('cancelled')), {
+                once: true,
+              })
+            })
+          } finally {
+            iterationSettled.resolve()
+          }
+        },
+      }
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+      const reader = response.body!.getReader()
+
+      expect((await reader.read()).done).toBeFalse()
+      await reader.cancel()
+      await iterationSettled.promise
+      expect(captureInferenceErrorMock).not.toHaveBeenCalled()
+    })
+
+    it('captures connection timeouts before wrapping them', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const connectionError = new APIConnectionTimeoutError({ message: 'Request timed out.' })
+      mockCreateCompletion.mockImplementation(() => Promise.reject(connectionError))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'fireworks',
+        status: 500,
+        model: 'deepseek-v4-flash',
+        errorKind: 'connection',
+        errorType: undefined,
+        errorCode: undefined,
+        requestId: undefined,
+        distinctId: 'test-user',
+      })
+      expect(consoleSpies.error).toHaveBeenCalledWith('Connection timeout to inference provider', connectionError.cause)
+    })
+
+    it('captures connection failures before wrapping them', async () => {
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const connectionError = new APIConnectionError({ message: 'Connection failed.' })
+      mockCreateCompletion.mockImplementation(() => Promise.reject(connectionError))
+
+      const response = await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(captureInferenceErrorMock).toHaveBeenCalledWith({
+        provider: 'fireworks',
+        status: 500,
+        model: 'deepseek-v4-flash',
+        errorKind: 'connection',
+        errorType: undefined,
+        errorCode: undefined,
+        requestId: undefined,
+        distinctId: 'test-user',
+      })
+      expect(consoleSpies.error).toHaveBeenCalledWith('Failed to connect to inference provider', connectionError.cause)
+    })
+
+    it('never captures provider error message content', async () => {
+      const sentinel = 'SECRET_PROMPT_FRAGMENT_XYZ'
+      const captureInferenceErrorMock = mock(() => {})
+      const captureApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          getClient: getInferenceClientMock,
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+          captureInferenceErrorFn: captureInferenceErrorMock,
+        }),
+      )
+      const apiError = new APIError(
+        400,
+        { message: sentinel, code: 'invalid_request_error', type: 'invalid_request_error' },
+        undefined,
+        new Headers(),
+      )
+      mockCreateCompletion.mockImplementation(() => Promise.reject(apiError))
+
+      await captureApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify(captureInferenceErrorMock.mock.calls)).not.toContain(sentinel)
+    })
+
     it('emits phase timing headers and a structured latency log on success', async () => {
       const entries: Array<{ context: InferenceProxyLatencyLog; message: string }> = []
       const timestamps = [100, 120, 170]
@@ -276,7 +529,8 @@ describe('Inference Routes', () => {
           context: {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
-            provider: 'mistral',
+            provider: 'fireworks',
+            model: 'deepseek-v4-flash',
             status: 200,
             preMs: 20,
             upstreamMs: 50,
@@ -319,7 +573,8 @@ describe('Inference Routes', () => {
           context: {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
-            provider: 'mistral',
+            provider: 'fireworks',
+            model: 'deepseek-v4-flash',
             status: 500,
             preMs: 30,
             upstreamMs: 80,
@@ -344,9 +599,8 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).not.toHaveBeenCalled()
     })
 
-    it('should validate all supported models', () => {
-      const expectedModels = ['mistral-medium-3.1', 'mistral-large-3', 'sonnet-4.5', 'opus-4.8', 'deepseek-v4-flash']
-      expect(Object.keys(supportedModels)).toEqual(expectedModels)
+    it('exposes only Thunderbolt models handled by the inference proxy', () => {
+      expect(Object.keys(supportedModels)).toEqual(['opus-5', 'deepseek-v4-flash'])
     })
 
     it('should handle requests with has_tools flag correctly', async () => {
@@ -390,7 +644,7 @@ describe('Inference Routes', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'mistral-large-3',
+            model: 'deepseek-v4-flash',
             messages: [{ role: 'user', content: 'Hello' }],
             stream: true,
           }),
@@ -410,7 +664,7 @@ describe('Inference Routes', () => {
       isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
         client: mockOpenAIClient as unknown as OpenAI,
-        provider: 'mistral' as const,
+        provider: 'fireworks' as const,
       }))
       mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream()))
     })
@@ -420,7 +674,7 @@ describe('Inference Routes', () => {
         new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'mistral-large-3', messages, stream: true }),
+          body: JSON.stringify({ model: 'deepseek-v4-flash', messages, stream: true }),
         }),
       )
 

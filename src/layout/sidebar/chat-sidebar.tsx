@@ -17,7 +17,7 @@ import {
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
 import { CheckSquare, MessageCirclePlus } from 'lucide-react'
-import { type MouseEvent, type RefObject } from 'react'
+import { type RefObject } from 'react'
 import { useLocation } from 'react-router'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
@@ -30,10 +30,6 @@ type ChatSidebarContentProps = {
   isCollapsed: boolean
   chatThreads: ChatThread[]
   currentChatThreadId?: string
-  searchQuery: string
-  debouncedSearchQuery: string
-  showSearch: boolean
-  searchInputRef: RefObject<HTMLInputElement | null>
   deleteAllChatsMutation: DeleteAllChatsMutationType
   deleteChatMutation: DeleteChatMutationType
   deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
@@ -46,8 +42,7 @@ type ChatSidebarContentProps = {
   onTasksClick: () => void
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
-  onSearchClick: (e?: MouseEvent) => void
-  onSearchQueryChange: (value: string) => void
+  onSearchClick: () => void
 }
 
 type TasksMenuItemProps = {
@@ -69,10 +64,6 @@ export const ChatSidebarContent = ({
   isCollapsed,
   chatThreads,
   currentChatThreadId,
-  searchQuery,
-  debouncedSearchQuery,
-  showSearch,
-  searchInputRef,
   deleteAllChatsMutation,
   deleteChatMutation,
   deleteAllChatsDialogRef,
@@ -86,7 +77,6 @@ export const ChatSidebarContent = ({
   onChatClick,
   onRename,
   onSearchClick,
-  onSearchQueryChange,
 }: ChatSidebarContentProps) => {
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
@@ -131,15 +121,11 @@ export const ChatSidebarContent = ({
         currentChatThreadId={currentChatThreadId}
         isCollapsed={isCollapsed}
         isMobile={isMobile}
-        debouncedSearchQuery={debouncedSearchQuery}
         deleteAllChatsMutation={deleteAllChatsMutation}
         deleteChatMutation={deleteChatMutation}
         deleteAllChatsDialogRef={deleteAllChatsDialogRef}
         deleteChatDialogRef={deleteChatDialogRef}
         threadIdRef={threadIdRef}
-        searchQuery={searchQuery}
-        showSearch={showSearch}
-        searchInputRef={searchInputRef}
         mobileNavToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
         mobileSecondaryNavigation={
           showTasks ? (
@@ -151,7 +137,6 @@ export const ChatSidebarContent = ({
         onChatClick={onChatClick}
         onRename={onRename}
         onSearchClick={onSearchClick}
-        onSearchQueryChange={onSearchQueryChange}
       />
 
       <SidebarFooter className="flex-shrink-0 max-md:absolute max-md:inset-x-0 max-md:bottom-0 md:-mt-2" />

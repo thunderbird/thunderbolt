@@ -61,17 +61,24 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         builder = builder.plugin(tauri_plugin_devtools::init());
     }
 
-    // macOS window vibrancy is configured declaratively in tauri.conf.json
-    // (`windowEffects: hudWindow` + `transparent` + `macOSPrivateApi`); the
-    // frontend keeps the main content pane opaque and paints the left sidebar
-    // translucent so only it reads as glass (see `.mac-vibrancy` in
-    // src/index.css). `followsWindowActiveState` flattens the blur while the
-    // window is inactive, matching native macOS apps.
+    // macOS window vibrancy is configured declaratively in tauri.macos.conf.json
+    // (`windowEffects: hudWindow` + `transparent` + `macOSPrivateApi` +
+    // `titleBarStyle: Overlay` for the overlaid traffic lights), a platform
+    // config Tauri auto-merges over the opaque base window in tauri.conf.json.
+    // These are scoped to macOS on purpose: a transparent WebView2 window would
+    // break compositing on Windows (dead scrollbars). The frontend keeps the
+    // main content pane opaque and paints the left sidebar translucent so only
+    // it reads as glass (see `.mac-vibrancy` in src/index.css).
+    // `followsWindowActiveState` flattens the blur while the window is inactive,
+    // matching native macOS apps.
 
-    // Frameless main window on Windows/Linux. macOS keeps `titleBarStyle: Overlay`
-    // from tauri.conf.json to preserve native traffic lights; setting
-    // `decorations: false` in the JSON would override Overlay and remove them,
-    // so we scope the borderless flag to platforms that ship custom controls.
+    // Frameless main window on Windows/Linux: hide the native title bar and let
+    // the frontend paint its own min/maximize/close controls at the top-right
+    // (`WindowControls`), matching the platform convention while keeping the
+    // opaque, edge-to-edge canvas. macOS uses `titleBarStyle: Overlay` from
+    // tauri.macos.conf.json instead — setting `decorations: false` there would
+    // strip the native traffic lights, so the borderless flag is scoped to the
+    // custom-controls platforms.
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         builder = builder.setup(|app| {
@@ -82,13 +89,25 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         });
     }
 
-    // The shared `transparent: true` window config exists only for the macOS
-    // sidebar vibrancy (`.mac-vibrancy` in index.css), but it also makes the
-    // WKWebView non-opaque on iOS. A non-opaque webview lets the root view
+    // WebKitGTK's WASM optimizing JIT tier (OMG) leaks native memory when repeatedly
+    // recompiling wa-sqlite's WASM module (used via IDBBatchAtomicVFS, PowerSync's OPFS
+    // fallback on this platform - see getPowerSyncOptions in src/db/powersync/database.ts),
+    // eventually OOM-killing the WebKitWebProcess. Disabling just the OMG tier (baseline
+    // JIT stays on) avoids it. Must be set before the webview is created, since WebKitGTK
+    // reads JSC_* env vars at its own init time. Remove once upstream WebKit fixes this
+    // (tracked at https://bugs.webkit.org/show_bug.cgi?id=319572).
+    #[cfg(target_os = "linux")]
+    {
+        std::env::set_var("JSC_useOMGJIT", "false");
+    }
+
+    // `transparent: true` now lives only in tauri.macos.conf.json, so the iOS
+    // WKWebView is opaque by default. This belt-and-suspenders call keeps it
+    // opaque regardless: a non-opaque webview would let the root view
     // controller's systemBackgroundColor — white in light mode, black in dark —
     // bleed through the status-bar and home-indicator safe areas, so the status
-    // bar reads as white on the light theme. Force the webview opaque so those
-    // regions paint the web canvas (the themed --color-background) instead.
+    // bar reads as white on the light theme. Forcing opaque makes those regions
+    // paint the web canvas (the themed --color-background) instead.
     #[cfg(target_os = "ios")]
     {
         builder = builder.setup(|app| {

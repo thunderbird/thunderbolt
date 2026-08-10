@@ -4,7 +4,8 @@
 
 import { getDb } from '@/db/database'
 import { modelProfilesTable, modelsTable } from '@/db/tables'
-import { defaultModelOpus48 } from '@shared/defaults/models'
+import { defaultModelProfileOpus5, hashModelProfile } from '@/defaults/model-profiles'
+import { defaultModelOpus5 } from '@shared/defaults/models'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
@@ -207,35 +208,36 @@ describe('Model Profiles DAL', () => {
   describe('resetModelProfileToDefault', () => {
     it('should restore default values for a known model', async () => {
       const db = getDb()
-      const { defaultModelProfileOpus48 } = await import('@/defaults/model-profiles')
 
       // Insert the actual default model first to satisfy FK constraint
       await db.insert(modelsTable).values({
-        id: defaultModelOpus48.id,
-        provider: defaultModelOpus48.provider,
-        name: defaultModelOpus48.name,
-        model: defaultModelOpus48.model,
-        isSystem: defaultModelOpus48.isSystem,
-        enabled: defaultModelOpus48.enabled,
+        id: defaultModelOpus5.id,
+        provider: defaultModelOpus5.provider,
+        name: defaultModelOpus5.name,
+        model: defaultModelOpus5.model,
+        isSystem: defaultModelOpus5.isSystem,
+        enabled: defaultModelOpus5.enabled,
       })
 
       // Insert a profile with modified values
       await db.insert(modelProfilesTable).values({
-        modelId: defaultModelOpus48.id,
+        modelId: defaultModelOpus5.id,
         temperature: 0.99,
         maxSteps: 1,
         deletedAt: new Date().toISOString(),
       })
 
       // Reset to defaults
-      await resetModelProfileToDefault(getDb(), defaultModelOpus48.id)
+      await resetModelProfileToDefault(getDb(), defaultModelOpus5.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
+      const profile = await getModelProfile(getDb(), defaultModelOpus5.id)
       expect(profile).not.toBe(null)
-      expect(profile?.temperature).toBe(defaultModelProfileOpus48.temperature)
-      expect(profile?.maxSteps).toBe(defaultModelProfileOpus48.maxSteps)
-      expect(profile?.maxAttempts).toBe(defaultModelProfileOpus48.maxAttempts)
-      expect(profile?.nudgeThreshold).toBe(defaultModelProfileOpus48.nudgeThreshold)
+      expect(defaultModelProfileOpus5.modelId).toBe(defaultModelOpus5.id)
+      expect(defaultModelProfileOpus5.temperature).toBeNull()
+      expect(profile?.temperature).toBeNull()
+      expect(profile?.maxSteps).toBe(defaultModelProfileOpus5.maxSteps)
+      expect(profile?.maxAttempts).toBe(defaultModelProfileOpus5.maxAttempts)
+      expect(profile?.nudgeThreshold).toBe(defaultModelProfileOpus5.nudgeThreshold)
       expect(profile?.deletedAt).toBe(null)
     })
 
@@ -268,31 +270,30 @@ describe('Model Profiles DAL', () => {
   describe('createDefaultModelProfile', () => {
     it('should create a profile for a known default model', async () => {
       const db = getDb()
-      const { defaultModelProfileOpus48, hashModelProfile } = await import('@/defaults/model-profiles')
 
       await db.insert(modelsTable).values({
-        id: defaultModelOpus48.id,
-        provider: defaultModelOpus48.provider,
-        name: defaultModelOpus48.name,
-        model: defaultModelOpus48.model,
-        isSystem: defaultModelOpus48.isSystem,
-        enabled: defaultModelOpus48.enabled,
+        id: defaultModelOpus5.id,
+        provider: defaultModelOpus5.provider,
+        name: defaultModelOpus5.name,
+        model: defaultModelOpus5.model,
+        isSystem: defaultModelOpus5.isSystem,
+        enabled: defaultModelOpus5.enabled,
       })
 
-      await createDefaultModelProfile(getDb(), defaultModelOpus48.id)
+      await createDefaultModelProfile(getDb(), defaultModelOpus5.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
+      const profile = await getModelProfile(getDb(), defaultModelOpus5.id)
       expect(profile).not.toBe(null)
-      expect(profile?.modelId).toBe(defaultModelOpus48.id)
-      expect(profile?.temperature).toBe(defaultModelProfileOpus48.temperature)
+      expect(profile?.modelId).toBe(defaultModelOpus5.id)
+      expect(profile?.temperature).toBeNull()
 
       // Should store the defaultHash
       const rawProfile = await db
         .select()
         .from(modelProfilesTable)
-        .where(eq(modelProfilesTable.modelId, defaultModelOpus48.id))
+        .where(eq(modelProfilesTable.modelId, defaultModelOpus5.id))
         .get()
-      expect(rawProfile?.defaultHash).toBe(hashModelProfile(defaultModelProfileOpus48))
+      expect(rawProfile?.defaultHash).toBe(hashModelProfile(defaultModelProfileOpus5))
     })
 
     it('should do nothing for a model without seed data', async () => {
@@ -318,24 +319,24 @@ describe('Model Profiles DAL', () => {
       const db = getDb()
 
       await db.insert(modelsTable).values({
-        id: defaultModelOpus48.id,
-        provider: defaultModelOpus48.provider,
-        name: defaultModelOpus48.name,
-        model: defaultModelOpus48.model,
-        isSystem: defaultModelOpus48.isSystem,
-        enabled: defaultModelOpus48.enabled,
+        id: defaultModelOpus5.id,
+        provider: defaultModelOpus5.provider,
+        name: defaultModelOpus5.name,
+        model: defaultModelOpus5.model,
+        isSystem: defaultModelOpus5.isSystem,
+        enabled: defaultModelOpus5.enabled,
       })
 
       // Insert a custom profile first
       await db.insert(modelProfilesTable).values({
-        modelId: defaultModelOpus48.id,
+        modelId: defaultModelOpus5.id,
         temperature: 0.99,
       })
 
       // Calling createDefaultModelProfile should not overwrite
-      await createDefaultModelProfile(getDb(), defaultModelOpus48.id)
+      await createDefaultModelProfile(getDb(), defaultModelOpus5.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
+      const profile = await getModelProfile(getDb(), defaultModelOpus5.id)
       expect(profile?.temperature).toBe(0.99)
     })
   })

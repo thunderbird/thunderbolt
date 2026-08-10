@@ -48,7 +48,7 @@ const initialSyncTimeoutMs = 10_000
 /**
  * Sync rule priority we block app init on. Matches the `user_essentials` bucket in
  * `powersync-service/config/config.yaml` (and the PowerSync Cloud dashboard rules):
- * settings, models, modes, model_profiles, devices, chat_threads. Lower-priority buckets
+ * settings, models, model_profiles, devices, chat_threads. Lower-priority buckets
  * (chat_messages, tasks, etc.) stream in the background after the app is interactive.
  *
  * Falls back to global `hasSynced` if the deployed sync rules don't declare priorities yet
@@ -56,8 +56,16 @@ const initialSyncTimeoutMs = 10_000
  */
 const initialSyncPriority = 1
 
-/** @internal Exported for testing */
-export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfig = getPowerSyncDatabaseConfig()) => {
+/**
+ * @internal Exported for testing
+ * @param opfsAvailable - Whether OPFS (`navigator.storage.getDirectory`) is actually usable on this
+ * platform. Only affects the 'safari-tauri' config's VFS choice — see the comment below.
+ */
+export const getPowerSyncOptions = (
+  path: string,
+  config: PowerSyncDatabaseConfig = getPowerSyncDatabaseConfig(),
+  opfsAvailable = true,
+) => {
   const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
 
   if (config === 'default') {
@@ -87,12 +95,16 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
    * Explicit UMD worker paths — bypasses import.meta.url which fails under tauri://.
    * enableMultiTabs: false — dedicated worker, not SharedWorker (fails under tauri://).
    *
+   * Falls back to IDBBatchAtomicVFS (IndexedDB-backed, no OPFS dependency) when OPFS itself
+   * is unavailable — e.g. WebKitGTK (Tauri on Linux) doesn't implement `navigator.storage.getDirectory`,
+   * so OPFSCoopSyncVFS's worker throws on init instead of ever reaching this Asyncify tradeoff.
+   *
    * Docs: https://docs.powersync.com/debugging/troubleshooting#common-issues
    */
   return {
     database: new WASQLiteOpenFactory({
       dbFilename: dbFilename,
-      vfs: WASQLiteVFS.OPFSCoopSyncVFS,
+      vfs: opfsAvailable ? WASQLiteVFS.OPFSCoopSyncVFS : WASQLiteVFS.IDBBatchAtomicVFS,
       worker: '/@powersync/worker/WASQLiteDB.umd.js',
       flags: { enableMultiTabs: false },
     }),
@@ -140,7 +152,10 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return // Already initialized
     }
 
-    const options = getPowerSyncOptions(path)
+    // `getDatabasePath` (called before `initialize`) already probes real OPFS availability and
+    // returns the ':memory:' sentinel when it's unavailable — reuse that instead of re-probing.
+    const opfsAvailable = path !== ':memory:'
+    const options = getPowerSyncOptions(path, getPowerSyncDatabaseConfig(), opfsAvailable)
 
     // Always use ThunderboltPowerSyncDatabase with TransformableBucketStorage + encryption middleware.
     // The middleware is data-driven (checks __enc: prefix), so it's a no-op when E2EE is disabled.
@@ -390,7 +405,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
   /**
    * Wait for PowerSync's priority-1 buckets to complete their initial sync (essentials —
-   * settings, models, modes, model_profiles, devices, chat_threads). Lower-priority data
+   * settings, models, model_profiles, devices, chat_threads). Lower-priority data
    * (chat_messages, tasks, etc.) continues streaming in the background.
    *
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).

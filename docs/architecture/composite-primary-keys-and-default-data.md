@@ -12,7 +12,6 @@ Several tables hold data that is **seeded as defaults** when a user first initia
 |---------|------------------|--------|
 | settings| `(key, user_id)` | Setting keys like `theme` or `model_id` are shared; each user has their own value. |
 | models  | `(id, user_id)`  | Default models (e.g. `openai-gpt-4o`) are seeded per user with same ID. |
-| modes   | `(id, user_id)`  | Default modes (e.g. `default-mode`) are seeded per user with same ID. |
 | tasks   | `(id, user_id)`  | Default tasks (e.g. `inbox`) are seeded per user with same ID. |
 | prompts | `(id, user_id)`  | Default automations/prompts are seeded per user with same ID. |
 | model_profiles | `(id, user_id)` | Per-model inference tuning (temperature, nudges, prompt overrides) seeded per user. |
@@ -59,8 +58,8 @@ If you add a new table that is seeded with default data at initialization:
 
 While some tables have composite primary keys `(id, user_id)`, we **intentionally do not enforce composite foreign key constraints** for references to these tables. For example:
 
-- `chatThreadsTable.modeId` references `modesTable` (which has PK `(id, user_id)`)
-- We use a simple column-level reference: `modeId: text('mode_id')` (no `.references()` or `foreignKey()`)
+- `chatMessagesTable.modelId` references `modelsTable` (which has PK `(id, user_id)`)
+- We use a simple column-level reference: `modelId: text('model_id')` (no `.references()` or `foreignKey()`)
 
 **Rationale:**
 

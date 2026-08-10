@@ -121,7 +121,7 @@ export const createTinfoilClientLifecycle = ({
     try {
       const client = await clientPromise
       const properties = await waitForAttestation(client, type, timeoutMs, trackAttestation, traceProperties)
-      if (!reportedClients.has(client)) {
+      if (!reportedClients.has(client) || traceProperties.trace_id !== undefined) {
         reportedClients.add(client)
         trackAttestation(properties)
       }

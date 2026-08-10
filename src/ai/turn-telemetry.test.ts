@@ -62,4 +62,18 @@ describe('createTurnTelemetry', () => {
     expect(keys).not.toMatch(/prompt|text|message|apikey/)
     expect(Object.values(payload).every((value) => typeof value !== 'object' || Array.isArray(value))).toBe(true)
   })
+
+  it('keeps turn model dimensions stable and omits recovered errors from success', () => {
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
+    telemetry.setDimensions({ modelId: 'original', modelName: 'Original', provider: 'anthropic' })
+    telemetry.recordError('network')
+    telemetry.setDimensions({ modelId: 'replacement', modelName: 'Replacement', provider: 'openai' })
+
+    expect(telemetry.buildPayload('success')).toMatchObject({
+      model_id: 'original',
+      model_name: 'Original',
+      provider: 'anthropic',
+    })
+    expect(telemetry.buildPayload('success')).not.toHaveProperty('error_class')
+  })
 })

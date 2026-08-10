@@ -5,7 +5,8 @@
 import '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
 import type { DynamicToolUIPart, ToolUIPart } from 'ai'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+import type { EventType } from '@/lib/posthog'
 import { type ReactNode } from 'react'
 import { ContentViewProvider, type ObjectViewContent, useContentView, useObjectView, useSideview } from './context'
 
@@ -96,7 +97,11 @@ describe('ContentView sideview mode', () => {
   })
 
   test('object-view resolves an MCP tool title from the tool map', () => {
-    const { result } = renderHook(() => useObjectView(), { wrapper })
+    const trackEvent = mock((_eventName: EventType, _properties?: Record<string, unknown>) => {})
+    const trackingWrapper = ({ children }: { children: ReactNode }) => (
+      <ContentViewProvider trackEvent={trackEvent}>{children}</ContentViewProvider>
+    )
+    const { result } = renderHook(() => useObjectView(), { wrapper: trackingWrapper })
 
     const mcpTool = {
       type: 'dynamic-tool',
@@ -114,6 +119,10 @@ describe('ContentView sideview mode', () => {
     })
 
     expect(result.current.objectContent?.title).toMatch(/List Services/i)
+    expect(trackEvent).toHaveBeenCalledWith('content_view_open', {
+      view_type: 'object-view',
+      tool_name: 'mcp',
+    })
   })
 
   test('showSideview overrides an active object-view', () => {

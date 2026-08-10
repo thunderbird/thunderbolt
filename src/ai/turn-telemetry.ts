@@ -79,7 +79,12 @@ export const createTurnTelemetry = ({
   return {
     traceId,
     getEngine: () => dimensions.engine,
-    setDimensions: (nextDimensions) => Object.assign(dimensions, nextDimensions),
+    setDimensions: (nextDimensions) => {
+      dimensions.engine = nextDimensions.engine ?? dimensions.engine
+      dimensions.modelId ??= nextDimensions.modelId
+      dimensions.modelName ??= nextDimensions.modelName
+      dimensions.provider ??= nextDimensions.provider
+    },
     startPhase: (name) => phaseStarts.set(name, now()),
     endPhase: (name) => {
       const phaseStartedAt = phaseStarts.get(name)
@@ -124,7 +129,7 @@ export const createTurnTelemetry = ({
         model_name: dimensions.modelName,
         provider: dimensions.provider,
         outcome,
-        error_class: errorClass,
+        error_class: outcome === 'error' ? errorClass : undefined,
         attempts,
         retry_layers: [...retryLayers],
         retry_reasons: [...retryReasons],

@@ -47,18 +47,64 @@ const baseRetryDelayMs = 2000
  */
 const getRetryDelay = (attempt: number) => baseRetryDelayMs * 2 ** (attempt - 1) * (0.5 + Math.random())
 
-/** Mark the first streamed byte while preserving the adapter response metadata. */
-export const wrapResponseForFirstToken = (response: Response, telemetry?: TurnTelemetry): Response => {
+/** Report whether one AI SDK stream payload contains generated content. */
+const isGeneratedContentPayload = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const payload = value as Record<string, unknown>
+  return (
+    (payload.type === 'text-delta' || payload.type === 'reasoning-delta') &&
+    typeof payload.delta === 'string' &&
+    payload.delta.length > 0
+  )
+}
+
+/** Observe complete SSE data lines without changing or delaying stream chunks. */
+const observeSseLine = (line: string, telemetry: TurnTelemetry): void => {
+  if (!line.startsWith('data:')) {
+    return
+  }
+  const data = line.slice('data:'.length).trimStart()
+  if (data === '[DONE]') {
+    return
+  }
+  try {
+    if (isGeneratedContentPayload(JSON.parse(data))) {
+      telemetry.markFirstToken()
+    }
+  } catch {
+    // Telemetry must remain transparent if an adapter emits a non-JSON SSE event.
+  }
+}
+
+/** Mark the first generated content delta while preserving response metadata. */
+const wrapResponseForFirstContent = (response: Response, telemetry?: TurnTelemetry): Response => {
   if (!response.body || !telemetry) {
     return response
   }
 
+  const decoder = new TextDecoder()
+  const state = { lineBuffer: '' }
+  const observeLines = (text: string, flush = false): void => {
+    state.lineBuffer += text
+    const lines = state.lineBuffer.split(/\r?\n/)
+    const finalLine = lines.pop() ?? ''
+    state.lineBuffer = flush ? '' : finalLine
+    for (const line of lines) {
+      observeSseLine(line, telemetry)
+    }
+    if (flush && finalLine) {
+      observeSseLine(finalLine, telemetry)
+    }
+  }
   const body = response.body.pipeThrough(
-    new TransformStream({
+    new TransformStream<Uint8Array, Uint8Array>({
       transform: (chunk, controller) => {
-        telemetry.markFirstToken()
+        observeLines(decoder.decode(chunk, { stream: true }))
         controller.enqueue(chunk)
       },
+      flush: () => observeLines(decoder.decode(), true),
     }),
   )
   return new Response(body, response)
@@ -331,7 +377,7 @@ export const createAgentRoutingFetch = (
         requestPermission,
         onSessionSideEffect: applySessionSideEffect,
       })
-      return wrapResponseForFirstToken(response, telemetry)
+      return wrapResponseForFirstContent(response, telemetry)
     },
     {
       preconnect: () => Promise.resolve(false),
@@ -341,6 +387,7 @@ export const createAgentRoutingFetch = (
 
 const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUIMessage): void => {
   const reasoningTime = message.metadata?.reasoningTime ?? {}
+  const mcpTools = message.metadata?.mcpTools ?? {}
   for (const part of message.parts) {
     if (telemetry.getEngine() === 'pi' && part.type === 'step-start') {
       telemetry.recordStep()
@@ -353,7 +400,7 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
       part.type === 'dynamic-tool' && 'toolName' in part ? part.toolName : part.type.replace(/^tool-/, '')
     const durationMs = reasoningTime[part.toolCallId]
     if (typeof toolName === 'string' && typeof durationMs === 'number') {
-      telemetry.recordTool(toolName, durationMs)
+      telemetry.recordTool(Object.hasOwn(mcpTools, toolName) ? 'mcp' : toolName, durationMs)
     }
   }
 }
@@ -377,12 +424,34 @@ export const createChatInstance = (
   const wakeAdapterReconnect = deps.wakeAdapterReconnect ?? defaultWakeAdapterReconnect
   let turnBudget = createTurnBudget()
   let turnTelemetry: TurnTelemetry | undefined
+  let turnModelProperties: { model_id: string; provider: string } | undefined
   let turnCompleted = false
+  /** Capture the immutable model dimensions for one built-in turn. */
+  const createTelemetryForCurrentTurn = (): TurnTelemetry | undefined => {
+    const session = useChatStore.getState().sessions.get(id)
+    if (!session || !isBuiltInAgent(session.selectedAgent)) {
+      turnModelProperties = undefined
+      return undefined
+    }
+    const telemetry = createTurnTelemetry()
+    telemetry.setDimensions({
+      modelId: session.selectedModel.id,
+      modelName: session.selectedModel.model,
+      provider: session.selectedModel.provider,
+    })
+    turnModelProperties = {
+      model_id: session.selectedModel.id,
+      provider: session.selectedModel.provider,
+    }
+    return telemetry
+  }
+  /** Lazily cover automatically submitted turns that bypass the send override. */
+  const getOrCreateTurnTelemetry = (): TurnTelemetry | undefined => (turnTelemetry ??= createTelemetryForCurrentTurn())
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
     webToolBudgetRevision: 0,
     getTurnBudget: () => turnBudget,
-    getTurnTelemetry: () => (turnTelemetry ??= createTurnTelemetry()),
+    getTurnTelemetry: getOrCreateTurnTelemetry,
     getAttempt: () => retryCount + 1,
   }
   const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
@@ -400,8 +469,7 @@ export const createChatInstance = (
   }
 
   const getTurnContextProperties = () => {
-    const model = useChatStore.getState().sessions.get(id)?.selectedModel
-    return { ...getTraceProperties(), model_id: model?.id, provider: model?.provider }
+    return { ...getTraceProperties(), ...turnModelProperties }
   }
 
   const emitTurnCompleted = (outcome: 'success' | 'error' | 'abort', message?: ThunderboltUIMessage) => {
@@ -426,14 +494,14 @@ export const createChatInstance = (
     retryCount = 0
     lastError = null
     turnTelemetry = undefined
+    turnModelProperties = undefined
     turnCompleted = false
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
   }
 
   const startNewTurn = () => {
     resetRetryStateForNewTurn()
-    const selectedAgent = useChatStore.getState().sessions.get(id)?.selectedAgent
-    turnTelemetry = selectedAgent && isBuiltInAgent(selectedAgent) ? createTurnTelemetry() : undefined
+    turnTelemetry = createTelemetryForCurrentTurn()
   }
 
   /** Stop retrying this turn and record why it stopped. */

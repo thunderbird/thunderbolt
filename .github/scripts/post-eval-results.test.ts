@@ -156,7 +156,9 @@ describe('upsertEvalComment', () => {
       if (args.includes('--method')) {
         return '{}'
       }
-      return JSON.stringify([[{ id: 99, body: `old\n${evalCommentMarker}` }]])
+      return JSON.stringify([
+        [{ id: 99, body: `old\n${evalCommentMarker}`, user: { login: 'github-actions[bot]' } }],
+      ])
     })
 
     await upsertEvalComment({
@@ -182,6 +184,24 @@ describe('upsertEvalComment', () => {
     })
 
     expect(runGh).toHaveBeenCalledTimes(2)
+    expect(runGh.mock.calls[1][0]).toContain('repos/thunderbird/thunderbolt/issues/42/comments')
+    expect(runGh.mock.calls[1][0]).toContain('POST')
+  })
+
+  test('creates a comment when another author planted the marker', async () => {
+    const runGh = mock(async (args: string[]) =>
+      args.includes('--method')
+        ? '{}'
+        : JSON.stringify([[{ id: 88, body: evalCommentMarker, user: { login: 'contributor' } }]]),
+    )
+
+    await upsertEvalComment({
+      body: `${evalCommentMarker}\nnew`,
+      repository: 'thunderbird/thunderbolt',
+      pullRequestNumber: 42,
+      runGh,
+    })
+
     expect(runGh.mock.calls[1][0]).toContain('repos/thunderbird/thunderbolt/issues/42/comments')
     expect(runGh.mock.calls[1][0]).toContain('POST')
   })

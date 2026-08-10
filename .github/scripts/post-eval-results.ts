@@ -21,9 +21,14 @@ type RenderOptions = {
 type GithubComment = {
   id: number
   body: string | null
+  user: {
+    login: string
+  } | null
 }
 
 type RunGh = (args: string[]) => Promise<string>
+
+const workflowCommentAuthor = 'github-actions[bot]'
 
 const formatPercent = (rate: number): string => `${(rate * 100).toFixed(1)}%`
 
@@ -173,7 +178,12 @@ export const upsertEvalComment = async ({
     `repos/${repository}/issues/${pullRequestNumber}/comments`,
   ])
   const pages = JSON.parse(output) as GithubComment[][]
-  const existing = pages.flat().find(({ body: commentBody }) => commentBody?.includes(evalCommentMarker))
+  const existing = pages
+    .flat()
+    .find(
+      ({ body: commentBody, user }) =>
+        user?.login === workflowCommentAuthor && commentBody?.includes(evalCommentMarker),
+    )
   const endpoint = existing
     ? `repos/${repository}/issues/comments/${existing.id}`
     : `repos/${repository}/issues/${pullRequestNumber}/comments`

@@ -475,7 +475,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // per-table write-back can INSERT vs UPDATE without a second read. See
     // `computeCanOverwrite` for the full rationale — in short, prevents an
     // older-bundle device from downgrading newer synced rows (THU-637).
-    // Modes/tasks/skills/settings gate the same way, folded into the loop
+    // Tasks/skills/settings gate the same way, folded into the loop
     // near the bottom of this transaction (THU-677).
     const modelsGate = await computeCanOverwrite(
       tx,
@@ -590,7 +590,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       await advanceVersionMarker(tx, versionMarkerKeys.models, modelsSource.version, modelsGate.stored)
     }
 
-    // Modes / tasks / skills / settings share the same shape: gate on the
+    // Tasks / skills / settings share the same shape: gate on the
     // per-table version + sync-incomplete guard, reconcile, advance marker
     // only on a real mutation. `canResurrect` follows the models pattern —
     // it requires a trustworthy view of cloud state, otherwise a peer's

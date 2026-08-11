@@ -19,7 +19,6 @@ export const syncedTables = {
   prompts: tables.promptsTable,
   skills: tables.skillsTable,
   triggers: tables.triggersTable,
-  modes: tables.modesTable,
   model_profiles: tables.modelProfilesTable,
   devices: tables.devicesTable,
   agents: tables.agentsTable,

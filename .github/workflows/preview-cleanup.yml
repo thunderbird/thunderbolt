@@ -41,9 +41,6 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
 jobs:
   find-orphans:
     runs-on: ubuntu-latest
@@ -53,11 +50,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Pulumi CLI
-        run: |
-          curl -fsSL https://get.pulumi.com | sh
-          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
-
       - name: Identify orphan stacks
         id: scan
         working-directory: deploy/pulumi
@@ -65,6 +57,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run != 'false' && github.event_name == 'workflow_dispatch' }}
           MAX_AGE_DAYS: ${{ inputs.max_age_days || '3' }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -157,7 +150,9 @@ jobs:
       platform: fargate
       region: us-east-1
       stack_name: ${{ matrix.orphan.stack }}
-    secrets: inherit
+    secrets:
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 
   summary:
     needs: [find-orphans, destroy-orphans]

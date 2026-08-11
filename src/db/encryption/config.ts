@@ -50,7 +50,6 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
     'nudge_search_retry',
     'provider_options',
   ],
-  modes: ['name', 'label', 'icon', 'system_prompt'],
   devices: ['name'],
   skills: ['name', 'label', 'description', 'instruction'],
 }

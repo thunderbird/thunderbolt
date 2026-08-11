@@ -30,6 +30,7 @@ import { createAccountRoutes } from '@/api/account'
 import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
 import { createConfigRoutes } from '@/api/config'
+import { deleteExpiredOrConsumedNonces } from '@/dal'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import type { AppDeps } from '@/types'
@@ -157,6 +158,9 @@ export const createApp = async (deps?: AppDeps) => {
   )
 }
 
+/** Sweep interval (1 hour) for expired/consumed challenge nonces (A7). */
+const nonceSweepIntervalMs = 3_600_000
+
 /**
  * Start the server
  */
@@ -180,6 +184,14 @@ const startServer = async () => {
   try {
     // Run PGLite migrations before creating the app (no-op for Postgres)
     await runMigrations()
+
+    // Challenge-nonce cleanup (A7): startup sweep + hourly interval. The
+    // interval is unref'd so it never keeps the process alive on shutdown.
+    const { db } = await import('@/db/client')
+    let nonceSweepInterval: ReturnType<typeof setInterval> | undefined
+    const sweepNonces = () => {
+      deleteExpiredOrConsumedNonces(db).catch((err) => log.error({ err }, 'Challenge-nonce sweep failed'))
+    }
 
     const app = await createApp()
 
@@ -208,6 +220,9 @@ const startServer = async () => {
           '🦊 Elysia server started',
         )
         tinfoilKeepWarm.start()
+        sweepNonces()
+        nonceSweepInterval = setInterval(sweepNonces, nonceSweepIntervalMs)
+        nonceSweepInterval.unref()
 
         if (settings.swaggerEnabled) {
           log.info(
@@ -223,12 +238,14 @@ const startServer = async () => {
     // Graceful shutdown
     process.on('SIGINT', async () => {
       tinfoilKeepWarm.stop()
+      clearInterval(nonceSweepInterval)
       log.info('Received SIGINT, shutting down gracefully...')
       process.exit(0)
     })
 
     process.on('SIGTERM', async () => {
       tinfoilKeepWarm.stop()
+      clearInterval(nonceSweepInterval)
       log.info('Received SIGTERM, shutting down gracefully...')
       process.exit(0)
     })

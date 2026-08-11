@@ -3,11 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createAuth } from '@/auth/auth'
+import { issueChallengeNonce } from '@/dal'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
-import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
+import { challengeNoncesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
+import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
+import type { ChallengeOperation, ChallengeProof } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -121,35 +124,54 @@ describe('Encryption API', () => {
     })
   }
 
-  /** SHA-256 hash helper matching the backend's hashCanarySecret. */
-  const hashSecret = async (secret: string): Promise<string> => {
-    const encoded = new TextEncoder().encode(secret)
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded)
-    return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, '0')).join('')
-  }
+  /** Account signing keypair — the test stand-in for the key clients derive from the canary secret. */
+  let signingKeypair: CryptoKeyPair
 
-  /** Known canary secret for tests that require proof-of-CK-possession. */
-  const testCanarySecret = 'test-canary-secret-for-proof'
-
-  const insertCanary = async (
+  /** Insert v2 encryption metadata whose signing key is the test keypair's public key. */
+  const insertMetadata = async (
     userId: string,
-    canaryIv = 'iv-test',
-    canaryCtext = 'ctext-test',
-    canarySecretHash?: string,
+    options: { canaryIv?: string; canaryCtext?: string; v1?: boolean } = {},
   ) => {
     await db.insert(encryptionMetadataTable).values({
       userId,
-      canaryIv,
-      canaryCtext,
-      canarySecretHash: canarySecretHash ?? null,
+      canaryIv: options.canaryIv ?? 'iv-test',
+      canaryCtext: options.canaryCtext ?? 'ctext-test',
+      // v1 rows have neither a signing key nor a kdf salt
+      signingPublicKey: options.v1 ? null : await exportSigningPublicKey(signingKeypair),
+      kdfSalt: options.v1 ? null : 'kdf-salt-test',
       createdAt: now,
     })
   }
 
-  /** Insert canary with a known secret hash for proof-of-CK-possession tests. */
-  const insertCanaryWithSecret = async (userId: string) => {
-    const hash = await hashSecret(testCanarySecret)
-    await insertCanary(userId, 'iv-test', 'ctext-test', hash)
+  const insertWrappedKeyRow = async (userId: string, keyId: string, wrappedKey = `wk-${keyId}`) => {
+    await db.insert(wrappedKeysTable).values({ userId, keyId, wrappedKey, createdAt: now, updatedAt: now })
+  }
+
+  /** Issue a nonce and sign it with the account signing key (or `signWith`). */
+  const makeProof = async (
+    userId: string,
+    operation: ChallengeOperation,
+    deviceId: string,
+    options: { signWith?: CryptoKey } = {},
+  ): Promise<ChallengeProof> => {
+    const { nonce } = await issueChallengeNonce(db, { userId, operation, deviceId, ttlMs: 60_000 })
+    const signature = await signChallenge(options.signWith ?? signingKeypair.privateKey, nonce, operation, deviceId)
+    return { signature, nonce, operation, deviceId }
+  }
+
+  /** A structurally-valid proof signed by a key the account has never seen. */
+  const makeInvalidProof = async (userId: string, operation: ChallengeOperation, deviceId: string) => {
+    const attackerKeypair = await generateSigningKeypair()
+    return makeProof(userId, operation, deviceId, { signWith: attackerKeypair.privateKey })
+  }
+
+  /** The minimal atomic v2 first-device-setup payload (A8 bootstrap). */
+  const bootstrapPayload = {
+    canaryIv: 'test-canary-iv',
+    canaryCtext: 'test-canary-ctext',
+    signingPublicKey: 'test-signing-public-key',
+    kdfSalt: 'test-kdf-salt',
+    wrappedKeys: [{ keyId: '0', wrappedKey: 'test-wrapped-dek-0' }],
   }
 
   beforeEach(async () => {
@@ -158,6 +180,7 @@ describe('Encryption API', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
+    signingKeypair = await generateSigningKeypair()
     const auth = createAuth(db)
     app = new Elysia().use(createEncryptionRoutes(auth, db)) as unknown as ReturnType<typeof createEncryptionRoutes>
   })
@@ -372,6 +395,36 @@ describe('Encryption API', () => {
       )
       expect(longNameResponse.status).toBe(422)
     })
+
+    it('returns 422 when registering a new device at the active-device cap', async () => {
+      await createUserAndSession(p('u-cap'), p('tok-cap'))
+      for (const index of Array.from({ length: 10 }, (_, i) => i)) {
+        await insertDevice(p(`d-cap-${index}`), p('u-cap'), { trusted: true })
+      }
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-cap'))}`,
+          },
+          body: JSON.stringify({
+            deviceId: p('d-cap-overflow'),
+            publicKey: 'pk-cap',
+            mlkemPublicKey: 'mlkem-pk-cap',
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(422)
+      expect((await response.json()).error).toBe('Device limit reached')
+      const overflowRows = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-cap-overflow')))
+      expect(overflowRows).toHaveLength(0)
+    })
   })
 
   // ─── POST /devices/:deviceId/envelope ───────────────────────────────
@@ -408,7 +461,7 @@ describe('Encryption API', () => {
       expect(body.error).toBe('X-Device-ID header is required')
     })
 
-    it('allows first-device bootstrap: pending device submits own envelope when no envelopes exist', async () => {
+    it('allows first-device bootstrap: pending device submits own envelope + full v2 setup payload', async () => {
       await createUserAndSession(p('u-boot'), p('tok-boot'))
       await insertDevice(p('d-boot'), p('u-boot'))
 
@@ -422,9 +475,7 @@ describe('Encryption API', () => {
           },
           body: JSON.stringify({
             wrappedCK: 'wrapped-ck-boot',
-            canaryIv: 'test-canary-iv',
-            canaryCtext: 'test-canary-ctext',
-            canarySecret: 'test-canary-secret',
+            ...bootstrapPayload,
           }),
         }),
       )
@@ -444,10 +495,122 @@ describe('Encryption API', () => {
         .from(envelopesTable)
         .where(eq(envelopesTable.deviceId, p('d-boot')))
       expect(envelope.wrappedCk).toBe('wrapped-ck-boot')
+
+      // Atomic setup: metadata + initial wrapped key created in the same transaction
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u-boot')))
+      expect(metadata.canaryIv).toBe('test-canary-iv')
+      expect(metadata.signingPublicKey).toBe('test-signing-public-key')
+      expect(metadata.kdfSalt).toBe('test-kdf-salt')
+      expect(metadata.keyVersion).toBe(1)
+      expect(metadata.primaryKeyId).toBe('0')
+
+      const keys = await db
+        .select()
+        .from(wrappedKeysTable)
+        .where(eq(wrappedKeysTable.userId, p('u-boot')))
+      expect(keys).toHaveLength(1)
+      expect(keys[0].keyId).toBe('0')
+      expect(keys[0].wrappedKey).toBe('test-wrapped-dek-0')
     })
 
-    it('rejects pending device from approving itself when envelopes already exist (no canary proof)', async () => {
+    it('blocks bootstrap when an orphan envelope already exists for the account', async () => {
+      await createUserAndSession(p('u-boot-orphan'), p('tok-boot-orphan'))
+      await insertDevice(p('d-boot-orphan'), p('u-boot-orphan'))
+      await insertEnvelope(p('d-boot-orphan'), p('u-boot-orphan'), 'orphan-envelope')
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d-boot-orphan')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-boot-orphan'))}`,
+            'X-Device-ID': p('d-boot-orphan'),
+          },
+          body: JSON.stringify({ wrappedCK: 'replacement-envelope', ...bootstrapPayload }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe(
+        'Encryption is not set up — only first-device bootstrap can store envelopes',
+      )
+      const metadataRows = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u-boot-orphan')))
+      expect(metadataRows).toHaveLength(0)
+      const keyRows = await db
+        .select()
+        .from(wrappedKeysTable)
+        .where(eq(wrappedKeysTable.userId, p('u-boot-orphan')))
+      expect(keyRows).toHaveLength(0)
+    })
+
+    it('rejects bootstrap missing part of the setup payload (atomicity — nothing created)', async () => {
+      await createUserAndSession(p('u-boot-partial'), p('tok-boot-partial'))
+      await insertDevice(p('d-boot-partial'), p('u-boot-partial'))
+
+      const { signingPublicKey: _omitted, ...partialPayload } = bootstrapPayload
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d-boot-partial')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-boot-partial'))}`,
+            'X-Device-ID': p('d-boot-partial'),
+          },
+          body: JSON.stringify({ wrappedCK: 'wck', ...partialPayload }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+
+      const metadata = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u-boot-partial')))
+      expect(metadata).toHaveLength(0)
+      const envelopes = await db
+        .select()
+        .from(envelopesTable)
+        .where(eq(envelopesTable.userId, p('u-boot-partial')))
+      expect(envelopes).toHaveLength(0)
+      const keys = await db
+        .select()
+        .from(wrappedKeysTable)
+        .where(eq(wrappedKeysTable.userId, p('u-boot-partial')))
+      expect(keys).toHaveLength(0)
+    })
+
+    it("rejects bootstrap whose wrappedKeys lacks the initial key_id '0'", async () => {
+      await createUserAndSession(p('u-boot-nokey0'), p('tok-boot-nokey0'))
+      await insertDevice(p('d-boot-nokey0'), p('u-boot-nokey0'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d-boot-nokey0')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-boot-nokey0'))}`,
+            'X-Device-ID': p('d-boot-nokey0'),
+          },
+          body: JSON.stringify({
+            wrappedCK: 'wck',
+            ...bootstrapPayload,
+            wrappedKeys: [{ keyId: '1', wrappedKey: 'wk-1' }],
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+    })
+
+    it('rejects pending device from approving itself when metadata exists (no proof)', async () => {
       await createUserAndSession(p('u-self'), p('tok-self'))
+      await insertMetadata(p('u-self'))
       await insertDevice(p('d-trusted-existing'), p('u-self'), { trusted: true })
       await insertEnvelope(p('d-trusted-existing'), p('u-self'))
       await insertDevice(p('d-self'), p('u-self'))
@@ -466,19 +629,19 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Canary secret required for device approval')
+      expect(body.error).toBe('Challenge proof required for device approval')
     })
 
-    it('allows self-recovery: pending device stores own envelope when canarySecret proves CK possession', async () => {
-      const secret = 'my-recovery-secret'
-      const secretHash = await hashSecret(secret)
+    it('allows self-recovery: pending device stores own envelope with a valid challenge proof', async () => {
       await createUserAndSession(p('u-recov'), p('tok-recov'))
       // Existing trusted device with envelope (simulates pre-recovery state)
       await insertDevice(p('d-recov-old'), p('u-recov'), { trusted: true })
       await insertEnvelope(p('d-recov-old'), p('u-recov'))
-      await insertCanary(p('u-recov'), 'recovery-iv', 'recovery-ctext', secretHash)
-      // New device registered during recovery flow
+      await insertMetadata(p('u-recov'))
+      // New device registered during recovery flow — it recovered the signing
+      // key from the mnemonic and can sign an 'approve' challenge for itself.
       await insertDevice(p('d-recov-new'), p('u-recov'))
+      const proof = await makeProof(p('u-recov'), 'approve', p('d-recov-new'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-recov-new')}/envelope`, {
@@ -490,7 +653,7 @@ describe('Encryption API', () => {
           },
           body: JSON.stringify({
             wrappedCK: 'recovered-wck',
-            canarySecret: secret,
+            proof,
           }),
         }),
       )
@@ -506,13 +669,13 @@ describe('Encryption API', () => {
       expect(device.trusted).toBe(true)
     })
 
-    it('rejects self-recovery when canarySecret does not match stored hash', async () => {
-      const secretHash = await hashSecret('real-secret')
+    it('rejects self-recovery with a proof signed by the wrong key', async () => {
       await createUserAndSession(p('u-badrecov'), p('tok-badrecov'))
       await insertDevice(p('d-badrecov-old'), p('u-badrecov'), { trusted: true })
       await insertEnvelope(p('d-badrecov-old'), p('u-badrecov'))
-      await insertCanary(p('u-badrecov'), 'real-iv', 'real-ctext', secretHash)
+      await insertMetadata(p('u-badrecov'))
       await insertDevice(p('d-badrecov-new'), p('u-badrecov'))
+      const proof = await makeInvalidProof(p('u-badrecov'), 'approve', p('d-badrecov-new'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-badrecov-new')}/envelope`, {
@@ -524,24 +687,25 @@ describe('Encryption API', () => {
           },
           body: JSON.stringify({
             wrappedCK: 'wck',
-            canarySecret: 'wrong-secret',
+            proof,
           }),
         }),
       )
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Invalid canary secret')
+      expect(body.error).toBe('Invalid challenge proof')
     })
 
-    it('rejects self-recovery when replaying canaryIv/canaryCtext without secret (old replay attack)', async () => {
+    it('rejects replaying the bootstrap payload when metadata already exists (no proof)', async () => {
       await createUserAndSession(p('u-replay'), p('tok-replay'))
       await insertDevice(p('d-replay-old'), p('u-replay'), { trusted: true })
       await insertEnvelope(p('d-replay-old'), p('u-replay'))
-      await insertCanary(p('u-replay'), 'the-iv', 'the-ctext', await hashSecret('the-secret'))
+      await insertMetadata(p('u-replay'), { canaryIv: 'the-iv', canaryCtext: 'the-ctext' })
       await insertDevice(p('d-replay-new'), p('u-replay'))
 
-      // Attacker replays canaryIv/canaryCtext from GET /encryption/canary without the secret
+      // Attacker replays canary fields from GET /encryption/canary — the setup
+      // payload is ignored once metadata exists; a proof is the only gate.
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-replay-new')}/envelope`, {
           method: 'POST',
@@ -560,16 +724,18 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Canary secret required for device approval')
+      expect(body.error).toBe('Challenge proof required for device approval')
     })
 
-    it('rejects pending device from approving another pending device', async () => {
+    it('rejects pending device from approving another pending device (valid proof, untrusted caller)', async () => {
       await createUserAndSession(p('u-pp'), p('tok-pp'))
+      await insertMetadata(p('u-pp'))
       // Need envelopes to exist so it's not first-device bootstrap
       await insertDevice(p('d-pp-trusted'), p('u-pp'), { trusted: true })
       await insertEnvelope(p('d-pp-trusted'), p('u-pp'))
       await insertDevice(p('d-pp-caller'), p('u-pp'))
       await insertDevice(p('d-pp-target'), p('u-pp'))
+      const proof = await makeProof(p('u-pp'), 'approve', p('d-pp-caller'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-pp-target')}/envelope`, {
@@ -579,13 +745,13 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-pp'))}`,
             'X-Device-ID': p('d-pp-caller'),
           },
-          body: JSON.stringify({ wrappedCK: 'wck' }),
+          body: JSON.stringify({ wrappedCK: 'wck', proof }),
         }),
       )
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Canary secret required for device approval')
+      expect(body.error).toBe('Only trusted devices can store envelopes')
     })
 
     it('returns 404 when target device belongs to different user', async () => {
@@ -615,12 +781,14 @@ describe('Encryption API', () => {
     it('returns 403 when caller device belongs to different user', async () => {
       await createUserAndSession(p('u-cdiff1'), p('tok-cdiff1'), `${p('cdiff1')}@test.com`)
       await createUserAndSession(p('u-cdiff2'), p('tok-cdiff2'), `${p('cdiff2')}@test.com`)
+      await insertMetadata(p('u-cdiff1'))
       await insertDevice(p('d-cdiff-target'), p('u-cdiff1'))
       await insertDevice(p('d-cdiff-caller'), p('u-cdiff2'), { trusted: true })
       await insertEnvelope(p('d-cdiff-caller'), p('u-cdiff2'))
       // Need envelopes for u-cdiff1 to avoid first-device bootstrap
       await insertDevice(p('d-cdiff-existing'), p('u-cdiff1'), { trusted: true })
       await insertEnvelope(p('d-cdiff-existing'), p('u-cdiff1'))
+      const proof = await makeProof(p('u-cdiff1'), 'approve', p('d-cdiff-caller'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-cdiff-target')}/envelope`, {
@@ -630,13 +798,13 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-cdiff1'))}`,
             'X-Device-ID': p('d-cdiff-caller'),
           },
-          body: JSON.stringify({ wrappedCK: 'wck' }),
+          body: JSON.stringify({ wrappedCK: 'wck', proof }),
         }),
       )
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Canary secret required for device approval')
+      expect(body.error).toBe('Caller device not found')
     })
 
     it('returns 403 when target device is revoked', async () => {
@@ -664,11 +832,13 @@ describe('Encryption API', () => {
 
     it('returns 403 when caller device is revoked', async () => {
       await createUserAndSession(p('u-crev'), p('tok-crev'))
+      await insertMetadata(p('u-crev'))
       await insertDevice(p('d-crev-caller'), p('u-crev'), { revokedAt: now })
       await insertDevice(p('d-crev-target'), p('u-crev'))
       // Need envelopes so it's not bootstrap
       await insertDevice(p('d-crev-existing'), p('u-crev'), { trusted: true })
       await insertEnvelope(p('d-crev-existing'), p('u-crev'))
+      const proof = await makeProof(p('u-crev'), 'approve', p('d-crev-caller'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-crev-target')}/envelope`, {
@@ -678,13 +848,13 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-crev'))}`,
             'X-Device-ID': p('d-crev-caller'),
           },
-          body: JSON.stringify({ wrappedCK: 'wck' }),
+          body: JSON.stringify({ wrappedCK: 'wck', proof }),
         }),
       )
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Canary secret required for device approval')
+      expect(body.error).toBe('Only trusted devices can store envelopes')
     })
 
     it('returns 409 when overwriting trusted device envelope from another device', async () => {
@@ -718,7 +888,8 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u-rekey'), p('tok-rekey'))
       await insertDevice(p('d-rekey'), p('u-rekey'), { trusted: true, approvalPending: false })
       await insertEnvelope(p('d-rekey'), p('u-rekey'), 'old-wck')
-      await insertCanaryWithSecret(p('u-rekey'))
+      await insertMetadata(p('u-rekey'))
+      const proof = await makeProof(p('u-rekey'), 'approve', p('d-rekey'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-rekey')}/envelope`, {
@@ -728,7 +899,7 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-rekey'))}`,
             'X-Device-ID': p('d-rekey'),
           },
-          body: JSON.stringify({ wrappedCK: 'new-wck', canarySecret: testCanarySecret }),
+          body: JSON.stringify({ wrappedCK: 'new-wck', proof }),
         }),
       )
 
@@ -776,10 +947,12 @@ describe('Encryption API', () => {
 
     it('returns 403 when caller deviceId does not exist (non-first-device scenario)', async () => {
       await createUserAndSession(p('u-nocaller'), p('tok-nocaller'))
+      await insertMetadata(p('u-nocaller'))
       await insertDevice(p('d-nocaller-target'), p('u-nocaller'))
       // Need envelopes to exist
       await insertDevice(p('d-nocaller-existing'), p('u-nocaller'), { trusted: true })
       await insertEnvelope(p('d-nocaller-existing'), p('u-nocaller'))
+      const proof = await makeProof(p('u-nocaller'), 'approve', p('d-ghost'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-nocaller-target')}/envelope`, {
@@ -789,13 +962,13 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-nocaller'))}`,
             'X-Device-ID': p('d-ghost'),
           },
-          body: JSON.stringify({ wrappedCK: 'wck' }),
+          body: JSON.stringify({ wrappedCK: 'wck', proof }),
         }),
       )
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Canary secret required for device approval')
+      expect(body.error).toBe('Caller device not found')
     })
 
     it('allows trusted device to approve a pending device', async () => {
@@ -803,7 +976,8 @@ describe('Encryption API', () => {
       await insertDevice(p('d-approve-caller'), p('u-approve'), { trusted: true })
       await insertEnvelope(p('d-approve-caller'), p('u-approve'))
       await insertDevice(p('d-approve-target'), p('u-approve'))
-      await insertCanaryWithSecret(p('u-approve'))
+      await insertMetadata(p('u-approve'))
+      const proof = await makeProof(p('u-approve'), 'approve', p('d-approve-caller'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-approve-target')}/envelope`, {
@@ -813,7 +987,7 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-approve'))}`,
             'X-Device-ID': p('d-approve-caller'),
           },
-          body: JSON.stringify({ wrappedCK: 'target-wck', canarySecret: testCanarySecret }),
+          body: JSON.stringify({ wrappedCK: 'target-wck', proof }),
         }),
       )
 
@@ -834,12 +1008,12 @@ describe('Encryption API', () => {
       expect(envelope.wrappedCk).toBe('target-wck')
     })
 
-    it('rejects approval without canarySecret', async () => {
+    it('rejects approval without a proof', async () => {
       await createUserAndSession(p('u-noproof'), p('tok-noproof'))
       await insertDevice(p('d-noproof-caller'), p('u-noproof'), { trusted: true })
       await insertEnvelope(p('d-noproof-caller'), p('u-noproof'))
       await insertDevice(p('d-noproof-target'), p('u-noproof'))
-      await insertCanaryWithSecret(p('u-noproof'))
+      await insertMetadata(p('u-noproof'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-noproof-target')}/envelope`, {
@@ -855,15 +1029,16 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Canary secret required for device approval')
+      expect(body.error).toBe('Challenge proof required for device approval')
     })
 
-    it('rejects approval with wrong canarySecret', async () => {
+    it('rejects approval with a proof signed by the wrong key', async () => {
       await createUserAndSession(p('u-badproof'), p('tok-badproof'))
       await insertDevice(p('d-badproof-caller'), p('u-badproof'), { trusted: true })
       await insertEnvelope(p('d-badproof-caller'), p('u-badproof'))
       await insertDevice(p('d-badproof-target'), p('u-badproof'))
-      await insertCanaryWithSecret(p('u-badproof'))
+      await insertMetadata(p('u-badproof'))
+      const proof = await makeInvalidProof(p('u-badproof'), 'approve', p('d-badproof-caller'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-badproof-target')}/envelope`, {
@@ -873,13 +1048,41 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-badproof'))}`,
             'X-Device-ID': p('d-badproof-caller'),
           },
-          body: JSON.stringify({ wrappedCK: 'wck', canarySecret: 'wrong-secret' }),
+          body: JSON.stringify({ wrappedCK: 'wck', proof }),
         }),
       )
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Invalid canary secret')
+      expect(body.error).toBe('Invalid challenge proof')
+    })
+
+    it('rejects a replayed proof (nonce already consumed)', async () => {
+      await createUserAndSession(p('u-nreplay'), p('tok-nreplay'))
+      await insertDevice(p('d-nreplay-caller'), p('u-nreplay'), { trusted: true })
+      await insertEnvelope(p('d-nreplay-caller'), p('u-nreplay'))
+      await insertDevice(p('d-nreplay-t1'), p('u-nreplay'))
+      await insertDevice(p('d-nreplay-t2'), p('u-nreplay'))
+      await insertMetadata(p('u-nreplay'))
+      const proof = await makeProof(p('u-nreplay'), 'approve', p('d-nreplay-caller'))
+
+      const approve = (target: string) =>
+        app.handle(
+          new Request(`${baseUrl}/devices/${target}/envelope`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${signToken(p('tok-nreplay'))}`,
+              'X-Device-ID': p('d-nreplay-caller'),
+            },
+            body: JSON.stringify({ wrappedCK: 'wck', proof }),
+          }),
+        )
+
+      expect((await approve(p('d-nreplay-t1'))).status).toBe(200)
+      const replayed = await approve(p('d-nreplay-t2'))
+      expect(replayed.status).toBe(403)
+      expect((await replayed.json()).error).toBe('Invalid challenge proof')
     })
 
     it('rejects spoofed X-Device-ID even with untrusted caller claiming to be trusted', async () => {
@@ -887,9 +1090,9 @@ describe('Encryption API', () => {
       await insertDevice(p('d-spoof-trusted'), p('u-spoof'), { trusted: true })
       await insertEnvelope(p('d-spoof-trusted'), p('u-spoof'))
       await insertDevice(p('d-spoof-pending'), p('u-spoof'))
-      await insertCanaryWithSecret(p('u-spoof'))
+      await insertMetadata(p('u-spoof'))
 
-      // Pending device spoofs X-Device-ID to trusted device — but cannot provide canary secret
+      // Pending device spoofs X-Device-ID to trusted device — but cannot sign the challenge
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-spoof-pending')}/envelope`, {
           method: 'POST',
@@ -904,50 +1107,17 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Canary secret required for device approval')
+      expect(body.error).toBe('Challenge proof required for device approval')
     })
 
-    it('stores canary with secret hash on first-device bootstrap', async () => {
-      await createUserAndSession(p('u-canary'), p('tok-canary'))
-      await insertDevice(p('d-canary'), p('u-canary'))
-
-      const response = await app.handle(
-        new Request(`${baseUrl}/devices/${p('d-canary')}/envelope`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${signToken(p('tok-canary'))}`,
-            'X-Device-ID': p('d-canary'),
-          },
-          body: JSON.stringify({
-            wrappedCK: 'wck',
-            canaryIv: 'my-iv',
-            canaryCtext: 'my-ctext',
-            canarySecret: 'my-secret',
-          }),
-        }),
-      )
-
-      expect(response.status).toBe(200)
-
-      const [metadata] = await db
-        .select()
-        .from(encryptionMetadataTable)
-        .where(eq(encryptionMetadataTable.userId, p('u-canary')))
-      expect(metadata).toBeDefined()
-      expect(metadata.canaryIv).toBe('my-iv')
-      expect(metadata.canaryCtext).toBe('my-ctext')
-      expect(metadata.canarySecretHash).toBe(await hashSecret('my-secret'))
-    })
-
-    it('blocks re-bootstrap with wrong canary when encryption metadata already exists (defense-in-depth)', async () => {
+    it('blocks first-device bootstrap when v2 metadata already exists (no static-secret override)', async () => {
       await createUserAndSession(p('u-reboot'), p('tok-reboot'))
       await insertDevice(p('d-reboot'), p('u-reboot'))
-      // Simulate existing encryption metadata from a previous first-device setup
-      await insertCanaryWithSecret(p('u-reboot'))
+      // Simulate existing v2 metadata from a previous first-device setup
+      await insertMetadata(p('u-reboot'))
       // No envelopes exist — simulates state after all devices revoked/envelopes deleted
 
-      // Attacker tries first-device bootstrap with a fake canary secret
+      // Attacker tries first-device bootstrap with an attacker-controlled setup payload
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-reboot')}/envelope`, {
           method: 'POST',
@@ -958,16 +1128,14 @@ describe('Encryption API', () => {
           },
           body: JSON.stringify({
             wrappedCK: 'attacker-controlled-key',
-            canaryIv: 'attacker-iv',
-            canaryCtext: 'attacker-ctext',
-            canarySecret: 'wrong-secret',
+            ...bootstrapPayload,
           }),
         }),
       )
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toContain('Invalid canary secret')
+      expect(body.error).toBe('Challenge proof required for device approval')
 
       // No envelope should have been stored
       const envelopes = await db
@@ -977,13 +1145,38 @@ describe('Encryption API', () => {
       expect(envelopes).toHaveLength(0)
     })
 
-    it('allows re-bootstrap with correct canary when encryption metadata already exists', async () => {
+    it('blocks first-device bootstrap on a v1 account (metadata with NULL signing key) — reset is the only path', async () => {
+      await createUserAndSession(p('u-v1boot'), p('tok-v1boot'))
+      await insertDevice(p('d-v1boot'), p('u-v1boot'))
+      await insertMetadata(p('u-v1boot'), { v1: true })
+      const proof = await makeProof(p('u-v1boot'), 'approve', p('d-v1boot'))
+
+      // Even a well-formed proof cannot verify — v1 rows have no signing key
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d-v1boot')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-v1boot'))}`,
+            'X-Device-ID': p('d-v1boot'),
+          },
+          body: JSON.stringify({ wrappedCK: 'wck', proof, ...bootstrapPayload }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      const body = await response.json()
+      expect(body.error).toBe('Invalid challenge proof')
+    })
+
+    it('allows recovery re-bootstrap with a valid proof when v2 metadata exists and no envelopes remain', async () => {
       await createUserAndSession(p('u-recover'), p('tok-recover'))
       await insertDevice(p('d-recover'), p('u-recover'))
-      await insertCanaryWithSecret(p('u-recover'))
-      // No envelopes — simulates recovery after all devices revoked
+      await insertMetadata(p('u-recover'))
+      // No envelopes — simulates recovery after all devices revoked. The
+      // recovering device re-derived the signing key from the mnemonic.
+      const proof = await makeProof(p('u-recover'), 'approve', p('d-recover'))
 
-      // Legitimate user re-bootstraps with the correct canary secret (e.g. from recovery key)
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-recover')}/envelope`, {
           method: 'POST',
@@ -994,9 +1187,7 @@ describe('Encryption API', () => {
           },
           body: JSON.stringify({
             wrappedCK: 'recovered-wrapped-key',
-            canaryIv: 'recover-iv',
-            canaryCtext: 'recover-ctext',
-            canarySecret: testCanarySecret,
+            proof,
           }),
         }),
       )
@@ -1022,7 +1213,8 @@ describe('Encryption API', () => {
       }
       // 11th pending device awaiting approval
       await insertDevice(p('d-cap-pending'), p('u-cap'))
-      await insertCanaryWithSecret(p('u-cap'))
+      await insertMetadata(p('u-cap'))
+      const proof = await makeProof(p('u-cap'), 'approve', p('d-cap-trusted-0'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-cap-pending')}/envelope`, {
@@ -1032,7 +1224,7 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-cap'))}`,
             'X-Device-ID': p('d-cap-trusted-0'),
           },
-          body: JSON.stringify({ wrappedCK: 'wck', canarySecret: testCanarySecret }),
+          body: JSON.stringify({ wrappedCK: 'wck', proof }),
         }),
       )
 
@@ -1050,7 +1242,8 @@ describe('Encryption API', () => {
         await insertEnvelope(p(`d-undercap-trusted-${i}`), p('u-undercap'))
       }
       await insertDevice(p('d-undercap-pending'), p('u-undercap'))
-      await insertCanaryWithSecret(p('u-undercap'))
+      await insertMetadata(p('u-undercap'))
+      const proof = await makeProof(p('u-undercap'), 'approve', p('d-undercap-trusted-0'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-undercap-pending')}/envelope`, {
@@ -1060,7 +1253,7 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-undercap'))}`,
             'X-Device-ID': p('d-undercap-trusted-0'),
           },
-          body: JSON.stringify({ wrappedCK: 'wck', canarySecret: testCanarySecret }),
+          body: JSON.stringify({ wrappedCK: 'wck', proof }),
         }),
       )
 
@@ -1083,7 +1276,8 @@ describe('Encryption API', () => {
         await insertDevice(p(`d-rekey-cap-${i}`), p('u-rekey-cap'), { trusted: true, approvalPending: false })
         await insertEnvelope(p(`d-rekey-cap-${i}`), p('u-rekey-cap'), 'old-wck')
       }
-      await insertCanaryWithSecret(p('u-rekey-cap'))
+      await insertMetadata(p('u-rekey-cap'))
+      const proof = await makeProof(p('u-rekey-cap'), 'approve', p('d-rekey-cap-0'))
 
       // Self re-key on device 0 (caller === target)
       const response = await app.handle(
@@ -1094,7 +1288,7 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-rekey-cap'))}`,
             'X-Device-ID': p('d-rekey-cap-0'),
           },
-          body: JSON.stringify({ wrappedCK: 'rotated-wck', canarySecret: testCanarySecret }),
+          body: JSON.stringify({ wrappedCK: 'rotated-wck', proof }),
         }),
       )
 
@@ -1113,8 +1307,9 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u-noow'), p('tok-noow'))
       await insertDevice(p('d-noow-caller'), p('u-noow'), { trusted: true })
       await insertEnvelope(p('d-noow-caller'), p('u-noow'))
-      await insertCanary(p('u-noow'), 'original-iv', 'original-ctext', await hashSecret(testCanarySecret))
+      await insertMetadata(p('u-noow'), { canaryIv: 'original-iv', canaryCtext: 'original-ctext' })
       await insertDevice(p('d-noow-target'), p('u-noow'))
+      const proof = await makeProof(p('u-noow'), 'approve', p('d-noow-caller'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-noow-target')}/envelope`, {
@@ -1126,9 +1321,9 @@ describe('Encryption API', () => {
           },
           body: JSON.stringify({
             wrappedCK: 'wck',
+            proof,
             canaryIv: 'new-iv',
             canaryCtext: 'new-ctext',
-            canarySecret: testCanarySecret,
           }),
         }),
       )
@@ -1268,9 +1463,9 @@ describe('Encryption API', () => {
       expect(response.status).toBe(401)
     })
 
-    it('returns canary when set up', async () => {
+    it('returns the snake_case EncryptionMetadataResponse when set up', async () => {
       await createUserAndSession(p('u-can1'), p('tok-can1'))
-      await insertCanary(p('u-can1'), 'stored-iv', 'stored-ctext')
+      await insertMetadata(p('u-can1'), { canaryIv: 'stored-iv', canaryCtext: 'stored-ctext' })
 
       const response = await app.handle(
         new Request(`${baseUrl}/encryption/canary`, {
@@ -1280,8 +1475,30 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.canaryIv).toBe('stored-iv')
-      expect(body.canaryCtext).toBe('stored-ctext')
+      expect(body).toEqual({
+        canary_iv: 'stored-iv',
+        canary_ctext: 'stored-ctext',
+        kdf_salt: 'kdf-salt-test',
+        signing_public_key: await exportSigningPublicKey(signingKeypair),
+        key_version: 1,
+        primary_key_id: '0',
+      })
+    })
+
+    it('returns null signing_public_key/kdf_salt for a v1 row (beta-reset detection)', async () => {
+      await createUserAndSession(p('u-can-v1'), p('tok-can-v1'))
+      await insertMetadata(p('u-can-v1'), { v1: true })
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/canary`, {
+          headers: { Authorization: `Bearer ${signToken(p('tok-can-v1'))}` },
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.signing_public_key).toBeNull()
+      expect(body.kdf_salt).toBeNull()
     })
 
     it('returns 404 when encryption not set up', async () => {
@@ -1299,10 +1516,584 @@ describe('Encryption API', () => {
     })
   })
 
+  // ─── Wrapped-DEK keyring (A3) ───────────────────────────────────────
+
+  describe('GET /encryption/keys', () => {
+    it('returns 401 without auth', async () => {
+      const response = await app.handle(new Request(`${baseUrl}/encryption/keys`))
+      expect(response.status).toBe(401)
+    })
+
+    it('requires the X-Device-ID header', async () => {
+      await createUserAndSession(p('u-keys-nohdr'), p('tok-keys-nohdr'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/keys`, {
+          headers: { Authorization: `Bearer ${signToken(p('tok-keys-nohdr'))}` },
+        }),
+      )
+
+      expect(response.status).toBe(400)
+    })
+
+    it('lists all wrapped keys for a pending (not-yet-trusted) device — recovery must work pre-trust', async () => {
+      await createUserAndSession(p('u-keys-list'), p('tok-keys-list'))
+      await insertDevice(p('d-keys-list'), p('u-keys-list')) // pending
+      await insertWrappedKeyRow(p('u-keys-list'), '0', 'wk-zero')
+      await insertWrappedKeyRow(p('u-keys-list'), '1', 'wk-one')
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/keys`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-keys-list'))}`,
+            'X-Device-ID': p('d-keys-list'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.keys).toEqual(
+        expect.arrayContaining([
+          { key_id: '0', wrapped_key: 'wk-zero' },
+          { key_id: '1', wrapped_key: 'wk-one' },
+        ]),
+      )
+      expect(body.keys).toHaveLength(2)
+    })
+
+    it('rejects a revoked device', async () => {
+      await createUserAndSession(p('u-keys-rev'), p('tok-keys-rev'))
+      await insertDevice(p('d-keys-rev'), p('u-keys-rev'), { trusted: true, revokedAt: now })
+      await insertWrappedKeyRow(p('u-keys-rev'), '0')
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/keys`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-keys-rev'))}`,
+            'X-Device-ID': p('d-keys-rev'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(403)
+    })
+
+    it('rejects a device belonging to another user (404) — no cross-account listing', async () => {
+      await createUserAndSession(p('u-keys-own'), p('tok-keys-own'))
+      await createUserAndSession(p('u-keys-other'), p('tok-keys-other'))
+      await insertDevice(p('d-keys-other'), p('u-keys-other'), { trusted: true })
+      await insertWrappedKeyRow(p('u-keys-own'), '0')
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/keys`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-keys-own'))}`,
+            'X-Device-ID': p('d-keys-other'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(404)
+    })
+  })
+
+  describe('GET /encryption/keys/:keyId', () => {
+    it('returns a single wrapped key', async () => {
+      await createUserAndSession(p('u-key1'), p('tok-key1'))
+      await insertDevice(p('d-key1'), p('u-key1')) // pending is enough
+      await insertWrappedKeyRow(p('u-key1'), '0', 'wk-solo')
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/keys/0`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-key1'))}`,
+            'X-Device-ID': p('d-key1'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ key_id: '0', wrapped_key: 'wk-solo' })
+    })
+
+    it('returns 404 for an unknown key_id', async () => {
+      await createUserAndSession(p('u-key404'), p('tok-key404'))
+      await insertDevice(p('d-key404'), p('u-key404'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/keys/nope`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-key404'))}`,
+            'X-Device-ID': p('d-key404'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(404)
+      expect((await response.json()).error).toBe('Key not found')
+    })
+
+    it("does not leak another user's key (404)", async () => {
+      await createUserAndSession(p('u-keyx-a'), p('tok-keyx-a'))
+      await createUserAndSession(p('u-keyx-b'), p('tok-keyx-b'))
+      await insertDevice(p('d-keyx-a'), p('u-keyx-a'))
+      await insertWrappedKeyRow(p('u-keyx-b'), 'secret-key')
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/keys/secret-key`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-keyx-a'))}`,
+            'X-Device-ID': p('d-keyx-a'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(404)
+    })
+  })
+
+  describe('POST /encryption/keys', () => {
+    const postKey = (token: string, deviceId: string, body: Record<string, unknown>) =>
+      app.handle(
+        new Request(`${baseUrl}/encryption/keys`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+            'X-Device-ID': deviceId,
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+
+    it('rejects an untrusted (pending) caller', async () => {
+      await createUserAndSession(p('u-pk-pend'), p('tok-pk-pend'))
+      await insertDevice(p('d-pk-pend'), p('u-pk-pend')) // pending
+
+      const response = await postKey(p('tok-pk-pend'), p('d-pk-pend'), { keyId: '1', wrappedKey: 'wk-1' })
+
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('Only trusted devices can add keys')
+    })
+
+    it('mints a new key_id from a trusted device', async () => {
+      await createUserAndSession(p('u-pk-ok'), p('tok-pk-ok'))
+      await insertDevice(p('d-pk-ok'), p('u-pk-ok'), { trusted: true })
+
+      const response = await postKey(p('tok-pk-ok'), p('d-pk-ok'), { keyId: '1', wrappedKey: 'wk-new' })
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ key_id: '1' })
+
+      const rows = await db
+        .select()
+        .from(wrappedKeysTable)
+        .where(eq(wrappedKeysTable.userId, p('u-pk-ok')))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].wrappedKey).toBe('wk-new')
+    })
+
+    it('is idempotent per key_id — a second insert never overwrites the existing wrapping', async () => {
+      await createUserAndSession(p('u-pk-idem'), p('tok-pk-idem'))
+      await insertDevice(p('d-pk-idem'), p('u-pk-idem'), { trusted: true })
+      await insertWrappedKeyRow(p('u-pk-idem'), '0', 'wk-original')
+
+      const response = await postKey(p('tok-pk-idem'), p('d-pk-idem'), { keyId: '0', wrappedKey: 'wk-clobber' })
+
+      expect(response.status).toBe(200)
+      const [row] = await db
+        .select()
+        .from(wrappedKeysTable)
+        .where(eq(wrappedKeysTable.userId, p('u-pk-idem')))
+      expect(row.wrappedKey).toBe('wk-original')
+    })
+
+    it('setPrimary flips primary_key_id', async () => {
+      await createUserAndSession(p('u-pk-prim'), p('tok-pk-prim'))
+      await insertDevice(p('d-pk-prim'), p('u-pk-prim'), { trusted: true })
+      await insertMetadata(p('u-pk-prim'))
+
+      const response = await postKey(p('tok-pk-prim'), p('d-pk-prim'), {
+        keyId: '1',
+        wrappedKey: 'wk-1',
+        setPrimary: true,
+      })
+
+      expect(response.status).toBe(200)
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u-pk-prim')))
+      expect(metadata.primaryKeyId).toBe('1')
+    })
+
+    it('rejects a key_id containing a colon (wire-format separator)', async () => {
+      await createUserAndSession(p('u-pk-colon'), p('tok-pk-colon'))
+      await insertDevice(p('d-pk-colon'), p('u-pk-colon'), { trusted: true })
+
+      const response = await postKey(p('tok-pk-colon'), p('d-pk-colon'), { keyId: 'a:b', wrappedKey: 'wk' })
+
+      expect(response.status).toBe(422)
+    })
+  })
+
+  // ─── GET /encryption/challenge (A4) ─────────────────────────────────
+
+  describe('GET /encryption/challenge', () => {
+    it('issues a single-use nonce bound to user + operation + device', async () => {
+      await createUserAndSession(p('u-ch-ok'), p('tok-ch-ok'))
+      await insertDevice(p('d-ch-ok'), p('u-ch-ok')) // pending is enough — signature is the gate
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=approve`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-ch-ok'))}`,
+            'X-Device-ID': p('d-ch-ok'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(typeof body.nonce).toBe('string')
+      expect(new Date(body.expires_at).getTime()).toBeGreaterThan(Date.now())
+
+      const [row] = await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.nonce, body.nonce))
+      expect(row.userId).toBe(p('u-ch-ok'))
+      expect(row.operation).toBe('approve')
+      expect(row.deviceId).toBe(p('d-ch-ok'))
+      expect(row.consumed).toBe(false)
+    })
+
+    it('rejects an unknown operation', async () => {
+      await createUserAndSession(p('u-ch-badop'), p('tok-ch-badop'))
+      await insertDevice(p('d-ch-badop'), p('u-ch-badop'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=hack`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-ch-badop'))}`,
+            'X-Device-ID': p('d-ch-badop'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe('Invalid operation')
+    })
+
+    it('requires the X-Device-ID header', async () => {
+      await createUserAndSession(p('u-ch-nohdr'), p('tok-ch-nohdr'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=approve`, {
+          headers: { Authorization: `Bearer ${signToken(p('tok-ch-nohdr'))}` },
+        }),
+      )
+
+      expect(response.status).toBe(400)
+    })
+
+    it('rejects a device that belongs to another user', async () => {
+      await createUserAndSession(p('u-ch-a'), p('tok-ch-a'))
+      await createUserAndSession(p('u-ch-b'), p('tok-ch-b'))
+      await insertDevice(p('d-ch-b'), p('u-ch-b'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=approve`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-ch-a'))}`,
+            'X-Device-ID': p('d-ch-b'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(404)
+    })
+
+    it('rejects a revoked device', async () => {
+      await createUserAndSession(p('u-ch-rev'), p('tok-ch-rev'))
+      await insertDevice(p('d-ch-rev'), p('u-ch-rev'), { trusted: true, revokedAt: now })
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=revoke`, {
+          headers: {
+            Authorization: `Bearer ${signToken(p('tok-ch-rev'))}`,
+            'X-Device-ID': p('d-ch-rev'),
+          },
+        }),
+      )
+
+      expect(response.status).toBe(403)
+    })
+  })
+
+  // ─── POST /encryption/rotate (A5) ───────────────────────────────────
+
+  describe('POST /encryption/rotate', () => {
+    const postRotate = (token: string, deviceId: string, body: Record<string, unknown>) =>
+      app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+            'X-Device-ID': deviceId,
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+
+    /** Two trusted devices, two key_ids — the standard rotation fixture. */
+    const setupRotationAccount = async (tag: string) => {
+      const userId = p(`u-rot-${tag}`)
+      const token = p(`tok-rot-${tag}`)
+      const deviceA = p(`d-rot-${tag}-a`)
+      const deviceB = p(`d-rot-${tag}-b`)
+      await createUserAndSession(userId, token)
+      await insertDevice(deviceA, userId, { trusted: true })
+      await insertDevice(deviceB, userId, { trusted: true })
+      await insertEnvelope(deviceA, userId, 'old-ak-a')
+      await insertEnvelope(deviceB, userId, 'old-ak-b')
+      await insertMetadata(userId)
+      await insertWrappedKeyRow(userId, '0', 'old-wk-0')
+      await insertWrappedKeyRow(userId, '1', 'old-wk-1')
+      return { userId, token, deviceA, deviceB }
+    }
+
+    const fullRotateBody = (deviceA: string, deviceB: string, proof: ChallengeProof) => ({
+      proof,
+      envelopes: [
+        { deviceId: deviceA, wrappedCK: 'new-ak-a' },
+        { deviceId: deviceB, wrappedCK: 'new-ak-b' },
+      ],
+      wrappedKeys: [
+        { keyId: '0', wrappedKey: 'new-wk-0' },
+        { keyId: '1', wrappedKey: 'new-wk-1' },
+      ],
+      canaryIv: 'new-iv',
+      canaryCtext: 'new-ctext',
+      signingPublicKey: 'new-signing-key',
+      kdfSalt: 'new-kdf-salt',
+    })
+
+    it('happy path: fully re-wraps a 2-key account, replaces metadata, bumps key_version', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('ok')
+      const proof = await makeProof(userId, 'rotate', deviceA)
+
+      const response = await postRotate(token, deviceA, fullRotateBody(deviceA, deviceB, proof))
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ key_version: 2 })
+
+      const keys = await db.select().from(wrappedKeysTable).where(eq(wrappedKeysTable.userId, userId))
+      expect(new Map(keys.map((key) => [key.keyId, key.wrappedKey]))).toEqual(
+        new Map([
+          ['0', 'new-wk-0'],
+          ['1', 'new-wk-1'],
+        ]),
+      )
+
+      const envelopes = await db.select().from(envelopesTable).where(eq(envelopesTable.userId, userId))
+      expect(new Map(envelopes.map((envelope) => [envelope.deviceId, envelope.wrappedCk]))).toEqual(
+        new Map([
+          [deviceA, 'new-ak-a'],
+          [deviceB, 'new-ak-b'],
+        ]),
+      )
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, userId))
+      expect(metadata.canaryIv).toBe('new-iv')
+      expect(metadata.canaryCtext).toBe('new-ctext')
+      expect(metadata.signingPublicKey).toBe('new-signing-key')
+      expect(metadata.kdfSalt).toBe('new-kdf-salt')
+      expect(metadata.keyVersion).toBe(2)
+    })
+
+    it('rejects when wrappedKeys is missing an existing key_id (would strand it under the old AK)', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('misskey')
+      const proof = await makeProof(userId, 'rotate', deviceA)
+      const body = fullRotateBody(deviceA, deviceB, proof)
+      body.wrappedKeys = [{ keyId: '0', wrappedKey: 'new-wk-0' }] // key '1' missing
+
+      const response = await postRotate(token, deviceA, body)
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toContain('missing: ')
+      // All-or-nothing is guaranteed by the transaction; post-failure DB state
+      // can't be asserted here — PGlite's single connection rolls the whole
+      // test transaction back with the route's inner tx (see top-of-file note).
+    })
+
+    it('rejects unknown key_ids (rotation never mints keys)', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('unkkey')
+      const proof = await makeProof(userId, 'rotate', deviceA)
+      const body = fullRotateBody(deviceA, deviceB, proof)
+      body.wrappedKeys = [...body.wrappedKeys, { keyId: '99', wrappedKey: 'wk-99' }]
+
+      const response = await postRotate(token, deviceA, body)
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toContain('unknown key_ids')
+    })
+
+    it('rejects duplicate key_ids in the submitted keyring', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('dupkey')
+      const proof = await makeProof(userId, 'rotate', deviceA)
+      const body = fullRotateBody(deviceA, deviceB, proof)
+      body.wrappedKeys = [
+        { keyId: '0', wrappedKey: 'new-wk-0-a' },
+        { keyId: '0', wrappedKey: 'new-wk-0-b' },
+        { keyId: '1', wrappedKey: 'new-wk-1' },
+      ]
+
+      const response = await postRotate(token, deviceA, body)
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe('Duplicate key_id in wrappedKeys')
+    })
+
+    it('rejects when envelopes is missing a trusted device (it would be locked out)', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('missdev')
+      const proof = await makeProof(userId, 'rotate', deviceA)
+      const body = fullRotateBody(deviceA, deviceB, proof)
+      body.envelopes = [{ deviceId: deviceA, wrappedCK: 'new-ak-a' }] // deviceB missing
+
+      const response = await postRotate(token, deviceA, body)
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toContain('envelopes must cover every trusted device')
+    })
+
+    it('rejects an envelope for a non-trusted device (would hand the new AK to a pending device)', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('extradev')
+      const pendingDevice = p('d-rot-extradev-pending')
+      await insertDevice(pendingDevice, userId) // pending
+      const proof = await makeProof(userId, 'rotate', deviceA)
+      const body = fullRotateBody(deviceA, deviceB, proof)
+      body.envelopes = [...body.envelopes, { deviceId: pendingDevice, wrappedCK: 'stolen-ak' }]
+
+      const response = await postRotate(token, deviceA, body)
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toContain('non-trusted devices')
+    })
+
+    it('rejects duplicate device IDs in the submitted envelopes', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('dupdev')
+      const proof = await makeProof(userId, 'rotate', deviceA)
+      const body = fullRotateBody(deviceA, deviceB, proof)
+      body.envelopes = [
+        { deviceId: deviceA, wrappedCK: 'new-ak-a-1' },
+        { deviceId: deviceA, wrappedCK: 'new-ak-a-2' },
+        { deviceId: deviceB, wrappedCK: 'new-ak-b' },
+      ]
+
+      const response = await postRotate(token, deviceA, body)
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe('Duplicate deviceId in envelopes')
+    })
+
+    it('rejects an invalid proof', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('badproof')
+      const proof = await makeInvalidProof(userId, 'rotate', deviceA)
+
+      const response = await postRotate(token, deviceA, fullRotateBody(deviceA, deviceB, proof))
+
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('Invalid challenge proof')
+    })
+
+    it('rejects a replayed proof (nonce is single-use)', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('replay')
+      const proof = await makeProof(userId, 'rotate', deviceA)
+
+      const first = await postRotate(token, deviceA, fullRotateBody(deviceA, deviceB, proof))
+      expect(first.status).toBe(200)
+
+      const second = await postRotate(token, deviceA, fullRotateBody(deviceA, deviceB, proof))
+      expect(second.status).toBe(403)
+    })
+
+    it('rejects an untrusted caller before touching the proof', async () => {
+      const { userId, token, deviceA, deviceB } = await setupRotationAccount('untrusted')
+      const pendingDevice = p('d-rot-untrusted-pending')
+      await insertDevice(pendingDevice, userId)
+      const proof = await makeProof(userId, 'rotate', pendingDevice)
+
+      const response = await postRotate(token, pendingDevice, fullRotateBody(deviceA, deviceB, proof))
+
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('Only trusted devices can rotate keys')
+    })
+  })
+
+  // ─── POST /encryption/reset (A9, v1 beta reset) ─────────────────────
+
+  describe('POST /encryption/reset', () => {
+    const postReset = (token: string) =>
+      app.handle(
+        new Request(`${baseUrl}/encryption/reset`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${signToken(token)}` },
+        }),
+      )
+
+    it('wipes a v1 account (NULL signing key): metadata, envelopes, and wrapped keys deleted', async () => {
+      await createUserAndSession(p('u-rst-v1'), p('tok-rst-v1'))
+      await insertDevice(p('d-rst-v1'), p('u-rst-v1'), { trusted: true })
+      await insertEnvelope(p('d-rst-v1'), p('u-rst-v1'))
+      await insertMetadata(p('u-rst-v1'), { v1: true })
+      await insertWrappedKeyRow(p('u-rst-v1'), '0')
+
+      const response = await postReset(p('tok-rst-v1'))
+
+      expect(response.status).toBe(204)
+      const metadataRows = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u-rst-v1')))
+      expect(metadataRows).toHaveLength(0)
+      const envelopeRows = await db
+        .select()
+        .from(envelopesTable)
+        .where(eq(envelopesTable.userId, p('u-rst-v1')))
+      expect(envelopeRows).toHaveLength(0)
+      const wrappedKeyRows = await db
+        .select()
+        .from(wrappedKeysTable)
+        .where(eq(wrappedKeysTable.userId, p('u-rst-v1')))
+      expect(wrappedKeyRows).toHaveLength(0)
+    })
+
+    it('refuses to reset a v2 account (409)', async () => {
+      await createUserAndSession(p('u-rst-v2'), p('tok-rst-v2'))
+      await insertMetadata(p('u-rst-v2'))
+
+      const response = await postReset(p('tok-rst-v2'))
+
+      expect(response.status).toBe(409)
+      expect((await response.json()).error).toBe('v2 account — reset not allowed')
+    })
+
+    it('returns 404 when encryption was never set up', async () => {
+      await createUserAndSession(p('u-rst-none'), p('tok-rst-none'))
+
+      const response = await postReset(p('tok-rst-none'))
+
+      expect(response.status).toBe(404)
+    })
+  })
+
   // ─── POST /devices/:deviceId/deny ───────────────────────────────────
 
   describe('POST /devices/:deviceId/deny', () => {
-    it('rejects deny without canarySecret (body validation)', async () => {
+    it('rejects deny without a proof (body validation)', async () => {
       await createUserAndSession(p('u-deny-nobody'), p('tok-deny-nobody'))
       await insertDevice(p('d-deny-nobody-caller'), p('u-deny-nobody'), { trusted: true })
       await insertDevice(p('d-deny-nobody-target'), p('u-deny-nobody'))
@@ -1321,11 +2112,12 @@ describe('Encryption API', () => {
       expect(response.status).toBe(422)
     })
 
-    it('rejects deny with wrong canarySecret', async () => {
+    it('rejects deny with a proof signed by the wrong key', async () => {
       await createUserAndSession(p('u-deny-bad'), p('tok-deny-bad'))
       await insertDevice(p('d-deny-bad-caller'), p('u-deny-bad'), { trusted: true })
       await insertDevice(p('d-deny-bad-target'), p('u-deny-bad'))
-      await insertCanaryWithSecret(p('u-deny-bad'))
+      await insertMetadata(p('u-deny-bad'))
+      const proof = await makeInvalidProof(p('u-deny-bad'), 'deny', p('d-deny-bad-caller'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-deny-bad-target')}/deny`, {
@@ -1335,20 +2127,45 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-deny-bad'))}`,
             'X-Device-ID': p('d-deny-bad-caller'),
           },
-          body: JSON.stringify({ canarySecret: 'wrong-secret' }),
+          body: JSON.stringify({ proof }),
         }),
       )
 
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toBe('Invalid canary secret')
+      expect(body.error).toBe('Invalid challenge proof')
     })
 
-    it('allows deny with valid canarySecret', async () => {
+    it("rejects deny with a nonce bound to a different operation ('approve')", async () => {
+      await createUserAndSession(p('u-deny-xop'), p('tok-deny-xop'))
+      await insertDevice(p('d-deny-xop-caller'), p('u-deny-xop'), { trusted: true })
+      await insertDevice(p('d-deny-xop-target'), p('u-deny-xop'))
+      await insertMetadata(p('u-deny-xop'))
+      const proof = await makeProof(p('u-deny-xop'), 'approve', p('d-deny-xop-caller'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d-deny-xop-target')}/deny`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-deny-xop'))}`,
+            'X-Device-ID': p('d-deny-xop-caller'),
+          },
+          body: JSON.stringify({ proof }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      const body = await response.json()
+      expect(body.error).toBe('Invalid challenge proof')
+    })
+
+    it('allows deny with a valid proof', async () => {
       await createUserAndSession(p('u-deny-ok'), p('tok-deny-ok'))
       await insertDevice(p('d-deny-ok-caller'), p('u-deny-ok'), { trusted: true })
       await insertDevice(p('d-deny-ok-target'), p('u-deny-ok'))
-      await insertCanaryWithSecret(p('u-deny-ok'))
+      await insertMetadata(p('u-deny-ok'))
+      const proof = await makeProof(p('u-deny-ok'), 'deny', p('d-deny-ok-caller'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/${p('d-deny-ok-target')}/deny`, {
@@ -1358,7 +2175,7 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${signToken(p('tok-deny-ok'))}`,
             'X-Device-ID': p('d-deny-ok-caller'),
           },
-          body: JSON.stringify({ canarySecret: testCanarySecret }),
+          body: JSON.stringify({ proof }),
         }),
       )
 
@@ -1384,7 +2201,7 @@ describe('Encryption API', () => {
         }),
       )
 
-    it('rejects without canarySecret (body validation)', async () => {
+    it('rejects without a proof (body validation)', async () => {
       await createUserAndSession(p('u-nid-nobody'), p('tok-nid-nobody'))
       await insertDevice(p('d-nid-nobody-caller'), p('u-nid-nobody'), { trusted: true })
       await insertDevice(p('d-nid-nobody-target'), p('u-nid-nobody'), { trusted: true })
@@ -1396,32 +2213,34 @@ describe('Encryption API', () => {
       expect(response.status).toBe(422)
     })
 
-    it('rejects with wrong canarySecret', async () => {
+    it('rejects with a proof signed by the wrong key', async () => {
       await createUserAndSession(p('u-nid-bad'), p('tok-nid-bad'))
       await insertDevice(p('d-nid-bad-caller'), p('u-nid-bad'), { trusted: true })
       await insertDevice(p('d-nid-bad-target'), p('u-nid-bad'), { trusted: true })
-      await insertCanaryWithSecret(p('u-nid-bad'))
+      await insertMetadata(p('u-nid-bad'))
+      const proof = await makeInvalidProof(p('u-nid-bad'), 'node-id', p('d-nid-bad-caller'))
 
       const response = await patchNodeId(p('tok-nid-bad'), p('d-nid-bad-caller'), p('d-nid-bad-target'), {
         nodeId,
-        canarySecret: 'wrong-secret',
+        proof,
       })
 
       expect(response.status).toBe(403)
-      expect((await response.json()).error).toBe('Invalid canary secret')
+      expect((await response.json()).error).toBe('Invalid challenge proof')
     })
 
     it('rejects when caller device is not trusted', async () => {
       await createUserAndSession(p('u-nid-untrusted'), p('tok-nid-untrusted'))
       await insertDevice(p('d-nid-untrusted-caller'), p('u-nid-untrusted')) // pending, not trusted
       await insertDevice(p('d-nid-untrusted-target'), p('u-nid-untrusted'), { trusted: true })
-      await insertCanaryWithSecret(p('u-nid-untrusted'))
+      await insertMetadata(p('u-nid-untrusted'))
+      const proof = await makeProof(p('u-nid-untrusted'), 'node-id', p('d-nid-untrusted-caller'))
 
       const response = await patchNodeId(
         p('tok-nid-untrusted'),
         p('d-nid-untrusted-caller'),
         p('d-nid-untrusted-target'),
-        { nodeId, canarySecret: testCanarySecret },
+        { nodeId, proof },
       )
 
       expect(response.status).toBe(403)
@@ -1431,11 +2250,12 @@ describe('Encryption API', () => {
     it('returns 404 when target device does not exist', async () => {
       await createUserAndSession(p('u-nid-missing'), p('tok-nid-missing'))
       await insertDevice(p('d-nid-missing-caller'), p('u-nid-missing'), { trusted: true })
-      await insertCanaryWithSecret(p('u-nid-missing'))
+      await insertMetadata(p('u-nid-missing'))
+      const proof = await makeProof(p('u-nid-missing'), 'node-id', p('d-nid-missing-caller'))
 
       const response = await patchNodeId(p('tok-nid-missing'), p('d-nid-missing-caller'), p('d-nid-missing-absent'), {
         nodeId,
-        canarySecret: testCanarySecret,
+        proof,
       })
 
       expect(response.status).toBe(404)
@@ -1445,11 +2265,12 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u-nid-revoked'), p('tok-nid-revoked'))
       await insertDevice(p('d-nid-revoked-caller'), p('u-nid-revoked'), { trusted: true })
       await insertDevice(p('d-nid-revoked-target'), p('u-nid-revoked'), { trusted: true, revokedAt: now })
-      await insertCanaryWithSecret(p('u-nid-revoked'))
+      await insertMetadata(p('u-nid-revoked'))
+      const proof = await makeProof(p('u-nid-revoked'), 'node-id', p('d-nid-revoked-caller'))
 
       const response = await patchNodeId(p('tok-nid-revoked'), p('d-nid-revoked-caller'), p('d-nid-revoked-target'), {
         nodeId,
-        canarySecret: testCanarySecret,
+        proof,
       })
 
       expect(response.status).toBe(404)
@@ -1460,25 +2281,27 @@ describe('Encryption API', () => {
       await insertDevice(p('d-nid-denied-caller'), p('u-nid-denied'), { trusted: true })
       // Denied state denyDevice leaves: trusted=false, approvalPending=false, revokedAt=null.
       await insertDevice(p('d-nid-denied-target'), p('u-nid-denied'), { trusted: false, approvalPending: false })
-      await insertCanaryWithSecret(p('u-nid-denied'))
+      await insertMetadata(p('u-nid-denied'))
+      const proof = await makeProof(p('u-nid-denied'), 'node-id', p('d-nid-denied-caller'))
 
       const response = await patchNodeId(p('tok-nid-denied'), p('d-nid-denied-caller'), p('d-nid-denied-target'), {
         nodeId,
-        canarySecret: testCanarySecret,
+        proof,
       })
 
       expect(response.status).toBe(404)
     })
 
-    it('sets node_id with a valid canarySecret from a trusted device', async () => {
+    it('sets node_id with a valid proof from a trusted device', async () => {
       await createUserAndSession(p('u-nid-ok'), p('tok-nid-ok'))
       await insertDevice(p('d-nid-ok-caller'), p('u-nid-ok'), { trusted: true })
       await insertDevice(p('d-nid-ok-target'), p('u-nid-ok'), { trusted: true })
-      await insertCanaryWithSecret(p('u-nid-ok'))
+      await insertMetadata(p('u-nid-ok'))
+      const proof = await makeProof(p('u-nid-ok'), 'node-id', p('d-nid-ok-caller'))
 
       const response = await patchNodeId(p('tok-nid-ok'), p('d-nid-ok-caller'), p('d-nid-ok-target'), {
         nodeId,
-        canarySecret: testCanarySecret,
+        proof,
       })
 
       expect(response.status).toBe(200)
@@ -1698,6 +2521,70 @@ describe('Encryption API', () => {
       const response = await getAllowlist(p('tok-al-empty'))
       expect(response.status).toBe(200)
       expect((await response.json()).nodeIds).toEqual([])
+    })
+  })
+
+  // ─── POST /devices/me/cancel-pending ────────────────────────────────
+
+  describe('POST /devices/me/cancel-pending', () => {
+    const cancelPending = (token: string, deviceId?: string) =>
+      app.handle(
+        new Request(`${baseUrl}/devices/me/cancel-pending`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${signToken(token)}`,
+            ...(deviceId ? { 'X-Device-ID': deviceId } : {}),
+          },
+        }),
+      )
+
+    it('clears approvalPending for the caller pending device', async () => {
+      await createUserAndSession(p('u-cancel-ok'), p('tok-cancel-ok'))
+      await insertDevice(p('d-cancel-ok'), p('u-cancel-ok'))
+
+      const response = await cancelPending(p('tok-cancel-ok'), p('d-cancel-ok'))
+
+      expect(response.status).toBe(204)
+      const [device] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-cancel-ok')))
+      expect(device.trusted).toBe(false)
+      expect(device.approvalPending).toBe(false)
+    })
+
+    it('requires the X-Device-ID header', async () => {
+      await createUserAndSession(p('u-cancel-header'), p('tok-cancel-header'))
+
+      const response = await cancelPending(p('tok-cancel-header'))
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe('X-Device-ID header is required')
+    })
+
+    it("does not reveal another user's device", async () => {
+      await createUserAndSession(p('u-cancel-owner'), p('tok-cancel-owner'))
+      await createUserAndSession(p('u-cancel-other'), p('tok-cancel-other'))
+      await insertDevice(p('d-cancel-owner'), p('u-cancel-owner'))
+
+      const response = await cancelPending(p('tok-cancel-other'), p('d-cancel-owner'))
+
+      expect(response.status).toBe(404)
+      expect((await response.json()).error).toBe('Device not found')
+    })
+
+    it('rejects trusted and revoked devices because neither is pending', async () => {
+      await createUserAndSession(p('u-cancel-state'), p('tok-cancel-state'))
+      await insertDevice(p('d-cancel-trusted'), p('u-cancel-state'), { trusted: true })
+      await insertDevice(p('d-cancel-revoked'), p('u-cancel-state'), { revokedAt: now })
+
+      const trustedResponse = await cancelPending(p('tok-cancel-state'), p('d-cancel-trusted'))
+      const revokedResponse = await cancelPending(p('tok-cancel-state'), p('d-cancel-revoked'))
+
+      expect(trustedResponse.status).toBe(409)
+      expect(await trustedResponse.json()).toEqual({ error: 'Device is not pending approval' })
+      expect(revokedResponse.status).toBe(409)
+      expect(await revokedResponse.json()).toEqual({ error: 'Device is not pending approval' })
     })
   })
 

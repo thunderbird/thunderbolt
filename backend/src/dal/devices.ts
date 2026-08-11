@@ -94,6 +94,14 @@ export const markDeviceTrusted = async (database: typeof DbType, deviceId: strin
     )
     .returning()
 
+/** List the ids of all trusted, non-revoked devices for a user (rotation envelope-coverage check, A5). */
+export const listTrustedDeviceIds = async (database: QueryableDatabase, userId: string) =>
+  database
+    .select({ id: devicesTable.id })
+    .from(devicesTable)
+    .where(and(eq(devicesTable.userId, userId), eq(devicesTable.trusted, true), isNull(devicesTable.revokedAt)))
+    .then((rows) => rows.map((row) => row.id))
+
 /** Count active (trusted, non-revoked) devices for a user.
  * Pending and limbo devices do NOT count toward the device cap (THU-502). */
 export const countActiveDevices = async (database: QueryableDatabase, userId: string) => {

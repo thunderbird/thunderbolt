@@ -16,6 +16,7 @@ export {
   setDeviceNodeId,
   getTrustedNodeIds,
   countActiveDevices,
+  listTrustedDeviceIds,
 } from './devices'
 
 // Users
@@ -44,6 +45,19 @@ export {
   hasEnvelopesForUser,
   upsertEnvelope,
   deleteEnvelope,
+  deleteAllEnvelopesForUser,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
+  replaceEncryptionMetadata,
+  bumpKeyVersion,
+  setPrimaryKeyId,
+  deleteEncryptionMetadata,
+  getWrappedKey,
+  listWrappedKeys,
+  insertWrappedKey,
+  updateWrappedKey,
+  deleteAllWrappedKeysForUser,
+  issueChallengeNonce,
+  consumeChallengeNonce,
+  deleteExpiredOrConsumedNonces,
 } from './encryption'

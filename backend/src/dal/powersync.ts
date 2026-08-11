@@ -30,7 +30,7 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
     // (bridges auto-trust same-account peers). Only the bridge-registration route may set it, so a
     // client can't relabel its own device a 'bridge' via a raw PowerSync upload.
     'device_type',
-    // node_id binds a device to a P2P identity — trust-sensitive. Writers are the canary-gated
+    // node_id binds a device to a P2P identity — trust-sensitive. Writers are the challenge-gated
     // POST /devices/:id/node-id route for trusted-device administration and the session-pinned
     // POST /devices/me/node-id route for self-enrollment, never a raw PowerSync upload.
     'node_id',

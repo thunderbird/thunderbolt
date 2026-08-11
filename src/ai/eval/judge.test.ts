@@ -13,6 +13,7 @@ import {
   requestJudgeVerdict,
   requiresJudge,
 } from './judge'
+import { evalModels } from './scenarios'
 import type { EvalResult, EvalScenario } from './types'
 
 const scenario: EvalScenario = {
@@ -56,12 +57,19 @@ describe('judge model assignment', () => {
     expect(getJudgeModelName('glm')).toBe('opus')
   })
 
-  test('never assigns the tested model or GLM as judge', () => {
-    for (const testedModel of ['opus', 'flash', 'glm']) {
-      const judge = getJudgeModelName(testedModel)
-      expect(judge).not.toBe(testedModel)
+  test('assigns every eval model to a resolvable external judge', () => {
+    for (const testedModel of evalModels) {
+      const judge = getJudgeModelName(testedModel.name)
+      expect(['opus', 'flash']).toContain(judge)
+      expect(judge).not.toBe(testedModel.name)
       expect(judge).not.toBe('glm')
     }
+  })
+
+  test('fails loudly with assignment map guidance for an unknown eval model', () => {
+    expect(() => getJudgeModelName('new-model')).toThrow(
+      'No judge assignment for eval model: new-model. Update judgeModelAssignments in src/ai/eval/judge.ts.',
+    )
   })
 })
 

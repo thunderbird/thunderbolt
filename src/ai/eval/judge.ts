@@ -45,6 +45,12 @@ const judgeModels: Record<JudgeModelName, Model> = {
   flash: { ...defaultModelDeepseekV4Flash, apiKey: null },
 }
 
+const judgeModelAssignments: Readonly<Partial<Record<string, JudgeModelName>>> = {
+  opus: 'flash',
+  flash: 'opus',
+  glm: 'opus',
+}
+
 type SemanticAssertion = {
   criteriaKey: 'expectCorrectAnswer' | 'expectSearchOffer' | 'expectPremiseRebuttal' | 'expectVerificationDisclaimer'
   verdictKey: Exclude<keyof JudgeVerdict, 'explanation'>
@@ -86,13 +92,13 @@ const declaredAssertions = (criteria: EvalCriteria): SemanticAssertion[] =>
 
 /** Select a capable judge that is neither GLM nor the model under evaluation. */
 export const getJudgeModelName = (testedModelName: string): JudgeModelName => {
-  if (testedModelName === 'opus') {
-    return 'flash'
+  const judgeModelName = judgeModelAssignments[testedModelName]
+  if (!judgeModelName) {
+    throw new Error(
+      `No judge assignment for eval model: ${testedModelName}. Update judgeModelAssignments in src/ai/eval/judge.ts.`,
+    )
   }
-  if (testedModelName === 'flash' || testedModelName === 'glm') {
-    return 'opus'
-  }
-  throw new Error(`No judge assignment for eval model: ${testedModelName}`)
+  return judgeModelName
 }
 
 /** Whether a scenario declares at least one semantic assertion. */

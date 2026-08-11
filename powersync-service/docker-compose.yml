@@ -5,13 +5,13 @@ services:
       postgres:
         condition: service_healthy
     image: docker.io/journeyapps/powersync-service:latest
-    command: ["start", "-r", "unified"]
+    command: ['start', '-r', 'unified']
     volumes:
       - ./config/config.yaml:/config/config.yaml:Z
     environment:
       POWERSYNC_CONFIG_PATH: /config/config.yaml
     ports:
-      - 8080:8080
+      - '${POWERSYNC_PORT:-8080}:8080'
 
   postgres:
     image: docker.io/library/postgres:18-alpine
@@ -29,10 +29,10 @@ services:
       - pg_data:/var/lib/postgresql
       - ./init-db:/docker-entrypoint-initdb.d:Z
     ports:
-      - "5433:5432"
-    command: ["postgres", "-c", "wal_level=logical"]
+      - '${POSTGRES_PORT:-5433}:5432'
+    command: ['postgres', '-c', 'wal_level=logical']
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
       interval: 5s
       timeout: 5s
       retries: 5

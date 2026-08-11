@@ -21,6 +21,12 @@ bun run test:backend:watch
 # Run end-to-end tests (Playwright)
 bun run e2e
 bun run e2e:headed   # with a visible browser
+
+# Run Docker-backed PowerSync E2EE tests
+bun run e2e:powersync
+
+# Run both Playwright suites sequentially
+bun run e2e:all
 ```
 
 **Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs `shared/*.test.ts`, `scripts/create-release.test.ts`, and `.github/scripts/post-pr-metrics.test.js` by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit).
@@ -47,6 +53,7 @@ Please follow these guidelines for unit tests:
     ```
 
   - This also speeds up tests that use HTTP libraries with retry logic (like `ky`)
+
 - **Suppress expected console errors in tests** - use `spyOn(console, 'error').mockImplementation(() => {})` in `beforeAll` for tests that intentionally trigger errors
 - Always write unit tests for logic, code branching, and algorithms - these should be thoroughly covered. Unit tests for component user interactions (such as clicking or typing) are optional and might be better covered by higher-level tests (e.g., with Cypress).
 - Keep display logic separate from side effects and state in React components by extracting hooks. If a component has many useStates, bundle them into one state hook—this makes logic easy to test and leaves snapshot tests for checking output changes.
@@ -162,15 +169,48 @@ mock.module('@/components/ui/dialog', () => ({
 
 The Playwright suite in [`e2e/`](../e2e) covers the OIDC sign-in and session flows — the parts of the app that are hardest to exercise from a unit test (browser storage, redirects, Better Auth callbacks).
 
+### PowerSync E2EE Tests
+
+The separate [`playwright.e2ee.config.ts`](../../playwright.e2ee.config.ts) configuration exercises consumer
+authentication and encryption against real PostgreSQL logical replication and the self-hosted PowerSync service.
+PGlite cannot be used for these tests because PowerSync requires PostgreSQL replication.
+
+Run the suite with Docker available:
+
+```sh
+bun run e2e:powersync
+```
+
+The runner starts an isolated Compose project, waits for PostgreSQL and PowerSync readiness, lets Playwright start the
+backend and Vite, and always removes the containers and volumes afterward. It uses dedicated ports so it does not
+collide with `make dev`:
+
+| Component  | Port |
+| ---------- | ---- |
+| Vite       | 1423 |
+| Backend    | 8004 |
+| PowerSync  | 8081 |
+| PostgreSQL | 5434 |
+
+The E2EE project is intentionally unsharded with one worker because device enrollment, key setup, and PowerSync
+replication are stateful. Tests use unique `@e2e.test` accounts and fresh browser contexts; OTPs and ciphertext
+assertions are read from the ephemeral PostgreSQL database. GitHub Actions runs this as a dedicated job, separate from
+the sharded PGlite OIDC/SAML suite.
+
+The browser suite covers first-device bootstrap and ciphertext storage; isolated-device approval, denial, cancellation,
+recovery, and bidirectional sync; reload and sync-toggle persistence; sign-out key cleanup and cross-account isolation;
+recovery-phrase rotation; device revocation with AK/DEK rotation, including keyring self-healing on another trusted
+device; account-deletion cascades; and the supported v1-to-v2 beta reset.
+
 ### What the Config Spins Up
 
 [`playwright.config.ts`](../playwright.config.ts) boots three things before any spec runs:
 
-| Component        | Port   | How                                                              |
-| ---------------- | ------ | ---------------------------------------------------------------- |
+| Component        | Port   | How                                                                                                                                                                                             |
+| ---------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mock OIDC server | `9876` | [`oauth2-mock-server`](https://www.npmjs.com/package/oauth2-mock-server), started by `e2e/global-setup.ts`; every issued token is signed for `sub=e2e-test-user` / `email=e2e@thunderbolt.test` |
-| Vite frontend    | `1421` | `bun run dev -- --port 1421` with `VITE_AUTH_MODE=sso` and `VITE_SKIP_ONBOARDING=true` |
-| Backend API      | `8000` | `cd backend && bun run dev` with `OIDC_ISSUER` pointed at the mock server, rate limiting disabled |
+| Vite frontend    | `1421` | `bun run dev -- --port 1421` with `VITE_AUTH_MODE=sso` and `VITE_SKIP_ONBOARDING=true`                                                                                                          |
+| Backend API      | `8000` | `cd backend && bun run dev` with `OIDC_ISSUER` pointed at the mock server, rate limiting disabled                                                                                               |
 
 Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from a previous run can't leak between specs. A clean shutdown of the mock OIDC server happens in `e2e/global-teardown.ts`.
 
@@ -183,14 +223,14 @@ Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from
 
 ### Current Specs
 
-| Spec                           | What it verifies                                                                   |
-| ------------------------------ | ---------------------------------------------------------------------------------- |
-| [`oidc-login.spec.ts`](../e2e/oidc-login.spec.ts)     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI      |
-| [`oidc-logout.spec.ts`](../e2e/oidc-logout.spec.ts)   | OIDC user can sign out and is redirected to the signed-out page                    |
-| [`oidc-session.spec.ts`](../e2e/oidc-session.spec.ts) | Session survives a hard reload and the authenticated user stays signed in          |
-| [`saml-login.spec.ts`](../e2e/saml-login.spec.ts)     | Anonymous user completes the full SAML redirect loop and lands in the chat UI      |
-| [`saml-logout.spec.ts`](../e2e/saml-logout.spec.ts)   | SAML user can sign out and is redirected to the signed-out page                    |
-| [`saml-session.spec.ts`](../e2e/saml-session.spec.ts) | SAML session survives a hard reload and the authenticated user stays signed in     |
+| Spec                                                  | What it verifies                                                               |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [`oidc-login.spec.ts`](../e2e/oidc-login.spec.ts)     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI  |
+| [`oidc-logout.spec.ts`](../e2e/oidc-logout.spec.ts)   | OIDC user can sign out and is redirected to the signed-out page                |
+| [`oidc-session.spec.ts`](../e2e/oidc-session.spec.ts) | Session survives a hard reload and the authenticated user stays signed in      |
+| [`saml-login.spec.ts`](../e2e/saml-login.spec.ts)     | Anonymous user completes the full SAML redirect loop and lands in the chat UI  |
+| [`saml-logout.spec.ts`](../e2e/saml-logout.spec.ts)   | SAML user can sign out and is redirected to the signed-out page                |
+| [`saml-session.spec.ts`](../e2e/saml-session.spec.ts) | SAML session survives a hard reload and the authenticated user stays signed in |
 
 ### Writing New Specs
 

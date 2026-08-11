@@ -35,7 +35,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-15** Hybrid envelope V1 (`0x01`), exactly 1194 bytes.
 - **INV-16** Wrapping key one-shot, HKDF-SHA-256 over `ssEcdh||ssMlkem`.
 - **INV-17** CK never leaves device extractable (transient only at setup/recovery).
-- **INV-18** CK invalidation broadcasts via `BroadcastChannel('thunderbolt-ck-invalidation')`.
+- **INV-18** Key-cache invalidation broadcasts via `BroadcastChannel('thunderbolt-keys-sync')` (v2; replaced the v1 `thunderbolt-ck-invalidation` channel).
 - **INV-19** Codec encode fail-closed in steady state (`e2eeSetupComplete && !ck` throws).
 - **INV-20** Codec decode tolerant — passes through on missing CK / decrypt error (warns only; never breaks sync).
 - **INV-21** Trust transition atomic — upsertEnvelope + markDeviceTrusted in one tx.

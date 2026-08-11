@@ -84,8 +84,10 @@ jobs:
       platform: fargate
       region: us-east-1
       stack_name: preview-pr-${{ needs.resolve-pr.outputs.pr_number }}
-    # inherit passes AWS_DEPLOY_ROLE_ARN, PULUMI_*, GHCR_PAT, CLOUDFLARE_API_TOKEN
-    secrets: inherit
+    # Destroy only needs AWS credentials and Pulumi authentication.
+    secrets:
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 
   comment:
     needs: [resolve-pr, drop-db, destroy]

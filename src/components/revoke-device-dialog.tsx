@@ -23,7 +23,7 @@ type RevokeDeviceDialogProps = {
 
 const descriptions = {
   trusted:
-    'The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync.',
+    'The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync. If encryption is set up, your keys will be rotated and a new recovery phrase will be shown for you to save.',
   pending: 'This will deny the device access to your encrypted data. The device will need to set up sync again.',
 }
 

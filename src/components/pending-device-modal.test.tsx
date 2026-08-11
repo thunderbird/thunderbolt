@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -32,13 +33,6 @@ mock.module('@/db/powersync/sync-state', () => ({
   isSyncEnabled: () => useLocalSettingsStore.getState().syncEnabled,
 }))
 
-// These tests verify E2EE pending device behavior — encryption must be enabled.
-const realEncryption = await import('@/db/encryption')
-mock.module('@/db/encryption', () => ({
-  ...realEncryption,
-  isEncryptionEnabled: () => true,
-}))
-
 mock.module('@/hooks/use-approve-device', () => ({
   useApproveDevice: () => ({ mutate: mock(), isPending: false }),
 }))
@@ -63,6 +57,10 @@ describe('PendingDeviceModal', () => {
     localStorage.setItem(deviceIdKey, currentDeviceId)
     localStorage.setItem(authTokenKey, 'test-token')
     useLocalSettingsStore.setState({ syncEnabled: true })
+    // E2EE pending-device behavior requires encryption enabled — drive the REAL
+    // isEncryptionEnabled via the config store instead of mocking '@/db/encryption'
+    // (module mocks on that shared module leak into other test files).
+    useConfigStore.setState({ config: { e2eeEnabled: true } })
     sessionStorage.removeItem(sessionStorageKey)
   })
 
@@ -70,6 +68,7 @@ describe('PendingDeviceModal', () => {
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
     useLocalSettingsStore.setState({ syncEnabled: false })
+    useConfigStore.setState({ config: {} })
     sessionStorage.removeItem(sessionStorageKey)
     cleanup()
   })

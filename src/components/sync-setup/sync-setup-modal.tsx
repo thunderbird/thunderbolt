@@ -89,7 +89,13 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     setup.deviceDenied()
   }
 
-  const stepsAfterRegistration: readonly string[] = ['detecting', 'approval-waiting', 'recovery-key-entry', 'denied']
+  const stepsAfterRegistration: readonly string[] = [
+    'detecting',
+    'approval-waiting',
+    'recovery-key-entry',
+    'denied',
+    'v1-reset',
+  ]
 
   const handleClose = () => {
     // Cancel pending state on server when closing after device was registered
@@ -190,6 +196,10 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
           />
         )}
 
+        {setup.step === 'v1-reset' && (
+          <V1ResetStep onContinue={setup.continueV1Reset} isLoading={setup.isLoading} error={setup.error} />
+        )}
+
         {setup.step === 'denied' && <DeniedStep onRetry={setup.reset} />}
 
         {setup.step === 'setup-complete' && <SetupCompleteStep onDone={completeAndClose} />}
@@ -281,12 +291,12 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
       </IconCircle>
       <h2 className="text-2xl font-bold">First device setup</h2>
       <p className="text-muted-foreground">
-        This is the first device on your account. We&apos;ll create an encryption key to protect your data and give you
-        a recovery key to keep safe.
+        This is the first device on your account. We&apos;ll set up encryption to protect your data and give you a
+        24-word recovery phrase to keep safe.
       </p>
       <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
-        Please store your recovery key somewhere safe. You&apos;ll need it to access your data if you ever lose all your
-        devices.
+        Please store your recovery phrase somewhere safe. You&apos;ll need it to access your data if you ever lose all
+        your devices.
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
@@ -307,7 +317,46 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
 )
 
 // =============================================================================
-// Setup complete step — success confirmation for additional device flows
+// V1 reset step — beta reset for accounts on the old encryption system
+// =============================================================================
+
+type V1ResetStepProps = {
+  onContinue: () => void
+  isLoading: boolean
+  error: string | null
+}
+
+const V1ResetStep = ({ onContinue, isLoading, error }: V1ResetStepProps) => (
+  <div className="w-full flex flex-col">
+    <div className="text-center space-y-4">
+      <IconCircle>
+        <ShieldAlert className="w-8 h-8 text-primary" />
+      </IconCircle>
+      <h2 className="text-2xl font-bold">Encryption was upgraded</h2>
+      <p className="text-muted-foreground">
+        Thunderbolt&apos;s end-to-end encryption has been upgraded, so you need to set it up again. Synced data from the
+        old system is no longer readable — your data on this device is kept and will sync going forward.
+      </p>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+
+    <div className="pt-5">
+      <Button className="w-full" onClick={onContinue} disabled={isLoading}>
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Resetting…
+          </>
+        ) : (
+          'Set up encryption again'
+        )}
+      </Button>
+    </div>
+  </div>
+)
+
+// =============================================================================
+// Denied step — the approval request was denied by another device
 // =============================================================================
 
 const DeniedStep = ({ onRetry }: { onRetry: () => void }) => (

@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { AppVersionSection } from './app-version-section'
+import { ChangeRecoveryKeySection } from './encryption/change-recovery-key-section'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -929,6 +930,8 @@ export default function PreferencesSettingsPage() {
               <Button onClick={openSignInModal}>Sign In</Button>
             </div>
           )}
+
+          {isFullUser && syncEnabled && <ChangeRecoveryKeySection />}
 
           {isAuthenticated && (
             <>

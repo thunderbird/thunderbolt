@@ -8,6 +8,8 @@ import type { HttpClient } from '@/contexts'
 import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
+import { startKeyRequestResponder } from '@/db/encryption'
+import { refreshAK, stageKeyring } from '@/services/encryption'
 import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { createSearchIndex } from '@/search/fts-setup'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
@@ -333,6 +335,14 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       }
     }
   }
+
+  // Step 6b: Start the E2EE key-request responder (D2 + C3 polling). It
+  // answers the codec's `key-request` messages — the SharedWorker holds no
+  // auth token, so key fetching must happen here on the main thread — and
+  // pre-stages the DEK keyring on startup for already-set-up devices, checking
+  // the polled key_version for AK rotations. Fire-and-forget: staging must
+  // never block boot; a repeat init run replaces the previous instance.
+  startKeyRequestResponder({ httpClient: client, stageKeyring, refreshAK })
 
   // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
   // of each other) — run in parallel; each wrapper swallows its own failure.

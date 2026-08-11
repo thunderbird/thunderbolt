@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { reducer, initialState } from './use-sync-setup'
+import { classifyEncryptionMetadata, reducer, initialState } from './use-sync-setup'
+import type { EncryptionMetadata } from '@/api/encryption'
 
 describe('sync setup reducer', () => {
   it('starts at intro step with no loading', () => {
@@ -36,6 +37,21 @@ describe('sync setup reducer', () => {
     const detecting = reducer(initialState, { type: 'CONTINUE_INTRO' })
     const state = reducer(detecting, { type: 'DETECTED_ADDITIONAL_DEVICE' })
     expect(state.step).toBe('approval-waiting')
+    expect(state.isLoading).toBe(false)
+  })
+
+  it('DETECTED_V1_ACCOUNT transitions to v1-reset', () => {
+    const detecting = reducer(initialState, { type: 'CONTINUE_INTRO' })
+    const state = reducer(detecting, { type: 'DETECTED_V1_ACCOUNT' })
+    expect(state.step).toBe('v1-reset')
+    expect(state.isLoading).toBe(false)
+  })
+
+  it('SET_ERROR on the v1-reset step keeps the step (error + retry stay visible)', () => {
+    const v1Reset = reducer(initialState, { type: 'DETECTED_V1_ACCOUNT' })
+    const state = reducer(v1Reset, { type: 'SET_ERROR', payload: 'reset failed' })
+    expect(state.step).toBe('v1-reset')
+    expect(state.error).toBe('reset failed')
     expect(state.isLoading).toBe(false)
   })
 
@@ -129,5 +145,28 @@ describe('sync setup reducer', () => {
   it('returns current state for unknown action type', () => {
     const state = reducer(initialState, { type: 'UNKNOWN' } as never)
     expect(state).toEqual(initialState)
+  })
+})
+
+describe('classifyEncryptionMetadata', () => {
+  const baseMetadata: EncryptionMetadata = {
+    canary_iv: 'aXY=',
+    canary_ctext: 'Y3Q=',
+    signing_public_key: 'c3BraQ==',
+    kdf_salt: 'c2FsdA==',
+    key_version: 1,
+    primary_key_id: '0',
+  }
+
+  it('classifies missing metadata as none (fresh account, first device)', () => {
+    expect(classifyEncryptionMetadata(null)).toBe('none')
+  })
+
+  it('classifies a NULL signing_public_key as v1 (beta reset needed)', () => {
+    expect(classifyEncryptionMetadata({ ...baseMetadata, signing_public_key: null, kdf_salt: null })).toBe('v1')
+  })
+
+  it('classifies a present signing_public_key as v2', () => {
+    expect(classifyEncryptionMetadata(baseMetadata)).toBe('v2')
   })
 })

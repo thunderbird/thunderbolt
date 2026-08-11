@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useConfigStore } from '@/api/config-store'
 
 const mockSetSyncEnabled = mock(() => Promise.resolve())
 const mockTrackEvent = mock(() => {})
@@ -18,44 +20,41 @@ mock.module('@/db/powersync/sync-state', () => ({
   setSyncEnabled: mockSetSyncEnabled,
 }))
 
-// Spread the REAL modules so every untouched export survives if these
-// registrations leak across files under `--randomize`; only the symbols this
-// suite drives are overridden. See docs/development/testing.md §65.
+// Spread the REAL module so every untouched export survives if this
+// registration leaks across files under `--randomize`; only the symbol this
+// suite drives is overridden. See docs/development/testing.md §65.
 const realPosthog = await import('@/lib/posthog')
 mock.module('@/lib/posthog', () => ({
   ...realPosthog,
   trackEvent: mockTrackEvent,
 }))
 
-const mockGetCK = mock(() => Promise.resolve(null))
-
-const realEncryption = await import('@/db/encryption')
-mock.module('@/db/encryption', () => ({
-  ...realEncryption,
-  isEncryptionEnabled: () => true,
-  needsSyncSetupWizard: async () => !(await mockGetCK()),
-}))
-
-const realKeyStorage = await import('@/crypto/key-storage')
-mock.module('@/crypto/key-storage', () => ({
-  ...realKeyStorage,
-  getCK: mockGetCK,
-}))
-
+// `needsSyncSetupWizard` (from '@/db/encryption') is intentionally NOT mocked —
+// mocking that shared module leaks into the codec/config suites. Instead the
+// REAL implementation is driven: e2eeEnabled comes from the config store, and
+// the empty fake-indexeddb key store (no AK / no wrapped DEKs) makes the
+// wizard read as "needed".
 import { useSyncEnabledToggle } from './use-sync-enabled-toggle'
 
+const deleteKeyDatabase = (): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase('thunderbolt-keys')
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+
 describe('useSyncEnabledToggle', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockSetSyncEnabled.mockClear()
     mockTrackEvent.mockClear()
-    mockGetCK.mockClear()
-    mockGetCK.mockImplementation(() => Promise.resolve(null))
+    useConfigStore.setState({ config: { e2eeEnabled: true } })
+    await deleteKeyDatabase()
   })
 
   afterEach(() => {
     mockSetSyncEnabled.mockRestore?.()
     mockTrackEvent.mockRestore?.()
-    mockGetCK.mockRestore?.()
+    useConfigStore.setState({ config: {} })
   })
 
   it('returns sync toggle state and handlers', () => {

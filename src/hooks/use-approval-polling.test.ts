@@ -141,6 +141,30 @@ describe('useApprovalPolling', () => {
     expect(checkApproval.mock.calls.length).toBe(callsBefore)
   })
 
+  it('calls onDenied and stops polling on 422 error', async () => {
+    const checkApproval = mock(() => Promise.reject(createHTTPError(422)))
+    const onApproved = mock(() => {})
+    const onDenied = mock(() => {})
+
+    const { result } = renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved, onDenied, intervalMs: 50 }),
+    )
+
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+
+    expect(onDenied).toHaveBeenCalledTimes(1)
+    expect(onApproved).not.toHaveBeenCalled()
+    expect(result.current.isPolling).toBe(false)
+
+    const callsBefore = checkApproval.mock.calls.length
+    await act(async () => {
+      await getClock().tickAsync(200)
+    })
+    expect(checkApproval.mock.calls.length).toBe(callsBefore)
+  })
+
   it('continues polling on non-403 errors but stops on 403', async () => {
     let callCount = 0
     const checkApproval = mock(() => {

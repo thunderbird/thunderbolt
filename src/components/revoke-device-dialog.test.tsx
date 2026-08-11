@@ -46,7 +46,7 @@ describe('RevokeDeviceDialog', () => {
     expect(screen.getByText('Revoke this device?')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync.',
+        'The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync. If encryption is set up, your keys will be rotated and a new recovery phrase will be shown for you to save.',
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument()

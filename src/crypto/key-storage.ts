@@ -2,17 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { KeyId, WrappedKeyEntry } from '@shared/e2ee-types'
+
 import { StorageError } from './errors'
+import { decryptBytes, deriveMlKemAtRestKey, encryptBytes, type EncryptedBytes } from './primitives'
 
 const dbName = 'thunderbolt-keys'
 const storeName = 'keys'
-const dbVersion = 1
+// v2: ML-KEM secret encrypted at rest; thunderbolt_ck replaced by thunderbolt_ak
+// + thunderbolt_dek_{keyId}. The upgrade wipes the store (beta reset — v1 keys
+// are abandoned by design).
+const dbVersion = 2
 
 const privateKeyId = 'thunderbolt_private_key'
 const publicKeyId = 'thunderbolt_public_key'
 const mlkemPublicKeyId = 'thunderbolt_mlkem_public_key'
 const mlkemSecretKeyId = 'thunderbolt_mlkem_secret_key'
-const ckId = 'thunderbolt_ck'
+const akId = 'thunderbolt_ak'
+const dekIdPrefix = 'thunderbolt_dek_'
+const primaryKeyIdId = 'thunderbolt_primary_key_id'
+const keyVersionId = 'thunderbolt_key_version'
+
+const dekEntryId = (keyId: KeyId): string => `${dekIdPrefix}${keyId}`
 
 // =============================================================================
 // IndexedDB helpers
@@ -23,15 +34,16 @@ const openDB = (): Promise<IDBDatabase> =>
     const request = indexedDB.open(dbName, dbVersion)
     request.onupgradeneeded = () => {
       const db = request.result
-      if (!db.objectStoreNames.contains(storeName)) {
-        db.createObjectStore(storeName)
+      if (db.objectStoreNames.contains(storeName)) {
+        db.deleteObjectStore(storeName)
       }
+      db.createObjectStore(storeName)
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(new StorageError('Failed to open IndexedDB', { cause: request.error }))
   })
 
-type StorableValue = CryptoKey | Uint8Array
+type StorableValue = CryptoKey | Uint8Array | EncryptedBytes | string
 
 const putValue = async (id: string, value: StorableValue): Promise<void> => {
   const db = await openDB()
@@ -82,22 +94,6 @@ const getEntries = async <T extends StorableValue>(ids: string[]): Promise<Array
   })
 }
 
-const deleteKey = async (id: string): Promise<void> => {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    tx.objectStore(storeName).delete(id)
-    tx.oncomplete = () => {
-      db.close()
-      resolve()
-    }
-    tx.onerror = () => {
-      db.close()
-      reject(new StorageError(`Failed to delete key: ${id}`, { cause: tx.error }))
-    }
-  })
-}
-
 const putEntries = async (entries: Array<{ id: string; value: StorableValue }>): Promise<void> => {
   const db = await openDB()
   return new Promise((resolve, reject) => {
@@ -117,25 +113,6 @@ const putEntries = async (entries: Array<{ id: string; value: StorableValue }>):
   })
 }
 
-const deleteKeys = async (ids: string[]): Promise<void> => {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    for (const id of ids) {
-      store.delete(id)
-    }
-    tx.oncomplete = () => {
-      db.close()
-      resolve()
-    }
-    tx.onerror = () => {
-      db.close()
-      reject(new StorageError('Failed to delete keys', { cause: tx.error }))
-    }
-  })
-}
-
 // =============================================================================
 // Key pair (ECDH P-256 + ML-KEM-768)
 // =============================================================================
@@ -147,56 +124,147 @@ export type StoredKeyPair = {
   mlkemSecretKey: Uint8Array
 }
 
-/** Store both ECDH and ML-KEM key pairs in IndexedDB (single atomic transaction). */
+/**
+ * Store both ECDH and ML-KEM key pairs in IndexedDB (single atomic transaction).
+ * The ML-KEM secret key is encrypted at rest under a self-ECDH-derived AES-GCM
+ * key (THU-427) — only `{iv, ciphertext}` ever touches the store.
+ */
 export const storeKeyPair = async (
   ecdhPrivateKey: CryptoKey,
   ecdhPublicKey: CryptoKey,
   mlkemPublicKey: Uint8Array,
   mlkemSecretKey: Uint8Array,
-): Promise<void> =>
-  putEntries([
+): Promise<void> => {
+  const atRestKey = await deriveMlKemAtRestKey(ecdhPublicKey, ecdhPrivateKey)
+  const encryptedSecret = await encryptBytes(mlkemSecretKey, atRestKey)
+  return putEntries([
     { id: privateKeyId, value: ecdhPrivateKey },
     { id: publicKeyId, value: ecdhPublicKey },
     { id: mlkemPublicKeyId, value: mlkemPublicKey },
-    { id: mlkemSecretKeyId, value: mlkemSecretKey },
+    { id: mlkemSecretKeyId, value: encryptedSecret },
   ])
+}
 
 /** Get both key pairs from IndexedDB (single transaction). Returns null if any key is missing. */
 export const getKeyPair = async (): Promise<StoredKeyPair | null> => {
-  const [ecdhPrivateKey, ecdhPublicKey, mlkemPublicKey, mlkemSecretKey] = await getEntries<StorableValue>([
+  const [ecdhPrivateKey, ecdhPublicKey, mlkemPublicKey, encryptedSecret] = await getEntries<StorableValue>([
     privateKeyId,
     publicKeyId,
     mlkemPublicKeyId,
     mlkemSecretKeyId,
   ])
-  if (!ecdhPrivateKey || !ecdhPublicKey || !mlkemPublicKey || !mlkemSecretKey) {
+  if (!ecdhPrivateKey || !ecdhPublicKey || !mlkemPublicKey || !encryptedSecret) {
     return null
   }
+  const atRestKey = await deriveMlKemAtRestKey(ecdhPublicKey as CryptoKey, ecdhPrivateKey as CryptoKey)
+  const mlkemSecretKey = await decryptBytes(encryptedSecret as EncryptedBytes, atRestKey)
   return {
     ecdhPrivateKey: ecdhPrivateKey as CryptoKey,
     ecdhPublicKey: ecdhPublicKey as CryptoKey,
     mlkemPublicKey: mlkemPublicKey as Uint8Array,
-    mlkemSecretKey: mlkemSecretKey as Uint8Array,
+    mlkemSecretKey,
   }
 }
 
 // =============================================================================
-// Content Key (AES-256-GCM)
+// AK (non-extractable AES-KW CryptoKey) + wrapped DEK keyring (base64 blobs)
 // =============================================================================
 
-/** Store the content key in IndexedDB. */
-export const storeCK = async (ck: CryptoKey): Promise<void> => putValue(ckId, ck)
+/** Store the account key in IndexedDB. */
+export const storeAK = async (ak: CryptoKey): Promise<void> => putValue(akId, ak)
 
-/** Get the content key from IndexedDB. */
-export const getCK = async (): Promise<CryptoKey | null> => getValue<CryptoKey>(ckId)
+/** Get the account key from IndexedDB. */
+export const getAK = async (): Promise<CryptoKey | null> => getValue<CryptoKey>(akId)
 
-/** Clear only the content key (key pair is preserved). */
-export const clearCK = async (): Promise<void> => deleteKey(ckId)
+/**
+ * Store one wrapped DEK (base64 AES-KW blob — NOT a CryptoKey). The
+ * SharedWorker reads wrapped blobs + the AK and unwraps on demand, keeping the
+ * AK as the gate.
+ */
+export const storeWrappedDEK = async (keyId: KeyId, wrappedBase64: string): Promise<void> =>
+  putValue(dekEntryId(keyId), wrappedBase64)
+
+/** Get one wrapped DEK (base64) by key_id. */
+export const getWrappedDEK = async (keyId: KeyId): Promise<string | null> => getValue<string>(dekEntryId(keyId))
+
+/** Stage the full wrapped-DEK keyring in one atomic transaction (§3 pre-staging). */
+export const stageWrappedDEKs = async (entries: WrappedKeyEntry[]): Promise<void> =>
+  putEntries(entries.map(({ keyId, wrappedKey }) => ({ id: dekEntryId(keyId), value: wrappedKey })))
+
+/** Store the primary key_id pointer — the DEK version that encrypts all new writes. */
+export const storePrimaryKeyId = async (keyId: KeyId): Promise<void> => putValue(primaryKeyIdId, keyId)
+
+/** Get the primary key_id pointer, or null when it was never set. */
+export const getPrimaryKeyId = async (): Promise<KeyId | null> => getValue<string>(primaryKeyIdId)
+
+/**
+ * Persist the last encryption-metadata `key_version` this device applied —
+ * the baseline for the polled AK-rotation check (plan §3, C3 polling).
+ */
+export const storeKeyVersion = async (version: number): Promise<void> => putValue(keyVersionId, String(version))
+
+/** Get the last applied `key_version`, or null when never recorded. */
+export const getKeyVersion = async (): Promise<number | null> => {
+  const stored = await getValue<string>(keyVersionId)
+  return stored === null ? null : Number(stored)
+}
+
+/** List every staged wrapped DEK (enumerates `thunderbolt_dek_*` entries). */
+export const listWrappedDEKs = async (): Promise<WrappedKeyEntry[]> => {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly')
+    const store = tx.objectStore(storeName)
+    const keysRequest = store.getAllKeys()
+    keysRequest.onsuccess = () => {
+      const dekIds = keysRequest.result.filter(
+        (id): id is string => typeof id === 'string' && id.startsWith(dekIdPrefix),
+      )
+      const valueRequests = dekIds.map((id) => store.get(id))
+      tx.oncomplete = () => {
+        db.close()
+        resolve(
+          dekIds.map((id, i) => ({
+            keyId: id.slice(dekIdPrefix.length),
+            wrappedKey: valueRequests[i].result as string,
+          })),
+        )
+      }
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError('Failed to list wrapped DEKs', { cause: tx.error }))
+    }
+  })
+}
 
 // =============================================================================
 // Full wipe
 // =============================================================================
 
-/** Clear all keys from IndexedDB (single atomic transaction for full data wipe / revocation). */
-export const clearAllKeys = async (): Promise<void> =>
-  deleteKeys([privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
+/**
+ * Clear all keys from IndexedDB (full data wipe / revocation). Enumerates the
+ * store rather than deleting a static id list — DEK entries are dynamically
+ * named (`thunderbolt_dek_{keyId}`) and would leak otherwise.
+ */
+export const clearAllKeys = async (): Promise<void> => {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    const store = tx.objectStore(storeName)
+    const keysRequest = store.getAllKeys()
+    keysRequest.onsuccess = () => {
+      for (const id of keysRequest.result) {
+        store.delete(id)
+      }
+    }
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError('Failed to clear keys', { cause: tx.error }))
+    }
+  })
+}

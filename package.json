@@ -41,7 +41,9 @@
     "prepare": "husky",
     "size": "size-limit",
     "e2e": "bunx playwright test",
+    "e2e:all": "bun run e2e && bun run e2e:powersync",
     "e2e:headed": "bunx playwright test --headed",
+    "e2e:powersync": "bash scripts/run-e2ee-powersync.sh",
     "docker:nuke": "bash scripts/docker-nuke.sh"
   },
   "size-limit": [
@@ -76,6 +78,7 @@
     "@icons-pack/react-simple-icons": "^13.13.0",
     "@journeyapps/wa-sqlite": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.25.2",
+    "@noble/curves": "^2.2.0",
     "@noble/post-quantum": "^0.6.0",
     "@openrouter/ai-sdk-provider": "^2.6.0",
     "@powersync/common": "1.57.2",
@@ -199,6 +202,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-storybook": "^10.3.5",
+    "fake-indexeddb": "^6.2.5",
     "globals": "^17.5.0",
     "happy-dom": "^20.0.8",
     "husky": "^9.1.7",
@@ -207,6 +211,7 @@
     "msw": "^2.10.5",
     "oauth2-mock-server": "^9.1.0",
     "playwright": "^1.58.2",
+    "postgres": "^3.4.9",
     "prettier": "^3.6.2",
     "rsocket-core": "1.0.0-alpha.3",
     "rsocket-websocket-client": "1.0.0-alpha.3",

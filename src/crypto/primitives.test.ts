@@ -6,17 +6,25 @@ import { describe, expect, it } from 'bun:test'
 import {
   generateKeyPair,
   generateMlKemKeyPair,
-  generateCK,
+  generateAK,
+  generateDEK,
+  mintDEK,
   reimportAsNonExtractable,
   exportPublicKey,
   importPublicKey,
   exportMlKemPublicKey,
   importMlKemPublicKey,
-  wrapCK,
-  rewrapCK,
-  unwrapCK,
+  deriveMlKemAtRestKey,
+  wrapAK,
+  rewrapAK,
+  unwrapAK,
+  wrapDEK,
+  unwrapDEK,
   encrypt,
   decrypt,
+  encryptBytes,
+  decryptBytes,
+  base64ToUint8Array,
 } from './primitives'
 
 describe('generateKeyPair', () => {
@@ -59,25 +67,57 @@ describe('exportMlKemPublicKey / importMlKemPublicKey', () => {
   })
 })
 
-describe('generateCK', () => {
-  it('generates a non-extractable AES-GCM key by default', async () => {
-    const ck = await generateCK()
-    expect(ck.algorithm.name).toBe('AES-GCM')
-    expect(ck.extractable).toBe(false)
+describe('generateAK', () => {
+  it('generates a non-extractable AES-KW key with wrap/unwrap usages only', async () => {
+    const ak = await generateAK()
+    expect(ak.algorithm.name).toBe('AES-KW')
+    expect(ak.extractable).toBe(false)
+    expect([...ak.usages].sort()).toEqual(['unwrapKey', 'wrapKey'])
   })
 
   it('generates an extractable key when requested', async () => {
-    const ck = await generateCK(true)
-    expect(ck.extractable).toBe(true)
+    const ak = await generateAK(true)
+    expect(ak.extractable).toBe(true)
+  })
+
+  it('cannot encrypt data (usage separation is the point)', async () => {
+    const ak = await generateAK()
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    await expect(crypto.subtle.encrypt({ name: 'AES-GCM', iv }, ak, new TextEncoder().encode('nope'))).rejects.toThrow()
+  })
+})
+
+describe('generateDEK', () => {
+  it('generates a non-extractable AES-GCM key with encrypt/decrypt usages only', async () => {
+    const dek = await generateDEK()
+    expect(dek.algorithm.name).toBe('AES-GCM')
+    expect(dek.extractable).toBe(false)
+    expect([...dek.usages].sort()).toEqual(['decrypt', 'encrypt'])
+  })
+
+  it('cannot wrap keys', async () => {
+    const dek = await generateDEK()
+    const other = await generateDEK(true)
+    await expect(crypto.subtle.wrapKey('raw', other, dek, 'AES-KW')).rejects.toThrow()
   })
 })
 
 describe('reimportAsNonExtractable', () => {
-  it('converts an extractable key to non-extractable', async () => {
-    const extractable = await generateCK(true)
+  it('converts an extractable AK to a non-extractable AES-KW key', async () => {
+    const extractable = await generateAK(true)
     const nonExtractable = await reimportAsNonExtractable(extractable)
     expect(nonExtractable.extractable).toBe(false)
-    expect(nonExtractable.algorithm.name).toBe('AES-GCM')
+    expect(nonExtractable.algorithm.name).toBe('AES-KW')
+    expect([...nonExtractable.usages].sort()).toEqual(['unwrapKey', 'wrapKey'])
+  })
+
+  it('reimported AK unwraps a DEK wrapped by the original', async () => {
+    const extractableAK = await generateAK(true)
+    const dek = await generateDEK(true)
+    const wrapped = await wrapDEK(dek, extractableAK)
+    const nonExtractableAK = await reimportAsNonExtractable(extractableAK)
+    const unwrapped = await unwrapDEK(wrapped, nonExtractableAK)
+    expect(unwrapped.algorithm.name).toBe('AES-GCM')
   })
 })
 
@@ -93,35 +133,79 @@ describe('exportPublicKey / importPublicKey', () => {
   })
 })
 
-describe('wrapCK / unwrapCK', () => {
-  // CK must be extractable for wrapKey in Bun/Node (strict Web Crypto spec).
-  // In browsers, wrapKey works with non-extractable keys too.
-  // The first-device flow always wraps an extractable CK before re-importing.
+describe('wrapDEK / unwrapDEK', () => {
+  it('round-trips a DEK: data encrypted before wrap decrypts after unwrap', async () => {
+    const ak = await generateAK()
+    const dek = await generateDEK(true)
+    const encrypted = await encrypt('dek round trip', dek)
 
-  it('round-trips CK through wrap and unwrap', async () => {
-    const ecdhKeyPair = await generateKeyPair()
-    const mlkemKeyPair = generateMlKemKeyPair()
-    const ck = await generateCK(true) // extractable for wrapping
-
-    const wrapped = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
+    const wrapped = await wrapDEK(dek, ak)
     expect(typeof wrapped).toBe('string')
 
-    const unwrapped = await unwrapCK(wrapped, ecdhKeyPair.privateKey, mlkemKeyPair.secretKey)
-    expect(unwrapped.algorithm.name).toBe('AES-GCM')
+    const unwrapped = await unwrapDEK(wrapped, ak)
     expect(unwrapped.extractable).toBe(false)
+    expect([...unwrapped.usages].sort()).toEqual(['decrypt', 'encrypt'])
+    expect(await decrypt(encrypted, unwrapped)).toBe('dek round trip')
   })
 
-  it('unwrapped CK can encrypt/decrypt the same data as original', async () => {
+  it('fails to unwrap with a different AK', async () => {
+    const ak1 = await generateAK()
+    const ak2 = await generateAK()
+    const dek = await generateDEK(true)
+    const wrapped = await wrapDEK(dek, ak1)
+    await expect(unwrapDEK(wrapped, ak2)).rejects.toThrow('Failed to unwrap DEK')
+  })
+
+  it('fails to wrap a non-extractable DEK', async () => {
+    const ak = await generateAK()
+    const dek = await generateDEK()
+    await expect(wrapDEK(dek, ak)).rejects.toThrow('Failed to wrap DEK')
+  })
+})
+
+describe('mintDEK', () => {
+  it('returns a non-extractable DEK that matches the wrapped blob', async () => {
+    const ak = await generateAK()
+    const { dek, wrappedKey } = await mintDEK(ak)
+    expect(dek.extractable).toBe(false)
+
+    const encrypted = await encrypt('minted', dek)
+    const reUnwrapped = await unwrapDEK(wrappedKey, ak)
+    expect(await decrypt(encrypted, reUnwrapped)).toBe('minted')
+  })
+})
+
+describe('wrapAK / unwrapAK', () => {
+  // The AK must be extractable at wrap time (WebCrypto wrapKey requirement).
+  // The first-device flow always wraps an extractable AK before re-importing.
+
+  it('round-trips AK through wrap and unwrap', async () => {
     const ecdhKeyPair = await generateKeyPair()
     const mlkemKeyPair = generateMlKemKeyPair()
-    const ck = await generateCK(true)
+    const ak = await generateAK(true)
 
-    const encrypted = await encrypt('wrap test', ck)
-    const wrapped = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
-    const unwrapped = await unwrapCK(wrapped, ecdhKeyPair.privateKey, mlkemKeyPair.secretKey)
+    const wrapped = await wrapAK(ak, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
+    expect(typeof wrapped).toBe('string')
 
-    const decrypted = await decrypt(encrypted, unwrapped)
-    expect(decrypted).toBe('wrap test')
+    const unwrapped = await unwrapAK(wrapped, ecdhKeyPair.privateKey, mlkemKeyPair.secretKey)
+    expect(unwrapped.algorithm.name).toBe('AES-KW')
+    expect(unwrapped.extractable).toBe(false)
+    expect([...unwrapped.usages].sort()).toEqual(['unwrapKey', 'wrapKey'])
+  })
+
+  it('unwrapped AK unwraps a DEK wrapped by the original', async () => {
+    const ecdhKeyPair = await generateKeyPair()
+    const mlkemKeyPair = generateMlKemKeyPair()
+    const ak = await generateAK(true)
+    const dek = await generateDEK(true)
+
+    const encrypted = await encrypt('wrap test', dek)
+    const wrappedDek = await wrapDEK(dek, ak)
+    const wrappedAk = await wrapAK(ak, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
+    const unwrappedAk = await unwrapAK(wrappedAk, ecdhKeyPair.privateKey, mlkemKeyPair.secretKey)
+    const unwrappedDek = await unwrapDEK(wrappedDek, unwrappedAk)
+
+    expect(await decrypt(encrypted, unwrappedDek)).toBe('wrap test')
   })
 
   it('produces different wrapped values for different key pairs', async () => {
@@ -129,48 +213,51 @@ describe('wrapCK / unwrapCK', () => {
     const mlkemKeyPair1 = generateMlKemKeyPair()
     const ecdhKeyPair2 = await generateKeyPair()
     const mlkemKeyPair2 = generateMlKemKeyPair()
-    const ck = await generateCK(true)
+    const ak = await generateAK(true)
 
-    const wrapped1 = await wrapCK(ck, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
-    const wrapped2 = await wrapCK(ck, ecdhKeyPair2.publicKey, mlkemKeyPair2.publicKey)
+    const wrapped1 = await wrapAK(ak, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
+    const wrapped2 = await wrapAK(ak, ecdhKeyPair2.publicKey, mlkemKeyPair2.publicKey)
     expect(wrapped1).not.toBe(wrapped2)
   })
 
   it('produces different wrapped values for the same key pair (ephemeral key)', async () => {
     const ecdhKeyPair = await generateKeyPair()
     const mlkemKeyPair = generateMlKemKeyPair()
-    const ck = await generateCK(true)
+    const ak = await generateAK(true)
 
-    const wrapped1 = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
-    const wrapped2 = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
+    const wrapped1 = await wrapAK(ak, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
+    const wrapped2 = await wrapAK(ak, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
     expect(wrapped1).not.toBe(wrapped2)
   })
 
-  it('produces hybrid envelopes with version byte', async () => {
+  it('produces the unchanged v1 envelope byte layout and version', async () => {
     const ecdhKeyPair = await generateKeyPair()
     const mlkemKeyPair = generateMlKemKeyPair()
-    const ck = await generateCK(true)
-    const wrapped = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
+    const ak = await generateAK(true)
+    const wrapped = await wrapAK(ak, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
 
-    // Hybrid envelope: 1 (version) + 65 (ephPub) + 1088 (mlkemCt) + 40 (wrappedCK) = 1194 bytes
+    // Hybrid envelope: 1 (version) + 65 (ephPub) + 1088 (mlkemCt) + 40 (wrappedAK) = 1194 bytes
     // base64 of 1194 bytes = ceil(1194/3)*4 = 1592 chars
     expect(wrapped.length).toBe(1592)
+    const envelope = base64ToUint8Array(wrapped)
+    expect(envelope.length).toBe(1194)
+    expect(envelope[0]).toBe(0x01)
   })
 })
 
-describe('rewrapCK', () => {
-  it('rewraps CK from one key pair to another', async () => {
+describe('rewrapAK', () => {
+  it('rewraps AK from one device key pair to another', async () => {
     const ecdhKeyPair1 = await generateKeyPair()
     const mlkemKeyPair1 = generateMlKemKeyPair()
     const ecdhKeyPair2 = await generateKeyPair()
     const mlkemKeyPair2 = generateMlKemKeyPair()
-    const ck = await generateCK(true)
+    const ak = await generateAK(true)
 
-    // Wrap CK with keyPair1's public keys (simulates the envelope on the server)
-    const wrapped = await wrapCK(ck, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
+    // Wrap AK with keyPair1's public keys (simulates the envelope on the server)
+    const wrapped = await wrapAK(ak, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
 
     // Rewrap for keyPair2 (simulates approving a new device)
-    const rewrapped = await rewrapCK(
+    const rewrapped = await rewrapAK(
       wrapped,
       ecdhKeyPair1.privateKey,
       mlkemKeyPair1.secretKey,
@@ -180,61 +267,133 @@ describe('rewrapCK', () => {
     expect(typeof rewrapped).toBe('string')
 
     // keyPair2 should be able to unwrap it
-    const unwrapped = await unwrapCK(rewrapped, ecdhKeyPair2.privateKey, mlkemKeyPair2.secretKey)
-    expect(unwrapped.algorithm.name).toBe('AES-GCM')
+    const unwrapped = await unwrapAK(rewrapped, ecdhKeyPair2.privateKey, mlkemKeyPair2.secretKey)
+    expect(unwrapped.algorithm.name).toBe('AES-KW')
   })
 
-  it('rewrapped CK decrypts data encrypted with the original', async () => {
+  it('rewrapped AK unwraps a DEK wrapped with the original', async () => {
     const ecdhKeyPair1 = await generateKeyPair()
     const mlkemKeyPair1 = generateMlKemKeyPair()
     const ecdhKeyPair2 = await generateKeyPair()
     const mlkemKeyPair2 = generateMlKemKeyPair()
-    const ck = await generateCK(true)
+    const ak = await generateAK(true)
+    const dek = await generateDEK(true)
 
-    const encrypted = await encrypt('rewrap test', ck)
-    const wrapped = await wrapCK(ck, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
-    const rewrapped = await rewrapCK(
-      wrapped,
+    const encrypted = await encrypt('rewrap test', dek)
+    const wrappedDek = await wrapDEK(dek, ak)
+    const wrappedAk = await wrapAK(ak, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
+    const rewrapped = await rewrapAK(
+      wrappedAk,
       ecdhKeyPair1.privateKey,
       mlkemKeyPair1.secretKey,
       ecdhKeyPair2.publicKey,
       mlkemKeyPair2.publicKey,
     )
-    const unwrapped = await unwrapCK(rewrapped, ecdhKeyPair2.privateKey, mlkemKeyPair2.secretKey)
+    const unwrappedAk = await unwrapAK(rewrapped, ecdhKeyPair2.privateKey, mlkemKeyPair2.secretKey)
+    const unwrappedDek = await unwrapDEK(wrappedDek, unwrappedAk)
 
-    const decrypted = await decrypt(encrypted, unwrapped)
-    expect(decrypted).toBe('rewrap test')
+    expect(await decrypt(encrypted, unwrappedDek)).toBe('rewrap test')
   })
 })
 
 describe('encrypt / decrypt', () => {
   it('round-trips plaintext through encrypt and decrypt', async () => {
-    const ck = await generateCK()
+    const dek = await generateDEK()
     const plaintext = 'Hello, encryption!'
 
-    const encrypted = await encrypt(plaintext, ck)
+    const encrypted = await encrypt(plaintext, dek)
     expect(encrypted.iv).toBeDefined()
     expect(encrypted.ciphertext).toBeDefined()
 
-    const decrypted = await decrypt(encrypted, ck)
+    const decrypted = await decrypt(encrypted, dek)
     expect(decrypted).toBe(plaintext)
   })
 
   it('produces different ciphertext for the same plaintext (unique IV)', async () => {
-    const ck = await generateCK()
+    const dek = await generateDEK()
     const plaintext = 'Same text'
 
-    const encrypted1 = await encrypt(plaintext, ck)
-    const encrypted2 = await encrypt(plaintext, ck)
+    const encrypted1 = await encrypt(plaintext, dek)
+    const encrypted2 = await encrypt(plaintext, dek)
     expect(encrypted1.iv).not.toBe(encrypted2.iv)
     expect(encrypted1.ciphertext).not.toBe(encrypted2.ciphertext)
   })
 
   it('fails to decrypt with a different key', async () => {
-    const ck1 = await generateCK()
-    const ck2 = await generateCK()
+    const dek1 = await generateDEK()
+    const dek2 = await generateDEK()
 
-    const encrypted = await encrypt('secret', ck1)
-    await expect(decrypt(encrypted, ck2)).rejects.toThrow('Failed to decrypt')
+    const encrypted = await encrypt('secret', dek1)
+    await expect(decrypt(encrypted, dek2)).rejects.toThrow('Failed to decrypt')
+  })
+
+  it('round-trips with additionalData (AAD)', async () => {
+    const dek = await generateDEK()
+    const aad = new TextEncoder().encode('table\u001fcolumn\u001frow-1\u001f0')
+
+    const encrypted = await encrypt('aad-bound', dek, aad)
+    expect(await decrypt(encrypted, dek, aad)).toBe('aad-bound')
+  })
+
+  it('fails to decrypt with the wrong AAD', async () => {
+    const dek = await generateDEK()
+    const aad = new TextEncoder().encode('right-aad')
+    const wrongAad = new TextEncoder().encode('wrong-aad')
+
+    const encrypted = await encrypt('aad-bound', dek, aad)
+    await expect(decrypt(encrypted, dek, wrongAad)).rejects.toThrow('Failed to decrypt')
+  })
+
+  it('fails to decrypt without AAD when encrypted with AAD (and vice versa)', async () => {
+    const dek = await generateDEK()
+    const aad = new TextEncoder().encode('some-aad')
+
+    const withAad = await encrypt('one', dek, aad)
+    await expect(decrypt(withAad, dek)).rejects.toThrow('Failed to decrypt')
+
+    const withoutAad = await encrypt('two', dek)
+    await expect(decrypt(withoutAad, dek, aad)).rejects.toThrow('Failed to decrypt')
+  })
+})
+
+describe('encryptBytes / decryptBytes', () => {
+  it('round-trips raw bytes', async () => {
+    const key = await generateDEK()
+    const data = crypto.getRandomValues(new Uint8Array(100))
+
+    const encrypted = await encryptBytes(data, key)
+    expect(encrypted.iv).toBeInstanceOf(Uint8Array)
+    expect(encrypted.ciphertext).toBeInstanceOf(Uint8Array)
+    expect(encrypted.ciphertext).not.toEqual(data)
+
+    expect(await decryptBytes(encrypted, key)).toEqual(data)
+  })
+
+  it('fails with a different key', async () => {
+    const key1 = await generateDEK()
+    const key2 = await generateDEK()
+    const encrypted = await encryptBytes(new Uint8Array([1, 2, 3]), key1)
+    await expect(decryptBytes(encrypted, key2)).rejects.toThrow('Failed to decrypt bytes')
+  })
+})
+
+describe('deriveMlKemAtRestKey', () => {
+  it('derives the same key from the same ECDH pair (deterministic self-ECDH)', async () => {
+    const keyPair = await generateKeyPair()
+    const key1 = await deriveMlKemAtRestKey(keyPair.publicKey, keyPair.privateKey)
+    const key2 = await deriveMlKemAtRestKey(keyPair.publicKey, keyPair.privateKey)
+
+    const encrypted = await encryptBytes(new Uint8Array([9, 8, 7]), key1)
+    expect(await decryptBytes(encrypted, key2)).toEqual(new Uint8Array([9, 8, 7]))
+  })
+
+  it('derives different keys for different ECDH pairs', async () => {
+    const keyPair1 = await generateKeyPair()
+    const keyPair2 = await generateKeyPair()
+    const key1 = await deriveMlKemAtRestKey(keyPair1.publicKey, keyPair1.privateKey)
+    const key2 = await deriveMlKemAtRestKey(keyPair2.publicKey, keyPair2.privateKey)
+
+    const encrypted = await encryptBytes(new Uint8Array([1, 2, 3]), key1)
+    await expect(decryptBytes(encrypted, key2)).rejects.toThrow('Failed to decrypt bytes')
   })
 })

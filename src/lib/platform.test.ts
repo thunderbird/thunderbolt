@@ -129,7 +129,21 @@ describe('isIndexedDbAvailable', () => {
 
   it('resolves false when the factory is missing', async () => {
     expect(await isIndexedDbAvailable(null)).toBe(false)
-    expect(await isIndexedDbAvailable(undefined)).toBe(false)
+
+    // A no-arg call falls back to globalThis.indexedDB, which other test files
+    // may have installed via 'fake-indexeddb/auto' — hide it for this assertion
+    // so the "missing global" branch is exercised regardless of test order.
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB')
+    Object.defineProperty(globalThis, 'indexedDB', { value: undefined, configurable: true, writable: true })
+    try {
+      expect(await isIndexedDbAvailable(undefined)).toBe(false)
+    } finally {
+      if (original) {
+        Object.defineProperty(globalThis, 'indexedDB', original)
+      } else {
+        delete (globalThis as { indexedDB?: IDBFactory }).indexedDB
+      }
+    }
   })
 
   it('resolves false when open() never settles (timeout guard)', async () => {

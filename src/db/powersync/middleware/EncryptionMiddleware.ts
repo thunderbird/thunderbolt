@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { DataTransformMiddleware, SyncDataBucket } from '../TransformableBucketStorage'
-import { codec as defaultCodec, type EncryptionCodec } from '@/db/encryption/codec'
+import { codec as defaultCodec } from '@/db/encryption/codec'
+import { isEncryptedValue } from '@/db/encryption/wire-format'
+import type { EncryptionCodec } from '@shared/e2ee-types'
 
 type SyncEntry = SyncDataBucket['data'][number]
 
@@ -11,9 +13,18 @@ type SyncEntry = SyncDataBucket['data'][number]
  * Decrypt all __enc:-prefixed values in a single sync entry. Mutates entry.data in place.
  *
  * Intentionally data-driven rather than map-driven: any string value starting with __enc:
- * is decrypted regardless of whether its column appears in encryptedColumnsMap. This means
- * a stale desktop client (whose bundled map predates a new encrypted column) still decrypts
- * correctly — the __enc: prefix is the authoritative signal, not the config.
+ * is a decode candidate regardless of whether its column appears in encryptedColumnsMap.
+ * This means a stale desktop client (whose bundled map predates a new encrypted column)
+ * still decrypts correctly — the __enc: prefix is the authoritative signal, not the config.
+ *
+ * v2 AAD threading (THU-426): every decode receives {table, column, rowId} rebuilt from
+ * the OplogEntry — `object_type` is the snake_case table name, the JSON key is the
+ * snake_case column name, `object_id` is the row id. These are the exact values the
+ * upload encoder bound into AAD at encode time; the codec parses the wire key_id and
+ * reconstructs the full `table ‖ column ‖ rowId ‖ keyId` tuple internally. If the entry
+ * lacks `object_type`/`object_id`, AAD cannot be rebuilt, so the value is left as-is
+ * (fail-open, matching pre-existing no-key behavior) rather than decrypted under a
+ * wrong AAD.
  */
 const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
   if (!entry.data) {
@@ -26,10 +37,19 @@ const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
 
     await Promise.all(
       Object.entries(obj).map(async ([key, val]) => {
-        if (typeof val === 'string' && val.startsWith('__enc:')) {
-          obj[key] = await codec.decode(val)
-          changed = true
+        if (typeof val !== 'string' || !isEncryptedValue(val)) {
+          return
         }
+        const { object_type: table, object_id: rowId } = entry
+        if (!table || !rowId) {
+          console.warn(
+            '[EncryptionMiddleware] Encrypted value on an entry without object_type/object_id — cannot rebuild AAD, leaving value unchanged',
+            { object_type: table, object_id: rowId, column: key },
+          )
+          return
+        }
+        obj[key] = await codec.decode(val, { table, column: key, rowId })
+        changed = true
       }),
     )
 
@@ -45,7 +65,7 @@ const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
  * Decrypts encrypted columns in sync data before it reaches SQLite.
  * Data-driven: scans all string values for the __enc: prefix rather than consulting
  * encryptedColumnsMap, so stale desktop bundles handle newly-encrypted columns correctly.
- * codec.decode passes through plaintext and returns raw ciphertext when no CK is available.
+ * codec.decode passes through plaintext and returns raw ciphertext when no key is available.
  *
  * No isEncryptionEnabled() gate: this middleware runs in the SharedWorker where
  * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.

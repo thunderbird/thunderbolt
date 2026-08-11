@@ -3,20 +3,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useConfigStore } from '@/api/config-store'
-import { getCK } from '@/crypto/key-storage'
+import { getAK, listWrappedDEKs } from '@/crypto/key-storage'
 
 /** Whether E2E encryption is enabled. Reads from the persisted config store (hydrated from /config endpoint). */
 export const isEncryptionEnabled = (): boolean => useConfigStore.getState().config.e2eeEnabled === true
 
+// TODO(D2/C3-polling): read the polled primary_key_id/key_version from the
+// encryption metadata (via Track F's stageKeyring()/refreshAK()) to refresh
+// the local keyring and primary-key pointer — lands in a later wave.
+
 /**
  * Returns true when the sync setup wizard is needed before enabling sync.
- * The wizard is required only when E2EE is enabled AND no Content Key exists yet.
+ * The wizard is required only when E2EE is enabled AND the v2 key hierarchy is
+ * incomplete — an AK plus at least one wrapped DEK must exist locally.
  */
 export const needsSyncSetupWizard = async (): Promise<boolean> => {
   if (!isEncryptionEnabled()) {
     return false
   }
-  return !(await getCK())
+  const [ak, wrappedDEKs] = await Promise.all([getAK(), listWrappedDEKs()])
+  return !ak || wrappedDEKs.length === 0
 }
 
 /**

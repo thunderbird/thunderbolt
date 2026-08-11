@@ -2,9 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
 import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
+import { useConfigStore } from '@/api/config-store'
+import { generateAK, mintDEK } from '@/crypto/primitives'
+import { getPrimaryKeyId, storeAK, storePrimaryKeyId, storeWrappedDEK } from '@/crypto/key-storage'
+import { codec, invalidateKeyCache, resetCodecState, setKeysSyncChannelForTesting } from '@/db/encryption/codec'
 import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
+import type { AbstractPowerSyncDatabase } from '@powersync/web'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
 
@@ -293,5 +299,143 @@ describe('ThunderboltConnector', () => {
     } finally {
       errorSpy.mockRestore()
     }
+  })
+})
+
+describe('uploadData primary-key load (D3)', () => {
+  const deleteKeysDatabase = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase('thunderbolt-keys')
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+
+  type UploadBody = { operations: Array<{ data?: Record<string, unknown> }> }
+
+  /**
+   * Routed fetch fake serving the two endpoints uploadData touches: the
+   * encryption metadata (D3 primary-key load) and the upload itself. Captures
+   * upload bodies and counts metadata hits.
+   */
+  const createRoutedFetch = (metadata: Record<string, unknown>) => {
+    const uploadBodies: UploadBody[] = []
+    const canaryUrls: string[] = []
+    const fetchFn = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url.includes('/encryption/canary')) {
+        canaryUrls.push(url)
+        return Promise.resolve(
+          new Response(JSON.stringify(metadata), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        )
+      }
+      if (url.includes('/powersync/upload')) {
+        uploadBodies.push(JSON.parse(String(init?.body)) as UploadBody)
+        return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+    return { fetchFn: fetchFn as unknown as typeof fetch, uploadBodies, canaryUrls }
+  }
+
+  const makeDatabase = (opData: Record<string, unknown>) => {
+    const transaction = {
+      crud: [{ op: 'PUT', table: 'tasks', id: 'row-1', opData }],
+      complete: mock(() => Promise.resolve()),
+    }
+    return {
+      database: { getNextCrudTransaction: async () => transaction } as unknown as AbstractPowerSyncDatabase,
+      transaction,
+    }
+  }
+
+  beforeEach(async () => {
+    await deleteKeysDatabase()
+    // Isolate the codec from real/leaked BroadcastChannels; encode never posts
+    // key-requests, so an inert channel is enough.
+    setKeysSyncChannelForTesting({ postMessage: () => {}, onMessage: () => {} })
+    resetCodecState()
+    useConfigStore.setState({ config: { e2eeEnabled: true } })
+  })
+
+  afterEach(() => {
+    useConfigStore.setState({ config: {} })
+  })
+
+  it('loads the primary key_id from metadata before encoding when the local pointer is missing', async () => {
+    // Setup-complete device (AK present, DEK '1' staged) whose primary-key
+    // pointer is missing — without the D3 load, encode would find no primary
+    // (there is no DEK '0' fallback either) and fail open to plaintext.
+    const ak = await generateAK()
+    await storeAK(ak)
+    const minted = await mintDEK(ak)
+    await storeWrappedDEK('1', minted.wrappedKey)
+
+    const { fetchFn, uploadBodies, canaryUrls } = createRoutedFetch({ primary_key_id: '1', key_version: 1 })
+    const connector = new ThunderboltConnector(backendUrl, fetchFn)
+    const { database, transaction } = makeDatabase({ item: 'secret task' })
+
+    await connector.uploadData(database)
+
+    expect(canaryUrls).toHaveLength(1)
+    expect(await getPrimaryKeyId()).toBe('1')
+    const item = uploadBodies[0]?.operations[0]?.data?.item as string
+    expect(item.startsWith('__enc:v2:1:')).toBe(true)
+    expect(await codec.decode(item, { table: 'tasks', column: 'item', rowId: 'row-1' })).toBe('secret task')
+    expect(transaction.complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('picks up the new primary key_id on the next batch after a DEK rotation, without a metadata fetch', async () => {
+    const ak = await generateAK()
+    await storeAK(ak)
+    const minted0 = await mintDEK(ak)
+    await storeWrappedDEK('0', minted0.wrappedKey)
+    await storePrimaryKeyId('0')
+
+    const { fetchFn, uploadBodies, canaryUrls } = createRoutedFetch({ primary_key_id: '0', key_version: 1 })
+    const connector = new ThunderboltConnector(backendUrl, fetchFn)
+
+    const first = makeDatabase({ item: 'before rotation' })
+    await connector.uploadData(first.database)
+    const firstItem = uploadBodies[0]?.operations[0]?.data?.item as string
+    expect(firstItem.startsWith('__enc:v2:0:')).toBe(true)
+
+    // Local DEK rotation (rotateDEK): stage the new key, move the pointer,
+    // broadcast invalidate so the codec drops its cached primary.
+    const minted1 = await mintDEK(ak)
+    await storeWrappedDEK('1', minted1.wrappedKey)
+    await storePrimaryKeyId('1')
+    invalidateKeyCache()
+
+    const second = makeDatabase({ item: 'after rotation' })
+    await connector.uploadData(second.database)
+    const secondItem = uploadBodies[1]?.operations[0]?.data?.item as string
+    expect(secondItem.startsWith('__enc:v2:1:')).toBe(true)
+
+    // The pointer was present both times — the light metadata fetch never fired.
+    expect(canaryUrls).toHaveLength(0)
+  })
+
+  it('skips the metadata fetch when setup is incomplete (no AK) and uploads fail-open plaintext', async () => {
+    const { fetchFn, uploadBodies, canaryUrls } = createRoutedFetch({ primary_key_id: '0', key_version: 1 })
+    const connector = new ThunderboltConnector(backendUrl, fetchFn)
+    const { database } = makeDatabase({ item: 'pre-setup' })
+
+    await connector.uploadData(database)
+
+    expect(canaryUrls).toHaveLength(0)
+    expect(uploadBodies[0]?.operations[0]?.data?.item).toBe('pre-setup')
+  })
+
+  it('skips the metadata fetch entirely when encryption is disabled', async () => {
+    useConfigStore.setState({ config: {} })
+    const { fetchFn, uploadBodies, canaryUrls } = createRoutedFetch({ primary_key_id: '0', key_version: 1 })
+    const connector = new ThunderboltConnector(backendUrl, fetchFn)
+    const { database, transaction } = makeDatabase({ item: 'plain' })
+
+    await connector.uploadData(database)
+
+    expect(canaryUrls).toHaveLength(0)
+    expect(uploadBodies[0]?.operations[0]?.data?.item).toBe('plain')
+    expect(transaction.complete).toHaveBeenCalledTimes(1)
   })
 })

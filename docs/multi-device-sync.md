@@ -52,6 +52,8 @@ From [`shared/powersync-tables.ts`](../shared/powersync-tables.ts):
 | `mcp_servers`    | Registered Model Context Protocol servers                         | `id`             |
 | `triggers`       | Automations                                                       | `id`             |
 | `devices`        | Registered devices for the current account                        | `id`             |
+| `projects`       | Project workspaces (instructions + knowledge)                     | `id`             |
+| `project_files`  | A project's knowledge documents, stored as extracted text         | `id`             |
 
 Default-data tables use composite primary keys so multiple users can hold the same default id — see [composite-primary-keys-and-default-data.md](./composite-primary-keys-and-default-data.md).
 

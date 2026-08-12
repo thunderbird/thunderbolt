@@ -4,10 +4,12 @@
 
 import { readFileSync } from 'node:fs'
 import { compareMetricsToBaselines, loadBaselineFiles, writeBaselineFiles } from './baseline'
+import { evalModels } from './scenarios'
 import type { EvalMetrics } from './types'
 
 const defaultMetricsPath = 'evals/eval-metrics.json'
 const defaultBaselineDirectory = 'src/ai/eval/baselines'
+const expectedGroupKeys = evalModels.map(({ name, engineName }) => `${name}/${engineName}`)
 
 const main = () => {
   const [command, metricsArgument, baselineArgument] = process.argv.slice(2)
@@ -16,7 +18,7 @@ const main = () => {
   const metrics = JSON.parse(readFileSync(metricsPath, 'utf8')) as EvalMetrics
 
   if (command === 'generate') {
-    const written = writeBaselineFiles(metrics, baselineDirectory)
+    const written = writeBaselineFiles(metrics, baselineDirectory, expectedGroupKeys)
     process.stdout.write(`Wrote ${written.length} eval baseline file${written.length === 1 ? '' : 's'}.\n`)
     return
   }

@@ -4,7 +4,6 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { evalModels } from './scenarios'
 import { wilsonScoreInterval } from './stats'
 import type { EvalMetrics, EvalMetricsGroup, EvalScenarioComparison, NecessityCategory, WilsonInterval } from './types'
 
@@ -48,8 +47,6 @@ export type EvalMetricsComparison = {
 
 const roundedDelta = (current: number, baseline: number): number => Number((current - baseline).toFixed(6))
 
-const expectedEvalGroupKeys = evalModels.map(({ name, engineName }) => `${name}/${engineName}`).sort()
-
 const compareRate = (
   currentRate: number,
   currentWilson: WilsonInterval | null,
@@ -91,8 +88,12 @@ const compareRate = (
 }
 
 /** Write one deterministic baseline file per model and engine cell. */
-export const writeBaselineFiles = (metrics: EvalMetrics, outputDirectory: string): string[] => {
-  const missingGroupKeys = expectedEvalGroupKeys.filter((groupKey) => !(groupKey in metrics.groups))
+export const writeBaselineFiles = (
+  metrics: EvalMetrics,
+  outputDirectory: string,
+  expectedGroupKeys: ReadonlyArray<string>,
+): string[] => {
+  const missingGroupKeys = expectedGroupKeys.filter((groupKey) => !(groupKey in metrics.groups)).sort()
   if (missingGroupKeys.length > 0) {
     throw new Error(
       `Cannot regenerate eval baselines from partial metrics. Missing model/engine cells: ${missingGroupKeys.join(', ')}. Baselines are regenerated only from full-matrix eval runs such as the nightly workflow; run "bun run eval" without EVAL_MODELS or EVAL_ENGINES.`,

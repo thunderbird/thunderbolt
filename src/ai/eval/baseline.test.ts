@@ -7,9 +7,19 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compareMetricsToBaselines, loadBaselineFiles, type EvalBaseline, writeBaselineFiles } from './baseline'
-import { evalModels } from './scenarios'
 import { wilsonScoreInterval } from './stats'
 import type { EvalMetrics, EvalMetricsGroup, NecessityCategoryMetrics, NecessityRateMetric } from './types'
+
+const expectedCells = [
+  { groupKey: 'flash/pi', model: 'flash', engine: 'pi' },
+  { groupKey: 'opus/pi', model: 'opus', engine: 'pi' },
+] satisfies ReadonlyArray<{
+  groupKey: string
+  model: string
+  engine: EvalMetricsGroup['engine']
+}>
+
+const expectedGroupKeys = expectedCells.map(({ groupKey }) => groupKey)
 
 const categoryMetric = (passed: number, total: number): NecessityCategoryMetrics => ({
   passed,
@@ -77,10 +87,7 @@ const fullMetrics = (groupValue: EvalMetricsGroup): EvalMetrics => ({
   schemaVersion: 2,
   generatedAt: '2026-08-04T12:00:00.000Z',
   groups: Object.fromEntries(
-    evalModels.map(({ name, engineName }) => [
-      `${name}/${engineName}`,
-      { ...groupValue, model: name, engine: engineName },
-    ]),
+    expectedCells.map(({ groupKey, model, engine }) => [groupKey, { ...groupValue, model, engine }]),
   ),
 })
 
@@ -102,8 +109,7 @@ describe('baseline files', () => {
     const stalePath = join(fullOutputDirectory, 'retired--legacy.json')
     writeFileSync(stalePath, '{}')
 
-    const written = writeBaselineFiles(source, fullOutputDirectory)
-    const expectedGroupKeys = evalModels.map(({ name, engineName }) => `${name}/${engineName}`).sort()
+    const written = writeBaselineFiles(source, fullOutputDirectory, expectedGroupKeys)
 
     expect(existsSync(stalePath)).toBe(false)
     expect(written).toEqual(
@@ -129,13 +135,10 @@ describe('baseline files', () => {
     const existingPath = join(partialOutputDirectory, 'existing.json')
     const existingContents = '{"preserved":true}\n'
     const source = metrics(group({ categoryPassed: 8, unnecessaryCount: 2, missedCount: 1, meanWebCalls: 0.2 }))
-    const missingGroupKeys = evalModels
-      .map(({ name, engineName }) => `${name}/${engineName}`)
-      .filter((groupKey) => !(groupKey in source.groups))
-      .sort()
+    const missingGroupKeys = expectedGroupKeys.filter((groupKey) => !(groupKey in source.groups)).sort()
     writeFileSync(existingPath, existingContents)
 
-    expect(() => writeBaselineFiles(source, partialOutputDirectory)).toThrow(
+    expect(() => writeBaselineFiles(source, partialOutputDirectory, expectedGroupKeys)).toThrow(
       `Cannot regenerate eval baselines from partial metrics. Missing model/engine cells: ${missingGroupKeys.join(', ')}. Baselines are regenerated only from full-matrix eval runs such as the nightly workflow; run "bun run eval" without EVAL_MODELS or EVAL_ENGINES.`,
     )
     expect(readdirSync(partialOutputDirectory)).toEqual(['existing.json'])

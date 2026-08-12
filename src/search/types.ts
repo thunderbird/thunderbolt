@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /** The set of entity kinds surfaced by global search (THU-766). */
-export type SearchEntityType = 'chat' | 'message' | 'model' | 'skill' | 'agent' | 'mcp' | 'device' | 'task'
+export type SearchEntityType = 'chat' | 'message' | 'model' | 'skill' | 'agent' | 'mcp' | 'device' | 'task' | 'project'
 
 /** A single ranked hit rendered in the command palette. */
 export type SearchResult = {

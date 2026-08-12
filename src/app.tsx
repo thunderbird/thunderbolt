@@ -83,6 +83,9 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // live outside the map.
 const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
+  // Secondary feature, off the chat/landing critical path — lazy per CLAUDE.md.
+  projects: () => import('@/projects'),
+  projectDetail: () => import('@/projects/project-detail'),
   settings: () => import('@/settings/index'),
   preferences: () => import('@/settings/preferences'),
   models: () => import('@/settings/models'),
@@ -96,6 +99,8 @@ const routeChunkLoaders = {
 }
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
+const ProjectsPage = lazy(routeChunkLoaders.projects)
+const ProjectDetailPage = lazy(routeChunkLoaders.projectDetail)
 const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
 const ModelsPage = lazy(routeChunkLoaders.models)
@@ -243,6 +248,8 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route index element={<Navigate to="/chats/new" replace />} />
               <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
               {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
+              <Route path="projects" element={<ProjectsPage />} />
+              <Route path="projects/:projectId" element={<ProjectDetailPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 

@@ -43,12 +43,14 @@ const mockThread: ChatThread = {
   id: '1',
   title: 'Example Chat Thread',
   isEncrypted: 0,
+  projectId: null,
 }
 
 const encryptedThread: ChatThread = {
   id: '2',
   title: 'Encrypted Chat Thread',
   isEncrypted: 1,
+  projectId: null,
 }
 
 export const Expanded: Story = {

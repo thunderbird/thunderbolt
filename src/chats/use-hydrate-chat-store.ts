@@ -105,7 +105,15 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // Pass `selectedAgent.id` so a brand-new thread is created with the user's
     // currently-selected agent — otherwise the row would default to `null`
     // and a reload would silently fall back to the built-in agent.
-    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, session.selectedAgent.id)
+    const thread = await getOrCreateChatThread(
+      db,
+      id,
+      session.selectedModel.id,
+      session.selectedAgent.id,
+      // Stamped here rather than at navigation time: the row is created lazily on
+      // this first save, so the project must ride the session to reach it.
+      session.projectId,
+    )
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(db, id, messages)
@@ -231,6 +239,12 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     const selectedAgent =
       findAgent(chatThread?.agentId) ?? findAgent(settings.selectedAgent) ?? allAgents[0] ?? builtInAgent
 
+    // A persisted thread owns its project; a brand-new chat started from a
+    // project carries it in the URL (`/chats/new?projectId=…`), which is the only
+    // moment that intent exists — nothing has been written yet.
+    const projectId =
+      chatThread?.projectId ?? (isNew ? new URLSearchParams(window.location.search).get('projectId') : null)
+
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {
       navigate('/not-found', { replace: true })
@@ -258,6 +272,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       // agent when the persisted id no longer matches).
       selectedAgent,
       selectedModel: defaultModel,
+      projectId,
       triggerData,
     })
 

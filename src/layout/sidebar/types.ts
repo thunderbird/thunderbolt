@@ -10,10 +10,14 @@ import type { ReactNode, RefObject } from 'react'
 /** Top-level sidebar sections switchable via the nav toggle. */
 export type SidebarSection = 'chats' | 'settings'
 
+/** The sidebar's own narrowed view of a chat row — only what the list renders. */
 export type ChatThread = {
   id: string
   title: string | null
   isEncrypted: number
+  /** Owning project, or null. Needed so a drag knows whether "Remove from
+   *  project" applies to this chat. */
+  projectId: string | null
 }
 
 export type DeleteChatMutationType = UseMutationResult<void, Error, { id: string }, unknown>

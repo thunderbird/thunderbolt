@@ -7,6 +7,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ResponsiveActionMenu } from '@/components/ui/responsive-action-menu'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { useLongPress } from '@/hooks/use-long-press'
+import { useDraggable } from '@dnd-kit/core'
+import { chatDragId, type ChatDragData } from '@/projects/chat-drop'
 import { cn } from '@/lib/utils'
 import { Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { memo, useReducer, useRef, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
@@ -129,6 +131,18 @@ export const ChatListItem = memo(
     const mobileLongPressHandlers = useLongPress(() => {
       longPressFiredRef.current = true
       dispatch({ type: 'MENU_CHANGED', menu: 'mobile', open: true })
+    })
+
+    const {
+      attributes: dragAttributes,
+      listeners: dragListeners,
+      setNodeRef: setDragRef,
+      isDragging,
+    } = useDraggable({
+      id: chatDragId(thread.id),
+      // Carried on the drag so the sidebar can render a preview and decide
+      // whether "Remove from project" applies, with no extra query.
+      data: { title: thread.title, projectId: thread.projectId ?? null } satisfies ChatDragData,
     })
 
     const displayTitle = optimisticTitle ?? thread.title
@@ -267,7 +281,17 @@ export const ChatListItem = memo(
             {/* The list `li` is provided by the virtualized row wrapper in
                 chat-list.tsx; this div carries the group classes the menu
                 button's hover/action styles key off. */}
-            <div data-sidebar="menu-item" className="group/menu-item group/item relative">
+            <div
+              data-sidebar="menu-item"
+              // Draggable so the chat can be dropped onto a project row. The
+              // sensor in `ChatSidebarContent` requires 8px of movement before a
+              // drag starts, so ordinary clicks, the context menu, and the mobile
+              // long-press all keep working.
+              ref={setDragRef}
+              {...dragListeners}
+              {...dragAttributes}
+              className={cn('group/menu-item group/item relative', isDragging && 'opacity-50')}
+            >
               <ContextMenuTrigger asChild>
                 <SidebarMenuButton
                   onClick={() => onChatClick(thread.id)}

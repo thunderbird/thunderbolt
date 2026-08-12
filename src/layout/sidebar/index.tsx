@@ -153,6 +153,7 @@ export default function Sidebar() {
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
+            onProjectsClick={() => handleNavigate('/projects')}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={openSearchPalette}

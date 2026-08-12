@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AgentSelector } from '@/components/ui/agent-selector'
+import { ProjectBadge } from '@/projects/project-badge'
 import { useCreateItem } from '@/components/create-item/context'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
@@ -272,6 +273,16 @@ export const Header = () => {
       {...dragProps}
       className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
+      {/* Centred on the header, not tucked beside the picker: it names where you
+          are rather than what you're doing, so it reads like a title. Absolute so
+          the left group's variable width (traffic-light clearance, history arrows)
+          can't shift it off-centre. Desktop only — the mobile header already
+          positions the agent pill absolutely and has no room beside it. */}
+      {isChatRoute && (
+        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center">
+          <ProjectBadge chatThreadId={chatThreadId ?? null} className="pointer-events-auto" />
+        </div>
+      )}
       <div {...dragProps} className={cn('flex items-center gap-2', needsTrafficLightClearance && 'ml-8')}>
         {showSidebarToggle && (
           <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>

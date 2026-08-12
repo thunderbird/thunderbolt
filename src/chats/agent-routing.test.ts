@@ -90,6 +90,7 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
     retriesExhausted: false,
     selectedAgent: agent,
     selectedModel: mockModel,
+    projectId: null,
     triggerData: null,
   }
   useChatStore.setState({

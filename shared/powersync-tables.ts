@@ -24,6 +24,8 @@ export const powersyncTableNames = [
   'model_profiles',
   'devices',
   'agents',
+  'projects',
+  'project_files',
 ] as const
 
 export type PowerSyncTableName = (typeof powersyncTableNames)[number]
@@ -55,4 +57,7 @@ export const powersyncTableToQueryKeys: {
   model_profiles: [['modelProfiles']],
   devices: [['devices']],
   agents: [['agents']],
+  // A project edit changes the chat sidebar grouping too, so invalidate both.
+  projects: [['projects'], ['chatThreads']],
+  project_files: [['projectFiles']],
 }

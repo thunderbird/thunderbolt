@@ -4,7 +4,17 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { SearchEntityType } from './types'
-import { Bot, CheckSquare, Cpu, MessageSquare, MessageSquareText, Plug, Smartphone, Zap } from 'lucide-react'
+import {
+  Bot,
+  CheckSquare,
+  Cpu,
+  FolderOpen,
+  MessageSquare,
+  MessageSquareText,
+  Plug,
+  Smartphone,
+  Zap,
+} from 'lucide-react'
 
 /**
  * Static description of one indexable entity. The data layer builds the FTS
@@ -96,6 +106,15 @@ export const searchEntities: SearchEntityConfig[] = [
     route: () => '/settings/devices',
   },
   {
+    type: 'project',
+    tableName: 'projects',
+    titleField: 'name',
+    bodyFields: ['description', 'instructions'],
+    parentIdField: null,
+    icon: FolderOpen,
+    route: ({ id }) => `/projects/${id}`,
+  },
+  {
     type: 'task',
     tableName: 'tasks',
     titleField: 'item',
@@ -110,6 +129,6 @@ export const searchEntities: SearchEntityConfig[] = [
  * Monotonic schema version for the search index. Bump whenever the registry or
  * FTS schema changes so consumers rebuild the index instead of reading a stale
  * one. (Started at 1; bumped to 2 for the soft-delete guard + the snake_case
- * message-parent fix, which changed the triggers and backfill.)
+ * message-parent fix, which changed the triggers and backfill; 3 adds projects.)
  */
-export const searchIndexVersion = 2
+export const searchIndexVersion = 3

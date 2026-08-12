@@ -52,12 +52,73 @@ export const chatThreadsTable = powersyncSchema.table(
     modeId: text('mode_id'),
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
+    // Owning project, or null for a loose chat. Intentionally NOT a FK: a
+    // project is soft-deleted and its chats are orphaned (project_id set to
+    // null) rather than cascaded, so the rows must survive independently.
+    projectId: text('project_id'),
     deletedAt: timestamp('deleted_at'),
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
   },
   (table) => [index('idx_chat_threads_user_id').on(table.userId)],
+)
+
+/**
+ * A Projects workspace: durable instructions plus a text knowledge set, shared
+ * by every chat in the project. Mirrors Claude Desktop's Projects.
+ */
+export const projectsTable = powersyncSchema.table(
+  'projects',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    /** Always-on instructions prepended to every chat in this project. */
+    instructions: text('instructions'),
+    /** Opt-in: lets the assistant write notes into this project's knowledge. */
+    agentNotesEnabled: integer('agent_notes_enabled').default(0),
+    icon: text('icon'),
+    pinnedOrder: integer('pinned_order'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+    deletedAt: timestamp('deleted_at'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (table) => [index('idx_projects_user_id').on(table.userId)],
+)
+
+/**
+ * One knowledge document in a project, stored as extracted **text**.
+ *
+ * Deliberately not a blob: file bytes are device-local by design in this app
+ * (see `src/lib/file-blob-storage.ts` — attachments never leave the device), so
+ * a binary knowledge base could not sync. Uploads are run through the file
+ * transformers and persisted as text, which syncs and encrypts like any other
+ * user content. `sourceMimeType` records what it was extracted from.
+ */
+export const projectFilesTable = powersyncSchema.table(
+  'project_files',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id'),
+    filename: text('filename'),
+    /** Where the document came from: an imported file, a note the user typed, or
+     *  one the assistant saved. Drives both the UI badge and prompt ordering. */
+    origin: text('origin'),
+    sourceMimeType: text('source_mime_type'),
+    content: text('content'),
+    /** Extracted text length in characters — drives the context-budget UI. */
+    size: integer('size'),
+    createdAt: timestamp('created_at').defaultNow(),
+    deletedAt: timestamp('deleted_at'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (table) => [index('idx_project_files_user_id').on(table.userId)],
 )
 
 export const chatMessagesTable = powersyncSchema.table(
@@ -298,6 +359,8 @@ export const powersyncTablesByName = {
   model_profiles: modelProfilesTable,
   devices: devicesTable,
   agents: agentsTable,
+  projects: projectsTable,
+  project_files: projectFilesTable,
 } satisfies Record<PowerSyncTableName, AnyPgTable>
 
 /**
@@ -326,6 +389,8 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
   agents: agentsTable.id,
+  projects: projectsTable.id,
+  project_files: projectFilesTable.id,
 }
 
 /**
@@ -345,4 +410,9 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],
   devices: [devicesTable.id],
   agents: [agentsTable.id, agentsTable.userId],
+  // Plain `id` primary keys: projects are user-created, so they carry no default
+  // rows needing the composite (id, user_id) treatment (see
+  // docs/composite-primary-keys-and-default-data.md).
+  projects: [projectsTable.id],
+  project_files: [projectFilesTable.id],
 }

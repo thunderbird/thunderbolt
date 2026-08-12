@@ -15,6 +15,7 @@ export const entityLabels: Record<SearchEntityType, string> = {
   mcp: 'Connections',
   device: 'Devices',
   task: 'Tasks',
+  project: 'Projects',
 }
 
 /** Lucide icon for each entity type, sourced from the shared registry. */

@@ -6,7 +6,14 @@ import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { clearNullableColumns, convertUIMessageToDbChatMessage, formatNumber, hashValues, splitPartType } from './utils'
+import {
+  clearNullableColumns,
+  convertUIMessageToDbChatMessage,
+  formatNumber,
+  hashValues,
+  splitPartType,
+  uuidv7ToDate,
+} from './utils'
 
 describe('utils', () => {
   describe('formatNumber', () => {
@@ -345,5 +352,28 @@ describe('utils', () => {
       expect(result).toEqual({})
       expect(result).not.toHaveProperty('parentId')
     })
+  })
+})
+
+describe('uuidv7ToDate', () => {
+  it('recovers the millisecond timestamp a v7 id was minted with', () => {
+    const before = Date.now()
+    const recovered = uuidv7ToDate(uuidv7()).getTime()
+    // v7 stores whole milliseconds, so allow a small window either side.
+    expect(recovered).toBeGreaterThanOrEqual(before - 1_000)
+    expect(recovered).toBeLessThanOrEqual(Date.now() + 1_000)
+  })
+
+  it('reads all 48 timestamp bits, not just the first 32', () => {
+    // Regression: reading `slice(0, 8)` as seconds put every id in 1970.
+    expect(uuidv7ToDate(uuidv7()).getUTCFullYear()).toBeGreaterThan(2020)
+  })
+
+  it('decodes a known timestamp exactly', () => {
+    // 0x0192... prefix encodes 1731000000000 ms.
+    const ms = 1_731_000_000_000
+    const hex = ms.toString(16).padStart(12, '0')
+    const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-7000-8000-000000000000`
+    expect(uuidv7ToDate(id).getTime()).toBe(ms)
   })
 })

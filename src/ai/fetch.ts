@@ -3,6 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
+import { loadProjectContextForThread } from '@/projects/load-project-context'
+import { buildProjectPromptSection } from '@/projects/project-prompt'
+import { createProjectSearchTool } from '@/projects/project-search-tool'
+import { createSaveProjectNoteTool } from '@/projects/save-note-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import {
@@ -485,6 +489,9 @@ export type PrepareAiRequestConfigOptions = {
   readonly reconnectClient?: ReconnectClient
   readonly httpClient: HttpClient
   readonly webToolBudget?: WebToolBudget
+  /** Thread being sent to. Resolves the owning project's instructions +
+   *  knowledge into the stable system prompt; omit for non-thread callers. */
+  readonly chatThreadId?: string
 }
 
 /** Register progressive skill loading only for models that support tools. */
@@ -515,6 +522,7 @@ export const prepareAiRequestConfig = async ({
   reconnectClient = async () => null,
   httpClient,
   webToolBudget,
+  chatThreadId,
 }: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
   const db = getDb()
   const settings = await getSettings(db, {
@@ -540,12 +548,34 @@ export const prepareAiRequestConfig = async ({
   const storedSkills = await getAllSkills(db)
   const skills = selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
+  // Loaded before the toolset so the cross-chat search tool can be registered
+  // conditionally alongside the other app tools.
+  const projectContext = await loadProjectContextForThread(db, chatThreadId)
   const sourceCollector: SourceMetadata[] = []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
     ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
     : []
   const appToolset = addSkillTool(createToolset(availableTools, toolCallCache, webToolBudget), skills, supportsTools)
+  // Cross-chat recall is a tool, not an injection: it costs nothing when unused
+  // and leaves the cacheable stable prompt untouched. Only registered when there
+  // is actually something to search.
+  if (supportsTools && projectContext && projectContext.siblingThreadIds.length > 0) {
+    appToolset.search_project_chats = createProjectSearchTool({
+      db,
+      projectName: projectContext.prompt.name,
+      threadIds: projectContext.siblingThreadIds,
+      titleByThreadId: projectContext.titleByThreadId,
+    })
+  }
+  // Writing into the user's own knowledge is opt-in per project.
+  if (supportsTools && projectContext?.agentNotesEnabled) {
+    appToolset.save_project_note = createSaveProjectNoteTool({
+      db,
+      projectId: projectContext.id,
+      projectName: projectContext.prompt.name,
+    })
+  }
   const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
@@ -559,6 +589,19 @@ export const prepareAiRequestConfig = async ({
   const prompt = createPromptParts({
     modelName: model.name,
     profile,
+    projectSection: buildProjectPromptSection(projectContext?.prompt ?? null, {
+      // Only advertise the tool when it was actually registered above.
+      hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
+      // Distinguishes "the user hasn't opted in" from "this model can't call
+      // tools" — telling a no-tools model to blame the setting is simply wrong.
+      notes: !projectContext
+        ? 'off'
+        : !projectContext.agentNotesEnabled
+          ? 'disabled'
+          : supportsTools
+            ? 'enabled'
+            : 'unsupported',
+    }),
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,
@@ -654,6 +697,9 @@ export const aiFetchStreamingResponse = async ({
     reconnectClient,
     httpClient,
     webToolBudget,
+    // The chat id rides the request body (see the destructure above), which is
+    // how this path knows which thread — and so which project — it is serving.
+    chatThreadId: typeof body?.id === 'string' ? body.id : undefined,
   })
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')

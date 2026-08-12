@@ -217,5 +217,12 @@ const main = async () => {
 }
 
 if (import.meta.main) {
-  await main()
+  try {
+    await main()
+    // Exit explicitly so imported keep-alives cannot outlive completed CI work.
+    process.exit(0)
+  } catch (error) {
+    console.error(error)
+    process.exit(1)
+  }
 }

@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, mock, test } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { wilsonScoreInterval } from '../../src/ai/eval/stats'
 import type { EvalBaseline } from '../../src/ai/eval/baseline'
 import type { EvalMetrics, EvalMetricsGroup } from '../../src/ai/eval/types'
@@ -110,6 +113,42 @@ const baseline = (): EvalBaseline => {
     group: baselineGroup,
   }
 }
+
+describe('command lifecycle', () => {
+  test('exits after completing when a preload keeps the event loop alive', async () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), 'thunderbolt-eval-comment-'))
+    const preloadPath = join(temporaryDirectory, 'keep-alive.ts')
+    writeFileSync(preloadPath, 'setInterval(() => {}, 60_000)\n')
+    const processHandle = Bun.spawn(
+      [process.execPath, '--preload', preloadPath, '.github/scripts/post-eval-results.ts'],
+      {
+        cwd: join(import.meta.dir, '../..'),
+        env: {
+          ...process.env,
+          EVAL_COMMENT_DRY_RUN: '1',
+          EVAL_METRICS_PATH: '/nonexistent',
+        },
+        stdout: 'ignore',
+        stderr: 'ignore',
+      },
+    )
+    const completion = await Promise.race([
+      (async () => ({ exitCode: await processHandle.exited }))(),
+      (async () => {
+        await Bun.sleep(1_000)
+        return { exitCode: null }
+      })(),
+    ])
+
+    if (completion.exitCode === null) {
+      processHandle.kill()
+      await processHandle.exited
+    }
+    rmSync(temporaryDirectory, { recursive: true, force: true })
+
+    expect(completion.exitCode).toBe(0)
+  })
+})
 
 describe('renderEvalComment', () => {
   test('renders gates, compact metrics, failures, and artifact link without a baseline', () => {

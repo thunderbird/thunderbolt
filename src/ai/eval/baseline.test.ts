@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compareMetricsToBaselines, loadBaselineFiles, type EvalBaseline, writeBaselineFiles } from './baseline'
+import { evalModels } from './scenarios'
 import { wilsonScoreInterval } from './stats'
 import type { EvalMetrics, EvalMetricsGroup, NecessityCategoryMetrics, NecessityRateMetric } from './types'
 
@@ -72,6 +73,17 @@ const metrics = (groupValue: EvalMetricsGroup): EvalMetrics => ({
   groups: { 'opus/pi': groupValue },
 })
 
+const fullMetrics = (groupValue: EvalMetricsGroup): EvalMetrics => ({
+  schemaVersion: 2,
+  generatedAt: '2026-08-04T12:00:00.000Z',
+  groups: Object.fromEntries(
+    evalModels.map(({ name, engineName }) => [
+      `${name}/${engineName}`,
+      { ...groupValue, model: name, engine: engineName },
+    ]),
+  ),
+})
+
 const baseline = (groupValue: EvalMetricsGroup): EvalBaseline => ({
   schemaVersion: 2,
   generatedAt: '2026-08-03T12:00:00.000Z',
@@ -84,23 +96,50 @@ describe('baseline files', () => {
 
   afterAll(() => rmSync(outputDirectory, { recursive: true, force: true }))
 
-  test('writes one reviewable file per model and engine cell and loads it back', () => {
-    const source = metrics(group({ categoryPassed: 8, unnecessaryCount: 2, missedCount: 1, meanWebCalls: 0.2 }))
-    const stalePath = join(outputDirectory, 'retired--legacy.json')
+  test('writes every expected cell and removes stale files', () => {
+    const fullOutputDirectory = mkdtempSync(join(outputDirectory, 'full-'))
+    const source = fullMetrics(group({ categoryPassed: 8, unnecessaryCount: 2, missedCount: 1, meanWebCalls: 0.2 }))
+    const stalePath = join(fullOutputDirectory, 'retired--legacy.json')
     writeFileSync(stalePath, '{}')
 
-    const written = writeBaselineFiles(source, outputDirectory)
-    const contents = JSON.parse(readFileSync(written[0], 'utf8')) as EvalBaseline
+    const written = writeBaselineFiles(source, fullOutputDirectory)
+    const expectedGroupKeys = evalModels.map(({ name, engineName }) => `${name}/${engineName}`).sort()
 
     expect(existsSync(stalePath)).toBe(false)
-    expect(written).toEqual([join(outputDirectory, 'opus--pi.json')])
-    expect(contents).toEqual({
-      schemaVersion: 2,
-      generatedAt: source.generatedAt,
-      groupKey: 'opus/pi',
-      group: source.groups['opus/pi'],
-    })
-    expect(loadBaselineFiles(outputDirectory)).toEqual({ 'opus/pi': contents })
+    expect(written).toEqual(
+      expectedGroupKeys.map((groupKey) => join(fullOutputDirectory, `${groupKey.replace('/', '--')}.json`)),
+    )
+    expect(loadBaselineFiles(fullOutputDirectory)).toEqual(
+      Object.fromEntries(
+        expectedGroupKeys.map((groupKey) => [
+          groupKey,
+          {
+            schemaVersion: 2,
+            generatedAt: source.generatedAt,
+            groupKey,
+            group: source.groups[groupKey],
+          },
+        ]),
+      ),
+    )
+  })
+
+  test('rejects partial metrics without changing existing baseline files', () => {
+    const partialOutputDirectory = mkdtempSync(join(outputDirectory, 'partial-'))
+    const existingPath = join(partialOutputDirectory, 'existing.json')
+    const existingContents = '{"preserved":true}\n'
+    const source = metrics(group({ categoryPassed: 8, unnecessaryCount: 2, missedCount: 1, meanWebCalls: 0.2 }))
+    const missingGroupKeys = evalModels
+      .map(({ name, engineName }) => `${name}/${engineName}`)
+      .filter((groupKey) => !(groupKey in source.groups))
+      .sort()
+    writeFileSync(existingPath, existingContents)
+
+    expect(() => writeBaselineFiles(source, partialOutputDirectory)).toThrow(
+      `Cannot regenerate eval baselines from partial metrics. Missing model/engine cells: ${missingGroupKeys.join(', ')}. Baselines are regenerated only from full-matrix eval runs such as the nightly workflow; run "bun run eval" without EVAL_MODELS or EVAL_ENGINES.`,
+    )
+    expect(readdirSync(partialOutputDirectory)).toEqual(['existing.json'])
+    expect(readFileSync(existingPath, 'utf8')).toBe(existingContents)
   })
 
   test('returns no baselines when the directory does not exist', () => {

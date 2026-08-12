@@ -349,6 +349,8 @@ The pull-request comment is updated in place using a hidden marker. For each mod
 
 Checked-in baselines live in `baselines/` as one `model--engine.json` file per cell. They contain the observed metrics from a full run, not hand-authored targets. Generate or compare them locally from a metrics artifact with:
 
+Baseline regeneration requires a full-matrix metrics file; partial runs selected with `EVAL_MODELS` or `EVAL_ENGINES` are rejected before any files change.
+
 ```bash
 bun run eval:baseline -- evals/eval-metrics.json
 bun run eval:compare -- evals/eval-metrics.json

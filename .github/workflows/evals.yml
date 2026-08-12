@@ -121,6 +121,15 @@ jobs:
           EVAL_OUTPUT: evals/eval-report.md
           EVAL_TIMEOUT: '240000'
 
+      - name: Publish eval report summary
+        if: always()
+        run: |
+          if [ -f evals/eval-report.md ]; then
+            cat evals/eval-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Eval report was not produced. Check the workflow logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Collect backend log
         if: always()
         run: |
@@ -145,7 +154,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EVAL_METRICS_PATH: evals/eval-metrics.json
           EVAL_ARTIFACT_URL: ${{ steps.eval-artifact.outputs.artifact-url }}
-          EVAL_COMMENT_TITLE: AI Eval Smoke
 
       # Informational until checked-in baselines show passing necessity gates; restore enforcement then.
 
@@ -236,6 +244,15 @@ jobs:
         env:
           EVAL_OUTPUT: evals/eval-report.md
           EVAL_TIMEOUT: '240000'
+
+      - name: Publish eval report summary
+        if: always()
+        run: |
+          if [ -f evals/eval-report.md ]; then
+            cat evals/eval-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Eval report was not produced. Check the workflow logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Collect backend log
         if: always()

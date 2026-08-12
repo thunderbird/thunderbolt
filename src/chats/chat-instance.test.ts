@@ -560,7 +560,7 @@ describe('createChatInstance — retry policy', () => {
     }
   })
 
-  it('normalizes MCP tool timings without exporting server-derived names', async () => {
+  it('normalizes dynamic tool timings without relying on MCP metadata', async () => {
     const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
     const namespacedToolName = 'private_customer_server_list_documents'
 
@@ -580,13 +580,6 @@ describe('createChatInstance — retry policy', () => {
       ],
       metadata: {
         reasoningTime: { 'call-1': 12 },
-        mcpTools: {
-          [namespacedToolName]: {
-            name: 'Private Customer Server',
-            url: 'https://private.example.com/mcp',
-            toolName: 'list_documents',
-          },
-        },
       },
     })
 
@@ -598,7 +591,36 @@ describe('createChatInstance — retry policy', () => {
       }),
     )
     expect(JSON.stringify(summary)).not.toContain('private_customer_server')
-    expect(JSON.stringify(summary)).not.toContain('Private Customer Server')
+  })
+
+  it('preserves built-in tool names in turn telemetry', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+
+    await instance.sendMessage({ text: 'search the web' })
+    await finishSuccessfully({
+      id: 'successful-assistant',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_search',
+          toolCallId: 'call-1',
+          state: 'output-available',
+          input: {},
+          output: {},
+        },
+      ],
+      metadata: {
+        reasoningTime: { 'call-1': 9 },
+      },
+    })
+
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    expect(summary).toEqual(
+      expect.objectContaining({
+        tool_count: 1,
+        tools: [{ name: 'web_search', duration_ms: 9 }],
+      }),
+    )
   })
 
   it('does not emit built-in turn summaries for external ACP agents', async () => {

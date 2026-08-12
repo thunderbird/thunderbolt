@@ -286,7 +286,6 @@ export const createAgentRoutingFetch = (
         modelName: selectedModel.model,
         provider: selectedModel.provider,
       })
-      telemetry?.setAttempt(routingState.getAttempt?.() ?? 1)
 
       // Save the user message before invoking the adapter. This serves three
       // purposes that previously only the built-in pipeline got for free:
@@ -387,7 +386,6 @@ export const createAgentRoutingFetch = (
 
 const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUIMessage): void => {
   const reasoningTime = message.metadata?.reasoningTime ?? {}
-  const mcpTools = message.metadata?.mcpTools ?? {}
   for (const part of message.parts) {
     if (telemetry.getEngine() === 'pi' && part.type === 'step-start') {
       telemetry.recordStep()
@@ -396,11 +394,10 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
     if (!('toolCallId' in part) || typeof part.toolCallId !== 'string') {
       continue
     }
-    const toolName =
-      part.type === 'dynamic-tool' && 'toolName' in part ? part.toolName : part.type.replace(/^tool-/, '')
+    const toolName = part.type === 'dynamic-tool' ? 'mcp' : part.type.replace(/^tool-/, '')
     const durationMs = reasoningTime[part.toolCallId]
-    if (typeof toolName === 'string' && typeof durationMs === 'number') {
-      telemetry.recordTool(Object.hasOwn(mcpTools, toolName) ? 'mcp' : toolName, durationMs)
+    if (typeof durationMs === 'number') {
+      telemetry.recordTool(toolName, durationMs)
     }
   }
 }

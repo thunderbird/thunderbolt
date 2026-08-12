@@ -18,6 +18,7 @@ import {
   saveMessagesWithContextUpdate,
   saveStreamingAssistantMessage,
 } from '@/dal'
+import { absorbChatAttachments, attachmentsToAbsorb } from '@/projects/absorb-chat-attachments'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { builtInAgent } from '@/defaults/agents'
@@ -117,6 +118,14 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(db, id, messages)
+
+    // A file attached in a project's chat also becomes part of that project's
+    // knowledge, so the composer is the only place a file is ever picked. Runs
+    // after the save (the message is what makes the file "used in the project")
+    // and never throws, so a failed extraction can't fail the send.
+    if (thread.projectId) {
+      await absorbChatAttachments(db, thread.projectId, attachmentsToAbsorb(messages))
+    }
 
     // Generate title in background if needed
     if (thread?.title === 'New Chat') {

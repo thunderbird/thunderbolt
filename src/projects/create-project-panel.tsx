@@ -11,7 +11,7 @@
  * is name + instructions, and documents are added on the detail page.
  */
 
-import { useState } from 'react'
+import { useReducer } from 'react'
 
 import { DetailPanel } from '@/components/detail-panel'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,40 @@ import { Textarea } from '@/components/ui/textarea'
 import { useDatabase } from '@/contexts'
 import { createProject, maxProjectInstructionsLength, maxProjectNameLength } from '@/dal/projects'
 
+type CreateProjectState = {
+  name: string
+  description: string
+  instructions: string
+  isPending: boolean
+  submitError: string | null
+}
+
+type CreateProjectAction =
+  | { type: 'FIELD_CHANGED'; field: 'name' | 'description' | 'instructions'; value: string }
+  | { type: 'SUBMIT_STARTED' }
+  | { type: 'SUBMIT_FAILED'; message: string }
+
+const initialState: CreateProjectState = {
+  name: '',
+  description: '',
+  instructions: '',
+  isPending: false,
+  submitError: null,
+}
+
+const createProjectReducer = (state: CreateProjectState, action: CreateProjectAction): CreateProjectState => {
+  switch (action.type) {
+    case 'FIELD_CHANGED':
+      // Clearing the error on edit means a failed submit doesn't keep shouting
+      // while the user fixes the thing it complained about.
+      return { ...state, [action.field]: action.value, submitError: null }
+    case 'SUBMIT_STARTED':
+      return { ...state, isPending: true, submitError: null }
+    case 'SUBMIT_FAILED':
+      return { ...state, isPending: false, submitError: action.message }
+  }
+}
+
 type CreateProjectPanelProps = {
   onClose: () => void
   onCreated: (projectId: string) => void
@@ -29,17 +63,15 @@ type CreateProjectPanelProps = {
 
 export const CreateProjectPanel = ({ onClose, onCreated }: CreateProjectPanelProps) => {
   const db = useDatabase()
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [instructions, setInstructions] = useState('')
-  const [isPending, setIsPending] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [{ name, description, instructions, isPending, submitError }, dispatch] = useReducer(
+    createProjectReducer,
+    initialState,
+  )
 
   const canSave = name.trim().length > 0 && !isPending
 
   const handleSubmit = async () => {
-    setIsPending(true)
-    setSubmitError(null)
+    dispatch({ type: 'SUBMIT_STARTED' })
     try {
       const project = await createProject(db, {
         name,
@@ -48,8 +80,10 @@ export const CreateProjectPanel = ({ onClose, onCreated }: CreateProjectPanelPro
       })
       onCreated(project.id)
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Could not create the project.')
-      setIsPending(false)
+      dispatch({
+        type: 'SUBMIT_FAILED',
+        message: error instanceof Error ? error.message : 'Could not create the project.',
+      })
     }
   }
 
@@ -66,7 +100,7 @@ export const CreateProjectPanel = ({ onClose, onCreated }: CreateProjectPanelPro
             maxLength={maxProjectNameLength}
             placeholder="Q3 planning"
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => dispatch({ type: 'FIELD_CHANGED', field: 'name', value: event.target.value })}
           />
         </div>
 
@@ -78,7 +112,7 @@ export const CreateProjectPanel = ({ onClose, onCreated }: CreateProjectPanelPro
             id="new-project-description"
             placeholder="Optional — what this project is for"
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={(event) => dispatch({ type: 'FIELD_CHANGED', field: 'description', value: event.target.value })}
           />
         </div>
 
@@ -94,7 +128,7 @@ export const CreateProjectPanel = ({ onClose, onCreated }: CreateProjectPanelPro
             maxLength={maxProjectInstructionsLength}
             placeholder="Reply in British English. Prefer bullet points over prose."
             value={instructions}
-            onChange={(event) => setInstructions(event.target.value)}
+            onChange={(event) => dispatch({ type: 'FIELD_CHANGED', field: 'instructions', value: event.target.value })}
             className="min-h-32 resize-y md:min-h-0 md:flex-1 md:resize-none"
           />
         </div>

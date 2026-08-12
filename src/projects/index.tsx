@@ -14,7 +14,7 @@
  */
 
 import { FolderOpen } from 'lucide-react'
-import { useState } from 'react'
+import { useReducer } from 'react'
 import { useNavigate } from 'react-router'
 
 import { DetailPanelSurface } from '@/components/detail-panel'
@@ -28,15 +28,55 @@ import {
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
-import { useProjectChatCounts, useProjects } from '@/dal/projects'
+import { useDatabase } from '@/contexts'
+import { softDeleteProject, useProjectChatCounts, useProjectChats, useProjects } from '@/dal/projects'
 import { CreateProjectPanel } from './create-project-panel'
+import { ProjectDetailPanel } from './project-detail-panel'
 import { ProjectIcon } from './project-icon'
 
+/**
+ * The list page's view state. A reducer rather than three `useState` calls
+ * because the panel is one slot: opening create must clear any selection and
+ * vice versa. As separate setters that invariant lives in every call site; here
+ * it lives once, in the transitions.
+ */
+type ProjectsViewState = {
+  search: string
+  isCreating: boolean
+  selectedId: string | null
+}
+
+type ProjectsViewAction =
+  | { type: 'SEARCH_CHANGED'; value: string }
+  | { type: 'CREATE_STARTED' }
+  | { type: 'PROJECT_SELECTED'; id: string }
+  | { type: 'PANEL_CLOSED' }
+
+const initialViewState: ProjectsViewState = { search: '', isCreating: false, selectedId: null }
+
+const projectsViewReducer = (state: ProjectsViewState, action: ProjectsViewAction): ProjectsViewState => {
+  switch (action.type) {
+    case 'SEARCH_CHANGED':
+      return { ...state, search: action.value }
+    case 'CREATE_STARTED':
+      return { ...state, isCreating: true, selectedId: null }
+    case 'PROJECT_SELECTED':
+      return { ...state, isCreating: false, selectedId: action.id }
+    case 'PANEL_CLOSED':
+      return { ...state, isCreating: false, selectedId: null }
+  }
+}
+
 const ProjectsPage = () => {
+  const db = useDatabase()
   const navigate = useNavigate()
   const projects = useProjects()
-  const [search, setSearch] = useState('')
-  const [isCreating, setIsCreating] = useState(false)
+  const [{ search, isCreating, selectedId }, dispatch] = useReducer(projectsViewReducer, initialViewState)
+
+  // Selection is resolved against the live list, so a rename or an emoji change
+  // reaches the open panel, and a deleted project closes it on its own.
+  const selected = selectedId ? projects.find((project) => project.id === selectedId) : undefined
+  const selectedChats = useProjectChats(selected?.id)
 
   // Reactive: a chat moving in or out of a project updates the count immediately.
   const chatCounts = useProjectChatCounts()
@@ -62,13 +102,16 @@ const ProjectsPage = () => {
     <div className="relative flex h-full md:pt-[var(--header-inset)]">
       <div className="min-w-0 flex-1 overflow-hidden">
         <SettingsListPane>
-          <PageSearch onSearch={setSearch}>
+          <PageSearch onSearch={(value) => dispatch({ type: 'SEARCH_CHANGED', value })}>
             <PageHeader title="Projects">
               <PageSearch.Button />
-              <PageCreateAction label="New project" onClick={() => setIsCreating(true)} />
+              <PageCreateAction label="New project" onClick={() => dispatch({ type: 'CREATE_STARTED' })} />
             </PageHeader>
 
-            <PageSearch.Input placeholder="Search projects" onSearch={setSearch} />
+            <PageSearch.Input
+              placeholder="Search projects"
+              onSearch={(value) => dispatch({ type: 'SEARCH_CHANGED', value })}
+            />
           </PageSearch>
 
           <SettingsListBody className={settingsListBodyRowsClass}>
@@ -96,7 +139,8 @@ const ProjectsPage = () => {
                       <ProjectIcon icon={project.icon} className="size-5 text-[1.15rem]" />
                     </IconTile>
                   }
-                  onSelect={() => navigate(`/projects/${project.id}`)}
+                  isSelected={project.id === selectedId}
+                  onSelect={() => dispatch({ type: 'PROJECT_SELECTED', id: project.id })}
                   ariaLabel={`Open ${project.name}`}
                 />
               ))
@@ -105,16 +149,33 @@ const ProjectsPage = () => {
         </SettingsListPane>
       </div>
 
-      <DetailPanelSurface open={isCreating} onClose={() => setIsCreating(false)}>
-        {isCreating && (
+      {/* One surface for both panels: create and detail are mutually exclusive,
+          and sharing it keeps a single slide-in animation. */}
+      <DetailPanelSurface
+        open={isCreating || selected !== undefined}
+        onClose={() => dispatch({ type: 'PANEL_CLOSED' })}
+      >
+        {isCreating ? (
           <CreateProjectPanel
-            onClose={() => setIsCreating(false)}
+            onClose={() => dispatch({ type: 'PANEL_CLOSED' })}
             onCreated={(projectId) => {
-              setIsCreating(false)
+              dispatch({ type: 'PANEL_CLOSED' })
               navigate(`/projects/${projectId}`)
             }}
           />
-        )}
+        ) : selected ? (
+          <ProjectDetailPanel
+            project={selected}
+            chats={selectedChats}
+            onEdit={() => navigate(`/projects/${selected.id}`)}
+            onDelete={async () => {
+              await softDeleteProject(db, selected.id)
+              dispatch({ type: 'PANEL_CLOSED' })
+            }}
+            onClose={() => dispatch({ type: 'PANEL_CLOSED' })}
+            onOpenChat={(chatThreadId) => navigate(`/chats/${chatThreadId}`)}
+          />
+        ) : null}
       </DetailPanelSurface>
     </div>
   )

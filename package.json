@@ -71,6 +71,7 @@
     "@earendil-works/pi-agent-core": "0.80.7",
     "@earendil-works/pi-ai": "0.80.7",
     "@earendil-works/pi-coding-agent": "0.80.7",
+    "@emoji-mart/data": "^1.2.1",
     "@fontsource-variable/mozilla-headline": "^5.2.2",
     "@hookform/resolvers": "^5.2.1",
     "@icons-pack/react-simple-icons": "^13.13.0",

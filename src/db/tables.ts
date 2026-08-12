@@ -44,8 +44,14 @@ export const chatThreadsTable = sqliteTable(
   ],
 )
 
-/** Where a knowledge document came from. */
-export type ProjectFileOrigin = 'upload' | 'note' | 'agent'
+/**
+ * Where a knowledge document came from.
+ *
+ * `chat` is the normal path: a file attached in one of the project's chats. Files
+ * are only ever picked in the composer, so the project page has no uploader —
+ * `upload` remains for rows written before that consolidation.
+ */
+export type ProjectFileOrigin = 'upload' | 'chat' | 'note' | 'agent'
 
 /**
  * A Projects workspace: durable instructions plus a text knowledge set, applied

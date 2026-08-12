@@ -44,6 +44,7 @@ import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
+import { plainTextExtensions, resolveTextMimeType } from '@/files/transformers'
 import { maybeCompressAttachment } from '@/files/compress/compress-attachment'
 import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
@@ -71,8 +72,15 @@ const acceptedAttachmentMimeTypes = new Set([
   'application/json',
 ])
 
-/** Extension fallback for when the browser reports an empty/odd mime type
- *  (common for .md). */
+/**
+ * Extension fallback for when the browser reports an empty/odd mime type.
+ *
+ * The text extensions come from `plainTextExtensions` in the transformers layer
+ * rather than a second hand-maintained list — that shared definition is also what
+ * project knowledge uses, so a type added there is accepted in both places
+ * instead of silently only one. Binary formats are listed explicitly: they have
+ * dedicated transformers rather than being plain text.
+ */
 const acceptedAttachmentExtensions = [
   '.pdf',
   '.png',
@@ -81,11 +89,7 @@ const acceptedAttachmentExtensions = [
   '.webp',
   '.gif',
   '.docx',
-  '.md',
-  '.markdown',
-  '.txt',
-  '.csv',
-  '.json',
+  ...[...plainTextExtensions].map((extension) => `.${extension}`),
 ]
 
 /** `accept` attribute string for the file picker. */
@@ -94,6 +98,16 @@ const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachm
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
   acceptedAttachmentExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
+
+/**
+ * Normalize a file's MIME before it is stored.
+ *
+ * Load-bearing, not cosmetic: a `.py` or `.yaml` arrives with an **empty**
+ * `type`, and `defaultDeliveryMode('')` routes an attachment as *native bytes* —
+ * which a model can't read. Resolving to `text/plain` here makes it deliver as
+ * text, and gives project knowledge a usable `sourceMimeType`.
+ */
+const attachmentMimeType = (file: File): string => resolveTextMimeType(file.name, file.type)
 
 /** Clipboard files (e.g. a pasted screenshot) often arrive with an empty name.
  *  Give them a stable, extension-bearing filename so the chip renders and the
@@ -455,7 +469,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             await putAttachment({
               id: localFileId,
               filename: prepared.name,
-              mimeType: prepared.type,
+              mimeType: attachmentMimeType(prepared),
               size: prepared.size,
               createdAt: Date.now(),
               blob: prepared,
@@ -469,7 +483,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             setAttachError(`Couldn't attach "${prepared.name}" — your browser's storage is full or unavailable.`)
             break
           }
-          setAttachments((prev) => [...prev, { localFileId, filename: prepared.name, mimeType: prepared.type }])
+          setAttachments((prev) => [
+            ...prev,
+            { localFileId, filename: prepared.name, mimeType: attachmentMimeType(prepared) },
+          ])
           count++
         }
       },

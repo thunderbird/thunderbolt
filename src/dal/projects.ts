@@ -16,7 +16,13 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { chatThreadsTable, projectFilesTable, projectsTable, type ProjectFileOrigin } from '../db/tables'
+import {
+  chatMessagesTable,
+  chatThreadsTable,
+  projectFilesTable,
+  projectsTable,
+  type ProjectFileOrigin,
+} from '../db/tables'
 import { nowIso, uuidv7ToDate } from '../lib/utils'
 import { renderHtmlToolName } from '@/artifacts/constants'
 import { isRenderHtmlPart, renderHtmlInput } from '@/artifacts/render-html-tool'
@@ -311,6 +317,99 @@ export const useProjectChatCounts = (): Record<string, number> => {
   return counts
 }
 
+/**
+ * Live single project.
+ *
+ * Reactive rather than a plain `useQuery`: the previous version needed an
+ * explicit `refetch()` after every edit, and still showed stale data when the
+ * project was changed on another device. (`powersyncTableToQueryKeys` looks like
+ * it would cover that, but it has had no consumer since THU-249 — invalidation
+ * comes from PowerSync's own reactivity, so a query must be compiled through
+ * `toCompilableQuery` to update at all.)
+ */
+export const useProject = (projectId: string | undefined): Project | null => {
+  const db = useDatabase()
+  const { data = [] } = useQuery({
+    queryKey: ['project', projectId ?? 'none'],
+    query: toCompilableQuery(
+      db
+        .select()
+        .from(projectsTable)
+        // A missing id must still compile, so match nothing.
+        .where(and(eq(projectsTable.id, projectId ?? ''), isNull(projectsTable.deletedAt)))
+        .limit(1),
+    ),
+  })
+  return (data[0] as Project | undefined) ?? null
+}
+
+/**
+ * Live chats in a project with their last-activity time.
+ *
+ * `MAX(id)` over UUIDv7 message ids is both the newest message and when it
+ * happened — `chat_messages` has no timestamp column. Sorting happens in JS
+ * because the value is derived after the query.
+ */
+export const useProjectChats = (
+  projectId: string | undefined,
+): { id: string; title: string | null; lastActivityAt: Date }[] => {
+  const db = useDatabase()
+  const { data = [] } = useQuery({
+    queryKey: ['projectChats', projectId ?? 'none'],
+    query: toCompilableQuery(
+      db
+        .select({
+          id: chatThreadsTable.id,
+          title: chatThreadsTable.title,
+          lastMessageId: sql<string | null>`max(${chatMessagesTable.id})`.as('last_message_id'),
+        })
+        .from(chatThreadsTable)
+        .leftJoin(
+          chatMessagesTable,
+          and(eq(chatMessagesTable.chatThreadId, chatThreadsTable.id), isNull(chatMessagesTable.deletedAt)),
+        )
+        .where(and(eq(chatThreadsTable.projectId, projectId ?? ''), isNull(chatThreadsTable.deletedAt)))
+        .groupBy(chatThreadsTable.id, chatThreadsTable.title),
+    ),
+  })
+  return (data as { id: string; title: string | null; lastMessageId: string | null }[])
+    .map((row) => ({
+      id: row.id,
+      title: row.title,
+      lastActivityAt: uuidv7ToDate(row.lastMessageId ?? row.id),
+    }))
+    .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime())
+}
+
+/** Live `render_html` artifacts across a project's chats, newest first. */
+export const useProjectArtifacts = (projectId: string | undefined): ProjectArtifact[] => {
+  const db = useDatabase()
+  const { data = [] } = useQuery({
+    queryKey: ['projectArtifacts', projectId ?? 'none'],
+    query: toCompilableQuery(
+      db
+        .select({
+          id: chatMessagesTable.id,
+          chatThreadId: chatMessagesTable.chatThreadId,
+          parts: chatMessagesTable.parts,
+          chatTitle: chatThreadsTable.title,
+        })
+        .from(chatMessagesTable)
+        .innerJoin(chatThreadsTable, eq(chatThreadsTable.id, chatMessagesTable.chatThreadId))
+        .where(
+          and(
+            eq(chatThreadsTable.projectId, projectId ?? ''),
+            isNull(chatThreadsTable.deletedAt),
+            isNull(chatMessagesTable.deletedAt),
+            // Narrows the scan before any JSON is parsed.
+            sql`${chatMessagesTable.parts} LIKE ${`%${renderHtmlToolName}%`}`,
+          ),
+        ),
+    ),
+  })
+  return toArtifacts(data as { id: string; chatThreadId: string | null; parts: unknown; chatTitle: string | null }[])
+}
+
 /** Live knowledge documents for one project. */
 export const useProjectFiles = (projectId: string | undefined): ProjectFile[] => {
   const db = useDatabase()
@@ -373,6 +472,23 @@ export type ProjectArtifact = {
  * anything is parsed, so a project with thousands of ordinary messages doesn't
  * pay to JSON-parse all of them.
  */
+const toArtifacts = (
+  rows: readonly { id: string; chatThreadId: string | null; parts: unknown; chatTitle: string | null }[],
+): ProjectArtifact[] =>
+  rows
+    .flatMap((row) =>
+      parseParts(row.parts)
+        .filter(isRenderHtmlPart)
+        .map((part) => ({
+          messageId: row.id,
+          chatThreadId: row.chatThreadId ?? '',
+          chatTitle: row.chatTitle ?? 'Untitled chat',
+          title: renderHtmlInput(part).title?.trim() || 'Untitled artifact',
+          createdAt: uuidv7ToDate(row.id),
+        })),
+    )
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+
 export const getProjectArtifacts = async (db: AnyDrizzleDatabase, projectId: string): Promise<ProjectArtifact[]> => {
   const rows = (await db.all(sql`
     SELECT m.id AS id, m.chat_thread_id AS chat_thread_id, m.parts AS parts, t.title AS chat_title

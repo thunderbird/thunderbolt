@@ -41,6 +41,93 @@ export const docxMime = 'application/vnd.openxmlformats-officedocument.wordproce
 export const isPlainTextMime = (mime: string): boolean => mime.startsWith('text/') || mime === 'application/json'
 
 /**
+ * Extensions the OS reports with an empty or actively wrong MIME type, but which
+ * are plain text.
+ *
+ * This matters more than it sounds. A file picker gives `.md`, `.py`, `.yaml`,
+ * `.toml` and most config files an **empty** `type`, and `.ts` is commonly
+ * reported as `video/mp2t`. Keying only off MIME rejects them as unsupported —
+ * or worse, accepts them and then delivers raw bytes a model can't read.
+ *
+ * Lives here rather than in a consumer so the composer and project knowledge
+ * share one definition of "this is text"; the previous arrangement meant adding
+ * a type in one place silently left the other behind.
+ */
+// Deliberately absent: `html`/`htm` — the composer rejects markup pages on
+// purpose, there is no html→text transformer, and raw markup is a poor
+// attachment — and `svg`, which is an image and should be delivered as one
+// rather than as its source text.
+export const plainTextExtensions: ReadonlySet<string> = new Set([
+  'md',
+  'markdown',
+  'txt',
+  'text',
+  'log',
+  'csv',
+  'tsv',
+  'rst',
+  'org',
+  'json',
+  'jsonl',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'cfg',
+  'conf',
+  'env',
+  'properties',
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'mjs',
+  'cjs',
+  'py',
+  'rb',
+  'go',
+  'rs',
+  'java',
+  'kt',
+  'kts',
+  'c',
+  'h',
+  'cc',
+  'cpp',
+  'hpp',
+  'cs',
+  'swift',
+  'php',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'sql',
+  'graphql',
+  'gql',
+  'proto',
+  'xml',
+  'css',
+  'scss',
+  'less',
+])
+
+/**
+ * The MIME type a file should be treated as: a declared type we can already
+ * handle, otherwise an extension-based fallback to `text/plain`.
+ *
+ * Normalizing at the point a file enters the app is what makes the rest work —
+ * {@link defaultDeliveryMode} then routes it as text instead of native bytes.
+ */
+export const resolveTextMimeType = (filename: string, declaredType: string): string => {
+  if (declaredType && (isPlainTextMime(declaredType) || hasTransformer(declaredType, 'text'))) {
+    return declaredType
+  }
+  const extension = filename.includes('.') ? filename.split('.').pop()!.toLowerCase() : ''
+  return plainTextExtensions.has(extension) ? 'text/plain' : declaredType
+}
+
+/**
  * Default delivery mode for an attachment given its MIME type, when no explicit
  * {@link import('@/types').AttachmentData.deliverAs} override is set. Plain-text
  * files go out as text (lossless and universally accepted); everything else

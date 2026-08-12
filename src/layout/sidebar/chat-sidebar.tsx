@@ -34,6 +34,7 @@ import { useState } from 'react'
 import { useDatabase } from '@/contexts'
 import { useChatStore } from '@/chats/chat-store'
 import { setChatThreadProject } from '@/dal/projects'
+import { absorbExistingChatAttachments } from '@/projects/absorb-chat-attachments'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { ProjectDropList } from './project-drop-list'
 import { ChatList } from './chat-list'
@@ -130,6 +131,13 @@ export const ChatSidebarContent = ({
       return
     }
     await setChatThreadProject(db, drop.chatThreadId, drop.projectId)
+    // A chat joining a project brings its documents with it. Absorption normally
+    // runs at message-save time, when the chat's project was whatever it was
+    // then — without this back-fill, a file attached before the move stays
+    // invisible in the project's knowledge.
+    if (drop.projectId) {
+      await absorbExistingChatAttachments(db, drop.projectId, drop.chatThreadId)
+    }
     // The row is the source of truth for the next send, but the header badge
     // reads the live session — without this a chat only shows its new project
     // after a reload. Guarded because a session exists only for a chat that has

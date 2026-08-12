@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { v7 as uuidv7 } from 'uuid'
 import { getDb } from '@/db/database'
-import { projectFilesTable, projectsTable } from '@/db/tables'
+import { chatMessagesTable, chatThreadsTable, projectFilesTable, projectsTable } from '@/db/tables'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createProject, getProjectFiles } from '@/dal/projects'
 import type { AttachmentData } from '@/types'
-import { absorbChatAttachments, attachmentsToAbsorb } from './absorb-chat-attachments'
+import { absorbChatAttachments, absorbExistingChatAttachments, attachmentsToAbsorb } from './absorb-chat-attachments'
 
 /** Blobs live in IndexedDB, which the test environment has no implementation of;
  *  this stands in for the device-local store. */
@@ -42,6 +43,8 @@ beforeEach(async () => {
   const db = getDb()
   await db.delete(projectFilesTable)
   await db.delete(projectsTable)
+  await db.delete(chatMessagesTable)
+  await db.delete(chatThreadsTable)
   blobs.clear()
 })
 
@@ -185,5 +188,75 @@ describe('attachmentsToAbsorb', () => {
 
   it('handles an empty save', () => {
     expect(attachmentsToAbsorb([])).toEqual([])
+  })
+})
+
+describe('absorbExistingChatAttachments (chat moved into a project)', () => {
+  /** Insert a chat with messages the way the app persists them. */
+  const seedChat = async (attachments: AttachmentData[][]) => {
+    const db = getDb()
+    const threadId = uuidv7()
+    await db.insert(chatThreadsTable).values({ id: threadId, title: 'T', projectId: null })
+    for (const group of attachments) {
+      await db.insert(chatMessagesTable).values({
+        id: uuidv7(),
+        chatThreadId: threadId,
+        role: 'user',
+        content: 'here you go',
+        parts: group.map((data) => ({ type: 'data-attachment', data })) as never,
+      })
+    }
+    return threadId
+  }
+
+  it('back-fills a file attached before the chat joined the project', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'P' })
+    const threadId = await seedChat([[attach('cabin.md', 'The site is at 8,400 feet.', 'text/markdown')]])
+
+    // The reported bug: upload, ask, *then* add the chat to the project.
+    const result = await absorbExistingChatAttachments(db, project.id, threadId)
+
+    expect(result.added).toEqual(['cabin.md'])
+    const [saved] = await getProjectFiles(db, project.id)
+    expect(saved.filename).toBe('cabin.md')
+    expect(saved.origin).toBe('chat')
+  })
+
+  it('walks the whole history, not just the newest turn', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'P' })
+    const threadId = await seedChat([
+      [attach('first.md', 'one', 'text/markdown')],
+      [attach('second.md', 'two', 'text/markdown')],
+    ])
+
+    const result = await absorbExistingChatAttachments(db, project.id, threadId)
+
+    // The save path deliberately looks at one turn; back-fill must not.
+    expect(result.added).toEqual(['first.md', 'second.md'])
+  })
+
+  it('is safe to run twice (e.g. moved out and back)', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'P' })
+    const threadId = await seedChat([[attach('a.md', 'body', 'text/markdown')]])
+
+    await absorbExistingChatAttachments(db, project.id, threadId)
+    const second = await absorbExistingChatAttachments(db, project.id, threadId)
+
+    expect(second.duplicates).toEqual(['a.md'])
+    expect(await getProjectFiles(db, project.id)).toHaveLength(1)
+  })
+
+  it('does nothing for a chat with no attachments', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'P' })
+    const threadId = await seedChat([[]])
+    expect(await absorbExistingChatAttachments(db, project.id, threadId)).toEqual({
+      added: [],
+      duplicates: [],
+      unsupported: [],
+    })
   })
 })

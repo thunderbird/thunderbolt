@@ -18,7 +18,9 @@
  */
 
 import { getAttachment } from '@/lib/file-blob-storage'
+import { getChatMessages } from '@/dal/chat-messages'
 import { getProjectFiles, addProjectFile } from '@/dal/projects'
+import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { getAttachments } from '@/lib/attachments'
 import type { AttachmentData, ThunderboltUIMessage } from '@/types'
@@ -43,6 +45,29 @@ export const attachmentsToAbsorb = (
     }
   }
   return []
+}
+
+/**
+ * Absorb everything already attached in an existing chat.
+ *
+ * Needed because absorption normally runs at message-save time, when the chat's
+ * project is whatever it was *then*. A chat that is moved into a project
+ * afterwards — the common case: start a chat, attach a file, then decide it
+ * belongs to a project — would otherwise leave its documents behind.
+ *
+ * Unlike the save path this walks **every** message, not just the newest turn:
+ * the whole point is to back-fill a conversation's history.
+ */
+export const absorbExistingChatAttachments = async (
+  db: AnyDrizzleDatabase,
+  projectId: string,
+  chatThreadId: string,
+): Promise<AbsorbResult> => {
+  const messages = await getChatMessages(db, chatThreadId)
+  const attachments = messages.flatMap((message) =>
+    getAttachments(convertDbChatMessageToUIMessage(message) as ThunderboltUIMessage),
+  )
+  return absorbChatAttachments(db, projectId, attachments)
 }
 
 export type AbsorbResult = {

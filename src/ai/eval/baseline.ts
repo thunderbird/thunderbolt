@@ -5,13 +5,24 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { wilsonScoreInterval } from './stats'
-import type { EvalMetrics, EvalMetricsGroup, EvalScenarioComparison, NecessityCategory, WilsonInterval } from './types'
+import type {
+  EvalMetrics,
+  EvalMetricsGroup,
+  EvalScenarioComparison,
+  EvalScenarioMetrics,
+  NecessityCategory,
+  WilsonInterval,
+} from './types'
+
+type EvalBaselineGroup = Omit<EvalMetricsGroup, 'scenarios'> & {
+  scenarios: Record<string, Omit<EvalScenarioMetrics, 'prompt'> & { prompt?: string }>
+}
 
 export type EvalBaseline = {
-  schemaVersion: 2
+  schemaVersion: 2 | 3
   generatedAt: string
   groupKey: string
-  group: EvalMetricsGroup
+  group: EvalBaselineGroup
 }
 
 export type RateComparison = {
@@ -109,7 +120,7 @@ export const writeBaselineFiles = (
     .map(([groupKey, group]) => {
       const outputPath = join(outputDirectory, `${groupKey.replace('/', '--')}.json`)
       const baseline: EvalBaseline = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         generatedAt: metrics.generatedAt,
         groupKey,
         group,

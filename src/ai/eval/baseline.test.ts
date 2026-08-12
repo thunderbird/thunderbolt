@@ -57,6 +57,7 @@ const group = ({
   engine: 'pi',
   scenarios: {
     C1: {
+      prompt: 'What are the top stories today?',
       category: 'core',
       passed: corePassed,
       webToolCalls: 0,
@@ -78,13 +79,13 @@ const group = ({
 })
 
 const metrics = (groupValue: EvalMetricsGroup): EvalMetrics => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   generatedAt: '2026-08-04T12:00:00.000Z',
   groups: { 'opus/pi': groupValue },
 })
 
 const fullMetrics = (groupValue: EvalMetricsGroup): EvalMetrics => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   generatedAt: '2026-08-04T12:00:00.000Z',
   groups: Object.fromEntries(
     expectedCells.map(({ groupKey, model, engine }) => [groupKey, { ...groupValue, model, engine }]),
@@ -120,7 +121,7 @@ describe('baseline files', () => {
         expectedGroupKeys.map((groupKey) => [
           groupKey,
           {
-            schemaVersion: 2,
+            schemaVersion: 3,
             generatedAt: source.generatedAt,
             groupKey,
             group: source.groups[groupKey],
@@ -268,5 +269,31 @@ describe('baseline comparison', () => {
       current: 0.5,
       delta: null,
     })
+  })
+
+  test('compares schema v3 metrics with a schema v2 baseline that has no prompts', () => {
+    const versionTwoGroup = group({
+      categoryPassed: 8,
+      unnecessaryCount: 2,
+      missedCount: 2,
+      meanWebCalls: 0.4,
+    })
+    const { prompt: _prompt, ...versionTwoScenario } = versionTwoGroup.scenarios.C1
+    const versionTwoBaseline: EvalBaseline = {
+      schemaVersion: 2,
+      generatedAt: '2026-08-03T12:00:00.000Z',
+      groupKey: 'opus/pi',
+      group: {
+        ...versionTwoGroup,
+        scenarios: { C1: versionTwoScenario },
+      },
+    }
+    const current = metrics(group({ categoryPassed: 9, unnecessaryCount: 1, missedCount: 3, meanWebCalls: 0.5 }))
+
+    const comparison = compareMetricsToBaselines(current, { 'opus/pi': versionTwoBaseline }).groups['opus/pi']
+
+    expect(comparison.baselineAvailable).toBe(true)
+    expect(comparison.scenarios.C1.direction).toBe('unchanged')
+    expect(comparison.categories.never_search?.delta).toBe(0.1)
   })
 })

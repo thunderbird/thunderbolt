@@ -149,6 +149,7 @@ const aggregateGroup = (results: EvalResult[]): EvalMetricsGroup => {
         throw new Error(`Invalid eval scenario id: ${result.scenario.id}`)
       }
       const scenarioMetrics: EvalScenarioMetrics = {
+        prompt: result.scenario.followUps?.at(-1) ?? result.scenario.prompt,
         category,
         passed: result.passed,
         webToolCalls: result.toolCallCount,
@@ -193,7 +194,7 @@ export const aggregateEvalMetrics = (results: EvalResult[], generatedAt = new Da
     }
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt,
     groups: Object.fromEntries(
       [...grouped.entries()].map(([key, groupResults]) => [key, aggregateGroup(groupResults)]),

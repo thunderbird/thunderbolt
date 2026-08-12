@@ -143,6 +143,7 @@ export type NecessityRateMetric = {
 }
 
 export type EvalScenarioMetrics = {
+  prompt: string
   category: NecessityCategory | 'core'
   passed: boolean
   webToolCalls: number
@@ -174,7 +175,7 @@ export type EvalMetricsGroup = {
 }
 
 export type EvalMetrics = {
-  schemaVersion: 2
+  schemaVersion: 3
   generatedAt: string
   groups: Record<string, EvalMetricsGroup>
 }

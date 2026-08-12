@@ -110,8 +110,8 @@ describe('aggregateEvalMetrics', () => {
     const metrics = aggregateEvalMetrics(results, '2026-08-04T12:00:00.000Z')
     const group = metrics.groups['opus/pi']
 
-    expect(metrics.schemaVersion).toBe(2)
-    expect(group.scenarios.C1).toMatchObject({ category: 'core', passed: false, reviewBy: null })
+    expect(metrics.schemaVersion).toBe(3)
+    expect(group.scenarios.C1).toMatchObject({ prompt: 'C1', category: 'core', passed: false, reviewBy: null })
     expect(group.categories.never_search).toMatchObject({ passed: 1, total: 1, rate: 1, gatePassed: true })
     expect(group.headline.unnecessarySearchRate).toEqual({
       count: 1,

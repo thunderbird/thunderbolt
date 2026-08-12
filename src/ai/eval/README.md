@@ -270,7 +270,7 @@ Every report writes `eval-metrics.json` beside the Markdown file. The stable sch
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "generatedAt": "2026-08-04T12:00:00.000Z",
   "groups": {
     "opus/pi": {
@@ -278,6 +278,7 @@ Every report writes `eval-metrics.json` beside the Markdown file. The stable sch
       "engine": "pi",
       "scenarios": {
         "C1": {
+          "prompt": "What are the top 3 news stories today?",
           "category": "core",
           "passed": true,
           "webToolCalls": 1,
@@ -290,6 +291,7 @@ Every report writes `eval-metrics.json` beside the Markdown file. The stable sch
           "failures": []
         },
         "never-search-01": {
+          "prompt": "Write a Python function that reverses a singly linked list.",
           "category": "never_search",
           "passed": true,
           "webToolCalls": 0,
@@ -334,7 +336,7 @@ Every report writes `eval-metrics.json` beside the Markdown file. The stable sch
 }
 ```
 
-Rates are fractions from 0 to 1. Groups are keyed by `model/engine`; scenario keys are the human-readable final ID segment. Every scored scenario appears in `scenarios`: core chat/search/research/widget scenarios use `category: "core"` and `reviewBy: null`, while taxonomy scenarios retain their necessity category and review date. `categories` and `headline` are calculated only from taxonomy scenarios, so core outcomes never affect necessity gates. This shape is intended for CI baselines and PR-comment generation.
+Rates are fractions from 0 to 1. Groups are keyed by `model/engine`; scenario keys are the human-readable final ID segment. Every scored scenario appears in `scenarios`: core chat/search/research/widget scenarios use `category: "core"` and `reviewBy: null`, while taxonomy scenarios retain their necessity category and review date. `prompt` contains the scored user turn, which is the final follow-up for a multi-turn scenario. `categories` and `headline` are calculated only from taxonomy scenarios, so core outcomes never affect necessity gates. This shape is intended for CI baselines and PR-comment generation. Baseline comparison also accepts schema v2 baseline files, which predate `prompt`.
 
 ## CI
 
@@ -343,7 +345,7 @@ The `AI Evals` workflow has two paths:
 - Pull requests run the deterministic smoke subset when they change AI-behavior paths: `src/ai/**`, `src/lib/tools.ts`, `backend/src/inference/**`, `backend/src/api/search.ts`, `backend/src/pro/**`, `shared/agent-core/**`, `shared/defaults/**`, `src/acp/**`, or the eval workflow. Broader trees such as DAL, HTTP, and skills plumbing are deliberately excluded as low-signal-per-dollar changes and remain covered by the nightly full run. Smoke is temporarily informational: its sticky comment is the per-PR signal, but gate failures do not fail the check until checked-in baselines show the necessity gates passing. The report and metrics JSON are uploaded together.
 - A nightly run at 03:00 UTC executes the full suite with the default three samples per necessity scenario and fails when gates fail. It can run for every model/engine cell without multiplying the work by separate before/after revisions.
 
-The pull-request comment is updated in place using a hidden marker. For each model/engine cell it shows the core-suite pass count and improved/regressed outcome counts, necessity gate status, headline rates and baseline deltas, category rates, Wilson significance labels, all failed scenarios, and a link to the full report artifact. Rate deltas are significant only when the current run's and baseline run's 95% Wilson intervals are disjoint. The one-scenario, one-sample smoke categories therefore remain descriptive without significance claims, while the full run's larger categories and three samples per scenario can produce meaningful labels.
+The pull-request comment is updated in place using a hidden marker. It leads with a plain-language verdict and care table, summarizes each model's classic-suite and search-policy results, explains up to 20 failures in plain words, and keeps raw gates, rates, and category numbers collapsed. Scenario-level improved/regressed counts appear when baselines exist. Rate deltas are labeled significant only when the current run's and baseline run's 95% Wilson intervals are disjoint. The one-scenario, one-sample smoke categories therefore remain descriptive without significance claims, while the full run's larger categories and three samples per scenario can produce meaningful labels. The footer links to the workflow run, whose job summary renders the full Markdown report, and to the downloadable artifact.
 
 ### Baselines
 
@@ -358,7 +360,7 @@ bun run eval:compare -- evals/eval-metrics.json
 
 The nightly workflow regenerates the files and, when they change, force-updates the dedicated `evals/baseline-refresh` branch. It opens a draft pull request if that branch has no open refresh pull request; it never commits directly to `main`.
 
-No baseline files are shipped until the first scheduled run produces real measurements. Before then, comments show `No baseline yet — first scheduled run will create one.` and omit deltas and significance claims.
+No baseline files are shipped until the first scheduled run produces real measurements. Before then, comments explain that PR impact is unknown and omit deltas and significance claims.
 
 ### CI authentication
 

@@ -56,6 +56,8 @@ describe('necessity reports', () => {
         ...result('pi', true).scenario,
         id: 'opus/pi/chat/never-search-01',
         modelName: 'opus',
+        prompt: 'Find the current price.',
+        followUps: ['Repeat the price you just found.'],
         category: 'never_search',
         reviewBy: '2026-11-04',
       },
@@ -76,12 +78,19 @@ describe('necessity reports', () => {
     const metricsPath = writeMetricsReport([coreResult, necessityResult], markdownPath, '2026-08-04T12:00:00.000Z')
     const metrics = JSON.parse(readFileSync(metricsPath, 'utf8')) as {
       schemaVersion: number
-      groups: Record<string, { scenarios: Record<string, { category: string; sampleCount: number }> }>
+      groups: Record<string, { scenarios: Record<string, { category: string; prompt: string; sampleCount: number }> }>
     }
 
-    expect(metrics.schemaVersion).toBe(2)
-    expect(metrics.groups['opus/pi'].scenarios.C1).toMatchObject({ category: 'core', sampleCount: 1 })
-    expect(metrics.groups['opus/pi'].scenarios['never-search-01'].sampleCount).toBe(3)
+    expect(metrics.schemaVersion).toBe(3)
+    expect(metrics.groups['opus/pi'].scenarios.C1).toMatchObject({
+      category: 'core',
+      prompt: 'prompt',
+      sampleCount: 1,
+    })
+    expect(metrics.groups['opus/pi'].scenarios['never-search-01']).toMatchObject({
+      prompt: 'Repeat the price you just found.',
+      sampleCount: 3,
+    })
     expect(metricsPath).toBe(join(outputDirectory, 'eval-metrics.json'))
   })
 

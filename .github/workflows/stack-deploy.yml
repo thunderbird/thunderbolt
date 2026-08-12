@@ -50,6 +50,43 @@ on:
         description: 'When set, switches per-PR deploys into shared-stack mode (THU-495) — backend/frontend/marketing only, with VPC/ALB/postgres/keycloak/powersync read from the named shared stack via Pulumi StackReference. Leave empty for legacy monolithic deploys.'
         type: string
         required: false
+    secrets:
+      PULUMI_ACCESS_TOKEN:
+        description: 'Pulumi Cloud access token'
+        required: false
+      AWS_DEPLOY_ROLE_ARN:
+        description: 'AWS IAM role ARN used for deployment'
+        required: false
+      GHCR_PAT:
+        description: 'GitHub Container Registry access token'
+        required: false
+      CLOUDFLARE_API_TOKEN:
+        description: 'Cloudflare API token for preview DNS'
+        required: false
+      ANTHROPIC_API_KEY:
+        description: 'Anthropic provider API key'
+        required: false
+      FIREWORKS_API_KEY:
+        description: 'Fireworks provider API key'
+        required: false
+      MISTRAL_API_KEY:
+        description: 'Mistral provider API key'
+        required: false
+      THUNDERBOLT_INFERENCE_API_KEY:
+        description: 'Thunderbolt inference gateway API key'
+        required: false
+      TINFOIL_API_KEY:
+        description: 'Tinfoil provider API key'
+        required: false
+      TINFOIL_ENCLAVE_URL:
+        description: 'Tinfoil enclave endpoint URL'
+        required: false
+      # EXA_API_KEY is declared for actionlint's exhaustive secret-schema check, but
+      # callers intentionally do NOT pass it: the `preview` environment secret takes
+      # precedence over any passed value, so the environment is the real source.
+      EXA_API_KEY:
+        description: 'Exa search API key (resolved from the preview environment)'
+        required: false
     outputs:
       url:
         description: 'Public URL of the deployed stack (subdomain if configured, raw ALB otherwise)'
@@ -89,16 +126,14 @@ on:
         required: false
         type: string
 
-env:
-  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
 jobs:
   deploy:
     if: inputs.action == 'deploy'
     runs-on: ubuntu-latest
     # Tag deploys with the `preview` environment so env-scoped secrets (EXA_API_KEY)
     # flow through alongside repo-level secrets. No required reviewers configured,
-    # so enterprise workflow_dispatch deploys are unaffected.
+    # so enterprise workflow_dispatch deploys are unaffected. The dynamic lookup
+    # keeps actionlint from treating the workflow_call secret schema as exhaustive.
     environment: preview
     permissions:
       id-token: write
@@ -134,6 +169,7 @@ jobs:
         working-directory: deploy/pulumi
         env:
           INPUT_STACK_NAME: ${{ inputs.stack_name }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           # --create makes stack init idempotent (no-op if already exists).
           pulumi stack select --create "$INPUT_STACK_NAME" --non-interactive
@@ -161,6 +197,7 @@ jobs:
           INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           INPUT_TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
           INPUT_TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           pulumi config set platform "$INPUT_PLATFORM" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
@@ -206,6 +243,8 @@ jobs:
 
       - name: Deploy
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         with:
           command: up
           stack-name: ${{ inputs.stack_name }}
@@ -217,6 +256,7 @@ jobs:
         working-directory: deploy/pulumi
         env:
           INPUT_STACK_NAME: ${{ inputs.stack_name }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           pulumi stack output --json -s "$INPUT_STACK_NAME"
           URL=$(pulumi stack output url -s "$INPUT_STACK_NAME" 2>/dev/null || echo "")
@@ -250,20 +290,23 @@ jobs:
       - name: Check whether the stack still exists
         id: stack_check
         working-directory: deploy/pulumi
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
-          curl -fsSL https://get.pulumi.com | sh
-          export PATH="$HOME/.pulumi/bin:$PATH"
-          if pulumi stack select "${{ inputs.stack_name }}" --non-interactive 2>/dev/null; then
-            echo "Stack ${{ inputs.stack_name }} exists — proceeding to destroy."
+          if pulumi stack select "$INPUT_STACK_NAME" --non-interactive 2>/dev/null; then
+            echo "Stack $INPUT_STACK_NAME exists — proceeding to destroy."
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Stack ${{ inputs.stack_name }} not found — nothing to destroy."
+            echo "Stack $INPUT_STACK_NAME not found — nothing to destroy."
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Destroy
         if: steps.stack_check.outputs.exists == 'true'
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         with:
           command: destroy
           stack-name: ${{ inputs.stack_name }}

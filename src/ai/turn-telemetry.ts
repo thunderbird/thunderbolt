@@ -31,13 +31,11 @@ export type TurnTelemetry = {
   setDimensions: (dimensions: { engine?: TurnEngine; modelId?: string; modelName?: string; provider?: string }) => void
   startPhase: (name: TurnPhase) => void
   endPhase: (name: TurnPhase) => void
-  recordPhase: (name: TurnPhase, durationMs: number) => void
   markFirstToken: () => void
   recordRetry: (retry: { layer: TurnRetryLayer; reason: string; attempt: number }) => void
   recordStep: () => void
   recordTool: (toolName: string, durationMs: number) => void
   recordError: (errorClass: string) => void
-  setAttempt: (attempt: number) => void
   buildPayload: (outcome: TurnOutcome) => TurnTelemetryPayload
 }
 
@@ -94,7 +92,6 @@ export const createTurnTelemetry = ({
       phaseStarts.delete(name)
       recordPhase(name, now() - phaseStartedAt)
     },
-    recordPhase,
     markFirstToken: () => {
       firstTokenAt ??= now()
     },
@@ -114,9 +111,6 @@ export const createTurnTelemetry = ({
     },
     recordError: (nextErrorClass) => {
       errorClass = nextErrorClass
-    },
-    setAttempt: (attempt) => {
-      attempts = Math.max(attempts, attempt)
     },
     buildPayload: (outcome) => {
       const phasePayload = Object.fromEntries(

@@ -299,3 +299,34 @@ describe('editing a saved note', () => {
     expect((await getProjectFiles(db, project.id))[0].filename).toBe('Same')
   })
 })
+
+describe('updateProject error surface', () => {
+  it('throws on a blank name so callers must handle it', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'Keep me' })
+    // The detail page's blur handler relies on this throwing; it catches and
+    // surfaces the message rather than letting the rejection go unhandled.
+    await expect(updateProject(db, project.id, { name: '   ' })).rejects.toBeInstanceOf(ProjectNameRequiredError)
+    // And the row must be untouched, not half-written.
+    expect((await getProject(db, project.id))?.name).toBe('Keep me')
+  })
+
+  it('writes updatedAt on every edit — the detail page keys its fields on it', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'A' })
+    await updateProject(db, project.id, { name: 'B' })
+    const updated = await getProject(db, project.id)
+    expect(updated?.name).toBe('B')
+    // Not asserting the value *changed*: this suite runs on frozen fake timers, so
+    // two writes in one test share an instant. What matters is that the column is
+    // always written, since the field key derives from it.
+    expect(updated?.updatedAt).toBeTruthy()
+  })
+
+  it('trims a name on save, which is why the field must remount to show it', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'A' })
+    await updateProject(db, project.id, { name: '  Spaced out  ' })
+    expect((await getProject(db, project.id))?.name).toBe('Spaced out')
+  })
+})

@@ -62,13 +62,25 @@ export const absorbExistingChatAttachments = async (
   db: AnyDrizzleDatabase,
   projectId: string,
   chatThreadId: string,
+  deps: AbsorbDeps = defaultDeps,
 ): Promise<AbsorbResult> => {
   const messages = await getChatMessages(db, chatThreadId)
   const attachments = messages.flatMap((message) =>
     getAttachments(convertDbChatMessageToUIMessage(message) as ThunderboltUIMessage),
   )
-  return absorbChatAttachments(db, projectId, attachments)
+  return absorbChatAttachments(db, projectId, attachments, deps)
 }
+
+/**
+ * Injectable blob reader. Tests pass a fake rather than `mock.module`-ing
+ * `@/lib/file-blob-storage`: that module is imported by ~15 files, and bun
+ * installs module mocks for the whole worker — so stubbing it leaks into every
+ * later test file in the process ("passes alone, fails together"), and a partial
+ * stub leaves the module's other exports undefined.
+ */
+export type AbsorbDeps = { getAttachment: typeof getAttachment }
+
+const defaultDeps: AbsorbDeps = { getAttachment }
 
 export type AbsorbResult = {
   /** Filenames added to the project's knowledge. */
@@ -93,6 +105,7 @@ export const absorbChatAttachments = async (
   db: AnyDrizzleDatabase,
   projectId: string,
   attachments: readonly AttachmentData[],
+  deps: AbsorbDeps = defaultDeps,
 ): Promise<AbsorbResult> => {
   const result: AbsorbResult = { added: [], duplicates: [], unsupported: [] }
   if (attachments.length === 0) {
@@ -107,7 +120,7 @@ export const absorbChatAttachments = async (
       continue
     }
     try {
-      const stored = await getAttachment(attachment.localFileId)
+      const stored = await deps.getAttachment(attachment.localFileId)
       if (!stored) {
         // Bytes live on the device that attached them; on another device the
         // reference resolves to nothing. Skip quietly — the text was absorbed

@@ -2,37 +2,48 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, projectFilesTable, projectsTable } from '@/db/tables'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createProject, getProjectFiles } from '@/dal/projects'
 import type { AttachmentData } from '@/types'
-import { absorbChatAttachments, absorbExistingChatAttachments, attachmentsToAbsorb } from './absorb-chat-attachments'
+import {
+  absorbChatAttachments,
+  absorbExistingChatAttachments,
+  attachmentsToAbsorb,
+  type AbsorbDeps,
+} from './absorb-chat-attachments'
 
-/** Blobs live in IndexedDB, which the test environment has no implementation of;
- *  this stands in for the device-local store. */
+/**
+ * Stands in for the device-local IndexedDB store, injected as a dependency.
+ *
+ * Deliberately NOT `mock.module('@/lib/file-blob-storage')`: bun installs module
+ * mocks worker-wide, so stubbing a module imported by ~15 files leaks into every
+ * test that runs after this one.
+ */
 const blobs = new Map<string, { filename: string; mimeType: string; content: string }>()
+
+const fakeBlobStore: AbsorbDeps = {
+  getAttachment: async (id: string) => {
+    const stored = blobs.get(id)
+    if (!stored) {
+      return null
+    }
+    return {
+      id,
+      filename: stored.filename,
+      mimeType: stored.mimeType,
+      size: stored.content.length,
+      createdAt: 0,
+      blob: new Blob([stored.content], { type: stored.mimeType }),
+    }
+  },
+}
 
 beforeAll(async () => {
   await setupTestDatabase()
-  mock.module('@/lib/file-blob-storage', () => ({
-    getAttachment: async (id: string) => {
-      const stored = blobs.get(id)
-      if (!stored) {
-        return null
-      }
-      return {
-        id,
-        filename: stored.filename,
-        mimeType: stored.mimeType,
-        size: stored.content.length,
-        createdAt: 0,
-        blob: new Blob([stored.content], { type: stored.mimeType }),
-      }
-    },
-  }))
 })
 
 afterAll(async () => {
@@ -64,7 +75,12 @@ describe('absorbChatAttachments', () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })
 
-    const result = await absorbChatAttachments(db, project.id, [attach('policy.md', 'No refunds.', 'text/markdown')])
+    const result = await absorbChatAttachments(
+      db,
+      project.id,
+      [attach('policy.md', 'No refunds.', 'text/markdown')],
+      fakeBlobStore,
+    )
 
     expect(result.added).toEqual(['policy.md'])
     const [saved] = await getProjectFiles(db, project.id)
@@ -79,8 +95,8 @@ describe('absorbChatAttachments', () => {
     const project = await createProject(db, { name: 'P' })
     const attachment = attach('policy.md', 'No refunds.', 'text/markdown')
 
-    await absorbChatAttachments(db, project.id, [attachment])
-    const second = await absorbChatAttachments(db, project.id, [attachment])
+    await absorbChatAttachments(db, project.id, [attachment], fakeBlobStore)
+    const second = await absorbChatAttachments(db, project.id, [attachment], fakeBlobStore)
 
     expect(second.added).toEqual([])
     expect(second.duplicates).toEqual(['policy.md'])
@@ -91,8 +107,8 @@ describe('absorbChatAttachments', () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })
 
-    await absorbChatAttachments(db, project.id, [attach('policy.md', 'v1', 'text/markdown')])
-    await absorbChatAttachments(db, project.id, [attach('policy.md', 'v2 revised', 'text/markdown')])
+    await absorbChatAttachments(db, project.id, [attach('policy.md', 'v1', 'text/markdown')], fakeBlobStore)
+    await absorbChatAttachments(db, project.id, [attach('policy.md', 'v2 revised', 'text/markdown')], fakeBlobStore)
 
     // Keeping only the stale copy would be the worse failure.
     const contents = (await getProjectFiles(db, project.id)).map((file) => file.content)
@@ -103,7 +119,12 @@ describe('absorbChatAttachments', () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })
 
-    const result = await absorbChatAttachments(db, project.id, [attach('photo.png', 'binary', 'image/png')])
+    const result = await absorbChatAttachments(
+      db,
+      project.id,
+      [attach('photo.png', 'binary', 'image/png')],
+      fakeBlobStore,
+    )
 
     expect(result.unsupported).toEqual(['photo.png'])
     expect(await getProjectFiles(db, project.id)).toEqual([])
@@ -112,7 +133,7 @@ describe('absorbChatAttachments', () => {
   it('absorbs a file the OS mislabelled', async () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })
-    const result = await absorbChatAttachments(db, project.id, [attach('config.yaml', 'key: value', '')])
+    const result = await absorbChatAttachments(db, project.id, [attach('config.yaml', 'key: value', '')], fakeBlobStore)
     expect(result.added).toEqual(['config.yaml'])
   })
 
@@ -122,7 +143,7 @@ describe('absorbChatAttachments', () => {
     // A synced message references a blob this device never stored.
     const foreign: AttachmentData = { localFileId: 'not-here', filename: 'remote.md', mimeType: 'text/markdown' }
 
-    const result = await absorbChatAttachments(db, project.id, [foreign])
+    const result = await absorbChatAttachments(db, project.id, [foreign], fakeBlobStore)
 
     expect(result).toEqual({ added: [], duplicates: [], unsupported: [] })
     expect(await getProjectFiles(db, project.id)).toEqual([])
@@ -130,7 +151,7 @@ describe('absorbChatAttachments', () => {
 
   it('does nothing for a message with no attachments', async () => {
     const project = await createProject(getDb(), { name: 'P' })
-    expect(await absorbChatAttachments(getDb(), project.id, [])).toEqual({
+    expect(await absorbChatAttachments(getDb(), project.id, [], fakeBlobStore)).toEqual({
       added: [],
       duplicates: [],
       unsupported: [],
@@ -141,11 +162,12 @@ describe('absorbChatAttachments', () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })
 
-    const result = await absorbChatAttachments(db, project.id, [
-      attach('a.md', 'first', 'text/markdown'),
-      attach('b.txt', 'second'),
-      attach('c.png', 'binary', 'image/png'),
-    ])
+    const result = await absorbChatAttachments(
+      db,
+      project.id,
+      [attach('a.md', 'first', 'text/markdown'), attach('b.txt', 'second'), attach('c.png', 'binary', 'image/png')],
+      fakeBlobStore,
+    )
 
     expect(result.added).toEqual(['a.md', 'b.txt'])
     expect(result.unsupported).toEqual(['c.png'])
@@ -215,7 +237,7 @@ describe('absorbExistingChatAttachments (chat moved into a project)', () => {
     const threadId = await seedChat([[attach('cabin.md', 'The site is at 8,400 feet.', 'text/markdown')]])
 
     // The reported bug: upload, ask, *then* add the chat to the project.
-    const result = await absorbExistingChatAttachments(db, project.id, threadId)
+    const result = await absorbExistingChatAttachments(db, project.id, threadId, fakeBlobStore)
 
     expect(result.added).toEqual(['cabin.md'])
     const [saved] = await getProjectFiles(db, project.id)
@@ -231,7 +253,7 @@ describe('absorbExistingChatAttachments (chat moved into a project)', () => {
       [attach('second.md', 'two', 'text/markdown')],
     ])
 
-    const result = await absorbExistingChatAttachments(db, project.id, threadId)
+    const result = await absorbExistingChatAttachments(db, project.id, threadId, fakeBlobStore)
 
     // The save path deliberately looks at one turn; back-fill must not.
     expect(result.added).toEqual(['first.md', 'second.md'])
@@ -242,8 +264,8 @@ describe('absorbExistingChatAttachments (chat moved into a project)', () => {
     const project = await createProject(db, { name: 'P' })
     const threadId = await seedChat([[attach('a.md', 'body', 'text/markdown')]])
 
-    await absorbExistingChatAttachments(db, project.id, threadId)
-    const second = await absorbExistingChatAttachments(db, project.id, threadId)
+    await absorbExistingChatAttachments(db, project.id, threadId, fakeBlobStore)
+    const second = await absorbExistingChatAttachments(db, project.id, threadId, fakeBlobStore)
 
     expect(second.duplicates).toEqual(['a.md'])
     expect(await getProjectFiles(db, project.id)).toHaveLength(1)
@@ -253,7 +275,7 @@ describe('absorbExistingChatAttachments (chat moved into a project)', () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })
     const threadId = await seedChat([[]])
-    expect(await absorbExistingChatAttachments(db, project.id, threadId)).toEqual({
+    expect(await absorbExistingChatAttachments(db, project.id, threadId, fakeBlobStore)).toEqual({
       added: [],
       duplicates: [],
       unsupported: [],

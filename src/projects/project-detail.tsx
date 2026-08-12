@@ -26,6 +26,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import {
   addProjectFile,
   maxProjectInstructionsLength,
+  maxProjectNameLength,
   softDeleteProject,
   softDeleteProjectFile,
   updateProject,
@@ -41,15 +42,17 @@ import { ProjectIcon } from './project-icon'
 /** A note being composed or edited. `id` present = editing an existing note. */
 type NoteDraft = { id?: string; title: string; content: string }
 
-/** Note-composer state. A reducer keeps the draft's transitions in one place. */
-type DetailState = { draftNote: NoteDraft | null }
+/** Note-composer state plus any field-save error. */
+type DetailState = { draftNote: NoteDraft | null; saveError: string | null }
 
 type DetailAction =
   | { type: 'NOTE_DRAFTED'; draft: NoteDraft }
   | { type: 'NOTE_CHANGED'; draft: NoteDraft }
   | { type: 'NOTE_DISMISSED' }
+  | { type: 'SAVE_FAILED'; message: string }
+  | { type: 'SAVE_SUCCEEDED' }
 
-const initialDetailState: DetailState = { draftNote: null }
+const initialDetailState: DetailState = { draftNote: null, saveError: null }
 
 const detailReducer = (state: DetailState, action: DetailAction): DetailState => {
   switch (action.type) {
@@ -58,6 +61,10 @@ const detailReducer = (state: DetailState, action: DetailAction): DetailState =>
       return { ...state, draftNote: action.draft }
     case 'NOTE_DISMISSED':
       return { ...state, draftNote: null }
+    case 'SAVE_FAILED':
+      return { ...state, saveError: action.message }
+    case 'SAVE_SUCCEEDED':
+      return { ...state, saveError: null }
   }
 }
 
@@ -92,18 +99,43 @@ const ProjectDetailPage = () => {
   const { projectId } = useParams<{ projectId: string }>()
   const db = useDatabase()
   const navigate = useNavigate()
-  const [{ draftNote }, dispatch] = useReducer(detailReducer, initialDetailState)
+  const [{ draftNote, saveError }, dispatch] = useReducer(detailReducer, initialDetailState)
 
   // All reactive: an edit here, a new message in one of its chats, or a change
   // synced from another device all reach the page without a manual refetch.
-  const project = useProject(projectId)
+  const { project, isLoading } = useProject(projectId)
   const files = useProjectFiles(projectId)
   const chats = useProjectChats(projectId)
   const artifacts = useProjectArtifacts(projectId)
-  // A deleted project (or a stale link) navigates rather than rendering an
-  // empty shell — house rule: no navigation side effects in effects.
+  // Loading and missing are different states. The reactive query yields `null` on
+  // its first tick, so redirecting on null alone bounces a valid project on a hard
+  // refresh or a direct link.
+  if (isLoading) {
+    return <p className="p-4 text-[length:var(--font-size-sm)] text-muted-foreground">Loading…</p>
+  }
+  // Genuinely gone (deleted, or a stale link) — navigate rather than render an
+  // empty shell. House rule: no navigation side effects in effects.
   if (!project) {
     return <Navigate to="/projects" replace />
+  }
+
+  /**
+   * Persist one field edit, surfacing any failure instead of dropping it.
+   *
+   * `updateProject` throws `ProjectNameRequiredError` on a blank name, and React
+   * does not await a blur handler — so without this the rejection is unhandled,
+   * nothing is shown, and the row silently keeps its old value.
+   */
+  const saveField = async (patch: Parameters<typeof updateProject>[2]) => {
+    try {
+      await updateProject(db, project.id, patch)
+      dispatch({ type: 'SAVE_SUCCEEDED' })
+    } catch (error) {
+      dispatch({
+        type: 'SAVE_FAILED',
+        message: error instanceof Error ? error.message : 'Could not save that change.',
+      })
+    }
   }
 
   const handleDelete = async () => {
@@ -135,22 +167,25 @@ const ProjectDetailPage = () => {
       <SettingsListBody className="gap-6">
         <Section title="Name">
           <div className="flex items-center gap-2">
-            <EmojiPicker
-              value={project.icon}
-              label={project.name}
-              onChange={async (icon) => {
-                await updateProject(db, project.id, { icon })
-              }}
-            />
+            <EmojiPicker value={project.icon} label={project.name} onChange={(icon) => saveField({ icon })} />
             <Input
               aria-label="Project name"
               className={`flex-1 ${fieldClass}`}
+              maxLength={maxProjectNameLength}
+              // Keyed on `updatedAt` so the field remounts when the row changes —
+              // an uncontrolled input keeps its mount-time value otherwise, so a
+              // rename synced from another device (or a name trimmed on save)
+              // would leave stale text while the title above it updated.
+              key={`name-${project.updatedAt ?? project.id}`}
               defaultValue={project.name}
-              onBlur={async (event) => {
-                await updateProject(db, project.id, { name: event.target.value })
-              }}
+              onBlur={(event) => saveField({ name: event.target.value })}
             />
           </div>
+          {saveError && (
+            <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
+              {saveError}
+            </p>
+          )}
         </Section>
 
         <Section title="Instructions" description="Applied to every chat in this project.">
@@ -159,11 +194,10 @@ const ProjectDetailPage = () => {
             className={fieldClass}
             rows={6}
             maxLength={maxProjectInstructionsLength}
+            key={`instructions-${project.updatedAt ?? project.id}`}
             defaultValue={project.instructions ?? ''}
             placeholder="Reply in British English. Prefer bullet points over prose."
-            onBlur={async (event) => {
-              await updateProject(db, project.id, { instructions: event.target.value })
-            }}
+            onBlur={(event) => saveField({ instructions: event.target.value })}
           />
         </Section>
 
@@ -311,9 +345,7 @@ const ProjectDetailPage = () => {
           <label className="flex cursor-pointer items-start gap-3">
             <Checkbox
               checked={project.agentNotesEnabled === 1}
-              onCheckedChange={async (checked) => {
-                await updateProject(db, project.id, { agentNotesEnabled: checked === true })
-              }}
+              onCheckedChange={(checked) => saveField({ agentNotesEnabled: checked === true })}
             />
             <span className="grid gap-1">
               <span className="text-[length:var(--font-size-sm)]">Let the assistant save notes to this project</span>

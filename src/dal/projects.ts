@@ -327,9 +327,9 @@ export const useProjectChatCounts = (): Record<string, number> => {
  * comes from PowerSync's own reactivity, so a query must be compiled through
  * `toCompilableQuery` to update at all.)
  */
-export const useProject = (projectId: string | undefined): Project | null => {
+export const useProject = (projectId: string | undefined): { project: Project | null; isLoading: boolean } => {
   const db = useDatabase()
-  const { data = [] } = useQuery({
+  const { data = [], isLoading } = useQuery({
     queryKey: ['project', projectId ?? 'none'],
     query: toCompilableQuery(
       db
@@ -340,7 +340,10 @@ export const useProject = (projectId: string | undefined): Project | null => {
         .limit(1),
     ),
   })
-  return (data[0] as Project | undefined) ?? null
+  // `isLoading` is returned, not swallowed: the first tick yields `data = []`, so a
+  // caller that treats null as "not found" would bounce a perfectly good project on
+  // a hard refresh or a direct link.
+  return { project: (data[0] as Project | undefined) ?? null, isLoading }
 }
 
 /**

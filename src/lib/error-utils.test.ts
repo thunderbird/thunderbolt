@@ -209,6 +209,15 @@ describe('isRateLimitError', () => {
     expect(isRateLimitError(error)).toBe(true)
   })
 
+  it('detects pi-ai flattened 429 statuses', () => {
+    expect(isRateLimitError(new Error('429: Rate limit exceeded'))).toBe(true)
+    expect(isRateLimitError(new Error('anthropic (429): Please retry later'))).toBe(true)
+  })
+
+  it('does not match a pi-ai flattened 500 status', () => {
+    expect(isRateLimitError(new Error('openai (500): Internal Server Error'))).toBe(false)
+  })
+
   it('does not match status 429 in non-JSON string', () => {
     const error = new Error('status 429 encountered')
     expect(isRateLimitError(error)).toBe(false)

@@ -167,8 +167,10 @@ export const buildProjectPromptSection = (
   if (omitted.length > 0) {
     // Told to the model, not hidden: it can then say "I don't have that document"
     // instead of confidently answering from a partial knowledge base.
+    // Escaped like an included document's filename: a name reaches the prompt on
+    // both sides of the budget decision, so both have to be sanitized.
     parts.push(
-      `## Project knowledge omitted\nThese project documents did not fit in context and are NOT available to you: ${omitted.join(', ')}. If the user's question depends on them, say so instead of guessing.`,
+      `## Project knowledge omitted\nThese project documents did not fit in context and are NOT available to you: ${omitted.map(escapeFilename).join(', ')}. If the user's question depends on them, say so instead of guessing.`,
     )
   }
   return parts.join('\n\n')

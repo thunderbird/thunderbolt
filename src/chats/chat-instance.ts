@@ -60,22 +60,25 @@ const isGeneratedContentPayload = (value: unknown): boolean => {
   )
 }
 
-/** Observe complete SSE data lines without changing or delaying stream chunks. */
-const observeSseLine = (line: string, telemetry: TurnTelemetry): void => {
+/** Observe complete SSE data lines without changing or delaying stream chunks.
+ *  Reports whether the line carried generated content (the first-token signal). */
+const observeSseLine = (line: string, telemetry: TurnTelemetry): boolean => {
   if (!line.startsWith('data:')) {
-    return
+    return false
   }
   const data = line.slice('data:'.length).trimStart()
   if (data === '[DONE]') {
-    return
+    return false
   }
   try {
     if (isGeneratedContentPayload(JSON.parse(data))) {
       telemetry.markFirstToken()
+      return true
     }
   } catch {
     // Telemetry must remain transparent if an adapter emits a non-JSON SSE event.
   }
+  return false
 }
 
 /** Mark the first generated content delta while preserving response metadata. */
@@ -85,26 +88,37 @@ const wrapResponseForFirstContent = (response: Response, telemetry?: TurnTelemet
   }
 
   const decoder = new TextDecoder()
-  const state = { lineBuffer: '' }
+  const state = { lineBuffer: '', sawFirstContent: false }
   const observeLines = (text: string, flush = false): void => {
     state.lineBuffer += text
     const lines = state.lineBuffer.split(/\r?\n/)
     const finalLine = lines.pop() ?? ''
     state.lineBuffer = flush ? '' : finalLine
     for (const line of lines) {
-      observeSseLine(line, telemetry)
+      if (observeSseLine(line, telemetry)) {
+        state.sawFirstContent = true
+        return
+      }
     }
-    if (flush && finalLine) {
-      observeSseLine(finalLine, telemetry)
+    if (flush && finalLine && observeSseLine(finalLine, telemetry)) {
+      state.sawFirstContent = true
     }
   }
   const body = response.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform: (chunk, controller) => {
-        observeLines(decoder.decode(chunk, { stream: true }))
+        // The first-token mark is a one-shot latch: once it fires, the rest of
+        // the stream passes through without decoding or JSON.parse.
+        if (!state.sawFirstContent) {
+          observeLines(decoder.decode(chunk, { stream: true }))
+        }
         controller.enqueue(chunk)
       },
-      flush: () => observeLines(decoder.decode(), true),
+      flush: () => {
+        if (!state.sawFirstContent) {
+          observeLines(decoder.decode(), true)
+        }
+      },
     }),
   )
   return new Response(body, response)

@@ -331,6 +331,61 @@ describe('createAgentRoutingFetch — connection status', () => {
     stream.controller!.close()
     await reader.read()
   })
+
+  it('passes the stream through without parsing once the first content delta is seen', async () => {
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
+    const markFirstToken = spyOn(telemetry, 'markFirstToken')
+    const stream = { controller: undefined as ReadableStreamDefaultController<Uint8Array> | undefined }
+    const adapterResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        start: (controller) => {
+          stream.controller = controller
+        },
+      }),
+    )
+    const adapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async () => adapterResponse,
+    }
+    const fetch = createAgentRoutingFetch(
+      sessionId,
+      async () => {},
+      httpClient,
+      getProxyFetch,
+      {
+        getOrConnectAdapter: (async () => adapter) as never,
+        updateChatThread: (async () => {}) as never,
+        getDb: (() => ({})) as never,
+      },
+      { getTurnTelemetry: () => telemetry },
+    )
+
+    const response = await fetch('https://x', { body: '{}' } as RequestInit)
+    const reader = response.body!.getReader()
+    const encoder = new TextEncoder()
+    const received: string[] = []
+    const readChunk = async () => {
+      const { value } = await reader.read()
+      received.push(new TextDecoder().decode(value))
+    }
+
+    const firstDelta = 'data: {"type":"text-delta","id":"text-1","delta":"Hello"}\n\n'
+    stream.controller!.enqueue(encoder.encode(firstDelta))
+    await readChunk()
+    expect(markFirstToken).toHaveBeenCalledTimes(1)
+
+    // Past the first-token latch the wrapper is a pure pass-through: no more
+    // decoding or JSON.parse, so markFirstToken is never consulted again.
+    const secondDelta = 'data: {"type":"text-delta","id":"text-1","delta":" world"}\n\n'
+    stream.controller!.enqueue(encoder.encode(secondDelta))
+    await readChunk()
+    expect(markFirstToken).toHaveBeenCalledTimes(1)
+    expect(telemetry.buildPayload('success').ttft_ms).toBe(0)
+
+    stream.controller!.close()
+    await reader.read()
+    expect(received.join('')).toBe(firstDelta + secondDelta)
+  })
 })
 
 describe('createChatInstance — retry policy', () => {

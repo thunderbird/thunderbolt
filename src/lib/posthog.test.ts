@@ -71,15 +71,37 @@ describe('analytics sanitizeUrl', () => {
     expect(sanitizeUrl('/chats/abc-123')).toBe('/chats/:chatThreadId')
   })
 
-  it('replaces dynamic chat IDs for full URLs and preserves query', () => {
+  it('replaces dynamic chat IDs and removes the query and hash', () => {
     const input = 'https://app.test/chats/abc-123?x=1#hash'
-    const expected = 'https://app.test/chats/:chatThreadId?x=1#hash'
+    const expected = 'https://app.test/chats/:chatThreadId'
     expect(sanitizeUrl(input)).toBe(expected)
   })
 
-  it('returns input when no route pattern matches', () => {
+  it('removes OAuth callback credentials', () => {
+    expect(sanitizeUrl('/oauth/callback?code=authorization-code&state=csrf-state')).toBe('/oauth/callback')
+  })
+
+  it('removes magic-link credentials', () => {
+    expect(sanitizeUrl('/auth/verify?token=magic-link-token')).toBe('/auth/verify')
+  })
+
+  it('removes multiple query parameters and a hash', () => {
+    expect(sanitizeUrl('/device?user_code=ABCD1234&client_id=thunderbird#approval')).toBe('/device')
+  })
+
+  it('preserves absolute and path-only URL forms', () => {
+    expect(sanitizeUrl('https://app.test/settings?tab=account#profile')).toBe('https://app.test/settings')
+    expect(sanitizeUrl('/settings?tab=account#profile')).toBe('/settings')
+  })
+
+  it('preserves the fallback behavior for unparseable values', () => {
+    const input = 'http://[invalid-url?token=secret#hash'
+    expect(sanitizeUrl(input)).toBe(input)
+  })
+
+  it('returns routes without query parameters unchanged', () => {
     expect(sanitizeUrl('/settings')).toBe('/settings')
-    expect(sanitizeUrl('https://app.test/settings?tab=account')).toBe('https://app.test/settings?tab=account')
+    expect(sanitizeUrl('https://app.test/settings')).toBe('https://app.test/settings')
   })
 })
 
@@ -105,7 +127,7 @@ describe('analytics before_send sanitization', () => {
     }
 
     const result = capturedOptions!.before_send(event)
-    expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId?x=1')
+    expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.$pathname).toBe('/chats/:chatThreadId')
   })

@@ -31,27 +31,29 @@ export const getPosthogClient = (): PostHog | null => posthogClient
 const routePatterns = ['/chats/:chatThreadId'] as const
 
 /**
- * Replaces dynamic URL segments with their parameter placeholders so analytics do not collect raw IDs.
+ * Replaces dynamic URL segments and removes query strings and hashes so analytics do not collect secrets or raw IDs.
  * @param url - Full URL or pathname
- * @returns URL with pathname replaced to match the route pattern
+ * @returns URL containing only its sanitized route
  */
 export const sanitizeUrl = (url: string): string => {
-  const pathname = (() => {
+  const parsedPathname = (() => {
     try {
       return new URL(url, 'http://localhost').pathname
     } catch {
-      return url.startsWith('/') ? url : `/${url}`
+      return null
     }
   })()
 
+  const pathname = parsedPathname ?? (url.startsWith('/') ? url : `/${url}`)
+  const routeOnlyUrl = parsedPathname === null ? url : url.split(/[?#]/, 1)[0]
   for (const pattern of routePatterns) {
     const regex = new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}$`)
     if (regex.test(pathname)) {
-      return url.replace(pathname, pattern)
+      return routeOnlyUrl.replace(pathname, pattern)
     }
   }
 
-  return url
+  return routeOnlyUrl
 }
 
 /** Remove API keys from a PostHog property tree before it leaves the app. */

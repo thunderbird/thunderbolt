@@ -6,7 +6,7 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { Project } from '@/types'
-import { MoveChatToProjectDialog } from './move-chat-to-project-dialog'
+import { MoveChatToProjectPicker } from './move-chat-to-project-dialog'
 
 afterEach(cleanup)
 
@@ -17,22 +17,23 @@ const projects = [
 
 let projectList = projects
 
-/** Spread over the real module: bun installs module mocks worker-wide, so a bare
- *  object would strip every other export for sibling tests in this worker. */
-const realDal = await import('@/dal/projects')
-
-mock.module('@/dal/projects', () => ({ ...realDal, useProjects: () => projectList }))
-
 beforeEach(() => {
   projectList = projects
 })
 
+/**
+ * Rendered through `MoveChatToProjectPicker`, which takes the project list as a
+ * prop — deliberately, rather than `mock.module('@/dal/projects', …)` on the
+ * live-data `MoveChatToProjectDialog`. Bun installs module mocks worker-wide, so
+ * that override would leak `useProjects` into every sibling test in the worker.
+ */
 const renderDialog = (currentProjectId: string | null = null) => {
   const onSelect = mock((_projectId: string | null) => {})
   const onOpenChange = mock((_open: boolean) => {})
   render(
-    <MoveChatToProjectDialog
+    <MoveChatToProjectPicker
       open
+      projects={projectList}
       currentProjectId={currentProjectId}
       onOpenChange={onOpenChange}
       onSelect={onSelect}
@@ -41,7 +42,7 @@ const renderDialog = (currentProjectId: string | null = null) => {
   return { onSelect, onOpenChange }
 }
 
-describe('MoveChatToProjectDialog', () => {
+describe('MoveChatToProjectPicker', () => {
   it('lists every project as a choice', () => {
     renderDialog()
     expect(screen.getByText('Q3 Planning')).toBeInTheDocument()

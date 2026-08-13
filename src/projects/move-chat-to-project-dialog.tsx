@@ -24,9 +24,15 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useProjects } from '@/dal/projects'
 import { cn } from '@/lib/utils'
 import { ProjectIcon } from './project-icon'
+import type { Project } from '@/types'
 
-type MoveChatToProjectDialogProps = {
+type MoveChatToProjectPickerProps = {
   open: boolean
+  /** The account's projects. Passed in rather than read from the DAL here, so the
+   *  picker's behaviour is testable without module-mocking `@/dal/projects` — a
+   *  bun `mock.module` is installed worker-wide and would leak `useProjects` into
+   *  every sibling test. `MoveChatToProjectDialog` supplies the live list. */
+  projects: readonly Project[]
   /** The chat's current project, so it can be marked and offered for removal. */
   currentProjectId: string | null
   onOpenChange: (open: boolean) => void
@@ -35,11 +41,10 @@ type MoveChatToProjectDialogProps = {
 }
 
 const ProjectOptions = ({
+  projects,
   currentProjectId,
   onSelect,
-}: Pick<MoveChatToProjectDialogProps, 'currentProjectId' | 'onSelect'>) => {
-  const projects = useProjects()
-
+}: Pick<MoveChatToProjectPickerProps, 'projects' | 'currentProjectId' | 'onSelect'>) => {
   if (projects.length === 0) {
     return (
       <p className="py-2 text-[length:var(--font-size-sm)] text-muted-foreground">
@@ -83,12 +88,14 @@ const ProjectOptions = ({
   )
 }
 
-export const MoveChatToProjectDialog = ({
+/** The picker itself, given a project list. */
+export const MoveChatToProjectPicker = ({
   open,
+  projects,
   currentProjectId,
   onOpenChange,
   onSelect,
-}: MoveChatToProjectDialogProps) => {
+}: MoveChatToProjectPickerProps) => {
   const { isMobile } = useIsMobile()
   const title = 'Move to project'
   const description = 'Chats in a project inherit its instructions and documents.'
@@ -102,7 +109,7 @@ export const MoveChatToProjectDialog = ({
   if (isMobile) {
     return (
       <MobileActionSheet open={open} onOpenChange={onOpenChange} title={title} description={description}>
-        <ProjectOptions currentProjectId={currentProjectId} onSelect={handleSelect} />
+        <ProjectOptions projects={projects} currentProjectId={currentProjectId} onSelect={handleSelect} />
       </MobileActionSheet>
     )
   }
@@ -114,8 +121,14 @@ export const MoveChatToProjectDialog = ({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <ProjectOptions currentProjectId={currentProjectId} onSelect={handleSelect} />
+        <ProjectOptions projects={projects} currentProjectId={currentProjectId} onSelect={handleSelect} />
       </DialogContent>
     </Dialog>
   )
+}
+
+/** Live-data wrapper: the picker for the current account's projects. */
+export const MoveChatToProjectDialog = (props: Omit<MoveChatToProjectPickerProps, 'projects'>) => {
+  const projects = useProjects()
+  return <MoveChatToProjectPicker projects={projects} {...props} />
 }

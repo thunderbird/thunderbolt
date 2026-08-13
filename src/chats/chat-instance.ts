@@ -211,7 +211,14 @@ export const createAgentRoutingFetch = (
       return undefined
     }
     return (
-      buildProjectPromptSection(projectContext.prompt, { hasSearchableChats: false, notes: 'unsupported' }) ?? undefined
+      buildProjectPromptSection(projectContext.prompt, {
+        hasSearchableChats: false,
+        // Mirrors the built-in path in `ai/fetch.ts`: only a project that opted
+        // into notes gets the "enabled but this agent can't save them" wording.
+        // Without the opt-in the setting really is off, and saying otherwise
+        // would tell the user a feature is on when it isn't.
+        notes: projectContext.agentNotesEnabled ? 'unsupported' : 'disabled',
+      }) ?? undefined
     )
   }
 

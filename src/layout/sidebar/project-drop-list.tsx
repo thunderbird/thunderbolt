@@ -14,7 +14,7 @@
 
 import { useDroppable } from '@dnd-kit/core'
 import { FolderMinus } from 'lucide-react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { useProjects } from '@/dal/projects'
@@ -29,16 +29,20 @@ type DropRowProps = {
   isDragging: boolean
   /** Marks the chat's current project — dropping there is a no-op. */
   isCurrent?: boolean
+  /** Whether this project's page is the one open, so the row reads as selected
+   *  like every other sidebar item. */
+  isActive?: boolean
   onClick?: () => void
 }
 
-const DropRow = ({ dropId, label, icon, isDragging, isCurrent, onClick }: DropRowProps) => {
+const DropRow = ({ dropId, label, icon, isDragging, isCurrent, isActive, onClick }: DropRowProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: dropId, disabled: isCurrent })
 
   return (
     <SidebarMenuItem ref={setNodeRef}>
       <SidebarMenuButton
         onClick={onClick}
+        isActive={isActive}
         tooltip={isCurrent ? `${label} — already in this project` : label}
         className={cn(
           'cursor-pointer transition-all duration-150',
@@ -69,6 +73,7 @@ type ProjectDropListProps = {
 export const ProjectDropList = ({ isDragging, draggingFromProjectId }: ProjectDropListProps) => {
   const projects = useProjects()
   const navigate = useNavigate()
+  const location = useLocation()
 
   if (projects.length === 0) {
     return null
@@ -97,6 +102,7 @@ export const ProjectDropList = ({ isDragging, draggingFromProjectId }: ProjectDr
             icon={<ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] text-[1.05rem]" />}
             isDragging={isDragging}
             isCurrent={draggingFromProjectId === project.id}
+            isActive={location.pathname === `/projects/${project.id}`}
             onClick={() => navigate(`/projects/${project.id}`)}
           />
         ))}

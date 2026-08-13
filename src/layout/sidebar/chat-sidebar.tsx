@@ -185,7 +185,7 @@ export const ChatSidebarContent = ({
                     <span>New Chat</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                <ProjectsMenuItem isActive={location.pathname.startsWith('/projects')} onClick={onProjectsClick} />
+                <ProjectsMenuItem isActive={location.pathname === '/projects'} onClick={onProjectsClick} />
                 {showTasks && (
                   <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                 )}
@@ -213,7 +213,7 @@ export const ChatSidebarContent = ({
           mobileNavToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
           mobileSecondaryNavigation={
             <SidebarMenu className="mt-2 flex-shrink-0">
-              <ProjectsMenuItem isActive={location.pathname.startsWith('/projects')} onClick={onProjectsClick} />
+              <ProjectsMenuItem isActive={location.pathname === '/projects'} onClick={onProjectsClick} />
               {showTasks && <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />}
             </SidebarMenu>
           }

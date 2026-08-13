@@ -18,6 +18,8 @@ import { createWebToolBudget, resolveWebToolIntent, type WebToolBudget } from '@
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
+import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
+import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
 import {
@@ -105,6 +107,7 @@ export type CreateChatInstanceDeps = {
   updateChatThread?: typeof defaultUpdateChatThread
   getDb?: typeof defaultGetDb
   getAllSkills?: typeof defaultGetAllSkills
+  loadProjectContext?: typeof defaultLoadProjectContext
   createChat?: (init: ChatInit<ThunderboltUIMessage>) => Chat<ThunderboltUIMessage>
   createTurnBudget?: typeof defaultCreateTurnBudget
   wakeAdapterReconnect?: typeof defaultWakeAdapterReconnect
@@ -148,6 +151,7 @@ export const createAgentRoutingFetch = (
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
   const getAllSkills = deps.getAllSkills ?? defaultGetAllSkills
+  const loadProjectContext = deps.loadProjectContext ?? defaultLoadProjectContext
   const getTurnBudget =
     routingState.getTurnBudget ??
     (() => {
@@ -191,6 +195,24 @@ export const createAgentRoutingFetch = (
       }
     }
     return resolveSkillTokenInstructions(lastUserText, instructionBySlug)
+  }
+
+  /**
+   * Render the chat's project context as prompt text for an ACP agent.
+   *
+   * The two project tools are deliberately not advertised: `search_project_chats`
+   * and `save_project_note` are AI-SDK tools registered on the built-in toolset,
+   * and an ACP agent runs its own — promising them here would invite the agent to
+   * call something that does not exist.
+   */
+  const resolveAcpProjectSection = async (threadId: string): Promise<string | undefined> => {
+    const projectContext = await loadProjectContext(getDb(), threadId)
+    if (!projectContext) {
+      return undefined
+    }
+    return (
+      buildProjectPromptSection(projectContext.prompt, { hasSearchableChats: false, notes: 'unsupported' }) ?? undefined
+    )
   }
 
   return Object.assign(
@@ -264,6 +286,13 @@ export const createAgentRoutingFetch = (
       const skillInstructions = isBuiltInAgent(selectedAgent)
         ? undefined
         : await resolveAcpSkillInstructions(requestMessages)
+      // Same split for project context: built-in builds it in `ai/fetch.ts`, so
+      // without this a chat in a project silently lost its instructions and
+      // knowledge the moment it was answered by a remote or managed agent.
+      // Gated on the session's own `projectId` so a chat outside a project — the
+      // common case — never pays for the lookup.
+      const projectSection =
+        isBuiltInAgent(selectedAgent) || !session.projectId ? undefined : await resolveAcpProjectSection(id)
       // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
       const requestPermission = isBuiltInAgent(selectedAgent)
         ? undefined
@@ -288,6 +317,7 @@ export const createAgentRoutingFetch = (
         webToolBudget: getWebToolBudget(requestMessages),
         regenerationRevision: routingState.regenerationRevision ?? 0,
         skillInstructions,
+        projectSection,
         onAcpSessionId: persistAcpSessionId,
         requestPermission,
         onSessionSideEffect: applySessionSideEffect,

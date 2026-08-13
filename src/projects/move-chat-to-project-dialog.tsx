@@ -1,0 +1,121 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * Pick the project a chat belongs to.
+ *
+ * The pointer path for this is dragging a chat onto a sidebar project row, but a
+ * drag is not available everywhere — the sidebar's project rows are desktop-only,
+ * and a touch drag competes with the list's own scrolling. This dialog is the
+ * equivalent that works on every platform and with a keyboard, so project
+ * membership is never reachable by gesture alone.
+ *
+ * Mobile gets a bottom sheet and desktop a dialog, the same split
+ * `ConfirmActionDialog` uses.
+ */
+
+import { Check, FolderMinus } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { MobileActionSheet } from '@/components/ui/mobile-action-sheet'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { useProjects } from '@/dal/projects'
+import { cn } from '@/lib/utils'
+import { ProjectIcon } from './project-icon'
+
+type MoveChatToProjectDialogProps = {
+  open: boolean
+  /** The chat's current project, so it can be marked and offered for removal. */
+  currentProjectId: string | null
+  onOpenChange: (open: boolean) => void
+  /** `null` clears the chat's project. */
+  onSelect: (projectId: string | null) => void
+}
+
+const ProjectOptions = ({
+  currentProjectId,
+  onSelect,
+}: Pick<MoveChatToProjectDialogProps, 'currentProjectId' | 'onSelect'>) => {
+  const projects = useProjects()
+
+  if (projects.length === 0) {
+    return (
+      <p className="py-2 text-[length:var(--font-size-sm)] text-muted-foreground">
+        No projects yet. Create one from the Projects page, then move this chat into it.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex max-h-[50vh] flex-col gap-1 overflow-y-auto">
+      {projects.map((project) => {
+        const isCurrent = project.id === currentProjectId
+        return (
+          <Button
+            key={project.id}
+            variant="ghost"
+            // Left-aligned rows rather than centered button labels: this is a
+            // list, and `justify-start` keeps the icons in one column.
+            className={cn('h-[var(--touch-height-lg)] justify-start gap-2 px-2', isCurrent && 'bg-accent')}
+            aria-current={isCurrent}
+            onClick={() => onSelect(project.id)}
+          >
+            <ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] text-[1.05rem]" />
+            <span className="min-w-0 flex-1 truncate text-left">{project.name}</span>
+            {isCurrent && <Check className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" />}
+          </Button>
+        )
+      })}
+      {/* Only meaningful when the chat is in a project — you can't remove it from nothing. */}
+      {currentProjectId !== null && (
+        <Button
+          variant="ghost"
+          className="h-[var(--touch-height-lg)] justify-start gap-2 px-2 text-muted-foreground"
+          onClick={() => onSelect(null)}
+        >
+          <FolderMinus className="size-[var(--icon-size-default)]" aria-hidden="true" />
+          <span className="flex-1 text-left">Remove from project</span>
+        </Button>
+      )}
+    </div>
+  )
+}
+
+export const MoveChatToProjectDialog = ({
+  open,
+  currentProjectId,
+  onOpenChange,
+  onSelect,
+}: MoveChatToProjectDialogProps) => {
+  const { isMobile } = useIsMobile()
+  const title = 'Move to project'
+  const description = 'Chats in a project inherit its instructions and documents.'
+
+  // Selecting always dismisses: the sheet is a picker, not a settings surface.
+  const handleSelect = (projectId: string | null) => {
+    onOpenChange(false)
+    onSelect(projectId)
+  }
+
+  if (isMobile) {
+    return (
+      <MobileActionSheet open={open} onOpenChange={onOpenChange} title={title} description={description}>
+        <ProjectOptions currentProjectId={currentProjectId} onSelect={handleSelect} />
+      </MobileActionSheet>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <ProjectOptions currentProjectId={currentProjectId} onSelect={handleSelect} />
+      </DialogContent>
+    </Dialog>
+  )
+}

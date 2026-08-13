@@ -87,6 +87,13 @@ export type AgentAdapterContext = {
    *  them into the prompt instead — keeping skills behaving the same across
    *  agents. Empty/omitted when no skill token resolved. */
   skillInstructions?: string[]
+  /** The chat's project context (instructions + knowledge documents), rendered as
+   *  prompt text. Built-in gets this through `ai/fetch.ts`; ACP agents have no
+   *  system channel, so the adapter folds it into the prompt — otherwise a chat
+   *  in a project behaves as though it had none once you switch agents. The two
+   *  project *tools* (cross-chat search, note writing) stay built-in-only: they
+   *  are AI-SDK tools, and an ACP agent runs its own toolset. */
+  projectSection?: string
   /** Called when an ACP adapter created a fresh `sessionId` via `session/new`.
    *  The chat layer persists it on `chatThreads.acpSessionId` so future loads
    *  can call `session/load` when the agent supports it. */

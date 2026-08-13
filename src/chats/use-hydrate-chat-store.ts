@@ -38,6 +38,10 @@ import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 type UseHydrateChatStoreParams = {
   id: string
   isNew: boolean
+  /** Project a brand-new chat starts in, taken from `?projectId=` by the route.
+   *  Passed in rather than read from `window.location` so the value is part of
+   *  this hook's inputs and can be tested. */
+  projectId?: string | null
 }
 
 /**
@@ -64,7 +68,7 @@ const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
   }
 }
 
-export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
+export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = null }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
@@ -251,8 +255,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // A persisted thread owns its project; a brand-new chat started from a
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only
     // moment that intent exists — nothing has been written yet.
-    const projectId =
-      chatThread?.projectId ?? (isNew ? new URLSearchParams(window.location.search).get('projectId') : null)
+    const projectId = chatThread?.projectId ?? (isNew ? newChatProjectId : null)
 
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {

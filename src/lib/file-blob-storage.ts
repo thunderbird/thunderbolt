@@ -44,12 +44,25 @@ const openDB = (): Promise<IDBDatabase> =>
     request.onerror = () => reject(new Error('Failed to open attachment store', { cause: request.error }))
   })
 
-/** Persist an uploaded attachment locally. */
+/**
+ * Copy a blob's bytes into memory, detaching it from any file on disk.
+ *
+ * A `File` from an `<input>` or a drop is a *reference* to a path, not bytes, and
+ * IndexedDB stores it as one — so editing or moving the source afterwards
+ * invalidates the snapshot, and every later read throws `NotReadableError`. That
+ * poisons the whole conversation, not just the one turn: each subsequent send
+ * re-reads the history's attachments. Chat attachments are meant to be a
+ * point-in-time copy, so the bytes are taken here, once.
+ */
+const detachBytes = async (blob: Blob): Promise<Blob> => new Blob([await blob.arrayBuffer()], { type: blob.type })
+
+/** Persist an uploaded attachment locally, as a copy of the bytes. */
 export const putAttachment = async (file: StoredFile): Promise<void> => {
+  const detached = { ...file, blob: await detachBytes(file.blob) }
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
-    tx.objectStore(storeName).put(file)
+    tx.objectStore(storeName).put(detached)
     tx.oncomplete = () => {
       db.close()
       resolve()

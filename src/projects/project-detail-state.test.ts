@@ -67,6 +67,36 @@ describe('detailReducer save errors', () => {
   })
 })
 
+describe('detailReducer note drafts', () => {
+  it('starts every project with a clean composer', () => {
+    // The page is remounted per project id (see the wrapper in
+    // `project-detail.tsx`), so a draft cannot survive a navigation. Before that,
+    // navigating A → B kept A's draft *and* its note id, and "Save changes"
+    // updated A's row while B was on screen.
+    expect(initialDetailState.draftNote).toBeNull()
+  })
+
+  it('keeps the note id when the draft is edited, so a save updates rather than inserts', () => {
+    const editing = detailReducer(initialDetailState, {
+      type: 'NOTE_DRAFTED',
+      draft: { id: 'note-1', title: 'Roof', content: 'Metal' },
+    })
+    const typed = detailReducer(editing, {
+      type: 'NOTE_CHANGED',
+      draft: { ...editing.draftNote!, content: 'Metal, 6:12 pitch' },
+    })
+    expect(typed.draftNote).toEqual({ id: 'note-1', title: 'Roof', content: 'Metal, 6:12 pitch' })
+  })
+
+  it('discards the draft when the composer is dismissed', () => {
+    const editing = detailReducer(initialDetailState, {
+      type: 'NOTE_DRAFTED',
+      draft: { id: 'note-1', title: 'Roof', content: 'Metal' },
+    })
+    expect(detailReducer(editing, { type: 'NOTE_DISMISSED' }).draftNote).toBeNull()
+  })
+})
+
 describe('deletePrompt', () => {
   it('tells the user their chats survive a project deletion', () => {
     // The one non-obvious consequence: chats are orphaned, not removed.

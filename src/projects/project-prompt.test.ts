@@ -195,12 +195,13 @@ describe('assistant memory guidance', () => {
     expect(section).toContain('at most once')
   })
 
-  it('blames the model, not the setting, when notes are on but tools are unavailable', () => {
+  it('blames the agent, not the setting, when notes are on but saving is unavailable', () => {
     const section = buildProjectPromptSection(
       { name: 'P', instructions: null, knowledge: [] },
       { notes: 'unsupported' },
     )
-    expect(section).toContain('cannot use tools')
+    // Covers both a no-tools model and an ACP agent, which has tools but not ours.
+    expect(section).toContain('cannot save them')
     // The regression this state exists for: never tell the user to switch on
     // something they already switched on.
     expect(section).toContain('already on')

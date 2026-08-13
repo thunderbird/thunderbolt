@@ -41,6 +41,7 @@ const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps 
   deleteChatDialogRef: { current: { open: mock(), close: mock() } } as never,
   onChatClick: mock(),
   onRename: mock(),
+  onMoveToProject: mock(),
   ...overrides,
 })
 

@@ -69,6 +69,7 @@ export const Expanded: Story = {
     } as any,
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -95,6 +96,7 @@ export const ExpandedActive: Story = {
     } as any,
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -121,6 +123,7 @@ export const ExpandedEncrypted: Story = {
     } as any,
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -147,6 +150,7 @@ export const Collapsed: Story = {
     } as any,
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -173,6 +177,7 @@ export const CollapsedActive: Story = {
     } as any,
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -199,6 +204,7 @@ export const CollapsedEncrypted: Story = {
     } as any,
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -225,6 +231,7 @@ export const Deleting: Story = {
     } as any,
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {

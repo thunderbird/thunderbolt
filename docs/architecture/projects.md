@@ -58,6 +58,15 @@ Three properties worth knowing:
 - **Never throws.** A corrupt PDF must not fail the user's message; the file is
   delivered to the model either way, so absorption is best-effort.
 
+Attaching a file also **copies its bytes**. A `File` from a picker is a reference
+to a path, and IndexedDB stores it as one, so editing the source afterwards
+invalidated every later read — and because each send re-reads the whole history,
+one edited file failed the turn, burned all three auto-retries, and broke even a
+plain-text follow-up. `putAttachment` now detaches the bytes on the way in, and an
+unreadable attachment is skipped like a missing one rather than failing the send.
+This predates Projects but matters more here, because knowledge invites attaching
+exactly the editable source files (`.py`, `.yaml`, `.toml`) that trip it.
+
 Because the composer is the only door, **its accept list bounds what can become
 knowledge**. `plainTextExtensions` and `resolveTextMimeType` therefore live in
 `src/files/transformers` and are shared by both surfaces — the composer builds
@@ -145,8 +154,10 @@ told "you haven't enabled this" when the user had:
 - `enabled` — use the tool, and say briefly that you did.
 - `disabled` — the feature exists but the user hasn't opted in; say once when a
   fact *would* have been saved. This doubles as feature discovery.
-- `unsupported` — opted in, but the model can't call tools. Says so **without**
-  telling the user to enable a setting that is already on.
+- `unsupported` — opted in, but the agent answering can't save notes: a model
+  without tool support, or any ACP agent (they run their own toolset and never
+  receive ours). Says so **without** telling the user to enable a setting that is
+  already on.
 
 ## Reactivity: queries must be compiled, not invalidated
 
@@ -247,6 +258,8 @@ a conscious include/exclude on any future table).
 | Pages + panels | `src/projects/{index,project-detail,project-detail-panel,create-project-panel}.tsx` |
 | Emoji icon picker | `src/projects/emoji-picker.tsx`, `src/projects/emoji-catalog.ts` |
 | Drag-to-project | `src/projects/chat-drop.ts`, `src/layout/sidebar/project-drop-list.tsx` |
+| Moving a chat (shared by drop + menu) | `src/projects/use-move-chat-to-project.ts` |
+| Project picker (menu path, all platforms) | `src/projects/move-chat-to-project-dialog.tsx` |
 | Chat header badge | `src/projects/project-badge.tsx` |
 
 ## Known gaps
@@ -254,8 +267,13 @@ a conscious include/exclude on any future table).
 - **Search is lexical, not semantic** (see above). True vector search needs an
   embedding model, a vector store, and a privacy decision about sending message
   text to a provider — none of which exist today.
-- **Touch drag is unverified.** dnd-kit's `PointerSensor` on a virtualized,
-  `touch-pan-y` list may compete with scrolling on mobile.
+- **Touch drag is unverified**, and on narrow mobile the sidebar's project rows
+  are not rendered at all (the whole group sits behind `!isMobile`). Drag is
+  therefore an enhancement, not the mechanism: every platform reaches project
+  membership through **Move to project** in a chat's action menu (long-press on
+  mobile, right-click or `⋯` on desktop), which opens
+  `MoveChatToProjectDialog`. The sidebar owns one instance of that dialog rather
+  than one per row — the list is virtualized and hundreds of rows long.
 - **The project badge is desktop-only** — the mobile header positions the agent
   pill absolutely and has no room beside it.
 - **Knowledge types are bounded by the composer's accept list**, since that is the
@@ -263,5 +281,13 @@ a conscious include/exclude on any future table).
   excluded deliberately.
 - **A document does not record which chat it came from.** `project_files` has no
   `chat_thread_id`, so the aggregate shows *what* but not *where from*.
-- **E2EE has not been exercised.** `getProjectArtifacts` (`parts LIKE`) and the
-  FTS index both assume message JSON is plaintext locally.
+- **E2EE has not been exercised.** The artifact query (`parts LIKE`) and the FTS
+  index both assume message JSON is plaintext locally.
+- **Remote and managed ACP agents get project instructions and knowledge, but not
+  the project tools.** ACP has no system channel, so `chat-instance.ts` renders the
+  project section and the adapter folds it into the prompt text
+  (`composeAcpPrompt`). `search_project_chats` and `save_project_note` stay
+  built-in-only: they are AI-SDK tools, and an ACP agent runs its own toolset, so
+  advertising them would invite calls to something that does not exist. The
+  lookup is gated on the session's `projectId`, so a chat outside a project never
+  pays for it.

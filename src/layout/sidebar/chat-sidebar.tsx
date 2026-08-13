@@ -22,6 +22,7 @@ import { useLocation } from 'react-router'
 import {
   DndContext,
   DragOverlay,
+  MeasuringStrategy,
   PointerSensor,
   type DragEndEvent,
   type DragStartEvent,
@@ -29,13 +30,10 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { MessageCircle } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useDatabase } from '@/contexts'
-import { useChatStore } from '@/chats/chat-store'
-import { setChatThreadProject } from '@/dal/projects'
-import { absorbExistingChatAttachments } from '@/projects/absorb-chat-attachments'
-import { resolveChatDrop, type ChatDragData, type ChatDrop } from '@/projects/chat-drop'
+import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
+import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
+import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
 import { ProjectDropList } from './project-drop-list'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
@@ -109,8 +107,11 @@ export const ChatSidebarContent = ({
 }: ChatSidebarContentProps) => {
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
-  const db = useDatabase()
-  const queryClient = useQueryClient()
+  const moveChatToProject = useMoveChatToProject()
+  // The chat whose project is being picked from a row's action menu. One dialog
+  // for the whole list — a per-row instance would mount hundreds of them, and the
+  // rows are virtualized anyway.
+  const [moveTarget, setMoveTarget] = useState<{ chatThreadId: string; projectId: string | null } | null>(null)
   // The dragged chat, or null when nothing is in flight. Holds the whole payload
   // (not just a boolean) so the drop rows can hide the unassign target for a chat
   // that has no project, and the overlay can show the chat's title.
@@ -130,26 +131,14 @@ export const ChatSidebarContent = ({
    * in the sidebar, so the failure is logged with its target — the same treatment
    * `chat-instance.ts` gives its own fire-and-forget writes.
    */
-  const moveChat = async (drop: ChatDrop) => {
-    await setChatThreadProject(db, drop.chatThreadId, drop.projectId)
-    // A chat joining a project brings its documents with it. Absorption normally
-    // runs at message-save time, when the chat's project was whatever it was
-    // then — without this back-fill, a file attached before the move stays
-    // invisible in the project's knowledge.
-    if (drop.projectId) {
-      await absorbExistingChatAttachments(db, drop.projectId, drop.chatThreadId)
+  /** Shared by the drop and the menu: failures are logged because the sidebar has
+   *  no notification surface. */
+  const runMove = async (chatThreadId: string, projectId: string | null) => {
+    try {
+      await moveChatToProject({ chatThreadId, projectId })
+    } catch (error) {
+      console.error('Moving a chat into a project failed', { chatThreadId, projectId, error })
     }
-    // The row is the source of truth for the next send, but the header badge
-    // reads the live session — without this a chat only shows its new project
-    // after a reload. Guarded because a session exists only for a chat that has
-    // been opened this run, and `updateSession` throws on an unknown id.
-    const store = useChatStore.getState()
-    if (store.sessions.has(drop.chatThreadId)) {
-      store.updateSession(drop.chatThreadId, { projectId: drop.projectId })
-    }
-    // Only the chat rows need a nudge; the project counts are a reactive
-    // PowerSync query and update themselves.
-    await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
   }
 
   const handleDragEnd = async ({ active, over }: DragEndEvent) => {
@@ -158,15 +147,17 @@ export const ChatSidebarContent = ({
     if (!drop) {
       return
     }
-    try {
-      await moveChat(drop)
-    } catch (error) {
-      console.error('Moving a chat into a project failed', { drop, error })
-    }
+    await runMove(drop.chatThreadId, drop.projectId)
   }
 
   return (
     <DndContext
+      // Re-measure droppables continuously instead of once per drag. The drop
+      // zone changes height the moment a drag starts — the "Move to project"
+      // label appears and the row cap lifts — so a single measurement taken at
+      // drag start describes a layout that no longer exists, and every rect below
+      // the label is offset by its height.
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       sensors={sensors}
       onDragStart={handleDragStart}
       onDragCancel={() => setDraggingChat(null)}
@@ -233,6 +224,7 @@ export const ChatSidebarContent = ({
           }
           onChatClick={onChatClick}
           onRename={onRename}
+          onMoveToProject={(chatThreadId, projectId) => setMoveTarget({ chatThreadId, projectId })}
           onSearchClick={onSearchClick}
         />
 
@@ -248,6 +240,19 @@ export const ChatSidebarContent = ({
           </div>
         )}
       </DragOverlay>
+
+      {moveTarget && (
+        <MoveChatToProjectDialog
+          open
+          currentProjectId={moveTarget.projectId}
+          onOpenChange={(open) => !open && setMoveTarget(null)}
+          onSelect={(projectId) => {
+            const { chatThreadId } = moveTarget
+            setMoveTarget(null)
+            void runMove(chatThreadId, projectId)
+          }}
+        />
+      )}
     </DndContext>
   )
 }

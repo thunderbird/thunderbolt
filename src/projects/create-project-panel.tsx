@@ -121,7 +121,9 @@ export const CreateProjectPanel = ({ onClose, onCreated }: CreateProjectPanelPro
             Instructions
           </label>
           <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            Applied to every chat in this project. You can add reference documents once it exists.
+            {/* Documents have one door — attaching a file in a chat. Promising an
+                uploader here was wrong once the project-side one was removed. */}
+            Applied to every chat in this project. Reference documents join it by being attached in one of its chats.
           </p>
           <Textarea
             id="new-project-instructions"

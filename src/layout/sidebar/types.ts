@@ -47,6 +47,8 @@ export type ChatListProps = {
   mobileSecondaryNavigation: ReactNode
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
+  /** Open the project picker for a chat. The sidebar owns the dialog. */
+  onMoveToProject: (threadId: string, currentProjectId: string | null) => void
   onSearchClick: () => void
 }
 
@@ -60,4 +62,5 @@ export type ChatListItemProps = {
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
+  onMoveToProject: (threadId: string, currentProjectId: string | null) => void
 }

@@ -12,7 +12,7 @@
  */
 
 import { FileText, LayoutTemplate, MessageCirclePlus, NotebookPen, Sparkles, Trash2 } from 'lucide-react'
-import { useReducer, type ReactNode } from 'react'
+import { useReducer, useRef, useTransition, type ReactNode } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { SettingsListBody, SettingsListPane } from '@/components/settings/settings-list'
@@ -77,11 +77,12 @@ const Section = ({
   </section>
 )
 
-const ProjectDetailPage = () => {
-  const { projectId } = useParams<{ projectId: string }>()
+const ProjectDetail = ({ projectId }: { projectId: string | undefined }) => {
   const db = useDatabase()
   const navigate = useNavigate()
   const [{ draftNote, pendingDelete, saveError }, dispatch] = useReducer(detailReducer, initialDetailState)
+  const [isSavingNote, startSavingNote] = useTransition()
+  const isSavingNoteRef = useRef(false)
 
   // All reactive: an edit here, a new message in one of its chats, or a change
   // synced from another device all reach the page without a manual refetch.
@@ -120,9 +121,26 @@ const ProjectDetailPage = () => {
     }
   }
 
-  /** Same reason as `saveField`: React does not await this handler, so a failed
-   *  write has to be caught here or the note silently vanishes. */
-  const saveNote = async (draft: NoteDraft) => {
+  /**
+   * Same reason as `saveField`: React does not await this handler, so a failed
+   * write has to be caught here or the note silently vanishes.
+   *
+   * Guarded against re-entry, because a new note is an insert: two clicks landed
+   * two rows. `isSavingNote` disables the button, and the ref closes the window
+   * before that re-render, where a fast double-click used to fit.
+   */
+  const saveNote = (draft: NoteDraft) => {
+    if (isSavingNoteRef.current) {
+      return
+    }
+    isSavingNoteRef.current = true
+    startSavingNote(async () => {
+      await writeNote(draft)
+      isSavingNoteRef.current = false
+    })
+  }
+
+  const writeNote = async (draft: NoteDraft) => {
     try {
       if (draft.id) {
         await updateProjectFile(db, draft.id, { filename: draft.title, content: draft.content.trim() })
@@ -274,7 +292,11 @@ const ProjectDetailPage = () => {
                 <Button variant="ghost" size="sm" onClick={() => dispatch({ type: 'NOTE_DISMISSED' })}>
                   Cancel
                 </Button>
-                <Button size="sm" disabled={draftNote.content.trim().length === 0} onClick={() => saveNote(draftNote)}>
+                <Button
+                  size="sm"
+                  disabled={draftNote.content.trim().length === 0 || isSavingNote}
+                  onClick={() => saveNote(draftNote)}
+                >
                   {draftNote.id ? 'Save changes' : 'Save note'}
                 </Button>
               </div>
@@ -442,6 +464,20 @@ const ProjectDetailPage = () => {
       )}
     </SettingsListPane>
   )
+}
+
+/**
+ * Remounts the page per project id.
+ *
+ * `/projects/:projectId` keeps the same component mounted when navigating from
+ * one project to another, so without the key the reducer's note draft — and its
+ * `id`, pointing at the *previous* project's row — survived the navigation, and
+ * "Save changes" wrote project A's note while project B was on screen. The house
+ * rule for resetting state on a prop change is a `key`, not an effect.
+ */
+const ProjectDetailPage = () => {
+  const { projectId } = useParams<{ projectId: string }>()
+  return <ProjectDetail key={projectId} projectId={projectId} />
 }
 
 export default ProjectDetailPage

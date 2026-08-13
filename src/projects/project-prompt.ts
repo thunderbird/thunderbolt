@@ -59,8 +59,9 @@ export type BuildProjectSectionOptions = {
    *  - `enabled` — the tool is registered; use it.
    *  - `disabled` — the project has not opted in; say when a note *would* have
    *    been saved, so the user discovers the setting.
-   *  - `unsupported` — opted in, but this model can't call tools; say that
-   *    instead of blaming the setting.
+   *  - `unsupported` — opted in, but this agent can't save them: a model without
+   *    tool support, or an ACP agent, which runs its own toolset and never
+   *    receives ours. Say that instead of blaming the setting.
    *  - `off` — not applicable (no notes guidance at all).
    */
   notes?: 'enabled' | 'disabled' | 'unsupported' | 'off'
@@ -158,10 +159,11 @@ export const buildProjectPromptSection = (
   }
   if (notes === 'unsupported') {
     parts.push(
-      '## Remembering things (unavailable on this model)\n' +
-        'This project has notes enabled, but the current model cannot use tools, so you CANNOT save anything and will ' +
-        'not remember this conversation. If something worth remembering comes up, say once that it would need to be ' +
-        'saved from a tool-capable model. Do NOT tell the user to enable a setting — it is already on.',
+      '## Remembering things (unavailable here)\n' +
+        'This project has notes enabled, but the agent answering this chat cannot save them, so you CANNOT save ' +
+        'anything and will not remember this conversation. If something worth remembering comes up, say once that it ' +
+        'would need to be saved from a different agent or model. Do NOT tell the user to enable a setting — it is ' +
+        'already on.',
     )
   }
   if (omitted.length > 0) {

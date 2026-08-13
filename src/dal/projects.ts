@@ -53,6 +53,14 @@ export type UpdateProjectInput = Partial<Pick<CreateProjectInput, 'name' | 'desc
   agentNotesEnabled?: boolean
 }
 
+/**
+ * Cap instructions at the prompt budget. Applied on every write path, not just
+ * the UI's `maxLength`: instructions go into the stable half of every chat's
+ * system prompt, so the DAL is where the bound has to hold.
+ */
+const capInstructions = (instructions: string | null | undefined): string | null =>
+  instructions?.slice(0, maxProjectInstructionsLength) ?? null
+
 /** Reject a blank or over-long name before it reaches the database. */
 const assertValidName = (name: string): string => {
   const trimmed = name.trim()
@@ -100,7 +108,7 @@ export const createProject = async (db: AnyDrizzleDatabase, input: CreateProject
     id: uuidv7(),
     name: assertValidName(input.name),
     description: input.description ?? null,
-    instructions: input.instructions ?? null,
+    instructions: capInstructions(input.instructions),
     icon: input.icon ?? null,
     pinnedOrder: null,
     // Spelled out rather than left to the column default, so the returned object
@@ -125,7 +133,7 @@ export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: U
     values.description = patch.description
   }
   if (patch.instructions !== undefined) {
-    values.instructions = patch.instructions?.slice(0, maxProjectInstructionsLength) ?? null
+    values.instructions = capInstructions(patch.instructions)
   }
   if (patch.icon !== undefined) {
     values.icon = patch.icon
@@ -223,10 +231,35 @@ export const addProjectFile = async (db: AnyDrizzleDatabase, input: CreateProjec
     userId: input.userId ?? null,
   }
   await db.insert(projectFilesTable).values(row)
-  // Knowledge is part of the project's identity, so touching a document makes
-  // the project itself newer for list-ordering purposes.
-  await db.update(projectsTable).set({ updatedAt: nowIso() }).where(eq(projectsTable.id, input.projectId))
+  await touchProject(db, input.projectId)
   return row as ProjectFile
+}
+
+/**
+ * Make a project newer for list-ordering purposes. Knowledge is part of a
+ * project's identity, so adding, editing, or removing a document counts as
+ * changing the project — all three paths go through here, or the list's sort
+ * position drifts from what the user just did.
+ */
+const touchProject = async (db: AnyDrizzleDatabase, projectId: string): Promise<void> => {
+  await db.update(projectsTable).set({ updatedAt: nowIso() }).where(eq(projectsTable.id, projectId))
+}
+
+/**
+ * Same, for the document-by-id writes: the callers hold a document id, not a
+ * project id, so the owning project is looked up here rather than threaded
+ * through every call site. Reads nothing when the id is unknown.
+ */
+const touchProjectOwning = async (db: AnyDrizzleDatabase, fileId: string): Promise<void> => {
+  const rows = await db
+    .select({ projectId: projectFilesTable.projectId })
+    .from(projectFilesTable)
+    .where(eq(projectFilesTable.id, fileId))
+    .limit(1)
+  const projectId = rows[0]?.projectId
+  if (projectId) {
+    await touchProject(db, projectId)
+  }
 }
 
 /** Edit a saved note in place. Size is recomputed so the budget stays honest. */
@@ -247,9 +280,12 @@ export const updateProjectFile = async (
     return
   }
   await db.update(projectFilesTable).set(values).where(eq(projectFilesTable.id, id))
+  await touchProjectOwning(db, id)
 }
 
 export const softDeleteProjectFile = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+  // Read the owner before the soft delete, while the row is still live.
+  await touchProjectOwning(db, id)
   await db.update(projectFilesTable).set({ deletedAt: nowIso() }).where(eq(projectFilesTable.id, id))
 }
 

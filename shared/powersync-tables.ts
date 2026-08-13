@@ -39,9 +39,17 @@ export type PowerSyncTableName = (typeof powersyncTableNames)[number]
 export const legacyPowerSyncTableNames = ['modes'] as const
 
 /**
- * Map of PowerSync table names to React Query keys to invalidate when the table changes.
- * Keys are type-checked against powersyncTableNames; every table must have an entry.
- * Prefix keys (e.g. ['settings']) invalidate all queries starting with that prefix.
+ * Intended map of PowerSync table names to the React Query keys to invalidate
+ * when the table changes. Keys are type-checked against powersyncTableNames, so
+ * every table must have an entry, and prefix keys (e.g. ['settings']) would
+ * invalidate every query under that prefix.
+ *
+ * **Nothing reads this map.** It has had no consumer since THU-249 — updates
+ * arrive through PowerSync's own reactivity, and a `useQuery` on a watched table
+ * re-runs without being invalidated. The entries below are therefore a
+ * declaration of intent, not a wiring: adding one has no runtime effect. Kept
+ * (rather than deleted) because the sync docs still ask for it and it is the
+ * obvious place to hang invalidation if a non-reactive consumer ever needs it.
  */
 export const powersyncTableToQueryKeys: {
   [K in PowerSyncTableName]: string[][]
@@ -57,7 +65,8 @@ export const powersyncTableToQueryKeys: {
   model_profiles: [['modelProfiles']],
   devices: [['devices']],
   agents: [['agents']],
-  // A project edit changes the chat sidebar grouping too, so invalidate both.
+  // Would cover the chat sidebar grouping as well as the project list, if the
+  // map above were ever wired up.
   projects: [['projects'], ['chatThreads']],
   project_files: [['projectFiles']],
 }

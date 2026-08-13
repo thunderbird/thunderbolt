@@ -55,7 +55,7 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   projects: ['name', 'description', 'instructions'],
   // `content` is the extracted document text and `filename` is user-chosen, so
   // both are encrypted like a message body. `size` and `origin` stay plaintext:
-  // a character count and an enum ('upload' | 'note' | 'agent') carry no user
+  // a character count and an enum ('upload' | 'chat' | 'note' | 'agent') carry no user
   // content, and keeping them clear lets queries filter and order on them —
   // `getProjectFiles` sorts by `origin` in SQL so assistant notes lose the
   // prompt budget first.

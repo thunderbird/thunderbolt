@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { getDb } from '@/db/database'
 import { chatThreadsTable, modelsTable, projectFilesTable, projectsTable } from '@/db/tables'
@@ -18,6 +19,7 @@ import {
   getProject,
   getProjectChatThreads,
   getProjectFiles,
+  maxProjectInstructionsLength,
   maxProjectNameLength,
   setChatThreadProject,
   setProjectPinned,
@@ -303,6 +305,53 @@ describe('editing a saved note', () => {
   })
 })
 
+describe('a knowledge write floats its project up the list', () => {
+  const epoch = '2000-01-01T00:00:00.000Z'
+
+  /**
+   * Backdates the project so a bump is observable — the suite runs on frozen fake
+   * timers, so two writes in one test would otherwise share an instant.
+   */
+  const backdate = async (projectId: string) => {
+    const db = getDb()
+    await db.update(projectsTable).set({ updatedAt: epoch }).where(eq(projectsTable.id, projectId))
+  }
+
+  const setup = async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'P' })
+    const note = await addProjectFile(db, { projectId: project.id, filename: 'N', content: 'x', origin: 'note' })
+    await backdate(project.id)
+    return { db, project, note }
+  }
+
+  it('bumps updatedAt when a document is added', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'P' })
+    await backdate(project.id)
+    await addProjectFile(db, { projectId: project.id, filename: 'N', content: 'x', origin: 'note' })
+    expect((await getProject(db, project.id))?.updatedAt).not.toBe(epoch)
+  })
+
+  it('bumps updatedAt when a document is edited', async () => {
+    const { db, project, note } = await setup()
+    await updateProjectFile(db, note.id, { content: 'edited' })
+    expect((await getProject(db, project.id))?.updatedAt).not.toBe(epoch)
+  })
+
+  it('bumps updatedAt when a document is removed', async () => {
+    const { db, project, note } = await setup()
+    await softDeleteProjectFile(db, note.id)
+    expect((await getProject(db, project.id))?.updatedAt).not.toBe(epoch)
+  })
+
+  it('does nothing for an unknown document id', async () => {
+    const db = getDb()
+    await updateProjectFile(db, uuidv7(), { content: 'x' })
+    await softDeleteProjectFile(db, uuidv7())
+  })
+})
+
 describe('updateProject error surface', () => {
   it('throws on a blank name so callers must handle it', async () => {
     const db = getDb()
@@ -314,7 +363,7 @@ describe('updateProject error surface', () => {
     expect((await getProject(db, project.id))?.name).toBe('Keep me')
   })
 
-  it('writes updatedAt on every edit — the detail page keys its fields on it', async () => {
+  it('writes updatedAt on every edit, so the list re-sorts', async () => {
     const db = getDb()
     const project = await createProject(db, { name: 'A' })
     await updateProject(db, project.id, { name: 'B' })
@@ -322,8 +371,18 @@ describe('updateProject error surface', () => {
     expect(updated?.name).toBe('B')
     // Not asserting the value *changed*: this suite runs on frozen fake timers, so
     // two writes in one test share an instant. What matters is that the column is
-    // always written, since the field key derives from it.
+    // always written.
     expect(updated?.updatedAt).toBeTruthy()
+  })
+
+  it('caps instructions on create as well as on update', async () => {
+    const db = getDb()
+    const overLong = 'x'.repeat(maxProjectInstructionsLength + 500)
+    // The DAL is the bound, not the textarea's maxLength — instructions land in
+    // the stable half of every chat's system prompt.
+    const created = await createProject(db, { name: 'P', instructions: overLong })
+    expect(created.instructions?.length).toBe(maxProjectInstructionsLength)
+    expect((await getProject(db, created.id))?.instructions?.length).toBe(maxProjectInstructionsLength)
   })
 
   it('trims a name on save, which is why the field must remount to show it', async () => {

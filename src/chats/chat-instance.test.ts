@@ -16,7 +16,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { EventType } from '@/lib/posthog'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
-import type { ThunderboltUIMessage } from '@/types'
+import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import type { Chat } from '@ai-sdk/react'
 import type { ChatInit, ChatOnFinishCallback } from 'ai'
@@ -47,7 +47,7 @@ const hydrate = () => {
 }
 
 /** Build a chat instance whose retry callbacks and original methods are observable. */
-const createRetryHarness = () => {
+const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {}) => {
   const regenerate = mock(async () => {})
   const sendMessage = mock(async () => {})
   const budgets: TurnBudget[] = []
@@ -73,7 +73,7 @@ const createRetryHarness = () => {
     } as unknown as Chat<ThunderboltUIMessage>
   }
 
-  const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+  const instance = createChatInstance(sessionId, [], saveMessages, httpClient, getProxyFetch, {
     createChat,
     createTurnBudget: createTrackedTurnBudget,
     wakeAdapterReconnect,
@@ -147,6 +147,18 @@ const createRetryHarness = () => {
     trackEvent,
     wakeAdapterReconnect,
   }
+}
+
+/** Create a save function whose calls can be resumed in any order. */
+const createDeferredSaveMessages = () => {
+  const resolvers: Array<() => void> = []
+  const saveMessages: SaveMessagesFunction = async () => {
+    await new Promise<void>((resolve) => {
+      resolvers.push(resolve)
+    })
+  }
+  const resolveSave = (index: number) => resolvers[index]!()
+  return { resolveSave, saveMessages }
 }
 
 /** Fully consume one injected chat-instance turn budget. */
@@ -694,5 +706,127 @@ describe('createChatInstance — retry policy', () => {
     await finishSuccessfully()
 
     expect(trackEvent.mock.calls.some(([event]) => event === 'chat_turn_completed')).toBe(false)
+  })
+
+  it('emits both summaries when the newer turn completes before the older save resumes', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, finishWithError, instance, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const firstFinish = finishSuccessfully()
+
+    await instance.sendMessage({ text: 'second turn' })
+    await finishWithError(new Error(JSON.stringify({ kind: 'provider-error', isRetryable: false })))
+
+    resolveSave(0)
+    await firstFinish
+
+    const sendCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_send_prompt')
+    const firstTrace = (sendCalls[0]![1] as Record<string, unknown>).trace_id
+    const secondTrace = (sendCalls[1]![1] as Record<string, unknown>).trace_id
+    const summaries = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+
+    expect(firstTrace).toBeDefined()
+    expect(secondTrace).toBeDefined()
+    expect(firstTrace).not.toBe(secondTrace)
+    expect(summaries).toHaveLength(2)
+    expect(summaries[0]![1]).toEqual(expect.objectContaining({ outcome: 'error', trace_id: secondTrace }))
+    expect(summaries[1]![1]).toEqual(expect.objectContaining({ outcome: 'success', trace_id: firstTrace }))
+  })
+
+  it('does not let an older external turn reset a newer turn retry', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, finishWithError, getTurnBudget, instance, regenerate } =
+      createRetryHarness(saveMessages)
+    useChatStore.getState().updateSession(sessionId, {
+      selectedAgent: {
+        ...builtInAgent,
+        id: 'external-agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://agent.test',
+      },
+    })
+
+    await instance.sendMessage({ text: 'first external turn' })
+    const firstFinish = finishSuccessfully()
+
+    await instance.sendMessage({ text: 'second external turn' })
+    const secondTurnBudget = getTurnBudget()
+    await finishWithError()
+    expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(1)
+
+    resolveSave(0)
+    await firstFinish
+
+    expect(getTurnBudget()).toBe(secondTurnBudget)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(1)
+    await getClock().runAllAsync()
+    expect(regenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('attributes a reply to the turn model when the session model changes mid-save', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const finish = finishSuccessfully()
+    useChatStore.getState().sessions.get(sessionId)!.selectedModel = {
+      id: 'm2',
+      model: 'gpt-5',
+      provider: 'openai',
+      isConfidential: 0,
+    } as never
+
+    resolveSave(0)
+    await finish
+
+    const reply = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')?.[1]
+    expect(reply).toEqual(expect.objectContaining({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' }))
+  })
+
+  it('keeps a turn that starts mid-save on its own trace and state', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, getTurnBudget, instance, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const firstTurnBudget = getTurnBudget()
+
+    // Park the first turn's onFinish inside its final saveMessages await.
+    const finish = finishSuccessfully()
+
+    // A new turn starting now swaps the shared turn state (telemetry, budget).
+    await instance.sendMessage({ text: 'second turn' })
+    const secondTurnBudget = getTurnBudget()
+    expect(secondTurnBudget).not.toBe(firstTurnBudget)
+
+    resolveSave(0)
+    await finish
+
+    const sendCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_send_prompt')
+    const firstTrace = (sendCalls[0]![1] as Record<string, unknown>).trace_id
+    const secondTrace = (sendCalls[1]![1] as Record<string, unknown>).trace_id
+    expect(firstTrace).toBeDefined()
+    expect(secondTrace).toBeDefined()
+    expect(firstTrace).not.toBe(secondTrace)
+
+    // The finished turn's events stay on ITS trace even though the new turn
+    // installed fresh telemetry while the save was parked.
+    const receiveCall = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')
+    expect(receiveCall?.[1]).toEqual(expect.objectContaining({ trace_id: firstTrace }))
+    const summaryCalls = () => trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    expect(summaryCalls()).toHaveLength(1)
+    expect(summaryCalls()[0]![1]).toEqual(expect.objectContaining({ outcome: 'success', trace_id: firstTrace }))
+    expect(summaryCalls()[0]![1]).toHaveProperty('final_save_ms')
+
+    // ...and the new turn keeps ownership of the shared retry/budget state.
+    expect(getTurnBudget()).toBe(secondTurnBudget)
+
+    // The old turn's emit must not block the new turn's own completion.
+    const secondFinish = finishSuccessfully()
+    resolveSave(1)
+    await secondFinish
+    expect(summaryCalls()).toHaveLength(2)
+    expect(summaryCalls()[1]![1]).toEqual(expect.objectContaining({ outcome: 'success', trace_id: secondTrace }))
   })
 })

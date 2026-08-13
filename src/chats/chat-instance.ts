@@ -416,6 +416,31 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
   }
 }
 
+type TurnModelProperties = { model_id: string; model_name: string; provider: string }
+
+type TurnState = {
+  telemetry: TurnTelemetry | undefined
+  modelProperties: TurnModelProperties | undefined
+  completed: boolean
+}
+
+/** Create isolated telemetry state for one chat turn. */
+const createTurnState = (): TurnState => ({
+  telemetry: undefined,
+  modelProperties: undefined,
+  completed: false,
+})
+
+const getTraceProperties = (telemetry: TurnTelemetry | undefined) => ({
+  trace_id: telemetry?.traceId,
+  engine: telemetry?.getEngine(),
+})
+
+const getTurnContextProperties = (
+  telemetry: TurnTelemetry | undefined,
+  modelProperties: TurnModelProperties | undefined,
+) => ({ ...getTraceProperties(telemetry), ...modelProperties })
+
 /**
  * Create one chat instance with retry state and request budget scoped to its
  * closure. New, successful, and aborted turns replace the budget while
@@ -434,30 +459,35 @@ export const createChatInstance = (
   const trackEvent = deps.trackEvent ?? defaultTrackEvent
   const wakeAdapterReconnect = deps.wakeAdapterReconnect ?? defaultWakeAdapterReconnect
   let turnBudget = createTurnBudget()
-  let turnTelemetry: TurnTelemetry | undefined
-  let turnModelProperties: { model_id: string; provider: string } | undefined
-  let turnCompleted = false
-  /** Capture the immutable model dimensions for one built-in turn. */
-  const createTelemetryForCurrentTurn = (): TurnTelemetry | undefined => {
+  let currentTurn = createTurnState()
+  /** Capture immutable model dimensions and built-in telemetry for one turn. */
+  const initializeTurnForCurrentSession = (turn: TurnState): void => {
     const session = useChatStore.getState().sessions.get(id)
-    if (!session || !isBuiltInAgent(session.selectedAgent)) {
-      turnModelProperties = undefined
-      return undefined
+    if (!session) {
+      return
     }
-    const telemetry = createTurnTelemetry()
-    telemetry.setDimensions({
+    turn.modelProperties = {
+      model_id: session.selectedModel.id,
+      model_name: session.selectedModel.model,
+      provider: session.selectedModel.provider,
+    }
+    if (!isBuiltInAgent(session.selectedAgent)) {
+      return
+    }
+    turn.telemetry = createTurnTelemetry()
+    turn.telemetry.setDimensions({
       modelId: session.selectedModel.id,
       modelName: session.selectedModel.model,
       provider: session.selectedModel.provider,
     })
-    turnModelProperties = {
-      model_id: session.selectedModel.id,
-      provider: session.selectedModel.provider,
-    }
-    return telemetry
   }
   /** Lazily cover automatically submitted turns that bypass the send override. */
-  const getOrCreateTurnTelemetry = (): TurnTelemetry | undefined => (turnTelemetry ??= createTelemetryForCurrentTurn())
+  const getOrCreateTurnTelemetry = (): TurnTelemetry | undefined => {
+    if (!currentTurn.modelProperties) {
+      initializeTurnForCurrentSession(currentTurn)
+    }
+    return currentTurn.telemetry
+  }
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
     webToolBudgetRevision: 0,
@@ -472,26 +502,23 @@ export const createChatInstance = (
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
   let lastError: Error | null = null
 
-  const getTraceProperties = () => {
-    return {
-      trace_id: turnTelemetry?.traceId,
-      engine: turnTelemetry?.getEngine(),
+  const emitTurnCompleted = (
+    turn: TurnState,
+    outcome: 'success' | 'error' | 'abort',
+    message?: ThunderboltUIMessage,
+  ) => {
+    if (turn.completed) {
+      return
     }
-  }
-
-  const getTurnContextProperties = () => {
-    return { ...getTraceProperties(), ...turnModelProperties }
-  }
-
-  const emitTurnCompleted = (outcome: 'success' | 'error' | 'abort', message?: ThunderboltUIMessage) => {
-    if (!turnTelemetry || turnCompleted) {
+    turn.completed = true
+    const { telemetry } = turn
+    if (!telemetry) {
       return
     }
     if (message) {
-      recordMessageTelemetry(turnTelemetry, message)
+      recordMessageTelemetry(telemetry, message)
     }
-    trackEvent('chat_turn_completed', turnTelemetry.buildPayload(outcome))
-    turnCompleted = true
+    trackEvent('chat_turn_completed', telemetry.buildPayload(outcome))
   }
 
   /** Clear retry state and replace the completed turn's request budget. */
@@ -504,25 +531,23 @@ export const createChatInstance = (
     routingState.webToolBudgetRevision = (routingState.webToolBudgetRevision ?? 0) + 1
     retryCount = 0
     lastError = null
-    turnTelemetry = undefined
-    turnModelProperties = undefined
-    turnCompleted = false
+    currentTurn = createTurnState()
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
   }
 
   const startNewTurn = () => {
     resetRetryStateForNewTurn()
-    turnTelemetry = createTelemetryForCurrentTurn()
+    initializeTurnForCurrentSession(currentTurn)
   }
 
   /** Stop retrying this turn and record why it stopped. */
-  const markRetriesExhausted = () => {
+  const markRetriesExhausted = (turn: TurnState) => {
     trackEvent('chat_retries_exhausted', {
       reason: getChatErrorKind(lastError) ?? 'unknown',
       attempts: retryCount,
-      ...getTurnContextProperties(),
+      ...getTurnContextProperties(turn.telemetry, turn.modelProperties),
     })
-    emitTurnCompleted('error')
+    emitTurnCompleted(turn, 'error')
     useChatStore.getState().updateSession(id, { retriesExhausted: true })
   }
 
@@ -534,6 +559,14 @@ export const createChatInstance = (
     // Automatically send messages when the last one is a user message (used for automations)
     sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
+      const finishedTurn = currentTurn
+      const resetRetryStateIfUnswapped = () => {
+        if (currentTurn !== finishedTurn) {
+          return
+        }
+        resetRetryStateForNewTurn()
+      }
+
       if (isAbort) {
         // Persist whatever streamed before the user hit Stop. Streaming partial
         // saves are throttled and their pending trailing write is cancelled the
@@ -542,19 +575,22 @@ export const createChatInstance = (
         // success — without this, the last streamed chunk of an aborted turn
         // would be lost on reload.
         if (message?.parts?.length) {
-          turnTelemetry?.startPhase('final_save')
+          finishedTurn.telemetry?.startPhase('final_save')
           await saveMessages({ id, messages: [message] })
-          turnTelemetry?.endPhase('final_save')
+          finishedTurn.telemetry?.endPhase('final_save')
         }
-        emitTurnCompleted('abort', message)
-        resetRetryStateForNewTurn()
+        emitTurnCompleted(finishedTurn, 'abort', message)
+        resetRetryStateIfUnswapped()
         return
       }
 
       // Handle successful responses: message exists, no error, and has parts
       if (!isError && message && message.parts?.length) {
         if (retryCount > 0) {
-          trackEvent('chat_retry_success', { attempts: retryCount, ...getTurnContextProperties() })
+          trackEvent('chat_retry_success', {
+            attempts: retryCount,
+            ...getTurnContextProperties(finishedTurn.telemetry, finishedTurn.modelProperties),
+          })
         }
 
         const { sessions } = useChatStore.getState()
@@ -565,34 +601,32 @@ export const createChatInstance = (
           throw new Error('No session found')
         }
 
-        turnTelemetry?.startPhase('final_save')
+        finishedTurn.telemetry?.startPhase('final_save')
         await saveMessages({ id, messages: [message] })
-        turnTelemetry?.endPhase('final_save')
+        finishedTurn.telemetry?.endPhase('final_save')
 
         trackEvent('chat_receive_reply', {
-          model_id: session.selectedModel.id,
-          model_name: session.selectedModel.model,
-          provider: session.selectedModel.provider,
+          ...finishedTurn.modelProperties,
           length: message.parts.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0),
           reply_number: instance.messages.length + 1,
-          ...getTraceProperties(),
+          ...getTraceProperties(finishedTurn.telemetry),
         })
 
-        emitTurnCompleted('success', message)
-        resetRetryStateForNewTurn()
+        emitTurnCompleted(finishedTurn, 'success', message)
+        resetRetryStateIfUnswapped()
         return
       }
 
       // A transport loss may have interrupted the turn after the agent performed
       // side effects. Only the user may choose to submit it again.
       if (getChatErrorKind(lastError) === 'connection-lost') {
-        markRetriesExhausted()
+        markRetriesExhausted(finishedTurn)
         return
       }
 
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
       if (isRateLimitError(lastError)) {
-        markRetriesExhausted()
+        markRetriesExhausted(finishedTurn)
         lastError = null
         return
       }
@@ -614,18 +648,18 @@ export const createChatInstance = (
         isContentRejectionError(lastError) ||
         getErrorRetryable(lastError) === false
       ) {
-        markRetriesExhausted()
+        markRetriesExhausted(finishedTurn)
         return
       }
 
       if (retryCount < maxRetries) {
         if (turnBudget.probe.isExhausted) {
-          turnTelemetry?.recordRetry({
+          finishedTurn.telemetry?.recordRetry({
             layer: 'turn_budget',
             reason: 'request_budget_exhausted',
             attempt: retryCount + 1,
           })
-          markRetriesExhausted()
+          markRetriesExhausted(finishedTurn)
           return
         }
 
@@ -637,9 +671,9 @@ export const createChatInstance = (
           attempt: retryCount,
           max_retries: maxRetries,
           reason: getChatErrorKind(lastError) ?? 'unknown',
-          ...getTurnContextProperties(),
+          ...getTurnContextProperties(finishedTurn.telemetry, finishedTurn.modelProperties),
         })
-        turnTelemetry?.recordRetry({
+        finishedTurn.telemetry?.recordRetry({
           layer: 'auto_retry',
           reason: getChatErrorKind(lastError) ?? 'unknown',
           attempt: retryCount + 1,
@@ -665,7 +699,7 @@ export const createChatInstance = (
           })
         }, getRetryDelay(retryCount))
       } else {
-        markRetriesExhausted()
+        markRetriesExhausted(finishedTurn)
       }
     },
     // Retry logic lives in onFinish (the SDK's finally block), not here.
@@ -676,7 +710,7 @@ export const createChatInstance = (
     onError: (error) => {
       console.error('Chat error:', error)
       lastError = error instanceof Error ? error : new Error(String(error))
-      turnTelemetry?.recordError(getChatErrorKind(lastError) ?? lastError.name)
+      currentTurn.telemetry?.recordError(getChatErrorKind(lastError) ?? lastError.name)
     },
   })
 
@@ -732,7 +766,7 @@ export const createChatInstance = (
       provider: selectedModel.provider,
       length: message && 'text' in message ? (message.text?.length ?? 0) : 0,
       prompt_number: instance.messages.length + 1,
-      ...getTraceProperties(),
+      ...getTraceProperties(currentTurn.telemetry),
     })
 
     return originalSendMessage(

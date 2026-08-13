@@ -140,6 +140,26 @@ describe('selectWithinBudget', () => {
     expect(included.map((d) => d.filename)).toEqual(['small'])
     expect(omitted).toEqual(['big'])
   })
+
+  it('drops an assistant note rather than let it survive an evicted user document', () => {
+    // Otherwise first-fit packing inverts the priority the ordering promises: a
+    // tiny note would ride along behind the upload it was supposed to yield to.
+    const { included, omitted } = selectWithinBudget(
+      [doc('big-upload', 'word '.repeat(5_000)), { ...doc('note', 'hi'), fromAssistant: true }],
+      200,
+    )
+    expect(included).toEqual([])
+    expect(omitted).toEqual(['big-upload', 'note'])
+  })
+
+  it('still admits a user document behind an evicted assistant note', () => {
+    const { included, omitted } = selectWithinBudget(
+      [{ ...doc('long-note', 'word '.repeat(5_000)), fromAssistant: true }, doc('upload', 'hi')],
+      200,
+    )
+    expect(included.map((d) => d.filename)).toEqual(['upload'])
+    expect(omitted).toEqual(['long-note'])
+  })
 })
 
 describe('advertising the cross-chat search tool', () => {

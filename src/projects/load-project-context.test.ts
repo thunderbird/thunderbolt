@@ -55,7 +55,8 @@ describe('loadProjectContextForThread', () => {
 
     expect(context?.prompt.name).toBe('Q3')
     expect(context?.prompt.instructions).toBe('Be terse.')
-    expect(context?.prompt.knowledge).toEqual([{ filename: 'policy.md', content: 'No refunds.' }])
+    // `fromAssistant` rides along so the budget can drop assistant notes first.
+    expect(context?.prompt.knowledge).toEqual([{ filename: 'policy.md', content: 'No refunds.', fromAssistant: false }])
   })
 
   it('excludes the current chat from the searchable siblings', async () => {

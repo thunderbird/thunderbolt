@@ -56,7 +56,13 @@ export const loadProjectContextForThread = async (
     prompt: {
       name: project.name,
       instructions: project.instructions ?? null,
-      knowledge: files.map((file) => ({ filename: file.filename, content: file.content })),
+      knowledge: files.map((file) => ({
+        filename: file.filename,
+        content: file.content,
+        // Ranks the document for the prompt budget: assistant notes are dropped
+        // before anything the user added (see `selectWithinBudget`).
+        fromAssistant: file.origin === 'agent',
+      })),
     },
     siblingThreadIds: siblings.map((thread) => thread.id).filter((id) => id !== chatThreadId),
     titleByThreadId,

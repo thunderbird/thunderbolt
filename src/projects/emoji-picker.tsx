@@ -103,26 +103,40 @@ const EmojiPickerBody = ({
   isMobile,
 }: Pick<EmojiPickerProps, 'value' | 'onChange'> & { isMobile: boolean }) => {
   const [search, setSearch] = useState('')
-  const [catalog, setCatalog] = useState<EmojiCategory[] | null>(null)
+  // `'failed'` rather than a third `useState`: the load has three outcomes, and one
+  // slot keeps them mutually exclusive.
+  const [catalog, setCatalog] = useState<EmojiCategory[] | 'failed' | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const perRow = isMobile ? mobilePerRow : desktopPerRow
 
   // Legitimate effect: fetching from an external module on mount. The catalogue
-  // module memoizes, so reopening never re-imports.
+  // module memoizes a *successful* load, so reopening never re-imports — and it
+  // does not cache a failure, so reopening after one really does retry.
   useEffect(() => {
     let cancelled = false
-    loadEmojiCatalog().then((loaded) => {
-      if (!cancelled) {
-        setCatalog(loaded)
+    const load = async () => {
+      try {
+        const loaded = await loadEmojiCatalog()
+        if (!cancelled) {
+          setCatalog(loaded)
+        }
+      } catch (error) {
+        // A rejected dynamic import (offline, or a chunk 404 after a redeploy)
+        // would otherwise leave the body on "Loading emoji…" forever.
+        console.warn('Failed to load the emoji catalogue', error)
+        if (!cancelled) {
+          setCatalog('failed')
+        }
       }
-    })
+    }
+    load()
     return () => {
       cancelled = true
     }
   }, [])
 
   const rows = useMemo(
-    () => (catalog ? toGridRows(filterCatalog(catalog, search), perRow) : []),
+    () => (catalog && catalog !== 'failed' ? toGridRows(filterCatalog(catalog, search), perRow) : []),
     [catalog, search, perRow],
   )
   const showSuggested = search.trim().length === 0
@@ -167,7 +181,11 @@ const EmojiPickerBody = ({
         </div>
       )}
 
-      {catalog === null ? (
+      {catalog === 'failed' ? (
+        <p role="alert" className="py-6 text-center text-[length:var(--font-size-sm)] text-muted-foreground">
+          Couldn’t load the emoji list. Close and reopen this picker to try again.
+        </p>
+      ) : catalog === null ? (
         <p className="py-6 text-center text-[length:var(--font-size-sm)] text-muted-foreground">Loading emoji…</p>
       ) : rows.length === 0 ? (
         <p className="py-6 text-center text-[length:var(--font-size-sm)] text-muted-foreground">No matches</p>

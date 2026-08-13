@@ -28,11 +28,16 @@
 
 import { estimateTokensForText } from '@/ai/tokenizers'
 
+/** One knowledge document as the prompt sees it. `fromAssistant` marks a note the
+ *  assistant wrote itself, which ranks below anything the user added — see
+ *  {@link selectWithinBudget}. */
+export type KnowledgeDocument = { filename: string; content: string; fromAssistant?: boolean }
+
 /** A project's promptable content — the DAL rows reduced to what the model sees. */
 export type ProjectPromptContext = {
   name: string
   instructions: string | null
-  knowledge: readonly { filename: string; content: string }[]
+  knowledge: readonly KnowledgeDocument[]
 }
 
 /**
@@ -182,22 +187,33 @@ export const buildProjectPromptSection = (
  * Take documents in order while they fit the token budget. A document is
  * all-or-nothing — half a document is worse than none, because the model can't
  * tell it was truncated.
+ *
+ * Scanning continues past a document that doesn't fit, so one oversized upload
+ * doesn't shut out every smaller document behind it. The one exception keeps that
+ * from inverting priority: once a *user* document has been dropped, no assistant
+ * note is admitted either. Order alone (`getProjectFiles` sorts user content
+ * first) would otherwise let a 200-character note slip in behind an evicted
+ * upload — the opposite of the guarantee that assistant-written content is the
+ * first thing to go.
  */
 export const selectWithinBudget = (
-  knowledge: readonly { filename: string; content: string }[],
+  knowledge: readonly KnowledgeDocument[],
   budget: number,
-): { included: { filename: string; content: string }[]; omitted: string[] } => {
-  const included: { filename: string; content: string }[] = []
+): { included: KnowledgeDocument[]; omitted: string[] } => {
+  const included: KnowledgeDocument[] = []
   const omitted: string[] = []
   let spent = 0
+  let droppedUserDocument = false
   for (const doc of knowledge) {
     const cost = estimateTokensForText(renderDocument(doc))
-    if (spent + cost <= budget) {
+    const yieldsToUserContent = droppedUserDocument && doc.fromAssistant === true
+    if (spent + cost <= budget && !yieldsToUserContent) {
       included.push(doc)
       spent += cost
       continue
     }
     omitted.push(doc.filename)
+    droppedUserDocument = droppedUserDocument || doc.fromAssistant !== true
   }
   return { included, omitted }
 }

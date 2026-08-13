@@ -37,6 +37,7 @@ import {
   useProjectChats,
   useProjectFiles,
 } from '@/dal/projects'
+import { hashValues } from '@shared/lib/hash'
 import { EmojiPicker } from './emoji-picker'
 import { deletePrompt, detailReducer, initialDetailState, type NoteDraft } from './project-detail-state'
 import { ProjectIcon } from './project-icon'
@@ -44,6 +45,14 @@ import { ProjectIcon } from './project-icon'
 /** Fields and outline controls read as white against the warm page background
  *  (`--card` vs `--background`); `outline` buttons are transparent by default. */
 const fieldClass = 'bg-card dark:bg-input'
+
+/**
+ * Remount key for an uncontrolled field: the project id plus a fingerprint of the
+ * value that field displays. Hashed rather than used verbatim because
+ * instructions run to 20k characters, and a key only needs to change when the
+ * value does.
+ */
+const fieldKey = (projectId: string, value: string | null): string => `${projectId}-${hashValues([value ?? ''])}`
 
 /** A labelled section with its action on the title row, so the button lines up
  *  with the heading instead of floating above the content it applies to. */
@@ -184,11 +193,15 @@ const ProjectDetailPage = () => {
               aria-label="Project name"
               className={`flex-1 ${fieldClass}`}
               maxLength={maxProjectNameLength}
-              // Keyed on `updatedAt` so the field remounts when the row changes —
-              // an uncontrolled input keeps its mount-time value otherwise, so a
-              // rename synced from another device (or a name trimmed on save)
-              // would leave stale text while the title above it updated.
-              key={`name-${project.updatedAt ?? project.id}`}
+              // Keyed on the persisted value, so the field remounts exactly when
+              // *this* value changes — an uncontrolled input keeps its mount-time
+              // value otherwise, so a rename synced from another device (or a name
+              // trimmed on save) would leave stale text while the title above it
+              // updated. Keying on `updatedAt` would remount on any write to the
+              // row (a note saved by the assistant, an absorbed attachment, an edit
+              // to another field) and throw away whatever the user had typed here
+              // but not yet blurred.
+              key={fieldKey(project.id, project.name)}
               defaultValue={project.name}
               onBlur={(event) => saveField({ name: event.target.value })}
             />
@@ -206,7 +219,8 @@ const ProjectDetailPage = () => {
             className={fieldClass}
             rows={6}
             maxLength={maxProjectInstructionsLength}
-            key={`instructions-${project.updatedAt ?? project.id}`}
+            // Same reasoning as the name field above.
+            key={fieldKey(project.id, project.instructions)}
             defaultValue={project.instructions ?? ''}
             placeholder="Reply in British English. Prefer bullet points over prose."
             onBlur={(event) => saveField({ instructions: event.target.value })}
@@ -367,7 +381,7 @@ const ProjectDetailPage = () => {
           ) : (
             <ul className="flex flex-col gap-1">
               {artifacts.map((artifact) => (
-                <li key={`${artifact.messageId}-${artifact.title}`}>
+                <li key={artifact.id}>
                   <Button
                     variant="ghost"
                     className="h-auto w-full justify-start gap-2 py-2"

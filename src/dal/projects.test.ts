@@ -56,6 +56,9 @@ describe('projects CRUD', () => {
     const found = await getProject(db, created.id)
     expect(found?.name).toBe('Q3 Planning')
     expect(found?.instructions).toBe('Be terse.')
+    // The returned object must match the stored row, not merely overlap with it.
+    expect(found?.agentNotesEnabled).toBe(0)
+    expect(created.agentNotesEnabled).toBe(0)
   })
 
   it('trims the name and rejects a blank one', async () => {

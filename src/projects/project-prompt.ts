@@ -66,9 +66,34 @@ export type BuildProjectSectionOptions = {
   notes?: 'enabled' | 'disabled' | 'unsupported' | 'off'
 }
 
-/** One knowledge doc rendered for the prompt, with a stable delimiter. */
+/**
+ * Neutralize the `<document>` delimiter inside a payload.
+ *
+ * The sandbox is only worth anything if the payload can't close its own block: a
+ * document whose text contains a literal `</document>` would end the block early
+ * and everything after it would read as top-level prompt. Knowledge is not only
+ * the user's own typing either — documents absorbed from chat attachments
+ * (`origin: 'chat'`) can come from a third party.
+ *
+ * Only the delimiter token itself is escaped, so ordinary markup and code inside
+ * a document survive verbatim. Opening tags are escaped along with closing ones,
+ * so a payload can't fake a nested document boundary.
+ */
+const escapeDocumentTag = (text: string): string => text.replace(/<(\/?)document/gi, '&lt;$1document')
+
+/**
+ * A filename lands inside a quoted attribute, so it also must not be able to
+ * close it. Newlines go too: they belong to no legitimate filename and would let
+ * one forge a line that looks like prompt structure.
+ */
+const escapeFilename = (filename: string): string =>
+  escapeDocumentTag(filename)
+    .replace(/"/g, '&quot;')
+    .replace(/\s*[\r\n]+\s*/g, ' ')
+
+/** One knowledge doc rendered for the prompt, with an unforgeable delimiter. */
 const renderDocument = (doc: { filename: string; content: string }): string =>
-  `<document filename="${doc.filename}">\n${doc.content.trim()}\n</document>`
+  `<document filename="${escapeFilename(doc.filename)}">\n${escapeDocumentTag(doc.content.trim())}\n</document>`
 
 /**
  * Build the `# Project` section, or null when the project contributes nothing

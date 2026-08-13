@@ -103,6 +103,9 @@ export const createProject = async (db: AnyDrizzleDatabase, input: CreateProject
     instructions: input.instructions ?? null,
     icon: input.icon ?? null,
     pinnedOrder: null,
+    // Spelled out rather than left to the column default, so the returned object
+    // matches the row that was actually stored.
+    agentNotesEnabled: 0,
     createdAt: nowIso(),
     updatedAt: nowIso(),
     deletedAt: null,
@@ -114,20 +117,19 @@ export const createProject = async (db: AnyDrizzleDatabase, input: CreateProject
 
 /** Patch a project. `updatedAt` is always bumped so the list re-sorts. */
 export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: UpdateProjectInput): Promise<void> => {
-  const next: Record<string, string | null> = { updatedAt: nowIso() }
+  const values: Record<string, string | number | null> = { updatedAt: nowIso() }
   if (patch.name !== undefined) {
-    next.name = assertValidName(patch.name)
+    values.name = assertValidName(patch.name)
   }
   if (patch.description !== undefined) {
-    next.description = patch.description
+    values.description = patch.description
   }
   if (patch.instructions !== undefined) {
-    next.instructions = patch.instructions?.slice(0, maxProjectInstructionsLength) ?? null
+    values.instructions = patch.instructions?.slice(0, maxProjectInstructionsLength) ?? null
   }
   if (patch.icon !== undefined) {
-    next.icon = patch.icon
+    values.icon = patch.icon
   }
-  const values: Record<string, string | number | null> = { ...next }
   if (patch.agentNotesEnabled !== undefined) {
     values.agentNotesEnabled = patch.agentNotesEnabled ? 1 : 0
   }
@@ -432,6 +434,13 @@ export const useProjectFiles = (projectId: string | undefined): ProjectFile[] =>
 
 /** An HTML artifact produced somewhere in a project's chats. */
 export type ProjectArtifact = {
+  /**
+   * Message id plus the artifact's index within that message. One assistant
+   * message can emit several `render_html` parts, and two of them can share a
+   * title (both fall back to 'Untitled artifact'), so neither the message id nor
+   * the title is unique on its own.
+   */
+  id: string
   messageId: string
   chatThreadId: string
   chatTitle: string
@@ -454,7 +463,8 @@ const toArtifacts = (
     .flatMap((row) =>
       parseParts(row.parts)
         .filter(isRenderHtmlPart)
-        .map((part) => ({
+        .map((part, index) => ({
+          id: `${row.id}-${index}`,
           messageId: row.id,
           chatThreadId: row.chatThreadId ?? '',
           chatTitle: row.chatTitle ?? 'Untitled chat',

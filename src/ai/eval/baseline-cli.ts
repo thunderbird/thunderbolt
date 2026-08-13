@@ -34,5 +34,12 @@ const main = () => {
 }
 
 if (import.meta.main) {
-  main()
+  try {
+    await main()
+    // Exit explicitly because the imported app graph can keep live handles after CI work completes.
+    process.exit(0)
+  } catch (error) {
+    console.error(error)
+    process.exit(1)
+  }
 }

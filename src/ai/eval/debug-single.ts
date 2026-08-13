@@ -97,4 +97,13 @@ const run = async () => {
   await teardownTestDatabase()
 }
 
-await run()
+if (import.meta.main) {
+  try {
+    await run()
+    // Exit explicitly because the imported app graph can keep live handles after CLI work completes.
+    process.exit(0)
+  } catch (error) {
+    console.error(error)
+    process.exit(1)
+  }
+}

@@ -312,3 +312,7 @@ jobs:
           stack-name: ${{ inputs.stack_name }}
           work-dir: deploy/pulumi
           remove: true
+          # Reconcile state with reality first: a cancelled deploy can leave
+          # resources (e.g. the Keycloak OIDC client) deleted out-of-band, and
+          # destroying against stale state 404s on the phantom delete.
+          refresh: true

@@ -1,20 +1,6 @@
 name: AI Evals
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-    paths:
-      - 'src/ai/**'
-      - 'src/lib/tools.ts'
-      - 'backend/src/inference/**'
-      - 'backend/src/api/search.ts'
-      - 'backend/src/pro/**'
-      - 'shared/agent-core/**'
-      - 'shared/defaults/**'
-      - 'src/acp/**'
-      - '.github/workflows/evals.yml'
-  schedule:
-    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       suite:

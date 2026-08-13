@@ -23,6 +23,9 @@ export type PendingDelete = { kind: 'project' } | { kind: 'file'; id: string; fi
  * A failed write, tagged with where it belongs: `field` renders under the name
  * input, `note` inside the note composer. Without the scope a note failure would
  * surface next to a field the user isn't looking at.
+ *
+ * `field` doubles as the page-level slot — a failed delete lands there, since the
+ * confirmation dialog and the note composer are both closed by the time it fails.
  */
 export type SaveError = { scope: 'field' | 'note'; message: string }
 

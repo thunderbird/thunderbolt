@@ -169,12 +169,26 @@ const ProjectDetail = ({ projectId }: { projectId: string | undefined }) => {
       return
     }
     dispatch({ type: 'DELETE_DISMISSED' })
-    if (pendingDelete.kind === 'project') {
-      await softDeleteProject(db, project.id)
-      navigate('/projects')
-      return
+    // Caught for the same reason as `saveField`: React does not await the dialog's
+    // `onConfirm`, so a rejected delete would be an unhandled rejection with the
+    // prompt already dismissed — the user would walk away believing it worked. The
+    // `field` slot is where it lands because it is the only error surface still on
+    // screen once the dialog closes (the note composer is shut by then).
+    try {
+      if (pendingDelete.kind === 'project') {
+        await softDeleteProject(db, project.id)
+        navigate('/projects')
+        return
+      }
+      await softDeleteProjectFile(db, pendingDelete.id)
+    } catch (error) {
+      const fallback =
+        pendingDelete.kind === 'project' ? 'Could not delete that project.' : 'Could not remove that item.'
+      dispatch({
+        type: 'SAVE_FAILED',
+        error: { scope: 'field', message: error instanceof Error ? error.message : fallback },
+      })
     }
-    await softDeleteProjectFile(db, pendingDelete.id)
   }
 
   return (

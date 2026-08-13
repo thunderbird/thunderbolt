@@ -9,11 +9,12 @@
  * While a drag is in flight the whole group is framed as a drop zone, each row
  * lifts on hover, and a "Remove from project" row appears — but only when the
  * dragged chat actually belongs to a project, since otherwise there is nothing
- * to remove it from.
+ * to remove it from. A drag also lifts the idle row cap, so no project is
+ * unreachable as a drop target.
  */
 
 import { useDroppable } from '@dnd-kit/core'
-import { FolderMinus } from 'lucide-react'
+import { Ellipsis, FolderMinus } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
@@ -70,6 +71,31 @@ type ProjectDropListProps = {
   draggingFromProjectId: string | null
 }
 
+/**
+ * How many projects the idle sidebar shows before collapsing the rest behind a
+ * link to the projects page. Projects sit above the chat list, so an unbounded
+ * list would push chats out of view on an account with many of them.
+ */
+const idleVisibleLimit = 5
+
+/**
+ * The rows to render. Capped when idle, but never during a drag — every project
+ * has to stay reachable as a drop target — and the open project is always
+ * included, so the active row can't be the one that got collapsed away.
+ */
+const visibleProjects = <T extends { id: string }>(
+  projects: T[],
+  isDragging: boolean,
+  activeId: string | null,
+): T[] => {
+  if (isDragging || projects.length <= idleVisibleLimit) {
+    return projects
+  }
+  const head = projects.slice(0, idleVisibleLimit)
+  const active = projects.find((project) => project.id === activeId)
+  return active && !head.includes(active) ? [...head, active] : head
+}
+
 export const ProjectDropList = ({ isDragging, draggingFromProjectId }: ProjectDropListProps) => {
   const projects = useProjects()
   const navigate = useNavigate()
@@ -78,6 +104,10 @@ export const ProjectDropList = ({ isDragging, draggingFromProjectId }: ProjectDr
   if (projects.length === 0) {
     return null
   }
+
+  const activeId = location.pathname.startsWith('/projects/') ? location.pathname.slice('/projects/'.length) : null
+  const visible = visibleProjects(projects, isDragging, activeId)
+  const hiddenCount = projects.length - visible.length
 
   return (
     <div
@@ -94,7 +124,7 @@ export const ProjectDropList = ({ isDragging, draggingFromProjectId }: ProjectDr
         </p>
       )}
       <SidebarMenu>
-        {projects.map((project) => (
+        {visible.map((project) => (
           <DropRow
             key={project.id}
             dropId={projectDropId(project.id)}
@@ -102,10 +132,24 @@ export const ProjectDropList = ({ isDragging, draggingFromProjectId }: ProjectDr
             icon={<ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] text-[1.05rem]" />}
             isDragging={isDragging}
             isCurrent={draggingFromProjectId === project.id}
-            isActive={location.pathname === `/projects/${project.id}`}
+            isActive={project.id === activeId}
             onClick={() => navigate(`/projects/${project.id}`)}
           />
         ))}
+        {hiddenCount > 0 && (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={() => navigate('/projects')}
+              // Deliberately never active: it's a shortcut to the projects page,
+              // which the "Projects" item above already indicates.
+              tooltip="All projects"
+              className="cursor-pointer text-muted-foreground"
+            >
+              <Ellipsis className="size-[var(--icon-size-default)]" aria-hidden="true" />
+              <span className="truncate">{hiddenCount} more</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
         {/* Only meaningful when the chat is in a project. */}
         {isDragging && draggingFromProjectId !== null && (
           <DropRow

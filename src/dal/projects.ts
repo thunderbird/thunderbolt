@@ -430,34 +430,6 @@ export const useProjectFiles = (projectId: string | undefined): ProjectFile[] =>
   return data as ProjectFile[]
 }
 
-/**
- * A project's chats with their last-activity time, derived from the newest
- * message id. `chat_messages` has no timestamp column, but ids are UUIDv7 —
- * lexicographically ordered and carrying a millisecond timestamp — so `MAX(id)`
- * is both the newest message and the time it happened. Falls back to the
- * thread's own id (its creation time) for a chat with no messages yet.
- */
-export const getProjectChatSummaries = async (
-  db: AnyDrizzleDatabase,
-  projectId: string,
-): Promise<{ id: string; title: string | null; lastActivityAt: Date }[]> => {
-  const rows = (await db.all(sql`
-    SELECT t.id AS id, t.title AS title, MAX(m.id) AS last_message_id
-    FROM chat_threads t
-    LEFT JOIN chat_messages m ON m.chat_thread_id = t.id AND m.deleted_at IS NULL
-    WHERE t.project_id = ${projectId} AND t.deleted_at IS NULL
-    GROUP BY t.id, t.title
-  `)) as { id: string; title: string | null; last_message_id: string | null }[]
-
-  return rows
-    .map((row) => ({
-      id: row.id,
-      title: row.title,
-      lastActivityAt: uuidv7ToDate(row.last_message_id ?? row.id),
-    }))
-    .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime())
-}
-
 /** An HTML artifact produced somewhere in a project's chats. */
 export type ProjectArtifact = {
   messageId: string
@@ -491,31 +463,6 @@ const toArtifacts = (
         })),
     )
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-
-export const getProjectArtifacts = async (db: AnyDrizzleDatabase, projectId: string): Promise<ProjectArtifact[]> => {
-  const rows = (await db.all(sql`
-    SELECT m.id AS id, m.chat_thread_id AS chat_thread_id, m.parts AS parts, t.title AS chat_title
-    FROM chat_messages m
-    JOIN chat_threads t ON t.id = m.chat_thread_id
-    WHERE t.project_id = ${projectId}
-      AND t.deleted_at IS NULL
-      AND m.deleted_at IS NULL
-      AND m.parts LIKE ${`%${renderHtmlToolName}%`}
-  `)) as { id: string; chat_thread_id: string; parts: unknown; chat_title: string | null }[]
-
-  return rows
-    .flatMap((row) => {
-      const parts = parseParts(row.parts)
-      return parts.filter(isRenderHtmlPart).map((part) => ({
-        messageId: row.id,
-        chatThreadId: row.chat_thread_id,
-        chatTitle: row.chat_title ?? 'Untitled chat',
-        title: renderHtmlInput(part).title?.trim() || 'Untitled artifact',
-        createdAt: uuidv7ToDate(row.id),
-      }))
-    })
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-}
 
 /** `parts` is a JSON column; the driver may hand back a string or a parsed value. */
 const parseParts = (parts: unknown): UIMessage['parts'] => {

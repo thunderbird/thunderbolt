@@ -13,7 +13,7 @@
  * positions itself against the pane, so both misplace themselves in a plain div.
  */
 
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Plus } from 'lucide-react'
 import { useReducer } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -25,6 +25,8 @@ import {
   SettingsSelectableRow,
   settingsListBodyRowsClass,
 } from '@/components/settings/settings-list'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
@@ -88,6 +90,10 @@ const ProjectsPage = () => {
       )
     : projects
 
+  // Only the genuinely-empty account hides the header controls. A search that
+  // matches nothing must keep the search field, or there's no way to clear it.
+  const showEmptyState = projects.length === 0
+
   const countLabel = (id: string): string => {
     const count = chatCounts[id] ?? 0
     return count === 1 ? '1 chat' : `${count} chats`
@@ -104,8 +110,14 @@ const ProjectsPage = () => {
         <SettingsListPane>
           <PageSearch onSearch={(value) => dispatch({ type: 'SEARCH_CHANGED', value })}>
             <PageHeader title="Projects">
-              <PageSearch.Button />
-              <PageCreateAction label="New project" onClick={() => dispatch({ type: 'CREATE_STARTED' })} />
+              {/* Nothing to search or sit beside yet, and the empty state carries
+                  its own call to action — same as the tasks page. */}
+              {!showEmptyState && (
+                <>
+                  <PageSearch.Button />
+                  <PageCreateAction label="New project" onClick={() => dispatch({ type: 'CREATE_STARTED' })} />
+                </>
+              )}
             </PageHeader>
 
             <PageSearch.Input
@@ -116,18 +128,23 @@ const ProjectsPage = () => {
 
           <SettingsListBody className={settingsListBodyRowsClass}>
             {visible.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-12 text-center">
-                <FolderOpen className="size-8 text-muted-foreground" aria-hidden="true" />
-                <p className="text-[length:var(--font-size-body)] font-medium">
-                  {term ? 'No matching projects' : 'No projects yet'}
-                </p>
-                {!term && (
-                  <p className="max-w-sm text-[length:var(--font-size-sm)] text-muted-foreground">
-                    A project keeps instructions and reference documents in one place, so every chat inside it starts
-                    with the same context.
-                  </p>
-                )}
-              </div>
+              <EmptyState
+                icon={FolderOpen}
+                title={term ? 'No matching projects' : 'No projects yet'}
+                description={
+                  term
+                    ? undefined
+                    : 'A project keeps instructions and reference documents in one place, so every chat inside it starts with the same context.'
+                }
+                action={
+                  term ? undefined : (
+                    <Button variant="outline" onClick={() => dispatch({ type: 'CREATE_STARTED' })} className="gap-2">
+                      <Plus className="size-[var(--icon-size-sm)]" aria-hidden="true" />
+                      Create your first project
+                    </Button>
+                  )
+                }
+              />
             ) : (
               visible.map((project) => (
                 <SettingsSelectableRow

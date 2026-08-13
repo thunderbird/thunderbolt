@@ -103,6 +103,37 @@ describe('absorbChatAttachments', () => {
     expect(await getProjectFiles(db, project.id)).toHaveLength(1)
   })
 
+  it('is idempotent within one save — the same file attached twice adds one document', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'P' })
+    const content = 'No refunds.'
+
+    // Two picks of the same document: same name and bytes, different localFileIds,
+    // both riding on one message. A dedup snapshot read before the loop misses this.
+    const result = await absorbChatAttachments(
+      db,
+      project.id,
+      [
+        { localFileId: 'pick-1', filename: 'policy.md', mimeType: 'text/markdown' },
+        { localFileId: 'pick-2', filename: 'policy.md', mimeType: 'text/markdown' },
+      ],
+      {
+        getAttachment: async (id: string) => ({
+          id,
+          filename: 'policy.md',
+          mimeType: 'text/markdown',
+          size: content.length,
+          createdAt: 0,
+          blob: new Blob([content], { type: 'text/markdown' }),
+        }),
+      },
+    )
+
+    expect(result.added).toEqual(['policy.md'])
+    expect(result.duplicates).toEqual(['policy.md'])
+    expect(await getProjectFiles(db, project.id)).toHaveLength(1)
+  })
+
   it('adds a new version when the same filename has different content', async () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })

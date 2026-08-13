@@ -92,11 +92,19 @@ export type AbsorbResult = {
 }
 
 /**
+ * Identity of a knowledge document for dedup purposes. NUL can't occur in a
+ * filename, so the two fields can't run together into a false match.
+ */
+const knowledgeKey = ({ filename, content }: { filename: string; content: string }): string =>
+  `${filename}\u0000${content}`
+
+/**
  * Add every attachment that can become text to the project's knowledge.
  *
- * Idempotent by (filename, content): sending the same PDF in three messages adds
- * one document, and re-sending after an edit adds the new version rather than
- * silently keeping the stale one.
+ * Idempotent by (filename, content), both across saves and within one: sending
+ * the same PDF in three messages adds one document, as does attaching it twice
+ * in a single message, and re-sending after an edit adds the new version rather
+ * than silently keeping the stale one.
  *
  * Never throws. A failure here must not fail the user's message — the file is
  * still delivered to the model either way, so absorption is best-effort.
@@ -112,7 +120,11 @@ export const absorbChatAttachments = async (
     return result
   }
 
-  const existing = await getProjectFiles(db, projectId)
+  // Keyed on (filename, content) and updated as documents are added, so a single
+  // save carrying the same file twice — two picks of the same document, two
+  // localFileIds — still adds one document. A snapshot read once before the loop
+  // would let the second copy through.
+  const seen = new Set((await getProjectFiles(db, projectId)).map(knowledgeKey))
 
   for (const attachment of attachments) {
     if (!canExtractKnowledgeText(attachment.mimeType, attachment.filename)) {
@@ -132,8 +144,8 @@ export const absorbChatAttachments = async (
         result.unsupported.push(attachment.filename)
         continue
       }
-      const alreadyPresent = existing.some((file) => file.filename === attachment.filename && file.content === content)
-      if (alreadyPresent) {
+      const key = knowledgeKey({ filename: attachment.filename, content })
+      if (seen.has(key)) {
         result.duplicates.push(attachment.filename)
         continue
       }
@@ -144,6 +156,7 @@ export const absorbChatAttachments = async (
         content,
         origin: 'chat',
       })
+      seen.add(key)
       result.added.push(attachment.filename)
     } catch {
       // Extraction failed (corrupt PDF, unreadable blob). The message still sends.

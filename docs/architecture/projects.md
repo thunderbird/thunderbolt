@@ -191,7 +191,9 @@ deleting them; its knowledge documents are soft-deleted with it.
   and has no room beside it.
 - **Sidebar** — project rows double as drop targets, so a chat can be dragged into
   a project. "Remove from project" appears only while dragging a chat that has
-  one.
+  one. Five rows at rest, with the remainder behind an "N more" link to the list
+  page, so projects can't push the chat list out of view; a drag lifts the cap so
+  every project stays droppable, and the open project is always shown.
 - **Emoji icons** — the full Unicode set via `@emoji-mart/data`, dynamically
   imported so the entry chunk is unchanged, and virtualized because ~1,870 glyphs
   is far too many DOM nodes. Popover on desktop, bottom sheet on touch.

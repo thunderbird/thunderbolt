@@ -4,6 +4,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction, pageCreateActionClearanceClass } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
@@ -683,18 +684,16 @@ const TasksPage = () => {
           </PageSearch>
 
           {showEmptyState ? (
-            <div className="flex items-center justify-center p-16">
-              <div className="text-center max-w-sm">
-                <div className="bg-primary/10 p-4 rounded-full mb-4 inline-block">
-                  <CheckCircle2 className="h-12 w-12 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold mb-6">No tasks yet</h3>
+            <EmptyState
+              icon={CheckCircle2}
+              title="No tasks yet"
+              action={
                 <Button variant="outline" onClick={startAddingTask} className="gap-2">
                   <Plus className="h-4 w-4" />
                   Add Your First Task
                 </Button>
-              </div>
-            </div>
+              }
+            />
           ) : (
             <div className="space-y-2">
               {isLoading ? (

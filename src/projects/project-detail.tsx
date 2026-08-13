@@ -17,6 +17,7 @@ import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { SettingsListBody, SettingsListPane } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Textarea } from '@/components/ui/textarea'
@@ -37,36 +38,8 @@ import {
   useProjectFiles,
 } from '@/dal/projects'
 import { EmojiPicker } from './emoji-picker'
+import { deletePrompt, detailReducer, initialDetailState, type NoteDraft } from './project-detail-state'
 import { ProjectIcon } from './project-icon'
-
-/** A note being composed or edited. `id` present = editing an existing note. */
-type NoteDraft = { id?: string; title: string; content: string }
-
-/** Note-composer state plus any field-save error. */
-type DetailState = { draftNote: NoteDraft | null; saveError: string | null }
-
-type DetailAction =
-  | { type: 'NOTE_DRAFTED'; draft: NoteDraft }
-  | { type: 'NOTE_CHANGED'; draft: NoteDraft }
-  | { type: 'NOTE_DISMISSED' }
-  | { type: 'SAVE_FAILED'; message: string }
-  | { type: 'SAVE_SUCCEEDED' }
-
-const initialDetailState: DetailState = { draftNote: null, saveError: null }
-
-const detailReducer = (state: DetailState, action: DetailAction): DetailState => {
-  switch (action.type) {
-    case 'NOTE_DRAFTED':
-    case 'NOTE_CHANGED':
-      return { ...state, draftNote: action.draft }
-    case 'NOTE_DISMISSED':
-      return { ...state, draftNote: null }
-    case 'SAVE_FAILED':
-      return { ...state, saveError: action.message }
-    case 'SAVE_SUCCEEDED':
-      return { ...state, saveError: null }
-  }
-}
 
 /** Fields and outline controls read as white against the warm page background
  *  (`--card` vs `--background`); `outline` buttons are transparent by default. */
@@ -99,7 +72,7 @@ const ProjectDetailPage = () => {
   const { projectId } = useParams<{ projectId: string }>()
   const db = useDatabase()
   const navigate = useNavigate()
-  const [{ draftNote, saveError }, dispatch] = useReducer(detailReducer, initialDetailState)
+  const [{ draftNote, pendingDelete, saveError }, dispatch] = useReducer(detailReducer, initialDetailState)
 
   // All reactive: an edit here, a new message in one of its chats, or a change
   // synced from another device all reach the page without a manual refetch.
@@ -133,14 +106,48 @@ const ProjectDetailPage = () => {
     } catch (error) {
       dispatch({
         type: 'SAVE_FAILED',
-        message: error instanceof Error ? error.message : 'Could not save that change.',
+        error: { scope: 'field', message: error instanceof Error ? error.message : 'Could not save that change.' },
       })
     }
   }
 
-  const handleDelete = async () => {
-    await softDeleteProject(db, project.id)
-    navigate('/projects')
+  /** Same reason as `saveField`: React does not await this handler, so a failed
+   *  write has to be caught here or the note silently vanishes. */
+  const saveNote = async (draft: NoteDraft) => {
+    try {
+      if (draft.id) {
+        await updateProjectFile(db, draft.id, { filename: draft.title, content: draft.content.trim() })
+      } else {
+        await addProjectFile(db, {
+          projectId: project.id,
+          filename: draft.title.trim() || 'Note',
+          content: draft.content.trim(),
+          sourceMimeType: 'text/plain',
+          origin: 'note',
+        })
+      }
+      dispatch({ type: 'NOTE_DISMISSED' })
+    } catch (error) {
+      dispatch({
+        type: 'SAVE_FAILED',
+        error: { scope: 'note', message: error instanceof Error ? error.message : 'Could not save that note.' },
+      })
+    }
+  }
+
+  // Both deletions are confirmed first: a project's instructions and knowledge
+  // aren't recoverable from the UI, and a note's text exists nowhere else.
+  const confirmDelete = async () => {
+    if (!pendingDelete) {
+      return
+    }
+    dispatch({ type: 'DELETE_DISMISSED' })
+    if (pendingDelete.kind === 'project') {
+      await softDeleteProject(db, project.id)
+      navigate('/projects')
+      return
+    }
+    await softDeleteProjectFile(db, pendingDelete.id)
   }
 
   return (
@@ -159,7 +166,12 @@ const ProjectDetailPage = () => {
           <MessageCirclePlus className="size-[var(--icon-size-sm)]" aria-hidden="true" />
           New chat
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleDelete} aria-label="Delete project">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => dispatch({ type: 'DELETE_REQUESTED', target: { kind: 'project' } })}
+          aria-label="Delete project"
+        >
           <Trash2 className="size-[var(--icon-size-sm)]" aria-hidden="true" />
         </Button>
       </PageHeader>
@@ -181,9 +193,9 @@ const ProjectDetailPage = () => {
               onBlur={(event) => saveField({ name: event.target.value })}
             />
           </div>
-          {saveError && (
+          {saveError?.scope === 'field' && (
             <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
-              {saveError}
+              {saveError.message}
             </p>
           )}
         </Section>
@@ -239,31 +251,16 @@ const ProjectDetailPage = () => {
                   dispatch({ type: 'NOTE_CHANGED', draft: { ...draftNote, content: event.target.value } })
                 }
               />
+              {saveError?.scope === 'note' && (
+                <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
+                  {saveError.message}
+                </p>
+              )}
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" size="sm" onClick={() => dispatch({ type: 'NOTE_DISMISSED' })}>
                   Cancel
                 </Button>
-                <Button
-                  size="sm"
-                  disabled={draftNote.content.trim().length === 0}
-                  onClick={async () => {
-                    if (draftNote.id) {
-                      await updateProjectFile(db, draftNote.id, {
-                        filename: draftNote.title,
-                        content: draftNote.content.trim(),
-                      })
-                    } else {
-                      await addProjectFile(db, {
-                        projectId: project.id,
-                        filename: draftNote.title.trim() || 'Note',
-                        content: draftNote.content.trim(),
-                        sourceMimeType: 'text/plain',
-                        origin: 'note',
-                      })
-                    }
-                    dispatch({ type: 'NOTE_DISMISSED' })
-                  }}
-                >
+                <Button size="sm" disabled={draftNote.content.trim().length === 0} onClick={() => saveNote(draftNote)}>
                   {draftNote.id ? 'Save changes' : 'Save note'}
                 </Button>
               </div>
@@ -331,7 +328,12 @@ const ProjectDetailPage = () => {
                     variant="ghost"
                     size="sm"
                     aria-label={`Remove ${file.filename}`}
-                    onClick={() => softDeleteProjectFile(db, file.id)}
+                    onClick={() =>
+                      dispatch({
+                        type: 'DELETE_REQUESTED',
+                        target: { kind: 'file', id: file.id, filename: file.filename },
+                      })
+                    }
                   >
                     <Trash2 className="size-[var(--icon-size-sm)]" aria-hidden="true" />
                   </Button>
@@ -415,6 +417,15 @@ const ProjectDetailPage = () => {
           )}
         </Section>
       </SettingsListBody>
+
+      {pendingDelete && (
+        <ConfirmActionDialog
+          open
+          {...deletePrompt(pendingDelete)}
+          onConfirm={confirmDelete}
+          onCancel={() => dispatch({ type: 'DELETE_DISMISSED' })}
+        />
+      )}
     </SettingsListPane>
   )
 }

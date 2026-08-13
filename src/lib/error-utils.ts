@@ -172,7 +172,9 @@ export const getErrorRetryable = (error?: Error | null): boolean | undefined => 
   }
 
   const status = getPiErrorStatusCode(error.message)
-  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429 ? false : undefined
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 409 && status !== 429
+    ? false
+    : undefined
 }
 
 /**

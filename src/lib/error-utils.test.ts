@@ -452,6 +452,11 @@ describe('getErrorRetryable', () => {
     expect(getErrorRetryable(new Error('openai (408): Request Timeout'))).toBeUndefined()
   })
 
+  it('leaves flattened pi-ai 409 conflicts retryable', () => {
+    expect(getErrorRetryable(new Error('409: Conflict'))).toBeUndefined()
+    expect(getErrorRetryable(new Error('anthropic (409): Conflict'))).toBeUndefined()
+  })
+
   it('is undefined for pi-ai text without an embedded status', () => {
     expect(getErrorRetryable(new Error('Something went wrong'))).toBeUndefined()
   })

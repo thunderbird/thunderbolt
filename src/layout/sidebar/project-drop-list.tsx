@@ -22,6 +22,7 @@ import { useProjects } from '@/dal/projects'
 import { cn } from '@/lib/utils'
 import { projectDropId, unassignDropId } from '@/projects/chat-drop'
 import { ProjectIcon } from '@/projects/project-icon'
+import type { Project } from '@/types'
 
 type DropRowProps = {
   dropId: string
@@ -65,7 +66,12 @@ const DropRow = ({ dropId, label, icon, isDragging, isCurrent, isActive, onClick
   )
 }
 
-type ProjectDropListProps = {
+type ProjectDropRowsProps = {
+  /** The account's live projects. Passed in rather than read from the DAL here, so
+   *  the rendering rules below (the cap, the active row) are testable without
+   *  module-mocking `@/dal/projects` — a bun `mock.module` is installed
+   *  worker-wide and would leak `useProjects` into every sibling test. */
+  projects: readonly Project[]
   isDragging: boolean
   /** Project of the chat being dragged, when one is in flight. */
   draggingFromProjectId: string | null
@@ -84,10 +90,10 @@ const idleVisibleLimit = 5
  * included, so the active row can't be the one that got collapsed away.
  */
 const visibleProjects = <T extends { id: string }>(
-  projects: T[],
+  projects: readonly T[],
   isDragging: boolean,
   activeId: string | null,
-): T[] => {
+): readonly T[] => {
   if (isDragging || projects.length <= idleVisibleLimit) {
     return projects
   }
@@ -96,8 +102,8 @@ const visibleProjects = <T extends { id: string }>(
   return active && !head.includes(active) ? [...head, active] : head
 }
 
-export const ProjectDropList = ({ isDragging, draggingFromProjectId }: ProjectDropListProps) => {
-  const projects = useProjects()
+/** The rows themselves, given a project list. */
+export const ProjectDropRows = ({ projects, isDragging, draggingFromProjectId }: ProjectDropRowsProps) => {
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -162,4 +168,10 @@ export const ProjectDropList = ({ isDragging, draggingFromProjectId }: ProjectDr
       </SidebarMenu>
     </div>
   )
+}
+
+/** Live-data wrapper: the sidebar's project rows for the current account. */
+export const ProjectDropList = (props: Omit<ProjectDropRowsProps, 'projects'>) => {
+  const projects = useProjects()
+  return <ProjectDropRows projects={projects} {...props} />
 }

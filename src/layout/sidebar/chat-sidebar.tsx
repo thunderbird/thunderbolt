@@ -35,7 +35,7 @@ import { useDatabase } from '@/contexts'
 import { useChatStore } from '@/chats/chat-store'
 import { setChatThreadProject } from '@/dal/projects'
 import { absorbExistingChatAttachments } from '@/projects/absorb-chat-attachments'
-import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
+import { resolveChatDrop, type ChatDragData, type ChatDrop } from '@/projects/chat-drop'
 import { ProjectDropList } from './project-drop-list'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
@@ -124,12 +124,13 @@ export const ChatSidebarContent = ({
     setDraggingChat((active.data.current as ChatDragData | undefined) ?? { title: null, projectId: null })
   }
 
-  const handleDragEnd = async ({ active, over }: DragEndEvent) => {
-    setDraggingChat(null)
-    const drop = resolveChatDrop(active.id, over?.id ?? null)
-    if (!drop) {
-      return
-    }
+  /**
+   * dnd-kit ignores the promise this returns, so a rejected write would leave the
+   * chat where it was with nothing said about it. There is no notification surface
+   * in the sidebar, so the failure is logged with its target — the same treatment
+   * `chat-instance.ts` gives its own fire-and-forget writes.
+   */
+  const moveChat = async (drop: ChatDrop) => {
     await setChatThreadProject(db, drop.chatThreadId, drop.projectId)
     // A chat joining a project brings its documents with it. Absorption normally
     // runs at message-save time, when the chat's project was whatever it was
@@ -149,6 +150,19 @@ export const ChatSidebarContent = ({
     // Only the chat rows need a nudge; the project counts are a reactive
     // PowerSync query and update themselves.
     await queryClient.invalidateQueries({ queryKey: ['chatThreads'] })
+  }
+
+  const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+    setDraggingChat(null)
+    const drop = resolveChatDrop(active.id, over?.id ?? null)
+    if (!drop) {
+      return
+    }
+    try {
+      await moveChat(drop)
+    } catch (error) {
+      console.error('Moving a chat into a project failed', { drop, error })
+    }
   }
 
   return (

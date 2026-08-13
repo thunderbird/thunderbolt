@@ -5,11 +5,11 @@
 import '@testing-library/jest-dom'
 import { DndContext } from '@dnd-kit/core'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import type { Project } from '@/types'
-import { ProjectDropList } from './project-drop-list'
+import { ProjectDropRows } from './project-drop-list'
 
 afterEach(cleanup)
 
@@ -27,26 +27,22 @@ const manyProjects = Array.from({ length: 8 }, (_unused, index) => ({
 
 let projectList = twoProjects
 
-/**
- * Only `useProjects` is replaced, spread over the real module: bun installs module
- * mocks worker-wide, so a bare `{ useProjects }` object would leave every sibling
- * test in this worker importing a `@/dal/projects` missing all its other exports
- * (`src/dal/projects.test.ts` runs the real soft-delete against a test database).
- */
-const realDal = await import('@/dal/projects')
-
-mock.module('@/dal/projects', () => ({ ...realDal, useProjects: () => projectList }))
-
 beforeEach(() => {
   projectList = twoProjects
 })
 
+/**
+ * The rows are tested through `ProjectDropRows`, which takes the project list as a
+ * prop — deliberately, rather than `mock.module('@/dal/projects', …)` on the
+ * live-data `ProjectDropList`. Bun installs module mocks worker-wide, so that
+ * override would leak `useProjects` into every sibling test in the worker.
+ */
 const renderAt = (path: string, { isDragging = false } = {}) =>
   render(
     <MemoryRouter initialEntries={[path]}>
       <SidebarProvider>
         <DndContext>
-          <ProjectDropList isDragging={isDragging} draggingFromProjectId={null} />
+          <ProjectDropRows projects={projectList} isDragging={isDragging} draggingFromProjectId={null} />
         </DndContext>
       </SidebarProvider>
     </MemoryRouter>,
@@ -55,7 +51,7 @@ const renderAt = (path: string, { isDragging = false } = {}) =>
 /** Sidebar buttons mark selection with `data-active`. */
 const rowFor = (name: string) => screen.getByText(name).closest('[data-active]')
 
-describe('ProjectDropList active state', () => {
+describe('ProjectDropRows active state', () => {
   it('highlights the project whose page is open', () => {
     renderAt('/projects/p1')
     // Italo's report: selecting a project left its sidebar row unhighlighted.
@@ -79,7 +75,7 @@ describe('ProjectDropList active state', () => {
   })
 })
 
-describe('ProjectDropList row cap', () => {
+describe('ProjectDropRows row cap', () => {
   beforeEach(() => {
     projectList = manyProjects
   })

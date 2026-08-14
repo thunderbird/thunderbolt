@@ -188,6 +188,7 @@ export type EventType =
   | 'chat_retry_success'
   | 'chat_retries_exhausted'
   | 'chat_turn_completed'
+  | 'chat_turn_error'
   | 'chat_select'
   | 'chat_new_clicked'
   | 'chat_delete'

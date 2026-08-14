@@ -23,7 +23,9 @@ import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/res
 import { getDb as defaultGetDb } from '@/db/database'
 import {
   getChatErrorKind,
+  getErrorName,
   getErrorRetryable,
+  getErrorStatusCode,
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
@@ -839,6 +841,15 @@ export const createChatInstance = (
       console.error('Chat error:', error)
       lastError = error instanceof Error ? error : new Error(String(error))
       currentTurn.telemetry?.recordError(getChatErrorKind(lastError) ?? lastError.name)
+      // Classified fields only (kind/name/status) — never the raw message,
+      // which can echo user content back from provider errors (THU-750).
+      trackEvent('chat_turn_error', {
+        kind: getChatErrorKind(lastError) ?? 'unknown',
+        error_name: getErrorName(lastError),
+        status: getErrorStatusCode(lastError),
+        retryable: getErrorRetryable(lastError),
+        ...currentTurn.modelProperties,
+      })
     },
   })
 

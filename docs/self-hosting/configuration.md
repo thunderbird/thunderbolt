@@ -90,6 +90,14 @@ See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the 
 
 Trusting the wrong proxy header lets a client spoof its IP for rate-limit bypass. Leave this empty unless you know your edge.
 
+## App Version Gate
+
+| Variable          | Default | Description                                                                                                                                                                                                      |
+| ----------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MIN_APP_VERSION` | `""`    | Minimum client version (semver). Empty disables the gate. When set, requests from older clients get `426 Upgrade Required`, except on exempt bootstrap/callback routes (`/v1/config`, `/v1/health`, SSO/device callbacks, PostHog, proxy WebSocket). |
+
+Settings are read once at startup, so **restart the backend** after changing `MIN_APP_VERSION` — it is not picked up live.
+
 ## Waitlist
 
 | Variable                        | Default | Description                                                       |

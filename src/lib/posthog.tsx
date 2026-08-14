@@ -120,10 +120,9 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
           if (!event) {
             return null
           }
-          if (event.event === '$pageview' || event.event === '$pageleave') {
-            if (typeof event.properties?.$current_url === 'string') {
-              event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
-            }
+
+          if (typeof event.properties?.$current_url === 'string') {
+            event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
           }
 
           if (typeof event.properties?.url === 'string') {
@@ -131,6 +130,9 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
           }
           if (typeof event.properties?.$pathname === 'string') {
             event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
+          }
+          if (typeof event.properties?.$referrer === 'string') {
+            event.properties.$referrer = sanitizeUrl(event.properties.$referrer)
           }
 
           if (stripApiKeys(event.properties) && import.meta.env.DEV) {

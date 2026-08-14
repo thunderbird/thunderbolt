@@ -132,6 +132,24 @@ describe('analytics before_send sanitization', () => {
     expect(result.properties.$pathname).toBe('/chats/:chatThreadId')
   })
 
+  it('sanitizes SDK URL properties on custom events', async () => {
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
+    expect(capturedOptions).toBeTruthy()
+
+    const event: PosthogEvent = {
+      event: 'chat_send_prompt',
+      properties: {
+        $current_url: 'https://app/chats/123?foo=bar&token=xyz#private',
+        $referrer: 'https://referrer.test/chats/456?source=private#secret',
+      },
+    }
+
+    const result = capturedOptions!.before_send(event)
+    expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId')
+    expect(result.properties.$referrer).toBe('https://referrer.test/chats/:chatThreadId')
+  })
+
   it('ignores non-string URL-like properties', async () => {
     const mockHttpClient = createMockHttpClient('test-key')
     await initPosthog(mockHttpClient)

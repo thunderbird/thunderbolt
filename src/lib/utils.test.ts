@@ -357,16 +357,18 @@ describe('utils', () => {
 
 describe('uuidv7ToDate', () => {
   it('recovers the millisecond timestamp a v7 id was minted with', () => {
-    const before = Date.now()
-    const recovered = uuidv7ToDate(uuidv7()).getTime()
-    // v7 stores whole milliseconds, so allow a small window either side.
-    expect(recovered).toBeGreaterThanOrEqual(before - 1_000)
-    expect(recovered).toBeLessThanOrEqual(Date.now() + 1_000)
+    // Pinned rather than compared against `Date.now()`: v7 keeps a monotonic
+    // counter, so ids minted in bulk (which other suites in this process do) can
+    // carry a timestamp that runs *ahead* of the wall clock. A tolerance window
+    // around "now" therefore fails intermittently under `--randomize`, which is
+    // exactly what it did.
+    const msecs = 1_786_000_000_000
+    expect(uuidv7ToDate(uuidv7({ msecs })).getTime()).toBe(msecs)
   })
 
   it('reads all 48 timestamp bits, not just the first 32', () => {
     // Regression: reading `slice(0, 8)` as seconds put every id in 1970.
-    expect(uuidv7ToDate(uuidv7()).getUTCFullYear()).toBeGreaterThan(2020)
+    expect(uuidv7ToDate(uuidv7({ msecs: 1_786_000_000_000 })).getUTCFullYear()).toBeGreaterThan(2020)
   })
 
   it('decodes a known timestamp exactly', () => {

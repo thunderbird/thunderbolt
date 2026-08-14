@@ -105,11 +105,23 @@ describe('ProjectDropRows row cap', () => {
     expect(screen.getByText('3 more')).toBeInTheDocument()
   })
 
-  it('leaves the list uncapped while a chat is being dragged', () => {
-    // Every project has to stay droppable, or a chat can't reach it.
+  it('holds the cap during a drag, so the list cannot change height mid-gesture', () => {
+    // Reported by Rai on ~100 projects: lifting the cap grew the group by ~95 rows
+    // the instant a drag began, pushing the grabbed chat row out from under the
+    // pointer. Projects past the cap are reached through the action menu instead.
     renderAt('/chats/abc', { isDragging: true })
-    expect(screen.getByText('Project 8')).toBeInTheDocument()
-    expect(screen.queryByText('3 more')).not.toBeInTheDocument()
+    expect(screen.queryByText('Project 8')).not.toBeInTheDocument()
+    expect(screen.getByText('Project 5')).toBeInTheDocument()
+  })
+
+  it('renders the same number of rows dragging or not', () => {
+    const { container: idle } = renderAt('/chats/abc')
+    const idleRows = idle.querySelectorAll('[data-sidebar="menu-item"]').length
+    cleanup()
+    const { container: dragging } = renderAt('/chats/abc', { isDragging: true })
+    // The unassign row only appears for a chat that has a project, and this drag
+    // has none — so any difference here is the cap moving, which is the bug.
+    expect(dragging.querySelectorAll('[data-sidebar="menu-item"]').length).toBe(idleRows)
   })
 
   it('keeps the open project visible even past the cap', () => {

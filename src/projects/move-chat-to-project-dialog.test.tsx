@@ -15,6 +15,13 @@ const projects = [
   { id: 'p2', name: 'Cabin build', icon: null },
 ] as unknown as Project[]
 
+/** Twelve projects — past `searchableFrom`, so the picker gains a search field. */
+const manyProjects = Array.from({ length: 12 }, (_unused, index) => ({
+  id: `p${index + 1}`,
+  name: `Project ${index + 1}`,
+  icon: null,
+})) as unknown as Project[]
+
 let projectList = projects
 
 beforeEach(() => {
@@ -86,5 +93,43 @@ describe('MoveChatToProjectPicker', () => {
     projectList = []
     renderDialog()
     expect(screen.getByText(/No projects yet/)).toBeInTheDocument()
+  })
+})
+
+describe('MoveChatToProjectPicker on a long list', () => {
+  beforeEach(() => {
+    projectList = manyProjects
+  })
+
+  it('offers a search field, since the sidebar drop zone cannot reach these', () => {
+    renderDialog()
+    expect(screen.getByLabelText('Search projects')).toBeInTheDocument()
+  })
+
+  it('filters to matching projects', () => {
+    renderDialog()
+    fireEvent.change(screen.getByLabelText('Search projects'), { target: { value: 'Project 1' } })
+    // "Project 1", "Project 10", "Project 11", "Project 12" — substring, not exact.
+    expect(screen.getByText('Project 12')).toBeInTheDocument()
+    expect(screen.queryByText('Project 2')).not.toBeInTheDocument()
+  })
+
+  it('says so when nothing matches', () => {
+    renderDialog()
+    fireEvent.change(screen.getByLabelText('Search projects'), { target: { value: 'zzz' } })
+    expect(screen.getByText('No matching projects.')).toBeInTheDocument()
+  })
+
+  it('keeps Remove from project reachable through a filter that excludes every name', () => {
+    // It isn't a project, so a name filter must not hide the way out of one.
+    renderDialog('p3')
+    fireEvent.change(screen.getByLabelText('Search projects'), { target: { value: 'zzz' } })
+    expect(screen.getByText('Remove from project')).toBeInTheDocument()
+  })
+
+  it('shows no search field on a short list, where scanning beats typing', () => {
+    projectList = projects
+    renderDialog()
+    expect(screen.queryByLabelText('Search projects')).not.toBeInTheDocument()
   })
 })

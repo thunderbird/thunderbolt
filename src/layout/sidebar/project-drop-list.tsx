@@ -9,8 +9,8 @@
  * While a drag is in flight the whole group is framed as a drop zone, each row
  * lifts on hover, and a "Remove from project" row appears — but only when the
  * dragged chat actually belongs to a project, since otherwise there is nothing
- * to remove it from. A drag also lifts the idle row cap, so no project is
- * unreachable as a drop target.
+ * to remove it from. The row cap does NOT lift for a drag — see
+ * `visibleProjects` — so the list's height never changes mid-gesture.
  */
 
 import { useDroppable } from '@dnd-kit/core'
@@ -85,16 +85,21 @@ type ProjectDropRowsProps = {
 const idleVisibleLimit = 5
 
 /**
- * The rows to render. Capped when idle, but never during a drag — every project
- * has to stay reachable as a drop target — and the open project is always
- * included, so the active row can't be the one that got collapsed away.
+ * The rows to render: the first {@link idleVisibleLimit}, plus the open project so
+ * the active row can't be the one collapsed away.
+ *
+ * The cap holds **during a drag too**, which is a reversal. It used to lift, on the
+ * reasoning that every project should be reachable as a drop target — but on an
+ * account with ~100 projects that expanded the group from 5 rows to 100 in the same
+ * render that started the drag. Everything below shifted down by ~95 rows,
+ * including the chat row the user had just grabbed, so the pointer was no longer
+ * over the thing being dragged and the drop became unaimable (reported by Rai).
+ *
+ * A 100-row drop zone was never usable anyway. Projects past the cap are reached
+ * through **Move to project** in the chat's action menu, which is searchable.
  */
-const visibleProjects = <T extends { id: string }>(
-  projects: readonly T[],
-  isDragging: boolean,
-  activeId: string | null,
-): readonly T[] => {
-  if (isDragging || projects.length <= idleVisibleLimit) {
+const visibleProjects = <T extends { id: string }>(projects: readonly T[], activeId: string | null): readonly T[] => {
+  if (projects.length <= idleVisibleLimit) {
     return projects
   }
   const head = projects.slice(0, idleVisibleLimit)
@@ -112,16 +117,18 @@ export const ProjectDropRows = ({ projects, isDragging, draggingFromProjectId }:
   }
 
   const activeId = location.pathname.startsWith('/projects/') ? location.pathname.slice('/projects/'.length) : null
-  const visible = visibleProjects(projects, isDragging, activeId)
+  const visible = visibleProjects(projects, activeId)
   const hiddenCount = projects.length - visible.length
 
   return (
     <div
       className={cn(
         'rounded-lg transition-colors duration-150',
-        // The group reads as one target zone during a drag, so it's obvious where
-        // a chat can go before hovering any individual row.
-        isDragging && 'bg-sidebar-accent/40 p-1 ring-1 ring-border',
+        // The group reads as one target zone during a drag, so it's obvious where a
+        // chat can go before hovering any individual row. Background and an *inset*
+        // ring only — the previous `p-1` grew the container by 8px the instant a
+        // drag began, nudging every row below it out from under the pointer.
+        isDragging && 'bg-sidebar-accent/40 ring-1 ring-inset ring-border',
       )}
     >
       {/* Same `SidebarGroupLabel` the chat list uses for "Recent Chats", so the

@@ -134,10 +134,18 @@ it; removing the chats too is a separate, explicit action.
   mobile shows an icon-only circle rendered *inside* the agent pill's positioned
   wrapper, so the pair docks together when the pill slides top-right.
 - **Sidebar** — project rows double as drop targets, so a chat can be dragged into
-  a project. "Remove from project" appears only while dragging a chat that has
-  one. Five rows at rest, with the remainder behind an "N more" link to the list
-  page, so projects can't push the chat list out of view; a drag lifts the cap so
-  every project stays droppable, and the open project is always shown.
+  a project. "Remove from project" appears only while dragging a chat that has one.
+  Five rows always, with the remainder behind an "N more" link to the list page, and
+  the open project always shown.
+
+  **The cap does not lift for a drag, and the drag affordance must not change
+  layout.** It used to do both: on an account with ~100 projects the group grew from
+  5 rows to 100 the instant a drag began (plus 8px of container padding), which
+  pushed the grabbed chat row out from under the pointer and made the drop
+  unaimable. Anything that changes this group's height mid-gesture reintroduces
+  that. Projects past the cap are reached through **Move to project** in the chat's
+  action menu, which gains a search field past 8 projects — a 100-row drop zone was
+  never usable anyway.
 - **Emoji icons** — the full Unicode set via `@emoji-mart/data`, dynamically
   imported so the entry chunk is unchanged, and virtualized because ~1,870 glyphs
   is far too many DOM nodes. Popover on desktop, bottom sheet on touch.
@@ -202,9 +210,10 @@ a conscious include/exclude on any future table).
   are not rendered at all (the whole group sits behind `!isMobile`). Drag is
   therefore an enhancement, not the mechanism: every platform reaches project
   membership through **Move to project** in a chat's action menu (long-press on
-  mobile, right-click or `⋯` on desktop), which opens
-  `MoveChatToProjectDialog`. The sidebar owns one instance of that dialog rather
-  than one per row — the list is virtualized and hundreds of rows long.
+  mobile, right-click or `⋯` on desktop), which opens `MoveChatToProjectDialog`. The
+  sidebar owns one instance of that dialog rather than one per row — the list is
+  virtualized and hundreds of rows long. Drag reaches only the five capped rows;
+  the menu reaches every project.
 - **E2EE has not been exercised.** The artifact query (`parts LIKE`) and the FTS
   index both assume message JSON is plaintext locally.
 - **The pinned emoji category label is an overlay, not `position: sticky`.**

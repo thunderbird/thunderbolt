@@ -403,10 +403,12 @@ describe('createAgentRoutingFetch — connection status', () => {
 describe('createChatInstance — retry policy', () => {
   beforeEach(() => {
     resetStore()
+    sessionStorage.clear()
   })
 
   afterEach(() => {
     resetStore()
+    sessionStorage.clear()
   })
 
   it('uses 2s, 4s, and 8s exponential retry delays', async () => {
@@ -514,6 +516,16 @@ describe('createChatInstance — retry policy', () => {
     expect(sendMessage).toHaveBeenCalledTimes(1)
   })
 
+  it('counts text parts in prompt telemetry', async () => {
+    const { instance, trackEvent } = createRetryHarness()
+    const prompt = 'Summarize the telemetry behavior of this non-empty prompt without exposing it.'
+
+    await instance.sendMessage({ parts: [{ type: 'text', text: prompt }] })
+
+    const sendProperties = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1]
+    expect(sendProperties).toEqual(expect.objectContaining({ length: prompt.length }))
+  })
+
   it('tracks scalar model identifiers and one correlated success summary', async () => {
     const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
 
@@ -555,6 +567,37 @@ describe('createChatInstance — retry policy', () => {
     expect(JSON.stringify(summaries[0]![1])).not.toContain('private provider message')
   })
 
+  it('reports one total attempt when retries stop before the first retry', async () => {
+    const { finishWithError, instance, trackEvent } = createRetryHarness()
+    await instance.sendMessage({ text: 'do not retry' })
+
+    await finishWithError(new Error(JSON.stringify({ kind: 'provider-error', isRetryable: false })))
+
+    const exhausted = trackEvent.mock.calls.find(([event]) => event === 'chat_retries_exhausted')?.[1]
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    expect(exhausted).toEqual(expect.objectContaining({ attempts: 1 }))
+    expect(summary).toEqual(expect.objectContaining({ attempts: 1 }))
+  })
+
+  it('reports total attempts after an automatic retry', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishWithError, instance, trackEvent } = createRetryHarness()
+
+    try {
+      await instance.sendMessage({ text: 'retry once' })
+      await finishWithError()
+      await getClock().tickAsync(2_000)
+      await finishWithError(new Error(JSON.stringify({ kind: 'provider-error', isRetryable: false })))
+
+      const exhausted = trackEvent.mock.calls.find(([event]) => event === 'chat_retries_exhausted')?.[1]
+      const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+      expect(exhausted).toEqual(expect.objectContaining({ attempts: 2 }))
+      expect(summary).toEqual(expect.objectContaining({ attempts: 2 }))
+    } finally {
+      random.mockRestore()
+    }
+  })
+
   it('keeps one trace across auto-retry attempts', async () => {
     const random = spyOn(Math, 'random').mockReturnValue(0.5)
     const { finishSuccessfully, finishWithError, instance, trackEvent } = createRetryHarness()
@@ -565,12 +608,41 @@ describe('createChatInstance — retry policy', () => {
       await getClock().tickAsync(2_000)
       await finishSuccessfully()
 
+      const retrySuccess = trackEvent.mock.calls.find(([event]) => event === 'chat_retry_success')?.[1]
       const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+      expect(retrySuccess).toEqual(expect.objectContaining({ attempts: 2 }))
       expect(summary).toEqual(expect.objectContaining({ attempts: 2, retry_layers: ['auto_retry'] }))
       expect(summary).not.toHaveProperty('error_class')
     } finally {
       random.mockRestore()
     }
+  })
+
+  it('emits one abort summary for a turn left in flight across reload', async () => {
+    const firstBoot = createRetryHarness()
+    await firstBoot.instance.sendMessage({ text: 'stream until reload' })
+    const traceId = (
+      firstBoot.trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1] as
+        | Record<string, unknown>
+        | undefined
+    )?.trace_id
+
+    resetStore()
+    const reloaded = createRetryHarness()
+
+    expect(
+      reloaded.trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed').map((call) => call[1]),
+    ).toEqual([expect.objectContaining({ outcome: 'abort', trace_id: traceId, total_ms: expect.any(Number) })])
+
+    resetStore()
+    const nextBoot = createRetryHarness()
+    expect(nextBoot.trackEvent.mock.calls.some(([event]) => event === 'chat_turn_completed')).toBe(false)
+  })
+
+  it('does not emit an abort summary on a fresh boot', () => {
+    const { trackEvent } = createRetryHarness()
+
+    expect(trackEvent.mock.calls.some(([event]) => event === 'chat_turn_completed')).toBe(false)
   })
 
   it('keeps retry events and summaries on the model that started the turn', async () => {

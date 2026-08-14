@@ -416,6 +416,112 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
   }
 }
 
+type ChatMessageInput = Parameters<Chat<ThunderboltUIMessage>['sendMessage']>[0]
+
+/** Count user-authored text across both AI SDK message input shapes. */
+const getPromptLength = (message: ChatMessageInput): number => {
+  if (!message) {
+    return 0
+  }
+  if ('parts' in message && message.parts) {
+    return message.parts.reduce((length, part) => length + (part.type === 'text' ? part.text.length : 0), 0)
+  }
+  if ('text' in message && typeof message.text === 'string') {
+    return message.text.length
+  }
+  return 0
+}
+
+type InFlightTurnMarker = {
+  traceId: string
+  startedAt: number
+}
+
+type InFlightTurnStorage = {
+  clear: (traceId: string) => void
+  mark: (traceId: string) => void
+  recover: (trackEvent: typeof defaultTrackEvent) => void
+}
+
+/**
+ * Persist privacy-safe turn markers for reload recovery in the current tab.
+ * Multiple markers preserve overlapping turns while an older final save settles.
+ */
+const createInFlightTurnStorage = (chatId: string): InFlightTurnStorage => {
+  const storageKey = `thunderbolt_chat_turn_in_flight:${chatId}`
+  const isMarker = (value: unknown): value is InFlightTurnMarker => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return false
+    }
+    return (
+      'traceId' in value &&
+      typeof value.traceId === 'string' &&
+      value.traceId.length > 0 &&
+      'startedAt' in value &&
+      typeof value.startedAt === 'number' &&
+      Number.isFinite(value.startedAt)
+    )
+  }
+  const read = (): InFlightTurnMarker[] => {
+    try {
+      const raw = sessionStorage.getItem(storageKey)
+      if (!raw) {
+        return []
+      }
+      const parsed: unknown = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.every(isMarker)) {
+        return parsed
+      }
+      sessionStorage.removeItem(storageKey)
+      return []
+    } catch {
+      return []
+    }
+  }
+  const write = (markers: InFlightTurnMarker[]): void => {
+    try {
+      if (markers.length === 0) {
+        sessionStorage.removeItem(storageKey)
+        return
+      }
+      sessionStorage.setItem(storageKey, JSON.stringify(markers))
+    } catch {
+      // Telemetry recovery is best-effort when tab storage is unavailable.
+    }
+  }
+
+  return {
+    clear: (traceId) => {
+      const markers = read()
+      const remaining = markers.filter((marker) => marker.traceId !== traceId)
+      if (remaining.length !== markers.length) {
+        write(remaining)
+      }
+    },
+    mark: (traceId) => {
+      const markers = read()
+      if (markers.some((marker) => marker.traceId === traceId)) {
+        return
+      }
+      write([...markers, { traceId, startedAt: Date.now() }])
+    },
+    recover: (trackEvent) => {
+      const markers = read()
+      if (markers.length === 0) {
+        return
+      }
+      write([])
+      for (const marker of markers) {
+        trackEvent('chat_turn_completed', {
+          trace_id: marker.traceId,
+          outcome: 'abort',
+          total_ms: Math.max(0, Math.round(Date.now() - marker.startedAt)),
+        })
+      }
+    },
+  }
+}
+
 type TurnModelProperties = { model_id: string; model_name: string; provider: string }
 
 type TurnState = {
@@ -458,6 +564,8 @@ export const createChatInstance = (
   const createTurnTelemetry = deps.createTurnTelemetry ?? defaultCreateTurnTelemetry
   const trackEvent = deps.trackEvent ?? defaultTrackEvent
   const wakeAdapterReconnect = deps.wakeAdapterReconnect ?? defaultWakeAdapterReconnect
+  const inFlightTurns = createInFlightTurnStorage(id)
+  inFlightTurns.recover(trackEvent)
   let turnBudget = createTurnBudget()
   let currentTurn = createTurnState()
   /** Capture immutable model dimensions and built-in telemetry for one turn. */
@@ -486,7 +594,11 @@ export const createChatInstance = (
     if (!currentTurn.modelProperties) {
       initializeTurnForCurrentSession(currentTurn)
     }
-    return currentTurn.telemetry
+    const { telemetry } = currentTurn
+    if (telemetry) {
+      inFlightTurns.mark(telemetry.traceId)
+    }
+    return telemetry
   }
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
@@ -519,6 +631,7 @@ export const createChatInstance = (
       recordMessageTelemetry(telemetry, message)
     }
     trackEvent('chat_turn_completed', telemetry.buildPayload(outcome))
+    inFlightTurns.clear(telemetry.traceId)
   }
 
   /** Clear retry state and replace the completed turn's request budget. */
@@ -544,7 +657,7 @@ export const createChatInstance = (
   const markRetriesExhausted = (turn: TurnState) => {
     trackEvent('chat_retries_exhausted', {
       reason: getChatErrorKind(lastError) ?? 'unknown',
-      attempts: retryCount,
+      attempts: retryCount + 1,
       ...getTurnContextProperties(turn.telemetry, turn.modelProperties),
     })
     emitTurnCompleted(turn, 'error')
@@ -588,7 +701,7 @@ export const createChatInstance = (
       if (!isError && message && message.parts?.length) {
         if (retryCount > 0) {
           trackEvent('chat_retry_success', {
-            attempts: retryCount,
+            attempts: retryCount + 1,
             ...getTurnContextProperties(finishedTurn.telemetry, finishedTurn.modelProperties),
           })
         }
@@ -726,6 +839,7 @@ export const createChatInstance = (
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {
     startNewTurn()
+    getOrCreateTurnTelemetry()
     const agentId = useChatStore.getState().sessions.get(id)?.selectedAgent.id
     if (agentId) {
       wakeAdapterReconnect(agentId)
@@ -760,13 +874,14 @@ export const createChatInstance = (
       )
     }
 
+    const telemetry = getOrCreateTurnTelemetry()
     trackEvent('chat_send_prompt', {
       model_id: selectedModel.id,
       model_name: selectedModel.model,
       provider: selectedModel.provider,
-      length: message && 'text' in message ? (message.text?.length ?? 0) : 0,
+      length: getPromptLength(message),
       prompt_number: instance.messages.length + 1,
-      ...getTraceProperties(currentTurn.telemetry),
+      ...getTraceProperties(telemetry),
     })
 
     return originalSendMessage(

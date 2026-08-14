@@ -18,7 +18,13 @@ type TinfoilAttestationProperties = {
   duration_ms: number
   error_name?: string
   client: TinfoilClientType
+  trace_id?: string
+  engine?: 'pi' | 'legacy'
+  provider?: string
+  model_id?: string
 }
+
+type TinfoilTraceProperties = Pick<TinfoilAttestationProperties, 'trace_id' | 'engine' | 'provider' | 'model_id'>
 
 type TinfoilClientLifecycleOptions = {
   createClient: (type: TinfoilClientType, cloudUrl: string) => Promise<SecureClient>
@@ -51,6 +57,7 @@ const waitForAttestation = async (
   clientType: TinfoilClientType,
   timeoutMs: number,
   trackAttestation: (properties: TinfoilAttestationProperties) => void,
+  traceProperties: TinfoilTraceProperties,
 ): Promise<TinfoilAttestationProperties> => {
   const startedAt = Date.now()
 
@@ -62,6 +69,7 @@ const waitForAttestation = async (
       outcome: 'success',
       duration_ms: Date.now() - startedAt,
       client: clientType,
+      ...traceProperties,
     }
   } catch (error) {
     const isTimeout = getErrorName(error) === 'TinfoilAttestationTimeoutError'
@@ -70,6 +78,7 @@ const waitForAttestation = async (
       duration_ms: Date.now() - startedAt,
       error_name: getErrorName(error),
       client: clientType,
+      ...traceProperties,
     })
     // Wrap only at the throw so telemetry reports the underlying SDK failure
     // name while classification keys on our stable wrapper name.
@@ -103,13 +112,16 @@ export const createTinfoilClientLifecycle = ({
   }
 
   /** Return an attested client, evicting failed construction or attestation. */
-  const acquire = async (type: TinfoilClientType): Promise<SecureClient> => {
+  const acquire = async (
+    type: TinfoilClientType,
+    traceProperties: TinfoilTraceProperties = {},
+  ): Promise<SecureClient> => {
     const key = getClientKey(type)
     const clientPromise = clients.get(key) ?? construct(key, type)
     try {
       const client = await clientPromise
-      const properties = await waitForAttestation(client, type, timeoutMs, trackAttestation)
-      if (!reportedClients.has(client)) {
+      const properties = await waitForAttestation(client, type, timeoutMs, trackAttestation, traceProperties)
+      if (!reportedClients.has(client) || traceProperties.trace_id !== undefined) {
         reportedClients.add(client)
         trackAttestation(properties)
       }
@@ -124,9 +136,11 @@ export const createTinfoilClientLifecycle = ({
   }
 
   /** Return the attested system client for the current cloud URL. */
-  const getSystemTinfoilClient = (): Promise<SecureClient> => acquire('system')
+  const getSystemTinfoilClient = (traceProperties?: TinfoilTraceProperties): Promise<SecureClient> =>
+    acquire('system', traceProperties)
   /** Return the attested user client. */
-  const getTinfoilClient = (): Promise<SecureClient> => acquire('user')
+  const getTinfoilClient = (traceProperties?: TinfoilTraceProperties): Promise<SecureClient> =>
+    acquire('user', traceProperties)
   /** Drop the current cloud URL's system client. */
   const evictSystemTinfoilClient = (): void => {
     clients.delete(getClientKey('system'))

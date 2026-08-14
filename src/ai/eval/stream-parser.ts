@@ -51,11 +51,19 @@ export const buildAssistantParts = (
  * - finish: { type: "finish" }
  * - start-step: { type: "start-step" }
  */
-export const parseStream = async (response: Response): Promise<ParsedStream> => {
+export const parseStream = async (response: Response, signal?: AbortSignal): Promise<ParsedStream> => {
   const reader = response.body?.getReader()
   if (!reader) {
     return emptyResult('No response body')
   }
+  const cancelOnAbort = () => {
+    void reader.cancel(signal?.reason).catch(() => {})
+  }
+  if (signal?.aborted) {
+    await reader.cancel(signal.reason)
+    throw signal.reason
+  }
+  signal?.addEventListener('abort', cancelOnAbort, { once: true })
 
   const decoder = new TextDecoder()
   let buffer = ''
@@ -146,6 +154,8 @@ export const parseStream = async (response: Response): Promise<ParsedStream> => 
       stepCount,
       retryCount,
     }
+  } finally {
+    signal?.removeEventListener('abort', cancelOnAbort)
   }
 
   const fullText = textParts.join('')

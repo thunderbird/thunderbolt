@@ -2,25 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { createPrompt } from '@/ai/prompt'
+import { createWebToolBudget, resolveWebToolIntent } from '@/ai/web-tool-budget'
 import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
+import type { HttpClient } from '@/lib/http'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
-import { createProxyFetch } from '@/lib/proxy-fetch'
+import { createProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
+import { extractLastUserText } from '@/skills/resolve-skill-system-messages'
 import { v7 as uuidv7 } from 'uuid'
-import type { ThunderboltUIMessage } from '@/types'
+import type { AgentAdapter, AgentAdapterContext } from '@/types/acp'
+import type { Model, ThunderboltUIMessage } from '@/types'
+import { evaluateWithJudge, judgeScenario } from './judge'
+import { verbose } from './options'
 import { getModelId } from './scenarios'
 import { scoreResult } from './scoring'
+import { modalResult } from './stats'
 import { parseStream } from './stream-parser'
 import type { EvalResult, EvalScenario, ParsedStream } from './types'
 
-const timeout = parseInt(process.env.EVAL_timeout ?? '120000')
+const timeout = parseInt(process.env.EVAL_TIMEOUT ?? '120000')
 
 let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = null
 const getEvalHttpClient = () => {
@@ -40,8 +46,64 @@ const cyan = '\x1b[36m'
 const yellow = '\x1b[33m'
 const reset = '\x1b[0m'
 
+type EvalAdapterContextOptions = {
+  threadId: string
+  selectedModel: Model
+  messages: ThunderboltUIMessage[]
+  httpClient: HttpClient
+  getProxyFetch: () => FetchFn
+}
+
+/** Build the production adapter context for one eval turn. */
+export const createEvalAdapterContext = ({
+  threadId,
+  selectedModel,
+  messages,
+  httpClient,
+  getProxyFetch,
+}: EvalAdapterContextOptions): AgentAdapterContext => ({
+  threadId,
+  chatThread: null,
+  acpSessionId: null,
+  saveMessages: async () => {},
+  selectedModel,
+  mcpClients: [],
+  reconnectClient: async () => null,
+  httpClient,
+  getProxyFetch,
+  webToolBudget: createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages))),
+  onAcpSessionId: async () => {},
+})
+
+/** Fetch and consume one adapter stream, aborting both phases when the turn times out. */
+export const fetchAndParseTurn = async (
+  adapter: Pick<AgentAdapter, 'fetch'>,
+  init: RequestInit,
+  context: AgentAdapterContext,
+  timeoutMs: number,
+  scheduleTimeout: (callback: () => void, delayMs: number) => () => void = (callback, delayMs) => {
+    const timer = setTimeout(callback, delayMs)
+    return () => clearTimeout(timer)
+  },
+): Promise<ParsedStream> => {
+  const controller = new AbortController()
+  const operation = async () => {
+    const response = await adapter.fetch({ ...init, signal: controller.signal }, context)
+    return parseStream(response, controller.signal)
+  }
+  const timeoutError = new Error('Scenario timed out')
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    const cancelTimeout = scheduleTimeout(() => {
+      controller.abort(timeoutError)
+      reject(timeoutError)
+    }, timeoutMs)
+    controller.signal.addEventListener('abort', cancelTimeout, { once: true })
+  })
+
+  return Promise.race([operation(), timeoutPromise]).finally(() => controller.abort())
+}
+
 const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
-  const { verbose } = await import('./run')
   if (!verbose) {
     return
   }
@@ -91,7 +153,6 @@ const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
 }
 
 const logVerboseResponse = async (scenario: EvalScenario, responseText: string) => {
-  const { verbose } = await import('./run')
   if (!verbose) {
     return
   }
@@ -102,11 +163,16 @@ const logVerboseResponse = async (scenario: EvalScenario, responseText: string) 
 }
 
 /** Run a single evaluation scenario end-to-end (assumes DB is already initialized) */
-export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> => {
+export const runScenario = async (scenario: EvalScenario, adapter: AgentAdapter): Promise<EvalResult> => {
   const start = performance.now()
 
   try {
     const modelId = getModelId(scenario.modelName)
+    const selectedModel = await getModel(getDb(), modelId)
+    if (!selectedModel) {
+      throw new Error(`Eval model not found in database: ${modelId}`)
+    }
+    const threadId = uuidv7()
 
     // Search/Research ship as default skills now (seeded by the eval DB's
     // reconcile pass), so a non-chat scenario invokes its skill the way a
@@ -121,7 +187,7 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
     // Eval runs in Node, not a browser — no React tree, no `ProxyFetchProvider`.
     // Build the proxy fetch directly from the same cloudUrl the HTTP client uses.
     const cloudUrl = getLocalSetting('cloudUrl')
-    const proxyFetch = createProxyFetch({ cloudUrl })
+    const proxyFetch = createProxyFetch({ cloudUrl, getProxyAuthToken: getAuthToken })
 
     const userMessage = (text: string): ThunderboltUIMessage => ({
       id: uuidv7(),
@@ -131,19 +197,14 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
 
     const runTurn = async (messages: ThunderboltUIMessage[]): Promise<ParsedStream> => {
       const body = JSON.stringify({ messages, id: uuidv7() })
-      let timer: ReturnType<typeof setTimeout> | undefined
-      const response = await Promise.race([
-        aiFetchStreamingResponse({
-          init: { method: 'POST', body },
-          modelId,
-          httpClient,
-          getProxyFetch: () => proxyFetch,
-        }),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Scenario timed out')), timeout)
-        }),
-      ]).finally(() => clearTimeout(timer))
-      return parseStream(response)
+      const context = createEvalAdapterContext({
+        threadId,
+        selectedModel,
+        messages,
+        httpClient,
+        getProxyFetch: () => proxyFetch,
+      })
+      return fetchAndParseTurn(adapter, { method: 'POST', body }, context, timeout)
     }
 
     // Run every turn but the last to build history, feeding each prior assistant
@@ -166,11 +227,13 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
     const finalUser = userMessage(allTurns.at(-1)!)
     const parsed = await runTurn([...history, finalUser])
 
-    const durationMs = performance.now() - start
-
     await logVerboseResponse(scenario, parsed.text)
 
-    return scoreResult(scenario, parsed, durationMs)
+    const deterministicResult = scoreResult(scenario, parsed, performance.now() - start)
+    const judgedResult = await evaluateWithJudge(deterministicResult, (signal) =>
+      judgeScenario(scenario, parsed.text, () => proxyFetch, signal),
+    )
+    return { ...judgedResult, durationMs: Math.round(performance.now() - start) }
   } catch (err) {
     const durationMs = performance.now() - start
     return {
@@ -194,7 +257,12 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
 }
 
 /** Run scenarios with a worker pool — each slot immediately starts the next scenario when free */
-export const runPool = async (scenarios: EvalScenario[], concurrency: number): Promise<EvalResult[]> => {
+export const runPool = async (
+  scenarios: EvalScenario[],
+  concurrency: number,
+  adapter: AgentAdapter,
+  sampleCountForScenario: (scenario: EvalScenario) => number = () => 1,
+): Promise<EvalResult[]> => {
   const { startSpinner, stopSpinner, printResult } = await import('./ui')
 
   const results: EvalResult[] = []
@@ -204,7 +272,15 @@ export const runPool = async (scenarios: EvalScenario[], concurrency: number): P
     while (queue.length > 0) {
       const scenario = queue.shift()!
       startSpinner(scenario)
-      const result = await runScenario(scenario)
+      const samples: EvalResult[] = []
+      const sampleRuns = Array.from(
+        { length: sampleCountForScenario(scenario) },
+        () => () => runScenario(scenario, adapter),
+      )
+      for (const runSample of sampleRuns) {
+        samples.push(await runSample())
+      }
+      const result = samples.length === 1 ? samples[0] : modalResult(samples)
       stopSpinner(scenario.id)
       printResult(result)
       results.push(result)

@@ -6,7 +6,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createClient, type HttpClient } from '@/lib/http'
 import type { HandleError } from '@/types/handle-errors'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { initPosthog, resetPosthogClient, sanitizeUrl, trackError } from './posthog'
+import { initPosthog, resetPosthogClient, sanitizeUrl, stripApiKeys, trackError } from './posthog'
 
 type PosthogOptions = {
   before_send: (event: PosthogEvent) => PosthogEvent
@@ -71,15 +71,37 @@ describe('analytics sanitizeUrl', () => {
     expect(sanitizeUrl('/chats/abc-123')).toBe('/chats/:chatThreadId')
   })
 
-  it('replaces dynamic chat IDs for full URLs and preserves query', () => {
+  it('replaces dynamic chat IDs and removes the query and hash', () => {
     const input = 'https://app.test/chats/abc-123?x=1#hash'
-    const expected = 'https://app.test/chats/:chatThreadId?x=1#hash'
+    const expected = 'https://app.test/chats/:chatThreadId'
     expect(sanitizeUrl(input)).toBe(expected)
   })
 
-  it('returns input when no route pattern matches', () => {
+  it('removes OAuth callback credentials', () => {
+    expect(sanitizeUrl('/oauth/callback?code=authorization-code&state=csrf-state')).toBe('/oauth/callback')
+  })
+
+  it('removes magic-link credentials', () => {
+    expect(sanitizeUrl('/auth/verify?token=magic-link-token')).toBe('/auth/verify')
+  })
+
+  it('removes multiple query parameters and a hash', () => {
+    expect(sanitizeUrl('/device?user_code=ABCD1234&client_id=thunderbird#approval')).toBe('/device')
+  })
+
+  it('preserves absolute and path-only URL forms', () => {
+    expect(sanitizeUrl('https://app.test/settings?tab=account#profile')).toBe('https://app.test/settings')
+    expect(sanitizeUrl('/settings?tab=account#profile')).toBe('/settings')
+  })
+
+  it('preserves the fallback behavior for unparseable values', () => {
+    const input = 'http://[invalid-url?token=secret#hash'
+    expect(sanitizeUrl(input)).toBe(input)
+  })
+
+  it('returns routes without query parameters unchanged', () => {
     expect(sanitizeUrl('/settings')).toBe('/settings')
-    expect(sanitizeUrl('https://app.test/settings?tab=account')).toBe('https://app.test/settings?tab=account')
+    expect(sanitizeUrl('https://app.test/settings')).toBe('https://app.test/settings')
   })
 })
 
@@ -105,9 +127,27 @@ describe('analytics before_send sanitization', () => {
     }
 
     const result = capturedOptions!.before_send(event)
-    expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId?x=1')
+    expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.$pathname).toBe('/chats/:chatThreadId')
+  })
+
+  it('sanitizes SDK URL properties on custom events', async () => {
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
+    expect(capturedOptions).toBeTruthy()
+
+    const event: PosthogEvent = {
+      event: 'chat_send_prompt',
+      properties: {
+        $current_url: 'https://app/chats/123?foo=bar&token=xyz#private',
+        $referrer: 'https://referrer.test/chats/456?source=private#secret',
+      },
+    }
+
+    const result = capturedOptions!.before_send(event)
+    expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId')
+    expect(result.properties.$referrer).toBe('https://referrer.test/chats/:chatThreadId')
   })
 
   it('ignores non-string URL-like properties', async () => {
@@ -128,6 +168,33 @@ describe('analytics before_send sanitization', () => {
     expect(result.properties.$current_url).toBe(123)
     expect(result.properties.url).toEqual({ href: '/chats/1' })
     expect(result.properties.$pathname).toBeNull()
+  })
+
+  it('removes nested API keys and preserves other properties', () => {
+    const properties: Record<string, unknown> = {
+      model: {
+        id: 'model-1',
+        apiKey: 'secret',
+        nested: [
+          { apiKey: 'another-secret', provider: 'openai' },
+          { apiKey: 'third-secret', provider: 'anthropic' },
+        ],
+      },
+      attempts: 2,
+    }
+
+    expect(stripApiKeys(properties)).toBe(true)
+    expect(properties).toEqual({
+      model: {
+        id: 'model-1',
+        nested: [{ provider: 'openai' }, { provider: 'anthropic' }],
+      },
+      attempts: 2,
+    })
+  })
+
+  it('reports when no API key was present', () => {
+    expect(stripApiKeys({ model_id: 'model-1' })).toBe(false)
   })
 })
 

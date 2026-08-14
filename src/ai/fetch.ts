@@ -7,6 +7,7 @@ import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
+import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import {
   buildStepOverrides,
@@ -116,6 +117,7 @@ type AiFetchStreamingResponseOptions = {
   httpClient: HttpClient
   turnBudget?: TurnBudgetConsumer
   webToolBudget?: WebToolBudget
+  telemetry?: TurnTelemetry
   /** Returns the current proxy fetch. Production callers pass the getter from
    *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
    *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
@@ -304,7 +306,20 @@ export const resolveOpenAiCompatConnection = (
   }
 }
 
-export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
+/** Time a Tinfoil client acquisition without changing its error behavior. */
+const acquireTinfoilClient = async <Client>(
+  acquire: () => Promise<Client>,
+  telemetry?: TurnTelemetry,
+): Promise<Client> => {
+  telemetry?.startPhase('attestation')
+  try {
+    return await acquire()
+  } finally {
+    telemetry?.endPhase('attestation')
+  }
+}
+
+export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn, telemetry?: TurnTelemetry) => {
   // The thunderbolt provider goes through its own SSO-aware fetch below; all
   // other providers route through the universal proxy. We resolve the proxy
   // fetch lazily so a settings change between chat creation and this call
@@ -405,7 +420,16 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // satisfy the SDK's apiKey requirement. User-added Tinfoil models keep
       // the BYOK flow and require a real key.
       if (modelConfig.isSystem) {
-        const client = await getSystemTinfoilClient()
+        const client = await acquireTinfoilClient(
+          () =>
+            getSystemTinfoilClient({
+              trace_id: telemetry?.traceId,
+              engine: 'legacy',
+              provider: modelConfig.provider,
+              model_id: modelConfig.id,
+            }),
+          telemetry,
+        )
         // Wrap SecureClient.fetch so the backend route's auth guard sees the
         // real Thunderbolt session token (Bearer) or cookies (SSO), not the
         // `Bearer thunderbolt-managed` placeholder the OpenAI SDK adds.
@@ -443,7 +467,16 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!modelConfig.apiKey) {
         throw new Error('No API key provided')
       }
-      const client = await getTinfoilClient()
+      const client = await acquireTinfoilClient(
+        () =>
+          getTinfoilClient({
+            trace_id: telemetry?.traceId,
+            engine: 'legacy',
+            provider: modelConfig.provider,
+            model_id: modelConfig.id,
+          }),
+        telemetry,
+      )
       const evictingFetch: typeof fetch = Object.assign(
         async (input: RequestInfo | URL, init?: RequestInit) => {
           try {
@@ -491,6 +524,7 @@ export type PrepareAiRequestConfigOptions = {
   /** Thread being sent to. Resolves the owning project's instructions +
    *  instructions into the stable system prompt; omit for non-thread callers. */
   readonly chatThreadId?: string
+  readonly telemetry?: TurnTelemetry
 }
 
 /** Register progressive skill loading only for models that support tools. */
@@ -522,7 +556,9 @@ export const prepareAiRequestConfig = async ({
   httpClient,
   webToolBudget,
   chatThreadId,
+  telemetry,
 }: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
+  telemetry?.startPhase('request_config')
   const db = getDb()
   const settings = await getSettings(db, {
     preferred_name: '',
@@ -545,6 +581,7 @@ export const prepareAiRequestConfig = async ({
   }
   const profile = await getModelProfile(db, modelId)
   const storedSkills = await getAllSkills(db)
+  telemetry?.endPhase('request_config')
   const skills = selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
   // Loaded before the toolset so the cross-chat search tool can be registered
@@ -568,9 +605,11 @@ export const prepareAiRequestConfig = async ({
     })
   }
   const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
+  telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
     : { toolset: appToolset, summary: undefined, mcpTools: undefined }
+  telemetry?.endPhase('mcp_discovery')
 
   const integrationStatuses = [
     integrationStatus.googleConnected && !integrationStatus.googleEnabled ? 'GOOGLE_DISABLED' : null,
@@ -651,6 +690,7 @@ export const aiFetchStreamingResponse = async ({
   getProxyFetch,
   turnBudget,
   webToolBudget,
+  telemetry,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
@@ -682,6 +722,7 @@ export const aiFetchStreamingResponse = async ({
     // The chat id rides the request body (see the destructure above), which is
     // how this path knows which thread — and so which project — it is serving.
     chatThreadId: typeof body?.id === 'string' ? body.id : undefined,
+    telemetry,
   })
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
@@ -690,7 +731,7 @@ export const aiFetchStreamingResponse = async ({
   const activeNudges = getNudgeMessagesFromProfile(profile)
 
   try {
-    const baseModel = await createModel(model, getProxyFetch)
+    const baseModel = await createModel(model, getProxyFetch, telemetry)
 
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,
@@ -766,6 +807,7 @@ export const aiFetchStreamingResponse = async ({
 
         abortSignal,
         onStepFinish: (step) => {
+          telemetry?.recordStep()
           console.info('step', {
             text: step.text,
             finishReason: step.finishReason,
@@ -906,9 +948,11 @@ export const aiFetchStreamingResponse = async ({
         // read from IndexedDB) so the model receives them. Only the reference is
         // persisted/synced; the bytes are inlined here, in-flight to the model.
         // Quote parts are likewise flattened to Markdown blockquote text parts.
+        telemetry?.startPhase('attachment_hydration')
         const baseMessages = await convertToModelMessages(
           hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(messages)),
         )
+        telemetry?.endPhase('attachment_hydration')
         let currentInput = assembleBuiltInModelInput(stableSystemPrompt, baseMessages, volatileSystemNotes)
         let attemptNumber = 1
         let isRetry = false
@@ -920,6 +964,7 @@ export const aiFetchStreamingResponse = async ({
           if (attemptNumber > 1 && !requestBudget.tryConsumeRequest()) {
             // Mirror the routing choke point's denial so both layers surface the
             // same named error instead of ending the turn as a silent finish.
+            telemetry?.recordRetry({ layer: 'turn_budget', reason: 'request_budget_exhausted', attempt: attemptNumber })
             throw createTurnBudgetExhaustedError()
           }
 
@@ -959,6 +1004,7 @@ export const aiFetchStreamingResponse = async ({
                   : activeNudges.retry
 
               console.info(`Empty response detected, retrying (attempt ${attemptNumber + 1}/${maxAttempts})...`)
+              telemetry?.recordRetry({ layer: 'empty_response', reason: 'empty_response', attempt: attemptNumber + 1 })
               currentInput = {
                 ...currentInput,
                 messages: [

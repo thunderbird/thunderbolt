@@ -126,6 +126,20 @@ describe('getChatErrorKind', () => {
     )
   })
 
+  it('classifies serialized content rejections for telemetry', () => {
+    const errors = [
+      new Error('400: invalid file content'),
+      new Error(JSON.stringify({ error: 'Bad Request', status: 400 })),
+      new Error('openai (422): unsupported file part'),
+    ]
+
+    for (const error of errors) {
+      const kind = getChatErrorKind(error)
+      expect(kind).toBe('provider')
+      expect(kind ?? error.name).toBe('provider')
+    }
+  })
+
   it('classifies raw browser network errors', () => {
     expect(getChatErrorKind(new TypeError('Failed to fetch'))).toBe('network')
   })
@@ -134,6 +148,14 @@ describe('getChatErrorKind', () => {
     expect(getChatErrorKind(new Error('Unknown failure'))).toBeUndefined()
     expect(getChatErrorKind(null)).toBeUndefined()
     expect(getChatErrorKind()).toBeUndefined()
+  })
+
+  it('classifies pi-ai errors from embedded HTTP statuses', () => {
+    expect(getChatErrorKind(new Error("404: model 'llama3' not found"))).toBeUndefined()
+    expect(getChatErrorKind(new Error('anthropic (429): rate limited'))).toBe('rate-limit')
+    expect(getChatErrorKind(new Error('openai (500): Internal Server Error'))).toBe('provider')
+    expect(getChatErrorKind(new Error('openai (408): Request Timeout'))).toBe('timeout')
+    expect(getChatErrorKind(new Error('Something went wrong'))).toBeUndefined()
   })
 })
 
@@ -199,6 +221,15 @@ describe('isRateLimitError', () => {
   it('detects 429 via status field (aiFetchStreamingResponse path)', () => {
     const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))
     expect(isRateLimitError(error)).toBe(true)
+  })
+
+  it('detects pi-ai flattened 429 statuses', () => {
+    expect(isRateLimitError(new Error('429: Rate limit exceeded'))).toBe(true)
+    expect(isRateLimitError(new Error('anthropic (429): Please retry later'))).toBe(true)
+  })
+
+  it('does not match a pi-ai flattened 500 status', () => {
+    expect(isRateLimitError(new Error('openai (500): Internal Server Error'))).toBe(false)
   })
 
   it('does not match status 429 in non-JSON string', () => {
@@ -360,6 +391,27 @@ describe('getErrorStatusCode', () => {
     expect(getErrorStatusCode(new Error('Bad Request'))).toBeUndefined()
   })
 
+  it('reads pi-ai embedded HTTP status formats', () => {
+    expect(getErrorStatusCode(new Error("404: model 'llama3' not found"))).toBe(404)
+    expect(getErrorStatusCode(new Error('anthropic (429): rate limited'))).toBe(429)
+    expect(getErrorStatusCode(new Error('openai (500): Internal Server Error'))).toBe(500)
+    expect(getErrorStatusCode(new Error('openai (408): Request Timeout'))).toBe(408)
+  })
+
+  it('ignores unanchored three-digit numbers', () => {
+    expect(getErrorStatusCode(new Error('Error 500 happened'))).toBeUndefined()
+    expect(getErrorStatusCode(new Error('retried 404 times'))).toBeUndefined()
+  })
+
+  it('ignores embedded codes outside the HTTP error range', () => {
+    expect(getErrorStatusCode(new Error('399: Redirect'))).toBeUndefined()
+    expect(getErrorStatusCode(new Error('openai (600): Invalid'))).toBeUndefined()
+  })
+
+  it('is undefined for plain text without a status', () => {
+    expect(getErrorStatusCode(new Error('Something went wrong'))).toBeUndefined()
+  })
+
   it('is undefined for null', () => {
     expect(getErrorStatusCode(null)).toBeUndefined()
   })
@@ -372,6 +424,11 @@ describe('isContentRejectionError', () => {
 
   it('detects a 422 (the tag minted for a file-part UnsupportedFunctionalityError)', () => {
     expect(isContentRejectionError(new Error(JSON.stringify({ error: 'x', statusCode: 422 })))).toBe(true)
+  })
+
+  it('detects pi-ai 400 and 422 errors for attachment remediation', () => {
+    expect(isContentRejectionError(new Error('400: invalid file content'))).toBe(true)
+    expect(isContentRejectionError(new Error('openai (422): unsupported file part'))).toBe(true)
   })
 
   it('does NOT treat auth (401/403) as a content rejection', () => {
@@ -406,6 +463,25 @@ describe('getErrorRetryable', () => {
     expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 500 })))).toBeUndefined()
     expect(getErrorRetryable(new Error('Network timeout'))).toBeUndefined()
     expect(getErrorRetryable(null)).toBeUndefined()
+  })
+
+  it('does not retry deterministic pi-ai 4xx errors', () => {
+    expect(getErrorRetryable(new Error("404: model 'llama3' not found"))).toBe(false)
+  })
+
+  it('leaves transient pi-ai statuses retryable', () => {
+    expect(getErrorRetryable(new Error('anthropic (429): rate limited'))).toBeUndefined()
+    expect(getErrorRetryable(new Error('openai (500): Internal Server Error'))).toBeUndefined()
+    expect(getErrorRetryable(new Error('openai (408): Request Timeout'))).toBeUndefined()
+  })
+
+  it('leaves flattened pi-ai 409 conflicts retryable', () => {
+    expect(getErrorRetryable(new Error('409: Conflict'))).toBeUndefined()
+    expect(getErrorRetryable(new Error('anthropic (409): Conflict'))).toBeUndefined()
+  })
+
+  it('is undefined for pi-ai text without an embedded status', () => {
+    expect(getErrorRetryable(new Error('Something went wrong'))).toBeUndefined()
   })
 })
 

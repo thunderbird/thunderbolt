@@ -31,27 +31,47 @@ export const getPosthogClient = (): PostHog | null => posthogClient
 const routePatterns = ['/chats/:chatThreadId'] as const
 
 /**
- * Replaces dynamic URL segments with their parameter placeholders so analytics do not collect raw IDs.
+ * Replaces dynamic URL segments and removes query strings and hashes so analytics do not collect secrets or raw IDs.
  * @param url - Full URL or pathname
- * @returns URL with pathname replaced to match the route pattern
+ * @returns URL containing only its sanitized route
  */
 export const sanitizeUrl = (url: string): string => {
-  const pathname = (() => {
+  const parsedPathname = (() => {
     try {
       return new URL(url, 'http://localhost').pathname
     } catch {
-      return url.startsWith('/') ? url : `/${url}`
+      return null
     }
   })()
 
+  const pathname = parsedPathname ?? (url.startsWith('/') ? url : `/${url}`)
+  const routeOnlyUrl = parsedPathname === null ? url : url.split(/[?#]/, 1)[0]
   for (const pattern of routePatterns) {
     const regex = new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}$`)
     if (regex.test(pathname)) {
-      return url.replace(pathname, pattern)
+      return routeOnlyUrl.replace(pathname, pattern)
     }
   }
 
-  return url
+  return routeOnlyUrl
+}
+
+/** Remove API keys from a PostHog property tree before it leaves the app. */
+export const stripApiKeys = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce<boolean>((removed, item) => stripApiKeys(item) || removed, false)
+  }
+
+  const record = value as Record<string, unknown>
+  const removedHere = Object.hasOwn(record, 'apiKey')
+  if (removedHere) {
+    delete record.apiKey
+  }
+  return Object.values(record).reduce<boolean>((removed, item) => stripApiKeys(item) || removed, removedHere)
 }
 
 /**
@@ -100,10 +120,9 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
           if (!event) {
             return null
           }
-          if (event.event === '$pageview' || event.event === '$pageleave') {
-            if (typeof event.properties?.$current_url === 'string') {
-              event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
-            }
+
+          if (typeof event.properties?.$current_url === 'string') {
+            event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
           }
 
           if (typeof event.properties?.url === 'string') {
@@ -111,6 +130,13 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
           }
           if (typeof event.properties?.$pathname === 'string') {
             event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
+          }
+          if (typeof event.properties?.$referrer === 'string') {
+            event.properties.$referrer = sanitizeUrl(event.properties.$referrer)
+          }
+
+          if (stripApiKeys(event.properties) && import.meta.env.DEV) {
+            console.warn('Removed apiKey from PostHog event properties')
           }
 
           return event
@@ -161,6 +187,7 @@ export type EventType =
   | 'chat_auto_retry'
   | 'chat_retry_success'
   | 'chat_retries_exhausted'
+  | 'chat_turn_completed'
   | 'chat_select'
   | 'chat_new_clicked'
   | 'chat_delete'

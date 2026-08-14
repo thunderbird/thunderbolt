@@ -158,7 +158,17 @@ jobs:
       # exist before this runs; deploy it once via the `Previews Shared Deploy`
       # workflow. See deploy/pulumi/SHARED.md.
       shared_stack_name: previews-shared
-    secrets: inherit
+    secrets:
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
+      TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
+      TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
 
   comment:
     needs: [resolve, deploy]

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { webToolNames } from '@/lib/tools'
 import { countDuplicateToolCalls, scoreResult } from './scoring'
 import type { EvalScenario, ParsedStream, ToolCallInfo } from './types'
 
@@ -40,8 +41,9 @@ describe('countDuplicateToolCalls', () => {
 
 describe('scoreResult — maxToolCalls + duplicate reporting', () => {
   const scenario: EvalScenario = {
-    id: 'opus/chat/MTx',
+    id: 'opus/pi/chat/MTx',
     modelName: 'opus',
+    engineName: 'pi',
     modeName: 'chat',
     prompt: 'p',
     criteria: { mustProduceOutput: true, maxToolCalls: 0 },
@@ -50,7 +52,7 @@ describe('scoreResult — maxToolCalls + duplicate reporting', () => {
   test('fails when tool calls exceed the cap', () => {
     const result = scoreResult(scenario, makeParsed({ toolCalls: [call('search', { q: 'x' })] }), 100)
     expect(result.passed).toBe(false)
-    expect(result.failures.some((f) => f.includes('Too many tool calls'))).toBe(true)
+    expect(result.failures.some((f) => f.includes('Too many web tool calls'))).toBe(true)
   })
 
   test('passes when within the cap and reports the duplicate count', () => {
@@ -69,12 +71,74 @@ describe('scoreResult — maxToolCalls + duplicate reporting', () => {
     expect(result.duplicateToolCallCount).toBe(1)
     expect(result.toolCallCount).toBe(2)
   })
+
+  test('excludes Pi coding tools from web-call limits and counts', () => {
+    const result = scoreResult(
+      scenario,
+      makeParsed({
+        toolCalls: [
+          call('bash', { command: 'pwd' }),
+          call('read', { path: '/tmp/a' }),
+          call('write', { path: '/tmp/a' }),
+          call('edit', { path: '/tmp/a' }),
+        ],
+      }),
+      100,
+    )
+
+    expect(result.passed).toBe(true)
+    expect(result.toolCallCount).toBe(0)
+  })
+
+  test('counts every production-budgeted web tool', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true } },
+      makeParsed({ toolCalls: [...webToolNames].map((toolName) => call(toolName, {})) }),
+      100,
+    )
+
+    expect(result.toolCallCount).toBe(webToolNames.size)
+  })
+
+  test('enforces minimum web calls', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true, minToolCalls: 1 } },
+      makeParsed({ toolCalls: [call('bash', { command: 'pwd' })] }),
+      100,
+    )
+
+    expect(result.passed).toBe(false)
+    expect(result.failures).toContain('Too few web tool calls: 0 (min: 1)')
+  })
+
+  test('fails when duplicate web calls are forbidden', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true, noDuplicateToolCalls: true } },
+      makeParsed({ toolCalls: [call('search', { query: 'x' }), call('search', { query: 'x' })] }),
+      100,
+    )
+
+    expect(result.passed).toBe(false)
+    expect(result.failures).toContain('Duplicate web tool calls: 1')
+  })
+
+  test('ignores duplicate coding calls when web duplicates are forbidden', () => {
+    const result = scoreResult(
+      { ...scenario, criteria: { mustProduceOutput: true, noDuplicateToolCalls: true } },
+      makeParsed({ toolCalls: [call('read', { path: '/tmp/a' }), call('read', { path: '/tmp/a' })] }),
+      100,
+    )
+
+    expect(result.passed).toBe(true)
+    expect(result.duplicateToolCallCount).toBe(0)
+  })
 })
 
 describe('scoreResult — widget criteria', () => {
   const scenario: EvalScenario = {
-    id: 'opus/chat/WIDGET_TEST',
+    id: 'opus/pi/chat/WIDGET_TEST',
     modelName: 'opus',
+    engineName: 'pi',
     modeName: 'chat',
     prompt: 'p',
     criteria: { mustProduceOutput: true },

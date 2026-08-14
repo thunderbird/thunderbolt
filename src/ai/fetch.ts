@@ -25,6 +25,7 @@ import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { hydrateQuotesAsText } from '@/lib/quotes'
+import { appVersionHeader } from '@/lib/app-version'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { classifyErrorKind } from '@/lib/error-utils'
@@ -93,6 +94,23 @@ export const sanitizeToolPrefix = (serverName: string | null | undefined): strin
 const fetch: typeof baseFetch = (input, init) =>
   baseFetch(input, isSsoMode() ? { ...init, credentials: 'include' } : init)
 fetch.preconnect = baseFetch.preconnect
+
+/**
+ * Wrap a fetch so every request carries the `X-App-Version` header. Only apply
+ * to fetches that hit OUR backend (the thunderbolt provider posts direct to
+ * `cloudUrl`) — external LLM/MCP upstreams must never receive it.
+ */
+export const withAppVersionHeader = (base: typeof fetch): typeof fetch => {
+  const wrapped: typeof fetch = (input, init) => {
+    const headers = new Headers(init?.headers)
+    for (const [key, value] of Object.entries(appVersionHeader())) {
+      headers.set(key, value)
+    }
+    return base(input, { ...init, headers })
+  }
+  wrapped.preconnect = base.preconnect
+  return wrapped
+}
 
 export const ollama = createOpenAI({
   baseURL: 'http://localhost:11434/v1',
@@ -266,7 +284,7 @@ export const resolveOpenAiCompatConnection = (
         },
         { preconnect: fetch.preconnect },
       )
-      const providerFetch: FetchFn = sso && !hasRealToken ? ssoFetch : fetch
+      const providerFetch: FetchFn = withAppVersionHeader(sso && !hasRealToken ? ssoFetch : fetch)
       return { baseURL: cloudUrl, apiKey: token, fetch: providerFetch }
     }
     case 'openai':
@@ -411,6 +429,9 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         const wrappedFetch: typeof fetch = Object.assign(
           async (input: RequestInfo | URL, init?: RequestInit) => {
             const headers = new Headers(init?.headers)
+            for (const [key, value] of Object.entries(appVersionHeader())) {
+              headers.set(key, value)
+            }
             const upstreamInit: RequestInit = { ...init, headers }
             if (sso && !token) {
               upstreamInit.credentials = 'include'

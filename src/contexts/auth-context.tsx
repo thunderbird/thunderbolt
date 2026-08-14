@@ -5,6 +5,8 @@
 import { useHttpClient } from '@/contexts/http-client-context'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
@@ -110,7 +112,7 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
 
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  headers: { 'X-Client-Platform': platform },
+  headers: { 'X-Client-Platform': platform, ...appVersionHeader() },
   auth: {
     type: 'Bearer' as const,
     token: () => getAuthToken() ?? '',
@@ -122,6 +124,13 @@ export const buildFetchOptions = (platform: string) => ({
     }
   },
   onError: (ctx: { response: Response }) => {
+    // A 426 from our backend means this build is below the enforced minimum —
+    // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
+    // below). Status-only: the response body belongs to Better Auth here.
+    if (ctx.response.status === 426) {
+      handleAppVersionUnsupported(ctx.response.status)
+      return
+    }
     if (ctx.response?.status !== 401) {
       return
     }

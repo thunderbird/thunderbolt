@@ -80,6 +80,19 @@ describe('buildFetchOptions onError', () => {
     expect(dispatchSpy).not.toHaveBeenCalled()
   })
 
+  it('dispatches app_version_unsupported on a 426 without clearing the token', () => {
+    setAuthToken('valid-token')
+    const options = buildFetchOptions('web')
+
+    options.onError({ response: new Response(null, { status: 426 }) })
+
+    // A version block is not a session-expiry — the token stays put.
+    expect(getAuthToken()).toBe('valid-token')
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    const event = dispatchSpy.mock.calls[0][0] as CustomEvent
+    expect(event.type).toBe('app_version_unsupported')
+  })
+
   it('clears the cached session on 401 so a future offline boot does not show stale data', () => {
     setAuthToken('stale-token')
     setCachedSession({ user: { id: '1' }, session: { id: 's1' } })

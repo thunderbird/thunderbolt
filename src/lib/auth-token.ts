@@ -11,6 +11,7 @@
  * TODO: once we have a proper encryption middleware, we should store the auth token in the settings database.
  */
 
+import { appVersionHeader } from '@/lib/app-version'
 import { getDeviceDisplayName } from '@/lib/platform'
 
 const deviceIdKey = 'thunderbolt_device_id'
@@ -87,9 +88,7 @@ export const getAuthenticatedHeaders = (): Record<string, string> => {
     headers['X-Device-ID'] = deviceId
     headers['X-Device-Name'] = getDeviceDisplayName()
   }
-  if (import.meta.env.VITE_APP_VERSION) {
-    headers['X-App-Version'] = import.meta.env.VITE_APP_VERSION
-  }
+  Object.assign(headers, appVersionHeader())
   return headers
 }
 

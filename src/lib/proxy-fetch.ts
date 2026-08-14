@@ -26,6 +26,7 @@ import {
   wsTargetPrefix,
 } from '@shared/proxy-protocol'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
+import { appVersionHeader } from './app-version'
 import { getAuthToken } from './auth-token'
 import { getCapabilities, isTauri } from './platform'
 
@@ -76,6 +77,9 @@ const skipHeaders = new Set([
   'sec-fetch-site',
   'sec-fetch-user',
   'upgrade-insecure-requests',
+  // Belongs on the OUTER request to our backend only — never promote it to a
+  // passthrough header, or it would leak to external LLM/MCP upstreams.
+  'x-app-version',
 ])
 
 const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: RequestInit): Request => {
@@ -191,6 +195,12 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
       if (token) {
         proxyRequest.headers.set('Authorization', `Bearer ${token}`)
       }
+    }
+    // The outer hop targets `${cloudUrl}/proxy` (our backend), so it carries the
+    // app-version header directly. `x-app-version` is in `skipHeaders`, so it is
+    // never promoted to a passthrough header bound for the external upstream.
+    for (const [key, value] of Object.entries(appVersionHeader())) {
+      proxyRequest.headers.set(key, value)
     }
     const f = options.fetchImpl ?? globalThis.fetch
     const proxyResponse = await f(proxyRequest)

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { fetch as baseFetch } from '@/lib/fetch'
@@ -19,7 +19,23 @@ import {
   resolveOpenAiCompatConnection,
   sanitizeToolPrefix,
   selectPromptSkillDefinitions,
+  withAppVersionHeader,
 } from './fetch'
+
+/** Capturing fetch (same shape as `stubProxyFetch`): records the last
+ *  (input, init) and returns an empty 200 so the wrapped fetch can be driven
+ *  without a real network. */
+const capturingFetch = () => {
+  let received: { input: RequestInfo | URL; init?: RequestInit } | null = null
+  const fn: FetchFn = Object.assign(
+    ((input: RequestInfo | URL, init?: RequestInit) => {
+      received = { input, init }
+      return Promise.resolve(new Response())
+    }) as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+    { preconnect: () => Promise.resolve(false) },
+  )
+  return { fn, received: () => received }
+}
 
 /** Mirror the `MCPClientError` the SDK throws after a transport drop. The
  *  runtime instance `name` is `'MCPClientError'` (the `AI_MCPClientError`
@@ -429,5 +445,48 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
     expect(
       resolveOpenAiCompatConnection(customModel('http://localhost:1234', 'sk-abc'), () => stubProxyFetch)?.apiKey,
     ).toBe('sk-abc')
+  })
+})
+
+// The `thunderbolt` provider fetch (and, via the same one-liner, the system-tinfoil
+// wrappedFetch) POSTs directly to our backend, bypassing the proxy — so it must
+// self-identify the build. `withAppVersionHeader` is that injection primitive.
+describe('withAppVersionHeader', () => {
+  const env = import.meta.env as Record<string, unknown>
+  let savedVersion: unknown
+
+  beforeEach(() => {
+    savedVersion = env.VITE_APP_VERSION
+  })
+
+  afterEach(() => {
+    env.VITE_APP_VERSION = savedVersion
+  })
+
+  it('adds X-App-Version to the outgoing request without clobbering caller headers', async () => {
+    env.VITE_APP_VERSION = '1.2.3'
+    const base = capturingFetch()
+
+    await withAppVersionHeader(base.fn)('https://cloud.example.com/v1/chat/completions', {
+      headers: { Authorization: 'Bearer session-token' },
+    })
+
+    const headers = new Headers(base.received()?.init?.headers)
+    expect(headers.get('X-App-Version')).toBe('1.2.3')
+    expect(headers.get('Authorization')).toBe('Bearer session-token')
+  })
+
+  it('omits X-App-Version when VITE_APP_VERSION is unset', async () => {
+    env.VITE_APP_VERSION = undefined
+    const base = capturingFetch()
+
+    await withAppVersionHeader(base.fn)('https://cloud.example.com/v1/chat/completions')
+
+    expect(new Headers(base.received()?.init?.headers).has('X-App-Version')).toBe(false)
+  })
+
+  it('forwards preconnect from the base fetch', () => {
+    const base = capturingFetch()
+    expect(withAppVersionHeader(base.fn).preconnect).toBe(base.fn.preconnect)
   })
 })

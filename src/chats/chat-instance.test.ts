@@ -473,6 +473,15 @@ describe('createChatInstance — retry policy', () => {
     expect(wakeAdapterReconnect).toHaveBeenCalledWith(builtInAgent.id)
   })
 
+  it('throws the friendly guard (not a TypeError) when a turn starts with no selected model', async () => {
+    const { instance, regenerate } = createRetryHarness()
+    useChatStore.getState().updateSession(sessionId, { selectedModel: null as never })
+
+    await expect(instance.sendMessage({ text: 'hi' })).rejects.toThrow('No selected model')
+    await expect(instance.regenerate()).resolves.toBeUndefined()
+    expect(regenerate).toHaveBeenCalledTimes(1)
+  })
+
   it('auto-retry does not reset the turn budget', async () => {
     const random = spyOn(Math, 'random').mockReturnValue(0.5)
     const { finishWithError, getTurnBudget, regenerate } = createRetryHarness()

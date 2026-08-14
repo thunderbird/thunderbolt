@@ -571,7 +571,9 @@ export const createChatInstance = (
   /** Capture immutable model dimensions and built-in telemetry for one turn. */
   const initializeTurnForCurrentSession = (turn: TurnState): void => {
     const session = useChatStore.getState().sessions.get(id)
-    if (!session) {
+    // selectedModel is non-null only by type — hydration and stale sessions can
+    // violate it, and sendMessage's friendly guard runs after startNewTurn().
+    if (!session?.selectedModel) {
       return
     }
     turn.modelProperties = {

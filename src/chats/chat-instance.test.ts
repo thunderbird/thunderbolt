@@ -430,6 +430,56 @@ describe('createChatInstance — retry policy', () => {
     }
   })
 
+  it('retries an empty turn after 250ms with reason empty-response', async () => {
+    const { finishSuccessfully, regenerate, trackEvent } = createRetryHarness()
+
+    await finishSuccessfully({ id: 'empty-assistant', role: 'assistant', parts: [] })
+
+    await getClock().tickAsync(249)
+    expect(regenerate).not.toHaveBeenCalled()
+
+    await getClock().tickAsync(1)
+    expect(regenerate).toHaveBeenCalledTimes(1)
+
+    const autoRetry = trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
+    expect(autoRetry?.reason).toBe('empty-response')
+    expect(autoRetry?.attempt).toBe(1)
+  })
+
+  it('keeps exponential backoff for empty-turn retries after the first', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishSuccessfully, regenerate } = createRetryHarness()
+
+    try {
+      await finishSuccessfully({ id: 'empty-assistant', role: 'assistant', parts: [] })
+      await getClock().tickAsync(250)
+      expect(regenerate).toHaveBeenCalledTimes(1)
+
+      await finishSuccessfully({ id: 'empty-assistant', role: 'assistant', parts: [] })
+      await getClock().tickAsync(3_999)
+      expect(regenerate).toHaveBeenCalledTimes(1)
+
+      await getClock().tickAsync(1)
+      expect(regenerate).toHaveBeenCalledTimes(2)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('marks retries exhausted when the scheduled retry bails on session switch', async () => {
+    const { finishSuccessfully, regenerate } = createRetryHarness()
+
+    await finishSuccessfully({ id: 'empty-assistant', role: 'assistant', parts: [] })
+    useChatStore.getState().setCurrentSessionId('another-session')
+
+    await getClock().tickAsync(250)
+
+    expect(regenerate).not.toHaveBeenCalled()
+    const session = useChatStore.getState().sessions.get(sessionId)!
+    expect(session.retryCount).toBe(0)
+    expect(session.retriesExhausted).toBe(true)
+  })
+
   it('marks retries exhausted without scheduling when turn budget is exhausted', async () => {
     const { finishWithError, getTurnBudget, regenerate } = createRetryHarness()
     exhaustTurnBudget(getTurnBudget())

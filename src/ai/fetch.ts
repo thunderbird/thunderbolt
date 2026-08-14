@@ -521,8 +521,8 @@ export type PrepareAiRequestConfigOptions = {
   readonly reconnectClient?: ReconnectClient
   readonly httpClient: HttpClient
   readonly webToolBudget?: WebToolBudget
-  /** Thread being sent to. Resolves the owning project's instructions +
-   *  instructions into the stable system prompt; omit for non-thread callers. */
+  /** Thread being sent to. Resolves the owning project's instructions into the
+   *  stable system prompt; omit for non-thread callers. */
   readonly chatThreadId?: string
   readonly telemetry?: TurnTelemetry
 }

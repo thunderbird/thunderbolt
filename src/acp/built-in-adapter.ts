@@ -114,7 +114,7 @@ export type BuiltInAdapterOptions = {
 
 /** Providers the in-browser Pi harness can serve. Everything else (tinfoil, plus
  *  any future provider) stays on the legacy pipeline. */
-const piProviders = new Set<Model['provider']>(['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'])
+const piProviders = new Set<Model['provider']>(['anthropic', 'openai', 'custom', 'openrouter', 'orcarouter', 'thunderbolt'])
 
 /** Whether production routes a tool-capable model to the Pi harness. */
 export const isPiModelCandidate = (model: Pick<Model, 'provider' | 'toolUsage'>): boolean =>

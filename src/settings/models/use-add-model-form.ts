@@ -20,7 +20,7 @@ import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelC
 
 export const addModelFormSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
+    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'orcarouter', 'tinfoil']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     customModel: z.string().optional(),

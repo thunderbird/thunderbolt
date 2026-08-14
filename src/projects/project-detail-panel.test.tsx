@@ -122,22 +122,3 @@ describe('deleteProjectPrompt', () => {
     expect(deleteProjectPrompt.confirmLabel).toBe('Delete project')
   })
 })
-
-describe('starting a chat from the panel', () => {
-  it('offers a new chat in this project', () => {
-    const props = renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: /New chat in this project/ }))
-    expect(props.onNewChat).toHaveBeenCalled()
-  })
-})
-
-describe('deleteProjectPrompt', () => {
-  it('tells the user their chats survive', () => {
-    // The one non-obvious consequence: chats are orphaned, not removed.
-    expect(deleteProjectPrompt.description).toContain('Chats in the project are kept')
-  })
-
-  it('names the action on its confirm button', () => {
-    expect(deleteProjectPrompt.confirmLabel).toBe('Delete project')
-  })
-})

@@ -46,6 +46,18 @@ describe('powersync upload gate (applyOperation)', () => {
       const ok = await applyOperation(db, { op: 'PUT', type: 'modes', id: 'legacy-1', data: { name: 'x' } }, userId)
       expect(ok).toBe(true)
     })
+
+    it('drains a queued project_files write, which never shipped but exists on branch devices', async () => {
+      // The table's migration was removed before merge, so it has no production
+      // history — but a device that ran the Projects branch can still hold writes
+      // for it, and an unknown table is a 400 the client retries forever.
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'project_files', id: 'pf-1', data: { filename: 'a.md', content: 'x' } },
+        userId,
+      )
+      expect(ok).toBe(true)
+    })
   })
 
   describe('DELETE allowlist (security: protected tables)', () => {

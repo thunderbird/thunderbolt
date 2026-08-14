@@ -6,7 +6,6 @@ import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } 
 import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
-import { createSaveProjectNoteTool } from '@/projects/save-note-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import {
@@ -490,7 +489,7 @@ export type PrepareAiRequestConfigOptions = {
   readonly httpClient: HttpClient
   readonly webToolBudget?: WebToolBudget
   /** Thread being sent to. Resolves the owning project's instructions +
-   *  knowledge into the stable system prompt; omit for non-thread callers. */
+   *  instructions into the stable system prompt; omit for non-thread callers. */
   readonly chatThreadId?: string
 }
 
@@ -568,14 +567,6 @@ export const prepareAiRequestConfig = async ({
       titleByThreadId: projectContext.titleByThreadId,
     })
   }
-  // Writing into the user's own knowledge is opt-in per project.
-  if (supportsTools && projectContext?.agentNotesEnabled) {
-    appToolset.save_project_note = createSaveProjectNoteTool({
-      db,
-      projectId: projectContext.id,
-      projectName: projectContext.prompt.name,
-    })
-  }
   const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
@@ -592,15 +583,6 @@ export const prepareAiRequestConfig = async ({
     projectSection: buildProjectPromptSection(projectContext?.prompt ?? null, {
       // Only advertise the tool when it was actually registered above.
       hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
-      // Distinguishes "the user hasn't opted in" from "this model can't call
-      // tools" — telling a no-tools model to blame the setting is simply wrong.
-      notes: !projectContext
-        ? 'off'
-        : !projectContext.agentNotesEnabled
-          ? 'disabled'
-          : supportsTools
-            ? 'enabled'
-            : 'unsupported',
     }),
     preferredName: settings.preferredName,
     location: {

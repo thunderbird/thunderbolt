@@ -24,7 +24,7 @@
 
 import { Search, Smile, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Virtualizer } from 'virtua'
+import { Virtualizer, type VirtualizerHandle } from 'virtua'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,6 +40,9 @@ import {
   type EmojiCategory,
   type EmojiEntry,
 } from './emoji-catalog'
+
+/** Height reserved for the pinned category label, in pixels. */
+const pinnedLabelHeight = 24
 
 /** Emoji per row. Desktop fits 9 in a 19rem popover; the sheet is full-width. */
 const desktopPerRow = 9
@@ -83,15 +86,29 @@ const EmojiButton = ({
   </button>
 )
 
-/** A flat row in the virtualized list: either a category heading or a row of emoji. */
-type GridRow = { kind: 'heading'; label: string } | { kind: 'emoji'; entries: EmojiEntry[] }
-
-/** Flatten categories into the heading/emoji row sequence the virtualizer renders. */
-const toGridRows = (categories: readonly EmojiCategory[], perRow: number): GridRow[] =>
-  categories.flatMap((category) => [
-    { kind: 'heading' as const, label: category.label },
-    ...toRows(category.emoji, perRow).map((entries) => ({ kind: 'emoji' as const, entries })),
-  ])
+/**
+ * Flatten categories into emoji rows, plus the category each row belongs to.
+ *
+ * The label is carried *alongside* the rows rather than as a heading row in the
+ * list, because the heading has to stay pinned while its category scrolls (see
+ * `EmojiPickerBody`). A heading rendered in flow can't do that here: `virtua`
+ * unmounts rows that leave the viewport, so `position: sticky` on one would
+ * vanish the moment it scrolled out — which is exactly when it needs to stick.
+ */
+const toGridRows = (
+  categories: readonly EmojiCategory[],
+  perRow: number,
+): { rows: EmojiEntry[][]; labelByRow: string[] } => {
+  const rows: EmojiEntry[][] = []
+  const labelByRow: string[] = []
+  for (const category of categories) {
+    for (const entries of toRows(category.emoji, perRow)) {
+      rows.push(entries)
+      labelByRow.push(category.label)
+    }
+  }
+  return { rows, labelByRow }
+}
 
 /**
  * Search field + suggested row + virtualized full set. Shared by both shells so
@@ -107,6 +124,7 @@ const EmojiPickerBody = ({
   // slot keeps them mutually exclusive.
   const [catalog, setCatalog] = useState<EmojiCategory[] | 'failed' | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const virtualizerRef = useRef<VirtualizerHandle>(null)
   const perRow = isMobile ? mobilePerRow : desktopPerRow
 
   // Legitimate effect: fetching from an external module on mount. The catalogue
@@ -135,11 +153,19 @@ const EmojiPickerBody = ({
     }
   }, [])
 
-  const rows = useMemo(
-    () => (catalog && catalog !== 'failed' ? toGridRows(filterCatalog(catalog, search), perRow) : []),
+  const { rows, labelByRow } = useMemo(
+    () =>
+      catalog && catalog !== 'failed'
+        ? toGridRows(filterCatalog(catalog, search), perRow)
+        : { rows: [], labelByRow: [] },
     [catalog, search, perRow],
   )
   const showSuggested = search.trim().length === 0
+  // The category label pinned at the top of the grid. Derived from the scroll
+  // offset via the virtualizer rather than tracked per row, so it stays correct
+  // even when the rows it describes have been unmounted.
+  const [topRow, setTopRow] = useState(0)
+  const pinnedLabel = showSuggested ? labelByRow[Math.min(topRow, labelByRow.length - 1)] : undefined
   const gridClass = isMobile ? 'grid grid-cols-8 gap-1' : 'grid grid-cols-9 gap-1'
 
   return (
@@ -190,19 +216,29 @@ const EmojiPickerBody = ({
       ) : rows.length === 0 ? (
         <p className="py-6 text-center text-[length:var(--font-size-sm)] text-muted-foreground">No matches</p>
       ) : (
-        <div ref={scrollRef} className={cn('overflow-y-auto', isMobile ? 'h-[45vh]' : 'h-56')}>
-          <Virtualizer scrollRef={scrollRef}>
-            {rows.map((row, index) =>
-              row.kind === 'heading' ? (
-                <div
-                  key={`h-${row.label}-${index}`}
-                  className="pt-2 pb-1.5 text-[length:var(--font-size-xs)] font-medium tracking-wide text-muted-foreground uppercase"
-                >
-                  {row.label}
-                </div>
-              ) : (
+        <div className="relative">
+          {pinnedLabel && (
+            // Overlaid rather than in the scroll flow, so it holds its place while
+            // the category passes beneath it and swaps as the next one arrives.
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-popover/95 pt-1 pb-1.5 text-[length:var(--font-size-xs)] font-medium tracking-wide text-muted-foreground uppercase backdrop-blur-sm"
+            >
+              {pinnedLabel}
+            </div>
+          )}
+          <div ref={scrollRef} className={cn('overflow-y-auto', isMobile ? 'h-[45vh]' : 'h-56')}>
+            <Virtualizer
+              ref={virtualizerRef}
+              scrollRef={scrollRef}
+              onScroll={(offset) => setTopRow(virtualizerRef.current?.findItemIndex(offset) ?? 0)}
+              // Clears the first row of the pinned label instead of starting
+              // underneath it.
+              startMargin={pinnedLabel ? pinnedLabelHeight : 0}
+            >
+              {rows.map((entries, index) => (
                 <div key={`r-${index}`} className={gridClass}>
-                  {row.entries.map((entry) => (
+                  {entries.map((entry) => (
                     <EmojiButton
                       key={entry.native}
                       native={entry.native}
@@ -213,9 +249,9 @@ const EmojiPickerBody = ({
                     />
                   ))}
                 </div>
-              ),
-            )}
-          </Virtualizer>
+              ))}
+            </Virtualizer>
+          </div>
         </div>
       )}
 
@@ -247,7 +283,11 @@ export const EmojiPicker = ({ value, onChange, label }: EmojiPickerProps) => {
       // baseline, so the fixed box beats padding around variable-width text.
       // `bg-card` to match the adjacent field: an `outline` button is
       // transparent by default and would read as a hole next to a white input.
-      className="size-10 shrink-0 cursor-pointer bg-card p-0 text-[1.25rem] leading-none dark:bg-input"
+      //
+      // Sized from the same token as the `Input` beside it, not a fixed `size-10`.
+      // That was 40px against the input's 36px on desktop — 4px too tall — and
+      // 40px against 44px on mobile, so the mismatch inverted at the breakpoint.
+      className="size-[var(--touch-height-default)] shrink-0 cursor-pointer bg-card p-0 text-[1.25rem] leading-none dark:bg-input"
       aria-label={`Choose an icon for ${label}`}
       onClick={isMobile ? () => setOpen(true) : undefined}
     >

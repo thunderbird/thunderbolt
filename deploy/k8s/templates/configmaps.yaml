@@ -42,7 +42,6 @@ data:
               - SELECT * FROM powersync.triggers WHERE user_id = bucket.user_id
               - SELECT * FROM powersync.agents WHERE user_id = bucket.user_id
               - SELECT * FROM powersync.projects WHERE user_id = bucket.user_id
-              - SELECT * FROM powersync.project_files WHERE user_id = bucket.user_id
 
     client_auth:
       supabase: false

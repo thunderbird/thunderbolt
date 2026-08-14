@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Projects list. A project is a workspace: durable instructions plus a text
- * knowledge set that every chat inside it inherits.
+ * Projects list. A project is a workspace: durable instructions that every chat
+ * inside it inherits.
  *
  * Layout follows the skills page (`src/skills/skills-view.tsx`): a
  * `SettingsListPane` + `PageSearch` + `SettingsListBody` column beside a
@@ -15,9 +15,9 @@
 
 import { FolderOpen, Plus } from 'lucide-react'
 import { useReducer } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 
-import { DetailPanelSurface } from '@/components/detail-panel'
+import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { IconTile } from '@/components/settings/icon-tile'
 import {
   SettingsListBody,
@@ -26,59 +26,44 @@ import {
   settingsListBodyRowsClass,
 } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { useDatabase } from '@/contexts'
-import { softDeleteProject, useProjectChatCounts, useProjectChats, useProjects } from '@/dal/projects'
+import {
+  softDeleteProject,
+  updateProject,
+  useProjectArtifacts,
+  useProjectChatCounts,
+  useProjectChats,
+  useProjects,
+} from '@/dal/projects'
 import { CreateProjectPanel } from './create-project-panel'
-import { ProjectDetailPanel } from './project-detail-panel'
+import { ProjectDetailPanel, deleteProjectPrompt } from './project-detail-panel'
+import { ProjectForm } from './project-form'
+import { initialViewState, projectsViewReducer } from './projects-view-state'
 import { ProjectIcon } from './project-icon'
-
-/**
- * The list page's view state. A reducer rather than three `useState` calls
- * because the panel is one slot: opening create must clear any selection and
- * vice versa. As separate setters that invariant lives in every call site; here
- * it lives once, in the transitions.
- */
-type ProjectsViewState = {
-  search: string
-  isCreating: boolean
-  selectedId: string | null
-}
-
-type ProjectsViewAction =
-  | { type: 'SEARCH_CHANGED'; value: string }
-  | { type: 'CREATE_STARTED' }
-  | { type: 'PROJECT_SELECTED'; id: string }
-  | { type: 'PANEL_CLOSED' }
-
-const initialViewState: ProjectsViewState = { search: '', isCreating: false, selectedId: null }
-
-const projectsViewReducer = (state: ProjectsViewState, action: ProjectsViewAction): ProjectsViewState => {
-  switch (action.type) {
-    case 'SEARCH_CHANGED':
-      return { ...state, search: action.value }
-    case 'CREATE_STARTED':
-      return { ...state, isCreating: true, selectedId: null }
-    case 'PROJECT_SELECTED':
-      return { ...state, isCreating: false, selectedId: action.id }
-    case 'PANEL_CLOSED':
-      return { ...state, isCreating: false, selectedId: null }
-  }
-}
 
 const ProjectsPage = () => {
   const db = useDatabase()
   const navigate = useNavigate()
   const projects = useProjects()
-  const [{ search, isCreating, selectedId }, dispatch] = useReducer(projectsViewReducer, initialViewState)
+  const { projectId } = useParams<{ projectId: string }>()
+  const [{ search, overlay, isDeleteRequested }, dispatch] = useReducer(projectsViewReducer, initialViewState)
 
-  // Selection is resolved against the live list, so a rename or an emoji change
-  // reaches the open panel, and a deleted project closes it on its own.
-  const selected = selectedId ? projects.find((project) => project.id === selectedId) : undefined
+  // Resolved against the live list, so a rename or an emoji change reaches the
+  // open panel — and a project deleted on another device closes it on its own.
+  //
+  // An id that matches nothing simply shows the list with no panel. Deliberately
+  // not a redirect: `projects` is empty on the reactive query's first tick, so
+  // redirecting on "not found" would bounce every valid deep link on a cold load.
+  const selected = projectId ? projects.find((project) => project.id === projectId) : undefined
+  // Creating replaces whatever was selected, so the surface only ever shows one.
+  const showCreate = overlay === 'create'
   const selectedChats = useProjectChats(selected?.id)
+  const selectedArtifacts = useProjectArtifacts(selected?.id)
 
   // Reactive: a chat moving in or out of a project updates the count immediately.
   const chatCounts = useProjectChatCounts()
@@ -93,6 +78,19 @@ const ProjectsPage = () => {
   // Only the genuinely-empty account hides the header controls. A search that
   // matches nothing must keep the search field, or there's no way to clear it.
   const showEmptyState = projects.length === 0
+
+  /** Closing the panel clears the selection, which lives in the route. */
+  const closePanel = () => {
+    dispatch({ type: 'OVERLAY_CLOSED' })
+    navigate('/projects')
+  }
+
+  /** Creating also drops the selection: the surface shows one panel, so leaving a
+   *  row highlighted behind the create form would misreport what's open. */
+  const startCreate = () => {
+    dispatch({ type: 'CREATE_STARTED' })
+    navigate('/projects')
+  }
 
   const countLabel = (id: string): string => {
     const count = chatCounts[id] ?? 0
@@ -115,7 +113,7 @@ const ProjectsPage = () => {
               {!showEmptyState && (
                 <>
                   <PageSearch.Button />
-                  <PageCreateAction label="New project" onClick={() => dispatch({ type: 'CREATE_STARTED' })} />
+                  <PageCreateAction label="New project" onClick={startCreate} />
                 </>
               )}
             </PageHeader>
@@ -134,11 +132,11 @@ const ProjectsPage = () => {
                 description={
                   term
                     ? undefined
-                    : 'A project keeps instructions and reference documents in one place, so every chat inside it starts with the same context.'
+                    : 'A project keeps your instructions in one place, so every chat inside it starts with the same context.'
                 }
                 action={
                   term ? undefined : (
-                    <Button variant="outline" onClick={() => dispatch({ type: 'CREATE_STARTED' })} className="gap-2">
+                    <Button variant="outline" onClick={startCreate} className="gap-2">
                       <Plus className="size-[var(--icon-size-sm)]" aria-hidden="true" />
                       Create your first project
                     </Button>
@@ -156,8 +154,11 @@ const ProjectsPage = () => {
                       <ProjectIcon icon={project.icon} className="size-5 text-[1.15rem]" />
                     </IconTile>
                   }
-                  isSelected={project.id === selectedId}
-                  onSelect={() => dispatch({ type: 'PROJECT_SELECTED', id: project.id })}
+                  isSelected={project.id === projectId}
+                  onSelect={() => {
+                    dispatch({ type: 'OVERLAY_CLOSED' })
+                    navigate(`/projects/${project.id}`)
+                  }}
                   ariaLabel={`Open ${project.name}`}
                 />
               ))
@@ -168,32 +169,65 @@ const ProjectsPage = () => {
 
       {/* One surface for both panels: create and detail are mutually exclusive,
           and sharing it keeps a single slide-in animation. */}
-      <DetailPanelSurface
-        open={isCreating || selected !== undefined}
-        onClose={() => dispatch({ type: 'PANEL_CLOSED' })}
-      >
-        {isCreating ? (
+      <DetailPanelSurface open={showCreate || selected !== undefined} onClose={closePanel}>
+        {showCreate ? (
           <CreateProjectPanel
-            onClose={() => dispatch({ type: 'PANEL_CLOSED' })}
-            onCreated={(projectId) => {
-              dispatch({ type: 'PANEL_CLOSED' })
-              navigate(`/projects/${projectId}`)
+            onClose={closePanel}
+            onCreated={(createdId) => {
+              dispatch({ type: 'OVERLAY_CLOSED' })
+              navigate(`/projects/${createdId}`)
             }}
           />
+        ) : selected && overlay === 'edit' ? (
+          // Keyed on the project so switching rows mid-edit can't carry one
+          // project's typing into another's form.
+          <DetailPanel title="Edit project" onClose={() => dispatch({ type: 'OVERLAY_CLOSED' })}>
+            <ProjectForm
+              key={selected.id}
+              mode="edit"
+              initialValues={{
+                icon: selected.icon,
+                name: selected.name,
+                description: selected.description ?? '',
+                instructions: selected.instructions ?? '',
+              }}
+              onCancel={() => dispatch({ type: 'OVERLAY_CLOSED' })}
+              onSubmit={async ({ icon, name, description, instructions }) => {
+                await updateProject(db, selected.id, {
+                  icon,
+                  name,
+                  description: description.trim() || null,
+                  instructions: instructions.trim() || null,
+                })
+                dispatch({ type: 'OVERLAY_CLOSED' })
+              }}
+            />
+          </DetailPanel>
         ) : selected ? (
           <ProjectDetailPanel
             project={selected}
             chats={selectedChats}
-            onEdit={() => navigate(`/projects/${selected.id}`)}
-            onDelete={async () => {
-              await softDeleteProject(db, selected.id)
-              dispatch({ type: 'PANEL_CLOSED' })
-            }}
-            onClose={() => dispatch({ type: 'PANEL_CLOSED' })}
+            artifacts={selectedArtifacts}
+            onEdit={() => dispatch({ type: 'EDIT_STARTED' })}
+            onDelete={() => dispatch({ type: 'DELETE_REQUESTED' })}
+            onClose={closePanel}
             onOpenChat={(chatThreadId) => navigate(`/chats/${chatThreadId}`)}
+            onNewChat={() => navigate(`/chats/new?projectId=${selected.id}`)}
           />
         ) : null}
       </DetailPanelSurface>
+
+      {selected && isDeleteRequested && (
+        <ConfirmActionDialog
+          open
+          {...deleteProjectPrompt}
+          onConfirm={async () => {
+            closePanel()
+            await softDeleteProject(db, selected.id)
+          }}
+          onCancel={() => dispatch({ type: 'DELETE_DISMISSED' })}
+        />
+      )}
     </div>
   )
 }

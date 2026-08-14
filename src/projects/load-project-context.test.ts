@@ -5,9 +5,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { getDb } from '@/db/database'
-import { chatThreadsTable, projectFilesTable, projectsTable } from '@/db/tables'
+import { chatThreadsTable, projectsTable } from '@/db/tables'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { addProjectFile, createProject, softDeleteProject, updateProject } from '@/dal/projects'
+import { createProject, softDeleteProject } from '@/dal/projects'
 import { loadProjectContextForThread } from './load-project-context'
 
 beforeAll(async () => {
@@ -20,7 +20,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const db = getDb()
-  await db.delete(projectFilesTable)
   await db.delete(projectsTable)
   await db.delete(chatThreadsTable)
 })
@@ -45,18 +44,16 @@ describe('loadProjectContextForThread', () => {
     expect(await loadProjectContextForThread(getDb(), uuidv7())).toBeNull()
   })
 
-  it('loads instructions and knowledge for a project chat', async () => {
+  it('loads the name and instructions for a project chat', async () => {
     const db = getDb()
     const project = await createProject(db, { name: 'Q3', instructions: 'Be terse.' })
-    await addProjectFile(db, { projectId: project.id, filename: 'policy.md', content: 'No refunds.' })
     const threadId = await seedThread(project.id)
 
     const context = await loadProjectContextForThread(db, threadId)
 
+    expect(context?.id).toBe(project.id)
     expect(context?.prompt.name).toBe('Q3')
     expect(context?.prompt.instructions).toBe('Be terse.')
-    // `fromAssistant` rides along so the budget can drop assistant notes first.
-    expect(context?.prompt.knowledge).toEqual([{ filename: 'policy.md', content: 'No refunds.', fromAssistant: false }])
   })
 
   it('excludes the current chat from the searchable siblings', async () => {
@@ -78,16 +75,6 @@ describe('loadProjectContextForThread', () => {
     const project = await createProject(db, { name: 'P' })
     const only = await seedThread(project.id)
     expect((await loadProjectContextForThread(db, only))?.siblingThreadIds).toEqual([])
-  })
-
-  it('surfaces the assistant-memory opt-in', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const threadId = await seedThread(project.id)
-    expect((await loadProjectContextForThread(db, threadId))?.agentNotesEnabled).toBe(false)
-
-    await updateProject(db, project.id, { agentNotesEnabled: true })
-    expect((await loadProjectContextForThread(db, threadId))?.agentNotesEnabled).toBe(true)
   })
 
   it('degrades to null when the project was deleted under the chat', async () => {

@@ -6,7 +6,7 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { Project } from '@/types'
-import { ProjectDetailPanel } from './project-detail-panel'
+import { ProjectDetailPanel, deleteProjectPrompt } from './project-detail-panel'
 
 afterEach(cleanup)
 
@@ -16,7 +16,6 @@ const project = {
   description: 'Quarterly work',
   instructions: 'Reply in bullet points.',
   icon: '📊',
-  agentNotesEnabled: 0,
   pinnedOrder: null,
   createdAt: null,
   updatedAt: null,
@@ -28,10 +27,21 @@ const renderPanel = (overrides?: Partial<Parameters<typeof ProjectDetailPanel>[0
   const props = {
     project,
     chats: [{ id: 'c1', title: 'Kickoff' }],
+    artifacts: [
+      {
+        id: 'm1-0',
+        messageId: 'm1',
+        chatThreadId: 'c1',
+        chatTitle: 'Kickoff',
+        title: 'Budget chart',
+        createdAt: new Date('2026-08-01T00:00:00Z'),
+      },
+    ],
     onEdit: mock(() => {}),
     onDelete: mock(() => {}),
     onClose: mock(() => {}),
     onOpenChat: mock(() => {}),
+    onNewChat: mock(() => {}),
     ...overrides,
   }
   render(<ProjectDetailPanel {...props} />)
@@ -39,11 +49,22 @@ const renderPanel = (overrides?: Partial<Parameters<typeof ProjectDetailPanel>[0
 }
 
 describe('ProjectDetailPanel', () => {
-  it('shows the project’s name, description and instructions', () => {
+  it('shows the project’s name and description', () => {
     renderPanel()
     expect(screen.getByText('Q3 Planning')).toBeInTheDocument()
     expect(screen.getByText('Quarterly work')).toBeInTheDocument()
-    expect(screen.getByText('Reply in bullet points.')).toBeInTheDocument()
+  })
+
+  it('shows what the project contains: chats and artifacts', () => {
+    renderPanel()
+    expect(screen.getByText('Kickoff')).toBeInTheDocument()
+    expect(screen.getByText('Budget chart')).toBeInTheDocument()
+  })
+
+  it('opens an artifact’s chat', () => {
+    const props = renderPanel()
+    fireEvent.click(screen.getByText('Budget chart'))
+    expect(props.onOpenChat).toHaveBeenCalledWith('c1')
   })
 
   it('is read-only — no inputs, textareas, or checkboxes', () => {
@@ -51,10 +72,12 @@ describe('ProjectDetailPanel', () => {
       <ProjectDetailPanel
         project={project}
         chats={[]}
+        artifacts={[]}
         onEdit={() => {}}
         onDelete={() => {}}
         onClose={() => {}}
         onOpenChat={() => {}}
+        onNewChat={() => {}}
       />,
     )
     // The whole reason this panel exists: browsing must not risk an edit.
@@ -62,11 +85,10 @@ describe('ProjectDetailPanel', () => {
     expect(container.querySelector('textarea')).toBeNull()
   })
 
-  it('is a summary: knowledge and assistant memory stay behind ⋯ → Edit', () => {
+  it('leaves instructions to the edit panel — this one answers “what’s in here?”', () => {
     renderPanel()
-    expect(screen.queryByText('Knowledge')).not.toBeInTheDocument()
-    expect(screen.queryByText('Assistant memory')).not.toBeInTheDocument()
-    expect(screen.queryByText('Artifacts')).not.toBeInTheDocument()
+    expect(screen.queryByText('Instructions')).not.toBeInTheDocument()
+    expect(screen.queryByText('Reply in bullet points.')).not.toBeInTheDocument()
   })
 
   it('opens a chat from the panel', () => {
@@ -76,8 +98,46 @@ describe('ProjectDetailPanel', () => {
   })
 
   it('states empty sections rather than rendering nothing', () => {
-    renderPanel({ chats: [], project: { ...project, instructions: null } as Project })
-    expect(screen.getByText('No instructions yet.')).toBeInTheDocument()
+    renderPanel({ chats: [], artifacts: [] })
     expect(screen.getByText('No chats yet.')).toBeInTheDocument()
+    expect(screen.getByText('No artifacts yet.')).toBeInTheDocument()
+  })
+})
+
+describe('starting a chat from the panel', () => {
+  it('offers a new chat in this project', () => {
+    const props = renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /New chat in this project/ }))
+    expect(props.onNewChat).toHaveBeenCalled()
+  })
+})
+
+describe('deleteProjectPrompt', () => {
+  it('tells the user their chats survive', () => {
+    // The one non-obvious consequence: chats are orphaned, not removed.
+    expect(deleteProjectPrompt.description).toContain('Chats in the project are kept')
+  })
+
+  it('names the action on its confirm button', () => {
+    expect(deleteProjectPrompt.confirmLabel).toBe('Delete project')
+  })
+})
+
+describe('starting a chat from the panel', () => {
+  it('offers a new chat in this project', () => {
+    const props = renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /New chat in this project/ }))
+    expect(props.onNewChat).toHaveBeenCalled()
+  })
+})
+
+describe('deleteProjectPrompt', () => {
+  it('tells the user their chats survive', () => {
+    // The one non-obvious consequence: chats are orphaned, not removed.
+    expect(deleteProjectPrompt.description).toContain('Chats in the project are kept')
+  })
+
+  it('names the action on its confirm button', () => {
+    expect(deleteProjectPrompt.confirmLabel).toBe('Delete project')
   })
 })

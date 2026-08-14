@@ -44,7 +44,7 @@ import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
-import { plainTextExtensions, resolveTextMimeType } from '@/files/transformers'
+import { resolveTextMimeType } from '@/files/transformers'
 import { maybeCompressAttachment } from '@/files/compress/compress-attachment'
 import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
@@ -72,15 +72,8 @@ const acceptedAttachmentMimeTypes = new Set([
   'application/json',
 ])
 
-/**
- * Extension fallback for when the browser reports an empty/odd mime type.
- *
- * The text extensions come from `plainTextExtensions` in the transformers layer
- * rather than a second hand-maintained list — that shared definition is also what
- * project knowledge uses, so a type added there is accepted in both places
- * instead of silently only one. Binary formats are listed explicitly: they have
- * dedicated transformers rather than being plain text.
- */
+/** Extension fallback for when the browser reports an empty/odd mime type
+ *  (common for .md). */
 const acceptedAttachmentExtensions = [
   '.pdf',
   '.png',
@@ -89,7 +82,11 @@ const acceptedAttachmentExtensions = [
   '.webp',
   '.gif',
   '.docx',
-  ...[...plainTextExtensions].map((extension) => `.${extension}`),
+  '.md',
+  '.markdown',
+  '.txt',
+  '.csv',
+  '.json',
 ]
 
 /** `accept` attribute string for the file picker. */
@@ -102,10 +99,9 @@ const isAcceptedAttachment = (file: File): boolean =>
 /**
  * Normalize a file's MIME before it is stored.
  *
- * Load-bearing, not cosmetic: a `.py` or `.yaml` arrives with an **empty**
- * `type`, and `defaultDeliveryMode('')` routes an attachment as *native bytes* —
- * which a model can't read. Resolving to `text/plain` here makes it deliver as
- * text, and gives project knowledge a usable `sourceMimeType`.
+ * Load-bearing, not cosmetic: a `.md` commonly arrives with an **empty** `type`,
+ * and `defaultDeliveryMode('')` routes an attachment as *native bytes* — which a
+ * model can't read. Resolving to `text/plain` here makes it deliver as text.
  */
 const attachmentMimeType = (file: File): string => resolveTextMimeType(file.name, file.type)
 

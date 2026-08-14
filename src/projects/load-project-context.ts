@@ -9,7 +9,7 @@
  * a pure function: this module is the only part that touches the database.
  */
 
-import { getProject, getProjectChatThreads, getProjectFiles } from '@/dal/projects'
+import { getProject, getProjectChatThreads } from '@/dal/projects'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { getChatThread } from '@/dal/chat-threads'
 import type { ProjectPromptContext } from './project-prompt'
@@ -18,8 +18,6 @@ import type { ProjectPromptContext } from './project-prompt'
  *  sibling chats the search tool may look through. */
 export type ProjectSendContext = {
   id: string
-  /** Whether the assistant may write notes into this project. */
-  agentNotesEnabled: boolean
   prompt: ProjectPromptContext
   /** Sibling thread ids — the current chat is excluded, since its own history
    *  is already in context. */
@@ -47,22 +45,13 @@ export const loadProjectContextForThread = async (
   if (!project) {
     return null
   }
-  const files = await getProjectFiles(db, project.id)
   const siblings = (await getProjectChatThreads(db, project.id)) as { id: string; title: string | null }[]
   const titleByThreadId = new Map(siblings.map((thread) => [thread.id, thread.title ?? 'Untitled chat']))
   return {
     id: project.id,
-    agentNotesEnabled: project.agentNotesEnabled === 1,
     prompt: {
       name: project.name,
       instructions: project.instructions ?? null,
-      knowledge: files.map((file) => ({
-        filename: file.filename,
-        content: file.content,
-        // Ranks the document for the prompt budget: assistant notes are dropped
-        // before anything the user added (see `selectWithinBudget`).
-        fromAssistant: file.origin === 'agent',
-      })),
     },
     siblingThreadIds: siblings.map((thread) => thread.id).filter((id) => id !== chatThreadId),
     titleByThreadId,

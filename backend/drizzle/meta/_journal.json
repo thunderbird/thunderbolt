@@ -187,15 +187,8 @@
     {
       "idx": 26,
       "version": "7",
-      "when": 1786368010367,
-      "tag": "0026_quick_tigra",
-      "breakpoints": true
-    },
-    {
-      "idx": 27,
-      "version": "7",
-      "when": 1786462829802,
-      "tag": "0027_early_shadow_king",
+      "when": 1786716166665,
+      "tag": "0026_aberrant_roxanne_simpson",
       "breakpoints": true
     }
   ]

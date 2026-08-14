@@ -71,12 +71,10 @@ describe('resolveTextMimeType', () => {
   })
 
   it.each([
-    ['script.py', ''],
-    ['config.yaml', ''],
-    ['Chart.toml', ''],
     ['notes.md', ''],
-    // The OS commonly reports `.ts` as a video type.
-    ['module.ts', 'video/mp2t'],
+    ['README.markdown', ''],
+    ['log.txt', ''],
+    ['rows.csv', ''],
   ])('resolves %s (declared "%s") to text/plain', (filename, declared) => {
     expect(resolveTextMimeType(filename, declared)).toBe('text/plain')
   })
@@ -87,15 +85,22 @@ describe('resolveTextMimeType', () => {
     expect(resolveTextMimeType('Makefile', '')).toBe('')
   })
 
+  it('leaves an extension the composer does not accept alone', () => {
+    // The set is scoped to the accept list; resolving a type that cannot be
+    // attached would imply support that isn't there.
+    expect(resolveTextMimeType('script.py', '')).toBe('')
+    expect(resolveTextMimeType('config.yaml', '')).toBe('')
+  })
+
   it('makes resolved text files deliver as text, not native bytes', () => {
     // The whole point: an unresolved empty MIME would route to native delivery,
     // which a model cannot read.
-    expect(defaultDeliveryMode(resolveTextMimeType('script.py', ''))).toBe('text')
+    expect(defaultDeliveryMode(resolveTextMimeType('notes.md', ''))).toBe('text')
     expect(defaultDeliveryMode('')).toBeUndefined()
   })
 
   it('has a text transformer for every resolved extension', async () => {
-    for (const extension of ['py', 'yaml', 'sql', 'md']) {
+    for (const extension of ['md', 'markdown', 'txt', 'csv', 'json']) {
       expect(hasTransformer(resolveTextMimeType(`f.${extension}`, ''), 'text')).toBe(true)
     }
   })

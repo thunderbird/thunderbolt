@@ -3,11 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Data access for Projects — a workspace of durable instructions plus a text
- * knowledge set, shared by every chat assigned to it.
+ * Data access for Projects — a workspace of durable instructions shared by every
+ * chat assigned to it.
  *
- * Knowledge is stored as extracted text rather than bytes; see
- * `projectFilesTable` in `src/db/tables.ts` for why.
  */
 
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
@@ -16,18 +14,12 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import {
-  chatMessagesTable,
-  chatThreadsTable,
-  projectFilesTable,
-  projectsTable,
-  type ProjectFileOrigin,
-} from '../db/tables'
+import { chatMessagesTable, chatThreadsTable, projectsTable } from '../db/tables'
 import { nowIso, uuidv7ToDate } from '../lib/utils'
 import { renderHtmlToolName } from '@/artifacts/constants'
 import { isRenderHtmlPart, renderHtmlInput } from '@/artifacts/render-html-tool'
 import type { UIMessage } from 'ai'
-import type { Project, ProjectFile } from '../types'
+import type { Project } from '../types'
 
 export const maxProjectNameLength = 100
 export const maxProjectInstructionsLength = 20_000
@@ -48,10 +40,9 @@ export type CreateProjectInput = {
   userId?: string | null
 }
 
-export type UpdateProjectInput = Partial<Pick<CreateProjectInput, 'name' | 'description' | 'instructions' | 'icon'>> & {
-  /** Opt-in for assistant-written notes. */
-  agentNotesEnabled?: boolean
-}
+export type UpdateProjectInput = Partial<
+  Pick<CreateProjectInput, 'name' | 'description' | 'instructions' | 'icon'>
+> & {}
 
 /**
  * Cap instructions at the prompt budget. Applied on every write path, not just
@@ -111,9 +102,6 @@ export const createProject = async (db: AnyDrizzleDatabase, input: CreateProject
     instructions: capInstructions(input.instructions),
     icon: input.icon ?? null,
     pinnedOrder: null,
-    // Spelled out rather than left to the column default, so the returned object
-    // matches the row that was actually stored.
-    agentNotesEnabled: 0,
     createdAt: nowIso(),
     updatedAt: nowIso(),
     deletedAt: null,
@@ -138,9 +126,6 @@ export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: U
   if (patch.icon !== undefined) {
     values.icon = patch.icon
   }
-  if (patch.agentNotesEnabled !== undefined) {
-    values.agentNotesEnabled = patch.agentNotesEnabled ? 1 : 0
-  }
   await db.update(projectsTable).set(values).where(eq(projectsTable.id, id))
 }
 
@@ -149,14 +134,10 @@ export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: U
  * in the main list with `projectId` cleared. Deleting a workspace should never
  * take a user's conversations with it; removing the chats too is a separate,
  * explicit action.
- *
- * Knowledge documents belong to the project itself, so those are soft-deleted
- * alongside it.
  */
 export const softDeleteProject = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   const deletedAt = nowIso()
   await db.update(projectsTable).set({ deletedAt }).where(eq(projectsTable.id, id))
-  await db.update(projectFilesTable).set({ deletedAt }).where(eq(projectFilesTable.projectId, id))
   await db
     .update(chatThreadsTable)
     .set({ projectId: null })
@@ -166,127 +147,6 @@ export const softDeleteProject = async (db: AnyDrizzleDatabase, id: string): Pro
 /** Pin (or unpin, with `null`) a project to the top of the list. */
 export const setProjectPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {
   await db.update(projectsTable).set({ pinnedOrder: order, updatedAt: nowIso() }).where(eq(projectsTable.id, id))
-}
-
-// ── Knowledge documents ──────────────────────────────────────────────────────
-
-export type CreateProjectFileInput = {
-  projectId: string
-  filename: string
-  /** Already-extracted text (see `src/projects/extract-knowledge-text.ts`). */
-  content: string
-  sourceMimeType?: string | null
-  /** Defaults to `upload`; notes and assistant-written entries say so. */
-  origin?: ProjectFileOrigin
-  userId?: string | null
-}
-
-/** Per-project ceiling on assistant-written notes. Without a cap the assistant
- *  could quietly fill the knowledge budget and evict the user's own documents. */
-export const maxAgentNotes = 25
-
-/**
- * Knowledge documents for a project.
- *
- * User-authored content (uploads and typed notes) sorts ahead of assistant-written
- * notes, oldest first within each group. That ordering is what protects the prompt
- * budget: `selectWithinBudget` fills in order, so anything the assistant wrote is
- * dropped before a document the user chose to add.
- */
-export const getProjectFiles = async (db: AnyDrizzleDatabase, projectId: string): Promise<ProjectFile[]> => {
-  const rows = await db
-    .select()
-    .from(projectFilesTable)
-    .where(and(eq(projectFilesTable.projectId, projectId), isNull(projectFilesTable.deletedAt)))
-    .orderBy(sql`CASE WHEN ${projectFilesTable.origin} = 'agent' THEN 1 ELSE 0 END`, asc(projectFilesTable.createdAt))
-  return rows as ProjectFile[]
-}
-
-/** Count of assistant-written notes in a project (enforces {@link maxAgentNotes}). */
-export const countAgentNotes = async (db: AnyDrizzleDatabase, projectId: string): Promise<number> => {
-  const rows = (await db
-    .select({ count: sql<number>`count(*)` })
-    .from(projectFilesTable)
-    .where(
-      and(
-        eq(projectFilesTable.projectId, projectId),
-        eq(projectFilesTable.origin, 'agent'),
-        isNull(projectFilesTable.deletedAt),
-      ),
-    )) as { count: number }[]
-  return Number(rows[0]?.count ?? 0)
-}
-
-export const addProjectFile = async (db: AnyDrizzleDatabase, input: CreateProjectFileInput): Promise<ProjectFile> => {
-  const row = {
-    id: uuidv7(),
-    projectId: input.projectId,
-    filename: input.filename,
-    origin: input.origin ?? 'upload',
-    sourceMimeType: input.sourceMimeType ?? null,
-    content: input.content,
-    size: input.content.length,
-    createdAt: nowIso(),
-    deletedAt: null,
-    userId: input.userId ?? null,
-  }
-  await db.insert(projectFilesTable).values(row)
-  await touchProject(db, input.projectId)
-  return row as ProjectFile
-}
-
-/**
- * Make a project newer for list-ordering purposes. Knowledge is part of a
- * project's identity, so adding, editing, or removing a document counts as
- * changing the project — all three paths go through here, or the list's sort
- * position drifts from what the user just did.
- */
-const touchProject = async (db: AnyDrizzleDatabase, projectId: string): Promise<void> => {
-  await db.update(projectsTable).set({ updatedAt: nowIso() }).where(eq(projectsTable.id, projectId))
-}
-
-/**
- * Same, for the document-by-id writes: the callers hold a document id, not a
- * project id, so the owning project is looked up here rather than threaded
- * through every call site. Reads nothing when the id is unknown.
- */
-const touchProjectOwning = async (db: AnyDrizzleDatabase, fileId: string): Promise<void> => {
-  const rows = await db
-    .select({ projectId: projectFilesTable.projectId })
-    .from(projectFilesTable)
-    .where(eq(projectFilesTable.id, fileId))
-    .limit(1)
-  const projectId = rows[0]?.projectId
-  if (projectId) {
-    await touchProject(db, projectId)
-  }
-}
-
-/** Edit a saved note in place. Size is recomputed so the budget stays honest. */
-export const updateProjectFile = async (
-  db: AnyDrizzleDatabase,
-  id: string,
-  patch: { filename?: string; content?: string },
-): Promise<void> => {
-  const values: Record<string, string | number> = {}
-  if (patch.filename !== undefined) {
-    values.filename = patch.filename.trim() || 'Note'
-  }
-  if (patch.content !== undefined) {
-    values.content = patch.content
-    values.size = patch.content.length
-  }
-  if (Object.keys(values).length === 0) {
-    return
-  }
-  await db.update(projectFilesTable).set(values).where(eq(projectFilesTable.id, id))
-  await touchProjectOwning(db, id)
-}
-
-export const softDeleteProjectFile = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
-  // Read the owner before the soft delete, while the row is still live.
-  await touchProjectOwning(db, id)
-  await db.update(projectFilesTable).set({ deletedAt: nowIso() }).where(eq(projectFilesTable.id, id))
 }
 
 // ── Chat membership ──────────────────────────────────────────────────────────
@@ -356,35 +216,6 @@ export const useProjectChatCounts = (): Record<string, number> => {
 }
 
 /**
- * Live single project.
- *
- * Reactive rather than a plain `useQuery`: the previous version needed an
- * explicit `refetch()` after every edit, and still showed stale data when the
- * project was changed on another device. (`powersyncTableToQueryKeys` looks like
- * it would cover that, but it has had no consumer since THU-249 — invalidation
- * comes from PowerSync's own reactivity, so a query must be compiled through
- * `toCompilableQuery` to update at all.)
- */
-export const useProject = (projectId: string | undefined): { project: Project | null; isLoading: boolean } => {
-  const db = useDatabase()
-  const { data = [], isLoading } = useQuery({
-    queryKey: ['project', projectId ?? 'none'],
-    query: toCompilableQuery(
-      db
-        .select()
-        .from(projectsTable)
-        // A missing id must still compile, so match nothing.
-        .where(and(eq(projectsTable.id, projectId ?? ''), isNull(projectsTable.deletedAt)))
-        .limit(1),
-    ),
-  })
-  // `isLoading` is returned, not swallowed: the first tick yields `data = []`, so a
-  // caller that treats null as "not found" would bounce a perfectly good project on
-  // a hard refresh or a direct link.
-  return { project: (data[0] as Project | undefined) ?? null, isLoading }
-}
-
-/**
  * Live chats in a project with their last-activity time.
  *
  * `MAX(id)` over UUIDv7 message ids is both the newest message and when it
@@ -449,23 +280,6 @@ export const useProjectArtifacts = (projectId: string | undefined): ProjectArtif
     ),
   })
   return toArtifacts(data as { id: string; chatThreadId: string | null; parts: unknown; chatTitle: string | null }[])
-}
-
-/** Live knowledge documents for one project. */
-export const useProjectFiles = (projectId: string | undefined): ProjectFile[] => {
-  const db = useDatabase()
-  const { data = [] } = useQuery({
-    queryKey: ['projectFiles', projectId ?? 'none'],
-    query: toCompilableQuery(
-      db
-        .select()
-        .from(projectFilesTable)
-        // A missing id must still produce a valid query, so match nothing.
-        .where(and(eq(projectFilesTable.projectId, projectId ?? ''), isNull(projectFilesTable.deletedAt)))
-        .orderBy(asc(projectFilesTable.createdAt)),
-    ),
-  })
-  return data as ProjectFile[]
 }
 
 /** An HTML artifact produced somewhere in a project's chats. */

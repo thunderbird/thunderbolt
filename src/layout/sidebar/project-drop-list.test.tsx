@@ -75,6 +75,20 @@ describe('ProjectDropRows active state', () => {
   })
 })
 
+describe('ProjectDropRows group label', () => {
+  it('labels the group like the chat list labels its recents', () => {
+    renderAt('/chats/abc')
+    expect(screen.getByText('Recent Projects')).toBeInTheDocument()
+  })
+
+  it('swaps the label for a drop instruction during a drag', () => {
+    // For the duration of the gesture the rows are targets, not navigation.
+    renderAt('/chats/abc', { isDragging: true })
+    expect(screen.getByText('Move to project')).toBeInTheDocument()
+    expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
+  })
+})
+
 describe('ProjectDropRows row cap', () => {
   beforeEach(() => {
     projectList = manyProjects

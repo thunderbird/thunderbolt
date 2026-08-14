@@ -2,18 +2,6 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-CREATE TABLE "powersync"."project_files" (
-	"id" text PRIMARY KEY NOT NULL,
-	"project_id" text,
-	"filename" text,
-	"source_mime_type" text,
-	"content" text,
-	"size" integer,
-	"created_at" timestamp DEFAULT now(),
-	"deleted_at" timestamp,
-	"user_id" text NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE "powersync"."projects" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text,
@@ -28,7 +16,5 @@ CREATE TABLE "powersync"."projects" (
 );
 --> statement-breakpoint
 ALTER TABLE "powersync"."chat_threads" ADD COLUMN "project_id" text;--> statement-breakpoint
-ALTER TABLE "powersync"."project_files" ADD CONSTRAINT "project_files_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "powersync"."projects" ADD CONSTRAINT "projects_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_project_files_user_id" ON "powersync"."project_files" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "idx_projects_user_id" ON "powersync"."projects" USING btree ("user_id");

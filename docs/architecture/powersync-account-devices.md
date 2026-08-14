@@ -30,7 +30,7 @@ For the sync data transformation middleware and custom SharedWorker (E2E encrypt
 
 Defined in [shared/powersync-tables.ts](../../shared/powersync-tables.ts):
 
-`settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `prompts`, `skills`, `triggers`, `model_profiles`, `devices`, `agents`, `projects`, `project_files`.
+`settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `prompts`, `skills`, `triggers`, `model_profiles`, `devices`, `agents`, `projects`.
 
 ### Indexes and Foreign Keys
 

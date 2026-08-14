@@ -25,7 +25,6 @@ export const powersyncTableNames = [
   'devices',
   'agents',
   'projects',
-  'project_files',
 ] as const
 
 export type PowerSyncTableName = (typeof powersyncTableNames)[number]
@@ -36,7 +35,14 @@ export type PowerSyncTableName = (typeof powersyncTableNames)[number]
  * write — from before the table was removed — drains its CRUD queue instead
  * of looping on a 400. Never re-add these to powersyncTableNames. See THU-739.
  */
-export const legacyPowerSyncTableNames = ['modes'] as const
+export const legacyPowerSyncTableNames = [
+  'modes',
+  // `project_files` never reached production — its migration was removed before
+  // merge — but devices that ran the Projects branch locally or in a preview env
+  // can still hold queued writes for it, and an unknown table is a 400 the client
+  // retries forever. Accepting and ignoring lets those queues drain.
+  'project_files',
+] as const
 
 /**
  * Intended map of PowerSync table names to the React Query keys to invalidate
@@ -68,5 +74,4 @@ export const powersyncTableToQueryKeys: {
   // Would cover the chat sidebar grouping as well as the project list, if the
   // map above were ever wired up.
   projects: [['projects'], ['chatThreads']],
-  project_files: [['projectFiles']],
 }

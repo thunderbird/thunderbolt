@@ -7,8 +7,8 @@
  *
  * Shared by the two entry points — dragging a chat onto a sidebar project row,
  * and the chat's own "Move to project" action — because the write is more than
- * one column: the chat's documents have to be back-filled, the live session's
- * badge updated, and the sidebar list re-read. Two copies of that would drift.
+ * one column: the live session's badge has to be updated and the sidebar list
+ * re-read. Two copies of that would drift.
  *
  * The work is a plain function over injected dependencies, with a hook that wires
  * the real ones. That keeps it testable without `mock.module`, which bun installs
@@ -21,13 +21,11 @@ import { useChatStore } from '@/chats/chat-store'
 import { useDatabase } from '@/contexts'
 import { setChatThreadProject } from '@/dal/projects'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { absorbExistingChatAttachments } from '@/projects/absorb-chat-attachments'
 import type { ChatDrop } from '@/projects/chat-drop'
 
 export type MoveChatDeps = {
   db: AnyDrizzleDatabase
   setProject: typeof setChatThreadProject
-  absorb: (db: AnyDrizzleDatabase, projectId: string, chatThreadId: string) => Promise<unknown>
   /** Update the live session's badge; skipped when the chat isn't open. */
   updateOpenSession: (chatThreadId: string, projectId: string | null) => void
   /** Re-read the sidebar's chat rows. */
@@ -36,23 +34,6 @@ export type MoveChatDeps = {
 
 export const moveChatToProject = async ({ chatThreadId, projectId }: ChatDrop, deps: MoveChatDeps): Promise<void> => {
   await deps.setProject(deps.db, chatThreadId, projectId)
-  // A chat joining a project brings its documents with it. Absorption normally
-  // runs at message-save time, when the chat's project was whatever it was then —
-  // without this back-fill, a file attached before the move stays invisible in
-  // the project's knowledge.
-  //
-  // Isolated, and deliberately not allowed to fail the move: membership is
-  // already written by this point, so a throw here used to skip the updates below
-  // and leave the UI showing the old project — a move that looked like it did
-  // nothing while the row had in fact changed. Knowledge back-fill is best-effort
-  // (a document's bytes may be on another device, or unreadable); membership is not.
-  if (projectId) {
-    try {
-      await deps.absorb(deps.db, projectId, chatThreadId)
-    } catch (error) {
-      console.error('Back-filling a project’s knowledge after a move failed', { chatThreadId, projectId, error })
-    }
-  }
   // The row is the source of truth for the next send, but the header badge reads
   // the live session — without this a chat only shows its new project after a
   // reload.
@@ -70,7 +51,6 @@ export const useMoveChatToProject = () => {
     moveChatToProject(drop, {
       db,
       setProject: setChatThreadProject,
-      absorb: absorbExistingChatAttachments,
       // Guarded because a session exists only for a chat opened this run, and
       // `updateSession` throws on an unknown id.
       updateOpenSession: (chatThreadId, projectId) => {

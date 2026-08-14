@@ -3,30 +3,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { getDb } from '@/db/database'
-import { chatThreadsTable, modelsTable, projectFilesTable, projectsTable } from '@/db/tables'
+import { chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
 import type { Model } from '@/types'
 import { getOrCreateChatThread } from './chat-threads'
 import { setupTestDatabase, teardownTestDatabase } from './test-utils'
 import {
   ProjectNameRequiredError,
-  addProjectFile,
-  countAgentNotes,
   createProject,
   getAllProjects,
   getProject,
   getProjectChatThreads,
-  getProjectFiles,
   maxProjectInstructionsLength,
   maxProjectNameLength,
   setChatThreadProject,
   setProjectPinned,
   softDeleteProject,
-  softDeleteProjectFile,
   updateProject,
-  updateProjectFile,
 } from './projects'
 
 beforeAll(async () => {
@@ -39,7 +33,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const db = getDb()
-  await db.delete(projectFilesTable)
   await db.delete(projectsTable)
   await db.delete(chatThreadsTable)
 })
@@ -58,9 +51,6 @@ describe('projects CRUD', () => {
     const found = await getProject(db, created.id)
     expect(found?.name).toBe('Q3 Planning')
     expect(found?.instructions).toBe('Be terse.')
-    // The returned object must match the stored row, not merely overlap with it.
-    expect(found?.agentNotesEnabled).toBe(0)
-    expect(created.agentNotesEnabled).toBe(0)
   })
 
   it('trims the name and rejects a blank one', async () => {
@@ -103,38 +93,6 @@ describe('projects CRUD', () => {
   })
 })
 
-describe('project knowledge', () => {
-  it('stores extracted text and records its length', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const file = await addProjectFile(db, {
-      projectId: project.id,
-      filename: 'policy.md',
-      content: 'No refunds.',
-      sourceMimeType: 'text/markdown',
-    })
-    expect(file.size).toBe('No refunds.'.length)
-    const files = await getProjectFiles(db, project.id)
-    expect(files.map((f) => f.filename)).toEqual(['policy.md'])
-  })
-
-  it('excludes soft-deleted documents', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const file = await addProjectFile(db, { projectId: project.id, filename: 'a.md', content: 'a' })
-    await softDeleteProjectFile(db, file.id)
-    expect(await getProjectFiles(db, project.id)).toEqual([])
-  })
-
-  it('scopes documents to their own project', async () => {
-    const db = getDb()
-    const a = await createProject(db, { name: 'A' })
-    const b = await createProject(db, { name: 'B' })
-    await addProjectFile(db, { projectId: a.id, filename: 'a.md', content: 'a' })
-    expect(await getProjectFiles(db, b.id)).toEqual([])
-  })
-})
-
 describe('chat membership', () => {
   it('lists only its own project’s chats', async () => {
     const db = getDb()
@@ -165,14 +123,6 @@ describe('chat membership', () => {
     expect(thread.id).toBe(threadId)
     expect(thread.projectId).toBeNull()
     expect(thread.deletedAt).toBeNull()
-  })
-
-  it('soft-deletes the project’s knowledge alongside it', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    await addProjectFile(db, { projectId: project.id, filename: 'a.md', content: 'a' })
-    await softDeleteProject(db, project.id)
-    expect(await getProjectFiles(db, project.id)).toEqual([])
   })
 })
 
@@ -209,146 +159,6 @@ describe('new chat started inside a project', () => {
     // Second call finds the row and returns it untouched.
     const again = await getOrCreateChatThread(db, threadId, model.id, null, b.id)
     expect(again.projectId).toBe(a.id)
-  })
-})
-
-describe('notes and assistant memory', () => {
-  it('defaults an imported document to the upload origin', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const file = await addProjectFile(db, { projectId: project.id, filename: 'a.md', content: 'a' })
-    expect(file.origin).toBe('upload')
-  })
-
-  it('records a typed note and an assistant note distinctly', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    await addProjectFile(db, { projectId: project.id, filename: 'Mine', content: 'x', origin: 'note' })
-    await addProjectFile(db, { projectId: project.id, filename: 'Theirs', content: 'y', origin: 'agent' })
-    const files = await getProjectFiles(db, project.id)
-    expect(files.find((f) => f.filename === 'Mine')?.origin).toBe('note')
-    expect(files.find((f) => f.filename === 'Theirs')?.origin).toBe('agent')
-  })
-
-  it('sorts assistant notes last so they lose the context budget first', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    // Inserted assistant-first, so ordering can't be an accident of insert order.
-    await addProjectFile(db, { projectId: project.id, filename: 'agent', content: 'a', origin: 'agent' })
-    await addProjectFile(db, { projectId: project.id, filename: 'upload', content: 'b' })
-    await addProjectFile(db, { projectId: project.id, filename: 'note', content: 'c', origin: 'note' })
-    expect((await getProjectFiles(db, project.id)).map((f) => f.filename)).toEqual(['upload', 'note', 'agent'])
-  })
-
-  it('counts only assistant notes toward the cap', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    await addProjectFile(db, { projectId: project.id, filename: 'u', content: 'a' })
-    await addProjectFile(db, { projectId: project.id, filename: 'n', content: 'b', origin: 'note' })
-    await addProjectFile(db, { projectId: project.id, filename: 'g', content: 'c', origin: 'agent' })
-    expect(await countAgentNotes(db, project.id)).toBe(1)
-  })
-
-  it('toggles assistant memory off by default', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    expect((await getProject(db, project.id))?.agentNotesEnabled).toBe(0)
-    await updateProject(db, project.id, { agentNotesEnabled: true })
-    expect((await getProject(db, project.id))?.agentNotesEnabled).toBe(1)
-  })
-})
-
-describe('editing a saved note', () => {
-  it('updates title and content, and recomputes size', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const note = await addProjectFile(db, {
-      projectId: project.id,
-      filename: 'Draft',
-      content: 'short',
-      origin: 'note',
-    })
-
-    await updateProjectFile(db, note.id, { filename: 'Final', content: 'a much longer body' })
-
-    const [updated] = await getProjectFiles(db, project.id)
-    expect(updated.filename).toBe('Final')
-    expect(updated.content).toBe('a much longer body')
-    // Size must track content or the prompt budget silently drifts.
-    expect(updated.size).toBe('a much longer body'.length)
-  })
-
-  it('patches only what was provided', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const note = await addProjectFile(db, { projectId: project.id, filename: 'Keep', content: 'body', origin: 'note' })
-    await updateProjectFile(db, note.id, { content: 'new body' })
-    const [updated] = await getProjectFiles(db, project.id)
-    expect(updated.filename).toBe('Keep')
-    expect(updated.content).toBe('new body')
-  })
-
-  it('falls back to a default title rather than saving a blank one', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const note = await addProjectFile(db, { projectId: project.id, filename: 'Titled', content: 'x', origin: 'note' })
-    await updateProjectFile(db, note.id, { filename: '   ' })
-    expect((await getProjectFiles(db, project.id))[0].filename).toBe('Note')
-  })
-
-  it('is a no-op when nothing was passed', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const note = await addProjectFile(db, { projectId: project.id, filename: 'Same', content: 'x', origin: 'note' })
-    await updateProjectFile(db, note.id, {})
-    expect((await getProjectFiles(db, project.id))[0].filename).toBe('Same')
-  })
-})
-
-describe('a knowledge write floats its project up the list', () => {
-  const epoch = '2000-01-01T00:00:00.000Z'
-
-  /**
-   * Backdates the project so a bump is observable — the suite runs on frozen fake
-   * timers, so two writes in one test would otherwise share an instant.
-   */
-  const backdate = async (projectId: string) => {
-    const db = getDb()
-    await db.update(projectsTable).set({ updatedAt: epoch }).where(eq(projectsTable.id, projectId))
-  }
-
-  const setup = async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    const note = await addProjectFile(db, { projectId: project.id, filename: 'N', content: 'x', origin: 'note' })
-    await backdate(project.id)
-    return { db, project, note }
-  }
-
-  it('bumps updatedAt when a document is added', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'P' })
-    await backdate(project.id)
-    await addProjectFile(db, { projectId: project.id, filename: 'N', content: 'x', origin: 'note' })
-    expect((await getProject(db, project.id))?.updatedAt).not.toBe(epoch)
-  })
-
-  it('bumps updatedAt when a document is edited', async () => {
-    const { db, project, note } = await setup()
-    await updateProjectFile(db, note.id, { content: 'edited' })
-    expect((await getProject(db, project.id))?.updatedAt).not.toBe(epoch)
-  })
-
-  it('bumps updatedAt when a document is removed', async () => {
-    const { db, project, note } = await setup()
-    await softDeleteProjectFile(db, note.id)
-    expect((await getProject(db, project.id))?.updatedAt).not.toBe(epoch)
-  })
-
-  it('does nothing for an unknown document id', async () => {
-    const db = getDb()
-    await updateProjectFile(db, uuidv7(), { content: 'x' })
-    await softDeleteProjectFile(db, uuidv7())
   })
 })
 

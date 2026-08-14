@@ -45,17 +45,8 @@ export const chatThreadsTable = sqliteTable(
 )
 
 /**
- * Where a knowledge document came from.
- *
- * `chat` is the normal path: a file attached in one of the project's chats. Files
- * are only ever picked in the composer, so the project page has no uploader —
- * `upload` remains for rows written before that consolidation.
- */
-export type ProjectFileOrigin = 'upload' | 'chat' | 'note' | 'agent'
-
-/**
- * A Projects workspace: durable instructions plus a text knowledge set, applied
- * to every chat in the project. Mirrors Claude Desktop's Projects.
+ * A Projects workspace: durable instructions applied to every chat in the
+ * project, with membership carried by `chat_threads.project_id`.
  */
 export const projectsTable = sqliteTable(
   'projects',
@@ -65,8 +56,6 @@ export const projectsTable = sqliteTable(
     description: text('description'),
     /** Always-on instructions injected into every chat in this project. */
     instructions: text('instructions'),
-    /** Opt-in: lets the assistant write notes into this project's knowledge. */
-    agentNotesEnabled: integer('agent_notes_enabled').default(0),
     icon: text('icon'),
     pinnedOrder: integer('pinned_order'),
     createdAt: text('created_at').default(sql`(datetime('now'))`),
@@ -77,40 +66,6 @@ export const projectsTable = sqliteTable(
   (table) => [
     index('idx_projects_active')
       .on(table.id)
-      .where(sql`${table.deletedAt} IS NULL`),
-  ],
-)
-
-/**
- * One knowledge document in a project, stored as extracted **text**.
- *
- * Text, not bytes, on purpose: attachment blobs are device-local by design in
- * this app (`src/lib/file-blob-storage.ts` keeps them in IndexedDB and never
- * syncs them), so a binary knowledge base would silently only work on the
- * device that uploaded it. Uploads run through `src/files/transformers` and are
- * persisted as text, which syncs and encrypts like any other user content.
- */
-export const projectFilesTable = sqliteTable(
-  'project_files',
-  {
-    id: text('id').primaryKey(),
-    projectId: text('project_id'),
-    filename: text('filename'),
-    /** Where it came from: `upload`, `note` (typed by the user), or `agent`
-     *  (saved by the assistant). Drives the UI badge and prompt ordering. */
-    origin: text('origin').$type<ProjectFileOrigin>(),
-    /** What the text was extracted from (`application/pdf`, `text/markdown`, …). */
-    sourceMimeType: text('source_mime_type'),
-    content: text('content'),
-    /** Extracted text length in characters — drives the context-budget UI. */
-    size: integer('size'),
-    createdAt: text('created_at').default(sql`(datetime('now'))`),
-    deletedAt: text('deleted_at'),
-    userId: text('user_id'),
-  },
-  (table) => [
-    index('idx_project_files_project')
-      .on(table.projectId)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )

@@ -448,7 +448,6 @@ describe('createAgentRoutingFetch', () => {
       getDb: (() => ({})) as never,
       loadProjectContext: (async () => ({
         id: 'p1',
-        agentNotesEnabled: false,
         siblingThreadIds: [],
         titleByThreadId: {},
         prompt: { name: 'Cabin build', instructions: 'Prefer metric units.', knowledge: [] },

@@ -17,7 +17,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { Ellipsis, FolderMinus } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
+import { SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { useProjects } from '@/dal/projects'
 import { cn } from '@/lib/utils'
 import { projectDropId, unassignDropId } from '@/projects/chat-drop'
@@ -124,11 +124,11 @@ export const ProjectDropRows = ({ projects, isDragging, draggingFromProjectId }:
         isDragging && 'bg-sidebar-accent/40 p-1 ring-1 ring-border',
       )}
     >
-      {isDragging && (
-        <p className="px-2 pt-1 pb-1.5 text-[length:var(--font-size-xs)] font-medium uppercase tracking-wide text-muted-foreground">
-          Move to project
-        </p>
-      )}
+      {/* Same `SidebarGroupLabel` the chat list uses for "Recent Chats", so the
+          two groups read as siblings rather than one labelled and one loose. A
+          drag swaps the label for the drop-zone instruction — the rows mean
+          something different for the duration of the gesture. */}
+      <SidebarGroupLabel>{isDragging ? 'Move to project' : 'Recent Projects'}</SidebarGroupLabel>
       <SidebarMenu>
         {visible.map((project) => (
           <DropRow

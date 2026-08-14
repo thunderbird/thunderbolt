@@ -11,7 +11,6 @@ const db = {} as AnyDrizzleDatabase
 const makeDeps = (overrides: Partial<MoveChatDeps> = {}) => ({
   db,
   setProject: mock(async () => {}),
-  absorb: mock(async () => ({})),
   updateOpenSession: mock(() => {}),
   refreshChatList: mock(async () => {}),
   ...overrides,
@@ -24,33 +23,19 @@ beforeEach(() => {
 })
 
 describe('moveChatToProject', () => {
+  it('clears a chat’s project when given null', async () => {
+    await moveChatToProject({ chatThreadId: 'chat-1', projectId: null }, deps)
+
+    expect(deps.setProject).toHaveBeenCalledWith(db, 'chat-1', null)
+    expect(deps.updateOpenSession).toHaveBeenCalledWith('chat-1', null)
+  })
+
   it('writes membership and updates the open chat’s badge', async () => {
     await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, deps)
 
     expect(deps.setProject).toHaveBeenCalledWith(db, 'chat-1', 'p1')
     expect(deps.updateOpenSession).toHaveBeenCalledWith('chat-1', 'p1')
     expect(deps.refreshChatList).toHaveBeenCalledTimes(1)
-  })
-
-  it('back-fills the project’s knowledge with the chat’s documents', async () => {
-    await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, deps)
-    expect(deps.absorb).toHaveBeenCalledWith(db, 'p1', 'chat-1')
-  })
-
-  it('still updates the badge and list when the knowledge back-fill fails', async () => {
-    // The reported symptom: a drop highlighted its target and then appeared to do
-    // nothing. Membership is written first, so a throw from absorption used to
-    // skip the updates below — the row had changed but the UI had not.
-    const failing = makeDeps({
-      absorb: mock(async () => {
-        throw new Error('a document could not be read')
-      }),
-    })
-
-    await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, failing)
-
-    expect(failing.updateOpenSession).toHaveBeenCalledWith('chat-1', 'p1')
-    expect(failing.refreshChatList).toHaveBeenCalledTimes(1)
   })
 
   it('does not swallow a failure to write membership itself', async () => {
@@ -66,13 +51,5 @@ describe('moveChatToProject', () => {
       'database is gone',
     )
     expect(failing.updateOpenSession).not.toHaveBeenCalled()
-  })
-
-  it('skips absorption when clearing a chat’s project', async () => {
-    await moveChatToProject({ chatThreadId: 'chat-1', projectId: null }, deps)
-
-    expect(deps.setProject).toHaveBeenCalledWith(db, 'chat-1', null)
-    expect(deps.absorb).not.toHaveBeenCalled()
-    expect(deps.updateOpenSession).toHaveBeenCalledWith('chat-1', null)
   })
 })

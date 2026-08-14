@@ -200,26 +200,16 @@ export const createAgentRoutingFetch = (
   /**
    * Render the chat's project context as prompt text for an ACP agent.
    *
-   * The two project tools are deliberately not advertised: `search_project_chats`
-   * and `save_project_note` are AI-SDK tools registered on the built-in toolset,
-   * and an ACP agent runs its own — promising them here would invite the agent to
-   * call something that does not exist.
+   * `search_project_chats` is deliberately not advertised: it is an AI-SDK tool
+   * registered on the built-in toolset, and an ACP agent runs its own — promising
+   * it here would invite the agent to call something that does not exist.
    */
   const resolveAcpProjectSection = async (threadId: string): Promise<string | undefined> => {
     const projectContext = await loadProjectContext(getDb(), threadId)
     if (!projectContext) {
       return undefined
     }
-    return (
-      buildProjectPromptSection(projectContext.prompt, {
-        hasSearchableChats: false,
-        // Mirrors the built-in path in `ai/fetch.ts`: only a project that opted
-        // into notes gets the "enabled but this agent can't save them" wording.
-        // Without the opt-in the setting really is off, and saying otherwise
-        // would tell the user a feature is on when it isn't.
-        notes: projectContext.agentNotesEnabled ? 'unsupported' : 'disabled',
-      }) ?? undefined
-    )
+    return buildProjectPromptSection(projectContext.prompt, { hasSearchableChats: false }) ?? undefined
   }
 
   return Object.assign(

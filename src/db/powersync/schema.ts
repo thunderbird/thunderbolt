@@ -23,7 +23,6 @@ export const syncedTables = {
   devices: tables.devicesTable,
   agents: tables.agentsTable,
   projects: tables.projectsTable,
-  project_files: tables.projectFilesTable,
 } satisfies Record<PowerSyncTableName, unknown>
 
 /** Local-only tables — created in SQLite but never synced via PowerSync. */

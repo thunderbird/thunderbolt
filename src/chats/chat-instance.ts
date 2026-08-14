@@ -42,7 +42,6 @@ import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 export const maxRetries = 3
 const baseRetryDelayMs = 2000
-/** First-retry delay for a turn that streamed no content (empty model response). */
 const emptyTurnRetryDelayMs = 250
 
 /**
@@ -786,23 +785,19 @@ export const createChatInstance = (
         useChatStore.getState().updateSession(id, { retryCount })
         console.info(`Auto-retrying (${retryCount}/${maxRetries})...`)
 
-        // An empty turn (stream completed without error but streamed no parts —
-        // e.g. GLM occasionally returns an empty first response) is a model
-        // behavior, not a server-pressure signal: retry it near-immediately
-        // instead of making the user sit through exponential backoff. Later
-        // attempts keep the backoff in case the model is persistently empty.
         const isEmptyTurn = !isError && !lastError && !message?.parts?.length
         const retryDelayMs = isEmptyTurn && retryCount === 1 ? emptyTurnRetryDelayMs : getRetryDelay(retryCount)
+        const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? 'empty-response' : 'unknown')
 
         trackEvent('chat_auto_retry', {
           attempt: retryCount,
           max_retries: maxRetries,
-          reason: getChatErrorKind(lastError) ?? (isEmptyTurn ? 'empty-response' : 'unknown'),
+          reason: retryReason,
           ...getTurnContextProperties(finishedTurn.telemetry, finishedTurn.modelProperties),
         })
         finishedTurn.telemetry?.recordRetry({
           layer: 'auto_retry',
-          reason: getChatErrorKind(lastError) ?? (isEmptyTurn ? 'empty-response' : 'unknown'),
+          reason: retryReason,
           attempt: retryCount + 1,
         })
 
@@ -812,10 +807,6 @@ export const createChatInstance = (
           // Only retry if the session still exists AND is still the current active session.
           // This prevents retries from executing when the user has switched to a different thread.
           if (!sessions.has(id) || currentSessionId !== id) {
-            // Bail out of automatic recovery on session switch. Mark retries
-            // exhausted (rather than only resetting) so returning to this thread
-            // shows the terminal Retry panel — with recovery abandoned, the
-            // pending-empty-turn loading state would otherwise hang forever.
             resetRetryStateForNewTurn()
             useChatStore.getState().updateSession(id, { retriesExhausted: true })
             return
@@ -841,8 +832,6 @@ export const createChatInstance = (
       console.error('Chat error:', error)
       lastError = error instanceof Error ? error : new Error(String(error))
       currentTurn.telemetry?.recordError(getChatErrorKind(lastError) ?? lastError.name)
-      // Classified fields only (kind/name/status) — never the raw message,
-      // which can echo user content back from provider errors (THU-750).
       trackEvent('chat_turn_error', {
         kind: getChatErrorKind(lastError) ?? 'unknown',
         error_name: getErrorName(lastError),

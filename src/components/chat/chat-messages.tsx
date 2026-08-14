@@ -64,15 +64,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   // message to host the synthetic loading indicator, so render it inline here.
   const showSubmittedLoading = status === 'submitted' && lastMessage?.role !== 'assistant'
 
-  // A trailing assistant message with zero parts is a model turn that streamed
-  // no content (e.g. GLM occasionally returns an empty first response).
   const emptyAssistantTurn = lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
-
-  // While the chat instance's auto-retry can still recover an empty turn
-  // (no real transport error, retries not exhausted), the turn is pending —
-  // not failed. Rendering the error panel here was the "phantom error flash":
-  // a scary Retry panel for the 0.25–3s between the empty stream closing and
-  // the automatic regenerate succeeding.
   const pendingEmptyTurnRecovery = emptyAssistantTurn && !chatError && !retriesExhausted
 
   const hasError = useMemo(() => {
@@ -127,9 +119,8 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
         }
 
         if (message.role === 'assistant') {
-          // Hide empty assistant messages during errors and pending empty-turn
-          // recovery — these are broken/contentless turns that regenerate() will
-          // remove. Messages with parts are valid responses.
+          // Hide empty assistant messages during errors — these are broken responses
+          // that regenerate() will remove. Messages with parts are valid responses.
           if ((hasError || pendingEmptyTurnRecovery) && !message.parts?.length) {
             return null
           }
@@ -166,9 +157,8 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
         return null
       })}
 
-      {/* Keep a loading indicator up while remediation re-delivers + retries, or
-          while auto-retry recovers an empty model turn, so neither suppressed
-          state leaves a blank gap (or flashes an error panel). */}
+      {/* Keep a loading indicator up while remediation re-delivers + retries, so
+          the suppressed error doesn't leave a blank gap. */}
       {(showSubmittedLoading || suppressError || pendingEmptyTurnRecovery) && <SyntheticLoadingPart isStreaming />}
 
       {/* Show error message if there's an error and remediation isn't taking over */}

@@ -659,9 +659,9 @@ export const createChatInstance = (
   }
 
   /** Stop retrying this turn and record why it stopped. */
-  const markRetriesExhausted = (turn: TurnState) => {
+  const markRetriesExhausted = (turn: TurnState, reason: string = getChatErrorKind(lastError) ?? 'unknown') => {
     trackEvent('chat_retries_exhausted', {
-      reason: getChatErrorKind(lastError) ?? 'unknown',
+      reason,
       attempts: retryCount + 1,
       ...getTurnContextProperties(turn.telemetry, turn.modelProperties),
     })
@@ -770,6 +770,9 @@ export const createChatInstance = (
         return
       }
 
+      const isEmptyTurn = !isError && !lastError && !message?.parts?.length
+      const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? 'empty-response' : 'unknown')
+
       if (retryCount < maxRetries) {
         if (turnBudget.probe.isExhausted) {
           finishedTurn.telemetry?.recordRetry({
@@ -777,7 +780,7 @@ export const createChatInstance = (
             reason: 'request_budget_exhausted',
             attempt: retryCount + 1,
           })
-          markRetriesExhausted(finishedTurn)
+          markRetriesExhausted(finishedTurn, retryReason)
           return
         }
 
@@ -785,9 +788,7 @@ export const createChatInstance = (
         useChatStore.getState().updateSession(id, { retryCount })
         console.info(`Auto-retrying (${retryCount}/${maxRetries})...`)
 
-        const isEmptyTurn = !isError && !lastError && !message?.parts?.length
         const retryDelayMs = isEmptyTurn && retryCount === 1 ? emptyTurnRetryDelayMs : getRetryDelay(retryCount)
-        const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? 'empty-response' : 'unknown')
 
         trackEvent('chat_auto_retry', {
           attempt: retryCount,
@@ -820,7 +821,7 @@ export const createChatInstance = (
           })
         }, retryDelayMs)
       } else {
-        markRetriesExhausted(finishedTurn)
+        markRetriesExhausted(finishedTurn, retryReason)
       }
     },
     // Retry logic lives in onFinish (the SDK's finally block), not here.

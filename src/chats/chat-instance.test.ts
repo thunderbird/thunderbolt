@@ -466,6 +466,30 @@ describe('createChatInstance — retry policy', () => {
     }
   })
 
+  it('labels empty-turn retry exhaustion with empty-response reason', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishSuccessfully, trackEvent } = createRetryHarness()
+    const emptyMessage = { id: 'empty-assistant', role: 'assistant' as const, parts: [] }
+
+    try {
+      await finishSuccessfully(emptyMessage)
+      await getClock().tickAsync(250)
+
+      await finishSuccessfully(emptyMessage)
+      await getClock().tickAsync(4_000)
+
+      await finishSuccessfully(emptyMessage)
+      await getClock().tickAsync(8_000)
+
+      await finishSuccessfully(emptyMessage)
+
+      const exhausted = trackEvent.mock.calls.find(([event]) => event === 'chat_retries_exhausted')?.[1]
+      expect(exhausted?.reason).toBe('empty-response')
+    } finally {
+      random.mockRestore()
+    }
+  })
+
   it('marks retries exhausted when the scheduled retry bails on session switch', async () => {
     const { finishSuccessfully, regenerate } = createRetryHarness()
 

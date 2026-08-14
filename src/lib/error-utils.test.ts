@@ -126,6 +126,20 @@ describe('getChatErrorKind', () => {
     )
   })
 
+  it('classifies serialized content rejections for telemetry', () => {
+    const errors = [
+      new Error('400: invalid file content'),
+      new Error(JSON.stringify({ error: 'Bad Request', status: 400 })),
+      new Error('openai (422): unsupported file part'),
+    ]
+
+    for (const error of errors) {
+      const kind = getChatErrorKind(error)
+      expect(kind).toBe('provider')
+      expect(kind ?? error.name).toBe('provider')
+    }
+  })
+
   it('classifies raw browser network errors', () => {
     expect(getChatErrorKind(new TypeError('Failed to fetch'))).toBe('network')
   })

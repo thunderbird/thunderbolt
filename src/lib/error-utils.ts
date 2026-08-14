@@ -65,6 +65,7 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   const { name, status: structuredStatus, message } = getErrorClassificationFields(error)
   const status = structuredStatus ?? (message ? getPiErrorStatusCode(message) : undefined)
   const normalizedMessage = message?.toLowerCase()
+  const isContentRejectionStatus = status === 400 || status === 422
 
   if (name === 'TinfoilAttestationTimeoutError') {
     return 'timeout'
@@ -78,7 +79,8 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   if (status === 408 || (normalizedMessage && timeoutMarkers.some((marker) => normalizedMessage.includes(marker)))) {
     return 'timeout'
   }
-  if ((name && providerErrorNames.has(name)) || (status !== undefined && status >= 500)) {
+  // ChatErrorKind has no content-rejection bucket, so use its existing provider class.
+  if ((name && providerErrorNames.has(name)) || isContentRejectionStatus || (status !== undefined && status >= 500)) {
     return 'provider'
   }
   if (

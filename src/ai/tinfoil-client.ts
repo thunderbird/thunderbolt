@@ -22,6 +22,10 @@ type TinfoilAttestationProperties = {
   engine?: 'pi' | 'legacy'
   provider?: string
   model_id?: string
+  enclave_host?: string
+  release_digest?: string
+  enclave_fingerprint?: string
+  router_endpoint?: string
 }
 
 type TinfoilTraceProperties = Pick<TinfoilAttestationProperties, 'trace_id' | 'engine' | 'provider' | 'model_id'>
@@ -51,6 +55,21 @@ const createAttestationError = (cause: unknown): Error => {
   })
 }
 
+/** Extract the verified enclave's identity so telemetry can date enclave-side changes. */
+const getEnclaveIdentity = (client: SecureClient): Partial<TinfoilAttestationProperties> => {
+  try {
+    const document = client.getVerificationDocument()
+    return {
+      enclave_host: document.enclaveHost,
+      release_digest: document.releaseDigest,
+      enclave_fingerprint: document.enclaveFingerprint,
+      router_endpoint: document.selectedRouterEndpoint,
+    }
+  } catch {
+    return {}
+  }
+}
+
 /** Bound the SDK's non-abortable attestation wait and emit structured telemetry. */
 const waitForAttestation = async (
   client: SecureClient,
@@ -70,6 +89,7 @@ const waitForAttestation = async (
       duration_ms: Date.now() - startedAt,
       client: clientType,
       ...traceProperties,
+      ...getEnclaveIdentity(client),
     }
   } catch (error) {
     const isTimeout = getErrorName(error) === 'TinfoilAttestationTimeoutError'

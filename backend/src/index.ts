@@ -13,6 +13,7 @@ import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
+import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
@@ -100,6 +101,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createCorsMiddleware(settings))
       .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware(settings.trustedProxy))
+      .use(createAppVersionMiddleware(settings))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
       .use(betterAuthPlugin)

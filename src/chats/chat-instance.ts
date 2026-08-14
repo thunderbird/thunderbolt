@@ -837,7 +837,7 @@ export const createChatInstance = (
         error_name: getErrorName(lastError),
         status: getErrorStatusCode(lastError),
         retryable: getErrorRetryable(lastError),
-        ...currentTurn.modelProperties,
+        ...getTurnContextProperties(currentTurn.telemetry, currentTurn.modelProperties),
       })
     },
   })

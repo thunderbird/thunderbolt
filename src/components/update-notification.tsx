@@ -20,7 +20,7 @@ const statusConfig: Record<UpdateStatus, { icon: typeof Download; message: strin
 }
 
 export const UpdateNotification = () => {
-  const { status, update, error, downloadAndInstall, restartApp, checkForUpdates } = useDesktopUpdate()
+  const { status, update, error, primaryAction } = useDesktopUpdate()
   const [dismissed, setDismissed] = useState(false)
 
   // Only show on desktop platforms
@@ -31,16 +31,6 @@ export const UpdateNotification = () => {
   const isVisible = !dismissed && status !== 'initial' && status !== 'idle' && status !== 'checking'
   const config = statusConfig[status]
   const Icon = config.icon
-
-  const handlePrimaryAction = async () => {
-    if (status === 'available') {
-      await downloadAndInstall()
-    } else if (status === 'ready') {
-      await restartApp()
-    } else if (status === 'error') {
-      await checkForUpdates()
-    }
-  }
 
   const handleDismiss = () => {
     setDismissed(true)
@@ -77,7 +67,7 @@ export const UpdateNotification = () => {
 
                 {config.showActions && (
                   <div className="flex gap-2 mt-3">
-                    <Button size="sm" onClick={handlePrimaryAction}>
+                    <Button size="sm" onClick={primaryAction}>
                       {status === 'available' && 'Download'}
                       {status === 'ready' && 'Restart Now'}
                       {status === 'error' && 'Retry'}

@@ -58,6 +58,21 @@ export const updateReducer = (state: UpdateState, action: UpdateAction): UpdateS
   }
 }
 
+/**
+ * Maps an update status to the primary user action — the single source of the
+ * check → download → restart progression shared by every update surface (toast,
+ * settings, the min-version blocker). Any non-actionable status (re)checks.
+ */
+export const selectUpdateAction = (status: UpdateStatus): 'download' | 'restart' | 'check' => {
+  if (status === 'available') {
+    return 'download'
+  }
+  if (status === 'ready') {
+    return 'restart'
+  }
+  return 'check'
+}
+
 const extractErrorMessage = (err: unknown, fallback: string): string => {
   if (err instanceof Error) {
     return err.message
@@ -89,6 +104,10 @@ export type DesktopUpdateState = UpdateState & {
   checkForUpdates: () => Promise<void>
   downloadAndInstall: () => Promise<void>
   restartApp: () => Promise<void>
+  /** The status-driven primary action shared by every update surface (toast,
+   *  settings, the min-version blocker): download when an update is available,
+   *  restart when one is ready, otherwise (re)check. */
+  primaryAction: () => Promise<void>
 }
 
 let didAutoCheck = false
@@ -201,6 +220,17 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
     }
   }, [])
 
+  const primaryAction = useCallback(async () => {
+    const action = selectUpdateAction(useUpdateStore.getState().status)
+    if (action === 'download') {
+      await downloadAndInstall()
+    } else if (action === 'restart') {
+      await restartApp()
+    } else {
+      await checkForUpdates()
+    }
+  }, [checkForUpdates, downloadAndInstall, restartApp])
+
   // Auto-check once per session on desktop. Guarded so mounting the hook in
   // multiple places (toast + Settings) doesn't fire repeat checks. The guard
   // is set inside the timeout so an early unmount re-arms the check on the
@@ -227,5 +257,6 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
     checkForUpdates,
     downloadAndInstall,
     restartApp,
+    primaryAction,
   }
 }

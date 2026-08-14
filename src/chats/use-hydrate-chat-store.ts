@@ -237,13 +237,16 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       return
     }
 
-    const chatInstance = createChatInstance(
-      id,
-      initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[],
-      saveMessages,
-      httpClient,
-      getProxyFetch,
-    )
+    const initialUiMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
+    const chatInstance = createChatInstance(id, initialUiMessages, saveMessages, httpClient, getProxyFetch)
+
+    // A trailing zero-part assistant row is a crash-recovery artifact of an
+    // empty model turn (partial save of a stream that never produced content).
+    // No auto-retry is in flight after hydration, so mark retries exhausted:
+    // the UI then shows the terminal Retry panel instead of hanging on the
+    // pending-empty-turn-recovery loading state.
+    const lastInitialMessage = initialUiMessages[initialUiMessages.length - 1]
+    const hydratedTrailingEmptyTurn = lastInitialMessage?.role === 'assistant' && !lastInitialMessage.parts?.length
 
     createSession({
       chatInstance,
@@ -253,7 +256,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       id,
       pendingPermission: null,
       retryCount: 0,
-      retriesExhausted: false,
+      retriesExhausted: hydratedTrailingEmptyTurn,
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).
       selectedAgent,

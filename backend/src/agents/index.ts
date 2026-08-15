@@ -3,5 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export { createAgentsRoutes } from './routes'
-export { registerAgentProvider, getRegisteredProviders, buildWebSocketUrl, type AgentProvider } from './discovery'
+export {
+  registerAgentProvider,
+  getRegisteredProviders,
+  getProviderById,
+  buildWebSocketUrl,
+  type AgentProvider,
+  type ProviderContext,
+} from './discovery'
+export { encodeDeploymentId, decodeDeploymentId } from './deployment-id'
 export type { AgentsErrorCode, AgentsErrorResponse } from './types'

@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { createAuthMacro } from '@/auth/elysia-plugin'
+import { createAgentOrUserAuthMacro } from '@/auth/elysia-plugin'
+import type { db as DbType } from '@/db/client'
 import { classifyInferenceError } from '@/inference/error-kind'
 import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
@@ -65,6 +66,7 @@ export type InferenceProxyLatencyLog = {
 
 export type CreateInferenceRoutesOptions = {
   auth: Auth
+  database: typeof DbType
   captureInferenceErrorFn?: typeof captureInferenceError
   fetchFn?: typeof fetch
   getClient?: (provider: InferenceProvider) => InferenceClient
@@ -92,7 +94,7 @@ const getApiErrorMetadata = (error: unknown) => {
  * Inference API routes
  */
 export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => {
-  const { auth, fetchFn, logger, rateLimit } = options
+  const { auth, database, fetchFn, logger, rateLimit } = options
   const nowFn = options.nowFn ?? (() => performance.now())
   const isPostHogConfiguredFn = options.isPostHogConfiguredFn ?? isPostHogConfigured
   const captureInferenceErrorFn = options.captureInferenceErrorFn ?? captureInferenceError
@@ -111,7 +113,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
       ctx.inferenceRequestStartedAt = nowFn()
     })
 
-  return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
+  return app.use(createAgentOrUserAuthMacro(auth, database)).guard({ auth: true }, (guardedApp) => {
     if (rateLimit) {
       guardedApp.use(rateLimit)
     }

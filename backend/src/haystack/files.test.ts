@@ -66,7 +66,6 @@ const haystackSettings = createTestSettings({
   haystackBaseUrl: 'https://haystack.test',
   haystackApiKey: 'sekrit',
   haystackWorkspace: 'ws-test',
-  haystackPipelines: '',
 })
 
 const buildApp = (auth: Auth, fetchFn: typeof fetch) =>

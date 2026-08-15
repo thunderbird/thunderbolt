@@ -4,19 +4,58 @@
 
 import type { Settings } from '@/config/settings'
 import type { RemoteAgentDescriptor } from '@shared/acp-types'
+import type {
+  AgentDescriptor,
+  AgentSpec,
+  DeployModelConnection,
+  DeployResponse,
+  DeploymentStatusResponse,
+  UndeployResponse,
+} from '@shared/agent-descriptors'
 
 /**
- * An agent provider contributes one or more {@link RemoteAgentDescriptor} entries
- * to the `GET /agents` response. The Haystack module calls {@link registerAgentProvider}
- * at startup with its provider; future managed agents follow the same shape.
+ * Everything a provider needs to service a catalog/deploy/status request: the
+ * incoming request (WS URL host derivation), resolved settings, and the calling
+ * user's id (deployment namespacing).
+ */
+export type ProviderContext = {
+  request: Request
+  settings: Settings
+  userId: string
+  /** The resolved deploy target the client sends, re-validated per-provider by
+   *  the deploying provider. */
+  modelConnection?: DeployModelConnection
+}
+
+/**
+ * An agent provider is the adapter for one agent "kind" (haystack/openclaw/…),
+ * keyed by {@link AgentProvider.id}. It always contributes discovery descriptors
+ * (`list`), and may optionally be *deployable* — exposing a creation `catalog`
+ * plus `deploy`/`status` lifecycle verbs (THU-743). The Haystack module calls
+ * {@link registerAgentProvider} at startup; future managed agents follow the same shape.
  */
 export type AgentProvider = {
-  /** Stable identifier for the provider. Re-registering the same id is a no-op. */
+  /** Stable identifier for the provider. Re-registering the same id is a no-op.
+   *  Matches `AgentDescriptor.provider`, so deploy requests route back here. */
   id: string
   /** Returns descriptors visible to the caller. May read settings or the request
-   *  (e.g. for WS URL host derivation). Throwing here is isolated per-provider —
-   *  the discovery route swallows the failure and continues. */
-  list: (request: Request, settings: Settings) => RemoteAgentDescriptor[]
+   *  (e.g. for WS URL host derivation) and may be async (e.g. a live host query).
+   *  Throwing / rejecting here is isolated per-provider — the discovery route
+   *  swallows the failure and continues. */
+  list: (request: Request, settings: Settings) => RemoteAgentDescriptor[] | Promise<RemoteAgentDescriptor[]>
+  /** Curated creation descriptors (static). Absent → the provider is discovery-only
+   *  and not deployable. */
+  catalog?: (ctx: ProviderContext) => AgentDescriptor[]
+  /** Create + deploy an instance from an already-validated spec. The returned
+   *  `deploymentId` encodes `provider:ref` (see `deployment-id.ts`). */
+  deploy?: (spec: AgentSpec, ctx: ProviderContext) => Promise<DeployResponse>
+  /** Live deployment status for `ref`, fetched from the host — never stored. */
+  status?: (ref: string, ctx: ProviderContext) => Promise<DeploymentStatusResponse>
+  /** Trigger teardown of `ref` on the host (undeploy / kill). Returns once the
+   *  teardown is accepted — it does NOT block on the full unmount. Idempotent: a
+   *  foreign or already-gone deployment is a no-op so the client can still drop
+   *  its local row. Absent → the provider's deployments can't be torn down. */
+  undeploy?: (ref: string, ctx: ProviderContext) => Promise<UndeployResponse>
 }
 
 /**
@@ -37,6 +76,10 @@ export const registerAgentProvider = (provider: AgentProvider): void => {
 
 /** Return the current set of registered providers in registration order. */
 export const getRegisteredProviders = (): AgentProvider[] => [...providers]
+
+/** Look up a provider by id (its "kind"). Used to route deploy/status/catalog
+ *  requests back to the owning provider. */
+export const getProviderById = (id: string): AgentProvider | undefined => providers.find((p) => p.id === id)
 
 /** Test helper — clears all providers. Not exported from the module index. */
 export const resetAgentProvidersForTesting = (): void => {

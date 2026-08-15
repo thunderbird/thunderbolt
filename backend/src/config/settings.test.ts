@@ -692,6 +692,67 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('Agent inference settings', () => {
+    const agentEnvKeys = ['AGENT_DEPLOY', 'AGENT_INFERENCE_JWT_SECRET', 'NODE_ENV'] as const
+
+    let savedEnv: Partial<Record<string, string>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of agentEnvKeys) {
+        if (process.env[key] !== undefined) {
+          savedEnv[key] = process.env[key]
+        }
+      }
+    })
+
+    afterEach(() => {
+      for (const key of agentEnvKeys) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('allows an empty secret when agentDeploy is off', () => {
+      delete process.env.NODE_ENV
+      process.env.AGENT_DEPLOY = 'false'
+      delete process.env.AGENT_INFERENCE_JWT_SECRET
+      expect(getSettings().agentInferenceJwtSecret).toBe('')
+    })
+
+    it('rejects a short secret when agentDeploy is on', () => {
+      delete process.env.NODE_ENV
+      process.env.AGENT_DEPLOY = 'true'
+      process.env.AGENT_INFERENCE_JWT_SECRET = 'too-short'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('rejects an empty secret in non-dev when agentDeploy is on', () => {
+      delete process.env.NODE_ENV
+      process.env.AGENT_DEPLOY = 'true'
+      delete process.env.AGENT_INFERENCE_JWT_SECRET
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('accepts a 32-character secret when agentDeploy is on', () => {
+      delete process.env.NODE_ENV
+      process.env.AGENT_DEPLOY = 'true'
+      process.env.AGENT_INFERENCE_JWT_SECRET = 'a'.repeat(32)
+      expect(() => getSettings()).not.toThrow()
+    })
+
+    it('uses the dev default secret when NODE_ENV=development', () => {
+      process.env.NODE_ENV = 'development'
+      delete process.env.AGENT_INFERENCE_JWT_SECRET
+      expect(getSettings().agentInferenceJwtSecret).toBe('agent-inference-dev-secret-change-in-production')
+    })
+  })
+
   describe('isOAuthRedirectUriAllowed', () => {
     const settings = { corsOrigins: 'http://localhost:1420,tauri://localhost,http://tauri.localhost' }
 

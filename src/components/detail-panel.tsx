@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { X } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import type { AnimationEvent, ReactNode } from 'react'
 
 import { SlideInPanel } from '@/components/slide-in-panel'
+import { BackButton } from '@/components/ui/back-button'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { floatingFormFooterClass } from '@/components/ui/form-footer'
-import { panelFieldSurfaceClass } from '@/components/ui/modal-styles'
+import { modalCloseClass, panelFieldSurfaceClass } from '@/components/ui/modal-styles'
 import {
   ResponsiveModalContentComposable,
   ResponsiveModalActions,
@@ -44,6 +45,9 @@ type DetailPanelProps = {
   subtitle?: string
   /** Extra header actions (e.g. a ⋯ menu), rendered left of the Close button. */
   actions?: ReactNode
+  /** When set, a back affordance is shown before the title (desktop) / at the
+   *  top-left, over the close control (mobile) — for panels with sub-steps. */
+  onBack?: () => void
   onClose: () => void
   children: ReactNode
 }
@@ -54,7 +58,7 @@ type DetailPanelProps = {
  * surface card, on mobile inside the full-screen overlay — so content lies
  * flat on the surface with hairline dividers instead of nested cards.
  */
-export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children }: DetailPanelProps) => {
+export const DetailPanel = ({ icon, title, subtitle, actions, onBack, onClose, children }: DetailPanelProps) => {
   const { isMobile } = useResponsiveModalContext()
 
   return (
@@ -69,12 +73,26 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
           title sits centered in the control row, freeing content space. */}
       {isMobile && actions && <ResponsiveModalActions>{actions}</ResponsiveModalActions>}
       {isMobile && <ResponsiveModalPinnedHeader title={title} subtitle={subtitle} />}
+      {/* Overlays the shell's top-left close (same footprint, higher z) so the
+          corner control reads as "back" while a sub-step is open. */}
+      {isMobile && onBack && (
+        <button
+          type="button"
+          aria-label="Go back"
+          onClick={onBack}
+          className={cn(modalCloseClass, 'left-2 z-20')}
+          style={{ top: 'var(--header-control-top)' }}
+        >
+          <ArrowLeft className="size-[var(--icon-size-default)]" />
+        </button>
+      )}
 
       {!isMobile && (
         // mt-2.5 brings the icon tile's top gap to 24px ((64 − 36) / 2 + 10),
         // matching the panel's md:px-6 left padding.
         <header className="relative mt-2.5 flex h-16 shrink-0 items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
+            {onBack && <BackButton onClick={onBack} className="-ml-1 shrink-0" />}
             {icon}
             <div className="flex min-w-0 flex-col justify-center leading-tight">
               <h2 className="min-w-0 truncate text-xl leading-tight text-foreground">{title}</h2>

@@ -11,6 +11,7 @@ import { Link } from 'react-router'
 
 import '@/lib/dayjs'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
+import { deploymentIdForAgent } from '@/api/agent-deploy'
 import { iconForAgent } from '@/components/agent-icon'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { IconTile } from '@/components/settings/icon-tile'
@@ -91,6 +92,9 @@ export const AgentDetail = ({
   const Icon = iconForAgent(agent)
   const flavor = agentFlavor(agent)
   const isEditable = flavor === 'custom' && !!currentUserId && agent.userId === currentUserId
+  // A managed agent owns a host deployment that delete will also tear down —
+  // reflected in the confirm copy so the action isn't misrepresented as local-only.
+  const hasDeployment = deploymentIdForAgent(agent) !== null
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [removeError, setRemoveError] = useState<string | null>(null)
 
@@ -153,7 +157,9 @@ export const AgentDetail = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {agent.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the connection from Thunderbolt only. Nothing on the remote server is changed.
+              {hasDeployment
+                ? 'This deletes the agent and tears down its deployment. This cannot be undone.'
+                : 'This removes the connection from Thunderbolt only. Nothing on the remote server is changed.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {removeError && (
@@ -288,7 +294,9 @@ const CustomBody = ({
       return
     }
     setTestResult('testing')
-    const probe = await testAcpConnection({ url: agent.url })
+    // Managed agents live behind the auth-gated backend relay — pass the type so
+    // the probe attaches the bearer subprotocol (custom remote agents connect natively).
+    const probe = await testAcpConnection({ url: agent.url, agentType: agent.type })
     const testedAt = new Date().toISOString()
     setTestResult(
       probe.success ? { isReachable: true, testedAt } : { isReachable: false, testedAt, error: probe.error },

@@ -4,6 +4,7 @@
 
 import { clearSettingsCache } from '@/config/settings'
 import { clearPostHogClient } from '@/posthog/client'
+import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import { mockAuth } from '@/test-utils/mock-auth'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
@@ -88,9 +89,11 @@ describe('inference attempt instrumentation', () => {
         headers: { 'Content-Type': 'text/event-stream' },
       })
     }) as unknown as typeof fetch
+    const { db } = await getSharedIsolatedTestDb()
     const app = new Elysia().use(
       createInferenceRoutes({
         auth: mockAuth,
+        database: db,
         fetchFn,
         logger: {
           info: (context, message) => logs.push({ context: context as InferenceLog, message }),

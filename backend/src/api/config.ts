@@ -24,6 +24,8 @@ export const createConfigRoutes = (settings: Settings) =>
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,
     allowCustomAgents: settings.allowCustomAgents,
+    // Opt-in flag (THU-743): exposes the descriptor-driven agent deploy flow.
+    agentDeploy: settings.agentDeploy,
     // Omit when unset so the frontend treats it as "no enforcement" without parsing an empty string as semver.
     minAppVersion: settings.minAppVersion || undefined,
     defaults: {

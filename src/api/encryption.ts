@@ -3,6 +3,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { type HttpClient } from '@/contexts'
+import { HttpError } from '@/lib/http'
+import type {
+  ChallengeOperation,
+  ChallengeProof,
+  ChallengeResponse,
+  EncryptionMetadataResponse,
+  KeyId,
+  RotateRequest,
+  RotateResponse,
+  UpgradeRequest,
+  UpgradeResponse,
+  WrappedKeyEntry,
+  WrappedKeyResponse,
+  WrappedKeysListResponse,
+} from '@shared/e2ee-types'
+
+// The authenticated HttpClient (`createAuthenticatedClient`) already attaches
+// `X-App-Version` (via `appVersionHeader`), the bearer token, and the device
+// identity headers to every app-backend request, so these functions never add
+// them per-call — they just take the client the caller already holds.
 
 // =============================================================================
 // Response types (matching backend)
@@ -12,12 +32,11 @@ export type RegisterDeviceResponse = { trusted: true; envelope: string | null } 
 
 type StoreEnvelopeResponse = { trusted: true }
 
+/** GET /devices/me/envelope — `wrappedCK` carries the AK in v2 (name kept for wire compat). */
 type FetchEnvelopeResponse = { trusted: boolean; wrappedCK: string }
 
-type FetchCanaryResponse = { canaryIv: string; canaryCtext: string }
-
 // =============================================================================
-// API functions
+// Device registration + envelopes
 // =============================================================================
 
 /** Register (or re-identify) this device with the server. */
@@ -26,10 +45,42 @@ export const registerDevice = async (
   params: { deviceId: string; publicKey: string; mlkemPublicKey: string; name?: string },
 ): Promise<RegisterDeviceResponse> => httpClient.post('devices', { json: params }).json<RegisterDeviceResponse>()
 
-/** Store a wrapped content key (envelope) for a device. Optionally includes canary on first setup or secret for recovery. */
+/**
+ * First-device bootstrap payload: the full atomic v2 setup (envelope + canary +
+ * signing public key + KDF salt + initial wrapped keyring) in one request.
+ */
+export type BootstrapEnvelopeParams = {
+  deviceId: string
+  /** Hybrid envelope carrying the AK (field name kept from v1 for wire compatibility). */
+  wrappedCK: string
+  canaryIv: string
+  canaryCtext: string
+  /** Base64 SPKI ECDSA P-256 public key derived from the canary secret. */
+  signingPublicKey: string
+  /** Base64 random salt for the recovery-seed KDF. */
+  kdfSalt: string
+  /** Must include key_id '0' (`initialKeyId`). */
+  wrappedKeys: WrappedKeyEntry[]
+}
+
+/** Approval / self-recovery payload: gated by a ChallengeProof (operation 'approve'). */
+export type ProofEnvelopeParams = {
+  deviceId: string
+  /** Hybrid envelope carrying the AK (field name kept from v1 for wire compatibility). */
+  wrappedCK: string
+  proof: ChallengeProof
+}
+
+export type StoreEnvelopeParams = BootstrapEnvelopeParams | ProofEnvelopeParams
+
+/**
+ * Store a device envelope (carries the AK). Two variants:
+ * - bootstrap (first device, caller == target, no proof) — all-in-one atomic setup
+ * - approve / self-recovery — requires a ChallengeProof with operation 'approve'
+ */
 export const storeEnvelope = async (
   httpClient: HttpClient,
-  params: { deviceId: string; wrappedCK: string; canaryIv?: string; canaryCtext?: string; canarySecret?: string },
+  params: StoreEnvelopeParams,
 ): Promise<StoreEnvelopeResponse> => {
   const { deviceId, ...body } = params
   return httpClient
@@ -37,56 +88,119 @@ export const storeEnvelope = async (
     .json<StoreEnvelopeResponse>()
 }
 
-/** Fetch the wrapped content key for the current device. */
+/** Fetch the wrapped account key (envelope) for the current device. */
 export const fetchMyEnvelope = async (httpClient: HttpClient): Promise<FetchEnvelopeResponse> =>
   httpClient.get('devices/me/envelope').json<FetchEnvelopeResponse>()
-
-/** Fetch the canary for recovery key verification. */
-export const fetchCanary = async (httpClient: HttpClient): Promise<FetchCanaryResponse> =>
-  httpClient.get('encryption/canary').json<FetchCanaryResponse>()
-
-/** Deny a pending device (called by a trusted device). Requires canary proof-of-CK-possession. */
-export const denyDevice = async (httpClient: HttpClient, deviceId: string, canarySecret: string): Promise<void> => {
-  await httpClient.post(`devices/${encodeURIComponent(deviceId)}/deny`, { json: { canarySecret } })
-}
-
-/** Revoke a device. Includes canary proof-of-CK-possession when E2EE is active. */
-export const revokeDevice = async (httpClient: HttpClient, deviceId: string, canarySecret?: string): Promise<void> => {
-  await httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
-    json: canarySecret ? { canarySecret } : {},
-  })
-}
-
-/**
- * Bind a device row to an iroh P2P endpoint identity (node_id). Requires canary
- * proof-of-CK-possession — only a trusted device holding the Content Key may attest it.
- */
-export const setDeviceNodeId = async (
-  httpClient: HttpClient,
-  deviceId: string,
-  nodeId: string,
-  canarySecret: string,
-): Promise<void> => {
-  await httpClient.post(`devices/${encodeURIComponent(deviceId)}/node-id`, { json: { nodeId, canarySecret } })
-}
 
 /** Cancel this device's pending approval state (called by the pending device itself). */
 export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
   await httpClient.post('devices/me/cancel-pending')
 }
 
-/** Check if the user has encryption set up (canary exists on server). */
+// =============================================================================
+// Encryption metadata + wrapped-DEK keyring
+// =============================================================================
+
+/**
+ * Fetch the encryption metadata (canary, kdf_salt, signing key, key_version,
+ * primary_key_id, scheme_version). 404 = encryption not set up. Rides the poll
+ * clients already do at unlock — `key_version`/`scheme_version` detect rotations
+ * and the v1→v2 flip. `signing_public_key`/`kdf_salt` are null for a pre-flip v1
+ * account (scheme_version === 1).
+ */
+export const fetchEncryptionMetadata = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse> =>
+  httpClient.get('encryption/canary').json<EncryptionMetadataResponse>()
+
+/** Check if the user has encryption set up (metadata exists on server). */
 export const checkCanaryExists = async (httpClient: HttpClient): Promise<boolean> => {
   try {
-    await httpClient.get('encryption/canary').json()
+    await fetchEncryptionMetadata(httpClient)
     return true
   } catch (err) {
-    if (err instanceof Error && 'response' in err) {
-      const status = (err as Error & { response: { status: number } }).response.status
-      if (status === 404) {
-        return false
-      }
+    if (err instanceof HttpError && err.response.status === 404) {
+      return false
     }
     throw err
   }
+}
+
+/** Fetch the full wrapped-DEK keyring. Allowed for any non-revoked device (including pending). */
+export const fetchWrappedKeys = async (httpClient: HttpClient): Promise<WrappedKeysListResponse> =>
+  httpClient.get('encryption/keys').json<WrappedKeysListResponse>()
+
+/** Fetch one wrapped DEK by key_id. Allowed for any non-revoked device (recovery relies on this). */
+export const fetchWrappedKey = async (httpClient: HttpClient, keyId: KeyId): Promise<WrappedKeyResponse> =>
+  httpClient.get(`encryption/keys/${encodeURIComponent(keyId)}`).json<WrappedKeyResponse>()
+
+/**
+ * Mint a NEW key_id on the server-side keyring (DEK rotation / workspace DEK).
+ * Trusted device only; idempotent per key_id — never overwrites.
+ */
+export const postWrappedKey = async (
+  httpClient: HttpClient,
+  params: { keyId: KeyId; wrappedKey: string; setPrimary?: boolean; proof: ChallengeProof },
+): Promise<{ key_id: KeyId }> => httpClient.post('encryption/keys', { json: params }).json<{ key_id: KeyId }>()
+
+// =============================================================================
+// Challenge-response + rotation + upgrade
+// =============================================================================
+
+/** Request a single-use challenge nonce bound to (user, operation, this device). */
+export const fetchChallenge = async (
+  httpClient: HttpClient,
+  operation: ChallengeOperation,
+): Promise<ChallengeResponse> =>
+  httpClient.get('encryption/challenge', { searchParams: { operation } }).json<ChallengeResponse>()
+
+/**
+ * Atomic AK rotation: replaces every trusted device's envelope, re-wraps the
+ * FULL keyring, replaces canary + signing key + kdf_salt, bumps key_version.
+ * The server rejects partial keyring or envelope coverage — build the payload
+ * from live server state (see services `rotateAK`).
+ */
+export const postRotate = async (httpClient: HttpClient, body: RotateRequest): Promise<RotateResponse> =>
+  httpClient.post('encryption/rotate', { json: body }).json<RotateResponse>()
+
+/**
+ * v1→v2 migration (WS1): the migrator absorbs the legacy CK as the `"v1"` slot,
+ * mints a fresh primary DEK `"0"`, registers the signing key + kdf_salt, writes
+ * a new-AK envelope for every trusted device, and CAS-flips scheme_version 1→2
+ * atomically. Gated by the D1 CK-possession proof (not a signature). A second
+ * concurrent migrator loses the CAS and receives HTTP 409.
+ */
+export const postUpgrade = async (httpClient: HttpClient, body: UpgradeRequest): Promise<UpgradeResponse> =>
+  httpClient.post('encryption/upgrade', { json: body }).json<UpgradeResponse>()
+
+// =============================================================================
+// Proof-gated device management
+// =============================================================================
+
+/** Deny a pending device (called by a trusted device). Gated by a 'deny' challenge proof. */
+export const denyDevice = async (httpClient: HttpClient, deviceId: string, proof: ChallengeProof): Promise<void> => {
+  await httpClient.post(`devices/${encodeURIComponent(deviceId)}/deny`, { json: { proof } })
+}
+
+/**
+ * Revoke a device. Gated by a 'revoke' challenge proof when E2EE v2 is active;
+ * pre-E2EE accounts (no metadata) and v1 leftovers (NULL signing key) revoke
+ * without proof — the backend skips verification for them.
+ */
+export const revokeDevice = async (httpClient: HttpClient, deviceId: string, proof?: ChallengeProof): Promise<void> => {
+  await httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
+    json: proof ? { proof } : {},
+  })
+}
+
+/**
+ * Bind a device row to an iroh P2P endpoint identity (node_id). Attesting
+ * another device's P2P identity is a trusted-device admin action gated with the
+ * 'approve' operation (challengeOperations has no dedicated 'node-id' op).
+ */
+export const setDeviceNodeId = async (
+  httpClient: HttpClient,
+  deviceId: string,
+  nodeId: string,
+  proof: ChallengeProof,
+): Promise<void> => {
+  await httpClient.post(`devices/${encodeURIComponent(deviceId)}/node-id`, { json: { nodeId, proof } })
 }

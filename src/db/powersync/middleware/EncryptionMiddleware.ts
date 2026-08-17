@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { DataTransformMiddleware, SyncDataBucket } from '../TransformableBucketStorage'
-import { codec as defaultCodec, type EncryptionCodec } from '@/db/encryption/codec'
+import { codec as defaultCodec } from '@/db/encryption/codec'
+import { isEncryptedValue } from '@/db/encryption/wire-format'
+import type { EncryptionCodec, EncryptionContext } from '@shared/e2ee-types'
 
 type SyncEntry = SyncDataBucket['data'][number]
 
@@ -11,9 +13,17 @@ type SyncEntry = SyncDataBucket['data'][number]
  * Decrypt all __enc:-prefixed values in a single sync entry. Mutates entry.data in place.
  *
  * Intentionally data-driven rather than map-driven: any string value starting with __enc:
- * is decrypted regardless of whether its column appears in encryptedColumnsMap. This means
- * a stale desktop client (whose bundled map predates a new encrypted column) still decrypts
- * correctly — the __enc: prefix is the authoritative signal, not the config.
+ * is a decode candidate regardless of whether its column appears in encryptedColumnsMap.
+ * This means a stale desktop client (whose bundled map predates a new encrypted column)
+ * still decrypts correctly — the __enc: prefix is the authoritative signal, not the config.
+ *
+ * v2 AAD threading (THU-426): each decode receives the {table, column, rowId} the upload
+ * encoder bound into AAD — `object_type` is the snake_case table, the JSON key is the
+ * snake_case column, `object_id` is the row id. The codec parses the wire key_id and
+ * rebuilds the full `table ‖ column ‖ rowId ‖ keyId` tuple internally. Legacy v1 values
+ * ignore this context (they carry no AAD), so it is passed whenever available but omitted
+ * (undefined) when the entry lacks object_type/object_id — the codec then fails open on a
+ * v2 value rather than decrypting under the wrong AAD, while v1 values still decode.
  */
 const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
   if (!entry.data) {
@@ -22,12 +32,18 @@ const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
 
   try {
     const obj = JSON.parse(entry.data) as Record<string, unknown>
+    const { object_type: table, object_id: rowId } = entry
     let changed = false
 
     await Promise.all(
       Object.entries(obj).map(async ([key, val]) => {
-        if (typeof val === 'string' && val.startsWith('__enc:')) {
-          obj[key] = await codec.decode(val)
+        if (typeof val !== 'string' || !isEncryptedValue(val)) {
+          return
+        }
+        const ctx: EncryptionContext | undefined = table && rowId ? { table, column: key, rowId } : undefined
+        const decoded = await codec.decode(val, ctx)
+        if (decoded !== val) {
+          obj[key] = decoded
           changed = true
         }
       }),

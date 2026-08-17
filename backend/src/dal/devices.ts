@@ -157,6 +157,19 @@ export const getTrustedNodeIds = async (database: typeof DbType, userId: string)
     )
 
 /**
+ * List the ids of every trusted, non-revoked device for a user. Used by AK
+ * rotation / upgrade coverage validation — the caller must supply a new-AK
+ * envelope for exactly this set (a missing one locks a device out; an extra one
+ * hands the new AK to a revoked/pending device).
+ */
+export const listTrustedDeviceIds = async (database: QueryableDatabase, userId: string) =>
+  database
+    .select({ id: devicesTable.id })
+    .from(devicesTable)
+    .where(and(eq(devicesTable.userId, userId), eq(devicesTable.trusted, true), isNull(devicesTable.revokedAt)))
+    .then((rows) => rows.map((row) => row.id))
+
+/**
  * Register (or idempotently re-register) a BRIDGE device on the caller's account.
  * A bridge is a device with `device_type='bridge'`, keyed by its server NodeId. The user
  * deliberately added their own ACP/MCP bridge, so it is inserted trusted and non-revoked.

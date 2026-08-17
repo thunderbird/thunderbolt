@@ -44,10 +44,10 @@ export const loginViaConsumerOtp = async (page: Page, email: string): Promise<vo
   await page.goto('/')
 
   const emailInput = page.getByPlaceholder('Email')
-  // The sign-in / waitlist surface is a lazy-loaded route; on a cold dev server
-  // under CI load its chunk can take well over the default 15s to compile+paint,
-  // so give the first app-boot-dependent wait a generous ceiling.
-  await expect(emailInput).toBeVisible({ timeout: 45_000 })
+  // First app boot has to initialize the local DB before the sign-in surface
+  // renders; give it a generous ceiling for a cold CI runner (matches the
+  // additional-device login wait below).
+  await expect(emailInput).toBeVisible({ timeout: 30_000 })
   const previousOtp = await getCurrentOtp(email)
   const previousRequestAt = otpRequestTimes.get(email)
   const cooldownRemaining = previousRequestAt ? 15_250 - (Date.now() - previousRequestAt) : 0

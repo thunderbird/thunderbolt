@@ -3,25 +3,35 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useConfigStore } from '@/api/config-store'
-import { getCK } from '@/crypto/key-storage'
+import { getAK, listDEKs } from '@/crypto'
 
 /** Whether E2E encryption is enabled. Reads from the persisted config store (hydrated from /config endpoint). */
 export const isEncryptionEnabled = (): boolean => useConfigStore.getState().config.e2eeEnabled === true
 
 /**
  * Returns true when the sync setup wizard is needed before enabling sync.
- * The wizard is required only when E2EE is enabled AND no Content Key exists yet.
+ * The wizard is required only when E2EE is enabled AND the v2 key hierarchy is
+ * incomplete — an AK plus at least one wrapped DEK must exist locally.
+ *
+ * Boolean contract unchanged from v1 ("is encryption set up? → bool"), so the
+ * existing consumers need no edit; only the underlying check moved from
+ * CK-exists to AK+DEK-exists.
  */
 export const needsSyncSetupWizard = async (): Promise<boolean> => {
   if (!isEncryptionEnabled()) {
     return false
   }
-  return !(await getCK())
+  const [ak, wrappedDEKs] = await Promise.all([getAK(), listDEKs()])
+  return !ak || wrappedDEKs.length === 0
 }
 
 /**
  * Single source of truth for encrypted tables and their columns.
  * Uses DB column names (snake_case) — matches both PowerSync sync data and CRUD upload operations.
+ *
+ * This map is the encode-selection authority (upload encoder). Decode stays
+ * prefix-gated (any `__enc:` value), so a stale client still decodes columns it
+ * does not know are encrypted.
  *
  * Adding a table here automatically enables:
  * - Download decryption via EncryptionMiddleware (sync pipeline)

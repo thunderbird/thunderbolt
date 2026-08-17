@@ -4,15 +4,17 @@
 
 import { useReducer } from 'react'
 import { HttpError } from '@/lib/http'
-import { useHttpClient } from '@/contexts'
+import { useHttpClient, type HttpClient } from '@/contexts'
 import { ValidationError } from '@/crypto'
 import {
   registerThisDevice,
   completeFirstDeviceSetup,
   checkApprovalAndUnwrap,
   recoverWithKey,
+  ensureV2Encryption,
 } from '@/services/encryption'
-import { checkCanaryExists } from '@/api/encryption'
+import { checkCanaryExists, fetchEncryptionMetadata } from '@/api/encryption'
+import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
 
 type SyncSetupStep =
   | 'intro'
@@ -102,6 +104,32 @@ export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSet
 }
 
 /**
+ * Classify the account's server-side encryption state from its metadata:
+ * - `none` — no metadata (404): fresh account, this is the first device
+ * - `v1` — legacy pre-hierarchy account (`scheme_version === 1`): routes into
+ *   the seamless v1→v2 migration (never a reset)
+ * - `v2` — current key hierarchy: normal additional-device / follower flow
+ */
+export const classifyEncryptionMetadata = (metadata: EncryptionMetadataResponse | null): 'none' | 'v1' | 'v2' => {
+  if (!metadata) {
+    return 'none'
+  }
+  return metadata.scheme_version === 1 ? 'v1' : 'v2'
+}
+
+/** Fetch encryption metadata, mapping the 404 "not set up" case to null. */
+const fetchMetadataOrNull = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse | null> => {
+  try {
+    return await fetchEncryptionMetadata(httpClient)
+  } catch (err) {
+    if (err instanceof HttpError && err.response.status === 404) {
+      return null
+    }
+    throw err
+  }
+}
+
+/**
  * State machine for the sync setup wizard.
  * Orchestrates device registration, key generation, and encryption setup flows.
  */
@@ -113,27 +141,33 @@ export const useSyncSetup = () => {
     dispatch({ type: 'CONTINUE_INTRO' })
 
     try {
-      const result = await registerThisDevice(httpClient)
+      await registerThisDevice(httpClient)
+      const accountState = classifyEncryptionMetadata(await fetchMetadataOrNull(httpClient))
 
-      if (result.trusted) {
-        // Device already trusted — try to unwrap CK from existing envelope
-        const unwrapped = await checkApprovalAndUnwrap(httpClient)
-        if (unwrapped) {
-          dispatch({ type: 'SETUP_COMPLETE' })
-          return 'already-trusted' as const
-        }
-        // Trusted but no envelope — fall through to canary check below
-      }
-
-      // Use canary to determine first vs additional device
-      const hasCanary = await checkCanaryExists(httpClient)
-      if (!hasCanary) {
+      if (accountState === 'none') {
+        // No server-side encryption yet — this device bootstraps it.
         dispatch({ type: 'DETECTED_FIRST_DEVICE' })
         return 'first-device' as const
       }
 
-      dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
-      return 'additional-device' as const
+      // v1 or v2 account: the idempotent migrator/follower dispatcher decides
+      // whether this device migrates (v1 + holds the legacy CK), follows (v2 or
+      // an already-migrated account), or must wait for approval. A v1 account
+      // routes into the seamless migration — never a reset.
+      const result = await ensureV2Encryption(httpClient)
+      switch (result.outcome) {
+        case 'migrated':
+          dispatch({ type: 'SET_RECOVERY_KEY', payload: result.recoveryKey })
+          return 'migrated' as const
+        case 'followed':
+        case 'already-v2':
+          dispatch({ type: 'SETUP_COMPLETE' })
+          return 'already-trusted' as const
+        case 'awaiting-approval':
+        case 'not-applicable':
+          dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+          return 'additional-device' as const
+      }
     } catch (err) {
       if (err instanceof HttpError && err.response.status === 422) {
         dispatch({

@@ -228,6 +228,31 @@ describe('ChatMessages', () => {
       expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
     })
 
+    it('shows the loading indicator instead of an error while an empty turn awaits auto-retry', () => {
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Prompt' }] }),
+        createTestMessage({ id: 'msg-2', role: 'assistant', parts: [] }),
+      ]
+      const mockChatInstance = createMockChatInstance(messages, 'ready')
+      const mockUseChat = createMockUseChat(mockChatInstance)
+
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+
+      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+
+      expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument()
+      expect(screen.queryByText('Retry')).not.toBeInTheDocument()
+      expect(screen.getByTestId('loading-status')).toBeInTheDocument()
+    })
+
     it('should not show error message when last message is assistant with no parts but streaming', () => {
       const messages: ThunderboltUIMessage[] = [
         createTestMessage({

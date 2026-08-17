@@ -94,6 +94,7 @@ export const ChatList = ({
   mobileSecondaryNavigation,
   onChatClick,
   onRename,
+  onMoveToProject,
   onSearchClick,
 }: ChatListProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -230,6 +231,7 @@ export const ChatList = ({
                   deleteChatDialogRef={deleteChatDialogRef}
                   onChatClick={onChatClick}
                   onRename={onRename}
+                  onMoveToProject={onMoveToProject}
                 />
               ))}
             </Virtualizer>

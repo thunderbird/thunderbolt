@@ -52,12 +52,40 @@ export const chatThreadsTable = powersyncSchema.table(
     modeId: text('mode_id'),
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
+    // Owning project, or null for a loose chat. Intentionally NOT a FK: a
+    // project is soft-deleted and its chats are orphaned (project_id set to
+    // null) rather than cascaded, so the rows must survive independently.
+    projectId: text('project_id'),
     deletedAt: timestamp('deleted_at'),
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
   },
   (table) => [index('idx_chat_threads_user_id').on(table.userId)],
+)
+
+/**
+ * A Projects workspace: durable instructions shared by every chat in the project,
+ * plus membership via `chat_threads.project_id`.
+ */
+export const projectsTable = powersyncSchema.table(
+  'projects',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    /** Always-on instructions prepended to every chat in this project. */
+    instructions: text('instructions'),
+    icon: text('icon'),
+    pinnedOrder: integer('pinned_order'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+    deletedAt: timestamp('deleted_at'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (table) => [index('idx_projects_user_id').on(table.userId)],
 )
 
 export const chatMessagesTable = powersyncSchema.table(
@@ -298,6 +326,7 @@ export const powersyncTablesByName = {
   model_profiles: modelProfilesTable,
   devices: devicesTable,
   agents: agentsTable,
+  projects: projectsTable,
 } satisfies Record<PowerSyncTableName, AnyPgTable>
 
 /**
@@ -326,6 +355,7 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
   agents: agentsTable.id,
+  projects: projectsTable.id,
 }
 
 /**
@@ -345,4 +375,8 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],
   devices: [devicesTable.id],
   agents: [agentsTable.id, agentsTable.userId],
+  // Plain `id` primary keys: projects are user-created, so they carry no default
+  // rows needing the composite (id, user_id) treatment (see
+  // docs/composite-primary-keys-and-default-data.md).
+  projects: [projectsTable.id],
 }

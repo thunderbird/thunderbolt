@@ -183,6 +183,13 @@
       "when": 1784819243043,
       "tag": "0025_reapply_cli_auth_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786716166665,
+      "tag": "0026_aberrant_roxanne_simpson",
+      "breakpoints": true
     }
   ]
 }

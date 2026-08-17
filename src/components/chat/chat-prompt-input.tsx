@@ -44,6 +44,7 @@ import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
+import { resolveTextMimeType } from '@/files/transformers'
 import { maybeCompressAttachment } from '@/files/compress/compress-attachment'
 import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
@@ -94,6 +95,15 @@ const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachm
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
   acceptedAttachmentExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
+
+/**
+ * Normalize a file's MIME before it is stored.
+ *
+ * Load-bearing, not cosmetic: a `.md` commonly arrives with an **empty** `type`,
+ * and `defaultDeliveryMode('')` routes an attachment as *native bytes* — which a
+ * model can't read. Resolving to `text/plain` here makes it deliver as text.
+ */
+const attachmentMimeType = (file: File): string => resolveTextMimeType(file.name, file.type)
 
 /** Clipboard files (e.g. a pasted screenshot) often arrive with an empty name.
  *  Give them a stable, extension-bearing filename so the chip renders and the
@@ -455,7 +465,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             await putAttachment({
               id: localFileId,
               filename: prepared.name,
-              mimeType: prepared.type,
+              mimeType: attachmentMimeType(prepared),
               size: prepared.size,
               createdAt: Date.now(),
               blob: prepared,
@@ -469,7 +479,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             setAttachError(`Couldn't attach "${prepared.name}" — your browser's storage is full or unavailable.`)
             break
           }
-          setAttachments((prev) => [...prev, { localFileId, filename: prepared.name, mimeType: prepared.type }])
+          setAttachments((prev) => [
+            ...prev,
+            { localFileId, filename: prepared.name, mimeType: attachmentMimeType(prepared) },
+          ])
           count++
         }
       },
@@ -552,7 +565,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (model: Model, length: number, prompt_number: number) => {
         setShowOverflowModal(true)
         trackEvent('chat_send_prompt_overflow', {
-          model,
+          model_id: model.id,
+          model_name: model.model,
+          provider: model.provider,
           length,
           prompt_number,
         })

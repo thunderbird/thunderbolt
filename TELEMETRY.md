@@ -8,6 +8,8 @@ Event tracking respects user privacy settings and can be disabled through the ap
 
 Thunderbolt uses PostHog for analytics to track user interactions and application usage. All events follow a structured naming convention for better organization and analysis.
 
+Event properties must never include prompts, responses, API keys, or other user-authored content. Use non-secret scalar identifiers such as `model_id`, `model_name`, and `provider`; a final egress scrub removes any property named `apiKey` before sending.
+
 ### Event Naming Convention
 
 Events follow the pattern: `<feature>_<action>`
@@ -19,8 +21,15 @@ Events follow the pattern: `<feature>_<action>`
 
 #### Chat & Messaging (`chat_*`)
 
-- `chat_send_prompt` - User sends a message to the AI
-- `chat_receive_reply` - AI generates a response
+- `chat_send_prompt` - User sends a message to the AI (with `trace_id`, `model_id`, `model_name`, `provider`, `length`, and `prompt_number`)
+- `chat_send_prompt_overflow` - User attempts a prompt that exceeds the model context (with the same scalar model properties, `length`, and `prompt_number`)
+- `chat_receive_reply` - AI generates a response (with `trace_id`, `engine`, `model_id`, `model_name`, `provider`, `length`, and `reply_number`)
+- `chat_auto_retry` - A built-in turn schedules an automatic retry (with `trace_id`, `engine`, turn-stable `model_id`/`model_name`/`provider`, `attempt`, `max_retries`, and `reason`)
+- `chat_retry_success` - An automatically retried built-in turn succeeds (with `trace_id`, `engine`, turn-stable `model_id`/`model_name`/`provider`, and `attempts`)
+- `chat_retries_exhausted` - A built-in turn stops retrying (with `trace_id`, `engine`, turn-stable `model_id`/`model_name`/`provider`, `attempts`, and `reason`)
+- Retry `reason` uses the stable error class. Pi-engine errors classify 408, 429, and 5xx statuses embedded by pi-ai as `timeout`, `rate-limit`, and `provider`; other or unrecognized errors remain `unknown`.
+- `chat_turn_completed` - One privacy-safe summary per built-in turn, including `trace_id`, actual `engine`, scalar model/provider identifiers, outcome/error class, attempts/retry layers/retry reasons, phase timings, user-perceived TTFT, step/tool counts, capped tool timings, and total duration. TTFT is measured when the first non-empty text or reasoning delta reaches the adapter response stream, after translator/smoothing overhead. MCP calls use the fixed tool label `mcp`; user-authored server-name-derived identifiers are never emitted.
+- `tinfoil_attestation` - A Tinfoil client attestation succeeds, fails, or times out (with `outcome`, `duration_ms`, `client`, optional `error_name`, and, for turn acquisitions, `trace_id`, `engine`, `model_id`, and `provider`)
 - `chat_select` - User selects a chat thread
 - `chat_new_clicked` - User creates a new chat
 - `chat_delete` - User deletes a chat
@@ -63,7 +72,7 @@ Events follow the pattern: `<feature>_<action>`
 
 #### Content View & Preview (`content_view_*`, `preview_*`)
 
-- `content_view_open` - Content view opens (with properties: `view_type`, `tool_name` for object views, `sideview_type` for sideviews)
+- `content_view_open` - Content view opens (with properties: `view_type`, `tool_name` for object views, `sideview_type` for sideviews). MCP object views use the fixed `tool_name` value `mcp`.
 - `content_view_close` - Content view closes (with property: `view_type`)
 - `preview_open` - Preview webview opens from a link click
 - `preview_close` - Preview webview closes
@@ -119,7 +128,9 @@ trackEvent('chat_send_prompt')
 
 // Track an event with properties
 trackEvent('chat_send_prompt', {
-  model: 'gpt-4',
+  model_id: 'model-row-id',
+  model_name: 'gpt-4',
+  provider: 'openai',
   length: 150,
 })
 ```

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
-import { trackEvent } from '@/lib/posthog'
+import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatToolOutput } from '@/lib/utils'
 import type { UIMessageMetadata } from '@/types'
@@ -63,61 +63,82 @@ const ContentViewContext = createContext<ContentViewContextType | undefined>(und
  * - Webview previews (link previews)
  * - Sideviews (document viewer, etc.)
  */
-export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
+export const ContentViewProvider = ({
+  children,
+  trackEvent = defaultTrackEvent,
+}: {
+  children: ReactNode
+  trackEvent?: typeof defaultTrackEvent
+}) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
   const [previewHidden, setPreviewHidden] = useState(false)
 
-  const showObjectView = useCallback((content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
-    if (content.type === 'reasoning') {
-      trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
-      setState({ type: 'object-view', data: { title: 'Reasoning', output: content.text } })
-      return
-    }
+  const showObjectView = useCallback(
+    (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
+      if (content.type === 'reasoning') {
+        trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
+        setState({ type: 'object-view', data: { title: 'Reasoning', output: content.text } })
+        return
+      }
 
-    const toolName = getToolName(content)
-    // MCP dynamic-tool parts resolve their title from the tool map; built-ins use curated metadata.
-    const title =
-      content.type === 'dynamic-tool'
-        ? getMcpToolDisplay(toolName, mcpTools, content.title).displayName
-        : getToolMetadataSync(toolName, content.input).displayName
-    // Surface the error text when a tool failed; otherwise show its output.
-    const output = content.state === 'output-error' ? content.errorText : formatToolOutput(content.output)
-    trackEvent('content_view_open', { view_type: 'object-view', tool_name: toolName })
-    setState({ type: 'object-view', data: { title, output } })
-  }, [])
+      const toolName = getToolName(content)
+      // MCP dynamic-tool parts resolve their title from the tool map; built-ins use curated metadata.
+      const title =
+        content.type === 'dynamic-tool'
+          ? getMcpToolDisplay(toolName, mcpTools, content.title).displayName
+          : getToolMetadataSync(toolName, content.input).displayName
+      // Surface the error text when a tool failed; otherwise show its output.
+      const output = content.state === 'output-error' ? content.errorText : formatToolOutput(content.output)
+      trackEvent('content_view_open', {
+        view_type: 'object-view',
+        tool_name: content.type === 'dynamic-tool' ? 'mcp' : toolName,
+      })
+      setState({ type: 'object-view', data: { title, output } })
+    },
+    [trackEvent],
+  )
 
-  const showPreview = useCallback((url: string) => {
-    trackEvent('content_view_open', { view_type: 'preview' })
-    trackEvent('preview_open')
-    setState({
-      type: 'preview',
-      data: {
-        url,
-        onClose: () => setState({ type: null, data: null }),
-      },
-    })
-  }, [])
+  const showPreview = useCallback(
+    (url: string) => {
+      trackEvent('content_view_open', { view_type: 'preview' })
+      trackEvent('preview_open')
+      setState({
+        type: 'preview',
+        data: {
+          url,
+          onClose: () => setState({ type: null, data: null }),
+        },
+      })
+    },
+    [trackEvent],
+  )
 
-  const showSideview = useCallback((sideviewType: string | null, sideviewId: string | null) => {
-    if (sideviewType === null || sideviewId === null) {
-      setState({ type: null, data: null })
-      return
-    }
-    trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
-    setState({ type: 'sideview', data: { sideviewType, sideviewId } })
-  }, [])
+  const showSideview = useCallback(
+    (sideviewType: string | null, sideviewId: string | null) => {
+      if (sideviewType === null || sideviewId === null) {
+        setState({ type: null, data: null })
+        return
+      }
+      trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
+      setState({ type: 'sideview', data: { sideviewType, sideviewId } })
+    },
+    [trackEvent],
+  )
 
-  const showArtifact = useCallback((data: ArtifactViewData) => {
-    trackEvent('content_view_open', { view_type: 'artifact' })
-    setState({ type: 'artifact', data })
-  }, [])
+  const showArtifact = useCallback(
+    (data: ArtifactViewData) => {
+      trackEvent('content_view_open', { view_type: 'artifact' })
+      setState({ type: 'artifact', data })
+    },
+    [trackEvent],
+  )
 
   const close = useCallback(() => {
     if (state.type !== null) {
       trackEvent('content_view_close', { view_type: state.type })
     }
     setState({ type: null, data: null })
-  }, [state.type])
+  }, [state.type, trackEvent])
 
   return (
     <ContentViewContext.Provider

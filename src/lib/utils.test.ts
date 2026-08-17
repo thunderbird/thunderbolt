@@ -6,7 +6,14 @@ import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { clearNullableColumns, convertUIMessageToDbChatMessage, formatNumber, hashValues, splitPartType } from './utils'
+import {
+  clearNullableColumns,
+  convertUIMessageToDbChatMessage,
+  formatNumber,
+  hashValues,
+  splitPartType,
+  uuidv7ToDate,
+} from './utils'
 
 describe('utils', () => {
   describe('formatNumber', () => {
@@ -345,5 +352,30 @@ describe('utils', () => {
       expect(result).toEqual({})
       expect(result).not.toHaveProperty('parentId')
     })
+  })
+})
+
+describe('uuidv7ToDate', () => {
+  it('recovers the millisecond timestamp a v7 id was minted with', () => {
+    // Pinned rather than compared against `Date.now()`: v7 keeps a monotonic
+    // counter, so ids minted in bulk (which other suites in this process do) can
+    // carry a timestamp that runs *ahead* of the wall clock. A tolerance window
+    // around "now" therefore fails intermittently under `--randomize`, which is
+    // exactly what it did.
+    const msecs = 1_786_000_000_000
+    expect(uuidv7ToDate(uuidv7({ msecs })).getTime()).toBe(msecs)
+  })
+
+  it('reads all 48 timestamp bits, not just the first 32', () => {
+    // Regression: reading `slice(0, 8)` as seconds put every id in 1970.
+    expect(uuidv7ToDate(uuidv7({ msecs: 1_786_000_000_000 })).getUTCFullYear()).toBeGreaterThan(2020)
+  })
+
+  it('decodes a known timestamp exactly', () => {
+    // 0x0192... prefix encodes 1731000000000 ms.
+    const ms = 1_731_000_000_000
+    const hex = ms.toString(16).padStart(12, '0')
+    const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-7000-8000-000000000000`
+    expect(uuidv7ToDate(id).getTime()).toBe(ms)
   })
 })

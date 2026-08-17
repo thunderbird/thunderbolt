@@ -78,7 +78,12 @@ const buildFakeAdapter = (agent: Agent) => {
   return { adapter, fetch, disconnect }
 }
 
-const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | null = null) => {
+const hydrateSessionWith = (
+  id: string,
+  agent: Agent,
+  chatThread: ChatThread | null = null,
+  projectId: string | null = null,
+) => {
   const session: ChatSession = {
     chatInstance: mockChatInstance,
     chatThread,
@@ -90,6 +95,7 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
     retriesExhausted: false,
     selectedAgent: agent,
     selectedModel: mockModel,
+    projectId,
     triggerData: null,
   }
   useChatStore.setState({
@@ -425,6 +431,59 @@ describe('createAgentRoutingFetch', () => {
 
     const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { skillInstructions?: string[] }]
     expect(ctx.skillInstructions).toEqual(['Tell a cat joke.'])
+  })
+
+  it('forwards the chat’s project context to a remote-acp agent', async () => {
+    // Project context was prepared only in the built-in pipeline, so switching a
+    // project's chat to a remote agent silently dropped its instructions and
+    // knowledge. ACP has no system channel; the adapter folds this into the prompt.
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(remoteAgent)
+    const connectToAgent = mock(async () => adapter)
+    hydrateSessionWith('t-project', remoteAgent, null, 'p1')
+
+    const customFetch = createAgentRoutingFetch('t-project', saveMessages, httpClient, getProxyFetch, {
+      connectToAgent: connectToAgent as never,
+      getAllSkills: (async () => []) as never,
+      getDb: (() => ({})) as never,
+      loadProjectContext: (async () => ({
+        id: 'p1',
+        siblingThreadIds: [],
+        titleByThreadId: {},
+        prompt: { name: 'Cabin build', instructions: 'Prefer metric units.', knowledge: [] },
+      })) as never,
+    })
+
+    const body = JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] })
+    await customFetch('/chat', { method: 'POST', body })
+
+    const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { projectSection?: string }]
+    expect(ctx.projectSection).toContain('Cabin build')
+    expect(ctx.projectSection).toContain('Prefer metric units.')
+  })
+
+  it('skips the project lookup for a chat that is not in a project', async () => {
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(remoteAgent)
+    const connectToAgent = mock(async () => adapter)
+    const getDb = mock(() => ({}))
+    const loadProjectContext = mock(async () => null)
+    hydrateSessionWith('t-no-project', remoteAgent)
+
+    const customFetch = createAgentRoutingFetch('t-no-project', saveMessages, httpClient, getProxyFetch, {
+      connectToAgent: connectToAgent as never,
+      getAllSkills: (async () => []) as never,
+      getDb: getDb as never,
+      loadProjectContext: loadProjectContext as never,
+    })
+
+    const body = JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] })
+    await customFetch('/chat', { method: 'POST', body })
+
+    const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { projectSection?: string }]
+    expect(ctx.projectSection).toBeUndefined()
+    // Not merely absent from the context — never looked up.
+    expect(loadProjectContext).not.toHaveBeenCalled()
   })
 
   it('does not resolve skill instructions for the built-in agent (it injects them itself)', async () => {

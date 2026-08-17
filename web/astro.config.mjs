@@ -69,6 +69,7 @@ export default defineConfig({
 				{
 					label: 'Features',
 					items: [
+						{ label: 'Projects', slug: 'docs/architecture/projects' },
 						{ label: 'Widgets', slug: 'docs/features/widgets' },
 						{
 							label: 'Data Syncing',

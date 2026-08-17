@@ -64,12 +64,15 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   // message to host the synthetic loading indicator, so render it inline here.
   const showSubmittedLoading = status === 'submitted' && lastMessage?.role !== 'assistant'
 
+  const emptyAssistantTurn = lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
+  const pendingEmptyTurnRecovery = emptyAssistantTurn && !chatError && !retriesExhausted
+
   const hasError = useMemo(() => {
     if (chatError) {
       return true
     }
-    return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
-  }, [chatError, lastMessage, isStreaming])
+    return emptyAssistantTurn && retriesExhausted
+  }, [chatError, emptyAssistantTurn, retriesExhausted])
 
   // Re-deliver a failed turn's attachments as text/images (auto on a detected
   // content-rejection, or via the buttons below). Gate auto-fire on a settled error.
@@ -118,7 +121,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
         if (message.role === 'assistant') {
           // Hide empty assistant messages during errors — these are broken responses
           // that regenerate() will remove. Messages with parts are valid responses.
-          if (hasError && !message.parts?.length) {
+          if ((hasError || pendingEmptyTurnRecovery) && !message.parts?.length) {
             return null
           }
 
@@ -156,7 +159,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
 
       {/* Keep a loading indicator up while remediation re-delivers + retries, so
           the suppressed error doesn't leave a blank gap. */}
-      {(showSubmittedLoading || suppressError) && <SyntheticLoadingPart isStreaming />}
+      {(showSubmittedLoading || suppressError || pendingEmptyTurnRecovery) && <SyntheticLoadingPart isStreaming />}
 
       {/* Show error message if there's an error and remediation isn't taking over */}
       {hasError && !suppressError && (

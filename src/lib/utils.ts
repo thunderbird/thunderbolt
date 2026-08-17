@@ -21,9 +21,14 @@ export const cn = (...inputs: ClassValue[]) => {
 
 export { isRecord } from '@shared/lib/is-record'
 
-export const uuidv7ToDate = (uuid: string) => {
-  return new Date(parseInt(uuid.slice(0, 8), 16) * 1000)
-}
+/**
+ * Recover the creation time embedded in a UUIDv7.
+ *
+ * v7 puts a 48-bit big-endian millisecond timestamp in the first 12 hex digits
+ * (`xxxxxxxx-xxxx-7...`). Reading only the first 8 digits and scaling by 1000 —
+ * as this did before — treats the top 32 bits as seconds and lands in 1970.
+ */
+export const uuidv7ToDate = (uuid: string): Date => new Date(parseInt(uuid.replace(/-/g, '').slice(0, 12), 16))
 
 export const convertDbChatMessageToUIMessage = (message: ChatMessage): UIMessage => {
   return {

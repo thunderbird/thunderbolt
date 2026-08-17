@@ -57,9 +57,6 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -93,6 +90,7 @@ jobs:
         working-directory: deploy/pulumi
         env:
           INPUT_STACK_NAME: ${{ inputs.stack_name || 'previews-shared' }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           pulumi stack select --create "$INPUT_STACK_NAME" --non-interactive
 
@@ -112,6 +110,7 @@ jobs:
           INPUT_THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
           INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           INPUT_TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set authHostname "$INPUT_AUTH_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
@@ -136,6 +135,8 @@ jobs:
 
       - name: Deploy
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         with:
           command: up
           stack-name: ${{ inputs.stack_name || 'previews-shared' }}
@@ -146,6 +147,7 @@ jobs:
         working-directory: deploy/pulumi
         env:
           INPUT_STACK_NAME: ${{ inputs.stack_name || 'previews-shared' }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           echo "## Shared stack outputs" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

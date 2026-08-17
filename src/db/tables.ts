@@ -28,11 +28,43 @@ export const chatThreadsTable = sqliteTable(
     contextSize: integer('context_size'),
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
+    /** Owning project, or null for a loose chat. Deleting a project orphans its
+     *  chats (sets this back to null) rather than deleting them. */
+    projectId: text('project_id'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
   },
   (table) => [
     index('idx_chat_threads_active')
+      .on(table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_chat_threads_project')
+      .on(table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+)
+
+/**
+ * A Projects workspace: durable instructions applied to every chat in the
+ * project, with membership carried by `chat_threads.project_id`.
+ */
+export const projectsTable = sqliteTable(
+  'projects',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    /** Always-on instructions injected into every chat in this project. */
+    instructions: text('instructions'),
+    icon: text('icon'),
+    pinnedOrder: integer('pinned_order'),
+    createdAt: text('created_at').default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').default(sql`(datetime('now'))`),
+    deletedAt: text('deleted_at'),
+    userId: text('user_id'),
+  },
+  (table) => [
+    index('idx_projects_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
   ],

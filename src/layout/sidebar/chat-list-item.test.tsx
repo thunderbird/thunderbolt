@@ -32,7 +32,7 @@ const chatListItemWithProviders = (props: ChatListItemProps) => (
 const renderWithProviders = (props: ChatListItemProps) => render(chatListItemWithProviders(props))
 
 const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps => ({
-  thread: { id: 'thread-1', title: 'My Chat', isEncrypted: 0 },
+  thread: { id: 'thread-1', title: 'My Chat', isEncrypted: 0, projectId: null },
   isActive: false,
   isCollapsed: false,
   isMobile: false,
@@ -41,6 +41,7 @@ const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps 
   deleteChatDialogRef: { current: { open: mock(), close: mock() } } as never,
   onChatClick: mock(),
   onRename: mock(),
+  onMoveToProject: mock(),
   ...overrides,
 })
 

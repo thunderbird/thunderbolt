@@ -193,6 +193,8 @@ export const hydrateStore = (state: {
       retriesExhausted: false,
       selectedAgent: builtInAgent,
       selectedModel: state.selectedModel ?? defaultTestModel,
+      // Mirrors production: a chat's project comes from its persisted thread.
+      projectId: state.chatThread?.projectId ?? null,
       triggerData: state.triggerData,
     }
 

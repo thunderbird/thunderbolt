@@ -152,6 +152,34 @@ describe('Tinfoil client lifecycle', () => {
     expect(trackAttestation).toHaveBeenCalledTimes(1)
   })
 
+  it('reports traced success when a turn reuses a prewarmed client', async () => {
+    const client = createClient()
+    const trackAttestation = mock(() => {})
+    const lifecycle = createTinfoilClientLifecycle({
+      createClient: async () => client,
+      getCloudUrl: () => 'https://cloud.example.com/v1',
+      trackAttestation,
+    })
+
+    await lifecycle.getSystemTinfoilClient()
+    await lifecycle.getSystemTinfoilClient({
+      trace_id: 'trace-1',
+      engine: 'legacy',
+      provider: 'tinfoil',
+      model_id: 'model-1',
+    })
+
+    expect(trackAttestation).toHaveBeenLastCalledWith({
+      outcome: 'success',
+      duration_ms: 0,
+      client: 'system',
+      trace_id: 'trace-1',
+      engine: 'legacy',
+      provider: 'tinfoil',
+      model_id: 'model-1',
+    })
+  })
+
   it('times out and evicts when a later ready call hangs during re-attestation', async () => {
     const ready = mock(async (): Promise<void> => new Promise<void>(() => {}))
     ready.mockImplementationOnce(async () => {})

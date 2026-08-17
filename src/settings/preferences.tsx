@@ -307,9 +307,7 @@ export default function PreferencesSettingsPage() {
       locationLng.setValue(String(location.coordinates.lng)),
     ])
 
-    trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set', {
-      location_name: location.name,
-    })
+    trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set')
 
     // If country changed, ask user if they want to update localization settings
     if (newCountry && currentCountry !== newCountry) {

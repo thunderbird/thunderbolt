@@ -157,4 +157,5 @@ The custom SharedWorker extends `SharedSyncImplementation`, an `@internal` class
 
 - [Multi-Device Sync](./multi-device-sync.md) — the sync pipeline in more depth.
 - [End-to-End Encryption](./e2e-encryption.md) — key hierarchy and device approval.
+- [Projects](./projects.md) — project instructions, text knowledge, cross-chat search, assistant notes.
 - [Quick Start](../development/quick-start.md) and [Testing](../development/testing.md) — schema rules, tests, the things that bite.

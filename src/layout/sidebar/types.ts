@@ -10,10 +10,14 @@ import type { ReactNode, RefObject } from 'react'
 /** Top-level sidebar sections switchable via the nav toggle. */
 export type SidebarSection = 'chats' | 'settings'
 
+/** The sidebar's own narrowed view of a chat row — only what the list renders. */
 export type ChatThread = {
   id: string
   title: string | null
   isEncrypted: number
+  /** Owning project, or null. Needed so a drag knows whether "Remove from
+   *  project" applies to this chat. */
+  projectId: string | null
 }
 
 export type DeleteChatMutationType = UseMutationResult<void, Error, { id: string }, unknown>
@@ -43,6 +47,8 @@ export type ChatListProps = {
   mobileSecondaryNavigation: ReactNode
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
+  /** Open the project picker for a chat. The sidebar owns the dialog. */
+  onMoveToProject: (threadId: string, currentProjectId: string | null) => void
   onSearchClick: () => void
 }
 
@@ -56,4 +62,5 @@ export type ChatListItemProps = {
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
+  onMoveToProject: (threadId: string, currentProjectId: string | null) => void
 }

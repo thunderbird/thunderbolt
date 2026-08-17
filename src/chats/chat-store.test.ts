@@ -73,6 +73,40 @@ describe('chat-store', () => {
     })
   })
 
+  describe('project membership on a session', () => {
+    it('carries the thread’s project so the header badge can read it', () => {
+      const chatThread = createMockChatThread()
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: { ...chatThread, projectId: 'proj-1' },
+        id: 'test-id',
+        selectedModel: createMockModel(),
+        triggerData: null,
+      })
+      expect(getCurrentSession()?.projectId).toBe('proj-1')
+    })
+
+    it('updates in place when a chat is dragged into a project', () => {
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: createMockChatThread(),
+        id: 'test-id',
+        selectedModel: createMockModel(),
+        triggerData: null,
+      })
+      expect(getCurrentSession()?.projectId).toBeNull()
+
+      useChatStore.getState().updateSession('test-id', { projectId: 'proj-1' })
+      expect(getCurrentSession()?.projectId).toBe('proj-1')
+    })
+
+    it('throws for a chat that has no open session — callers must guard', () => {
+      // The sidebar drop handler relies on this: dragging a chat that was never
+      // opened this run must not blow up the drop.
+      expect(() => useChatStore.getState().updateSession('never-opened', { projectId: 'p' })).toThrow()
+    })
+  })
+
   describe('reset', () => {
     it('should reset store to initial state', () => {
       // First hydrate with some data
@@ -125,6 +159,7 @@ describe('chat-store', () => {
               retryCount: 0,
               retriesExhausted: false,
               selectedModel: null as unknown as Model,
+              projectId: null,
               triggerData: null,
             },
           ],

@@ -170,6 +170,7 @@ export const buildPromptBlocks = async (
   deps: PromptBlockDeps = defaultPromptBlockDeps,
   priorTranscript?: string,
   sessionSkillDisclosure?: string,
+  projectSection?: string,
 ): Promise<ContentBlock[]> => {
   const lastUser = [...parseRequestMessages(init)].reverse().find((m) => m.role === 'user')
   if (!lastUser) {
@@ -184,7 +185,7 @@ export const buildPromptBlocks = async (
   const userText = [quotesText, replyText].filter(Boolean).join('\n\n')
   // Skill instructions + (fallback) prior transcript ride the text block (ACP
   // has no system channel) — see composeAcpPrompt.
-  const text = composeAcpPrompt(skillInstructions, userText, priorTranscript, sessionSkillDisclosure)
+  const text = composeAcpPrompt(skillInstructions, userText, priorTranscript, sessionSkillDisclosure, projectSection)
 
   const attachments = getAttachments(lastUser)
   if (attachments.length === 0) {
@@ -301,8 +302,12 @@ const composeAcpPrompt = (
   userText: string,
   priorTranscript?: string,
   sessionSkillDisclosure?: string,
+  projectSection?: string,
 ): string =>
   [
+    // First: it's the most stable block, so an agent that caches a prefix keeps
+    // it, and it frames everything after it.
+    projectSection,
     sessionSkillDisclosure,
     sessionSkillDisclosure === undefined && skillInstructions && skillInstructions.length > 0
       ? skillInstructions.join('\n\n')
@@ -639,6 +644,7 @@ export const connectAcpAdapter = async (
       defaultPromptBlockDeps,
       priorTranscript,
       freshSession?.skillDisclosure,
+      context.projectSection,
     )
 
     const { body, translator, close } = createTranslatorStream({

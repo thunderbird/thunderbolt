@@ -309,6 +309,52 @@ describe('useHydrateChatStore', () => {
     })
   })
 
+  describe('project assignment', () => {
+    it('starts a new chat in the project it was opened from', async () => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true, projectId: 'project-a' }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.projectId).toBe('project-a')
+    })
+
+    it('starts a loose chat with no project', async () => {
+      // The reported bug: leaving `/chats/new?projectId=…` for `/chats/new` kept
+      // the old project, and the first message was filed under it. The route now
+      // makes the project part of the new chat's identity, so this hook is asked
+      // for a fresh chat with none.
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true, projectId: null }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.projectId).toBeNull()
+    })
+
+    it('ignores the URL project for a chat that already exists', async () => {
+      // A persisted thread owns its project; a stale query string must not move it.
+      const systemModelId = await createSystemModel()
+      const threadId = await createTestThread(systemModelId, 'Existing')
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false, projectId: 'project-b' }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.projectId).toBeNull()
+    })
+  })
+
   describe('saveMessages', () => {
     it('should save messages and update store state', async () => {
       const systemModelId = await createSystemModel()

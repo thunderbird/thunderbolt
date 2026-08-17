@@ -24,6 +24,7 @@ export const powersyncTableNames = [
   'model_profiles',
   'devices',
   'agents',
+  'projects',
 ] as const
 
 export type PowerSyncTableName = (typeof powersyncTableNames)[number]
@@ -34,12 +35,27 @@ export type PowerSyncTableName = (typeof powersyncTableNames)[number]
  * write — from before the table was removed — drains its CRUD queue instead
  * of looping on a 400. Never re-add these to powersyncTableNames. See THU-739.
  */
-export const legacyPowerSyncTableNames = ['modes'] as const
+export const legacyPowerSyncTableNames = [
+  'modes',
+  // `project_files` never reached production — its migration was removed before
+  // merge — but devices that ran the Projects branch locally or in a preview env
+  // can still hold queued writes for it, and an unknown table is a 400 the client
+  // retries forever. Accepting and ignoring lets those queues drain.
+  'project_files',
+] as const
 
 /**
- * Map of PowerSync table names to React Query keys to invalidate when the table changes.
- * Keys are type-checked against powersyncTableNames; every table must have an entry.
- * Prefix keys (e.g. ['settings']) invalidate all queries starting with that prefix.
+ * Intended map of PowerSync table names to the React Query keys to invalidate
+ * when the table changes. Keys are type-checked against powersyncTableNames, so
+ * every table must have an entry, and prefix keys (e.g. ['settings']) would
+ * invalidate every query under that prefix.
+ *
+ * **Nothing reads this map.** It has had no consumer since THU-249 — updates
+ * arrive through PowerSync's own reactivity, and a `useQuery` on a watched table
+ * re-runs without being invalidated. The entries below are therefore a
+ * declaration of intent, not a wiring: adding one has no runtime effect. Kept
+ * (rather than deleted) because the sync docs still ask for it and it is the
+ * obvious place to hang invalidation if a non-reactive consumer ever needs it.
  */
 export const powersyncTableToQueryKeys: {
   [K in PowerSyncTableName]: string[][]
@@ -55,4 +71,7 @@ export const powersyncTableToQueryKeys: {
   model_profiles: [['modelProfiles']],
   devices: [['devices']],
   agents: [['agents']],
+  // Would cover the chat sidebar grouping as well as the project list, if the
+  // map above were ever wired up.
+  projects: [['projects'], ['chatThreads']],
 }

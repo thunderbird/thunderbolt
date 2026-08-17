@@ -25,6 +25,7 @@ The importer detects gzip by magic bytes (`1f 8b`, RFC 1952), so a hand-decompre
     "tasks":           [ /* full rows */ ],
     "models":          [ /* full rows */ ],
     "model_profiles":  [ /* full rows */ ],
+    "projects":        [ /* full rows */ ],
     "prompts":         [ /* full rows */ ],
     "skills":          [ /* full rows */ ],
     "triggers":        [ /* full rows */ ],
@@ -59,7 +60,7 @@ The exporter walks the same name → Drizzle table map PowerSync uses (`syncedTa
 
 **Synced (PowerSync) tables.** Soft-deleted rows are included — the importer decides whether to restore them as soft-deleted, fully deleted, or live.
 
-- `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `model_profiles`, `prompts`, `skills`, `triggers`, `agents`.
+- `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `model_profiles`, `prompts`, `skills`, `triggers`, `agents`, `projects`.
 
 **Local-only tables** — user-typed credentials and config that don't sync.
 

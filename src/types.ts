@@ -20,6 +20,7 @@ import type {
   mcpServersTable,
   modelProfilesTable,
   modelsTable,
+  projectsTable,
   promptsTable,
   settingsTable,
   skillsTable,
@@ -114,6 +115,7 @@ export type PromptRow = InferSelectModel<typeof promptsTable>
 export type SkillRow = InferSelectModel<typeof skillsTable>
 export type TriggerRow = InferSelectModel<typeof triggersTable>
 export type ModelProfileRow = InferSelectModel<typeof modelProfilesTable>
+export type ProjectRow = InferSelectModel<typeof projectsTable>
 
 // Application types - Row types with previously-required fields made non-null
 export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role' | 'chatThreadId'>
@@ -147,6 +149,7 @@ export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
 export type Skill = WithRequired<SkillRow, 'name' | 'description' | 'instruction' | 'enabled'>
 export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled' | 'promptId'>
 export type ModelProfile = WithRequired<ModelProfileRow, 'modelId'>
+export type Project = WithRequired<ProjectRow, 'name'>
 
 /**
  * Query usable with PowerSync's toCompilableQuery and direct await.

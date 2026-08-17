@@ -51,6 +51,15 @@ export type ChatSession = {
   retriesExhausted: boolean
   selectedAgent: Agent
   selectedModel: Model
+  /**
+   * Owning project for this chat, or null for a loose chat. Resolved at
+   * hydration from the persisted `chat_threads.project_id`, or — for a brand-new
+   * chat started from a project — the `?projectId=` search param. It lives on the
+   * session for the same reason `selectedAgent` does: the thread row is created
+   * lazily on the first message save, so the value has to survive until then or
+   * the row would be written with `project_id` null.
+   */
+  projectId: string | null
   triggerData: AutomationRun | null
 }
 

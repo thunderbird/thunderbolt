@@ -2,9 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, it, test } from 'bun:test'
 
-import { defaultDeliveryMode, docxMime, getTransformer, hasTransformer, isPlainTextMime } from './index'
+import {
+  defaultDeliveryMode,
+  docxMime,
+  getTransformer,
+  hasTransformer,
+  isPlainTextMime,
+  resolveTextMimeType,
+} from './index'
 
 describe('transformer registry', () => {
   test('hasTransformer reports registered source→target pairs', () => {
@@ -54,5 +61,47 @@ describe('transformer registry', () => {
     expect(isPlainTextMime('application/json')).toBe(true)
     expect(isPlainTextMime('application/pdf')).toBe(false)
     expect(isPlainTextMime(docxMime)).toBe(false)
+  })
+})
+
+describe('resolveTextMimeType', () => {
+  it('trusts a declared type we can already handle', () => {
+    expect(resolveTextMimeType('a.pdf', 'application/pdf')).toBe('application/pdf')
+    expect(resolveTextMimeType('a.md', 'text/markdown')).toBe('text/markdown')
+  })
+
+  it.each([
+    ['notes.md', ''],
+    ['README.markdown', ''],
+    ['log.txt', ''],
+    ['rows.csv', ''],
+  ])('resolves %s (declared "%s") to text/plain', (filename, declared) => {
+    expect(resolveTextMimeType(filename, declared)).toBe('text/plain')
+  })
+
+  it('leaves a genuinely binary type alone', () => {
+    expect(resolveTextMimeType('photo.png', 'image/png')).toBe('image/png')
+    expect(resolveTextMimeType('archive.zip', '')).toBe('')
+    expect(resolveTextMimeType('Makefile', '')).toBe('')
+  })
+
+  it('leaves an extension the composer does not accept alone', () => {
+    // The set is scoped to the accept list; resolving a type that cannot be
+    // attached would imply support that isn't there.
+    expect(resolveTextMimeType('script.py', '')).toBe('')
+    expect(resolveTextMimeType('config.yaml', '')).toBe('')
+  })
+
+  it('makes resolved text files deliver as text, not native bytes', () => {
+    // The whole point: an unresolved empty MIME would route to native delivery,
+    // which a model cannot read.
+    expect(defaultDeliveryMode(resolveTextMimeType('notes.md', ''))).toBe('text')
+    expect(defaultDeliveryMode('')).toBeUndefined()
+  })
+
+  it('has a text transformer for every resolved extension', async () => {
+    for (const extension of ['md', 'markdown', 'txt', 'csv', 'json']) {
+      expect(hasTransformer(resolveTextMimeType(`f.${extension}`, ''), 'text')).toBe(true)
+    }
   })
 })

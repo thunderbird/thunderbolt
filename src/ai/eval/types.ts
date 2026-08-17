@@ -7,10 +7,24 @@ import type { WidgetName } from '@/widgets'
 
 export type { WidgetName }
 
+export type EvalEngine = 'pi' | 'legacy'
+
+export type NecessityCategory =
+  | 'never_search'
+  | 'answer_then_offer'
+  | 'single_search'
+  | 'research'
+  | 'unknown_entity'
+  | 'false_premise'
+  | 'adversarial_no_search'
+  | 'multi_turn_reuse'
+  | 'search_wont_help'
+
 /** A single evaluation scenario: one prompt tested against one model in one mode */
 export type EvalScenario = {
   id: string
   modelName: string
+  engineName: EvalEngine
   modeName: 'chat' | 'search' | 'research'
   prompt: string
   /**
@@ -22,6 +36,9 @@ export type EvalScenario = {
    */
   followUps?: string[]
   criteria: EvalCriteria
+  category?: NecessityCategory
+  reviewBy?: string
+  isNegativeControl?: boolean
 }
 
 /** What to check in the response */
@@ -34,8 +51,15 @@ export type EvalCriteria = {
   noHomepageLinks?: boolean
   noReviewSites?: boolean
   maxSteps?: number
-  /** Max tool calls allowed in the (final) turn — guards cross-turn reuse. */
+  /** Minimum built-in web calls required in the final turn. */
+  minToolCalls?: number
+  /** Maximum built-in web calls allowed in the final turn. */
   maxToolCalls?: number
+  noDuplicateToolCalls?: boolean
+  expectCorrectAnswer?: boolean
+  expectSearchOffer?: boolean
+  expectPremiseRebuttal?: boolean
+  expectVerificationDisclaimer?: boolean
 }
 
 /** Parsed stream output from a single AI response */
@@ -73,12 +97,16 @@ export type EvalResult = {
   linkPreviewUrls: string[]
   homepageUrls: string[]
   reviewSiteUrls: string[]
+  /** Built-in web calls (`search` and `fetch_content`) in the scored turn. */
   toolCallCount: number
-  /** Tool calls whose (toolName, input) repeated an earlier call in the run. */
+  /** Web calls whose (toolName, input) repeated an earlier call in the scored turn. */
   duplicateToolCallCount: number
   retryCount: number
   durationMs: number
   error?: string
+  sampleCount?: number
+  passedSampleCount?: number
+  errorSampleCount?: number
 }
 
 /** Summary stats for report generation */
@@ -88,5 +116,66 @@ export type EvalSummary = {
   failed: number
   passRate: number
   byModel: Record<string, { total: number; passed: number; passRate: number }>
+  byEngine: Record<string, { total: number; passed: number; passRate: number }>
   byMode: Record<string, { total: number; passed: number; passRate: number }>
+}
+
+export type WilsonInterval = {
+  lower: number
+  upper: number
+}
+
+export type NecessityCategoryMetrics = {
+  passed: number
+  total: number
+  rate: number
+  wilson: WilsonInterval
+  threshold: number
+  gatePassed: boolean
+}
+
+export type NecessityRateMetric = {
+  count: number
+  total: number
+  rate: number
+  threshold: number
+  gatePassed: boolean
+}
+
+export type EvalScenarioMetrics = {
+  prompt: string
+  category: NecessityCategory | 'core'
+  passed: boolean
+  webToolCalls: number
+  duplicateWebToolCalls: number
+  sampleCount: number
+  passedSampleCount: number
+  errorSampleCount: number
+  isNegativeControl: boolean
+  reviewBy: string | null
+  failures: string[]
+}
+
+export type EvalScenarioComparison = {
+  baselinePassed: boolean | null
+  currentPassed: boolean
+  direction: 'improved' | 'regressed' | 'unchanged' | 'no-baseline'
+}
+
+export type EvalMetricsGroup = {
+  model: string
+  engine: EvalEngine
+  scenarios: Record<string, EvalScenarioMetrics>
+  categories: Partial<Record<NecessityCategory, NecessityCategoryMetrics>>
+  headline: {
+    unnecessarySearchRate: NecessityRateMetric
+    missedSearchRate: NecessityRateMetric
+    meanWebCallsNoSearchExpected: number
+  }
+}
+
+export type EvalMetrics = {
+  schemaVersion: 3
+  generatedAt: string
+  groups: Record<string, EvalMetricsGroup>
 }

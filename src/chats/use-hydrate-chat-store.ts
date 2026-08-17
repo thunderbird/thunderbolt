@@ -37,6 +37,10 @@ import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 type UseHydrateChatStoreParams = {
   id: string
   isNew: boolean
+  /** Project a brand-new chat starts in, taken from `?projectId=` by the route.
+   *  Passed in rather than read from `window.location` so the value is part of
+   *  this hook's inputs and can be tested. */
+  projectId?: string | null
 }
 
 /**
@@ -63,7 +67,7 @@ const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
   }
 }
 
-export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
+export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = null }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
@@ -105,7 +109,15 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // Pass `selectedAgent.id` so a brand-new thread is created with the user's
     // currently-selected agent — otherwise the row would default to `null`
     // and a reload would silently fall back to the built-in agent.
-    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, session.selectedAgent.id)
+    const thread = await getOrCreateChatThread(
+      db,
+      id,
+      session.selectedModel.id,
+      session.selectedAgent.id,
+      // Stamped here rather than at navigation time: the row is created lazily on
+      // this first save, so the project must ride the session to reach it.
+      session.projectId,
+    )
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(db, id, messages)
@@ -231,19 +243,22 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     const selectedAgent =
       findAgent(chatThread?.agentId) ?? findAgent(settings.selectedAgent) ?? allAgents[0] ?? builtInAgent
 
+    // A persisted thread owns its project; a brand-new chat started from a
+    // project carries it in the URL (`/chats/new?projectId=…`), which is the only
+    // moment that intent exists — nothing has been written yet.
+    const projectId = chatThread?.projectId ?? (isNew ? newChatProjectId : null)
+
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {
       navigate('/not-found', { replace: true })
       return
     }
 
-    const chatInstance = createChatInstance(
-      id,
-      initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[],
-      saveMessages,
-      httpClient,
-      getProxyFetch,
-    )
+    const initialUiMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
+    const chatInstance = createChatInstance(id, initialUiMessages, saveMessages, httpClient, getProxyFetch)
+
+    const lastInitialMessage = initialUiMessages[initialUiMessages.length - 1]
+    const hydratedTrailingEmptyTurn = lastInitialMessage?.role === 'assistant' && !lastInitialMessage.parts?.length
 
     createSession({
       chatInstance,
@@ -253,11 +268,12 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       id,
       pendingPermission: null,
       retryCount: 0,
-      retriesExhausted: false,
+      retriesExhausted: hydratedTrailingEmptyTurn,
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).
       selectedAgent,
       selectedModel: defaultModel,
+      projectId,
       triggerData,
     })
 

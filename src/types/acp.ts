@@ -16,6 +16,7 @@ import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SessionSideEffectSink } from '@/acp/translators/acp-to-ai-sdk'
 import type { TurnBudgetConsumer } from '@/ai/retry-budget'
+import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
 
@@ -76,6 +77,7 @@ export type AgentAdapterContext = {
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
   turnBudget?: TurnBudgetConsumer
+  telemetry?: TurnTelemetry
   webToolBudget?: WebToolBudget
   /** Increments only when the current assistant response is regenerated. Built-in
    *  persistent harnesses use it to rebuild from the edited transcript without
@@ -87,6 +89,13 @@ export type AgentAdapterContext = {
    *  them into the prompt instead — keeping skills behaving the same across
    *  agents. Empty/omitted when no skill token resolved. */
   skillInstructions?: string[]
+  /** The chat's project context (its instructions), rendered as prompt text.
+   *  Built-in gets this through `ai/fetch.ts`; ACP agents have no system
+   *  channel, so the adapter folds it into the prompt — otherwise a chat in a
+   *  project behaves as though it had none once you switch agents. The project
+   *  *tool* (cross-chat search) stays built-in-only: it is an AI-SDK tool, and
+   *  an ACP agent runs its own toolset. */
+  projectSection?: string
   /** Called when an ACP adapter created a fresh `sessionId` via `session/new`.
    *  The chat layer persists it on `chatThreads.acpSessionId` so future loads
    *  can call `session/load` when the agent supports it. */

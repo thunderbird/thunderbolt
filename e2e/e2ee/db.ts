@@ -159,7 +159,9 @@ export const waitForSchemeV2 = async (userId: string, expectedKeyIds: readonly s
     }
     const keyIds = Object.keys(snapshot.wrappedKeys).sort()
     return [...expectedKeyIds].sort().every((id) => keyIds.includes(id)) ? true : null
-  }, 45_000)
+  // Concurrent migrators reload and race their app-init flip; allow headroom for
+  // the winner's CAS upgrade to land on a loaded CI runner.
+  }, 90_000)
 }
 
 export const waitForConsumedChallenge = async (userId: string, operation: string): Promise<void> => {

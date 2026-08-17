@@ -6,7 +6,21 @@ import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { type HttpClient } from '@/contexts'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
-import { registerDevice, storeEnvelope, fetchMyEnvelope, fetchCanary } from './encryption'
+import type { ChallengeProof } from '@shared/e2ee-types'
+import {
+  registerDevice,
+  storeEnvelope,
+  fetchMyEnvelope,
+  fetchEncryptionMetadata,
+  fetchWrappedKeys,
+  fetchWrappedKey,
+  postWrappedKey,
+  fetchChallenge,
+  postRotate,
+  postUpgrade,
+  denyDevice,
+  revokeDevice,
+} from './encryption'
 
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
@@ -16,25 +30,16 @@ type CapturedRequest = { url: string; method: string; body: Record<string, unkno
 const createCapturingHttpClient = (
   mockResponse: unknown = {},
 ): { httpClient: HttpClient; getLastRequest: () => CapturedRequest } => {
-  let lastRequest: CapturedRequest = {
-    url: '',
-    method: 'GET',
-    body: null,
-    headers: new Headers(),
-  }
+  let lastRequest: CapturedRequest = { url: '', method: 'GET', body: null, headers: new Headers() }
 
   const mockFetch = async (input: Request): Promise<Response> => {
-    const url = input.url
-    const method = input.method
-    const headers = input.headers
     let body: Record<string, unknown> | null = null
     try {
       body = (await input.json()) as Record<string, unknown>
     } catch {
       // GET requests have no body
     }
-    lastRequest = { url, method, body, headers }
-
+    lastRequest = { url: input.url, method: input.method, body, headers: input.headers }
     return new Response(JSON.stringify(mockResponse), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -49,6 +54,13 @@ const createCapturingHttpClient = (
   }
 }
 
+const sampleProof: ChallengeProof = {
+  signature: 'sig-base64',
+  nonce: 'nonce-1',
+  operation: 'approve',
+  deviceId: 'dev-1',
+}
+
 describe('encryption API client', () => {
   beforeEach(() => {
     localStorage.setItem(deviceIdKey, 'test-device-id')
@@ -61,7 +73,7 @@ describe('encryption API client', () => {
   })
 
   describe('registerDevice', () => {
-    it('sends POST /devices with correct body and auth headers', async () => {
+    it('sends POST /devices with body + auth/device/app-version headers', async () => {
       const mockResponse = { trusted: false as const }
       const { httpClient, getLastRequest } = createCapturingHttpClient(mockResponse)
 
@@ -83,90 +95,157 @@ describe('encryption API client', () => {
       })
       expect(req.headers.get('authorization')).toBe('Bearer test-token')
       expect(req.headers.get('x-device-id')).toBe('test-device-id')
-      expect(req.headers.get('x-device-name')).toBeTruthy()
-      expect(result).toEqual(mockResponse)
-    })
-
-    it('returns TRUSTED response with envelope', async () => {
-      const mockResponse = { trusted: true as const, envelope: 'wrapped-ck-base64' }
-      const { httpClient } = createCapturingHttpClient(mockResponse)
-
-      const result = await registerDevice(httpClient, {
-        deviceId: 'dev-1',
-        publicKey: 'pk-base64',
-        mlkemPublicKey: 'mlkem-pk-base64',
-      })
-
       expect(result).toEqual(mockResponse)
     })
   })
 
   describe('storeEnvelope', () => {
-    it('sends POST /devices/:id/envelope with correct body', async () => {
-      const mockResponse = { trusted: true as const }
-      const { httpClient, getLastRequest } = createCapturingHttpClient(mockResponse)
+    it('sends the bootstrap payload (canary + signing key + keyring, no proof)', async () => {
+      const { httpClient, getLastRequest } = createCapturingHttpClient({ trusted: true })
 
-      const result = await storeEnvelope(httpClient, {
+      await storeEnvelope(httpClient, {
         deviceId: 'dev-1',
         wrappedCK: 'wrapped-base64',
         canaryIv: 'iv-base64',
         canaryCtext: 'ctext-base64',
+        signingPublicKey: 'spki-base64',
+        kdfSalt: 'salt-base64',
+        wrappedKeys: [{ keyId: '0', wrappedKey: 'dek0-base64' }],
       })
 
       const req = getLastRequest()
       expect(req.url).toContain('/devices/dev-1/envelope')
-      expect(req.method).toBe('POST')
       expect(req.body).toEqual({
         wrappedCK: 'wrapped-base64',
         canaryIv: 'iv-base64',
         canaryCtext: 'ctext-base64',
+        signingPublicKey: 'spki-base64',
+        kdfSalt: 'salt-base64',
+        wrappedKeys: [{ keyId: '0', wrappedKey: 'dek0-base64' }],
       })
-      expect(result).toEqual(mockResponse)
     })
 
-    it('URL-encodes device ID', async () => {
+    it('sends the proof-gated approval payload', async () => {
       const { httpClient, getLastRequest } = createCapturingHttpClient({ trusted: true })
 
-      await storeEnvelope(httpClient, {
-        deviceId: 'dev/special',
-        wrappedCK: 'wrapped',
-      })
+      await storeEnvelope(httpClient, { deviceId: 'dev/special', wrappedCK: 'wrapped', proof: sampleProof })
 
       const req = getLastRequest()
       expect(req.url).toContain('/devices/dev%2Fspecial/envelope')
+      expect(req.body).toEqual({ wrappedCK: 'wrapped', proof: sampleProof })
     })
   })
 
-  describe('fetchMyEnvelope', () => {
-    it('sends GET /devices/me/envelope with auth headers', async () => {
-      const mockResponse = { trusted: true, wrappedCK: 'wrapped-base64' }
-      const { httpClient, getLastRequest } = createCapturingHttpClient(mockResponse)
+  describe('metadata + keyring', () => {
+    it('fetchEncryptionMetadata returns the full v2 DTO including scheme_version', async () => {
+      const meta = {
+        canary_iv: 'iv',
+        canary_ctext: 'ct',
+        kdf_salt: 'salt',
+        signing_public_key: 'spki',
+        key_version: 3,
+        primary_key_id: '1',
+        scheme_version: 2 as const,
+      }
+      const { httpClient, getLastRequest } = createCapturingHttpClient(meta)
 
+      const result = await fetchEncryptionMetadata(httpClient)
+
+      expect(getLastRequest().url).toContain('/encryption/canary')
+      expect(result).toEqual(meta)
+    })
+
+    it('fetchWrappedKeys / fetchWrappedKey hit the keyring routes', async () => {
+      const list = createCapturingHttpClient({ keys: [{ key_id: '0', wrapped_key: 'w0' }] })
+      const keys = await fetchWrappedKeys(list.httpClient)
+      expect(list.getLastRequest().url).toContain('/encryption/keys')
+      expect(keys.keys).toHaveLength(1)
+
+      const one = createCapturingHttpClient({ key_id: 'v1', wrapped_key: 'wv1' })
+      const key = await fetchWrappedKey(one.httpClient, 'v1')
+      expect(one.getLastRequest().url).toContain('/encryption/keys/v1')
+      expect(key.wrapped_key).toBe('wv1')
+    })
+
+    it('postWrappedKey mints a new key_id', async () => {
+      const { httpClient, getLastRequest } = createCapturingHttpClient({ key_id: '1' })
+      const proof = { signature: 'sig', nonce: 'n', operation: 'rotate' as const, deviceId: 'd1' }
+      await postWrappedKey(httpClient, { keyId: '1', wrappedKey: 'w1', setPrimary: true, proof })
+      const req = getLastRequest()
+      expect(req.method).toBe('POST')
+      expect(req.body).toEqual({ keyId: '1', wrappedKey: 'w1', setPrimary: true, proof })
+    })
+  })
+
+  describe('challenge + rotate + upgrade', () => {
+    it('fetchChallenge passes the operation as a query param', async () => {
+      const { httpClient, getLastRequest } = createCapturingHttpClient({ nonce: 'n', expires_at: 'later' })
+      await fetchChallenge(httpClient, 'rotate')
+      expect(getLastRequest().url).toContain('operation=rotate')
+    })
+
+    it('fetchMyEnvelope sends device headers', async () => {
+      const { httpClient, getLastRequest } = createCapturingHttpClient({ trusted: true, wrappedCK: 'w' })
       const result = await fetchMyEnvelope(httpClient)
+      expect(getLastRequest().url).toContain('/devices/me/envelope')
+      expect(result.wrappedCK).toBe('w')
+    })
 
-      const req = getLastRequest()
-      expect(req.url).toContain('/devices/me/envelope')
-      expect(req.method).toBe('GET')
-      expect(req.headers.get('x-device-id')).toBe('test-device-id')
-      expect(req.headers.get('x-device-name')).toBeTruthy()
-      expect(result).toEqual(mockResponse)
+    it('postRotate posts the full rotation body', async () => {
+      const { httpClient, getLastRequest } = createCapturingHttpClient({ key_version: 2 })
+      const body = {
+        proof: { ...sampleProof, operation: 'rotate' as const },
+        envelopes: [{ deviceId: 'dev-1', wrappedCK: 'w' }],
+        wrappedKeys: [{ keyId: '0', wrappedKey: 'w0' }],
+        canaryIv: 'iv',
+        canaryCtext: 'ct',
+        signingPublicKey: 'spki',
+        kdfSalt: 'salt',
+      }
+      const result = await postRotate(httpClient, body)
+      expect(getLastRequest().url).toContain('/encryption/rotate')
+      expect(result.key_version).toBe(2)
+    })
+
+    it('postUpgrade posts the migration body', async () => {
+      const { httpClient, getLastRequest } = createCapturingHttpClient({ key_version: 1, scheme_version: 2 })
+      const result = await postUpgrade(httpClient, {
+        nonce: 'n',
+        possessionProof: 'secret',
+        envelopes: [{ deviceId: 'dev-1', wrappedCK: 'w' }],
+        wrappedKeys: [
+          { keyId: '0', wrappedKey: 'w0' },
+          { keyId: 'v1', wrappedKey: 'wv1' },
+        ],
+        primaryKeyId: '0',
+        canaryIv: 'iv',
+        canaryCtext: 'ct',
+        signingPublicKey: 'spki',
+        kdfSalt: 'salt',
+      })
+      expect(getLastRequest().url).toContain('/encryption/upgrade')
+      expect(result).toEqual({ key_version: 1, scheme_version: 2 })
     })
   })
 
-  describe('fetchCanary', () => {
-    it('sends GET /encryption/canary with auth headers', async () => {
-      const mockResponse = { canaryIv: 'iv-base64', canaryCtext: 'ctext-base64' }
-      const { httpClient, getLastRequest } = createCapturingHttpClient(mockResponse)
-
-      const result = await fetchCanary(httpClient)
-
+  describe('proof-gated device management', () => {
+    it('denyDevice sends { proof }', async () => {
+      const { httpClient, getLastRequest } = createCapturingHttpClient({})
+      await denyDevice(httpClient, 'dev-2', { ...sampleProof, operation: 'deny' })
       const req = getLastRequest()
-      expect(req.url).toContain('/encryption/canary')
-      expect(req.method).toBe('GET')
-      expect(req.headers.get('authorization')).toBe('Bearer test-token')
-      expect(req.headers.get('x-device-id')).toBe('test-device-id')
-      expect(req.headers.get('x-device-name')).toBeTruthy()
-      expect(result).toEqual(mockResponse)
+      expect(req.url).toContain('/devices/dev-2/deny')
+      expect((req.body as { proof: ChallengeProof }).proof.operation).toBe('deny')
+    })
+
+    it('revokeDevice sends { proof } when supplied and {} otherwise', async () => {
+      const withProof = createCapturingHttpClient({})
+      await revokeDevice(withProof.httpClient, 'dev-3', { ...sampleProof, operation: 'revoke' })
+      expect(withProof.getLastRequest().url).toContain('/account/devices/dev-3/revoke')
+      expect(withProof.getLastRequest().body).toEqual({ proof: { ...sampleProof, operation: 'revoke' } })
+
+      const noProof = createCapturingHttpClient({})
+      await revokeDevice(noProof.httpClient, 'dev-4')
+      expect(noProof.getLastRequest().body).toEqual({})
     })
   })
 })

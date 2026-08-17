@@ -15,6 +15,7 @@ export {
   deleteRevokedBridgeDevice,
   setDeviceNodeId,
   getTrustedNodeIds,
+  listTrustedDeviceIds,
   countActiveDevices,
 } from './devices'
 
@@ -46,4 +47,15 @@ export {
   deleteEnvelope,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
+  replaceEncryptionMetadata,
+  flipSchemeToV2,
+  bumpKeyVersion,
+  setPrimaryKeyId,
+  getWrappedKey,
+  listWrappedKeys,
+  insertWrappedKey,
+  updateWrappedKey,
+  issueChallengeNonce,
+  consumeChallengeNonce,
+  deleteExpiredOrConsumedNonces,
 } from './encryption'

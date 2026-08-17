@@ -110,7 +110,7 @@ describe('Inference Routes', () => {
       expect(response.headers.get('Connection')).toBe('keep-alive')
 
       expect(mockCreateCompletion).toHaveBeenCalledWith({
-        model: 'accounts/fireworks/models/deepseek-v4-flash',
+        model: 'accounts/fireworks/models/deepseek-v4-flash-0731',
         messages: validRequestBody.messages,
         temperature: validRequestBody.temperature,
         tools: undefined,
@@ -135,7 +135,7 @@ describe('Inference Routes', () => {
       expect(getInferenceClientMock).toHaveBeenCalledWith('fireworks')
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'accounts/fireworks/models/deepseek-v4-flash',
+          model: 'accounts/fireworks/models/deepseek-v4-flash-0731',
         }),
       )
     })

@@ -47,7 +47,9 @@ export const supportedModels: Record<string, ModelConfig> = {
   },
   'deepseek-v4-flash': {
     provider: 'fireworks',
-    internalName: 'accounts/fireworks/models/deepseek-v4-flash',
+    // Fireworks deprecated the serverless deepseek-v4-flash preview (404 NOT_FOUND
+    // since 2026-08-15); 0731 is the official release that supersedes it.
+    internalName: 'accounts/fireworks/models/deepseek-v4-flash-0731',
   },
 }
 

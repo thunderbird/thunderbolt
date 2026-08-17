@@ -3,57 +3,47 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { kdfIterations } from '@shared/e2ee-types'
 
-import { encodeRecoveryKey, decodeRecoveryKey } from './recovery-key'
-import { generateCK, encrypt, decrypt } from './primitives'
+import {
+  generateRecoverySeed,
+  encodeRecoverySeed,
+  decodeRecoveryKey,
+  deriveAKFromSeed,
+  generateKdfSalt,
+} from './recovery-key'
+import { base64ToUint8Array, generateDEK, unwrapDEK, wrapDEK } from './primitives'
 
-describe('encodeRecoveryKey', () => {
-  it('produces a 24-word mnemonic', async () => {
-    const ck = await generateCK(true)
-    const mnemonic = await encodeRecoveryKey(ck)
-    const words = mnemonic.split(' ')
-    expect(words).toHaveLength(24)
+describe('generateRecoverySeed', () => {
+  it('produces 32 random bytes', () => {
+    const seed = generateRecoverySeed()
+    expect(seed.length).toBe(32)
+    expect(generateRecoverySeed()).not.toEqual(seed)
   })
+})
 
-  it('produces only lowercase words', async () => {
-    const ck = await generateCK(true)
-    const mnemonic = await encodeRecoveryKey(ck)
+describe('encodeRecoverySeed', () => {
+  it('produces a 24-word lowercase mnemonic', () => {
+    const mnemonic = encodeRecoverySeed(generateRecoverySeed())
+    expect(mnemonic.split(' ')).toHaveLength(24)
     expect(mnemonic).toBe(mnemonic.toLowerCase())
   })
 })
 
 describe('decodeRecoveryKey', () => {
-  it('round-trips: encode then decode produces a working key', async () => {
-    const originalCK = await generateCK(true)
-    const mnemonic = await encodeRecoveryKey(originalCK)
-    const restoredCK = await decodeRecoveryKey(mnemonic)
-
-    const encrypted = await encrypt('test data', originalCK)
-    const decrypted = await decrypt(encrypted, restoredCK)
-    expect(decrypted).toBe('test data')
+  it('round-trips: encode then decode returns the same seed', () => {
+    const seed = generateRecoverySeed()
+    expect(decodeRecoveryKey(encodeRecoverySeed(seed))).toEqual(seed)
   })
 
-  it('accepts extra whitespace in the input', async () => {
-    const ck = await generateCK(true)
-    const mnemonic = await encodeRecoveryKey(ck)
-    const withExtraSpaces = `  ${mnemonic.replace(/ /g, '   ')}  `
-    const restored = await decodeRecoveryKey(withExtraSpaces)
-    expect(restored.algorithm.name).toBe('AES-GCM')
+  it('accepts extra whitespace and mixed case', () => {
+    const seed = generateRecoverySeed()
+    const mnemonic = encodeRecoverySeed(seed)
+    expect(decodeRecoveryKey(`  ${mnemonic.replace(/ /g, '   ')}  `.toUpperCase())).toEqual(seed)
   })
 
-  it('accepts mixed case input', async () => {
-    const ck = await generateCK(true)
-    const mnemonic = await encodeRecoveryKey(ck)
-    const restored = await decodeRecoveryKey(mnemonic.toUpperCase())
-    expect(restored.algorithm.name).toBe('AES-GCM')
-  })
-
-  it('rejects an invalid mnemonic (bad checksum)', async () => {
-    const ck = await generateCK(true)
-    const mnemonic = await encodeRecoveryKey(ck)
-    const words = mnemonic.split(' ')
-    // Each swap has a 1/256 chance of still having a valid checksum.
-    // Try multiple swaps so the test is effectively deterministic.
+  it('rejects an invalid mnemonic (bad checksum)', () => {
+    const words = encodeRecoverySeed(generateRecoverySeed()).split(' ')
     for (let i = 0; i < words.length - 1; i++) {
       if (words[i] === words[i + 1]) {
         continue
@@ -61,7 +51,7 @@ describe('decodeRecoveryKey', () => {
       const corrupted = [...words]
       ;[corrupted[i], corrupted[i + 1]] = [corrupted[i + 1], corrupted[i]]
       try {
-        await decodeRecoveryKey(corrupted.join(' '))
+        decodeRecoveryKey(corrupted.join(' '))
       } catch {
         return // checksum correctly rejected
       }
@@ -69,15 +59,64 @@ describe('decodeRecoveryKey', () => {
     throw new Error('All swaps produced valid checksums (astronomically unlikely)')
   })
 
-  it('rejects a word not in the wordlist', async () => {
-    const fakeWords = Array(24).fill('zzzznotaword').join(' ')
-    await expect(decodeRecoveryKey(fakeWords)).rejects.toThrow('Invalid recovery phrase')
+  it('rejects a word not in the wordlist', () => {
+    expect(() => decodeRecoveryKey(Array(24).fill('zzzznotaword').join(' '))).toThrow('Invalid recovery phrase')
   })
 
-  it('rejects wrong word count', async () => {
-    const ck = await generateCK(true)
-    const mnemonic = await encodeRecoveryKey(ck)
-    const tooFew = mnemonic.split(' ').slice(0, 12).join(' ')
-    await expect(decodeRecoveryKey(tooFew)).rejects.toThrow()
+  it('rejects wrong word count', () => {
+    const tooFew = encodeRecoverySeed(generateRecoverySeed()).split(' ').slice(0, 12).join(' ')
+    expect(() => decodeRecoveryKey(tooFew)).toThrow()
+  })
+})
+
+describe('deriveAKFromSeed', () => {
+  it('pins the KDF iteration count at 600k', () => {
+    expect(kdfIterations).toBe(600_000)
+  })
+
+  it('derives a non-extractable AES-KW key with wrap/unwrap usages by default', async () => {
+    const ak = await deriveAKFromSeed(generateRecoverySeed(), generateKdfSalt())
+    expect(ak.algorithm.name).toBe('AES-KW')
+    expect(ak.extractable).toBe(false)
+    expect([...ak.usages].sort()).toEqual(['unwrapKey', 'wrapKey'])
+  })
+
+  it('derives the same AK from the same seed + salt (deterministic)', async () => {
+    const seed = generateRecoverySeed()
+    const salt = generateKdfSalt()
+    const raw1 = new Uint8Array(
+      await crypto.subtle.exportKey('raw', await deriveAKFromSeed(seed, salt, { extractable: true })),
+    )
+    const raw2 = new Uint8Array(
+      await crypto.subtle.exportKey('raw', await deriveAKFromSeed(seed, salt, { extractable: true })),
+    )
+    expect(raw1).toEqual(raw2)
+  })
+
+  it('derives a different AK for a different salt', async () => {
+    const seed = generateRecoverySeed()
+    const raw1 = new Uint8Array(
+      await crypto.subtle.exportKey('raw', await deriveAKFromSeed(seed, generateKdfSalt(), { extractable: true })),
+    )
+    const raw2 = new Uint8Array(
+      await crypto.subtle.exportKey('raw', await deriveAKFromSeed(seed, generateKdfSalt(), { extractable: true })),
+    )
+    expect(raw1).not.toEqual(raw2)
+  })
+
+  it('derived AK wraps and unwraps a DEK across independent derivations', async () => {
+    const seed = generateRecoverySeed()
+    const salt = generateKdfSalt()
+    const wrapped = await wrapDEK(await generateDEK(true), await deriveAKFromSeed(seed, salt))
+    const unwrapped = await unwrapDEK(wrapped, await deriveAKFromSeed(seed, salt))
+    expect(unwrapped.algorithm.name).toBe('AES-GCM')
+  })
+})
+
+describe('generateKdfSalt', () => {
+  it('produces base64 of 32 random bytes', () => {
+    const salt = generateKdfSalt()
+    expect(base64ToUint8Array(salt).length).toBe(32)
+    expect(generateKdfSalt()).not.toBe(salt)
   })
 })

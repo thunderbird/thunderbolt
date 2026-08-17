@@ -70,11 +70,11 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
     // setting up v2, then seed a real legacy v1 account around those keys.
     await registerDeviceOnly(page)
     const [migratorKeys] = await waitForDeviceKeys(userId, 1)
-    // The scheme-1 encryption_metadata row is created asynchronously by device
-    // registration; poll rather than read once so a slow CI runner can't race
-    // ahead of the write and see null.
-    await expect.poll(() => getSchemeVersion(userId), { timeout: 15_000 }).toBe(1)
     const seeded = await seedV1Account(userId, [migratorKeys])
+    // `registerDeviceOnly` leaves the account at scheme "none"; the v1 seed above
+    // is what creates the scheme-1 metadata row. Assert the pre-migration state
+    // AFTER seeding (a direct DB write, so no poll needed).
+    expect(await getSchemeVersion(userId)).toBe(1)
 
     // The seamless upgrade: absorb CK as "v1", mint primary "0", CAS-flip.
     const newRecoveryPhrase = await runSeamlessMigration(page)

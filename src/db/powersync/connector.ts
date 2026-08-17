@@ -6,7 +6,9 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
-import { encodeForUpload } from '@/db/encryption'
+import { encodeForUpload, isEncryptionEnabled } from '@/db/encryption'
+import { getAK, getPrimaryKeyId, storePrimaryKeyId } from '@/crypto'
+import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
 /**
@@ -155,6 +157,40 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
   }
 
   /**
+   * Ensure `codec.encode` can select a valid primary DEK before a batch is
+   * encoded (plan TD3). When E2EE is enabled and this device completed setup
+   * (an AK exists) but the primary key_id pointer is missing from IndexedDB, a
+   * light metadata fetch restores it. After a rotation no fetch is needed:
+   * `storePrimaryKeyId` + the keyring-invalidate broadcast already moved the
+   * pointer, so the next batch picks up the new primary automatically.
+   *
+   * Failures are soft (warn + continue): the codec falls back to the initial
+   * DEK when staged, and otherwise applies its own fail-open/fail-closed rules.
+   */
+  private async ensurePrimaryKeyIdLoaded(): Promise<void> {
+    try {
+      if (!isEncryptionEnabled() || (await getPrimaryKeyId()) !== null) {
+        return
+      }
+      if (!(await getAK())) {
+        return // Setup incomplete — nothing to load; encode fails open by design
+      }
+      const response = await this.fetchFn(`${this.backendUrl}/encryption/canary`, {
+        headers: getAuthenticatedHeaders(),
+        credentials: isSsoMode() ? 'include' : undefined,
+      })
+      if (!response.ok) {
+        console.warn('[PowerSync] Failed to load primary key_id before upload:', response.status)
+        return
+      }
+      const metadata = (await response.json()) as Pick<EncryptionMetadataResponse, 'primary_key_id'>
+      await storePrimaryKeyId(metadata.primary_key_id)
+    } catch (error) {
+      console.warn('[PowerSync] Error loading primary key_id before upload:', error)
+    }
+  }
+
+  /**
    * Upload local changes to the backend.
    * This is called by PowerSync when there are pending changes in the upload queue.
    */
@@ -165,6 +201,9 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     if (!transaction) {
       return // No changes to upload
     }
+
+    // Make sure encode can select a valid primary DEK before processing the batch (TD3).
+    await this.ensurePrimaryKeyIdLoaded()
 
     try {
       // Convert CRUD operations to our API format (encrypt encrypted columns)

@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
 import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
+import { useConfigStore } from '@/api/config-store'
+import { clearAllKeys, generateAK, getPrimaryKeyId, storeAK, storePrimaryKeyId } from '@/crypto'
+import type { AbstractPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
@@ -293,5 +297,78 @@ describe('ThunderboltConnector', () => {
     } finally {
       errorSpy.mockRestore()
     }
+  })
+})
+
+describe('ThunderboltConnector primary-key load (TD3)', () => {
+  let savedAuthMode: string | undefined
+  let fetchMock: ReturnType<typeof mock>
+
+  // A DELETE op keeps `encodeForUpload` a no-op, so uploadData exercises only the
+  // primary-key-load path we're testing (encryption of a real column is Track C's concern).
+  const makeDatabase = (): AbstractPowerSyncDatabase =>
+    ({
+      getNextCrudTransaction: async () => ({
+        crud: [{ op: 'DELETE', table: 'tasks', id: 'row-1', opData: null }],
+        complete: async () => {},
+      }),
+    }) as unknown as AbstractPowerSyncDatabase
+
+  const okResponse = (body: unknown) =>
+    new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+  const requestedUrls = (): string[] => fetchMock.mock.calls.map((call) => call[0] as string)
+
+  beforeEach(async () => {
+    savedAuthMode = import.meta.env.VITE_AUTH_MODE
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    setAuthToken(authToken)
+    fetchMock = mock(() => Promise.resolve(okResponse({})))
+    await clearAllKeys()
+    useConfigStore.getState().updateConfig({})
+  })
+
+  afterEach(async () => {
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    useConfigStore.getState().updateConfig({})
+    await clearAllKeys()
+    clearAuthToken()
+    clearDeviceId()
+  })
+
+  it('fetches metadata and stores the primary key_id when E2EE is on, an AK exists, and none is loaded', async () => {
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    await storeAK(await generateAK())
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('/encryption/canary') ? okResponse({ primary_key_id: '0' }) : okResponse({})),
+    )
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    await connector.uploadData(makeDatabase())
+
+    expect(await getPrimaryKeyId()).toBe('0')
+    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(true)
+    expect(requestedUrls().some((url) => url.includes('/powersync/upload'))).toBe(true)
+  })
+
+  it('does not fetch metadata when E2EE is disabled', async () => {
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    await connector.uploadData(makeDatabase())
+
+    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
+    expect(requestedUrls().some((url) => url.includes('/powersync/upload'))).toBe(true)
+  })
+
+  it('does not fetch metadata when a primary key_id is already loaded', async () => {
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    await storeAK(await generateAK())
+    await storePrimaryKeyId('3')
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    await connector.uploadData(makeDatabase())
+
+    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
+    expect(await getPrimaryKeyId()).toBe('3')
   })
 })

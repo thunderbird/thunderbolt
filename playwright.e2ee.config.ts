@@ -68,10 +68,18 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `bun run dev -- --port ${frontendPort}`,
+      // Serve a production BUILD via `vite preview`, NOT the dev server. This
+      // suite boots several browser contexts, and the vite dev server compiles
+      // the wa-sqlite worker + WASM on demand — too slowly under CI load for a
+      // second context to initialize its local DB within the app's 30s
+      // dbReadyTimeout, which surfaced as "Failed to initialize app". A prebuilt
+      // bundle serves those assets statically so DB init is fast and
+      // deterministic (and the whole suite runs faster).
+      command: `bun run build && bun run preview -- --port ${frontendPort} --strictPort`,
       url: `http://localhost:${frontendPort}`,
       reuseExistingServer: false,
-      timeout: 120_000,
+      // Covers the one-time production build + preview startup on a cold runner.
+      timeout: 240_000,
       env: {
         VITE_AUTH_MODE: 'consumer',
         VITE_SKIP_ONBOARDING: 'true',

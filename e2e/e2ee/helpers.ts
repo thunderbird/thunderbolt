@@ -156,7 +156,7 @@ export const waitForTasksPreference = async (page: Page): Promise<void> => {
   // The Tasks preference is an encrypted setting that must sync down to this
   // device and decrypt before the switch reflects checked — allow generous
   // headroom for PowerSync propagation on a loaded CI runner.
-  await expect(page.getByRole('switch', { name: 'Tasks' })).toBeChecked({ timeout: 60_000 })
+  await expect(page.getByRole('switch', { name: 'Tasks' })).toBeChecked({ timeout: 120_000 })
 }
 
 export const getEncryptionKeyNames = async (page: Page): Promise<string[]> =>

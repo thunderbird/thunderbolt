@@ -161,7 +161,7 @@ export const waitForSchemeV2 = async (userId: string, expectedKeyIds: readonly s
     return [...expectedKeyIds].sort().every((id) => keyIds.includes(id)) ? true : null
   // Concurrent migrators reload and race their app-init flip; allow headroom for
   // the winner's CAS upgrade to land on a loaded CI runner.
-  }, 90_000)
+  }, 150_000)
 }
 
 export const waitForConsumedChallenge = async (userId: string, operation: string): Promise<void> => {

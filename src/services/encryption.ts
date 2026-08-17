@@ -760,8 +760,20 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   const { canaryIv, canaryCtext, canarySecret } = await createCanary(dek0, getUserId(), initialKeyId)
   const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
 
+  // Always cover THIS device from local key material — never rely solely on the
+  // synced `devices` table, which may not have replicated this (freshly trusted)
+  // device yet. Without self here, a migrator whose own row hasn't synced sends
+  // an empty `envelopes` array and the upgrade is rejected (422 minItems).
   const trustedDevices = await (opts.listTrustedDevices ?? listTrustedDeviceKeys)()
-  const envelopes = await buildDeviceEnvelopes(newAK, trustedDevices)
+  const self: TrustedDevicePublicKeys = {
+    id: getDeviceId(),
+    publicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+  }
+  const devicesToCover = trustedDevices.some((device) => device.id === self.id)
+    ? trustedDevices
+    : [self, ...trustedDevices]
+  const envelopes = await buildDeviceEnvelopes(newAK, devicesToCover)
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')
 

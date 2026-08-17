@@ -204,6 +204,13 @@
       "when": 1787672371406,
       "tag": "0028_seed-inference-prices",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1787862326481,
+      "tag": "0029_previous_vulture",
+      "breakpoints": true
     }
   ]
 }

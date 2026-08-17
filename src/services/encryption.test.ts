@@ -565,6 +565,24 @@ describe('encryption service (v2)', () => {
       expect(plaintext).toBe('hello legacy')
     })
 
+    it('covers this device from local keys even when the synced devices table is empty', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+
+      // Simulate PowerSync replication lag: the synced `devices` table has not
+      // surfaced this (freshly trusted) device yet. The migrator must still cover
+      // itself from local key material — otherwise `envelopes` is empty and the
+      // upgrade is rejected (this is the CI-only failure mode).
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [],
+      })
+
+      expect(result.outcome).toBe('migrated')
+      expect(server.envelopes.has('test-device-id')).toBe(true)
+    })
+
     it('falls through to the follower path on a 409 CAS-loss (candidate AK discarded)', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()

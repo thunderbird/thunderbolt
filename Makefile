@@ -163,12 +163,23 @@ run:
 	@# Kill any existing processes on the ports first
 	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@-lsof -ti:1420 | xargs kill -9 2>/dev/null || true
-	@# Start backend in background and frontend in foreground
+	@# Start backend in background and frontend in foreground.
+	@# Ctrl+C signals the whole process group, so every server gets SIGINT at once
+	@# and make waits for this shell before returning the terminal. The INT trap
+	@# keeps this shell alive past the interrupt (without it the shell dies with
+	@# the signal), and the port poll waits for the backend's ENTIRE process tree:
+	@# $$BACKEND_PID is the `bun run dev` script wrapper, which exits before the
+	@# `bun --watch src/index.ts` server beneath it has printed its graceful
+	@# shutdown, so a bare `wait` returns too early and that line lands on top of
+	@# the next shell prompt — looking like a hang that needs an extra Enter.
 	cd backend && bun run dev & \
 	BACKEND_PID=$$!; \
+	trap 'kill $$BACKEND_PID 2>/dev/null' INT TERM; \
 	echo "$(GREEN)✓ Backend started (PID: $$BACKEND_PID)$(NC)"; \
 	sleep 2; \
-	bun run dev || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+	bun run dev; \
+	kill $$BACKEND_PID 2>/dev/null; wait; \
+	for i in $$(seq 1 50); do lsof -ti:8000 >/dev/null 2>&1 || break; sleep 0.1; done
 
 # Alias for run
 dev: run

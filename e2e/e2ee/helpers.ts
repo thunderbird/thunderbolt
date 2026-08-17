@@ -44,7 +44,10 @@ export const loginViaConsumerOtp = async (page: Page, email: string): Promise<vo
   await page.goto('/')
 
   const emailInput = page.getByPlaceholder('Email')
-  await expect(emailInput).toBeVisible()
+  // The sign-in / waitlist surface is a lazy-loaded route; on a cold dev server
+  // under CI load its chunk can take well over the default 15s to compile+paint,
+  // so give the first app-boot-dependent wait a generous ceiling.
+  await expect(emailInput).toBeVisible({ timeout: 45_000 })
   const previousOtp = await getCurrentOtp(email)
   const previousRequestAt = otpRequestTimes.get(email)
   const cooldownRemaining = previousRequestAt ? 15_250 - (Date.now() - previousRequestAt) : 0
@@ -54,7 +57,7 @@ export const loginViaConsumerOtp = async (page: Page, email: string): Promise<vo
   await emailInput.fill(email)
   otpRequestTimes.set(email, Date.now())
   await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByText('Check your email', { exact: true })).toBeVisible()
+  await expect(page.getByText('Check your email', { exact: true })).toBeVisible({ timeout: 30_000 })
 
   const otp = await waitForOtp(email, previousOtp)
   await page.locator('[data-slot="input-otp"]').fill(otp)

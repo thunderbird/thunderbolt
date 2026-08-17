@@ -56,7 +56,11 @@ export default defineConfig({
   retries: isCI ? 1 : 0,
   workers: 1,
   reporter: isCI ? 'blob' : 'list',
-  timeout: 120_000,
+  // These are heavy multi-device flows (build + several OTP logins with cooldowns
+  // + cross-device sync waits) run serially on a constrained CI runner; 120s per
+  // test is too tight once the migration itself succeeds and the follower/recovery
+  // phases run.
+  timeout: 240_000,
   expect: { timeout: 15_000 },
   use: {
     ...devices['Desktop Chrome'],

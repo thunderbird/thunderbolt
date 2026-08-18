@@ -88,6 +88,7 @@ describe('sanitizeDebugTranscriptSecrets', () => {
 
   it('preserves token counters while redacting token credential keys', () => {
     const input = {
+      maxTokens: 4096,
       max_tokens: 4096,
       tokenCount: 200,
       tokensUsed: 150,
@@ -96,9 +97,14 @@ describe('sanitizeDebugTranscriptSecrets', () => {
       accessToken: 'secret',
       auth_token: 'secret',
       refreshToken: 'secret',
+      apiToken: 'opaque-api-value',
+      sessionToken: 'opaque-session-value',
+      csrfToken: 'opaque-csrf-value',
+      nextToken: 'opaque-page-cursor',
     } satisfies JsonValue
 
     expect(sanitizeDebugTranscriptSecrets(input)).toEqual({
+      maxTokens: 4096,
       max_tokens: 4096,
       tokenCount: 200,
       tokensUsed: 150,
@@ -107,6 +113,10 @@ describe('sanitizeDebugTranscriptSecrets', () => {
       accessToken: '[redacted]',
       auth_token: '[redacted]',
       refreshToken: '[redacted]',
+      apiToken: '[redacted]',
+      sessionToken: '[redacted]',
+      csrfToken: '[redacted]',
+      nextToken: '[redacted]',
     })
   })
 })

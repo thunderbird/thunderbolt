@@ -17,7 +17,6 @@ const tokenCounterKeys = new Set([
   'tokensused',
   'totaltokens',
 ])
-const tokenCredentialKeys = new Set(['token', 'accesstoken', 'authtoken', 'idtoken', 'refreshtoken'])
 const jwtPattern = /\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]{5,})?\b/g
 const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi
 const skProviderKeyPattern = /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}\b/gi
@@ -31,12 +30,8 @@ const isSensitiveKey = (key: string): boolean => {
   if (tokenCounterKeys.has(normalized)) {
     return false
   }
-  return (
-    tokenCredentialKeys.has(normalized) ||
-    /(?:^|[-_\s])token$/i.test(key) ||
-    /(?:access|auth|id|refresh)Token$/.test(key) ||
-    sensitiveKeyFragments.some((fragment) => normalized.includes(fragment))
-  )
+  // Pagination cursors also end in "token"; redacting them is safe and may hide signed material.
+  return normalized.endsWith('token') || sensitiveKeyFragments.some((fragment) => normalized.includes(fragment))
 }
 
 /** Redact credentials embedded in free-form transcript text. */

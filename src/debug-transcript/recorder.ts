@@ -11,12 +11,14 @@ import type {
   DebugTranscriptTurnNotes,
   DebugTranscriptTurnOutcome,
 } from './types'
+import { registerDebugTranscriptCapture } from './config-capture'
 
 const maxTurnsPerThread = 50
 const maxThreads = 10
 
 const notesByThread = new Map<string, DebugTranscriptTurnNotes[]>()
 const startedMonotonicByTurn = new WeakMap<DebugTranscriptTurnNotes, number>()
+const lastSystemPromptBatchByTurn = new WeakMap<DebugTranscriptTurnNotes, readonly string[]>()
 let captureEnabled = false
 let recorderDisabled = false
 let warned = false
@@ -63,7 +65,7 @@ const timestampFor = (turn: DebugTranscriptTurnNotes): DebugTranscriptTimestampV
   monotonicOffsetMs: Math.max(0, Math.round(performance.now() - startedMonotonicByTurn.get(turn)!)),
 })
 
-const currentAttempt = (turn: DebugTranscriptTurnNotes): number => Math.max(1, turn.failures.at(-1)?.attempt ?? 1)
+const currentAttempt = (turn: DebugTranscriptTurnNotes): number => (turn.failures.at(-1)?.attempt ?? 0) + 1
 
 const retryReasons = (turn: DebugTranscriptTurnNotes): string[] => [
   ...new Set(turn.failures.flatMap((failure) => failure.retryReasons)),
@@ -131,11 +133,15 @@ export const recordDebugTranscriptSystemPrompts = (
   prompts: readonly string[],
 ): void => {
   updateTurn(threadId, traceId, (turn) => {
-    for (const text of prompts) {
-      if (turn.systemPrompts.at(-1)?.text !== text) {
-        turn.systemPrompts.push({ text, attempt: currentAttempt(turn), timestamp: timestampFor(turn) })
-      }
+    const previousBatch = lastSystemPromptBatchByTurn.get(turn) ?? []
+    if (prompts.length === previousBatch.length && prompts.every((text, index) => text === previousBatch[index])) {
+      return
     }
+    const attempt = currentAttempt(turn)
+    for (const text of prompts) {
+      turn.systemPrompts.push({ text, attempt, timestamp: timestampFor(turn) })
+    }
+    lastSystemPromptBatchByTurn.set(turn, [...prompts])
   })
 }
 
@@ -210,3 +216,6 @@ export const clearDebugTranscriptRecorder = (): void => {
   recorderDisabled = false
   warned = false
 }
+
+// Importing the recorder must seed capture before the first turn can begin.
+registerDebugTranscriptCapture(setDebugTranscriptCaptureEnabled)

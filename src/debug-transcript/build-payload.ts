@@ -5,6 +5,7 @@
 import type { Session } from '@/contexts/auth-context'
 import { getPlatform } from '@/lib/platform'
 import type { ThunderboltUIMessage } from '@/types'
+import { debugTranscriptClientPayloadTargetBytes } from '@shared/debug-transcript-contract'
 import { extractDebugTranscriptToolCalls } from './message-tool-calls'
 import { getDebugTranscriptCaptureStatus, getDebugTranscriptNotes } from './recorder'
 import { sanitizeDebugTranscriptSecrets } from './sanitizer'
@@ -15,7 +16,6 @@ import type {
   DebugTranscriptTurnV1,
 } from './types'
 
-const maxPayloadBytes = 1_500_000
 const payloadEncoder = new TextEncoder()
 
 export type BuildDebugTranscriptPayloadInput = {
@@ -115,7 +115,7 @@ const serializedPayloadBytes = (payload: DebugTranscriptPayloadV1): number =>
   payloadEncoder.encode(JSON.stringify(payload)).byteLength
 
 const boundPayload = (payload: DebugTranscriptPayloadV1): DebugTranscriptPayloadV1 => {
-  while (payload.turns.length > 1 && serializedPayloadBytes(payload) > maxPayloadBytes) {
+  while (payload.turns.length > 1 && serializedPayloadBytes(payload) > debugTranscriptClientPayloadTargetBytes) {
     payload.turns.shift()
   }
   return payload

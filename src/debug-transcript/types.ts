@@ -7,7 +7,7 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export type DebugTranscriptEngine = 'pi' | 'legacy' | 'acp'
 export type DebugTranscriptTurnSource = 'live' | 'persisted'
 export type DebugTranscriptTurnOutcome = 'success' | 'error' | 'abort'
-export type DebugTranscriptToolStatus = 'ok' | 'error'
+export type DebugTranscriptToolStatus = 'ok' | 'error' | 'incomplete'
 
 export type DebugTranscriptTimestampV1 = {
   wallClock: string

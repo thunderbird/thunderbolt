@@ -29,6 +29,7 @@ import {
   recordDebugTranscriptFailure,
   recordDebugTranscriptRetry,
 } from '@/debug-transcript/recorder'
+import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
 import type {
   DebugTranscriptEngine,
   DebugTranscriptMessageMetadataV1,
@@ -678,7 +679,7 @@ export const createChatInstance = (
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
   let lastError: Error | null = null
-  const getAttemptsMade = (): number => retryCount + 1
+  const getAttemptsMade = (): number => attemptsMadeFromCompletedRetries(retryCount)
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
     webToolBudgetRevision: 0,
@@ -881,7 +882,7 @@ export const createChatInstance = (
       }
 
       const isEmptyTurn = !isError && !lastError && !message?.parts?.length
-      const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? 'empty-response' : 'unknown')
+      const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? emptyResponseRetryReason : 'unknown')
 
       if (retryCount < maxRetries) {
         const attemptsMade = getAttemptsMade()

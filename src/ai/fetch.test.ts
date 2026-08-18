@@ -6,20 +6,67 @@ import { describe, expect, it, mock } from 'bun:test'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { fetch as baseFetch } from '@/lib/fetch'
-import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
+import type { NamedMCPClient } from '@/lib/mcp-provider'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import type { Model, Skill } from '@/types'
 import type { Tool } from 'ai'
 import {
+  beginDebugTranscriptTurn,
+  clearDebugTranscriptRecorder,
+  getDebugTranscriptNotes,
+  recordDebugTranscriptSystemPrompts,
+  setDebugTranscriptCaptureEnabled,
+} from '@/debug-transcript/recorder'
+import {
   addSkillTool,
   buildVolatileSystemNotes,
   mergeMcpTools,
+  recordLegacyEmptyResponseRetry,
   resolveOpenAiCompatConnection,
   sanitizeToolPrefix,
   selectPromptSkillDefinitions,
 } from './fetch'
+
+describe('legacy empty-response retry capture', () => {
+  it('records the completed attempt and advances prompt capture to the next attempt', () => {
+    clearDebugTranscriptRecorder()
+    setDebugTranscriptCaptureEnabled(true)
+    beginDebugTranscriptTurn({
+      threadId: 'thread-retry',
+      traceId: 'trace-retry',
+      engine: 'legacy',
+      model: { id: 'model-1', name: 'Test model', provider: 'test' },
+      agentId: 'built-in',
+    })
+
+    try {
+      recordLegacyEmptyResponseRetry(undefined, { threadId: 'thread-retry', traceId: 'trace-retry' }, 1)
+      recordDebugTranscriptSystemPrompts('thread-retry', 'trace-retry', ['Retry system prompt'])
+
+      expect(getDebugTranscriptNotes('thread-retry')[0]).toMatchObject({
+        failures: [{ attempt: 1, retryReasons: ['empty-response'] }],
+        systemPrompts: [{ text: 'Retry system prompt', attempt: 2 }],
+      })
+    } finally {
+      setDebugTranscriptCaptureEnabled(false)
+      clearDebugTranscriptRecorder()
+    }
+  })
+
+  it('keeps the PostHog empty-response vocabulary unchanged', () => {
+    const recordRetry = mock(() => {})
+
+    recordLegacyEmptyResponseRetry({ recordRetry }, undefined, 1)
+
+    expect(recordRetry).toHaveBeenCalledWith({
+      layer: 'empty_response',
+      reason: 'empty_response',
+      attempt: 2,
+    })
+  })
+})
 
 /** Mirror the `MCPClientError` the SDK throws after a transport drop. The
  *  runtime instance `name` is `'MCPClientError'` (the `AI_MCPClientError`
@@ -28,7 +75,7 @@ const closedError = (message = 'Connection closed') => Object.assign(new Error(m
 
 /** A `Tool` is opaque to `mergeMcpTools` (it only spreads the map), so a tagged
  *  sentinel is enough to assert which client's tools landed in the result. */
-const tool = (tag: string): Tool => ({ tag }) as unknown as Tool
+const tool = (tag: string): Tool => ({ tag }) as never
 
 /** Minimal fake satisfying the slice of `MCPClient` that `mergeMcpTools` uses,
  *  paired with the server identity. `name` becomes the tool prefix; `name`/`url`
@@ -38,7 +85,7 @@ const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedM
   id: `id-${name}`,
   name,
   url: `https://${name}.example.com`,
-  client: { tools, close: () => {} } as unknown as MCPClient,
+  client: { tools, close: () => {} } as never,
 })
 
 describe('sanitizeToolPrefix', () => {
@@ -253,7 +300,7 @@ describe('mergeMcpTools', () => {
       calls++
       throw closedError()
     })
-    const fresh = { tools: async () => ({ alpha: tool('fresh') }), close: () => {} } as unknown as MCPClient
+    const fresh = { tools: async () => ({ alpha: tool('fresh') }), close: () => {} } as never
     const reconnect = mock(async () => fresh)
 
     const { toolset } = await mergeMcpTools({}, [dropped], reconnect)
@@ -288,7 +335,7 @@ describe('mergeMcpTools', () => {
         throw closedError()
       },
       close: () => {},
-    } as unknown as MCPClient
+    } as never
     const healthy = named('github', async () => ({ beta: tool('b') }))
     const reconnect = mock(async () => stillBroken)
 
@@ -379,7 +426,7 @@ describe('mergeMcpTools', () => {
  *  are read by `resolveOpenAiCompatConnection` for the custom case, so the
  *  other fields don't need to be realistic. */
 const customModel = (url: string | null, apiKey: string | null = 'k'): Model =>
-  ({ provider: 'custom', url, apiKey }) as unknown as Model
+  ({ provider: 'custom', url, apiKey }) as never
 
 /** Distinguishable proxy-fetch stub so tests can assert transport dispatch by
  *  identity comparison: loopback URLs must NOT return this — they get baseFetch. */

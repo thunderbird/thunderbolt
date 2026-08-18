@@ -68,6 +68,10 @@ describe('isPiModelCandidate', () => {
 })
 
 describe('readProfileThinkingLevel', () => {
+  it('ignores a non-object JSON value from the synced profile column', () => {
+    expect(readProfileThinkingLevel(['high'] as never)).toBeNull()
+  })
+
   it('keeps valid reasoning fields when a sibling field is malformed', () => {
     expect(
       readProfileThinkingLevel({

@@ -56,14 +56,41 @@ describe('debug transcript notes', () => {
     })
   })
 
-  it('records a system prompt when it differs from the previous attempt', () => {
+  it('skips the same system prompt batch on the second and third attempts', () => {
     beginTurn('trace-prompts')
-    recordDebugTranscriptSystemPrompts('thread-1', 'trace-prompts', ['Prompt A'])
+    recordDebugTranscriptSystemPrompts('thread-1', 'trace-prompts', ['Prompt A', 'Prompt B'])
+    recordDebugTranscriptRetry('thread-1', 'trace-prompts', 'empty-response', 1)
+    recordDebugTranscriptSystemPrompts('thread-1', 'trace-prompts', ['Prompt A', 'Prompt B'])
     recordDebugTranscriptRetry('thread-1', 'trace-prompts', 'empty-response', 2)
-    recordDebugTranscriptSystemPrompts('thread-1', 'trace-prompts', ['Prompt A'])
-    recordDebugTranscriptSystemPrompts('thread-1', 'trace-prompts', ['Prompt B'])
-    recordDebugTranscriptRetry('thread-1', 'trace-prompts', 'empty-response', 3)
-    recordDebugTranscriptSystemPrompts('thread-1', 'trace-prompts', ['Prompt A'])
+    recordDebugTranscriptSystemPrompts('thread-1', 'trace-prompts', ['Prompt A', 'Prompt B'])
+
+    expect(getDebugTranscriptNotes('thread-1')[0]?.systemPrompts).toEqual([
+      expect.objectContaining({ text: 'Prompt A', attempt: 1 }),
+      expect.objectContaining({ text: 'Prompt B', attempt: 1 }),
+    ])
+  })
+
+  it('records a changed system prompt batch with the attempt in progress', () => {
+    beginTurn('trace-changed-prompts')
+    recordDebugTranscriptSystemPrompts('thread-1', 'trace-changed-prompts', ['Prompt A', 'Prompt B'])
+    recordDebugTranscriptRetry('thread-1', 'trace-changed-prompts', 'empty-response', 1)
+    recordDebugTranscriptSystemPrompts('thread-1', 'trace-changed-prompts', ['Prompt A', 'Changed B'])
+
+    expect(getDebugTranscriptNotes('thread-1')[0]?.systemPrompts).toEqual([
+      expect.objectContaining({ text: 'Prompt A', attempt: 1 }),
+      expect.objectContaining({ text: 'Prompt B', attempt: 1 }),
+      expect.objectContaining({ text: 'Prompt A', attempt: 2 }),
+      expect.objectContaining({ text: 'Changed B', attempt: 2 }),
+    ])
+  })
+
+  it('records A to B to A prompt oscillation across attempts', () => {
+    beginTurn('trace-oscillation')
+    recordDebugTranscriptSystemPrompts('thread-1', 'trace-oscillation', ['Prompt A'])
+    recordDebugTranscriptRetry('thread-1', 'trace-oscillation', 'empty-response', 1)
+    recordDebugTranscriptSystemPrompts('thread-1', 'trace-oscillation', ['Prompt B'])
+    recordDebugTranscriptRetry('thread-1', 'trace-oscillation', 'empty-response', 2)
+    recordDebugTranscriptSystemPrompts('thread-1', 'trace-oscillation', ['Prompt A'])
 
     expect(getDebugTranscriptNotes('thread-1')[0]?.systemPrompts).toEqual([
       expect.objectContaining({ text: 'Prompt A', attempt: 1 }),
@@ -141,11 +168,11 @@ describe('debug transcript notes', () => {
       errorClass: 'ProviderError',
       message: 'retry me',
     })
-    recordDebugTranscriptRetry('thread-1', 'trace-retry', 'provider-error', 2)
+    recordDebugTranscriptRetry('thread-1', 'trace-retry', 'provider-error', 1)
     finishDebugTranscriptTurn('thread-1', 'trace-retry', 'abort', 'pi')
 
     expect(getDebugTranscriptNotes('thread-1')[0]?.failures).toEqual([
-      expect.objectContaining({ attempt: 2, retryReasons: ['provider-error'], aborted: false }),
+      expect.objectContaining({ attempt: 1, retryReasons: ['provider-error'], aborted: false }),
       expect.objectContaining({ attempt: 2, retryReasons: ['provider-error'], aborted: true }),
     ])
   })

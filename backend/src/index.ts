@@ -15,12 +15,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import {
-  createAuthIpRateLimit,
-  createDebugTranscriptRateLimit,
-  createInferenceRateLimit,
-  createProRateLimit,
-} from '@/middleware/rate-limit'
+import { createAuthIpRateLimit, createUserTierRateLimit } from '@/middleware/rate-limit'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
@@ -40,8 +35,6 @@ import { createPowerSyncRoutes } from '@/api/powersync'
 import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
 import type { AppDeps } from '@/types'
 import { Elysia } from 'elysia'
-
-const maxRequestBodySize = 32 * 1024 * 1024
 
 /**
  * Create the main Elysia application
@@ -83,7 +76,7 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
-  const proRateLimit = createProRateLimit(database, rateLimitSettings)
+  const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
@@ -143,7 +136,7 @@ export const createApp = async (deps?: AppDeps) => {
           auth,
           fetchFn: deps?.fetchFn,
           logger: appLogger,
-          rateLimit: createInferenceRateLimit(database, rateLimitSettings),
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'inference'),
         }),
       )
       .use(createConfigRoutes(settings))
@@ -152,7 +145,7 @@ export const createApp = async (deps?: AppDeps) => {
           auth,
           database,
           settings,
-          rateLimit: createDebugTranscriptRateLimit(database, rateLimitSettings),
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'debug-transcript'),
         }),
       )
       .use(createPostHogRoutes(fetchFn))
@@ -210,9 +203,6 @@ const startServer = async () => {
         hostname,
         port: settings.port,
         reusePort: process.env.NODE_ENV === 'production',
-        // Existing routes cap uploads at 10 MB; 32 MB leaves ample room for
-        // protocol overhead and PowerSync batches while reducing Bun's 128 MB default.
-        maxRequestBodySize,
         // Must stay strictly above the ALB idle timeout (60s) — see deploy/pulumi; Bun cap is 255.
         // If the server closes first, the ALB reuses a dead connection and returns 502.
         idleTimeout: 120,

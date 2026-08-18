@@ -11,6 +11,8 @@ export type SubmitDebugTranscriptInput = {
   payload: DebugTranscriptPayloadV1
   userNote?: string
   clientVersion?: string
+  signal?: AbortSignal
+  timeout?: number
 }
 
 export type SubmitDebugTranscriptResult = {
@@ -20,7 +22,7 @@ export type SubmitDebugTranscriptResult = {
 /** Submit a sanitized debug transcript to the authenticated app backend. */
 export const submitDebugTranscript = (
   httpClient: HttpClient,
-  { threadId, payload, userNote, clientVersion }: SubmitDebugTranscriptInput,
+  { threadId, payload, userNote, clientVersion, signal, timeout }: SubmitDebugTranscriptInput,
 ): Promise<SubmitDebugTranscriptResult> => {
   const sanitizedUserNote = sanitizeDebugTranscriptText(userNote?.trim() ?? '') || undefined
   return httpClient
@@ -32,6 +34,8 @@ export const submitDebugTranscript = (
         userNote: sanitizedUserNote,
         clientVersion,
       },
+      signal,
+      timeout,
     })
     .json<SubmitDebugTranscriptResult>()
 }

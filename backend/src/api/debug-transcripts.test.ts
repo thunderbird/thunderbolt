@@ -7,11 +7,11 @@ import { session, user } from '@/db/auth-schema'
 import { debugTranscriptsTable } from '@/db/debug-transcript-schema'
 import { rateLimits } from '@/db/rate-limit-schema'
 import type { db as DbType } from '@/db/client'
-import { createDebugTranscriptRateLimit } from '@/middleware/rate-limit'
+import { createUserTierRateLimit } from '@/middleware/rate-limit'
+import { signTestToken } from '@/test-utils/auth-token'
 import { createTestDb, getSharedIsolatedTestDb } from '@/test-utils/db'
 import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { createTestSettings } from '@/test-utils/settings'
-import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
@@ -26,14 +26,6 @@ const validBody = {
   },
   userNote: 'The failure happened after reconnecting.',
   clientVersion: '0.1.123',
-}
-
-const betterAuthSecret = 'better-auth-secret-12345678901234567890'
-
-/** Sign a Better Auth bearer token for route tests. */
-const signToken = (token: string): string => {
-  const signature = createHmac('sha256', betterAuthSecret).update(token).digest('base64')
-  return `${token}.${signature}`
 }
 
 describe('Debug Transcripts API', () => {
@@ -94,7 +86,7 @@ describe('Debug Transcripts API', () => {
     )
   }
 
-  it('returns a coded 403 before parsing when debug transcripts are disabled', async () => {
+  it('returns a coded 403 from the disabled route', async () => {
     await createAuthenticatedUser()
     app = createDebugTranscriptsRoutes({
       auth: mockAuth,
@@ -284,7 +276,7 @@ describe('Debug Transcripts API', () => {
     })
 
     const response = await submitTranscript(JSON.stringify(validBody), {
-      authorization: `Bearer ${signToken(token)}`,
+      authorization: `Bearer ${signTestToken(token)}`,
     })
 
     expect(response.status).toBe(403)
@@ -331,7 +323,7 @@ describe('Debug Transcripts API rate limiting', () => {
       auth: mockAuth,
       database,
       settings: createTestSettings({ debugTranscriptsEnabled: true }),
-      rateLimit: createDebugTranscriptRateLimit(database, { enabled: true }),
+      rateLimit: createUserTierRateLimit(database, { enabled: true }, 'debug-transcript'),
     })
   })
 

@@ -13,10 +13,20 @@ import { useAuth } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts/http-client-context'
 import { submitDebugTranscript } from '@/debug-transcript/api'
 import { buildDebugTranscriptPayload } from '@/debug-transcript/build-payload'
-import { HttpError, type HttpClient } from '@/lib/http'
+import { HttpError } from '@/lib/http'
+import {
+  anonymousTranscriptForbiddenCode,
+  type DebugTranscriptErrorCode,
+  debugTranscriptsDisabledCode,
+  debugTranscriptTooLargeCode,
+} from '@shared/debug-transcript-contract'
 
 const genericErrorMessage = 'We could not send the transcript. Please check your connection and try again.'
-const debugTranscriptErrorBodySchema = z.object({ code: z.string().optional() })
+const debugTranscriptErrorBodySchema = z.object({
+  code: z
+    .enum([debugTranscriptsDisabledCode, debugTranscriptTooLargeCode, anonymousTranscriptForbiddenCode])
+    .optional(),
+})
 const debugTranscriptUploadTimeoutMs = 30_000
 
 type ShareDisabledInput = {
@@ -90,17 +100,17 @@ export const getShareDebugTranscriptDisabledReason = ({
 }
 
 /** Convert the debug-transcript API error contract into actionable user copy. */
-export const getDebugTranscriptErrorMessage = (status?: number, code?: string): string => {
+export const getDebugTranscriptErrorMessage = (status?: number, code?: DebugTranscriptErrorCode): string => {
   if (status === 429) {
     return 'You have reached the sharing limit. Please try again later.'
   }
-  if (code === 'DEBUG_TRANSCRIPTS_DISABLED') {
+  if (code === debugTranscriptsDisabledCode) {
     return 'Debug transcript sharing is turned off on this server.'
   }
-  if (code === 'DEBUG_TRANSCRIPT_TOO_LARGE') {
+  if (code === debugTranscriptTooLargeCode) {
     return 'This transcript is too large to upload.'
   }
-  if (code === 'ANONYMOUS_TRANSCRIPT_FORBIDDEN') {
+  if (code === anonymousTranscriptForbiddenCode) {
     return 'Sign in to a full account to share a debug transcript.'
   }
   if (status !== undefined && status >= 400 && status < 500) {
@@ -110,7 +120,7 @@ export const getDebugTranscriptErrorMessage = (status?: number, code?: string): 
 }
 
 /** Read a typed error code at the HTTP response boundary. */
-const readDebugTranscriptErrorCode = async (error: HttpError): Promise<string | undefined> => {
+const readDebugTranscriptErrorCode = async (error: HttpError): Promise<DebugTranscriptErrorCode | undefined> => {
   try {
     const result = debugTranscriptErrorBodySchema.safeParse(await error.response.json())
     return result.success ? result.data.code : undefined
@@ -118,17 +128,6 @@ const readDebugTranscriptErrorCode = async (error: HttpError): Promise<string | 
     return undefined
   }
 }
-
-/** Apply upload-specific cancellation and timeout controls without changing the transcript API. */
-const createDebugTranscriptRequestClient = (httpClient: HttpClient, signal: AbortSignal): HttpClient => ({
-  ...httpClient,
-  post: (url, options) =>
-    httpClient.post(url, {
-      ...options,
-      signal,
-      timeout: debugTranscriptUploadTimeoutMs,
-    }),
-})
 
 /**
  * Own the complete identified transcript-sharing flow while leaving the button,
@@ -173,11 +172,13 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
           authSession: authSession ?? null,
           appVersion: clientVersion,
         })
-        await submitDebugTranscript(createDebugTranscriptRequestClient(httpClient, controller.signal), {
+        await submitDebugTranscript(httpClient, {
           threadId,
           payload,
           userNote: state.userNote,
           clientVersion,
+          signal: controller.signal,
+          timeout: debugTranscriptUploadTimeoutMs,
         })
         if (controller.signal.aborted) {
           return

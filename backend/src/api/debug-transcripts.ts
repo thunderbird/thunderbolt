@@ -8,11 +8,17 @@ import type { Settings } from '@/config/settings'
 import { createDebugTranscript } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import {
+  anonymousTranscriptForbiddenCode,
+  debugTranscriptNoteMaxLength,
+  debugTranscriptServerPayloadMaxBytes,
+  debugTranscriptsDisabledCode,
+  debugTranscriptTooLargeCode,
+} from '@shared/debug-transcript-contract'
 import { Elysia, type AnyElysia, t } from 'elysia'
 
-const maxDebugTranscriptPayloadBytes = 2 * 1024 * 1024
 // Reserve space for the bounded metadata fields around the 2 MB payload.
-const maxDebugTranscriptRequestBytes = maxDebugTranscriptPayloadBytes + 4 * 1024
+const maxDebugTranscriptRequestBytes = debugTranscriptServerPayloadMaxBytes + 4 * 1024
 const debugTranscriptPathPattern = /\/debug-transcripts\/?$/
 
 type DebugTranscriptsRoutesOptions = {
@@ -29,19 +35,23 @@ export const createDebugTranscriptsRoutes = ({
   settings,
   rateLimit,
 }: DebugTranscriptsRoutesOptions) => {
+  if (!settings.debugTranscriptsEnabled) {
+    return new Elysia({ normalize: false }).group('/debug-transcripts', (routes) =>
+      routes.post('/', ({ set }) => {
+        set.status = 403
+        return {
+          error: 'Debug transcript uploads are disabled',
+          code: debugTranscriptsDisabledCode,
+        }
+      }),
+    )
+  }
+
   const requestGate = new Elysia().onRequest(({ request, set }) => {
-    // Elysia merges plugin request hooks into its parent, so constrain this
-    // pre-parse gate to the route with or without the parent /v1 prefix.
+    // Elysia hoists plugin request hooks into the parent. Keep this pre-parse
+    // size check path-scoped so unrelated routes are unaffected.
     if (!debugTranscriptPathPattern.test(new URL(request.url).pathname)) {
       return
-    }
-
-    if (!settings.debugTranscriptsEnabled) {
-      set.status = 403
-      return {
-        error: 'Debug transcript uploads are disabled',
-        code: 'DEBUG_TRANSCRIPTS_DISABLED',
-      }
     }
 
     const contentLength = request.headers.get('content-length')
@@ -53,7 +63,7 @@ export const createDebugTranscriptsRoutes = ({
       set.status = 413
       return {
         error: 'Debug transcript request exceeds maximum size',
-        code: 'DEBUG_TRANSCRIPT_TOO_LARGE',
+        code: debugTranscriptTooLargeCode,
       }
     }
   })
@@ -73,14 +83,14 @@ export const createDebugTranscriptsRoutes = ({
         async ({ body, set, user }) => {
           if (user.isAnonymous) {
             set.status = 403
-            return { error: 'Forbidden', code: 'ANONYMOUS_TRANSCRIPT_FORBIDDEN' }
+            return { error: 'Forbidden', code: anonymousTranscriptForbiddenCode }
           }
 
-          if (Buffer.byteLength(JSON.stringify(body.payload), 'utf8') > maxDebugTranscriptPayloadBytes) {
+          if (Buffer.byteLength(JSON.stringify(body.payload), 'utf8') > debugTranscriptServerPayloadMaxBytes) {
             set.status = 413
             return {
               error: 'Debug transcript payload exceeds 2 MB',
-              code: 'DEBUG_TRANSCRIPT_TOO_LARGE',
+              code: debugTranscriptTooLargeCode,
             }
           }
 
@@ -107,7 +117,7 @@ export const createDebugTranscriptsRoutes = ({
             }),
             schemaVersion: t.Integer({ minimum: 1, maximum: 1000 }),
             payload: t.Object({}, { additionalProperties: true }),
-            userNote: t.Optional(t.String({ maxLength: 2000 })),
+            userNote: t.Optional(t.String({ maxLength: debugTranscriptNoteMaxLength })),
             clientVersion: t.Optional(t.String({ maxLength: 100 })),
           }),
         },

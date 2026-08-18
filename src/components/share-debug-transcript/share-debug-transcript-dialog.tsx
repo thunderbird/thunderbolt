@@ -12,6 +12,7 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import { Textarea } from '@/components/ui/textarea'
+import { debugTranscriptNoteMaxLength } from '@shared/debug-transcript-contract'
 import { useId } from 'react'
 
 type ShareDebugTranscriptDialogProps = {
@@ -67,7 +68,7 @@ export const ShareDebugTranscriptDialog = ({
           <Textarea
             id={userNoteId}
             value={userNote}
-            maxLength={2000}
+            maxLength={debugTranscriptNoteMaxLength}
             placeholder="Describe the problem to help the engineers who operate this server investigate."
             disabled={isPending}
             onChange={(event) => onUserNoteChange(event.target.value)}

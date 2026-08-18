@@ -96,9 +96,7 @@ describe('getDebugTranscriptErrorMessage', () => {
   })
 
   it('maps rate limiting before considering the response code', () => {
-    expect(getDebugTranscriptErrorMessage(429, 'UNEXPECTED_CODE')).toBe(
-      'You have reached the sharing limit. Please try again later.',
-    )
+    expect(getDebugTranscriptErrorMessage(429)).toBe('You have reached the sharing limit. Please try again later.')
   })
 
   it('maps an oversized transcript response', () => {
@@ -111,7 +109,7 @@ describe('getDebugTranscriptErrorMessage', () => {
     expect(getDebugTranscriptErrorMessage(403, 'ANONYMOUS_TRANSCRIPT_FORBIDDEN')).toBe(
       'Sign in to a full account to share a debug transcript.',
     )
-    expect(getDebugTranscriptErrorMessage(422, 'VALIDATION_ERROR')).toBe('The transcript was rejected by the server.')
+    expect(getDebugTranscriptErrorMessage(422)).toBe('The transcript was rejected by the server.')
   })
 
   it('reserves the retryable connection message for network and server failures', () => {

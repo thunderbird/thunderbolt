@@ -6,21 +6,12 @@ import type { Settings } from '@/config/settings'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { devicesTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
+import { betterAuthTestSecret, signTestToken as signToken } from '@/test-utils/auth-token'
 import { createTestDb } from '@/test-utils/db'
-import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { clearSettingsCache } from '@/config/settings'
 import { createPowerSyncRoutes } from './powersync'
-
-/** Better Auth uses this default secret in test environments */
-const betterAuthSecret = 'better-auth-secret-12345678901234567890'
-
-/** Sign a raw session token for use in `Authorization: Bearer <signed>` headers (standard base64 to match getSignedCookie expectations) */
-const signToken = (token: string): string => {
-  const sig = createHmac('sha256', betterAuthSecret).update(token).digest('base64')
-  return `${token}.${sig}`
-}
 
 const powersyncSettings: Settings = {
   fireworksApiKey: '',
@@ -57,7 +48,7 @@ const powersyncSettings: Settings = {
   oidcIssuer: '',
   oidcDiscoveryUrl: '',
   betterAuthUrl: 'http://localhost:8000',
-  betterAuthSecret,
+  betterAuthSecret: betterAuthTestSecret,
   deviceAuthExpiresIn: '30m',
   deviceAuthInterval: '5s',
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,

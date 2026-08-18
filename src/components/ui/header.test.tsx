@@ -22,6 +22,8 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { SignInModalProvider } from '@/contexts'
+import { useConfigStore } from '@/api/config-store'
+import { createMockAuthClient } from '@/test-utils/auth-client'
 import { Header } from './header'
 
 /** A custom (synced) agent the thread is pinned to. */
@@ -39,13 +41,15 @@ const customAgent: Agent = {
   userId: 'user-1',
 }
 
+let authClient = createMockAuthClient()
+
 /** Wraps the component in everything `Header` touches: a router (it reads
  *  `location.pathname`), the sidebar context (`useSidebar`), the DAL/query
  *  providers so `useAllAgents` can run against the test database, and the
  *  sign-in modal context — so the suite is robust whether `Header` renders its
  *  mobile or desktop branch. */
 const TestWrapper = ({ children }: { children: ReactNode }) => {
-  const Provider = createTestProvider()
+  const Provider = createTestProvider({ authClient })
   return (
     <MemoryRouter initialEntries={['/chats/thread-1']}>
       <Provider>
@@ -110,11 +114,14 @@ describe('Header', () => {
 
   beforeEach(() => {
     forceMobileViewport()
+    useConfigStore.setState({ config: {} })
+    authClient = createMockAuthClient()
   })
 
   afterEach(async () => {
     cleanup()
     resetStore()
+    useConfigStore.setState({ config: {} })
     restoreViewport()
     await resetTestDatabase()
   })
@@ -181,6 +188,41 @@ describe('Header', () => {
     expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
     expect(wrapper).not.toHaveClass('[translate:-50%_0]')
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
+  })
+
+  it('hides chat actions when debug transcript sharing is not enabled', () => {
+    setupWithAgent(customAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    expect(screen.queryByLabelText('Chat actions')).toBeNull()
+  })
+
+  it('shows a disabled transcript action for an empty saved thread when enabled', async () => {
+    useConfigStore.setState({ config: { debugTranscriptsEnabled: true } })
+    setupWithAgent(customAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+    expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement).toHaveClass(
+      '[translate:calc(50cqw-100%-var(--touch-height-lg)-0.5rem)_0]',
+    )
+    fireEvent.click(screen.getByLabelText('Chat actions'))
+
+    expect(await screen.findByRole('button', { name: 'Share debug transcript' })).toBeDisabled()
+  })
+
+  it('hides transcript sharing from anonymous users', () => {
+    authClient = createMockAuthClient({
+      session: {
+        user: { id: 'anonymous-user', email: 'anonymous@example.com', isAnonymous: true },
+      },
+    })
+    useConfigStore.setState({ config: { debugTranscriptsEnabled: true } })
+    setupWithAgent(customAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    expect(screen.queryByLabelText('Chat actions')).toBeNull()
   })
 
   it('opens agent creation over the current chat route', async () => {

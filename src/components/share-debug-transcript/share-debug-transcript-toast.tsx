@@ -32,7 +32,7 @@ export const ShareDebugTranscriptToast = ({ open, onDismiss }: ShareDebugTranscr
       </div>
       <NotificationCard
         open={open}
-        icon={<CheckCircle2 className="size-5 text-primary" />}
+        icon={<CheckCircle2 className="size-[var(--icon-size-default)] text-primary" />}
         message={successMessage}
         onDismiss={onDismiss}
       />

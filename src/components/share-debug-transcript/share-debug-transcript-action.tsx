@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ChatSession } from '@/chats/chat-store'
+import { ShareDebugTranscriptButton } from './share-debug-transcript-button'
 import { ShareDebugTranscriptDialog } from './share-debug-transcript-dialog'
-import { ShareDebugTranscriptMenu } from './share-debug-transcript-menu'
 import { ShareDebugTranscriptToast } from './share-debug-transcript-toast'
 import { useShareDebugTranscriptState } from './use-share-debug-transcript-state'
 
@@ -18,7 +18,7 @@ export const ShareDebugTranscriptAction = ({ chatInstance, threadId }: ShareDebu
 
   return (
     <>
-      <ShareDebugTranscriptMenu {...state.menu} />
+      <ShareDebugTranscriptButton {...state.action} />
       <ShareDebugTranscriptDialog {...state.dialog} />
       <ShareDebugTranscriptToast {...state.toast} />
     </>

@@ -27,13 +27,11 @@ type ShareDisabledInput = {
 export type ShareDebugTranscriptState = {
   dialogOpen: boolean
   errorMessage: string | null
-  menuOpen: boolean
   successToastOpen: boolean
   userNote: string
 }
 
 export type ShareDebugTranscriptEvent =
-  | { type: 'MENU_CHANGED'; open: boolean }
   | { type: 'DIALOG_OPENED' }
   | { type: 'DIALOG_CLOSED' }
   | { type: 'NOTE_CHANGED'; note: string }
@@ -50,21 +48,18 @@ type UseShareDebugTranscriptStateOptions = {
 const initialState: ShareDebugTranscriptState = {
   dialogOpen: false,
   errorMessage: null,
-  menuOpen: false,
   successToastOpen: false,
   userNote: '',
 }
 
-/** Keep the coupled menu, dialog, and notification transitions atomic. */
+/** Keep the coupled button, dialog, and notification transitions atomic. */
 export const shareDebugTranscriptReducer = (
   state: ShareDebugTranscriptState,
   action: ShareDebugTranscriptEvent,
 ): ShareDebugTranscriptState => {
   switch (action.type) {
-    case 'MENU_CHANGED':
-      return { ...state, menuOpen: action.open }
     case 'DIALOG_OPENED':
-      return { ...state, dialogOpen: true, errorMessage: null, menuOpen: false, successToastOpen: false }
+      return { ...state, dialogOpen: true, errorMessage: null, successToastOpen: false }
     case 'DIALOG_CLOSED':
       return { ...state, dialogOpen: false, errorMessage: null, userNote: '' }
     case 'NOTE_CHANGED':
@@ -80,9 +75,19 @@ export const shareDebugTranscriptReducer = (
   }
 }
 
-/** Whether transcript sharing must be unavailable for the current chat state. */
-export const isShareDebugTranscriptDisabled = ({ hasMessages, chatStatus }: ShareDisabledInput): boolean =>
-  !hasMessages || chatStatus === 'submitted' || chatStatus === 'streaming'
+/** Explain why transcript sharing is unavailable for the current chat state. */
+export const getShareDebugTranscriptDisabledReason = ({
+  hasMessages,
+  chatStatus,
+}: ShareDisabledInput): string | null => {
+  if (chatStatus === 'submitted' || chatStatus === 'streaming') {
+    return 'Wait for the response to finish'
+  }
+  if (!hasMessages) {
+    return 'Available once the conversation has messages'
+  }
+  return null
+}
 
 /** Convert the debug-transcript API error contract into actionable user copy. */
 export const getDebugTranscriptErrorMessage = (status?: number, code?: string): string => {
@@ -126,7 +131,7 @@ const createDebugTranscriptRequestClient = (httpClient: HttpClient, signal: Abor
 })
 
 /**
- * Own the complete identified transcript-sharing flow while leaving the menu,
+ * Own the complete identified transcript-sharing flow while leaving the button,
  * dialog, and notification components presentational.
  */
 export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShareDebugTranscriptStateOptions) => {
@@ -201,17 +206,14 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
   }
 
   const dismissToast = useCallback(() => dispatch({ type: 'TOAST_DISMISSED' }), [])
+  const disabledReason = getShareDebugTranscriptDisabledReason({
+    hasMessages: messages.length > 0,
+    chatStatus: status,
+  })
 
   return {
-    menu: {
-      open: state.menuOpen,
-      disabled:
-        isPending ||
-        isShareDebugTranscriptDisabled({
-          hasMessages: messages.length > 0,
-          chatStatus: status,
-        }),
-      onOpenChange: (open: boolean) => dispatch({ type: 'MENU_CHANGED', open }),
+    action: {
+      disabledReason: isPending ? 'Sending…' : disabledReason,
       onShare: () => dispatch({ type: 'DIALOG_OPENED' }),
     },
     dialog: {

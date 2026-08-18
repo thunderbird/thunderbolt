@@ -46,15 +46,19 @@ export const ShareDebugTranscriptDialog = ({
       <ResponsiveModalContent className="flex flex-col gap-4 py-0">
         <ResponsiveModalDescription asChild>
           <div className="flex flex-col gap-2">
-            <p>This upload is identified and tied to your account. It is not anonymous.</p>
             <p>
-              The conversation log (older turns may be trimmed) will be stored, including your prompts, system prompts,
-              tool calls with their inputs and outputs, errors, and timestamps.
+              <span className="font-medium text-foreground">Identified upload.</span> This is tied to your account and
+              is not anonymous.
             </p>
             <p>
-              It will be stored on the server this app is connected to. The engineers who operate that server can read
-              it for debugging.
+              <span className="font-medium text-foreground">Conversation data.</span> Includes your prompts, system
+              prompts, tool calls with inputs and outputs, errors, and timestamps.
             </p>
+            <p>
+              <span className="font-medium text-foreground">Stored on the connected server.</span> The engineers who
+              operate this server can read the transcript for debugging.
+            </p>
+            <p>Older turns may be trimmed.</p>
           </div>
         </ResponsiveModalDescription>
 
@@ -64,7 +68,7 @@ export const ShareDebugTranscriptDialog = ({
             id={userNoteId}
             value={userNote}
             maxLength={2000}
-            placeholder="Describe the problem to help the server operators investigate."
+            placeholder="Describe the problem to help the engineers who operate this server investigate."
             disabled={isPending}
             onChange={(event) => onUserNoteChange(event.target.value)}
           />

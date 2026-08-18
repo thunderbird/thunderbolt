@@ -22,14 +22,25 @@ const defaultProps = {
 describe('ShareDebugTranscriptDialog', () => {
   afterEach(cleanup)
 
-  it('discloses the identified bounded-log upload before confirmation', () => {
+  it('presents every consent fact as scannable lines', () => {
     render(<ShareDebugTranscriptDialog {...defaultProps} />)
 
-    expect(screen.getByText('This upload is identified and tied to your account. It is not anonymous.')).toBeVisible()
-    expect(screen.getByText(/The conversation log \(older turns may be trimmed\) will be stored/)).toBeVisible()
-    expect(screen.getByText(/The engineers who operate that server can read it for debugging/)).toBeVisible()
+    expect(screen.getByText('Identified upload.').parentElement).toHaveTextContent(
+      'Identified upload. This is tied to your account and is not anonymous.',
+    )
+    expect(screen.getByText('Conversation data.').parentElement).toHaveTextContent(
+      'Conversation data. Includes your prompts, system prompts, tool calls with inputs and outputs, errors, and timestamps.',
+    )
+    expect(screen.getByText('Stored on the connected server.').parentElement).toHaveTextContent(
+      'Stored on the connected server. The engineers who operate this server can read the transcript for debugging.',
+    )
+    expect(screen.getByText('Older turns may be trimmed.')).not.toHaveClass('text-[length:var(--font-size-xs)]')
     const note = screen.getByLabelText('What went wrong? (optional)')
     expect(note).toHaveAttribute('maxlength', '2000')
+    expect(note).toHaveAttribute(
+      'placeholder',
+      'Describe the problem to help the engineers who operate this server investigate.',
+    )
     expect(note).not.toHaveAttribute('rows')
     expect(note.id).not.toBe('debug-transcript-user-note')
   })

@@ -280,7 +280,7 @@ export const Header = () => {
 
         {agentSelector}
 
-        {/* The thread menu stays in this stable parent across agent hydration.
+        {/* The transcript action stays in this stable parent across agent hydration.
             The agent selector docks to its left when both controls are present. */}
         <div {...dragProps} className="flex flex-1 items-center justify-end">
           {shareDebugTranscriptAction}

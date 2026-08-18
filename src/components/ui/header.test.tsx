@@ -70,13 +70,17 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
  *  `selectedAgent` directly (mirrors `chat-model-picker.test.tsx`, avoiding the
  *  DB write that `setSelectedAgent` performs). Pass `withThread: false` to
  *  simulate an unsaved new chat (no thread row yet). */
-const setupWithAgent = (agent: Agent, { withThread = true }: { withThread?: boolean } = {}) => {
+const setupWithAgent = (
+  agent: Agent,
+  { withThread = true, messages = [] }: { withThread?: boolean; messages?: ThunderboltUIMessage[] } = {},
+) => {
+  const chatInstance = new Chat<ThunderboltUIMessage>({ id: 'thread-1', messages })
   hydrateStore({
     // A real `Chat` (not the plain-object mock) so the AI SDK's `useChat`
     // subscription inside `HeaderAgentSelector` mounts cleanly. It stays in its
     // default `ready` status — the selector only reads `status` to disable
     // itself mid-stream.
-    chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-1' }),
+    chatInstance,
     chatThread: withThread ? createMockChatThread({ agentId: agent.id }) : null,
     id: 'thread-1',
     models: [createMockModel()],
@@ -93,6 +97,8 @@ const setupWithAgent = (agent: Agent, { withThread = true }: { withThread?: bool
     nextSessions.set('thread-1', { ...session, selectedAgent: agent })
     return { sessions: nextSessions }
   })
+
+  return chatInstance
 }
 
 /** Flushes the `useAllAgents` TanStack/PowerSync query so the seeded rows land
@@ -195,10 +201,10 @@ describe('Header', () => {
 
     render(<Header />, { wrapper: TestWrapper })
 
-    expect(screen.queryByLabelText('Chat actions')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Share debug transcript' })).toBeNull()
   })
 
-  it('shows a disabled transcript action for an empty saved thread when enabled', async () => {
+  it('shows a disabled direct action with an explanation for an empty saved thread', async () => {
     useConfigStore.setState({ config: { debugTranscriptsEnabled: true } })
     setupWithAgent(customAgent)
 
@@ -206,9 +212,22 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement).toHaveClass(
       '[translate:calc(50cqw-100%-var(--touch-height-lg)-0.5rem)_0]',
     )
-    fireEvent.click(screen.getByLabelText('Chat actions'))
+    const action = screen.getByRole('button', { name: 'Share debug transcript' })
+    expect(action).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.focus(action)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Available once the conversation has messages')
+  })
 
-    expect(await screen.findByRole('button', { name: 'Share debug transcript' })).toBeDisabled()
+  it('opens the consent dialog from the direct action', () => {
+    useConfigStore.setState({ config: { debugTranscriptsEnabled: true } })
+    setupWithAgent(customAgent, {
+      messages: [{ id: 'message-1', role: 'user', parts: [{ type: 'text', text: 'Help' }] }],
+    })
+
+    render(<Header />, { wrapper: TestWrapper })
+    fireEvent.click(screen.getByRole('button', { name: 'Share debug transcript' }))
+
+    expect(screen.getByRole('dialog', { name: 'Share debug transcript?' })).toBeVisible()
   })
 
   it('hides transcript sharing from anonymous users', () => {
@@ -222,7 +241,7 @@ describe('Header', () => {
 
     render(<Header />, { wrapper: TestWrapper })
 
-    expect(screen.queryByLabelText('Chat actions')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Share debug transcript' })).toBeNull()
   })
 
   it('opens agent creation over the current chat route', async () => {

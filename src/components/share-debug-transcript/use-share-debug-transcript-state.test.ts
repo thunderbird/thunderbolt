@@ -16,7 +16,7 @@ import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
 import {
   getDebugTranscriptErrorMessage,
-  isShareDebugTranscriptDisabled,
+  getShareDebugTranscriptDisabledReason,
   shareDebugTranscriptReducer,
   type ShareDebugTranscriptEvent,
   type ShareDebugTranscriptState,
@@ -28,7 +28,6 @@ afterEach(cleanup)
 const reducerState: ShareDebugTranscriptState = {
   dialogOpen: true,
   errorMessage: 'Stale error',
-  menuOpen: true,
   successToastOpen: true,
   userNote: 'Keep this context',
 }
@@ -52,7 +51,7 @@ describe('shareDebugTranscriptReducer', () => {
     {
       name: 'opening clears stale errors',
       event: { type: 'DIALOG_OPENED' },
-      expected: { dialogOpen: true, errorMessage: null, menuOpen: false, successToastOpen: false },
+      expected: { dialogOpen: true, errorMessage: null, successToastOpen: false },
     },
     {
       name: 'closing clears the note',
@@ -68,19 +67,24 @@ describe('shareDebugTranscriptReducer', () => {
   }
 })
 
-describe('isShareDebugTranscriptDisabled', () => {
-  it('disables sharing when the thread has no messages', () => {
-    expect(isShareDebugTranscriptDisabled({ hasMessages: false, chatStatus: 'ready' })).toBe(true)
+describe('getShareDebugTranscriptDisabledReason', () => {
+  it('explains response-in-flight states before message availability', () => {
+    expect(getShareDebugTranscriptDisabledReason({ hasMessages: false, chatStatus: 'submitted' })).toBe(
+      'Wait for the response to finish',
+    )
+    expect(getShareDebugTranscriptDisabledReason({ hasMessages: true, chatStatus: 'streaming' })).toBe(
+      'Wait for the response to finish',
+    )
   })
 
-  it('disables sharing while a turn is submitted or streaming', () => {
-    expect(isShareDebugTranscriptDisabled({ hasMessages: true, chatStatus: 'submitted' })).toBe(true)
-    expect(isShareDebugTranscriptDisabled({ hasMessages: true, chatStatus: 'streaming' })).toBe(true)
+  it('explains that an empty conversation needs messages', () => {
+    expect(getShareDebugTranscriptDisabledReason({ hasMessages: false, chatStatus: 'ready' })).toBe(
+      'Available once the conversation has messages',
+    )
   })
 
-  it('enables sharing for a settled thread with messages', () => {
-    expect(isShareDebugTranscriptDisabled({ hasMessages: true, chatStatus: 'ready' })).toBe(false)
-    expect(isShareDebugTranscriptDisabled({ hasMessages: true, chatStatus: 'error' })).toBe(false)
+  it('returns no reason when sharing is available', () => {
+    expect(getShareDebugTranscriptDisabledReason({ hasMessages: true, chatStatus: 'ready' })).toBeNull()
   })
 })
 
@@ -201,11 +205,12 @@ describe('useShareDebugTranscriptState errors', () => {
     })
 
     try {
-      act(() => result.current.menu.onShare())
+      act(() => result.current.action.onShare())
       act(() => result.current.dialog.onSubmit())
       await act(flushMicrotasks)
 
       expect(pendingRequest.current).toBeDefined()
+      expect(result.current.action.disabledReason).toBe('Sending…')
       act(() => result.current.dialog.onCancel())
 
       expect(pendingRequest.current?.signal.aborted).toBe(true)

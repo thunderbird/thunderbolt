@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { ShareDebugTranscriptToast } from './share-debug-transcript-toast'
 
-const successMessage = 'Sent — thank you. This helps the engineers who operate this server see exactly what happened.'
+const successMessage = 'Sent — thank you. This helps the Thunderbolt team see exactly what happened.'
 
 describe('ShareDebugTranscriptToast', () => {
   afterEach(cleanup)

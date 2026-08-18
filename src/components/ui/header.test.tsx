@@ -237,7 +237,7 @@ describe('Header', () => {
     await flushAgentsQuery()
     fireEvent.click(await screen.findByRole('button', { name: 'Share debug transcript' }))
 
-    expect(screen.getByRole('dialog', { name: 'Share debug transcript?' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: 'Show the Thunderbolt team what happened?' })).toBeVisible()
   })
 
   it('hides transcript sharing from anonymous users', async () => {

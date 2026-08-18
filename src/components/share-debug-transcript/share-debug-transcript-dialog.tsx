@@ -41,35 +41,49 @@ export const ShareDebugTranscriptDialog = ({
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange} showCloseButton={false}>
       <ResponsiveModalHeader className="text-left sm:text-left">
-        <ResponsiveModalTitle>Share debug transcript?</ResponsiveModalTitle>
+        <ResponsiveModalTitle>Show the Thunderbolt team what happened?</ResponsiveModalTitle>
       </ResponsiveModalHeader>
 
       <ResponsiveModalContent className="flex flex-col gap-4 py-0">
         <ResponsiveModalDescription asChild>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
             <p>
-              <span className="font-medium text-foreground">Identified upload.</span> This is tied to your account and
-              is not anonymous.
+              This sends the debug transcript to the Thunderbolt team — exactly what the agent did, step by step — so
+              they can work out what went wrong.
             </p>
-            <p>
-              <span className="font-medium text-foreground">Conversation data.</span> Includes your prompts, system
-              prompts, tool calls with inputs and outputs, errors, and timestamps.
-            </p>
-            <p>
-              <span className="font-medium text-foreground">Stored on the connected server.</span> The engineers who
-              operate this server can read the transcript for debugging.
-            </p>
-            <p>Older turns may be trimmed.</p>
+
+            <dl className="divide-y divide-border rounded-xl border border-border">
+              <div className="flex flex-col gap-1 p-3">
+                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">Who can read it?</dt>
+                <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
+                  The Thunderbolt team, plus whoever operates the server you&apos;re connected to, for debugging.
+                  It&apos;s tied to your account — it isn&apos;t anonymous.
+                </dd>
+              </div>
+              <div className="flex flex-col gap-1 p-3">
+                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">What&apos;s in it?</dt>
+                <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
+                  Your prompts, system prompts, tool calls with their inputs and outputs, errors, and timestamps. Older
+                  turns may be trimmed.
+                </dd>
+              </div>
+              <div className="flex flex-col gap-1 p-3">
+                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">Where is it kept?</dt>
+                <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
+                  On the connected server, in plaintext, until you delete your account.
+                </dd>
+              </div>
+            </dl>
           </div>
         </ResponsiveModalDescription>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor={userNoteId}>What went wrong? (optional)</Label>
+          <Label htmlFor={userNoteId}>Tell them what happened (optional)</Label>
           <Textarea
             id={userNoteId}
             value={userNote}
             maxLength={debugTranscriptNoteMaxLength}
-            placeholder="Describe the problem to help the engineers who operate this server investigate."
+            placeholder="In your own words: what were you trying to do, and what did the agent do instead?"
             disabled={isPending}
             onChange={(event) => onUserNoteChange(event.target.value)}
           />
@@ -87,10 +101,10 @@ export const ShareDebugTranscriptDialog = ({
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
+          Not now
         </Button>
         <Button type="button" isLoading={isPending} loadingLabel="Sending…" onClick={onSubmit}>
-          {errorMessage ? 'Retry' : 'Send transcript'}
+          {errorMessage ? 'Retry' : 'Send to the Thunderbolt team'}
         </Button>
       </div>
     </ResponsiveModal>

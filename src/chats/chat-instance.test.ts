@@ -68,8 +68,10 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     return {
       id: init.id ?? sessionId,
       messages: init.messages ?? [],
+      status: 'ready',
       regenerate,
       sendMessage,
+      stop: mock(() => Promise.resolve()),
     } as unknown as Chat<ThunderboltUIMessage>
   }
 
@@ -134,11 +136,21 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
       isError: false,
     })
 
+  const finishAbortedEmpty = () =>
+    onFinish!({
+      message: { id: 'aborted-empty', role: 'assistant', parts: [] },
+      messages: [],
+      isAbort: true,
+      isDisconnect: false,
+      isError: false,
+    })
+
   const getTurnBudget = () => budgets.at(-1)!
 
   return {
     finishSuccessfully,
     finishAborted,
+    finishAbortedEmpty,
     finishWithError,
     getTurnBudget,
     instance,
@@ -444,6 +456,67 @@ describe('createChatInstance — retry policy', () => {
     const autoRetry = trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
     expect(autoRetry?.reason).toBe('empty-response')
     expect(autoRetry?.attempt).toBe(1)
+  })
+
+  it('drops the empty assistant shell left when a loader turn is aborted', async () => {
+    const { instance, finishAbortedEmpty } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await finishAbortedEmpty()
+
+    // Without the drop, this empty shell re-triggers the recovery spinner and the
+    // Stop button stays up, forcing a second press (THU-791).
+    expect(instance.messages).toHaveLength(1)
+    expect(instance.messages[0]!.role).toBe('user')
+  })
+
+  it('finalizes a reasoning part left streaming when a turn is aborted mid-thinking', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'List things' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'reasoning', text: 'The user is asking…', state: 'streaming' }] },
+    ] as never
+
+    await finishAborted()
+
+    // Left streaming, the reasoning part keeps its spinner running after the stop
+    // (reasoning-group.tsx) even though the turn has settled (THU-791).
+    const last = instance.messages[instance.messages.length - 1] as { parts: Array<{ state?: string }> }
+    expect(last.parts[0]!.state).toBe('done')
+  })
+
+  it('keeps a partial assistant message when an aborted turn had content', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
+    ] as never
+
+    await finishAborted()
+
+    expect(instance.messages).toHaveLength(2)
+    expect(instance.messages[1]!.role).toBe('assistant')
+  })
+
+  it('stop() cancels a pending auto-retry and settles the session to idle', async () => {
+    const { finishWithError, regenerate, instance } = createRetryHarness()
+
+    await finishWithError()
+    // A retry is scheduled and the store reflects the in-flight recovery.
+    expect(useChatStore.getState().sessions.get(sessionId)?.retryCount).toBe(1)
+
+    await instance.stop()
+
+    // The scheduled retry is cancelled — advancing past every backoff never fires.
+    await getClock().tickAsync(30_000)
+    expect(regenerate).not.toHaveBeenCalled()
+
+    const session = useChatStore.getState().sessions.get(sessionId)
+    expect(session?.retryCount).toBe(0)
+    expect(session?.retriesExhausted).toBe(false)
   })
 
   it('keeps exponential backoff for empty-turn retries after the first', async () => {

@@ -15,7 +15,12 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
+import {
+  createAuthIpRateLimit,
+  createDebugTranscriptRateLimit,
+  createInferenceRateLimit,
+  createProRateLimit,
+} from '@/middleware/rate-limit'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
@@ -32,8 +37,11 @@ import { createHaystackRoutes } from '@/haystack'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
+import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
 import type { AppDeps } from '@/types'
 import { Elysia } from 'elysia'
+
+const maxRequestBodySize = 32 * 1024 * 1024
 
 /**
  * Create the main Elysia application
@@ -139,6 +147,14 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createConfigRoutes(settings))
+      .use(
+        createDebugTranscriptsRoutes({
+          auth,
+          database,
+          settings,
+          rateLimit: createDebugTranscriptRateLimit(database, rateLimitSettings),
+        }),
+      )
       .use(createPostHogRoutes(fetchFn))
       .use(
         createWaitlistRoutes({
@@ -194,6 +210,9 @@ const startServer = async () => {
         hostname,
         port: settings.port,
         reusePort: process.env.NODE_ENV === 'production',
+        // Existing routes cap uploads at 10 MB; 32 MB leaves ample room for
+        // protocol overhead and PowerSync batches while reducing Bun's 128 MB default.
+        maxRequestBodySize,
         // Must stay strictly above the ALB idle timeout (60s) — see deploy/pulumi; Bun cap is 255.
         // If the server closes first, the ALB reuses a dead connection and returns 502.
         idleTimeout: 120,

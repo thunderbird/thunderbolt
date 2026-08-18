@@ -13,7 +13,7 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-type RateLimitTier = 'inference' | 'pro' | 'auth'
+type RateLimitTier = 'inference' | 'pro' | 'auth' | 'debug-transcript'
 
 type RateLimitTierConfig = {
   max: number
@@ -29,11 +29,12 @@ export type IpRateLimitSettings = RateLimitSettings & {
 }
 
 /** Hardcoded per-tier limits. */
-const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
+const tierConfigs = {
   inference: { max: 60, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
-}
+  'debug-transcript': { max: 10, durationSecs: 60 * 60 },
+} satisfies Record<RateLimitTier, RateLimitTierConfig>
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
 const createLimiter = (database: typeof DbType, tier: RateLimitTier) => {
@@ -146,6 +147,15 @@ export const createProRateLimit = (database: typeof DbType, settings: RateLimitS
     return new Elysia()
   }
   const limiter = createLimiter(database, 'pro')
+  return createUserRateLimitMiddleware(limiter)
+}
+
+/** Create rate limit middleware for debug transcript uploads (keyed by user). */
+export const createDebugTranscriptRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  const limiter = createLimiter(database, 'debug-transcript')
   return createUserRateLimitMiddleware(limiter)
 }
 

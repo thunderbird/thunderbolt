@@ -11,7 +11,6 @@ import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { clearSettingsCache } from '@/config/settings'
-import { Elysia } from 'elysia'
 import { createPowerSyncRoutes } from './powersync'
 
 /** Better Auth uses this default secret in test environments */
@@ -63,6 +62,7 @@ const powersyncSettings: Settings = {
   deviceAuthInterval: '5s',
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   e2eeEnabled: true,
+  debugTranscriptsEnabled: false,
   rateLimitEnabled: false,
   swaggerEnabled: false,
   trustedProxy: '',
@@ -81,7 +81,7 @@ const powersyncSettings: Settings = {
 }
 
 describe('PowerSync API', () => {
-  let app: Elysia
+  let app: ReturnType<typeof createPowerSyncRoutes>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -90,7 +90,7 @@ describe('PowerSync API', () => {
     db = testEnv.db
     cleanup = testEnv.cleanup
     const { auth } = createBetterAuthPlugin(db)
-    app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+    app = createPowerSyncRoutes(auth, powersyncSettings, db)
   })
 
   afterEach(async () => {
@@ -585,7 +585,7 @@ describe('PowerSync API', () => {
       expect(response.status).toBe(200)
       const data = (await response.json()) as { token: string; expiresAt: string; powerSyncUrl: string }
       expect(data.token).toBeDefined()
-      expect(typeof data.token).toBe('string')
+      expect(data.token).toEqual(expect.any(String))
       expect(data.expiresAt).toBeDefined()
       expect(data.powerSyncUrl).toBe('https://powersync.example.com')
     })
@@ -2180,7 +2180,7 @@ describe('PowerSync cross-origin injection protection', () => {
     corsOrigins: 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
   }
 
-  let app: Elysia
+  let app: ReturnType<typeof createPowerSyncRoutes>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -2220,7 +2220,7 @@ describe('PowerSync cross-origin injection protection', () => {
     db = testEnv.db
     cleanup = testEnv.cleanup
     const { auth } = createBetterAuthPlugin(db)
-    app = new Elysia().use(createPowerSyncRoutes(auth, corsSettings, db)) as unknown as Elysia
+    app = createPowerSyncRoutes(auth, corsSettings, db)
   })
 
   afterEach(async () => {
@@ -2422,7 +2422,7 @@ describe('PowerSync cross-origin injection protection', () => {
 })
 
 describe('PowerSync API (E2EE disabled)', () => {
-  let app: Elysia
+  let app: ReturnType<typeof createPowerSyncRoutes>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -2433,7 +2433,7 @@ describe('PowerSync API (E2EE disabled)', () => {
     db = testEnv.db
     cleanup = testEnv.cleanup
     const { auth } = createBetterAuthPlugin(db)
-    app = new Elysia().use(createPowerSyncRoutes(auth, e2eeDisabledSettings, db)) as unknown as Elysia
+    app = createPowerSyncRoutes(auth, e2eeDisabledSettings, db)
   })
 
   afterEach(async () => {
@@ -2782,7 +2782,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   }
 
   it('GET /powersync/token Path 2 (Bearer only) — anonymous user → 403 + code ANONYMOUS_SYNC_FORBIDDEN', async () => {
-    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+    const app = createPowerSyncRoutes(auth, powersyncSettings, db)
 
     const { signedBearer } = await seedAnonUser('path2')
 
@@ -2800,7 +2800,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   })
 
   it('GET /powersync/token Path 1 (session) — anonymous user → 403 + code ANONYMOUS_SYNC_FORBIDDEN', async () => {
-    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+    const app = createPowerSyncRoutes(auth, powersyncSettings, db)
 
     // Use Better Auth's real anonymous sign-in flow + cookie so the request goes through Path 1
     // (auth.api.getSession resolves the session via cookie and sets `user`).
@@ -2823,9 +2823,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   })
 
   it('GET /powersync/token Path 2 (Bearer only) — non-anonymous user → 200 (regression)', async () => {
-    const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db),
-    ) as unknown as Elysia
+    const app = createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db)
 
     const { signedBearer, deviceId } = await seedRegularUser('path2-ok')
 
@@ -2844,7 +2842,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   })
 
   it('PUT /powersync/upload — anonymous user → 403 + code ANONYMOUS_SYNC_FORBIDDEN', async () => {
-    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+    const app = createPowerSyncRoutes(auth, powersyncSettings, db)
 
     const { userId, signedBearer } = await seedAnonUser('upload')
     const now = new Date()
@@ -2874,9 +2872,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   })
 
   it('PUT /powersync/upload — non-anonymous user → 200 (regression)', async () => {
-    const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db),
-    ) as unknown as Elysia
+    const app = createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db)
 
     const { signedBearer, deviceId } = await seedRegularUser('upload-ok')
 
@@ -2906,7 +2902,7 @@ describe('PowerSync API (not configured)', () => {
       powersyncJwtSecret: '',
       powersyncUrl: '',
     }
-    const app = new Elysia().use(createPowerSyncRoutes(auth, noPowersyncSettings, testEnv.db)) as unknown as Elysia
+    const app = createPowerSyncRoutes(auth, noPowersyncSettings, testEnv.db)
 
     const response = await app.handle(new Request('http://localhost/powersync/token'))
     expect(response.status).toBe(404)

@@ -9,6 +9,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
+  createDebugTranscriptRateLimit,
   createInferenceRateLimit,
   createProRateLimit,
   type IpRateLimitSettings,
@@ -171,6 +172,23 @@ describe('Rate Limiting', () => {
       // Pro should still work (separate tier/prefix)
       const allowedPro = await proApp.handle(new Request('http://localhost/v1/test'))
       expect(allowedPro.status).toBe(200)
+    })
+  })
+
+  describe('debug transcript rate limiting', () => {
+    it('allows ten uploads per user each hour', async () => {
+      const app = createTestApp(database, enabledSettings, createDebugTranscriptRateLimit, 'transcript-user')
+
+      for (let index = 0; index < 10; index++) {
+        const response = await app.handle(new Request('http://localhost/v1/test'))
+        expect(response.status).toBe(200)
+      }
+
+      const blockedResponse = await app.handle(new Request('http://localhost/v1/test'))
+
+      expect(blockedResponse.status).toBe(429)
+      expect(blockedResponse.headers.get('ratelimit-limit')).toBe('10')
+      expect(Number(blockedResponse.headers.get('ratelimit-reset'))).toBeGreaterThan(3500)
     })
   })
 

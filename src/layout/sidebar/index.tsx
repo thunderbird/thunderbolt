@@ -44,8 +44,9 @@ export default function Sidebar() {
 
   const { activeSection, setActiveSection } = useSidebarSection(location.pathname)
 
-  const { experimentalFeatureTasks } = useSettings({
+  const { experimentalFeatureTasks, experimentalFeatureMiniApps } = useSettings({
     experimental_feature_tasks: false,
+    experimental_feature_mini_apps: false,
   })
 
   const { data } = useQuery({
@@ -149,10 +150,12 @@ export default function Sidebar() {
             deleteChatDialogRef={deleteChatDialogRef}
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
+            showMiniApps={experimentalFeatureMiniApps.value}
             activeSection={activeSection}
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
+            onMiniAppClick={(appId) => handleNavigate(`/apps/${appId}`)}
             onProjectsClick={() => handleNavigate('/projects')}
             onRename={handleRename}
             onChatClick={handleChatClick}

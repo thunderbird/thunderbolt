@@ -22,11 +22,20 @@ import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
 import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
+
+/**
+ * Routes that render their own chrome and must own the full content area.
+ * `FloatingHeader` floats over the page rather than consuming layout height, so
+ * on an embedded surface its scrim sits on top of the app's own header instead
+ * of fading a scroll region beneath it.
+ */
+const isChromelessRoute = (pathname: string): boolean => pathname.startsWith('/apps/')
 
 export default function Page() {
   const panelRef = usePanelRef()
+  const { pathname } = useLocation()
   const { state, close, previewHidden } = useContentView()
   const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
@@ -108,7 +117,7 @@ export default function Page() {
             re-derive that literal. */}
         <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
-            <FloatingHeader />
+            {!isChromelessRoute(pathname) && <FloatingHeader />}
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />

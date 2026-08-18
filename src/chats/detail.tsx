@@ -17,21 +17,47 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
   existingId: string | null
   /** Project this chat starts in, from `?projectId=`. New chats only. */
   projectId: string | null
+  /**
+   * Pre-minted id for a new chat, when the caller needs to know the thread id
+   * *before* the chat mounts — e.g. to seed the composer draft, which is stored
+   * under `draft:<threadId>`. Ignored when `existingId` is set. The route itself
+   * doesn't pass this; only callers that own the id do.
+   */
+  newChatId?: string
+  /**
+   * Whether the first send should navigate to `/chats/<id>`. Defaults to true
+   * (the route's behaviour). Embedded hosts pass false so the send doesn't
+   * unmount the surface the chat is sitting in.
+   */
+  navigateOnCreate?: boolean
 }>
 
-const ChatHydrateHandler = ({ children, existingId, projectId }: ChatHydrateHandlerProps) => {
+/**
+ * Exported so surfaces other than the `/chats/:id` route can host a real chat
+ * session — `ChatUI` takes no props and reads `useCurrentChatSession()`, so it
+ * only works inside this handler. The Mini Apps side panel
+ * (`src/mini-apps/mini-app-page.tsx`) is the current second caller.
+ */
+export const ChatHydrateHandler = ({
+  children,
+  existingId,
+  projectId,
+  newChatId,
+  navigateOnCreate = true,
+}: ChatHydrateHandlerProps) => {
   const isNew = existingId === null
   // A new chat's id is minted here, once per mount: `useState`'s initializer is a
   // guarantee, where a `useMemo` is only a hint. React is free to drop a memo
   // cache and recompute, which would mint a second id for the same chat and
   // remount the thread the user is mid-way through composing. The mount itself is
   // keyed by the route below, so a genuinely different chat gets a fresh id.
-  const [id] = useState(() => existingId ?? uuidv7())
+  const [id] = useState(() => existingId ?? newChatId ?? uuidv7())
 
   const { hydrateChatStore, isReady, saveMessages, saveStreamingMessage } = useHydrateChatStore({
     id,
     isNew,
     projectId,
+    navigateOnCreate,
   })
 
   useHandleIntegrationCompletion({ saveMessages })

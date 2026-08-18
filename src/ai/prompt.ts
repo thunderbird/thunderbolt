@@ -37,6 +37,13 @@ export type PromptParams = {
    * builder only decides *where* it sits.
    */
   projectSection?: string | null
+  /**
+   * Pre-rendered `# Mini App` section when an embedded app is open (see
+   * `src/mini-apps/mini-app-prompt.ts`). Carries the app's identity only — its
+   * live state is read through the `get_app_context` tool, so this stays stable
+   * across a session and doesn't invalidate the prompt cache.
+   */
+  miniAppSection?: string | null
 }
 
 export type PromptParts = {
@@ -74,6 +81,7 @@ export const createPromptParts = (
     skills = [],
     supportsTools = true,
     projectSection = null,
+    miniAppSection = null,
   }: PromptParams,
   currentDate: Date = new Date(),
 ): PromptParts => {
@@ -123,7 +131,7 @@ Reasoning: low
 
 # Context
 ${contextSection}
-${projectSection ? `\n${projectSection}\n` : ''}
+${projectSection ? `\n${projectSection}\n` : ''}${miniAppSection ? `\n${miniAppSection}\n` : ''}
 # Tools
 Choose one policy bucket before answering:
 • never_search — Stable facts, math, code, creative work, opinions, and conversation: answer directly.

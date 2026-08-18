@@ -58,6 +58,14 @@ export const defaultSettingExperimentalFeatureVoice: Setting = {
   userId: null,
 }
 
+export const defaultSettingExperimentalFeatureMiniApps: Setting = {
+  key: 'experimental_feature_mini_apps',
+  value: 'false',
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 export const defaultSettingPreferredName: Setting = {
   key: 'preferred_name',
   value: null,
@@ -170,6 +178,7 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingTriggersEnabled,
   defaultSettingExperimentalFeatureTasks,
   defaultSettingExperimentalFeatureVoice,
+  defaultSettingExperimentalFeatureMiniApps,
   defaultSettingPreferredName,
   defaultSettingLocationName,
   defaultSettingLocationLat,
@@ -196,4 +205,4 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 2
+export const defaultSettingsVersion = 3

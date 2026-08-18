@@ -4,6 +4,10 @@
 
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
+import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
+import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
+import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
+import { buildMiniAppToolsPromptSection, createMiniAppTools } from '@/mini-apps/mini-app-tools'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
@@ -604,6 +608,34 @@ export const prepareAiRequestConfig = async ({
       titleByThreadId: projectContext.titleByThreadId,
     })
   }
+  // Mini App context is a tool for the same reason cross-chat recall is: the
+  // app's state changes on every click, and injecting it would invalidate the
+  // cacheable stable prompt on every send. Registered only while an app is open.
+  const miniAppSnapshot = getMiniAppSnapshot()
+  const miniApp = miniAppSnapshot.app
+  if (supportsTools && miniApp) {
+    appToolset.get_app_context = createMiniAppContextTool({ getSnapshot: getMiniAppSnapshot })
+  }
+  // Tools the app declares over the bridge. Merged the same way MCP tools are
+  // (prefixed, conflicts skipped) since both are externally-defined toolsets we
+  // discover at runtime.
+  const { invokeTool, requestApproval } = useMiniAppStore.getState()
+  const miniAppTools =
+    supportsTools && miniApp && invokeTool
+      ? createMiniAppTools({
+          app: miniApp,
+          tools: miniAppSnapshot.tools,
+          invoke: invokeTool,
+          requestApproval,
+        })
+      : {}
+  for (const [name, miniAppTool] of Object.entries(miniAppTools)) {
+    if (appToolset[name]) {
+      console.warn(`Mini App tool "${name}" conflicts with an existing tool and was skipped`)
+      continue
+    }
+    appToolset[name] = miniAppTool
+  }
   const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
@@ -623,6 +655,16 @@ export const prepareAiRequestConfig = async ({
       // Only advertise the tool when it was actually registered above.
       hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
     }),
+    // Same rule: only describe the app when `get_app_context` actually exists,
+    // and only advertise actions that were actually registered above.
+    miniAppSection: supportsTools
+      ? [
+          buildMiniAppPromptSection(miniApp),
+          buildMiniAppToolsPromptSection(Object.keys(miniAppTools).length > 0 ? miniAppSnapshot.tools : []),
+        ]
+          .filter((section) => section !== null)
+          .join('\n\n') || null
+      : null,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,

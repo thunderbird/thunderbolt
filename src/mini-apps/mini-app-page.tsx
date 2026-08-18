@@ -1,0 +1,252 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import ChatUI from '@/components/chat/chat-ui'
+import { ChatHydrateHandler } from '@/chats/detail'
+import { Button } from '@/components/ui/button'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { useSidebar } from '@/components/ui/sidebar'
+import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
+import { MessageSquare, MousePointerSquareDashed, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Navigate, useParams } from 'react-router'
+import { v7 as uuidv7 } from 'uuid'
+import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
+import type { MiniAppSelectionItem } from '@shared/mini-app-protocol'
+import { MarqueeOverlay } from './marquee-overlay'
+import { MiniAppFrame } from './mini-app-frame'
+import { SelectionPopover } from './selection-popover'
+import { ToolApprovalBar } from './tool-approval-bar'
+import { useMiniAppStore } from './mini-app-store'
+import { findMiniApp, type MiniAppDefinition } from './registry'
+import { useMiniAppBridge } from './use-mini-app-bridge'
+
+/** Default split when the chat opens: roughly two-thirds app, one-third chat. */
+const appPanelSize = '66%'
+const chatPanelSize = '34%'
+
+/** Composer drafts are stored as plain text under this key (see `use-draft-input.ts`). */
+const seedComposerDraft = (chatThreadId: string, prompt: string) => {
+  localStorage.setItem(`draft:${chatThreadId}`, prompt)
+}
+
+/** An open chat beside the app. `key` forces a fresh session when reopened. */
+type ChatSession = { id: string; key: string }
+
+const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
+  const [chatSession, setChatSession] = useState<ChatSession | null>(null)
+  const { toggleSidebar } = useSidebar()
+  const openApp = useMiniAppStore((s) => s.openApp)
+  const closeApp = useMiniAppStore((s) => s.closeApp)
+  const pendingApproval = useMiniAppStore((s) => s.pendingApproval)
+  const resolveApproval = useMiniAppStore((s) => s.resolveApproval)
+
+  /**
+   * Publish which app is open so `src/ai/fetch.ts` can register `get_app_context`
+   * and describe the app in the system prompt. A store rather than context
+   * because that consumer sits outside the React tree.
+   *
+   * Legitimate `useEffect` per CLAUDE.md: synchronizing an external store with
+   * this component's lifetime, and the unmount cleanup is load-bearing — a stale
+   * `activeApp` would leave the tool registered in ordinary chats.
+   */
+  useEffect(() => {
+    openApp(app)
+    return () => closeApp()
+  }, [app, openApp, closeApp])
+
+  const handleChatOpen = useCallback((prompt: string | undefined) => {
+    const id = uuidv7()
+    if (prompt) {
+      seedComposerDraft(id, prompt)
+    }
+    setChatSession({ id, key: id })
+  }, [])
+
+  const { frameRef, status, selection, clearSelection, querySelection } = useMiniAppBridge({
+    app,
+    onChatOpen: handleChatOpen,
+  })
+
+  // Marquee mode is a small state machine: off → drawing → reviewing a result.
+  // `null` is off; an array (possibly empty) means the guest has answered.
+  const [isSelecting, setIsSelecting] = useState(false)
+  const [picked, setPicked] = useState<MiniAppSelectionItem[] | null>(null)
+
+  const exitSelectMode = useCallback(() => {
+    setIsSelecting(false)
+    setPicked(null)
+  }, [])
+
+  const handleMarquee = useCallback(
+    async (rect: Parameters<typeof querySelection>[0]) => {
+      setIsSelecting(false)
+      setPicked(await querySelection(rect))
+    },
+    [querySelection],
+  )
+
+  /**
+   * Promote a highlighted passage into the composer as a quote chip.
+   *
+   * Reuses the quote-reply channel (`pending-quotes-store`) that the "Reply" button
+   * on an assistant message already uses: same chip, same removal affordance, and
+   * on send the passage becomes a real quote part rather than string-concatenated
+   * into the user's text. Keyed by thread id, so the chat session must exist first —
+   * when the panel is closed we mint the session and attach in the same tick,
+   * because the store is keyed, not ordered, and doesn't care that the chat has yet
+   * to mount.
+   */
+  const attachToComposer = useCallback(
+    (passages: string[]) => {
+      const threadId = chatSession?.id ?? uuidv7()
+      if (!chatSession) {
+        setChatSession({ id: threadId, key: threadId })
+      }
+      const { addQuote } = usePendingQuotesStore.getState()
+      for (const text of passages) {
+        addQuote(threadId, { text })
+      }
+    },
+    [chatSession],
+  )
+
+  const handleAskAboutPicked = useCallback(() => {
+    if (!picked || picked.length === 0) {
+      return
+    }
+    attachToComposer(picked.map((item) => `${item.label}\n${item.text}`))
+    exitSelectMode()
+  }, [picked, attachToComposer, exitSelectMode])
+
+  const handleAskAboutSelection = useCallback(() => {
+    if (!selection) {
+      return
+    }
+    attachToComposer([selection.text])
+    clearSelection()
+  }, [selection, attachToComposer, clearSelection])
+
+  return (
+    <div className="flex flex-col h-full w-full">
+      {/* This page is chromeless (`isChromelessRoute` in main-layout), so it owns
+          the sidebar toggle the app header would otherwise provide. */}
+      <header className="flex items-center gap-2 px-2 h-[var(--touch-height-default)] border-b shrink-0">
+        <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Toggle Sidebar">
+          <PanelLeftRounded className="size-[var(--icon-size-default)]" />
+        </Button>
+        <app.icon className="size-[var(--icon-size-sm)] shrink-0" />
+        <span className="truncate text-[length:var(--font-size-body)] font-medium">{app.name}</span>
+      </header>
+
+      <ResizablePanelGroup orientation="horizontal" className="flex-1">
+        <ResizablePanel defaultSize={chatSession ? appPanelSize : '100%'} minSize="30%">
+          <div className="relative flex flex-col h-full">
+            <MiniAppFrame app={app} frameRef={frameRef} status={status} />
+            {status === 'ready' && selection?.rect && !isSelecting && !picked && (
+              <SelectionPopover rect={selection.rect} onAsk={handleAskAboutSelection} />
+            )}
+            {isSelecting && <MarqueeOverlay onSelect={handleMarquee} onCancel={exitSelectMode} />}
+            {pendingApproval && (
+              <ToolApprovalBar pending={pendingApproval} appName={app.name} onDecide={resolveApproval} />
+            )}
+            {picked && (
+              <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-3 border-t bg-background/95 backdrop-blur px-4 py-3">
+                <span className="text-[length:var(--font-size-sm)] text-muted-foreground">
+                  {picked.length === 0
+                    ? 'Nothing selectable in that area'
+                    : `${picked.length} item${picked.length === 1 ? '' : 's'} selected`}
+                </span>
+                {picked.length > 0 && (
+                  <Button size="sm" onClick={handleAskAboutPicked}>
+                    Ask about {picked.length === 1 ? 'it' : 'them'}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={picked.length === 0 ? () => setIsSelecting(true) : exitSelectMode}
+                >
+                  {picked.length === 0 ? 'Try again' : 'Cancel'}
+                </Button>
+              </div>
+            )}
+            {/* Thunderbolt's own affordance, floating over the app rather than
+                living inside it — the assistant belongs to the host, so a customer
+                app shouldn't have to render (or style) a button to reach it. */}
+            {status === 'ready' && !isSelecting && !picked && (
+              <Button
+                onClick={() => setIsSelecting(true)}
+                variant="secondary"
+                size="lg"
+                className="absolute bottom-4 right-40 z-10 shadow-lg rounded-full"
+              >
+                <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
+                Select
+              </Button>
+            )}
+            {status === 'ready' && !isSelecting && !picked && (
+              <Button
+                onClick={() => (chatSession ? setChatSession(null) : handleChatOpen(undefined))}
+                className="absolute bottom-4 right-4 z-10 shadow-lg rounded-full"
+                size="lg"
+              >
+                {chatSession ? (
+                  <>
+                    <X className="size-[var(--icon-size-sm)]" />
+                    Close chat
+                  </>
+                ) : (
+                  <>
+                    <MessageSquare className="size-[var(--icon-size-sm)]" />
+                    Chat
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </ResizablePanel>
+        {chatSession && (
+          <>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={chatPanelSize} minSize="20%">
+              {/* Keyed on the session so "Close chat" then "Chat about this"
+                  starts a genuinely new thread rather than rehydrating the last. */}
+              <ChatHydrateHandler
+                key={chatSession.key}
+                existingId={null}
+                projectId={null}
+                newChatId={chatSession.id}
+                // Staying on this route is the whole point: navigating to
+                // /chats/<id> on first send would unmount the app, tear down the
+                // bridge, and clear the very context the model was asked about.
+                navigateOnCreate={false}
+              >
+                <ChatUI />
+              </ChatHydrateHandler>
+            </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
+    </div>
+  )
+}
+
+/**
+ * Route page for `/apps/:appId`. Unknown ids redirect rather than rendering an
+ * error surface — a stale bookmark to a deregistered app should behave like any
+ * other bad URL.
+ */
+export default function MiniAppPage() {
+  const { appId } = useParams()
+  const app = findMiniApp(appId)
+
+  if (!app) {
+    return <Navigate to="/not-found" replace />
+  }
+
+  // Keyed so navigating between two apps fully remounts the bridge rather than
+  // pointing the existing frame at a new origin.
+  return <MiniAppView key={app.id} app={app} />
+}

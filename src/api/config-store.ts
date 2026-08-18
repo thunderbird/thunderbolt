@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { SharedModel } from '@shared/defaults/models'
+import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -13,6 +14,7 @@ export type AppConfig = {
    *  built-in agent shown, custom agents allowed. */
   builtInAgentEnabled?: boolean
   allowCustomAgents?: boolean
+  debugTranscriptsEnabled?: boolean
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */
   minAppVersion?: string
@@ -51,3 +53,21 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false
+
+/** Whether the server explicitly accepts debug transcript uploads. Absent
+ * config is disabled because standalone mode has no backend recipient. */
+export const selectDebugTranscriptsEnabled = (config: AppConfig): boolean => config.debugTranscriptsEnabled === true
+
+/** Reconcile recorder capture with the current persisted or fetched config. */
+export const syncDebugTranscriptCaptureWithConfig = (): void => {
+  setDebugTranscriptCaptureEnabled(selectDebugTranscriptsEnabled(useConfigStore.getState().config))
+}
+
+useConfigStore.subscribe((state, previousState) => {
+  if (state.config === previousState.config) {
+    return
+  }
+  syncDebugTranscriptCaptureWithConfig()
+})
+
+syncDebugTranscriptCaptureWithConfig()

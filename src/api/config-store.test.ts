@@ -3,13 +3,36 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { selectAllowCustomAgents, selectBuiltInAgentEnabled, useConfigStore } from './config-store'
+import {
+  beginDebugTranscriptTurn,
+  clearDebugTranscriptRecorder,
+  getDebugTranscriptNotes,
+  setDebugTranscriptCaptureEnabled,
+} from '@/debug-transcript/recorder'
+import {
+  selectAllowCustomAgents,
+  selectBuiltInAgentEnabled,
+  selectDebugTranscriptsEnabled,
+  syncDebugTranscriptCaptureWithConfig,
+  useConfigStore,
+} from './config-store'
 
 const storageKey = 'thunderbolt-config'
 
 const resetStore = () => {
   useConfigStore.setState({ config: {} })
+  clearDebugTranscriptRecorder()
   localStorage.removeItem(storageKey)
+}
+
+const recordTurn = (traceId: string) => {
+  beginDebugTranscriptTurn({
+    threadId: 'thread-1',
+    traceId,
+    engine: 'pi',
+    model: { id: 'model-1', name: 'Claude', provider: 'anthropic' },
+    agentId: 'built-in',
+  })
 }
 
 describe('config store', () => {
@@ -47,6 +70,46 @@ describe('config store', () => {
 
     expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: false })
   })
+
+  it('keeps standalone capture off when no config change ever arrives', () => {
+    setDebugTranscriptCaptureEnabled(true)
+    syncDebugTranscriptCaptureWithConfig()
+
+    recordTurn('trace-standalone')
+
+    expect(getDebugTranscriptNotes('thread-1')).toEqual([])
+  })
+
+  it('seeds capture off from persisted disabled config without a change event', () => {
+    useConfigStore.setState({ config: { debugTranscriptsEnabled: false } })
+    setDebugTranscriptCaptureEnabled(true)
+    syncDebugTranscriptCaptureWithConfig()
+
+    recordTurn('trace-persisted-disabled')
+
+    expect(getDebugTranscriptNotes('thread-1')).toEqual([])
+  })
+
+  it('seeds capture on from persisted enabled config without a change event', () => {
+    useConfigStore.setState({ config: { debugTranscriptsEnabled: true } })
+    setDebugTranscriptCaptureEnabled(false)
+    syncDebugTranscriptCaptureWithConfig()
+
+    recordTurn('trace-persisted-enabled')
+
+    expect(getDebugTranscriptNotes('thread-1')).toHaveLength(1)
+  })
+
+  it('enables capture on config update, then clears and latches it off', () => {
+    useConfigStore.getState().updateConfig({ debugTranscriptsEnabled: true })
+    recordTurn('trace-enabled')
+    expect(getDebugTranscriptNotes('thread-1')).toHaveLength(1)
+
+    useConfigStore.getState().updateConfig({})
+    recordTurn('trace-disabled')
+
+    expect(getDebugTranscriptNotes('thread-1')).toEqual([])
+  })
 })
 
 describe('selectBuiltInAgentEnabled', () => {
@@ -70,5 +133,16 @@ describe('selectAllowCustomAgents', () => {
 
   it('is forbidden only when explicitly false', () => {
     expect(selectAllowCustomAgents({ allowCustomAgents: false })).toBe(false)
+  })
+})
+
+describe('selectDebugTranscriptsEnabled', () => {
+  it('defaults to disabled when the server flag is absent', () => {
+    expect(selectDebugTranscriptsEnabled({})).toBe(false)
+  })
+
+  it('is enabled only when the server explicitly accepts uploads', () => {
+    expect(selectDebugTranscriptsEnabled({ debugTranscriptsEnabled: true })).toBe(true)
+    expect(selectDebugTranscriptsEnabled({ debugTranscriptsEnabled: false })).toBe(false)
   })
 })

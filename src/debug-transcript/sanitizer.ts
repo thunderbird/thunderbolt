@@ -6,17 +6,6 @@ import type { JsonValue } from './types'
 
 const redacted = '[redacted]'
 const sensitiveKeyFragments = ['apikey', 'authorization', 'cookie', 'secret', 'password']
-const tokenCounterKeys = new Set([
-  'budgettokens',
-  'completiontokens',
-  'inputtokens',
-  'maxtokens',
-  'outputtokens',
-  'prompttokens',
-  'tokencount',
-  'tokensused',
-  'totaltokens',
-])
 const jwtPattern = /\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]{5,})?\b/g
 const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi
 const skProviderKeyPattern = /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}\b/gi
@@ -27,9 +16,6 @@ const urlUserInfoPattern = /(\b[a-z][a-z0-9+.-]*:\/\/)[^:/@\s]+:[^/@\s]+@/gi
 
 const isSensitiveKey = (key: string): boolean => {
   const normalized = key.replace(/[-_\s]/g, '').toLowerCase()
-  if (tokenCounterKeys.has(normalized)) {
-    return false
-  }
   // Pagination cursors also end in "token"; redacting them is safe and may hide signed material.
   return normalized.endsWith('token') || sensitiveKeyFragments.some((fragment) => normalized.includes(fragment))
 }

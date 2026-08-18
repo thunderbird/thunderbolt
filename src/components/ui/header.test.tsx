@@ -109,6 +109,13 @@ const flushAgentsQuery = async () => {
   })
 }
 
+/** Let a cold dynamic import settle before Testing Library enters its fake-timer wait loop. */
+const settleLazyAction = async () => {
+  await act(async () => {
+    await Bun.sleep(20)
+  })
+}
+
 describe('Header', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -159,7 +166,7 @@ describe('Header', () => {
     setupWithAgent(customAgent)
 
     render(<Header />, { wrapper: TestWrapper })
-    await flushAgentsQuery()
+    await settleLazyAction()
 
     expect(screen.getByText(customAgent.name)).toBeInTheDocument()
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
@@ -196,10 +203,11 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
   })
 
-  it('hides chat actions when debug transcript sharing is not enabled', () => {
+  it('hides chat actions when debug transcript sharing is not enabled', async () => {
     setupWithAgent(customAgent)
 
     render(<Header />, { wrapper: TestWrapper })
+    await screen.findByTestId('agent-selector-trigger')
 
     expect(screen.queryByRole('button', { name: 'Share debug transcript' })).toBeNull()
   })
@@ -209,28 +217,30 @@ describe('Header', () => {
     setupWithAgent(customAgent)
 
     render(<Header />, { wrapper: TestWrapper })
+    await settleLazyAction()
     expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement).toHaveClass(
       '[translate:calc(50cqw-100%-var(--touch-height-lg)-0.5rem)_0]',
     )
-    const action = screen.getByRole('button', { name: 'Share debug transcript' })
+    const action = await screen.findByRole('button', { name: 'Share debug transcript' })
     expect(action).toHaveAttribute('aria-disabled', 'true')
     fireEvent.focus(action)
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Available once the conversation has messages')
   })
 
-  it('opens the consent dialog from the direct action', () => {
+  it('opens the consent dialog from the direct action', async () => {
     useConfigStore.setState({ config: { debugTranscriptsEnabled: true } })
     setupWithAgent(customAgent, {
       messages: [{ id: 'message-1', role: 'user', parts: [{ type: 'text', text: 'Help' }] }],
     })
 
     render(<Header />, { wrapper: TestWrapper })
-    fireEvent.click(screen.getByRole('button', { name: 'Share debug transcript' }))
+    await flushAgentsQuery()
+    fireEvent.click(await screen.findByRole('button', { name: 'Share debug transcript' }))
 
     expect(screen.getByRole('dialog', { name: 'Share debug transcript?' })).toBeVisible()
   })
 
-  it('hides transcript sharing from anonymous users', () => {
+  it('hides transcript sharing from anonymous users', async () => {
     authClient = createMockAuthClient({
       session: {
         user: { id: 'anonymous-user', email: 'anonymous@example.com', isAnonymous: true },
@@ -240,6 +250,7 @@ describe('Header', () => {
     setupWithAgent(customAgent)
 
     render(<Header />, { wrapper: TestWrapper })
+    await screen.findByTestId('agent-selector-trigger')
 
     expect(screen.queryByRole('button', { name: 'Share debug transcript' })).toBeNull()
   })

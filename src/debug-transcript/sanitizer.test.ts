@@ -15,7 +15,7 @@ describe('sanitizeDebugTranscriptSecrets', () => {
         cookie: 'session=secret',
       },
       nested: [
-        { API_KEY: 'another-secret', displayName: 'Ítalo' },
+        { API_KEY: 'another-secret', displayName: 'Avery Example' },
         { refresh_token: 'refresh-secret', password: 'hunter2' },
       ],
     }
@@ -27,7 +27,7 @@ describe('sanitizeDebugTranscriptSecrets', () => {
         cookie: '[redacted]',
       },
       nested: [
-        { API_KEY: '[redacted]', displayName: 'Ítalo' },
+        { API_KEY: '[redacted]', displayName: 'Avery Example' },
         { refresh_token: '[redacted]', password: '[redacted]' },
       ],
     })
@@ -64,8 +64,8 @@ describe('sanitizeDebugTranscriptSecrets', () => {
 
   it('preserves identified content and ordinary prose', () => {
     const input = {
-      email: 'imenezes@thunderbird.net',
-      name: 'Ítalo Menezes',
+      email: 'avery@example.com',
+      name: 'Avery Example',
       prose: 'The token budget is short, but no token value appears here.',
       short: 'sk-short',
       sentence: 'Authorization is required before continuing.',

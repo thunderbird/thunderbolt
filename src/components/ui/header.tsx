@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 
-import { ShareDebugTranscriptAction } from '@/components/share-debug-transcript'
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { ProjectBadge } from '@/projects/project-badge'
 import { useCreateItem } from '@/components/create-item/context'
@@ -28,6 +27,11 @@ import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { useAuth } from '@/contexts/auth-context'
 import type { Agent } from '@/types/acp'
+
+const ShareDebugTranscriptAction = lazy(async () => {
+  const module = await import('@/components/share-debug-transcript')
+  return { default: module.ShareDebugTranscriptAction }
+})
 
 /** Marks an element as part of the Tauri desktop window's drag surface (empty
  *  on web/mobile where no custom title bar exists). */
@@ -220,11 +224,13 @@ export const Header = () => {
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
   const shareDebugTranscriptAction =
     isChatRoute && !isAnonymous && debugTranscriptsEnabled && debugTranscriptThreadId && chatInstance ? (
-      <ShareDebugTranscriptAction
-        key={debugTranscriptThreadId}
-        chatInstance={chatInstance}
-        threadId={debugTranscriptThreadId}
-      />
+      <Suspense fallback={null}>
+        <ShareDebugTranscriptAction
+          key={debugTranscriptThreadId}
+          chatInstance={chatInstance}
+          threadId={debugTranscriptThreadId}
+        />
+      </Suspense>
     ) : null
 
   const handleAddAgent = () => {

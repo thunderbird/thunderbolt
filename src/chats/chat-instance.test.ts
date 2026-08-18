@@ -10,6 +10,7 @@
 
 import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retry-budget'
 import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
+import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -411,6 +412,7 @@ describe('createChatInstance — retry policy', () => {
   })
 
   afterEach(() => {
+    setDebugTranscriptCaptureEnabled(false)
     resetStore()
     sessionStorage.clear()
   })
@@ -613,14 +615,62 @@ describe('createChatInstance — retry policy', () => {
     expect(sendProperties).toEqual(expect.objectContaining({ length: prompt.length }))
   })
 
-  it('leaves the user-row transcript engine unresolved until adapter routing', async () => {
-    const { instance, sendMessage } = createRetryHarness()
+  it('omits transcript correlation from persisted user and assistant messages when capture is disabled', async () => {
+    const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
+    const { finishSuccessfully, instance, sendMessage } = createRetryHarness(saveMessages)
+    setDebugTranscriptCaptureEnabled(false)
 
-    await instance.sendMessage({ text: 'route this turn' })
+    await instance.sendMessage({ text: 'disabled turn' })
+    await finishSuccessfully()
 
     const sentMessage = sendMessage.mock.calls[0]?.[0]
+    const savedMessage = saveMessages.mock.calls[0]?.[0].messages[0]
+    expect(Object.hasOwn(sentMessage.metadata ?? {}, 'debugTranscript')).toBe(false)
+    expect(Object.hasOwn(savedMessage?.metadata ?? {}, 'debugTranscript')).toBe(false)
+  })
+
+  it('stamps transcript correlation when capture is enabled', async () => {
+    const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
+    const { finishSuccessfully, instance, sendMessage } = createRetryHarness(saveMessages)
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'route this turn' })
+    await finishSuccessfully()
+
+    const sentMessage = sendMessage.mock.calls[0]?.[0]
+    const savedMessage = saveMessages.mock.calls[0]?.[0].messages[0]
     expect(sentMessage.metadata?.debugTranscript?.engine).toBeNull()
     expect(Object.hasOwn(sentMessage.metadata ?? {}, 'debugTranscript')).toBe(true)
+    expect(savedMessage?.metadata?.debugTranscript?.engine).toBe('legacy')
+  })
+
+  it('starts stamping only new messages after capture is enabled mid-session', async () => {
+    const { instance, sendMessage } = createRetryHarness()
+    setDebugTranscriptCaptureEnabled(false)
+
+    await instance.sendMessage({ text: 'before enable' })
+    const beforeEnable = sendMessage.mock.calls[0]?.[0]
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'after enable' })
+    const afterEnable = sendMessage.mock.calls[1]?.[0]
+
+    expect(Object.hasOwn(beforeEnable.metadata ?? {}, 'debugTranscript')).toBe(false)
+    expect(Object.hasOwn(afterEnable.metadata ?? {}, 'debugTranscript')).toBe(true)
+  })
+
+  it('stops stamping only new messages after capture is disabled mid-session', async () => {
+    const { instance, sendMessage } = createRetryHarness()
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'before disable' })
+    const beforeDisable = sendMessage.mock.calls[0]?.[0]
+    setDebugTranscriptCaptureEnabled(false)
+    await instance.sendMessage({ text: 'after disable' })
+    const afterDisable = sendMessage.mock.calls[1]?.[0]
+
+    expect(Object.hasOwn(beforeDisable.metadata ?? {}, 'debugTranscript')).toBe(true)
+    expect(Object.hasOwn(afterDisable.metadata ?? {}, 'debugTranscript')).toBe(false)
   })
 
   it('tracks scalar model identifiers and one correlated success summary', async () => {

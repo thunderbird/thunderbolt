@@ -26,6 +26,7 @@ import { getDb as defaultGetDb } from '@/db/database'
 import {
   beginDebugTranscriptTurn,
   finishDebugTranscriptTurn,
+  isDebugTranscriptCaptureEnabled,
   recordDebugTranscriptFailure,
   recordDebugTranscriptRetry,
 } from '@/debug-transcript/recorder'
@@ -708,6 +709,9 @@ export const createChatInstance = (
   }
 
   const withDebugMetadata = (turn: TurnState, message: ThunderboltUIMessage): ThunderboltUIMessage => {
+    if (!isDebugTranscriptCaptureEnabled()) {
+      return message
+    }
     const debugTranscript = debugMetadataForTurn(turn)
     if (!debugTranscript) {
       return message
@@ -1017,16 +1021,13 @@ export const createChatInstance = (
 
     const telemetry = getOrCreateTurnTelemetry()
     getOrCreateDebugTranscriptTraceId()
-    const debugTranscript = debugMetadataForTurn(currentTurn)
-    const userDebugTranscript = debugTranscript
-      ? { ...debugTranscript, engine: null }
-      : message?.metadata?.debugTranscript
+    const debugTranscript = isDebugTranscriptCaptureEnabled() ? debugMetadataForTurn(currentTurn) : null
     const messageMetadata: NonNullable<ThunderboltUIMessage['metadata']> = {
       ...message?.metadata,
       modelId: selectedModel.id,
     }
-    if (userDebugTranscript) {
-      messageMetadata.debugTranscript = userDebugTranscript
+    if (debugTranscript) {
+      messageMetadata.debugTranscript = { ...debugTranscript, engine: null }
     }
     trackEvent('chat_send_prompt', {
       model_id: selectedModel.id,

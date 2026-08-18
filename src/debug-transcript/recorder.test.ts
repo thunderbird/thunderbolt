@@ -9,6 +9,7 @@ import {
   finishDebugTranscriptTurn,
   getDebugTranscriptCaptureStatus,
   getDebugTranscriptNotes,
+  isDebugTranscriptCaptureEnabled,
   recordDebugTranscriptFailure,
   recordDebugTranscriptRetry,
   recordDebugTranscriptSystemPrompts,
@@ -155,6 +156,7 @@ describe('debug transcript notes', () => {
       beginTurn('trace-after-error')
 
       expect(getDebugTranscriptCaptureStatus().recorderDisabled).toBe(true)
+      expect(isDebugTranscriptCaptureEnabled()).toBe(false)
       expect(getDebugTranscriptNotes('thread-1').map(({ traceId }) => traceId)).toEqual(['trace-before-error'])
       expect(warn).toHaveBeenCalledTimes(1)
     } finally {
@@ -204,10 +206,12 @@ describe('debug transcript notes', () => {
     beginTurn('trace-before')
     setDebugTranscriptCaptureEnabled(false)
     beginTurn('trace-disabled')
+    expect(isDebugTranscriptCaptureEnabled()).toBe(false)
     expect(getDebugTranscriptNotes('thread-1')).toEqual([])
 
     setDebugTranscriptCaptureEnabled(true)
     beginTurn('trace-after')
+    expect(isDebugTranscriptCaptureEnabled()).toBe(true)
     expect(getDebugTranscriptNotes('thread-1').map(({ traceId }) => traceId)).toEqual(['trace-after'])
   })
 })

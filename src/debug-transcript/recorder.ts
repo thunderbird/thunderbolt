@@ -23,8 +23,11 @@ let captureEnabled = false
 let recorderDisabled = false
 let warned = false
 
+/** Whether the recorder currently accepts notes and correlation metadata. */
+const canCapture = (): boolean => captureEnabled && !recorderDisabled
+
 const protectRecorder = (operation: () => void): void => {
-  if (!captureEnabled || recorderDisabled) {
+  if (!canCapture()) {
     return
   }
   try {
@@ -201,6 +204,10 @@ export const getDebugTranscriptNotes = (threadId: string): DebugTranscriptTurnNo
 
 /** Return whether the fail-closed recorder guard has latched. */
 export const getDebugTranscriptCaptureStatus = (): DebugTranscriptCaptureStatus => ({ recorderDisabled })
+
+/** Whether transcript capture is currently accepting correlation and notes.
+ * An internal recorder error deliberately stops correlation stamping until identity-scoped state is cleared. */
+export const isDebugTranscriptCaptureEnabled = (): boolean => canCapture()
 
 /** Disable capture and discard notes that cannot be uploaded. */
 export const setDebugTranscriptCaptureEnabled = (enabled: boolean): void => {

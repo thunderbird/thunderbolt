@@ -9,24 +9,22 @@
  */
 
 import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retry-budget'
-import { createTurnTelemetry } from '@/ai/turn-telemetry'
+import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import type { EventType } from '@/lib/posthog'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter } from '@/types/acp'
-import type { Chat } from '@ai-sdk/react'
 import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useChatStore } from './chat-store'
-import { createAgentRoutingFetch, createChatInstance } from './chat-instance'
+import { createAgentRoutingFetch, createChatInstance, type CreateChatInstanceDeps } from './chat-instance'
 
 const sessionId = 'sess-1'
 const httpClient: HttpClient = {} as HttpClient
-const getProxyFetch: () => FetchFn = () => (async () => new Response('ok')) as unknown as FetchFn
+const getProxyFetch = (): FetchFn => Object.assign(async () => new Response('ok'), { preconnect: async () => false })
 
 const makeAdapter = (agent: Agent): AgentAdapter => ({
   agent,
@@ -49,12 +47,13 @@ const hydrate = () => {
 /** Build a chat instance whose retry callbacks and original methods are observable. */
 const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {}) => {
   const regenerate = mock(async () => {})
-  const sendMessage = mock(async () => {})
+  const sendMessage = mock(async (_message: ThunderboltUIMessage) => {})
   const budgets: TurnBudget[] = []
   let onFinish: ChatOnFinishCallback<ThunderboltUIMessage> | undefined
   let onError: ((error: Error) => void) | undefined
   const wakeAdapterReconnect = mock(() => {})
-  const trackEvent = mock((_eventName: EventType, _properties?: Record<string, unknown>) => {})
+  const trackEventImplementation: NonNullable<CreateChatInstanceDeps['trackEvent']> = () => {}
+  const trackEvent = mock(trackEventImplementation)
 
   const createTrackedTurnBudget = () => {
     const budget = createTurnBudget()
@@ -70,7 +69,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
       messages: init.messages ?? [],
       regenerate,
       sendMessage,
-    } as unknown as Chat<ThunderboltUIMessage>
+    } as never
   }
 
   const instance = createChatInstance(sessionId, [], saveMessages, httpClient, getProxyFetch, {
@@ -320,6 +319,11 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     time.current = 10
     stream.controller!.enqueue(encoder.encode('data: {"type":"start","messageId":"a"}\n\n'))
+    await reader.read()
+    expect(telemetry.buildPayload('success')).not.toHaveProperty('ttft_ms')
+
+    time.current = 15
+    stream.controller!.enqueue(encoder.encode('data: {"type":"text-delta","id":"text-1","delta":""}\n\n'))
     await reader.read()
     expect(telemetry.buildPayload('success')).not.toHaveProperty('ttft_ms')
 
@@ -609,6 +613,16 @@ describe('createChatInstance — retry policy', () => {
     expect(sendProperties).toEqual(expect.objectContaining({ length: prompt.length }))
   })
 
+  it('leaves the user-row transcript engine unresolved until adapter routing', async () => {
+    const { instance, sendMessage } = createRetryHarness()
+
+    await instance.sendMessage({ text: 'route this turn' })
+
+    const sentMessage = sendMessage.mock.calls[0]?.[0]
+    expect(sentMessage.metadata?.debugTranscript?.engine).toBeNull()
+    expect(Object.hasOwn(sentMessage.metadata ?? {}, 'debugTranscript')).toBe(true)
+  })
+
   it('tracks scalar model identifiers and one correlated success summary', async () => {
     const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
 
@@ -618,9 +632,9 @@ describe('createChatInstance — retry policy', () => {
     const sendCall = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')!
     const receiveCall = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')!
     const summaryCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
-    const sendProperties = sendCall[1] as Record<string, unknown>
-    const receiveProperties = receiveCall[1] as Record<string, unknown>
-    const summaryProperties = summaryCalls[0]![1] as Record<string, unknown>
+    const sendProperties = sendCall[1] as TurnTelemetryPayload
+    const receiveProperties = receiveCall[1] as TurnTelemetryPayload
+    const summaryProperties = summaryCalls[0]![1] as TurnTelemetryPayload
 
     expect(sendProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
     expect(receiveProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
@@ -706,7 +720,7 @@ describe('createChatInstance — retry policy', () => {
     await firstBoot.instance.sendMessage({ text: 'stream until reload' })
     const traceId = (
       firstBoot.trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1] as
-        | Record<string, unknown>
+        | TurnTelemetryPayload
         | undefined
     )?.trace_id
 
@@ -752,7 +766,7 @@ describe('createChatInstance — retry policy', () => {
       expect(autoRetry).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
       expect(retrySuccess).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
       expect(successSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
-      expect((autoRetry as Record<string, unknown>).trace_id).toBe((successSummary as Record<string, unknown>).trace_id)
+      expect((autoRetry as TurnTelemetryPayload).trace_id).toBe((successSummary as TurnTelemetryPayload).trace_id)
 
       const exhaustedHarness = createRetryHarness()
       await exhaustedHarness.instance.sendMessage({ text: 'failed turn' })
@@ -774,9 +788,7 @@ describe('createChatInstance — retry policy', () => {
       )?.[1]
       expect(retriesExhausted).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
       expect(errorSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
-      expect((retriesExhausted as Record<string, unknown>).trace_id).toBe(
-        (errorSummary as Record<string, unknown>).trace_id,
-      )
+      expect((retriesExhausted as TurnTelemetryPayload).trace_id).toBe((errorSummary as TurnTelemetryPayload).trace_id)
     } finally {
       random.mockRestore()
     }
@@ -813,6 +825,55 @@ describe('createChatInstance — retry policy', () => {
       }),
     )
     expect(JSON.stringify(summary)).not.toContain('private_customer_server')
+  })
+
+  it('ignores malformed persisted tool durations', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+
+    await instance.sendMessage({ text: 'use a tool' })
+    await finishSuccessfully({
+      id: 'successful-assistant',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolName: 'lookup',
+          toolCallId: 'call-1',
+          state: 'output-available',
+          input: {},
+          output: {},
+        },
+      ],
+      metadata: {
+        reasoningTime: { 'call-1': '12' as never },
+      },
+    })
+
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    expect(summary).toEqual(expect.objectContaining({ tool_count: 0, tools: [] }))
+  })
+
+  it('emits terminal telemetry before transcript-only message processing', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+    const parts: ThunderboltUIMessage['parts'] = [{ type: 'text', text: 'Done' }]
+    Object.defineProperty(parts, 'flatMap', {
+      value: () => {
+        throw new Error('transcript extraction failed')
+      },
+    })
+
+    await instance.sendMessage({ text: 'new turn' })
+    await expect(
+      finishSuccessfully({
+        id: 'successful-assistant',
+        role: 'assistant',
+        parts,
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]).toEqual(
+      expect.objectContaining({ outcome: 'success' }),
+    )
   })
 
   it('preserves built-in tool names in turn telemetry', async () => {
@@ -877,8 +938,8 @@ describe('createChatInstance — retry policy', () => {
     await firstFinish
 
     const sendCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_send_prompt')
-    const firstTrace = (sendCalls[0]![1] as Record<string, unknown>).trace_id
-    const secondTrace = (sendCalls[1]![1] as Record<string, unknown>).trace_id
+    const firstTrace = (sendCalls[0]![1] as TurnTelemetryPayload).trace_id
+    const secondTrace = (sendCalls[1]![1] as TurnTelemetryPayload).trace_id
     const summaries = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
 
     expect(firstTrace).toBeDefined()
@@ -959,8 +1020,8 @@ describe('createChatInstance — retry policy', () => {
     await finish
 
     const sendCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_send_prompt')
-    const firstTrace = (sendCalls[0]![1] as Record<string, unknown>).trace_id
-    const secondTrace = (sendCalls[1]![1] as Record<string, unknown>).trace_id
+    const firstTrace = (sendCalls[0]![1] as TurnTelemetryPayload).trace_id
+    const secondTrace = (sendCalls[1]![1] as TurnTelemetryPayload).trace_id
     expect(firstTrace).toBeDefined()
     expect(secondTrace).toBeDefined()
     expect(firstTrace).not.toBe(secondTrace)

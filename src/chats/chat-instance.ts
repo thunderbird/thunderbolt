@@ -24,6 +24,17 @@ import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
 import {
+  beginDebugTranscriptTurn,
+  finishDebugTranscriptTurn,
+  recordDebugTranscriptFailure,
+  recordDebugTranscriptRetry,
+} from '@/debug-transcript/recorder'
+import type {
+  DebugTranscriptEngine,
+  DebugTranscriptMessageMetadataV1,
+  DebugTranscriptTurnOutcome,
+} from '@/debug-transcript/types'
+import {
   getChatErrorKind,
   getErrorName,
   getErrorRetryable,
@@ -40,6 +51,7 @@ import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport, type ChatInit } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
+import { z } from 'zod'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 export const maxRetries = 3
@@ -52,18 +64,11 @@ const emptyTurnRetryDelayMs = 250
  */
 const getRetryDelay = (attempt: number) => baseRetryDelayMs * 2 ** (attempt - 1) * (0.5 + Math.random())
 
-/** Report whether one AI SDK stream payload contains generated content. */
-const isGeneratedContentPayload = (value: unknown): boolean => {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const payload = value as Record<string, unknown>
-  return (
-    (payload.type === 'text-delta' || payload.type === 'reasoning-delta') &&
-    typeof payload.delta === 'string' &&
-    payload.delta.length > 0
-  )
-}
+const generatedContentPayloadSchema = z.object({
+  type: z.enum(['text-delta', 'reasoning-delta']),
+  delta: z.string().min(1),
+})
+const toolDurationSchema = z.number()
 
 /** Observe complete SSE data lines without changing or delaying stream chunks.
  *  Reports whether the line carried generated content (the first-token signal). */
@@ -76,7 +81,7 @@ const observeSseLine = (line: string, telemetry: TurnTelemetry): boolean => {
     return false
   }
   try {
-    if (isGeneratedContentPayload(JSON.parse(data))) {
+    if (generatedContentPayloadSchema.safeParse(JSON.parse(data)).success) {
       telemetry.markFirstToken()
       return true
     }
@@ -201,6 +206,7 @@ export type AgentRoutingState = {
   webToolBudgetRevision?: number
   getTurnBudget?: () => TurnBudget
   getTurnTelemetry?: () => TurnTelemetry | undefined
+  getDebugTranscriptTraceId?: () => string | undefined
   getAttempt?: () => number
 }
 
@@ -335,6 +341,22 @@ export const createAgentRoutingFetch = (
       //      before the assistant stream starts.
       const requestBody = JSON.parse(init.body as string) as { messages?: ThunderboltUIMessage[] }
       const requestMessages = requestBody.messages ?? []
+      const debugTranscriptTraceId = routingState.getDebugTranscriptTraceId?.()
+      if (debugTranscriptTraceId) {
+        const lastUserMessage = requestMessages.findLast((message) => message.role === 'user')
+        beginDebugTranscriptTurn({
+          threadId: id,
+          traceId: debugTranscriptTraceId,
+          engine: isBuiltInAgent(selectedAgent) ? (telemetry?.getEngine() ?? 'legacy') : 'acp',
+          model: {
+            id: selectedModel.id,
+            name: selectedModel.model,
+            provider: selectedModel.provider,
+          },
+          agentId: selectedAgent.id,
+          userMessageId: lastUserMessage?.id,
+        })
+      }
       telemetry?.startPhase('persist_user_message')
       await saveMessages({ id, messages: requestMessages })
       telemetry?.endPhase('persist_user_message')
@@ -397,6 +419,14 @@ export const createAgentRoutingFetch = (
           reason: 'request_budget_exhausted',
           attempt: routingState.getAttempt?.() ?? 1,
         })
+        if (debugTranscriptTraceId) {
+          recordDebugTranscriptRetry(
+            id,
+            debugTranscriptTraceId,
+            'request_budget_exhausted',
+            routingState.getAttempt?.() ?? 1,
+          )
+        }
         throw createTurnBudgetExhaustedError()
       }
 
@@ -412,6 +442,7 @@ export const createAgentRoutingFetch = (
         getProxyFetch,
         turnBudget,
         telemetry,
+        debugTranscriptTraceId,
         webToolBudget: getWebToolBudget(requestMessages),
         regenerationRevision: routingState.regenerationRevision ?? 0,
         skillInstructions,
@@ -435,37 +466,44 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
       telemetry.recordStep()
       continue
     }
-    if (!('toolCallId' in part) || typeof part.toolCallId !== 'string') {
+    if (!('toolCallId' in part)) {
       continue
     }
     const toolName = part.type === 'dynamic-tool' ? 'mcp' : part.type.replace(/^tool-/, '')
-    const durationMs = reasoningTime[part.toolCallId]
-    if (typeof durationMs === 'number') {
-      telemetry.recordTool(toolName, durationMs)
+    const duration = toolDurationSchema.safeParse(reasoningTime[part.toolCallId])
+    if (duration.success) {
+      telemetry.recordTool(toolName, duration.data)
     }
   }
 }
 
 type ChatMessageInput = Parameters<Chat<ThunderboltUIMessage>['sendMessage']>[0]
 
-/** Count user-authored text across both AI SDK message input shapes. */
-const getPromptLength = (message: ChatMessageInput): number => {
+/** Extract user-authored text across both AI SDK message input shapes. */
+const getPromptText = (message: ChatMessageInput): string => {
   if (!message) {
-    return 0
+    return ''
   }
   if ('parts' in message && message.parts) {
-    return message.parts.reduce((length, part) => length + (part.type === 'text' ? part.text.length : 0), 0)
+    return message.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('')
   }
-  if ('text' in message && typeof message.text === 'string') {
-    return message.text.length
+  if ('text' in message) {
+    return message.text ?? ''
   }
-  return 0
+  return ''
 }
 
-type InFlightTurnMarker = {
-  traceId: string
-  startedAt: number
-}
+/** Count user-authored text across both AI SDK message input shapes. */
+const getPromptLength = (message: ChatMessageInput): number => getPromptText(message).length
+
+const inFlightTurnMarkersSchema = z.array(
+  z.object({
+    traceId: z.string().min(1),
+    startedAt: z.number().finite(),
+  }),
+)
+
+type InFlightTurnMarker = z.infer<typeof inFlightTurnMarkersSchema>[number]
 
 type InFlightTurnStorage = {
   clear: (traceId: string) => void
@@ -479,28 +517,15 @@ type InFlightTurnStorage = {
  */
 const createInFlightTurnStorage = (chatId: string): InFlightTurnStorage => {
   const storageKey = `thunderbolt_chat_turn_in_flight:${chatId}`
-  const isMarker = (value: unknown): value is InFlightTurnMarker => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return false
-    }
-    return (
-      'traceId' in value &&
-      typeof value.traceId === 'string' &&
-      value.traceId.length > 0 &&
-      'startedAt' in value &&
-      typeof value.startedAt === 'number' &&
-      Number.isFinite(value.startedAt)
-    )
-  }
   const read = (): InFlightTurnMarker[] => {
     try {
       const raw = sessionStorage.getItem(storageKey)
       if (!raw) {
         return []
       }
-      const parsed: unknown = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.every(isMarker)) {
-        return parsed
+      const parsed = inFlightTurnMarkersSchema.safeParse(JSON.parse(raw))
+      if (parsed.success) {
+        return parsed.data
       }
       sessionStorage.removeItem(storageKey)
       return []
@@ -557,6 +582,9 @@ type TurnModelProperties = { model_id: string; model_name: string; provider: str
 type TurnState = {
   telemetry: TurnTelemetry | undefined
   modelProperties: TurnModelProperties | undefined
+  traceId: string | undefined
+  engine: DebugTranscriptEngine | undefined
+  agentId: string | undefined
   completed: boolean
 }
 
@@ -564,6 +592,9 @@ type TurnState = {
 const createTurnState = (): TurnState => ({
   telemetry: undefined,
   modelProperties: undefined,
+  traceId: undefined,
+  engine: undefined,
+  agentId: undefined,
   completed: false,
 })
 
@@ -611,10 +642,15 @@ export const createChatInstance = (
       model_name: session.selectedModel.model,
       provider: session.selectedModel.provider,
     }
+    turn.agentId = session.selectedAgent.id
     if (!isBuiltInAgent(session.selectedAgent)) {
+      turn.engine = 'acp'
+      turn.traceId = uuidv7()
       return
     }
     turn.telemetry = createTurnTelemetry()
+    turn.engine = 'legacy'
+    turn.traceId = turn.telemetry.traceId
     turn.telemetry.setDimensions({
       modelId: session.selectedModel.id,
       modelName: session.selectedModel.model,
@@ -632,19 +668,64 @@ export const createChatInstance = (
     }
     return telemetry
   }
+  /** Lazily initialize the correlated trace for built-in and ACP turns. */
+  const getOrCreateDebugTranscriptTraceId = (): string | undefined => {
+    if (!currentTurn.modelProperties) {
+      initializeTurnForCurrentSession(currentTurn)
+    }
+    return currentTurn.traceId
+  }
+  let retryCount = 0
+  let retryTimeout: ReturnType<typeof setTimeout> | null = null
+  let lastError: Error | null = null
+  const getAttemptsMade = (): number => retryCount + 1
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
     webToolBudgetRevision: 0,
     getTurnBudget: () => turnBudget,
     getTurnTelemetry: getOrCreateTurnTelemetry,
-    getAttempt: () => retryCount + 1,
+    getDebugTranscriptTraceId: getOrCreateDebugTranscriptTraceId,
+    getAttempt: getAttemptsMade,
   }
   const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
   const createChat = deps.createChat ?? ((init: ChatInit<ThunderboltUIMessage>) => new Chat(init))
 
-  let retryCount = 0
-  let retryTimeout: ReturnType<typeof setTimeout> | null = null
-  let lastError: Error | null = null
+  const debugMetadataForTurn = (turn: TurnState): DebugTranscriptMessageMetadataV1 | null => {
+    const { traceId, modelProperties, agentId } = turn
+    const engine = turn.telemetry?.getEngine() ?? turn.engine
+    if (!traceId || !modelProperties || !agentId || !engine) {
+      return null
+    }
+    return {
+      traceId,
+      engine,
+      modelId: modelProperties.model_id,
+      modelName: modelProperties.model_name,
+      provider: modelProperties.provider,
+      agentId,
+    }
+  }
+
+  const withDebugMetadata = (turn: TurnState, message: ThunderboltUIMessage): ThunderboltUIMessage => {
+    const debugTranscript = debugMetadataForTurn(turn)
+    if (!debugTranscript) {
+      return message
+    }
+    return {
+      ...message,
+      metadata: {
+        ...message.metadata,
+        debugTranscript,
+      },
+    }
+  }
+
+  const finishRecordedTurn = (turn: TurnState, outcome: DebugTranscriptTurnOutcome): void => {
+    const metadata = debugMetadataForTurn(turn)
+    if (metadata?.engine) {
+      finishDebugTranscriptTurn(id, metadata.traceId, outcome, metadata.engine)
+    }
+  }
 
   const emitTurnCompleted = (
     turn: TurnState,
@@ -656,14 +737,14 @@ export const createChatInstance = (
     }
     turn.completed = true
     const { telemetry } = turn
-    if (!telemetry) {
-      return
+    if (telemetry) {
+      if (message) {
+        recordMessageTelemetry(telemetry, message)
+      }
+      trackEvent('chat_turn_completed', telemetry.buildPayload(outcome))
+      inFlightTurns.clear(telemetry.traceId)
     }
-    if (message) {
-      recordMessageTelemetry(telemetry, message)
-    }
-    trackEvent('chat_turn_completed', telemetry.buildPayload(outcome))
-    inFlightTurns.clear(telemetry.traceId)
+    finishRecordedTurn(turn, outcome)
   }
 
   /** Clear retry state and replace the completed turn's request budget. */
@@ -719,18 +800,20 @@ export const createChatInstance = (
         // onFinish is the authoritative final save on abort just as it is on
         // success — without this, the last streamed chunk of an aborted turn
         // would be lost on reload.
-        if (message?.parts?.length) {
+        const completedMessage = message ? withDebugMetadata(finishedTurn, message) : undefined
+        if (completedMessage?.parts?.length) {
           finishedTurn.telemetry?.startPhase('final_save')
-          await saveMessages({ id, messages: [message] })
+          await saveMessages({ id, messages: [completedMessage] })
           finishedTurn.telemetry?.endPhase('final_save')
         }
-        emitTurnCompleted(finishedTurn, 'abort', message)
+        emitTurnCompleted(finishedTurn, 'abort', completedMessage)
         resetRetryStateIfUnswapped()
         return
       }
 
       // Handle successful responses: message exists, no error, and has parts
       if (!isError && message && message.parts?.length) {
+        const completedMessage = withDebugMetadata(finishedTurn, message)
         if (retryCount > 0) {
           trackEvent('chat_retry_success', {
             attempts: retryCount + 1,
@@ -747,17 +830,17 @@ export const createChatInstance = (
         }
 
         finishedTurn.telemetry?.startPhase('final_save')
-        await saveMessages({ id, messages: [message] })
+        await saveMessages({ id, messages: [completedMessage] })
         finishedTurn.telemetry?.endPhase('final_save')
 
         trackEvent('chat_receive_reply', {
           ...finishedTurn.modelProperties,
-          length: message.parts.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0),
+          length: completedMessage.parts.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0),
           reply_number: instance.messages.length + 1,
           ...getTraceProperties(finishedTurn.telemetry),
         })
 
-        emitTurnCompleted(finishedTurn, 'success', message)
+        emitTurnCompleted(finishedTurn, 'success', completedMessage)
         resetRetryStateIfUnswapped()
         return
       }
@@ -801,12 +884,16 @@ export const createChatInstance = (
       const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? 'empty-response' : 'unknown')
 
       if (retryCount < maxRetries) {
+        const attemptsMade = getAttemptsMade()
         if (turnBudget.probe.isExhausted) {
           finishedTurn.telemetry?.recordRetry({
             layer: 'turn_budget',
             reason: 'request_budget_exhausted',
             attempt: retryCount + 1,
           })
+          if (finishedTurn.traceId) {
+            recordDebugTranscriptRetry(id, finishedTurn.traceId, 'request_budget_exhausted', attemptsMade)
+          }
           markRetriesExhausted(finishedTurn, retryReason)
           return
         }
@@ -828,6 +915,9 @@ export const createChatInstance = (
           reason: retryReason,
           attempt: retryCount + 1,
         })
+        if (finishedTurn.traceId) {
+          recordDebugTranscriptRetry(id, finishedTurn.traceId, retryReason, attemptsMade)
+        }
 
         retryTimeout = setTimeout(() => {
           retryTimeout = null
@@ -835,6 +925,7 @@ export const createChatInstance = (
           // Only retry if the session still exists AND is still the current active session.
           // This prevents retries from executing when the user has switched to a different thread.
           if (!sessions.has(id) || currentSessionId !== id) {
+            finishRecordedTurn(finishedTurn, 'abort')
             resetRetryStateForNewTurn()
             useChatStore.getState().updateSession(id, { retriesExhausted: true })
             return
@@ -860,6 +951,12 @@ export const createChatInstance = (
       console.error('Chat error:', error)
       lastError = error instanceof Error ? error : new Error(String(error))
       currentTurn.telemetry?.recordError(getChatErrorKind(lastError) ?? lastError.name)
+      if (currentTurn.traceId) {
+        recordDebugTranscriptFailure(id, currentTurn.traceId, {
+          errorClass: lastError.name,
+          message: lastError.message,
+        })
+      }
       trackEvent('chat_turn_error', {
         kind: getChatErrorKind(lastError) ?? 'unknown',
         error_name: getErrorName(lastError),
@@ -918,6 +1015,18 @@ export const createChatInstance = (
     }
 
     const telemetry = getOrCreateTurnTelemetry()
+    getOrCreateDebugTranscriptTraceId()
+    const debugTranscript = debugMetadataForTurn(currentTurn)
+    const userDebugTranscript = debugTranscript
+      ? { ...debugTranscript, engine: null }
+      : message?.metadata?.debugTranscript
+    const messageMetadata: NonNullable<ThunderboltUIMessage['metadata']> = {
+      ...message?.metadata,
+      modelId: selectedModel.id,
+    }
+    if (userDebugTranscript) {
+      messageMetadata.debugTranscript = userDebugTranscript
+    }
     trackEvent('chat_send_prompt', {
       model_id: selectedModel.id,
       model_name: selectedModel.model,
@@ -930,10 +1039,7 @@ export const createChatInstance = (
     return originalSendMessage(
       {
         ...message,
-        metadata: {
-          ...message?.metadata,
-          modelId: selectedModel.id,
-        },
+        metadata: messageMetadata,
       } as ThunderboltUIMessage,
       options,
     )

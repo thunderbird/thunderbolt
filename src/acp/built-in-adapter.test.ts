@@ -22,6 +22,7 @@ import {
   createBuiltInAdapter,
   harnessSignature,
   isPiModelCandidate,
+  readProfileThinkingLevel,
   resolvePiModel,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
@@ -63,6 +64,17 @@ describe('isPiModelCandidate', () => {
     ).toEqual([true, true, true, true, true])
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(false)
     expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
+  })
+})
+
+describe('readProfileThinkingLevel', () => {
+  it('keeps valid reasoning fields when a sibling field is malformed', () => {
+    expect(
+      readProfileThinkingLevel({
+        reasoningEffort: null as never,
+        reasoning_effort: 'high',
+      }),
+    ).toBe('high')
   })
 })
 
@@ -128,7 +140,7 @@ describe('harnessSignature', () => {
 
 describe('resolvePiModel — image capability (vendor-gated)', () => {
   const contextFor = (model: Model): AgentAdapterContext =>
-    ({ selectedModel: model, getProxyFetch: () => noopFetch }) as unknown as AgentAdapterContext
+    ({ selectedModel: model, getProxyFetch: () => noopFetch }) as never
   const agentCore = {} as Parameters<typeof resolvePiModel>[0]
   const openaiModel = (vendor: string | null): Model =>
     ({ id: 'm', name: 'M', provider: 'openai', model: 'gpt-4o', apiKey: 'sk-o', vendor, toolUsage: 1 }) as Model
@@ -172,7 +184,7 @@ describe('createBuiltInAdapter engine telemetry', () => {
       prepareConfig: async () => config,
     })
     const telemetry = createTurnTelemetry({ generateId: () => 'trace-1' })
-    const context = {
+    const context: AgentAdapterContext = {
       threadId: 'thread-1',
       selectedModel: model,
       mcpClients: [],
@@ -181,7 +193,7 @@ describe('createBuiltInAdapter engine telemetry', () => {
       getProxyFetch: () => noopFetch,
       onAcpSessionId: async () => {},
       telemetry,
-    } as unknown as AgentAdapterContext
+    } as never
 
     await adapter.fetch({ body: '{}' }, context)
 
@@ -202,9 +214,9 @@ describe('createBuiltInAdapter persistent harness', () => {
     } as Model
     const agent = { id: 'built-in', type: 'built-in' } as Agent
     const toolsets: PreparedAiRequestConfig['toolset'][] = [
-      { first: {} } as unknown as PreparedAiRequestConfig['toolset'],
-      { second: {} } as unknown as PreparedAiRequestConfig['toolset'],
-      { third: {} } as unknown as PreparedAiRequestConfig['toolset'],
+      { first: {} } as never,
+      { second: {} } as never,
+      { third: {} } as never,
     ]
     const configs = toolsets.map(
       (toolset, index): PreparedAiRequestConfig => ({
@@ -236,13 +248,12 @@ describe('createBuiltInAdapter persistent harness', () => {
     const buildHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
       buildCalls.push(options)
       const systemPrompt = options.systemPrompt
-      seededSystemPrompts.push(
-        typeof systemPrompt === 'function' ? await systemPrompt({} as never) : (systemPrompt ?? ''),
-      )
+      const resolveSystemPrompt = systemPrompt as Exclude<NonNullable<typeof systemPrompt>, string>
+      seededSystemPrompts.push(await resolveSystemPrompt({} as never))
       const setToolsForHarness: Array<{ tools: AgentTool[]; activeToolNames: string[] | undefined }> = []
-      let toolResultHandler: (() => Promise<unknown> | unknown) | undefined
+      let toolResultHandler: (() => Promise<void> | void) | undefined
       setToolsCalls.push(setToolsForHarness)
-      const harness = {
+      const harness: AgentHarness = {
         getTools: () => [{ name: 'read' } as AgentTool],
         setTools: async (tools: AgentTool[], activeToolNames?: string[]) =>
           void setToolsForHarness.push({ tools, activeToolNames }),
@@ -257,7 +268,7 @@ describe('createBuiltInAdapter persistent harness', () => {
           }
         },
         waitForIdle: async () => {},
-        on: (type: string, handler: () => Promise<unknown> | unknown) => {
+        on: (type: string, handler: () => Promise<void> | void) => {
           if (type === 'tool_result') {
             toolResultHandler = handler
           }
@@ -267,11 +278,11 @@ describe('createBuiltInAdapter persistent harness', () => {
         },
         abort: async () => ({ aborted: true }),
         env: { remove: async () => {} },
-      } as unknown as AgentHarness
+      } as never
       harnesses.push(harness)
       return harness
     }
-    const agentCore = {
+    const agentCore: Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>> = {
       isKnownAnthropicModel: () => true,
       buildAppHarness: buildHarness,
       workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
@@ -279,19 +290,19 @@ describe('createBuiltInAdapter persistent harness', () => {
         toPiCalls.push(toolset)
         return Object.keys(toolset).map((name) => ({ name }) as AgentTool)
       },
-      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<unknown>) =>
+      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
         new ReadableStream<Uint8Array>({
           start: (controller) => {
             void runPrompt().then(() => controller.close())
           },
         }),
-    } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
+    } as never
     const adapter = createBuiltInAdapter(agent, {
       loadAgentCore: async () => agentCore,
       prepareConfig: prepareConfig as NonNullable<BuiltInAdapterOptions['prepareConfig']>,
     })
     const telemetry = createTurnTelemetry({ generateId: () => 'trace-pi' })
-    const context = {
+    const context: AgentAdapterContext = {
       threadId: 'thread-1',
       selectedModel: model,
       mcpClients: [],
@@ -302,7 +313,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       regenerationRevision: 0,
       webToolBudget: createWebToolBudget('auto'),
       telemetry,
-    } as unknown as AgentAdapterContext
+    } as never
     const request = (messages: unknown[]): RequestInit => ({ body: JSON.stringify({ messages }) })
     const send = async (init: RequestInit): Promise<void> => {
       const response = await adapter.fetch(init, context)

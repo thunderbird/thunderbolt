@@ -12,7 +12,7 @@ import {
   resetStore,
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import type { Model } from '@/types'
+import type { Model, ThunderboltUIMessage } from '@/types'
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement, createRef, type ReactNode } from 'react'
@@ -67,9 +67,12 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
 }
 
 /** Hydrate the chat store with sensible defaults for testing */
-const setupStore = () => {
+const setupStore = (
+  status: 'ready' | 'submitted' | 'streaming' | 'error' = 'ready',
+  messages: ThunderboltUIMessage[] = [],
+) => {
   const mockModel = createMockModel()
-  const mockChatInstance = createMockChatInstance([], 'ready')
+  const mockChatInstance = createMockChatInstance(messages, status)
   const mockUseChat = createMockUseChat(mockChatInstance)
 
   hydrateStore({
@@ -113,6 +116,89 @@ describe('ChatPromptInput', () => {
       })
 
       expect(screen.getByPlaceholderText('Ask me anything…')).toBeInTheDocument()
+    })
+  })
+
+  describe('stop button', () => {
+    it('shows the Stop button while the model is thinking (submitted)', () => {
+      const { mockUseChat } = setupStore('submitted')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Send message')).toBeNull()
+    })
+
+    it('shows the Stop button while streaming', () => {
+      const { mockUseChat } = setupStore('streaming')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    // Empty assistant turn sitting with status `ready` and retryCount 0 while the
+    // thread shows a recovery spinner — the Stop button must still be present.
+    it('shows the Stop button during empty-turn recovery (status ready, retryCount 0)', () => {
+      const messages: ThunderboltUIMessage[] = [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you doing?' }] },
+        { id: 'a1', role: 'assistant', parts: [] },
+      ]
+      const { mockUseChat } = setupStore('ready', messages)
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('shows the Stop button during an auto-retry backoff (status ready)', () => {
+      const { mockUseChat } = setupStore('ready')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { retryCount: 1, retriesExhausted: false })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('hides the Stop button once retries are exhausted', () => {
+      const { mockUseChat } = setupStore('ready')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { retryCount: 3, retriesExhausted: true })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.queryByLabelText('Stop generating')).toBeNull()
+    })
+
+    it('calls stop on click and stays tappable (no stopping spinner)', () => {
+      const { mockUseChat, mockChatInstance } = setupStore('streaming')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const stopButton = screen.getByLabelText('Stop generating') as HTMLButtonElement
+      act(() => {
+        fireEvent.click(stopButton)
+      })
+
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
+      // Stop is stop — the button never disables or shows an activity indicator.
+      expect(stopButton.disabled).toBe(false)
+      expect(stopButton.querySelector('.animate-spin')).toBeNull()
     })
   })
 

@@ -52,7 +52,7 @@ const UpgradeAction = () => {
 export const UpgradeRequired = ({ currentVersion, minVersion }: UpgradeRequiredProps) => (
   <div className="flex flex-col items-center justify-center w-full h-dvh">
     <div className="flex flex-col items-center gap-8 text-center">
-      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
         <AppLogo size={16} />
         <span>Thunderbolt</span>
       </div>
@@ -62,7 +62,7 @@ export const UpgradeRequired = ({ currentVersion, minVersion }: UpgradeRequiredP
         <p className="text-muted-foreground max-w-md">
           This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing.
         </p>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
           Installed: {currentVersion} · Minimum required: {minVersion}
         </p>
       </div>

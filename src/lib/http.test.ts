@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { appVersionUnsupported } from './app-version-unsupported'
+import { appVersionUnsupported, resetAppVersionBlockedForTesting } from './app-version-unsupported'
 import { createAuthenticatedClient, createClient, HttpError } from './http'
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -354,12 +354,17 @@ describe('app-version-unsupported detection', () => {
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
+    resetAppVersionBlockedForTesting()
     dispatchSpy = mock(() => true)
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
   })
 
   afterEach(() => {
     window.dispatchEvent = originalDispatch
+    // The 426s driven here latch the module-level `versionBlocked` singleton.
+    // Leaving it set makes an unrelated file's "not blocked" assertion fail —
+    // the classic passes-alone/fails-together flake.
+    resetAppVersionBlockedForTesting()
   })
 
   it('dispatches app_version_unsupported on a backend 426 without reading the response body', async () => {

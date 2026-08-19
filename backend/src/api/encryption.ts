@@ -269,7 +269,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             return { taken: true as const }
           }
 
-          return { ok: true as const }
+          return { ok: true as const, pendingSince: registered[0].lastSeen }
         })
 
         if ('limitReached' in result) {
@@ -283,7 +283,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         }
 
         await linkSessionToDevice(database, session.id, deviceId, userId)
-        return { trusted: false as const }
+        // `pendingSince` identifies THIS registration. The client echoes it back
+        // on cancel so a cancel that was issued for an earlier attempt cannot
+        // clear a newer one (see `denyDevice`).
+        // `lastSeen` is nullable in the schema; `registerDevice` always stamps it,
+        // and omitting the token simply falls back to an unscoped cancel.
+        return { trusted: false as const, pendingSince: result.pendingSince?.toISOString() }
       },
       {
         auth: true,
@@ -1067,7 +1072,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
     )
     .post(
       '/devices/me/cancel-pending',
-      async ({ request, set, user: sessionUser }) => {
+      async ({ body, request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const deviceId = request.headers.get('x-device-id')?.trim()
 
@@ -1087,8 +1092,23 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'Device is not pending approval' }
         }
 
-        await denyDevice(database, deviceId, userId)
+        // Scoped to the registration it was issued for. Clients fire this
+        // without awaiting it (the modal closes immediately), so a slow cancel
+        // could otherwise land after the user retried and wipe the FRESH pending
+        // request — the retry vanished with the peer showing "Request denied".
+        const cancelled = await denyDevice(
+          database,
+          deviceId,
+          userId,
+          body?.pendingSince ? new Date(body.pendingSince) : undefined,
+        )
+        if (cancelled.length === 0) {
+          // Superseded by a newer registration — leave it alone. Not an error:
+          // the request this cancel referred to is already gone.
+          set.status = 409
+          return { error: 'Pending request was superseded' }
+        }
         set.status = 204
       },
-      { auth: true },
+      { auth: true, body: t.Optional(t.Object({ pendingSince: t.Optional(t.String({ maxLength: 40 })) })) },
     )

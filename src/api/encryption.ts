@@ -29,7 +29,11 @@ import type {
 // Response types (matching backend)
 // =============================================================================
 
-export type RegisterDeviceResponse = { trusted: true; envelope: string | null } | { trusted: false }
+export type RegisterDeviceResponse =
+  | { trusted: true; envelope: string | null }
+  /** `pendingSince` identifies this registration for a scoped cancel. Optional —
+   *  a backend predating the scoped cancel simply omits it. */
+  | { trusted: false; pendingSince?: string }
 
 type StoreEnvelopeResponse = { trusted: true }
 
@@ -40,11 +44,26 @@ type FetchEnvelopeResponse = { trusted: boolean; wrappedCK: string }
 // Device registration + envelopes
 // =============================================================================
 
+/**
+ * Token identifying this device's CURRENT pending registration, echoed back on
+ * cancel so the server can reject a superseded one.
+ *
+ * Module-level because it is a per-device singleton by nature (like the device
+ * id): exactly one producer (`registerDevice`) and one consumer
+ * (`cancelPending`). Keeping it here rather than threading it through wizard
+ * state means no cancel path can forget to scope itself.
+ */
+let currentPendingSince: string | undefined
+
 /** Register (or re-identify) this device with the server. */
 export const registerDevice = async (
   httpClient: HttpClient,
   params: { deviceId: string; publicKey: string; mlkemPublicKey: string; name?: string },
-): Promise<RegisterDeviceResponse> => httpClient.post('devices', { json: params }).json<RegisterDeviceResponse>()
+): Promise<RegisterDeviceResponse> => {
+  const response = await httpClient.post('devices', { json: params }).json<RegisterDeviceResponse>()
+  currentPendingSince = response.trusted ? undefined : response.pendingSince
+  return response
+}
 
 /**
  * First-device bootstrap payload: the full atomic v2 setup (envelope + canary +
@@ -95,7 +114,11 @@ export const fetchMyEnvelope = async (httpClient: HttpClient): Promise<FetchEnve
 
 /** Cancel this device's pending approval state (called by the pending device itself). */
 export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
-  await httpClient.post('devices/me/cancel-pending')
+  // Reads the token at CALL time, so the body carries the registration being
+  // cancelled. Callers fire this without awaiting (the modal closes at once); if
+  // the user re-registers before it lands, the server sees a stale token and
+  // leaves the newer request alone instead of wiping the user's retry.
+  await httpClient.post('devices/me/cancel-pending', { json: { pendingSince: currentPendingSince } })
 }
 
 // =============================================================================

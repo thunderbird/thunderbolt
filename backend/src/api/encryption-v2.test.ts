@@ -509,6 +509,76 @@ describe('Encryption API (v2)', () => {
 
   // ─── AK rotation ────────────────────────────────────────────────────
 
+  describe('POST /devices/me/cancel-pending', () => {
+    const pendingFlag = async (deviceId: string) => {
+      const [row] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      return row.approvalPending
+    }
+
+    const cancel = (deviceId: string, body?: { pendingSince?: string }) =>
+      app.handle(
+        new Request(`${baseUrl}/devices/me/cancel-pending`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), deviceId),
+          body: JSON.stringify(body ?? {}),
+        }),
+      )
+
+    it('cancels the pending request when the token matches', async () => {
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'))
+
+      const res = await cancel(p('d'), { pendingSince: now.toISOString() })
+
+      expect(res.status).toBe(204)
+      expect(await pendingFlag(p('d'))).toBe(false)
+    })
+
+    it('leaves a newer pending request alone when the token is stale', async () => {
+      // Regression: the cancel is fired without awaiting it, so a slow one used
+      // to land after the user retried and wipe the FRESH request — the retry
+      // vanished and the approving device showed "Request denied".
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'))
+      const staleToken = new Date(now.getTime() - 60_000).toISOString()
+
+      const res = await cancel(p('d'), { pendingSince: staleToken })
+
+      expect(res.status).toBe(409)
+      expect(await pendingFlag(p('d'))).toBe(true)
+    })
+
+    it('cancels unconditionally when no token is supplied', async () => {
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'))
+
+      const res = await cancel(p('d'))
+
+      expect(res.status).toBe(204)
+      expect(await pendingFlag(p('d'))).toBe(false)
+    })
+
+    it('returns the pendingSince token on registration', async () => {
+      await createUserAndSession(p('u'), p('tok'))
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          body: JSON.stringify({ deviceId: p('d'), publicKey: 'pk', mlkemPublicKey: 'mlkem-pk' }),
+        }),
+      )
+
+      expect(res.status).toBe(200)
+      const registered = (await res.json()) as { trusted: boolean; pendingSince?: string }
+      expect(registered.trusted).toBe(false)
+      expect(registered.pendingSince).toBeTruthy()
+
+      // The freshly-issued token cancels; a stale one does not.
+      expect((await cancel(p('d'), { pendingSince: registered.pendingSince })).status).toBe(204)
+    })
+  })
+
   describe('GET /encryption/envelope-targets', () => {
     it('returns exactly the devices a rotation must cover, with their public keys', async () => {
       await createUserAndSession(p('u'), p('tok'))

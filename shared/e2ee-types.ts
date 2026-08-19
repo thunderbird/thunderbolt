@@ -53,6 +53,48 @@ export type WrappedKeyEntry = {
   wrappedKey: string
 }
 
+/**
+ * Single source of truth for encrypted tables and their columns, keyed by DB
+ * (snake_case) names — the same names PowerSync sync data and CRUD upload
+ * operations use.
+ *
+ * Shared because it is a wire contract, not a client detail: the frontend uses
+ * it to decide what to encrypt on upload, and the backend uses it to reject
+ * plaintext in those columns once an account is on the v2 keyring. A per-layer
+ * copy would drift, and drift here means silent plaintext.
+ *
+ * Adding a table here automatically enables:
+ * - Download decryption via EncryptionMiddleware (sync pipeline)
+ * - Upload encryption via encodeForUpload (connector)
+ * - Server-side plaintext rejection on upload
+ */
+export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = {
+  settings: ['value'],
+  chat_threads: ['title'],
+  chat_messages: ['content', 'parts', 'cache', 'metadata'],
+  tasks: ['item'],
+  models: ['name', 'model', 'url', 'vendor', 'description'],
+  prompts: ['title', 'prompt'],
+  triggers: ['trigger_time'],
+  model_profiles: [
+    'tools_override',
+    'link_previews_override',
+    'chat_mode_addendum',
+    'search_mode_addendum',
+    'research_mode_addendum',
+    'citation_reinforcement_prompt',
+    'nudge_final_step',
+    'nudge_preventive',
+    'nudge_retry',
+    'nudge_search_final_step',
+    'nudge_search_preventive',
+    'nudge_search_retry',
+    'provider_options',
+  ],
+  devices: ['name'],
+  skills: ['name', 'label', 'description', 'instruction'],
+}
+
 // =============================================================================
 // AAD — table ‖ column ‖ row_id ‖ key_id (never stored on the wire)
 // =============================================================================

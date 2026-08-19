@@ -89,9 +89,11 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
     rootMargin: '0px',
   })
 
-  // Always render the container with min-height, but only show content when there's text
+  // Reserve height only while the ephemeral reasoning is shown, so it collapses
+  // once faded. A stopped reasoning-only turn never gets a text part to unmount
+  // this display, so an unconditional reserve would leave a permanent blank gap.
   return (
-    <div className="relative mt-1 min-h-[200px]">
+    <div className={`relative mt-1${shouldShow ? ' min-h-[200px]' : ''}`}>
       <AnimatePresence mode="wait">
         {shouldShow && hasText && (
           <m.div

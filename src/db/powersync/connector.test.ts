@@ -487,3 +487,91 @@ describe('ThunderboltConnector upload encryption gate', () => {
     expect(wasCompleted()).toBe(true)
   })
 })
+
+describe('ThunderboltConnector download encryption gate', () => {
+  let savedAuthMode: string | undefined
+  let fetchMock: ReturnType<typeof mock>
+
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+  const tokenResponse = () =>
+    jsonResponse({ token: 'ps-token', expiresAt: '2099-12-31T00:00:00Z', powerSyncUrl: 'wss://ps.test/sync' })
+
+  /** Route `/encryption/canary` to `canary`; the token endpoint always succeeds. */
+  const routeCanary = (canary: () => Response | Promise<Response>) =>
+    mock((url: string) =>
+      url.includes('/encryption/canary') ? Promise.resolve(canary()) : Promise.resolve(tokenResponse()),
+    )
+
+  const requestedUrls = (): string[] => fetchMock.mock.calls.map((call) => call[0] as string)
+  const tokenRequested = (): boolean => requestedUrls().some((url) => url.includes('/powersync/token'))
+
+  beforeEach(async () => {
+    savedAuthMode = import.meta.env.VITE_AUTH_MODE
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    setAuthToken(authToken)
+    await clearAllKeys()
+    resetCodecState()
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+  })
+
+  afterEach(async () => {
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    useConfigStore.getState().updateConfig({})
+    await clearAllKeys()
+    resetCodecState()
+    clearAuthToken()
+    clearDeviceId()
+  })
+
+  it('withholds credentials when the account is encrypted but this device has no keyring', async () => {
+    // A v1-trusted device on an already-migrated account: syncing would persist
+    // raw ciphertext into local SQLite via the codec's passthrough.
+    fetchMock = routeCanary(() => jsonResponse({ primary_key_id: '0' }))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    expect(await connector.fetchCredentials()).toBeNull()
+    expect(tokenRequested()).toBe(false)
+  })
+
+  it('issues credentials once an AK is present, without probing', async () => {
+    await storeAK(await generateAK())
+    fetchMock = routeCanary(() => jsonResponse({ primary_key_id: '0' }))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    const credentials = await connector.fetchCredentials()
+
+    expect(credentials?.token).toBe('ps-token')
+    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
+  })
+
+  it('issues credentials for an account that never enabled E2EE', async () => {
+    fetchMock = routeCanary(() => jsonResponse({ error: 'Encryption not set up' }, 404))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    const credentials = await connector.fetchCredentials()
+
+    expect(credentials?.token).toBe('ps-token')
+  })
+
+  it('withholds credentials when the encryption probe fails', async () => {
+    // An unprovable state must not be read as "nothing to decrypt".
+    fetchMock = routeCanary(() => jsonResponse({ error: 'boom' }, 500))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    expect(await connector.fetchCredentials()).toBeNull()
+    expect(tokenRequested()).toBe(false)
+  })
+
+  it('does not gate when E2EE is disabled for the deployment', async () => {
+    useConfigStore.getState().updateConfig({ e2eeEnabled: false })
+    fetchMock = routeCanary(() => jsonResponse({ primary_key_id: '0' }))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    const credentials = await connector.fetchCredentials()
+
+    expect(credentials?.token).toBe('ps-token')
+    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
+  })
+})

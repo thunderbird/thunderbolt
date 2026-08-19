@@ -61,7 +61,13 @@ const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
  * Decrypts encrypted columns in sync data before it reaches SQLite.
  * Data-driven: scans all string values for the __enc: prefix rather than consulting
  * encryptedColumnsMap, so stale desktop bundles handle newly-encrypted columns correctly.
- * codec.decode passes through plaintext and returns raw ciphertext when no CK is available.
+ *
+ * codec.decode passes plaintext through, and returns the raw ciphertext when a key
+ * is unavailable — which this layer then PERSISTS as the value. That fallback is
+ * only meant for a missing individual DEK (the codec self-heals over the
+ * key-request channel); a device with no keyring at all must never reach here,
+ * which `ThunderboltConnector.canDecryptAccountData` enforces by withholding sync
+ * credentials until the keyring lands.
  *
  * No isEncryptionEnabled() gate: this middleware runs in the SharedWorker where
  * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.

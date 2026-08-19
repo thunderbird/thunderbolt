@@ -98,6 +98,12 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         return null
       }
 
+      if (!(await this.canDecryptAccountData())) {
+        console.info('[PowerSync] Encryption keys not on this device yet — deferring sync')
+        trackSyncEvent('sync_credentials_error', { error_code: 'KEYRING_MISSING', had_token: hadToken })
+        return null
+      }
+
       const tokenRequestStartedAt = performance.now()
       const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, {
         headers: getAuthenticatedHeaders(),
@@ -154,6 +160,35 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     } finally {
       console.info(`[PowerSync] fetchCredentials: ${Math.round(performance.now() - startedAt)}ms`)
     }
+  }
+
+  /**
+   * Whether this device can read what the account's sync stream will deliver.
+   *
+   * The download counterpart to {@link ensureUploadEncryptionReady}. Decode runs
+   * in the SharedWorker and its result is PERSISTED into local SQLite, so when a
+   * keyless device receives encrypted rows the codec's pre-unlock passthrough
+   * stores raw `__enc:…` strings as if they were values: the UI renders
+   * ciphertext, and writing such a row back re-encrypts the ciphertext. There is
+   * no way to defer a single value once the row is in the stream — so the fix is
+   * to not open the stream at all until the keyring is present.
+   *
+   * Returning null credentials is the established "not ready, keep retrying"
+   * channel here (the same one `DEVICE_NOT_TRUSTED` uses during setup), so sync
+   * resumes on PowerSync's own retry once keys land — no extra wiring needed.
+   *
+   * An AK on this device is enough: a missing individual DEK is the codec's
+   * key-request/self-heal case, not a reason to withhold the stream.
+   */
+  private async canDecryptAccountData(): Promise<boolean> {
+    if (!isEncryptionEnabled() || (await getAK())) {
+      return true
+    }
+    const account = await this.probeAccountEncryption()
+    // 'absent' = the account never enabled E2EE, so its rows are plaintext and
+    // readable. 'unknown' withholds the stream: an unprovable state must not be
+    // treated as "nothing to decrypt".
+    return account.status === 'absent'
   }
 
   /**

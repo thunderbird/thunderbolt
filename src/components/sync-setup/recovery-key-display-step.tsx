@@ -4,6 +4,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { clearRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 
@@ -87,6 +88,11 @@ export const RecoveryKeyDisplayStep = ({
             } catch {
               // Best-effort clipboard clear
             }
+            // The single choke point for "the user acknowledged saving a phrase" —
+            // every surface that displays one (setup wizard, migration, revoke
+            // rotation, change-phrase) renders this step, so clearing here can
+            // never be forgotten by a caller.
+            clearRecoveryPhrasePending()
             onDone()
           }}
           disabled={!confirmed}

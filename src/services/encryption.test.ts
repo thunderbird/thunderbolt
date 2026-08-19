@@ -28,6 +28,7 @@ import {
   exportMlKemPublicKey,
   type StoredKeyPair,
 } from '@/crypto'
+import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import type { KeyId } from '@shared/e2ee-types'
 
 // ---------------------------------------------------------------------------
@@ -423,10 +424,12 @@ describe('encryption service (v2)', () => {
     storedPrimaryKeyId = null
     storedKeyVersion = null
     failStoreAK = false
+    clearRecoveryPhrasePending()
   })
 
   afterEach(() => {
     failStoreAK = false
+    clearRecoveryPhrasePending()
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
     clearCachedSession()
@@ -461,6 +464,24 @@ describe('encryption service (v2)', () => {
     it('throws when the key pair is missing', async () => {
       const server = createFakeServer()
       await expect(completeFirstDeviceSetup(clientFor(server))).rejects.toThrow('Key pair not found')
+    })
+
+    it('marks the phrase as pending so a reload before confirmation is recoverable', async () => {
+      // The returned phrase lives only in component state; the durable flag is
+      // what lets the app re-prompt if the user never confirms saving it.
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      expect(isRecoveryPhrasePending()).toBe(false)
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      expect(isRecoveryPhrasePending()).toBe(true)
+    })
+
+    it('does not mark the phrase pending when setup fails', async () => {
+      const server = createFakeServer()
+      await expect(completeFirstDeviceSetup(clientFor(server))).rejects.toThrow()
+      expect(isRecoveryPhrasePending()).toBe(false)
     })
   })
 

@@ -108,11 +108,30 @@ export const countActiveDevices = async (database: QueryableDatabase, userId: st
  * (node_id/node_id_attested_at) so a denied device stops being dialable — mirroring
  * revokeDevice. The trusted=false guard prevents a TOCTOU race from revoking a
  * concurrently-approved device. */
-export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const denyDevice = async (
+  database: typeof DbType,
+  deviceId: string,
+  userId: string,
+  /**
+   * Compare-and-swap guard: only clear the pending flag if the row still carries
+   * this `lastSeen`. `registerDevice` stamps a fresh `lastSeen` on every
+   * (re)registration and returns it, so a cancel issued for an EARLIER request
+   * matches nothing and becomes a no-op instead of destroying the newer one.
+   * Omit to clear unconditionally (an approver denying someone else's device).
+   */
+  expectedLastSeen?: Date,
+) =>
   database
     .update(devicesTable)
     .set({ approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), eq(devicesTable.trusted, false)))
+    .where(
+      and(
+        eq(devicesTable.id, deviceId),
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, false),
+        ...(expectedLastSeen ? [eq(devicesTable.lastSeen, expectedLastSeen)] : []),
+      ),
+    )
     .returning()
 
 /**

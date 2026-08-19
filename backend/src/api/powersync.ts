@@ -26,19 +26,14 @@ type IssuePowerSyncTokenResult =
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 /**
- * Validates that the device belongs to the user, is not revoked, and (when E2EE is enabled) is trusted.
- * When E2EE is disabled, the trust check is skipped — devices don't go through the envelope flow.
- *
- * @param allowNewDevice When true and E2EE is off, a device that doesn't exist yet is allowed
- *   through (the caller is expected to create it via upsertDevice). Only the token endpoint sets
- *   this — upload always requires the device to already exist.
+ * Validates that the device belongs to the user, is not revoked, and is trusted.
+ * The device must already exist (registered via the envelope/trust flow) — a device
+ * that doesn't exist yet is always rejected.
  */
 const validateDeviceForSync = async (
   userId: string,
   request: Request,
   database: typeof DbType,
-  { e2eeEnabled }: Pick<Settings, 'e2eeEnabled'>,
-  { allowNewDevice = false } = {},
 ): Promise<DeviceValidationResult> => {
   const deviceId = request.headers.get('x-device-id')?.trim()
   if (!deviceId) {
@@ -48,11 +43,6 @@ const validateDeviceForSync = async (
   const deviceRow = await getDeviceById(database, deviceId)
 
   if (!deviceRow) {
-    // When E2EE is disabled, the FE never calls POST /devices to register, so the device
-    // may not exist yet. Allow it through only for the token path — upsertDevice will create it.
-    if (!e2eeEnabled && allowNewDevice) {
-      return { ok: true }
-    }
     return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
@@ -62,7 +52,7 @@ const validateDeviceForSync = async (
   if (deviceRow.revokedAt != null) {
     return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
   }
-  if (e2eeEnabled && !deviceRow.trusted) {
+  if (!deviceRow.trusted) {
     return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
@@ -93,7 +83,7 @@ const issuePowerSyncToken = async (
   settings: Settings,
   database: typeof DbType,
 ): Promise<IssuePowerSyncTokenResult> => {
-  const validation = await validateDeviceForSync(userId, request, database, settings, { allowNewDevice: true })
+  const validation = await validateDeviceForSync(userId, request, database)
   if (!validation.ok) {
     return validation
   }
@@ -115,7 +105,6 @@ const issuePowerSyncToken = async (
     name: deviceName,
     lastSeen: now,
     createdAt: now,
-    ...(!settings.e2eeEnabled ? { trusted: true } : {}),
     ...(appVersion ? { appVersion } : {}),
   })
 
@@ -254,7 +243,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
         }
 
-        const validation = await validateDeviceForSync(user.id, request, database, settings)
+        const validation = await validateDeviceForSync(user.id, request, database)
         if (!validation.ok) {
           set.status = validation.status
           return validation.body

@@ -7,6 +7,7 @@ import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { devicesTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
+import { createTestSettings } from '@/test-utils/settings'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -23,62 +24,12 @@ const signToken = (token: string): string => {
   return `${token}.${sig}`
 }
 
-const powersyncSettings: Settings = {
-  fireworksApiKey: '',
-  mistralApiKey: '',
-  anthropicApiKey: '',
-  exaApiKey: '',
-  tinfoilApiKey: '',
-  tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',
-  monitoringToken: '',
-  googleClientId: '',
-  googleClientSecret: '',
-  microsoftClientId: '',
-  microsoftClientSecret: '',
-  logLevel: 'INFO',
-  port: 8000,
-  appUrl: 'http://localhost:1420',
-  posthogHost: '',
-  posthogApiKey: '',
-  corsOrigins: '',
-  corsAllowCredentials: true,
-  corsAllowMethods: '',
-  corsAllowHeaders: '',
-  corsExposeHeaders: '',
-  waitlistEnabled: false,
-  waitlistAutoApproveDomains: '',
+const powersyncSettings: Settings = createTestSettings({
+  betterAuthSecret,
   powersyncUrl: 'https://powersync.example.com',
   powersyncJwtKid: 'test-kid',
   powersyncJwtSecret: 'test-jwt-secret-min-32-chars-long',
-  powersyncTokenExpirySeconds: 3600,
-  authMode: 'consumer' as const,
-  authAllowAnonymous: false,
-  oidcClientId: '',
-  oidcClientSecret: '',
-  oidcIssuer: '',
-  oidcDiscoveryUrl: '',
-  betterAuthUrl: 'http://localhost:8000',
-  betterAuthSecret,
-  deviceAuthExpiresIn: '30m',
-  deviceAuthInterval: '5s',
-  apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
-  e2eeEnabled: true,
-  rateLimitEnabled: false,
-  swaggerEnabled: false,
-  trustedProxy: '',
-  samlEntryPoint: '',
-  samlEntityId: '',
-  samlIdpIssuer: '',
-  samlCert: '',
-  enabledAgents: '',
-  allowCustomAgents: true,
-  disableBuiltInAgent: false,
-  haystackBaseUrl: '',
-  haystackApiKey: '',
-  haystackWorkspace: '',
-  haystackPipelines: '',
-  minAppVersion: '',
-}
+})
 
 describe('PowerSync API', () => {
   let app: Elysia
@@ -2421,262 +2372,6 @@ describe('PowerSync cross-origin injection protection', () => {
   })
 })
 
-describe('PowerSync API (E2EE disabled)', () => {
-  let app: Elysia
-  let db: Awaited<ReturnType<typeof createTestDb>>['db']
-  let cleanup: () => Promise<void>
-
-  const e2eeDisabledSettings: Settings = { ...powersyncSettings, e2eeEnabled: false }
-
-  beforeEach(async () => {
-    const testEnv = await createTestDb()
-    db = testEnv.db
-    cleanup = testEnv.cleanup
-    const { auth } = createBetterAuthPlugin(db)
-    app = new Elysia().use(createPowerSyncRoutes(auth, e2eeDisabledSettings, db)) as unknown as Elysia
-  })
-
-  afterEach(async () => {
-    if (cleanup) {
-      await cleanup()
-    }
-  })
-
-  it('allows untrusted device to get token when E2EE is disabled', async () => {
-    const userId = 'user-e2ee-off'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'E2EE Off User',
-      email: 'e2ee-off@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-e2ee-off',
-      expiresAt,
-      token: 'bearer-e2ee-off',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    await db.insert(devicesTable).values({
-      id: 'untrusted-device-e2ee-off',
-      userId,
-      name: 'Untrusted Device',
-      trusted: false,
-      lastSeen: now,
-      createdAt: now,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken('bearer-e2ee-off')}`,
-          'x-device-id': 'untrusted-device-e2ee-off',
-        },
-      }),
-    )
-    expect(response.status).toBe(200)
-    const data = await response.json()
-    expect(data.token).toBeDefined()
-    expect(data.powerSyncUrl).toBe('https://powersync.example.com')
-  })
-
-  it('creates and trusts a brand-new device on token request when E2EE is disabled', async () => {
-    const userId = 'user-new-device-e2ee-off'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'New Device User',
-      email: 'new-device-e2ee-off@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-new-device-e2ee-off',
-      expiresAt,
-      token: 'bearer-new-device-e2ee-off',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    // No device inserted — device does not exist in DB at all
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken('bearer-new-device-e2ee-off')}`,
-          'x-device-id': 'brand-new-device',
-          'x-device-name': 'My New Phone',
-        },
-      }),
-    )
-    expect(response.status).toBe(200)
-    const data = await response.json()
-    expect(data.token).toBeDefined()
-    expect(data.powerSyncUrl).toBe('https://powersync.example.com')
-
-    // Verify device was auto-created and trusted
-    const device = await db
-      .select({ userId: devicesTable.userId, trusted: devicesTable.trusted, name: devicesTable.name })
-      .from(devicesTable)
-      .where(eq(devicesTable.id, 'brand-new-device'))
-      .then((rows) => rows[0])
-    expect(device).toBeDefined()
-    expect(device.userId).toBe(userId)
-    expect(device.trusted).toBe(true)
-    expect(device.name).toBe('My New Phone')
-  })
-
-  it('auto-trusts new device on upsert when E2EE is disabled', async () => {
-    const userId = 'user-auto-trust'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'Auto Trust User',
-      email: 'auto-trust@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-auto-trust',
-      expiresAt,
-      token: 'bearer-auto-trust',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    // Insert untrusted device — the token endpoint should upgrade it to trusted
-    await db.insert(devicesTable).values({
-      id: 'device-auto-trust',
-      userId,
-      name: 'Device',
-      trusted: false,
-      lastSeen: now,
-      createdAt: now,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken('bearer-auto-trust')}`,
-          'x-device-id': 'device-auto-trust',
-        },
-      }),
-    )
-    expect(response.status).toBe(200)
-
-    // Verify device was marked trusted in DB
-    const device = await db
-      .select({ trusted: devicesTable.trusted })
-      .from(devicesTable)
-      .where(eq(devicesTable.id, 'device-auto-trust'))
-      .then((rows) => rows[0])
-    expect(device.trusted).toBe(true)
-  })
-
-  it('rejects non-existent device on upload even when E2EE is disabled', async () => {
-    const userId = 'user-upload-no-device'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'Upload No Device',
-      email: 'upload-no-device@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-upload-no-device',
-      expiresAt,
-      token: 'bearer-upload-no-device',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/upload', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${signToken('bearer-upload-no-device')}`,
-          'X-Device-ID': 'device-does-not-exist',
-        },
-        body: JSON.stringify({
-          operations: [{ op: 'PUT', type: 'settings', id: 'k', data: { value: 'v' } }],
-        }),
-      }),
-    )
-    expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
-  })
-
-  it('still rejects revoked device when E2EE is disabled', async () => {
-    const userId = 'user-revoked-e2ee-off'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'Revoked E2EE Off',
-      email: 'revoked-e2ee-off@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-revoked-e2ee-off',
-      expiresAt,
-      token: 'bearer-revoked-e2ee-off',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    await db.insert(devicesTable).values({
-      id: 'revoked-device-e2ee-off',
-      userId,
-      name: 'Revoked Device',
-      trusted: false,
-      revokedAt: now,
-      lastSeen: now,
-      createdAt: now,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken('bearer-revoked-e2ee-off')}`,
-          'x-device-id': 'revoked-device-e2ee-off',
-        },
-      }),
-    )
-    expect(response.status).toBe(403)
-    const data = await response.json()
-    expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
-  })
-})
-
 describe('PowerSync API — anonymous sync guard', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
@@ -2823,9 +2518,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   })
 
   it('GET /powersync/token Path 2 (Bearer only) — non-anonymous user → 200 (regression)', async () => {
-    const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db),
-    ) as unknown as Elysia
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { signedBearer, deviceId } = await seedRegularUser('path2-ok')
 
@@ -2874,9 +2567,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   })
 
   it('PUT /powersync/upload — non-anonymous user → 200 (regression)', async () => {
-    const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db),
-    ) as unknown as Elysia
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { signedBearer, deviceId } = await seedRegularUser('upload-ok')
 

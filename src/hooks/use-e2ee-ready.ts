@@ -3,15 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useState } from 'react'
-import { isEncryptionEnabled, needsSyncSetupWizard } from '@/db/encryption'
+import { needsSyncSetupWizard } from '@/db/encryption'
 
 /**
- * Whether E2EE v2 is fully operational on this device: the feature is enabled
- * AND the local key hierarchy is complete (AK + at least one wrapped DEK).
- * False for pre-encryption accounts and for devices that haven't yet migrated,
- * followed, or run the setup wizard.
+ * Whether E2EE v2 is fully operational on this device: the local key
+ * hierarchy is complete (AK + at least one wrapped DEK). False for devices
+ * that haven't yet migrated, followed, or run the setup wizard.
  */
-export const isE2eeReady = async (): Promise<boolean> => isEncryptionEnabled() && !(await needsSyncSetupWizard())
+export const isE2eeReady = async (): Promise<boolean> => !(await needsSyncSetupWizard())
 
 /**
  * React hook flavor of `isE2eeReady` — resolves once on mount.

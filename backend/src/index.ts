@@ -152,7 +152,7 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createPowerSyncRoutes(auth, settings, database))
-      .use(createEncryptionRoutes(auth, database))
+      .use(createEncryptionRoutes(auth, settings, database))
       .use(createAccountRoutes(auth, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))

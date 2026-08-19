@@ -63,8 +63,8 @@ const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
  * encryptedColumnsMap, so stale desktop bundles handle newly-encrypted columns correctly.
  * codec.decode passes through plaintext and returns raw ciphertext when no CK is available.
  *
- * No isEncryptionEnabled() gate: this middleware runs in the SharedWorker where
- * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.
+ * No config-gate here: this middleware runs in the SharedWorker where localStorage
+ * is unavailable. The codec safely handles both encrypted and plaintext data.
  *
  * The codec is injected (defaulting to the shared AES-GCM codec) so tests can supply a
  * fake without `mock.module('@/db/encryption/codec')`, which leaks across test files in a

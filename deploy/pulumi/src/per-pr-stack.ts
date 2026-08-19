@@ -117,7 +117,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
       'awslogs-group': shared.logGroupName,
       'awslogs-region': region,
       'awslogs-stream-prefix': streamPrefix,
-    } as Record<string, pulumi.Input<string>>,
+    } satisfies Record<string, pulumi.Input<string>>,
   })
 
   // -------- 3. Per-PR target groups (3: frontend, backend, marketing) --------
@@ -360,6 +360,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'POWERSYNC_URL', value: shared.powersyncPublicUrl },
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
+          { name: 'DEBUG_TRANSCRIPTS_ENABLED', value: 'true' },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
           { name: 'TRUSTED_PROXY', value: 'cloudflare' },

@@ -13,6 +13,7 @@ export type AppConfig = {
    *  built-in agent shown, custom agents allowed. */
   builtInAgentEnabled?: boolean
   allowCustomAgents?: boolean
+  debugTranscriptsEnabled?: boolean
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */
   minAppVersion?: string
@@ -51,3 +52,7 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false
+
+/** Whether the server explicitly accepts debug transcript uploads. Absent
+ * config is disabled because standalone mode has no backend recipient. */
+export const selectDebugTranscriptsEnabled = (config: AppConfig): boolean => config.debugTranscriptsEnabled === true

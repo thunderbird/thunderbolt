@@ -134,7 +134,7 @@ const DialogDescription = ({ className, ...props }: ComponentProps<typeof Dialog
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn('text-muted-foreground text-sm', className)}
+      className={cn('text-muted-foreground text-[length:var(--font-size-sm)]', className)}
       {...props}
     />
   )

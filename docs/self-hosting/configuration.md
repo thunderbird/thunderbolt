@@ -81,6 +81,12 @@ When you add a new custom header to a client request (e.g. `X-Device-ID`), you *
 
 See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the client emits.
 
+## Debug Transcripts
+
+| Variable                    | Default | Description                                                                                                             |
+| --------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `DEBUG_TRANSCRIPTS_ENABLED` | `false` | Allow authenticated users to upload identified debug transcripts stored as plaintext in Postgres until account deletion |
+
 ## Rate Limiting and Proxy Trust
 
 | Variable             | Default | Description                                                                                               |

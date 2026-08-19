@@ -15,7 +15,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
+import { createAuthIpRateLimit, createUserTierRateLimit } from '@/middleware/rate-limit'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
@@ -32,6 +32,7 @@ import { createHaystackRoutes } from '@/haystack'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
+import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
 import type { AppDeps } from '@/types'
 import { Elysia } from 'elysia'
 
@@ -75,7 +76,7 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
-  const proRateLimit = createProRateLimit(database, rateLimitSettings)
+  const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
@@ -135,10 +136,18 @@ export const createApp = async (deps?: AppDeps) => {
           auth,
           fetchFn: deps?.fetchFn,
           logger: appLogger,
-          rateLimit: createInferenceRateLimit(database, rateLimitSettings),
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'inference'),
         }),
       )
       .use(createConfigRoutes(settings))
+      .use(
+        createDebugTranscriptsRoutes({
+          auth,
+          database,
+          settings,
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'debug-transcript'),
+        }),
+      )
       .use(createPostHogRoutes(fetchFn))
       .use(
         createWaitlistRoutes({

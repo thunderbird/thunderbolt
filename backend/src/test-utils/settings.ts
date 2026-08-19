@@ -53,6 +53,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   corsAllowHeaders: 'Content-Type,Authorization',
   corsExposeHeaders: '',
   e2eeEnabled: false,
+  debugTranscriptsEnabled: false,
   swaggerEnabled: false,
   rateLimitEnabled: false,
   trustedProxy: '' as const,

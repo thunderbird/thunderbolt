@@ -13,7 +13,7 @@ type ShareDebugTranscriptToastProps = {
 }
 
 const successToastDurationMs = 4_000
-const successMessage = 'Sent — thank you. This helps the Thunderbolt team see exactly what happened.'
+const successMessage = 'Transcript sent — thank you.'
 
 export const ShareDebugTranscriptToast = ({ open, onDismiss }: ShareDebugTranscriptToastProps) => {
   useEffect(() => {

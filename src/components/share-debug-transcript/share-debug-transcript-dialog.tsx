@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import { Label } from '@/components/ui/label'
 import {
   ResponsiveModal,
@@ -99,14 +100,14 @@ export const ShareDebugTranscriptDialog = ({
         )}
       </ResponsiveModalContent>
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <FormFooter className="flex-col-reverse sm:flex-row">
         <Button type="button" variant="outline" onClick={onCancel}>
           Not now
         </Button>
         <Button type="button" isLoading={isPending} loadingLabel="Sending…" onClick={onSubmit}>
           {errorMessage ? 'Retry' : 'Send to the Thunderbolt team'}
         </Button>
-      </div>
+      </FormFooter>
     </ResponsiveModal>
   )
 }

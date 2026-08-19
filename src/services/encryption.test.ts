@@ -27,7 +27,15 @@ import {
   exportMlKemPublicKey,
   type StoredKeyPair,
 } from '@/crypto'
-import type { KeyId } from '@shared/e2ee-types'
+import {
+  initialKeyId,
+  orgEnvelopeLength,
+  orgEnvelopeVersion,
+  orgKmsHkdfInfo,
+  p256PointLength,
+  uncompressedPointPrefix,
+} from '@shared/e2ee-types'
+import type { KeyId, OrgPublicKeyResponse } from '@shared/e2ee-types'
 
 // ---------------------------------------------------------------------------
 // In-memory key storage (replaces IndexedDB)
@@ -126,6 +134,10 @@ type FakeServer = {
   /** Applied when /upgrade returns 409 — simulates the winning migrator's committed v2 state. */
   winner?: { metadata: MetaState; envelopes: Map<string, string>; wrappedKeys: Map<KeyId, string> }
   rotateStatus: number
+  /** What GET /encryption/org-key answers. Escrow is off unless a test turns it on. */
+  orgKey: OrgPublicKeyResponse
+  /** Every `orgEnvelope` the client submitted, by endpoint. */
+  orgEnvelopes: string[]
   fetch: (input: Request) => Promise<Response>
 }
 
@@ -140,6 +152,8 @@ const createFakeServer = (): FakeServer => {
     deviceTrusted: new Map(),
     upgradeConflict: false,
     rotateStatus: 200,
+    orgKey: { enabled: false, publicKey: null, fingerprint: null },
+    orgEnvelopes: [],
     fetch: async () => jsonResponse({}),
   }
 
@@ -176,6 +190,12 @@ const createFakeServer = (): FakeServer => {
         server.deviceTrusted.set(deviceId, false)
       }
       return jsonResponse({ trusted: false })
+    }
+    if (path === '/encryption/org-key' && method === 'GET') {
+      return jsonResponse(server.orgKey)
+    }
+    if (typeof body?.orgEnvelope === 'string') {
+      server.orgEnvelopes.push(body.orgEnvelope)
     }
     if (path === '/devices/me/envelope' && method === 'GET') {
       const env = server.envelopes.get(callerDeviceId)
@@ -419,6 +439,105 @@ describe('encryption service (v2)', () => {
     it('throws when the key pair is missing', async () => {
       const server = createFakeServer()
       await expect(completeFirstDeviceSetup(clientFor(server))).rejects.toThrow('Key pair not found')
+    })
+  })
+
+  describe('org KMS escrow', () => {
+    /** Turn escrow on for `server`, returning the org keypair's private half for verification. */
+    const enableEscrow = async (server: FakeServer): Promise<CryptoKey> => {
+      const { publicKey, privateKey } = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, [
+        'deriveBits',
+      ])
+      const raw = new Uint8Array(await crypto.subtle.exportKey('raw', publicKey))
+      server.orgKey = {
+        enabled: true,
+        publicKey: btoa(String.fromCharCode(...raw)),
+        fingerprint: 'test-fingerprint',
+      }
+      return privateKey
+    }
+
+    it('sends no org envelope when the deployment has escrow off', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      expect(server.orgEnvelopes).toHaveLength(0)
+    })
+
+    it('wraps the AK for the org key on first-device setup', async () => {
+      const server = createFakeServer()
+      await enableEscrow(server)
+      storedKeyPair = await generateFullKeyPair()
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      expect(server.orgEnvelopes).toHaveLength(1)
+      // [version][ephemeral P-256 point][AES-KW-wrapped AK] — the frozen shape.
+      const envelope = Uint8Array.from(atob(server.orgEnvelopes[0]), (c) => c.charCodeAt(0))
+      expect(envelope).toHaveLength(orgEnvelopeLength)
+      expect(envelope[0]).toBe(orgEnvelopeVersion)
+      expect(envelope[1]).toBe(uncompressedPointPrefix)
+    })
+
+    it('wraps the real AK, recoverable with the org private key', async () => {
+      const server = createFakeServer()
+      const orgPrivateKey = await enableEscrow(server)
+      storedKeyPair = await generateFullKeyPair()
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      // Shape assertions can't tell a real envelope from 106 random bytes — invert
+      // it the way the operator tool does and check the AK actually comes back.
+      const envelope = Uint8Array.from(atob(server.orgEnvelopes[0]), (c) => c.charCodeAt(0))
+      const ephPubRaw = envelope.slice(1, 1 + p256PointLength)
+      const sharedSecret = await crypto.subtle.deriveBits(
+        {
+          name: 'ECDH',
+          public: await crypto.subtle.importKey('raw', ephPubRaw, { name: 'ECDH', namedCurve: 'P-256' }, false, []),
+        },
+        orgPrivateKey,
+        256,
+      )
+      const unwrapKey = await crypto.subtle.deriveKey(
+        { name: 'HKDF', hash: 'SHA-256', salt: ephPubRaw, info: orgKmsHkdfInfo },
+        await crypto.subtle.importKey('raw', sharedSecret, 'HKDF', false, ['deriveKey']),
+        { name: 'AES-KW', length: 256 },
+        false,
+        ['unwrapKey'],
+      )
+      const recoveredAk = await crypto.subtle.unwrapKey(
+        'raw',
+        envelope.slice(1 + p256PointLength),
+        unwrapKey,
+        'AES-KW',
+        { name: 'AES-KW', length: 256 },
+        false,
+        ['unwrapKey'],
+      )
+
+      // Proof it's the SAME AK, not merely a well-formed one: it unwraps the DEK
+      // the client wrapped under the real AK and submitted to the server.
+      const wrappedDek = server.wrappedKeys.get(initialKeyId)!
+      const dek = await crypto.subtle.unwrapKey(
+        'raw',
+        Uint8Array.from(atob(wrappedDek), (c) => c.charCodeAt(0)),
+        recoveredAk,
+        'AES-KW',
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt'],
+      )
+      expect(dek.algorithm.name).toBe('AES-GCM')
+    })
+
+    it('fails loudly when escrow is on but the server has no key', async () => {
+      const server = createFakeServer()
+      server.orgKey = { enabled: true, publicKey: null, fingerprint: null }
+      storedKeyPair = await generateFullKeyPair()
+
+      await expect(completeFirstDeviceSetup(clientFor(server))).rejects.toThrow('no public key')
     })
   })
 

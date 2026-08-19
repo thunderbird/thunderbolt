@@ -5,7 +5,6 @@
 import 'fake-indexeddb/auto'
 import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
-import { useConfigStore } from '@/api/config-store'
 import { clearAllKeys, generateAK, getPrimaryKeyId, storeAK, storePrimaryKeyId } from '@/crypto'
 import type { AbstractPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
@@ -325,19 +324,16 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
     setAuthToken(authToken)
     fetchMock = mock(() => Promise.resolve(okResponse({})))
     await clearAllKeys()
-    useConfigStore.getState().updateConfig({})
   })
 
   afterEach(async () => {
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
-    useConfigStore.getState().updateConfig({})
     await clearAllKeys()
     clearAuthToken()
     clearDeviceId()
   })
 
-  it('fetches metadata and stores the primary key_id when E2EE is on, an AK exists, and none is loaded', async () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+  it('fetches metadata and stores the primary key_id when an AK exists and none is loaded', async () => {
     await storeAK(await generateAK())
     fetchMock.mockImplementation((url: string) =>
       Promise.resolve(url.includes('/encryption/canary') ? okResponse({ primary_key_id: '0' }) : okResponse({})),
@@ -351,17 +347,7 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
     expect(requestedUrls().some((url) => url.includes('/powersync/upload'))).toBe(true)
   })
 
-  it('does not fetch metadata when E2EE is disabled', async () => {
-    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
-
-    await connector.uploadData(makeDatabase())
-
-    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
-    expect(requestedUrls().some((url) => url.includes('/powersync/upload'))).toBe(true)
-  })
-
   it('does not fetch metadata when a primary key_id is already loaded', async () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
     await storeAK(await generateAK())
     await storePrimaryKeyId('3')
     const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)

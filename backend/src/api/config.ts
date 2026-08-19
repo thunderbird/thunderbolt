@@ -19,7 +19,15 @@ import { Elysia } from 'elysia'
  */
 export const createConfigRoutes = (settings: Settings) =>
   new Elysia({ prefix: '/config' }).onError(safeErrorHandler).get('/', () => ({
-    e2eeEnabled: settings.e2eeEnabled,
+    // Compatibility shim, not a live flag. E2EE is unconditionally on, but
+    // pre-cutover bundles gate `encodeForUpload` on `config.e2eeEnabled`, and
+    // `updateConfig` replaces the whole config object — so omitting this key
+    // makes a stale client read it as `undefined`, skip encryption, and upload
+    // PLAINTEXT into an account current clients treat as encrypted. There is no
+    // bulk re-encryption pass, so that data stays plaintext forever.
+    // Safe to delete once MIN_APP_VERSION is at or above the first release that
+    // shipped always-on E2EE, which 426s every client that still reads this.
+    e2eeEnabled: true,
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,

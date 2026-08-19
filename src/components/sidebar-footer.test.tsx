@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -10,6 +11,7 @@ import { type ReactElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { clearAllKeys, generateAK, storeAK, storeDEK } from '@/crypto'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -225,12 +227,20 @@ describe('sync retry flow', () => {
   // The test database is bun-sqlite (no PowerSync instance), so usePowerSyncStatus
   // reports 'not-configured' — with sync enabled that is exactly the
   // "needs attention" state that surfaces the Retry button.
-  beforeEach(() => {
+  //
+  // useSyncEnabledToggle's mount effect auto-disables sync for a device whose
+  // local key hierarchy isn't complete (needsSyncSetupWizard() === true) — stage
+  // a complete AK+DEK keyring so that check no-ops and sync stays enabled for
+  // these tests.
+  beforeEach(async () => {
+    await storeAK(await generateAK())
+    await storeDEK('0', 'wrapped-blob')
     useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
+    await clearAllKeys()
   })
 
   const openAccountMenu = async () => {

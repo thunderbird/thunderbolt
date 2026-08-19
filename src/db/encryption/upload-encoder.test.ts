@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { useConfigStore } from '@/api/config-store'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { clearAllKeys, generateAK, mintDEK, storeAK, storeDEK, storePrimaryKeyId } from '@/crypto'
 
 // Re-provide the real config module to override leaked mocks from other test
@@ -39,11 +38,6 @@ describe('encodeForUpload', () => {
     await clearAllKeys()
     resetCodecState()
     await setupKeyring()
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
-  })
-
-  afterEach(() => {
-    useConfigStore.setState({ config: {} })
   })
 
   it('encrypts configured columns, binding op.id as the AAD rowId (round-trip)', async () => {
@@ -126,12 +120,5 @@ describe('encodeForUpload', () => {
     const op = { op: 'PUT' as const, type: 'unknown_table', id: 'row-1', data: { foo: 'bar' } }
     const result = await encodeForUpload(op)
     expect(result.data?.foo).toBe('bar')
-  })
-
-  it('passes through when encryption is disabled', async () => {
-    useConfigStore.setState({ config: {} })
-    const op = { op: 'PUT' as const, type: 'tasks', id: 'row-1', data: { item: 'plain' } }
-    const result = await encodeForUpload(op)
-    expect(result.data?.item).toBe('plain')
   })
 })

@@ -12,7 +12,9 @@
 import postgres from 'postgres'
 
 const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
-const sql = postgres(`postgresql://postgres:postgres@localhost:${postgresPort}/postgres`, {
+/** The harness Postgres connection string, as an operator would pass it to `--db-url`. */
+export const databaseUrl = `postgresql://postgres:postgres@localhost:${postgresPort}/postgres`
+const sql = postgres(databaseUrl, {
   max: 1,
   onnotice: () => {},
 })
@@ -159,8 +161,8 @@ export const waitForSchemeV2 = async (userId: string, expectedKeyIds: readonly s
     }
     const keyIds = Object.keys(snapshot.wrappedKeys).sort()
     return [...expectedKeyIds].sort().every((id) => keyIds.includes(id)) ? true : null
-  // Concurrent migrators reload and race their app-init flip; allow headroom for
-  // the winner's CAS upgrade to land on a loaded CI runner.
+    // Concurrent migrators reload and race their app-init flip; allow headroom
+    // for the winner's CAS upgrade to land on a loaded CI runner.
   }, 150_000)
 }
 
@@ -352,6 +354,24 @@ export const waitForNewEncryptedTasks = async (
     return newRows.length > 0 ? newRows : null
   }, 30_000)
 
+type OrgEnvelopeServerState = {
+  wrappedAk: string
+  kmsKeyFingerprint: string
+}
+
+/** Poll for the org escrow envelope persisted alongside an AK-producing operation. */
+export const waitForOrgEnvelope = async (userId: string): Promise<OrgEnvelopeServerState> =>
+  poll(async () => {
+    const rows = await sql<{ wrapped_ak: string; kms_key_fingerprint: string }[]>`
+      SELECT wrapped_ak, kms_key_fingerprint FROM org_envelopes WHERE user_id = ${userId}
+    `
+    const row = rows[0]
+    if (!row) {
+      return null
+    }
+    return { wrappedAk: row.wrapped_ak, kmsKeyFingerprint: row.kms_key_fingerprint }
+  })
+
 export const waitForAccountDeletion = async (userId: string): Promise<void> => {
   await poll(async () => {
     const rows = await sql<
@@ -363,7 +383,8 @@ export const waitForAccountDeletion = async (userId: string): Promise<void> => {
           (SELECT COUNT(*) FROM encryption_metadata WHERE user_id = ${userId}) +
           (SELECT COUNT(*) FROM wrapped_keys WHERE user_id = ${userId}) +
           (SELECT COUNT(*) FROM envelopes WHERE user_id = ${userId}) +
-          (SELECT COUNT(*) FROM challenge_nonces WHERE user_id = ${userId})
+          (SELECT COUNT(*) FROM challenge_nonces WHERE user_id = ${userId}) +
+          (SELECT COUNT(*) FROM org_envelopes WHERE user_id = ${userId})
         )::int AS encryption_count,
         (SELECT COUNT(*)::int FROM powersync.devices WHERE user_id = ${userId}) AS device_count,
         (SELECT COUNT(*)::int FROM session WHERE user_id = ${userId}) AS session_count

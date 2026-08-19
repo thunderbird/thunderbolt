@@ -12,6 +12,12 @@
  */
 
 import { defineConfig, devices } from '@playwright/test'
+import { getOrgKmsTestKeypair } from './e2e/e2ee/kms-test-keypair'
+
+// Org KMS escrow POC (org-escrow.spec.ts): the public half configures
+// ORG_KMS_ESCROW_STATIC_PUBLIC_KEY below. See kms-test-keypair.ts for why
+// this is cached to a temp file rather than a plain module-level constant.
+const orgKmsTestKeypair = getOrgKmsTestKeypair()
 
 const isCI = !!process.env.CI
 const frontendPort = 1423
@@ -36,7 +42,13 @@ const backendEnv = (port: number, extra: Record<string, string> = {}): Record<st
   CORS_ORIGINS: `http://localhost:${frontendPort}`,
   DATABASE_DRIVER: 'postgres',
   DATABASE_URL: databaseUrl,
-  E2EE_ENABLED: 'true',
+  // Org key escrow POC: enabled for the whole suite — a single global
+  // toggle exercised transparently by every AK-producing flow (org-escrow.spec.ts
+  // asserts the escrow envelope itself; the rest of the suite incidentally proves
+  // it doesn't regress the existing device model). E2EE itself has no flag —
+  // it's unconditionally on for every backend.
+  ORG_KMS_ESCROW_ENABLED: 'true',
+  ORG_KMS_ESCROW_STATIC_PUBLIC_KEY: orgKmsTestKeypair.publicKeyBase64,
   PORT: String(port),
   POSTHOG_API_KEY: '',
   POWERSYNC_JWT_KID: 'powersync-dev',

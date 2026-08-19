@@ -16,12 +16,10 @@ const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) =
 
 describe('Config Routes', () => {
   describe('GET /config', () => {
-    it('reflects e2eeEnabled', async () => {
-      const disabled = await fetchConfig(createTestSettings({ e2eeEnabled: false }))
-      expect(disabled.body.e2eeEnabled).toBe(false)
-
-      const enabled = await fetchConfig(createTestSettings({ e2eeEnabled: true }))
-      expect(enabled.body.e2eeEnabled).toBe(true)
+    // Compatibility shim for pre-cutover bundles, which gate uploads on this
+    // flag and would otherwise silently start writing plaintext. See config.ts.
+    it('always reports e2eeEnabled: true', async () => {
+      expect((await fetchConfig(createTestSettings())).body.e2eeEnabled).toBe(true)
     })
 
     it('exposes builtInAgentEnabled: true by default and false when disabled', async () => {

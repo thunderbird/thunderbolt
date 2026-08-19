@@ -39,8 +39,9 @@ So revoke is visible either as soon as the `devices` row syncs or when the next 
 
 - **Authenticated (session)**  
   If the request includes `X-Device-ID`:
-  - The backend checks the `devices` row for that id. If `revoked_at` is set, it returns **403** with `{ code: 'DEVICE_DISCONNECTED' }` and does not issue a token.
-  - Otherwise it issues a PowerSync JWT and upserts the device (id, user_id, name, last_seen, created_at).
+  - The backend looks up the `devices` row for that id. An unknown or not-yet-trusted device returns **403** with `{ code: 'DEVICE_NOT_TRUSTED' }` — devices are registered by the encryption envelope flow, not by requesting a token.
+  - If `revoked_at` is set, it returns **403** with `{ code: 'DEVICE_DISCONNECTED' }` and does not issue a token.
+  - Otherwise it issues a PowerSync JWT and refreshes the device row (name, last_seen, app_version).
 - **Bearer token only (e.g. PowerSync credential refresh)**  
   Backend resolves the session from the Bearer token, then looks up the user:
   - If the user no longer exists (account deleted), it returns **410 Gone** with `{ code: 'ACCOUNT_DELETED' }`.

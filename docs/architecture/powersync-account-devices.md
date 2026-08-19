@@ -58,7 +58,7 @@ See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and
    - [powersync-service/config/config.yaml](../../powersync-service/config/config.yaml) — local docker-compose.
    - [deploy/config/powersync-config.yaml](../../deploy/config/powersync-config.yaml) — baked into the `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image; used by preview stacks (Pulumi) and prod on Render.
    - [deploy/k8s/templates/configmaps.yaml](../../deploy/k8s/templates/configmaps.yaml) — Helm-rendered config for the enterprise k8s deploy path.
-   Add a line under `sync_rules.content` → the appropriate bucket in each: `bucket_definitions.user_essentials.data` for latency-sensitive tables (loaded first, priority 1), or `bucket_definitions.user_data.data` for the rest (priority 2). Example: `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
+     Add a line under `sync_rules.content` → the appropriate bucket in each: `bucket_definitions.user_essentials.data` for latency-sensitive tables (loaded first, priority 1), or `bucket_definitions.user_data.data` for the rest (priority 2). Example: `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
 6. Run migrations for frontend and backend as needed.
 
 ### PR Flow for Adding Tables
@@ -137,7 +137,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 ### Auth Token and Device ID
 
 - **Auth token:** In `localStorage` (fixed key). Cleared on reset via `localStorage.clear()`.
-- **Device id:** In `localStorage`. Sent as `X-Device-ID` (and optional `X-Device-Name`) on PowerSync token requests so the backend can register/update the device and enforce revoke.
+- **Device id:** In `localStorage`. Sent as `X-Device-ID` (and optional `X-Device-Name`) on PowerSync token requests so the backend can identify the device, refresh its `last_seen`/name, and enforce trust and revocation.
 
 ---
 
@@ -146,8 +146,10 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 ### PowerSync Token (`GET /powersync/token`)
 
 - **With `X-Device-ID`:**
-  - Backend checks the `devices` row for that id. If `status === 'REVOKED'` or `revoked_at` is set → **403** with `{ code: 'DEVICE_DISCONNECTED' }`, no token.
-  - Otherwise: issues a PowerSync JWT and upserts the device (id, user_id, name, last_seen, created_at).
+  - Backend looks up the `devices` row for that id. An **unknown** device → **403** with `{ code: 'DEVICE_NOT_TRUSTED' }`: registration happens through the encryption envelope flow, never as a side effect of asking for a token.
+  - `status === 'REVOKED'` or `revoked_at` set → **403** with `{ code: 'DEVICE_DISCONNECTED' }`, no token.
+  - Not yet trusted (registered but awaiting approval) → **403** with `{ code: 'DEVICE_NOT_TRUSTED' }`.
+  - Otherwise: issues a PowerSync JWT and refreshes the device row (name, last_seen, app_version).
 - **Bearer token only (e.g. credential refresh):**
   - If the user no longer exists (account deleted) → **410 Gone** with `{ code: 'ACCOUNT_DELETED' }`.
   - Otherwise may return **401** (invalid/expired token).

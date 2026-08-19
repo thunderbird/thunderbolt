@@ -22,14 +22,14 @@ describe('config store', () => {
   })
 
   it('updates config via updateConfig', () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: true })
 
-    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
+    expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: true })
   })
 
   it('preserves cached config when fetch fails (null scenario)', () => {
     // Simulate a successful fetch that populates the store
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: true })
 
     // Simulate a failed fetch — caller would NOT call updateConfig
     const fetchResult = null
@@ -38,14 +38,14 @@ describe('config store', () => {
     }
 
     // Store retains the cached value
-    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
+    expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: true })
   })
 
   it('replaces entire config on update', () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
-    useConfigStore.getState().updateConfig({ e2eeEnabled: false })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: true })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: false })
 
-    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: false })
+    expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: false })
   })
 
   it('setForceUpgrade flips the transient flag and records the min version', () => {

@@ -8,7 +8,7 @@ This page is a reference map of the Thunderbolt architecture — the components,
 - **Cross-platform.** A single React codebase runs in Tauri on desktop (macOS, Linux, Windows) and mobile (iOS, Android).
 - **Model-agnostic.** LLM calls route through the backend inference proxy, supporting Claude, GPT, Mistral, OpenRouter, and any OpenAI-compatible endpoint.
 - **Self-hostable.** The entire server stack (backend, PostgreSQL, PowerSync, Keycloak) runs via Docker Compose, Kubernetes, or Pulumi.
-- **E2E encrypted (optional).** When enabled, data is encrypted before leaving the device and the server stores only ciphertext. See [E2E Encryption](./e2e-encryption.md).
+- **E2E encrypted.** Always on, with no toggle: data is encrypted before leaving the device and the server stores only ciphertext. See [E2E Encryption](./e2e-encryption.md).
 
 ## System Diagram
 
@@ -19,7 +19,7 @@ graph TB
       UI["React Frontend<br/>React 19 · Vite · Radix UI"]
       STATE["State & Data<br/>Zustand · TanStack Query · Drizzle"]
       AI["AI Chat<br/>Vercel AI SDK · MCP Client"]
-      CRYPTO["E2E Encryption (optional)"]
+      CRYPTO["E2E Encryption"]
       SQLITE[("SQLite<br/>Offline-first")]
 
       UI --- STATE
@@ -97,16 +97,16 @@ Assistant responses can embed rich interactive components (weather, link preview
 
 ### Route Prefixes
 
-| Prefix              | Purpose                                                         |
-| ------------------- | --------------------------------------------------------------- |
-| `/api/auth/*`       | Better Auth flows (OAuth, OIDC, magic-link, session)            |
-| `/v1/account/*`     | Account deletion, device registration, revocation, envelopes    |
-| `/v1/powersync/*`   | Token issuance, client uploads                                  |
-| `/v1/inference/*`   | Gated LLM inference calls (rate-limited, provider-agnostic)     |
-| `/v1/pro/*`         | Backend proxies for widget data fetching (link preview, etc.)   |
-| `/v1/mcp-proxy/*`   | Model Context Protocol pass-through                             |
-| `/v1/posthog/*`     | Analytics event relay                                           |
-| `/v1/swagger`       | OpenAPI spec (gated by `SWAGGER_ENABLED`)                       |
+| Prefix            | Purpose                                                       |
+| ----------------- | ------------------------------------------------------------- |
+| `/api/auth/*`     | Better Auth flows (OAuth, OIDC, magic-link, session)          |
+| `/v1/account/*`   | Account deletion, device registration, revocation, envelopes  |
+| `/v1/powersync/*` | Token issuance, client uploads                                |
+| `/v1/inference/*` | Gated LLM inference calls (rate-limited, provider-agnostic)   |
+| `/v1/pro/*`       | Backend proxies for widget data fetching (link preview, etc.) |
+| `/v1/mcp-proxy/*` | Model Context Protocol pass-through                           |
+| `/v1/posthog/*`   | Analytics event relay                                         |
+| `/v1/swagger`     | OpenAPI spec (gated by `SWAGGER_ENABLED`)                     |
 
 A global middleware (`createAppVersionMiddleware`) enforces a minimum client version across all `/v1` routes: when `MIN_APP_VERSION` is set, below-minimum clients get a `426 Upgrade Required` (except exempt bootstrap/callback routes). New browser-redirect or header-less routes must be added to its exempt list.
 
@@ -122,10 +122,10 @@ PowerSync keeps a full copy of the user's data on every device. Writes go to loc
 
 There are two distinct sync pipelines depending on the runtime:
 
-| Runtime                     | Path                                          | Why                                                                 |
-| --------------------------- | --------------------------------------------- | ------------------------------------------------------------------- |
-| Chrome · Edge · Firefox     | Custom **SharedWorker** with transformers     | Shares one sync connection across tabs; runs E2E crypto in-worker   |
-| Safari · iOS · Tauri        | Main-thread transformer pipeline              | OPFSCoopSyncVFS doesn't support SharedWorker; Tauri blocks it too   |
+| Runtime                 | Path                                      | Why                                                               |
+| ----------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| Chrome · Edge · Firefox | Custom **SharedWorker** with transformers | Shares one sync connection across tabs; runs E2E crypto in-worker |
+| Safari · iOS · Tauri    | Main-thread transformer pipeline          | OPFSCoopSyncVFS doesn't support SharedWorker; Tauri blocks it too |
 
 Both pipelines end with decrypted data in local SQLite — the interception happens in a different execution context. Full rationale + file map in [powersync-sync-middleware.md](./powersync-sync-middleware.md).
 
@@ -140,14 +140,14 @@ The custom SharedWorker extends `SharedSyncImplementation`, an `@internal` class
 
 ## Third-Party Services
 
-| Service      | Role                                                   | Replaceable?                          |
-| ------------ | ------------------------------------------------------ | ------------------------------------- |
-| PowerSync    | Client-server sync                                     | Self-hostable via Docker              |
-| PostgreSQL   | Source of truth for everything                         | No                                    |
-| Keycloak     | Default OIDC provider in the self-hosted stack         | Yes — any OIDC-compliant IdP          |
-| Resend       | Transactional email delivery                           | Swap for any SMTP/provider            |
-| PostHog      | In-app analytics (opt-in)                              | Optional                              |
-| AI providers | Anthropic, OpenAI, Mistral, Fireworks, OpenRouter, and any OpenAI-compatible endpoint | Bring your own |
+| Service      | Role                                                                                  | Replaceable?                 |
+| ------------ | ------------------------------------------------------------------------------------- | ---------------------------- |
+| PowerSync    | Client-server sync                                                                    | Self-hostable via Docker     |
+| PostgreSQL   | Source of truth for everything                                                        | No                           |
+| Keycloak     | Default OIDC provider in the self-hosted stack                                        | Yes — any OIDC-compliant IdP |
+| Resend       | Transactional email delivery                                                          | Swap for any SMTP/provider   |
+| PostHog      | In-app analytics (opt-in)                                                             | Optional                     |
+| AI providers | Anthropic, OpenAI, Mistral, Fireworks, OpenRouter, and any OpenAI-compatible endpoint | Bring your own               |
 
 ## Build and Release
 

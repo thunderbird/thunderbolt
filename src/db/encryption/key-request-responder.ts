@@ -4,7 +4,7 @@
 
 import { getKeyVersion, storeKeyVersion } from '@/crypto'
 import type { KeyId } from '@shared/e2ee-types'
-import { isEncryptionEnabled, needsSyncSetupWizard } from './config'
+import { needsSyncSetupWizard } from './config'
 import { keysSyncChannelName, type KeyRequestReason, type KeysSyncChannel, type KeysSyncMessage } from './codec'
 
 // =============================================================================
@@ -167,7 +167,7 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
    * happened while this device was away) or pre-stage the keyring for the worker.
    */
   const prime = async (): Promise<void> => {
-    if (!isEncryptionEnabled() || (await needsSyncSetupWizard())) {
+    if (await needsSyncSetupWizard()) {
       return
     }
     lastKeyVersion = await getKeyVersion()

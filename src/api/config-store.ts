@@ -7,7 +7,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type AppConfig = {
-  e2eeEnabled?: boolean
   /** Deployment-level UI capability flags from `GET /config`. Optional so an
    *  empty/offline config (standalone mode) reads as "default behavior":
    *  built-in agent shown, custom agents allowed. */

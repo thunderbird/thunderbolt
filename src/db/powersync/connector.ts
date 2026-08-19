@@ -6,7 +6,7 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
-import { encodeForUpload, isEncryptionEnabled } from '@/db/encryption'
+import { encodeForUpload } from '@/db/encryption'
 import { getAK, getPrimaryKeyId, storePrimaryKeyId } from '@/crypto'
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
@@ -158,9 +158,9 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
   /**
    * Ensure `codec.encode` can select a valid primary DEK before a batch is
-   * encoded (plan TD3). When E2EE is enabled and this device completed setup
-   * (an AK exists) but the primary key_id pointer is missing from IndexedDB, a
-   * light metadata fetch restores it. After a rotation no fetch is needed:
+   * encoded. When this device completed setup (an AK exists) but
+   * the primary key_id pointer is missing from IndexedDB, a light metadata
+   * fetch restores it. After a rotation no fetch is needed:
    * `storePrimaryKeyId` + the keyring-invalidate broadcast already moved the
    * pointer, so the next batch picks up the new primary automatically.
    *
@@ -169,7 +169,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    */
   private async ensurePrimaryKeyIdLoaded(): Promise<void> {
     try {
-      if (!isEncryptionEnabled() || (await getPrimaryKeyId()) !== null) {
+      if ((await getPrimaryKeyId()) !== null) {
         return
       }
       if (!(await getAK())) {

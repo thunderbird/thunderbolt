@@ -22,6 +22,7 @@ import {
   unwrapDEK,
   rewrapKeyring,
   unwrapLegacyCK,
+  wrapAKForOrg,
   encrypt,
   decrypt,
   encryptBytes,
@@ -278,6 +279,82 @@ describe('unwrapLegacyCK (WS3 absorption)', () => {
     await expect(unwrapLegacyCK(envelope, wrongEcdh.privateKey, wrongMlkem.secretKey)).rejects.toThrow(
       'Failed to unwrap legacy content key',
     )
+  })
+})
+
+describe('wrapAKForOrg (org KMS escrow)', () => {
+  /**
+   * Inversion of `wrapAKForOrg`, written out longhand rather than imported.
+   *
+   * The offsets, version byte and HKDF info string are RESTATED here on purpose,
+   * not pulled from `@shared/e2ee-types`: this is the only round-trip guarding a
+   * frozen wire format, and if both sides read the same constant, changing that
+   * constant would keep the test green while silently making every escrowed
+   * account unrecoverable. Restated, a change here fails loudly — which is the
+   * point. Do not "DRY" this up.
+   */
+  const invertOrgEnvelope = async (envelopeBase64: string, orgPrivateKey: CryptoKey): Promise<CryptoKey> => {
+    const envelope = base64ToUint8Array(envelopeBase64)
+    expect(envelope[0]).toBe(0x01)
+    expect(envelope.length).toBe(1 + 65 + 40) // version + ephPubRaw + AES-KW(256-bit AK)
+
+    const ephPubRaw = envelope.slice(1, 1 + 65)
+    const wrappedAKBytes = envelope.slice(1 + 65)
+
+    const ephemeralPublicKey = await crypto.subtle.importKey(
+      'raw',
+      ephPubRaw,
+      { name: 'ECDH', namedCurve: 'P-256' },
+      false,
+      [],
+    )
+    const sharedSecret = await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: ephemeralPublicKey },
+      orgPrivateKey,
+      256,
+    )
+    const hkdfKey = await crypto.subtle.importKey('raw', sharedSecret, 'HKDF', false, ['deriveKey'])
+    const unwrappingKey = await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: ephPubRaw as BufferSource,
+        info: new TextEncoder().encode('thunderbolt-org-kms-ak-wrap-v1'),
+      },
+      hkdfKey,
+      { name: 'AES-KW', length: 256 },
+      false,
+      ['unwrapKey'],
+    )
+    return crypto.subtle.unwrapKey(
+      'raw',
+      wrappedAKBytes as BufferSource,
+      unwrappingKey,
+      'AES-KW',
+      { name: 'AES-KW', length: 256 },
+      true,
+      ['wrapKey', 'unwrapKey'],
+    )
+  }
+
+  it('round-trips: a locally-inverted ECDH+HKDF+AES-KW unwrap recovers the exact AK bytes', async () => {
+    const orgKeyPair = await generateKeyPair()
+    const ak = await generateAK(true)
+    const akRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ak))
+
+    const recoveredAK = await invertOrgEnvelope(await wrapAKForOrg(ak, orgKeyPair.publicKey), orgKeyPair.privateKey)
+
+    expect(new Uint8Array(await crypto.subtle.exportKey('raw', recoveredAK))).toEqual(akRaw)
+  })
+
+  it('fails to invert with the wrong org private key', async () => {
+    const orgKeyPair = await generateKeyPair()
+    const wrongKeyPair = await generateKeyPair()
+    const ak = await generateAK(true)
+
+    const envelope = await wrapAKForOrg(ak, orgKeyPair.publicKey)
+
+    await expect(invertOrgEnvelope(envelope, wrongKeyPair.privateKey)).rejects.toThrow()
   })
 })
 

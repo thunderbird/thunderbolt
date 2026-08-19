@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { generateKeyPairSync } from 'node:crypto'
+import { uncompressedPointPrefix } from '@shared/e2ee-types'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   clearSettingsCache,
@@ -280,6 +282,99 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('Org KMS escrow settings', () => {
+    const escrowEnvKeys = ['ORG_KMS_ESCROW_ENABLED', 'ORG_KMS_ESCROW_STATIC_PUBLIC_KEY'] as const
+
+    // A REAL point — the boot check verifies curve membership, not just shape,
+    // so `0x04` followed by filler no longer passes (and must not).
+    const validStaticKey = (() => {
+      const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+      const jwk = publicKey.export({ format: 'jwk' }) as { x: string; y: string }
+      return Buffer.concat([
+        Buffer.from([uncompressedPointPrefix]),
+        Buffer.from(jwk.x, 'base64url'),
+        Buffer.from(jwk.y, 'base64url'),
+      ]).toString('base64')
+    })()
+
+    let savedEnv: Partial<Record<string, string>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of escrowEnvKeys) {
+        if (process.env[key] !== undefined) {
+          savedEnv[key] = process.env[key]
+        }
+      }
+      for (const key of escrowEnvKeys) {
+        delete process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of escrowEnvKeys) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('defaults to disabled', () => {
+      expect(getSettings().orgKmsEscrowEnabled).toBe(false)
+    })
+
+    it('enables escrow only for the literal string "true"', () => {
+      process.env.ORG_KMS_ESCROW_ENABLED = 'True'
+      process.env.ORG_KMS_ESCROW_STATIC_PUBLIC_KEY = validStaticKey
+      expect(getSettings().orgKmsEscrowEnabled).toBe(false)
+    })
+
+    it('accepts a well-formed static key', () => {
+      process.env.ORG_KMS_ESCROW_ENABLED = 'true'
+      process.env.ORG_KMS_ESCROW_STATIC_PUBLIC_KEY = validStaticKey
+      expect(getSettings().orgKmsEscrowStaticPublicKey).toBe(validStaticKey)
+    })
+
+    it('refuses to boot when escrow is enabled with no static key', () => {
+      process.env.ORG_KMS_ESCROW_ENABLED = 'true'
+      expect(() => getSettings()).toThrow(/orgKmsEscrowStaticPublicKey/)
+    })
+
+    it('refuses to boot when the static key is the wrong length', () => {
+      process.env.ORG_KMS_ESCROW_ENABLED = 'true'
+      process.env.ORG_KMS_ESCROW_STATIC_PUBLIC_KEY = Buffer.alloc(32, 4).toString('base64')
+      expect(() => getSettings()).toThrow(/orgKmsEscrowStaticPublicKey/)
+    })
+
+    it('refuses to boot when the static key is not an uncompressed point', () => {
+      process.env.ORG_KMS_ESCROW_ENABLED = 'true'
+      process.env.ORG_KMS_ESCROW_STATIC_PUBLIC_KEY = Buffer.concat([Buffer.from([0x02]), Buffer.alloc(64, 7)]).toString(
+        'base64',
+      )
+      expect(() => getSettings()).toThrow(/orgKmsEscrowStaticPublicKey/)
+    })
+
+    it('refuses to boot when the static key is well-formed but off the curve', () => {
+      // The shape check alone would accept this; only curve validation catches it,
+      // and without that every client fails at importKey instead of the server at boot.
+      process.env.ORG_KMS_ESCROW_ENABLED = 'true'
+      process.env.ORG_KMS_ESCROW_STATIC_PUBLIC_KEY = Buffer.concat([
+        Buffer.from([uncompressedPointPrefix]),
+        Buffer.alloc(64, 7),
+      ]).toString('base64')
+      expect(() => getSettings()).toThrow(/orgKmsEscrowStaticPublicKey/)
+    })
+
+    it('ignores a missing key while escrow is disabled', () => {
+      process.env.ORG_KMS_ESCROW_ENABLED = 'false'
+      expect(() => getSettings()).not.toThrow()
+    })
+  })
+
   describe('Rate limiting settings', () => {
     const rateLimitEnvKeys = ['RATE_LIMIT_ENABLED', 'TRUSTED_PROXY'] as const
 
@@ -411,42 +506,6 @@ describe('Config Settings', () => {
       process.env.SWAGGER_ENABLED = ''
       const settings = getSettings()
       expect(settings.swaggerEnabled).toBe(false)
-    })
-  })
-
-  describe('E2EE settings', () => {
-    let savedEnv: string | undefined
-
-    beforeEach(() => {
-      clearSettingsCache()
-      savedEnv = process.env.E2EE_ENABLED
-    })
-
-    afterEach(() => {
-      if (savedEnv !== undefined) {
-        process.env.E2EE_ENABLED = savedEnv
-      } else {
-        delete process.env.E2EE_ENABLED
-      }
-      clearSettingsCache()
-    })
-
-    it('should default e2eeEnabled to false when env var is unset', () => {
-      delete process.env.E2EE_ENABLED
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(false)
-    })
-
-    it('should enable E2EE when E2EE_ENABLED is "true"', () => {
-      process.env.E2EE_ENABLED = 'true'
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(true)
-    })
-
-    it('should keep E2EE disabled for any value other than "true"', () => {
-      process.env.E2EE_ENABLED = 'false'
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(false)
     })
   })
 

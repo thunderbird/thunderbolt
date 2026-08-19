@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { useConfigStore } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { generateAK, storeAK, storeDEK } from '@/crypto'
@@ -30,7 +29,6 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 describe('useRevokeDevice', () => {
   beforeEach(async () => {
     await deleteKeyDatabase()
-    useConfigStore.setState({ config: { e2eeEnabled: true } })
   })
 
   afterEach(cleanup)

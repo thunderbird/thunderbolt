@@ -2,7 +2,7 @@
 
 Thunderbolt's multi-device sync is built on [PowerSync](https://powersync.com). Every device holds a local SQLite database; the sync service streams deltas between SQLite and the backend's PostgreSQL. Writes happen locally first, so the app stays snappy offline.
 
-> **Note.** Cross-device sync and optional end-to-end encryption are both in **Preview**. See [roadmap.md](./roadmap.md) for current status.
+> **Note.** Cross-device sync and end-to-end encryption are both in **Preview**. See [roadmap.md](./roadmap.md) for current status.
 
 ## How it works
 
@@ -29,10 +29,10 @@ Thunderbolt's multi-device sync is built on [PowerSync](https://powersync.com). 
 
 There are two distinct pipelines depending on the runtime. Both end with decrypted rows in local SQLite — the transform runs in a different execution context.
 
-| Runtime                    | Path                                    | Why this path                                                     |
-| -------------------------- | --------------------------------------- | ----------------------------------------------------------------- |
-| Chrome · Edge · Firefox    | Custom **SharedWorker** `ThunderboltSharedSyncImplementation` | One sync connection shared across tabs; the CK stays in the worker |
-| Safari · iOS · Tauri       | Main-thread transformer                 | OPFSCoopSyncVFS doesn't support SharedWorker; Tauri blocks it too |
+| Runtime                 | Path                                                          | Why this path                                                      |
+| ----------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Chrome · Edge · Firefox | Custom **SharedWorker** `ThunderboltSharedSyncImplementation` | One sync connection shared across tabs; the CK stays in the worker |
+| Safari · iOS · Tauri    | Main-thread transformer                                       | OPFSCoopSyncVFS doesn't support SharedWorker; Tauri blocks it too  |
 
 The full write-up is in [powersync-sync-middleware.md](./powersync-sync-middleware.md), including the Vite alias (`powersync-web-internal`) that lets the custom SharedWorker reach into `@powersync/web`'s `@internal` classes.
 
@@ -40,18 +40,18 @@ The full write-up is in [powersync-sync-middleware.md](./powersync-sync-middlewa
 
 From [`shared/powersync-tables.ts`](../shared/powersync-tables.ts):
 
-| Table            | Purpose                                                           | Primary key      |
-| ---------------- | ----------------------------------------------------------------- | ---------------- |
-| `settings`       | Per-user preferences                                              | `(key, user_id)` |
-| `chat_threads`   | Conversation metadata                                             | `id`             |
-| `chat_messages`  | Individual messages within threads                                | `id`             |
-| `tasks`          | Todo / task items (defaults seeded per user)                      | `(id, user_id)`  |
-| `models`         | Configured model profiles (defaults seeded per user)              | `(id, user_id)`  |
-| `prompts`        | Saved prompt templates (defaults seeded per user)                 | `(id, user_id)`  |
-| `model_profiles` | Per-model tuning (temperature, prompt overrides) seeded per user  | `(id, user_id)`  |
-| `mcp_servers`    | Registered Model Context Protocol servers                         | `id`             |
-| `triggers`       | Automations                                                       | `id`             |
-| `devices`        | Registered devices for the current account                        | `id`             |
+| Table            | Purpose                                                          | Primary key      |
+| ---------------- | ---------------------------------------------------------------- | ---------------- |
+| `settings`       | Per-user preferences                                             | `(key, user_id)` |
+| `chat_threads`   | Conversation metadata                                            | `id`             |
+| `chat_messages`  | Individual messages within threads                               | `id`             |
+| `tasks`          | Todo / task items (defaults seeded per user)                     | `(id, user_id)`  |
+| `models`         | Configured model profiles (defaults seeded per user)             | `(id, user_id)`  |
+| `prompts`        | Saved prompt templates (defaults seeded per user)                | `(id, user_id)`  |
+| `model_profiles` | Per-model tuning (temperature, prompt overrides) seeded per user | `(id, user_id)`  |
+| `mcp_servers`    | Registered Model Context Protocol servers                        | `id`             |
+| `triggers`       | Automations                                                      | `id`             |
+| `devices`        | Registered devices for the current account                       | `id`             |
 
 Default-data tables use composite primary keys so multiple users can hold the same default id — see [composite-primary-keys-and-default-data.md](./composite-primary-keys-and-default-data.md).
 
@@ -59,7 +59,7 @@ Default-data tables use composite primary keys so multiple users can hold the sa
 
 - Everything you do offline — new chats, sent messages, edits — writes to local SQLite immediately.
 - On reconnect, the sync worker replays queued operations through the backend. Conflicts resolve last-writer-wins at the row level.
-- *Settings → Devices* shows each device's last-seen time; a stale value means the device hasn't reconnected yet.
+- _Settings → Devices_ shows each device's last-seen time; a stale value means the device hasn't reconnected yet.
 
 ## Adding a new synced table
 

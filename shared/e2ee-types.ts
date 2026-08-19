@@ -247,6 +247,12 @@ export type RotateRequest = {
   signingPublicKey: string
   /** Base64 random salt for the NEW recovery-seed KDF. */
   kdfSalt: string
+  /**
+   * The new AK wrapped for the org KMS escrow recipient (POC). REQUIRED
+   * server-side when `ORG_KMS_ESCROW_ENABLED=true` (400 if missing), ignored and
+   * never persisted when disabled.
+   */
+  orgEnvelope?: string
 }
 
 /** POST /v1/encryption/rotate response. */
@@ -280,10 +286,56 @@ export type UpgradeRequest = {
   signingPublicKey: string
   /** Base64 random salt for the new recovery-seed KDF. */
   kdfSalt: string
+  /**
+   * The new AK wrapped for the org KMS escrow recipient (POC). REQUIRED
+   * server-side when `ORG_KMS_ESCROW_ENABLED=true` (400 if missing), ignored and
+   * never persisted when disabled.
+   */
+  orgEnvelope?: string
 }
 
 /** POST /v1/encryption/upgrade response. */
 export type UpgradeResponse = {
   key_version: number
   scheme_version: SchemeVersion
+}
+
+// =============================================================================
+// Enterprise KMS key escrow (POC)
+// docs/architecture/e2e-encryption.md#enterprise-kms-escrow-poc
+// =============================================================================
+
+/** Uncompressed P-256 point: 0x04 || X (32) || Y (32). Shared by both envelope formats and the settings validator. */
+export const p256PointLength = 65
+
+/** Leading byte of an uncompressed EC point, i.e. an envelope's second byte. */
+export const uncompressedPointPrefix = 0x04
+
+/** AES-KW of a 256-bit key: 32 bytes + an 8-byte integrity check. */
+export const aesKwWrappedKeyLength = 40
+
+/**
+ * Org escrow envelope byte layout, frozen:
+ *   [version 1B][ephemeral ECDH-P256 pubkey raw 65B][AES-KW-wrapped AK 40B]
+ * The wrapper (`wrapAKForOrg`), the server-side shape check, and the operator
+ * decrypt tool all derive their offsets from these — never re-declare them.
+ * Independent of the hybrid device envelope's own `0x01` version space: the two
+ * live in different columns and are never cross-parsed.
+ */
+export const orgEnvelopeVersion = 0x01
+export const orgEnvelopeLength = 1 + p256PointLength + aesKwWrappedKeyLength
+
+/**
+ * HKDF `info` for the org escrow wrapping key. Distinct from the hybrid device
+ * envelope's info string so the two derivations can never collide.
+ */
+export const orgKmsHkdfInfo = new TextEncoder().encode('thunderbolt-org-kms-ak-wrap-v1')
+
+/** GET /v1/encryption/org-key response. Null fields mean escrow is disabled. */
+export type OrgPublicKeyResponse = {
+  enabled: boolean
+  /** Base64 raw uncompressed P-256 point (65 bytes), null when disabled. */
+  publicKey: string | null
+  /** base64(SHA-256(raw public key bytes)), null when disabled. */
+  fingerprint: string | null
 }

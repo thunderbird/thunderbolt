@@ -2,7 +2,37 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createPublicKey } from 'node:crypto'
+import { p256PointLength, uncompressedPointPrefix } from '@shared/e2ee-types'
 import { z } from 'zod'
+
+/**
+ * Shape AND curve membership. The shape check alone lets `0x04` + 64 arbitrary
+ * bytes boot: the server then advertises escrow as configured and every client's
+ * `importKey` rejects the point, which is exactly the silent misconfiguration
+ * this boot check exists to prevent. Importing as a JWK makes Node validate the
+ * point is actually on P-256, and stays synchronous — `superRefine` can't await.
+ */
+const isValidP256Point = (base64: string): boolean => {
+  const point = Buffer.from(base64, 'base64')
+  if (point.length !== p256PointLength || point[0] !== uncompressedPointPrefix) {
+    return false
+  }
+  try {
+    createPublicKey({
+      key: {
+        kty: 'EC',
+        crv: 'P-256',
+        x: point.subarray(1, 33).toString('base64url'),
+        y: point.subarray(33).toString('base64url'),
+      },
+      format: 'jwk',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
@@ -106,8 +136,13 @@ const settingsSchema = z
     // Protocol-required: frontend proxy-fetch.ts unwrap needs these visible cross-origin (cors does not echo expose-headers).
     corsExposeHeaders: z.string().default(defaultCorsExposeHeaders),
 
-    // E2E encryption — when true, devices must complete the trust flow before syncing
-    e2eeEnabled: z.boolean().default(false),
+    // Enterprise key escrow (POC) — when true, the AK gains a permanent additional
+    // recipient wrapped to an operator-held P-256 public key. Single global toggle
+    // (no multi-tenant/org layer). Enabling it without a usable key is rejected at
+    // boot by the superRefine below.
+    orgKmsEscrowEnabled: z.boolean().default(false),
+    // Base64 raw uncompressed P-256 point (65 bytes). The operator keeps the private half.
+    orgKmsEscrowStaticPublicKey: z.string().default(''),
 
     // Minimum app version clients must run. Empty string disables enforcement.
     // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
@@ -150,6 +185,16 @@ const settingsSchema = z
     haystackPipelines: z.string().default(''),
   })
   .superRefine((data, ctx) => {
+    // Escrow that boots misconfigured is worse than escrow that refuses to boot:
+    // an empty static key still answers `enabled: true` with no key, so every
+    // client skips wrapping and every AK-producing request 400s forever.
+    if (data.orgKmsEscrowEnabled && !isValidP256Point(data.orgKmsEscrowStaticPublicKey)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `orgKmsEscrowStaticPublicKey must be a base64 uncompressed P-256 point (${p256PointLength} bytes) on the curve, when org key escrow is enabled`,
+        path: ['orgKmsEscrowStaticPublicKey'],
+      })
+    }
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
       ctx.addIssue({
         code: 'too_small',
@@ -217,7 +262,8 @@ const parseSettings = (): Settings => {
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
-    e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    orgKmsEscrowEnabled: process.env.ORG_KMS_ESCROW_ENABLED === 'true',
+    orgKmsEscrowStaticPublicKey: process.env.ORG_KMS_ESCROW_STATIC_PUBLIC_KEY || '',
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',

@@ -22,6 +22,7 @@ export {
   unwrapDEK,
   rewrapKeyring,
   unwrapLegacyCK,
+  wrapAKForOrg,
   encrypt,
   decrypt,
   encryptBytes,

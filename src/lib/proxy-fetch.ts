@@ -27,6 +27,7 @@ import {
 } from '@shared/proxy-protocol'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { appVersionHeader } from './app-version'
+import { handleAppVersionUnsupported } from './app-version-unsupported'
 import { getAuthToken } from './auth-token'
 import { getCapabilities, isTauri } from './platform'
 
@@ -114,6 +115,29 @@ const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: R
 /** Walk the proxy response, strip the passthrough prefix from response header names,
  *  and rebuild a Response that looks natural to caller code. Passthrough headers
  *  (the upstream's real values) win over the proxy's own framing headers. */
+/**
+ * Raise the upgrade blocker when the OUTER hop — our backend's version gate —
+ * rejected the proxy request.
+ *
+ * Status alone is not a safe signal on this transport: the proxy relays upstream
+ * status codes verbatim, so an external provider answering 426 would otherwise
+ * blank the whole app. Our gate is the only party that pairs 426 with the
+ * `APP_VERSION_UNSUPPORTED` envelope, so that code is the discriminator. Reads a
+ * clone so the response body reaches the caller intact.
+ */
+const raiseOuterHopVersionBlock = async (response: Response): Promise<void> => {
+  if (response.status !== 426) {
+    return
+  }
+  const body = (await response
+    .clone()
+    .json()
+    .catch(() => ({}))) as { code?: string }
+  if (body.code === 'APP_VERSION_UNSUPPORTED') {
+    handleAppVersionUnsupported(response.status, body)
+  }
+}
+
 const unwrapHostedResponse = (response: Response): Response => {
   const passthrough = new Headers()
   const fallback = new Headers()
@@ -204,6 +228,7 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
     }
     const f = options.fetchImpl ?? globalThis.fetch
     const proxyResponse = await f(proxyRequest)
+    await raiseOuterHopVersionBlock(proxyResponse)
     return unwrapHostedResponse(proxyResponse)
   }
   return Object.assign(proxyFetch, { preconnect: () => Promise.resolve(false) })

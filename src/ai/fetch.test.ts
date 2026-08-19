@@ -7,6 +7,7 @@ import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
+import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
@@ -488,5 +489,36 @@ describe('withAppVersionHeader', () => {
   it('forwards preconnect from the base fetch', () => {
     const base = capturingFetch()
     expect(withAppVersionHeader(base.fn).preconnect).toBe(base.fn.preconnect)
+  })
+
+  it('raises the upgrade blocker on a 426 and still returns the response', async () => {
+    // This hop targets our backend, so it is subject to the version gate and
+    // must surface it — otherwise the model call just fails silently.
+    const events: CustomEvent[] = []
+    const listener = (event: Event) => events.push(event as CustomEvent)
+    window.addEventListener(appVersionUnsupported, listener)
+    const gated: FetchFn = Object.assign(
+      async () => new Response(JSON.stringify({ code: 'APP_VERSION_UNSUPPORTED' }), { status: 426 }),
+      { preconnect: () => Promise.resolve(false) },
+    )
+
+    const response = await withAppVersionHeader(gated)('https://cloud.example.com/v1/chat/completions')
+
+    expect(events).toHaveLength(1)
+    expect(response.status).toBe(426)
+    window.removeEventListener(appVersionUnsupported, listener)
+    resetAppVersionBlockedForTesting()
+  })
+
+  it('does not raise the blocker on a successful response', async () => {
+    const events: CustomEvent[] = []
+    const listener = (event: Event) => events.push(event as CustomEvent)
+    window.addEventListener(appVersionUnsupported, listener)
+    const base = capturingFetch()
+
+    await withAppVersionHeader(base.fn)('https://cloud.example.com/v1/chat/completions')
+
+    expect(events).toHaveLength(0)
+    window.removeEventListener(appVersionUnsupported, listener)
   })
 })

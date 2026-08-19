@@ -350,6 +350,13 @@ export const App = () => {
                             <ContentViewProvider>
                               <ExternalLinkDialogProvider>
                                 <AppContent initData={initData} />
+                                {/* Catches every phrase that was minted but never
+                                    confirmed — reload, crash, or a dialog that
+                                    never got the chance to render. Must live
+                                    INSIDE HttpClientProvider: it rotates the key
+                                    through the http client, and `useHttpClient`
+                                    throws outside its provider. */}
+                                <UnsavedRecoveryPhrasePrompt />
                               </ExternalLinkDialogProvider>
                             </ContentViewProvider>
                           </HapticsProvider>
@@ -385,10 +392,6 @@ export const App = () => {
           description="Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
           onDone={clearMigrationRecoveryKey}
         />
-
-        {/* Catches every phrase that was minted but never confirmed — reload,
-            crash, or a dialog that never got the chance to render. */}
-        {!upgradeRequired && migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
       </LazyMotion>
     </ThemeProvider>
   )

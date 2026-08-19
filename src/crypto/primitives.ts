@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { aesKwWrappedKeyLength, orgEnvelopeVersion, orgKmsHkdfInfo, p256PointLength } from '@shared/e2ee-types'
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js'
 import { DecryptionError, EncryptionError } from './errors'
 
 const ecdhAlgorithm = 'ECDH'
 const ecdhCurve = 'P-256'
-const ephemeralPubKeyLength = 65 // P-256 uncompressed: 0x04 || x (32) || y (32)
 const aesGcmAlgorithm = 'AES-GCM'
 const aesKwAlgorithm = 'AES-KW'
 const aesKeyLength = 256
@@ -22,8 +22,7 @@ const hkdfHash = 'SHA-256'
 // envelope for zero security benefit.
 const envelopeVersion = 0x01
 const mlkemCiphertextLength = 1088
-const aesKwWrappedKeyLength = 40 // AES-KW(256-bit key) = 32 + 8
-const minEnvelopeLength = 1 + ephemeralPubKeyLength + mlkemCiphertextLength + aesKwWrappedKeyLength
+const minEnvelopeLength = 1 + p256PointLength + mlkemCiphertextLength + aesKwWrappedKeyLength
 const hybridHkdfInfo = new TextEncoder().encode('thunderbolt-hybrid-ck-wrap-v1')
 
 const mlkemAtRestHkdfInfo = new TextEncoder().encode('thunderbolt-mlkem-at-rest-v1')
@@ -327,8 +326,8 @@ const deriveEnvelopeUnwrap = async (
   }
 
   let offset = 1
-  const ephPubRaw = envelope.slice(offset, offset + ephemeralPubKeyLength)
-  offset += ephemeralPubKeyLength
+  const ephPubRaw = envelope.slice(offset, offset + p256PointLength)
+  offset += p256PointLength
   const mlkemCiphertext = envelope.slice(offset, offset + mlkemCiphertextLength)
   offset += mlkemCiphertextLength
   const wrappedKeyBytes = envelope.slice(offset)
@@ -410,6 +409,56 @@ export const unwrapLegacyCK = async (
       throw err
     }
     throw new DecryptionError('Failed to unwrap legacy content key', { cause: err })
+  }
+}
+
+// =============================================================================
+// Org KMS escrow: wrap AK for the org recipient
+//
+// Classical ECDH-only (no ML-KEM hybrid) — a disclosed, deliberate downgrade
+// for this one recipient; see docs/architecture/e2e-encryption.md#enterprise-kms-escrow-poc.
+// The frontend never unwraps an org envelope, so there is no corresponding
+// unwrap function here.
+// =============================================================================
+
+/** Import an org KMS escrow public key from base64 (raw uncompressed P-256 point). */
+
+/**
+ * Wrap the AK for the org KMS escrow recipient.
+ * Envelope: [version 1B = 0x01][ephemeral ECDH-P256 pubkey raw, 65B][AES-KW-wrapped AK, 40B].
+ * Derivation: ephemeral ECDH-P256 `deriveBits` (256-bit shared secret) →
+ * HKDF-SHA256 (`info = "thunderbolt-org-kms-ak-wrap-v1"`, `salt = ephPubRaw`) →
+ * AES-KW-256 wrapping key.
+ */
+export const wrapAKForOrg = async (ak: CryptoKey, orgEcdhPublicKey: CryptoKey): Promise<string> => {
+  try {
+    const ephemeral = await crypto.subtle.generateKey({ name: ecdhAlgorithm, namedCurve: ecdhCurve }, false, [
+      'deriveBits',
+    ])
+    const ephPubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey))
+    const sharedSecret = await crypto.subtle.deriveBits(
+      { name: ecdhAlgorithm, public: orgEcdhPublicKey },
+      ephemeral.privateKey,
+      256,
+    )
+
+    const hkdfKey = await crypto.subtle.importKey('raw', sharedSecret, 'HKDF', false, ['deriveKey'])
+    const wrappingKey = await crypto.subtle.deriveKey(
+      { name: 'HKDF', hash: hkdfHash, salt: ephPubRaw as BufferSource, info: orgKmsHkdfInfo },
+      hkdfKey,
+      { name: aesKwAlgorithm, length: aesKeyLength },
+      false,
+      ['wrapKey'],
+    )
+    const wrappedAKBytes = new Uint8Array(await crypto.subtle.wrapKey('raw', ak, wrappingKey, aesKwAlgorithm))
+
+    const envelope = new Uint8Array(1 + ephPubRaw.length + wrappedAKBytes.length)
+    envelope[0] = orgEnvelopeVersion
+    envelope.set(ephPubRaw, 1)
+    envelope.set(wrappedAKBytes, 1 + ephPubRaw.length)
+    return uint8ArrayToBase64(envelope)
+  } catch (err) {
+    throw new EncryptionError('Failed to wrap account key for org escrow', { cause: err })
   }
 }
 

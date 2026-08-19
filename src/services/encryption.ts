@@ -47,6 +47,7 @@ import {
   type StoredKeyPair,
 } from '@/crypto'
 import { getDeviceId } from '@/lib/auth-token'
+import { markRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { getDeviceDisplayName } from '@/lib/platform'
 import { getCachedSession } from '@/lib/session-cache'
 import {
@@ -303,6 +304,11 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   await storeKeyVersion(1)
   await storeAK(ak)
   invalidateKeyringCache()
+
+  // Marked at the mint, not at the display: the phrase below lives only in
+  // component state, so a reload before the user confirms would otherwise lose
+  // the account's only recovery credential with no trace that one was owed.
+  markRecoveryPhrasePending()
 
   return recoveryKey
 }
@@ -652,6 +658,8 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
     console.error('[e2ee] AK rotation committed but local key staging failed — keys will re-stage on next use:', err)
   }
 
+  markRecoveryPhrasePending()
+
   return recoveryKey
 }
 
@@ -835,6 +843,8 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     await storeKeyVersion(keyVersion)
     await storeAK(await reimportAsNonExtractable(newAK))
     invalidateKeyringCache()
+
+    markRecoveryPhrasePending()
 
     return { outcome: 'migrated', recoveryKey }
   } catch (err) {

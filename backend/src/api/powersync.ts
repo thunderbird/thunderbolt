@@ -5,7 +5,15 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
 import { isOriginAllowed } from '@/config/settings'
-import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
+import {
+  applyOperation,
+  getActiveSessionByToken,
+  getDeviceById,
+  getEncryptionMetadata,
+  getUserById,
+  upsertDevice,
+} from '@/dal'
+import { findPlaintextViolation } from '@/lib/encrypted-payload'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
 import type { User } from '@shared/types/auth'
@@ -261,6 +269,26 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         }
 
         const operations = body.operations
+
+        // Defence in depth for the v2 keyring invariant: once an account is
+        // migrated, every write to an encrypted column must be v2 ciphertext.
+        // The client enforces this already, but plaintext committed here cannot
+        // be un-leaked — so reject the batch rather than trust the client. A
+        // rejected batch is retried (nothing is lost) and shows up loudly.
+        const encryptionMetadata = await getEncryptionMetadata(database, user.id)
+        if (encryptionMetadata?.schemeVersion === 2) {
+          const violation = findPlaintextViolation(operations)
+          if (violation) {
+            set.status = 400
+            return {
+              error: 'Encrypted column carried a non-encrypted value',
+              code: 'PLAINTEXT_UPLOAD_REJECTED',
+              table: violation.table,
+              id: violation.id,
+              column: violation.column,
+            }
+          }
+        }
 
         // Process operations sequentially to maintain order.
         // If any operation fails, return 4xx so the client does not call transaction.complete()

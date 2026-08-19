@@ -26,43 +26,10 @@ export const needsSyncSetupWizard = async (): Promise<boolean> => {
 }
 
 /**
- * Single source of truth for encrypted tables and their columns.
- * Uses DB column names (snake_case) — matches both PowerSync sync data and CRUD upload operations.
- *
- * This map is the encode-selection authority (upload encoder). Decode stays
- * prefix-gated (any `__enc:` value), so a stale client still decodes columns it
- * does not know are encrypted.
- *
- * Adding a table here automatically enables:
- * - Download decryption via EncryptionMiddleware (sync pipeline)
- * - Upload encryption via encodeForUpload (connector)
+ * Re-exported from `@shared/e2ee-types`, which owns the map so the backend can
+ * enforce the same contract on upload. This module remains the frontend's
+ * import site: it is the encode-selection authority for the upload encoder.
+ * Decode stays prefix-gated (any `__enc:` value), so a stale client still
+ * decodes columns it does not know are encrypted.
  */
-export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = {
-  settings: ['value'],
-  chat_threads: ['title'],
-  chat_messages: ['content', 'parts', 'cache', 'metadata'],
-  tasks: ['item'],
-  models: ['name', 'model', 'url', 'vendor', 'description'],
-  prompts: ['title', 'prompt'],
-  triggers: ['trigger_time'],
-  model_profiles: [
-    'tools_override',
-    'link_previews_override',
-    'chat_mode_addendum',
-    'search_mode_addendum',
-    'research_mode_addendum',
-    'citation_reinforcement_prompt',
-    'nudge_final_step',
-    'nudge_preventive',
-    'nudge_retry',
-    'nudge_search_final_step',
-    'nudge_search_preventive',
-    'nudge_search_retry',
-    'provider_options',
-  ],
-  devices: ['name'],
-  skills: ['name', 'label', 'description', 'instruction'],
-  // `icon` (a single emoji chosen from a fixed set) and `pinned_order` stay
-  // plaintext — neither carries user-authored content.
-  projects: ['name', 'description', 'instructions'],
-}
+export { encryptedColumnsMap } from '@shared/e2ee-types'

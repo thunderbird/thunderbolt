@@ -15,8 +15,9 @@ import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
+import { useYieldToMigration } from '@/hooks/use-yield-to-migration'
 import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
-import { useRef } from 'react'
+import { useCallback, useRef } from 'react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -44,6 +45,18 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
   const canDismiss = !isRecoveryKeyStep && !setup.isLoading
+
+  // Stable identity so the listener isn't torn down and re-added every render.
+  const closeForMigration = useCallback(() => onOpenChange(false), [onOpenChange])
+
+  // Only one recovery-phrase surface at a time: if the init-time migration lands
+  // while this wizard is open, the wizard closes instead of stacking under the
+  // migration dialog. See `useYieldToMigration`.
+  useYieldToMigration({
+    open,
+    isShowingOwnRecoveryKey: isRecoveryKeyStep,
+    close: closeForMigration,
+  })
 
   const completeAndClose = () => {
     if (hasCompletedRef.current) {

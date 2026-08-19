@@ -8,7 +8,7 @@ import type { HttpClient } from '@/contexts'
 import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
-import { isEncryptionEnabled, startKeyRequestResponder } from '@/db/encryption'
+import { beginEncryptionInit, endEncryptionInit, startKeyRequestResponder } from '@/db/encryption'
 import { ensureV2Encryption, refreshAK, stageKeyring } from '@/services/encryption'
 import { fetchEncryptionMetadata } from '@/api/encryption'
 import { getKeyPair } from '@/crypto'
@@ -154,9 +154,6 @@ const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | nul
  * sync wizard, which drives `ensureV2Encryption` itself.
  */
 export const runEncryptionInit = async (client: HttpClient): Promise<void> => {
-  if (!isEncryptionEnabled()) {
-    return
-  }
   try {
     const keyPair = await getKeyPair()
     if (!keyPair) {
@@ -426,15 +423,20 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // key fetching and the migration/follow flow must happen here on the main
   // thread. Both are fire-and-forget: staging/migration must never block boot,
   // and a repeat init run replaces the previous responder. The responder
-  // self-gates on `isEncryptionEnabled()` + setup completeness internally.
+  // self-gates on setup completeness internally.
   startKeyRequestResponder({
     stageKeyring: () => stageKeyring(client),
     refreshAK: () => refreshAK(client),
     fetchMetadata: () => fetchEncryptionMetadata(client),
   })
-  runEncryptionInit(client).catch((error) => {
-    console.warn('[init] runEncryptionInit failed:', error)
-  })
+  // Armed before the check starts so anything that keys off setup completeness
+  // (the sync toggle) waits for the verdict instead of racing it.
+  beginEncryptionInit()
+  runEncryptionInit(client)
+    .catch((error) => {
+      console.warn('[init] runEncryptionInit failed:', error)
+    })
+    .finally(endEncryptionInit)
 
   // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
   // of each other) — run in parallel; each wrapper swallows its own failure.

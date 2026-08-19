@@ -10,6 +10,7 @@ import type {
   ChallengeResponse,
   EncryptionMetadataResponse,
   KeyId,
+  OrgPublicKeyResponse,
   RotateRequest,
   RotateResponse,
   UpgradeRequest,
@@ -61,6 +62,12 @@ export type BootstrapEnvelopeParams = {
   kdfSalt: string
   /** Must include key_id '0' (`initialKeyId`). */
   wrappedKeys: WrappedKeyEntry[]
+  /**
+   * The AK wrapped for the org KMS escrow recipient (POC). REQUIRED
+   * server-side when `ORG_KMS_ESCROW_ENABLED=true` (400 if missing), ignored
+   * and never persisted when disabled.
+   */
+  orgEnvelope?: string
 }
 
 /** Approval / self-recovery payload: gated by a ChallengeProof (operation 'approve'). */
@@ -123,6 +130,13 @@ export const checkCanaryExists = async (httpClient: HttpClient): Promise<boolean
     throw err
   }
 }
+
+/**
+ * Fetch the org KMS escrow public key (POC). `enabled: false` (all
+ * other fields null) when `ORG_KMS_ESCROW_ENABLED` is off.
+ */
+export const fetchOrgPublicKey = async (httpClient: HttpClient): Promise<OrgPublicKeyResponse> =>
+  httpClient.get('encryption/org-key').json<OrgPublicKeyResponse>()
 
 /** Fetch the full wrapped-DEK keyring. Allowed for any non-revoked device (including pending). */
 export const fetchWrappedKeys = async (httpClient: HttpClient): Promise<WrappedKeysListResponse> =>

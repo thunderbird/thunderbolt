@@ -22,6 +22,7 @@ import {
   mintDEK,
   rewrapKeyring,
   unwrapLegacyCK,
+  wrapAKForOrg,
   createCanary,
   verifyCanary,
   recoverCanarySecretV1,
@@ -43,6 +44,7 @@ import {
   storePrimaryKeyId,
   storeKeyVersion,
   clearAllKeys,
+  EncryptionError,
   ValidationError,
   type StoredKeyPair,
 } from '@/crypto'
@@ -54,6 +56,7 @@ import {
   storeEnvelope,
   fetchMyEnvelope,
   fetchEncryptionMetadata,
+  fetchOrgPublicKey,
   fetchWrappedKeys,
   fetchWrappedKey,
   postWrappedKey,
@@ -76,6 +79,7 @@ import {
   type ChallengeOperation,
   type ChallengeProof,
   type KeyId,
+  type OrgPublicKeyResponse,
   type WrappedKeyEntry,
 } from '@shared/e2ee-types'
 
@@ -192,6 +196,34 @@ const buildProof = async (
   return { signature, nonce, operation, deviceId }
 }
 
+/**
+ * Build the org KMS escrow envelope for `ak` (POC), or `undefined` when the
+ * deployment has escrow off.
+ *
+ * The server's answer is the only authority here. A cached `/config` flag would
+ * be faster, but it is definitionally absent on a first run and stale right
+ * after an operator enables escrow — and a client that guesses "off" while the
+ * server requires an envelope gets its setup, rotation and migration rejected.
+ * One request on three rare operations is the cheaper side of that trade.
+ */
+const buildOrgEnvelope = async (
+  ak: CryptoKey,
+  httpClient: HttpClient,
+  prefetched?: OrgPublicKeyResponse,
+): Promise<string | undefined> => {
+  const orgKey = prefetched ?? (await fetchOrgPublicKey(httpClient))
+  if (!orgKey.enabled) {
+    return undefined
+  }
+  if (!orgKey.publicKey) {
+    // Escrow is on but the operator's key is missing — the server will reject
+    // whatever we send next, so say so here while we still know why.
+    throw new EncryptionError('Org KMS escrow is enabled but the server returned no public key')
+  }
+  const orgPublicKey = await importPublicKey(orgKey.publicKey)
+  return wrapAKForOrg(ak, orgPublicKey)
+}
+
 // =============================================================================
 // Detecting step — register device and store key pair
 // =============================================================================
@@ -285,6 +317,7 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
 
   const wrappedCK = await wrapAK(extractableAK, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey)
+  const orgEnvelope = await buildOrgEnvelope(extractableAK, httpClient)
   const ak = await reimportAsNonExtractable(extractableAK)
 
   await storeEnvelope(httpClient, {
@@ -295,6 +328,7 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
     signingPublicKey: publicKeySpki,
     kdfSalt,
     wrappedKeys: [{ keyId: initialKeyId, wrappedKey }],
+    orgEnvelope,
   })
 
   // AK stored LAST so its presence always implies a complete local keyring.
@@ -556,6 +590,14 @@ export type RotateAKOptions = {
   excludeDeviceIds?: string[]
   /** Dependency seam for the synced-devices read (tests). */
   listTrustedDevices?: () => Promise<TrustedDevicePublicKeys[]>
+  /**
+   * Org escrow key fetched by the caller beforehand. `revokeDeviceAndRotate`
+   * uses it to move this hop to BEFORE the revoke commits, so a failure fetching
+   * it can't leave a device cut off with its old AK still valid. It hits our own
+   * backend, not a KMS — and it removes one of several post-revoke hops, not all
+   * of them, so it narrows the window rather than closing it.
+   */
+  orgKey?: OrgPublicKeyResponse
 }
 
 /**
@@ -606,6 +648,7 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
   // New canary under DEK '0' (the DEK itself did not change) + new signing keypair.
   const { canaryIv, canaryCtext, canarySecret } = await createCanary(dek0, getUserId(), initialKeyId)
   const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
+  const orgEnvelope = await buildOrgEnvelope(newAK, httpClient, opts.orgKey)
 
   try {
     await postRotate(httpClient, {
@@ -616,6 +659,7 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
       canaryCtext,
       signingPublicKey: publicKeySpki,
       kdfSalt: newKdfSalt,
+      orgEnvelope,
     })
   } catch (err) {
     if (err instanceof HttpError && err.response.status >= 400 && err.response.status < 500) {
@@ -681,8 +725,13 @@ export const revokeDeviceAndRotate = async (
   deviceId: string,
   opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
 ): Promise<string> => {
+  // Fetched BEFORE the revoke: the rotation that follows must not be able to
+  // fail on a network hop, or we would leave the device cut off from sync while
+  // the AK it still holds was never rotated — the half that actually locks it out.
+  const orgKey = await fetchOrgPublicKey(httpClient)
+
   await revokeDeviceWithProof(httpClient, deviceId)
-  const recoveryKey = await rotateAK(httpClient, { ...opts, excludeDeviceIds: [deviceId] })
+  const recoveryKey = await rotateAK(httpClient, { ...opts, excludeDeviceIds: [deviceId], orgKey })
   await rotateDEK(httpClient)
   return recoveryKey
 }
@@ -774,6 +823,7 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     ? trustedDevices
     : [self, ...trustedDevices]
   const envelopes = await buildDeviceEnvelopes(newAK, devicesToCover)
+  const orgEnvelope = await buildOrgEnvelope(newAK, httpClient)
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')
 
@@ -791,6 +841,7 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
       canaryCtext,
       signingPublicKey: publicKeySpki,
       kdfSalt,
+      orgEnvelope,
     })
 
     // Persist ONLY after the server accepted the flip (crash-safe re-entrancy).

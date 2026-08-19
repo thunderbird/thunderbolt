@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getLocalSetting } from '@/stores/local-settings-store'
+import { appVersionUnsupported } from '@/lib/app-version-unsupported'
+import { isAppVersionUnsupported } from '@/lib/app-version'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
 import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/web'
@@ -126,6 +128,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   private visibilityHandler: (() => void) | null = null
   private hiddenAt: number | null = null
   private _isReconnecting = false
+  private versionBlockHandler: (() => void) | null = null
 
   get db(): AnyDrizzleDatabase {
     if (!this._db) {
@@ -175,8 +178,41 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     // wait on _isReadyPromise internally, and `waitForInitialSync` registers a listener that
     // resolves once `statusForPriority(1).hasSynced` flips true (instant for returning users
     // via offline-status restore, or once the background connect lands for new users).
+    // Registered before the background connect so a 426 arriving mid-connect is caught.
+    this.startVersionBlockListener()
+
     if (isSyncEnabled()) {
       void this.connectToSync()
+    }
+  }
+
+  /**
+   * Tear sync down the instant OUR backend rejects this build's version (HTTP
+   * 426). A version-blocked client must not hold a sync stream: its local writes
+   * would keep queuing in `ps_crud` and then flush after the upgrade, before the
+   * E2EE keyring is provisioned — which is how plaintext reaches the server.
+   *
+   * The user's `syncEnabled` preference is deliberately left untouched (this is a
+   * transient server-side block, not an opt-out), so sync resumes on its own once
+   * the upgraded build connects. `isAppVersionUnsupported()` — which also covers
+   * the persisted-config case, where a returning stale client is blocked before
+   * any request is rejected — keeps `connectToSync` from re-opening the stream.
+   */
+  private startVersionBlockListener(): void {
+    if (this.versionBlockHandler || typeof window === 'undefined') {
+      return
+    }
+    this.versionBlockHandler = () => {
+      console.warn('[PowerSync] App version rejected by backend (426) — disconnecting sync')
+      void this.disconnectFromSync('version_blocked')
+    }
+    window.addEventListener(appVersionUnsupported, this.versionBlockHandler)
+  }
+
+  private stopVersionBlockListener(): void {
+    if (this.versionBlockHandler) {
+      window.removeEventListener(appVersionUnsupported, this.versionBlockHandler)
+      this.versionBlockHandler = null
     }
   }
 
@@ -191,6 +227,11 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
     if (this._isConnected) {
       return // Already connected
+    }
+
+    if (isAppVersionUnsupported()) {
+      console.info('[PowerSync] Skipping connect — app version rejected by backend')
+      return
     }
 
     const connectStartedAt = performance.now()
@@ -232,6 +273,16 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       // immediately so we don't leave PowerSync connected against their will.
       if (!isSyncEnabled()) {
         console.info('[PowerSync] sync disabled during connect — disconnecting')
+        await this.powerSync.disconnect()
+        return
+      }
+
+      // Same race for the version gate: a 426 landing during the connect window
+      // fires the listener while `_isConnected` is still false, so its
+      // disconnectFromSync no-ops. Re-check here or we'd leave a blocked client
+      // holding a live stream.
+      if (isAppVersionUnsupported()) {
+        console.info('[PowerSync] app version rejected during connect — disconnecting')
         await this.powerSync.disconnect()
         return
       }
@@ -282,7 +333,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * No-ops if a reconnect is already in-flight or sync is disabled.
    */
   async reconnect(trigger: 'visibility' | 'manual' = 'manual', hiddenDurationMs?: number): Promise<void> {
-    if (this._isReconnecting || !this.powerSync || !isSyncEnabled()) {
+    if (this._isReconnecting || !this.powerSync || !isSyncEnabled() || isAppVersionUnsupported()) {
       return
     }
     this._isReconnecting = true
@@ -369,15 +420,16 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
   /**
    * Disconnect from PowerSync Cloud.
-   * Call this when user disables sync.
+   * Call this when user disables sync. `trigger` distinguishes that from the
+   * involuntary teardown when the backend rejects this build's version.
    */
-  async disconnectFromSync(): Promise<void> {
+  async disconnectFromSync(trigger: 'user' | 'version_blocked' = 'user'): Promise<void> {
     if (!this.powerSync || !this._isConnected) {
       return
     }
 
     try {
-      trackSyncEvent('sync_disconnect', { trigger: 'user' })
+      trackSyncEvent('sync_disconnect', { trigger })
       this.stopVisibilityReconnect()
       stopSyncStatusListener()
       await this.powerSync.disconnect()
@@ -456,6 +508,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
   async close(): Promise<void> {
     this.stopVisibilityReconnect()
+    this.stopVersionBlockListener()
     stopSyncStatusListener()
     if (this.powerSync) {
       await this.powerSync.disconnectAndClear()

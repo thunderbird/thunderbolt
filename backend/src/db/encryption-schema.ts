@@ -92,6 +92,29 @@ export const wrappedKeysTable = pgTable(
 )
 
 /**
+ * One row per user account (server-only, never synced). Stores
+ * the AK wrapped for the enterprise KMS escrow recipient (a permanent,
+ * BE-owner-controlled additional recipient of the AK; see
+ * `docs/architecture/e2e-encryption.md#enterprise-kms-escrow-poc`). `wrapped_ak` is the
+ * `[version][ephemeral ECDH-P256 pubkey][AES-KW-wrapped AK]` envelope,
+ * base64-encoded. `kms_key_fingerprint` records which escrow key was active when
+ * this envelope was produced, so an operator can tell which envelopes a given
+ * private key still opens — display/audit only, not a security boundary.
+ */
+export const orgEnvelopesTable = pgTable('org_envelopes', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  wrappedAk: text('wrapped_ak').notNull(),
+  kmsKeyFingerprint: text('kms_key_fingerprint').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at')
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+})
+
+/**
  * Single-use challenge nonces for ECDSA proof-of-key-possession (replaces the
  * v1 static canary secret). A nonce is bound to (user, operation, device) and
  * is consumed exactly once before expiry. Swept periodically (plan Track A A7).

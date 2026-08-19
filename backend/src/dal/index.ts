@@ -58,4 +58,5 @@ export {
   issueChallengeNonce,
   consumeChallengeNonce,
   deleteExpiredOrConsumedNonces,
+  upsertOrgEnvelope,
 } from './encryption'

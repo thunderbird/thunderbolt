@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType } from '@/db/client'
-import { challengeNoncesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/schema'
+import {
+  challengeNoncesTable,
+  encryptionMetadataTable,
+  envelopesTable,
+  orgEnvelopesTable,
+  wrappedKeysTable,
+} from '@/db/schema'
 import type { ChallengeOperation, KeyId } from '@shared/e2ee-types'
 import { and, eq, gt, lte, or, sql } from 'drizzle-orm'
 
@@ -281,3 +287,30 @@ export const deleteExpiredOrConsumedNonces = async (database: typeof DbType) =>
   database
     .delete(challengeNoncesTable)
     .where(or(eq(challengeNoncesTable.consumed, true), lte(challengeNoncesTable.expiresAt, new Date())))
+
+// ─── Org envelopes (enterprise KMS key escrow POC) ─────────────────────
+
+/**
+ * Upsert the org KMS escrow envelope for a user (first-device setup, rotate,
+ * upgrade — see docs/architecture/e2e-encryption.md#enterprise-kms-escrow-poc).
+ * One row per user — a rotation/upgrade simply overwrites the wrapping in
+ * place, since it is re-derived from the same (unchanged) AK-holding operation.
+ *
+ * There is deliberately no reader here: the app server never needs the escrow
+ * copy, and the operator decrypt tool reads Postgres directly, out of band.
+ */
+export const upsertOrgEnvelope = async (
+  database: typeof DbType,
+  envelope: { userId: string; wrappedAk: string; kmsKeyFingerprint: string },
+) =>
+  database
+    .insert(orgEnvelopesTable)
+    .values(envelope)
+    .onConflictDoUpdate({
+      target: orgEnvelopesTable.userId,
+      set: {
+        wrappedAk: envelope.wrappedAk,
+        kmsKeyFingerprint: envelope.kmsKeyFingerprint,
+        updatedAt: new Date(),
+      },
+    })

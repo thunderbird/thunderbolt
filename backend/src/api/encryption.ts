@@ -16,7 +16,8 @@ import {
   markDeviceTrusted,
   setDeviceNodeId,
   getTrustedNodeIds,
-  listTrustedDeviceIds,
+  listEnvelopeCapableDeviceIds,
+  listEnvelopeCapableDevices,
   getEnvelopeByDeviceId,
   hasEnvelopesForUser,
   upsertEnvelope,
@@ -103,21 +104,27 @@ const getCallerDevice = async (
 
 /**
  * Envelope coverage validation (AK rotation + upgrade): the client must supply a
- * new-AK envelope for EXACTLY the set of trusted, non-revoked devices — a
- * missing one locks a device out; an extra one hands the new AK to a
- * revoked/pending device. Throws BadRequestError on any mismatch.
+ * new-AK envelope for EXACTLY the set of envelope-capable devices — a missing one
+ * locks a device out; an extra one hands the new AK to a revoked/pending device.
+ * Throws BadRequestError on any mismatch.
+ *
+ * "Envelope-capable" (see `listEnvelopeCapableDeviceIds`) means trusted,
+ * non-revoked AND holding both hybrid public keys. Requiring coverage for a
+ * keyless trusted device (a bridge, or a v1 device that never published v2 keys)
+ * would be unsatisfiable — the client cannot wrap an AK without those keys — and
+ * would fail every rotation and upgrade on such an account.
  */
-const assertEnvelopeCoverage = (trustedDeviceIds: string[], envelopes: Array<{ deviceId: string }>): void => {
-  const trusted = new Set(trustedDeviceIds)
+const assertEnvelopeCoverage = (capableDeviceIds: string[], envelopes: Array<{ deviceId: string }>): void => {
+  const capable = new Set(capableDeviceIds)
   const submitted = new Set(envelopes.map((envelope) => envelope.deviceId))
   if (submitted.size !== envelopes.length) {
     throw new BadRequestError('Duplicate deviceId in envelopes')
   }
-  const missing = [...trusted].filter((deviceId) => !submitted.has(deviceId))
+  const missing = [...capable].filter((deviceId) => !submitted.has(deviceId))
   if (missing.length > 0) {
-    throw new BadRequestError(`envelopes must cover every trusted device — missing: ${missing.join(', ')}`)
+    throw new BadRequestError(`envelopes must cover every envelope-capable device — missing: ${missing.join(', ')}`)
   }
-  const unknown = [...submitted].filter((deviceId) => !trusted.has(deviceId))
+  const unknown = [...submitted].filter((deviceId) => !capable.has(deviceId))
   if (unknown.length > 0) {
     throw new BadRequestError(`envelopes contains non-trusted devices: ${unknown.join(', ')}`)
   }
@@ -524,6 +531,34 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       },
       { auth: true },
     )
+    // The exact device set an AK rotation / upgrade must cover, with the public
+    // keys needed to wrap for each — served from the SAME predicate
+    // `assertEnvelopeCoverage` validates against. Clients previously derived this
+    // from their PowerSync-synced `devices` table, so a replication lag (two
+    // devices migrating at once, a freshly approved peer) produced envelopes the
+    // server then rejected as incomplete, with no way to recover. Public keys are
+    // not secrets — they already sync to every device on the account.
+    .get(
+      '/encryption/envelope-targets',
+      async ({ request, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+
+        const devices = await listEnvelopeCapableDevices(database, userId)
+        return {
+          devices: devices.map((device) => ({
+            device_id: device.id,
+            public_key: device.publicKey,
+            mlkem_public_key: device.mlkemPublicKey,
+          })),
+        }
+      },
+      { auth: true },
+    )
     .get(
       '/encryption/keys/:keyId',
       async ({ params, request, set, user: sessionUser }) => {
@@ -664,8 +699,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               existingKeys.map((key) => key.keyId),
               body.wrappedKeys,
             )
-            const trustedDeviceIds = await listTrustedDeviceIds(txDb, userId)
-            assertEnvelopeCoverage(trustedDeviceIds, body.envelopes)
+            const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
+            assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
 
             for (const envelope of body.envelopes) {
               await upsertEnvelope(txDb, { deviceId: envelope.deviceId, userId, wrappedCk: envelope.wrappedCK })
@@ -753,8 +788,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             }
 
             assertUpgradeKeyCoverage(body.wrappedKeys, body.primaryKeyId)
-            const trustedDeviceIds = await listTrustedDeviceIds(txDb, userId)
-            assertEnvelopeCoverage(trustedDeviceIds, body.envelopes)
+            const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
+            assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
 
             for (const entry of body.wrappedKeys) {
               await insertWrappedKey(txDb, { userId, keyId: entry.keyId, wrappedKey: entry.wrappedKey })

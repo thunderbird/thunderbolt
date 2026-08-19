@@ -129,6 +129,8 @@ type FakeServer = {
   envelopes: Map<string, string>
   wrappedKeys: Map<KeyId, string>
   deviceTrusted: Map<string, boolean>
+  /** Public keys per device — absent means "cannot hold an envelope" (bridge, v1 device). */
+  devicePublicKeys: Map<string, { publicKey: string; mlkemPublicKey: string }>
   upgradeConflict: boolean
   /** Applied when /upgrade returns 409 — simulates the winning migrator's committed v2 state. */
   winner?: { metadata: MetaState; envelopes: Map<string, string>; wrappedKeys: Map<KeyId, string> }
@@ -147,6 +149,7 @@ const createFakeServer = (): FakeServer => {
     envelopes: new Map(),
     wrappedKeys: new Map(),
     deviceTrusted: new Map(),
+    devicePublicKeys: new Map(),
     upgradeConflict: false,
     rotateStatus: 200,
     wrappedKeyStatus: 200,
@@ -185,6 +188,10 @@ const createFakeServer = (): FakeServer => {
       if (!server.deviceTrusted.has(deviceId)) {
         server.deviceTrusted.set(deviceId, false)
       }
+      server.devicePublicKeys.set(deviceId, {
+        publicKey: body!.publicKey as string,
+        mlkemPublicKey: body!.mlkemPublicKey as string,
+      })
       return jsonResponse({ trusted: false })
     }
     if (path === '/devices/me/envelope' && method === 'GET') {
@@ -217,6 +224,18 @@ const createFakeServer = (): FakeServer => {
     }
     if (path === '/encryption/canary' && method === 'GET') {
       return metaResponse()
+    }
+    if (path === '/encryption/envelope-targets' && method === 'GET') {
+      // Mirrors the server predicate: trusted, non-revoked, both public keys present.
+      const targets = [...server.deviceTrusted]
+        .filter(([, trusted]) => trusted)
+        .flatMap(([deviceId]) => {
+          const keys = server.devicePublicKeys.get(deviceId)
+          return keys
+            ? [{ device_id: deviceId, public_key: keys.publicKey, mlkem_public_key: keys.mlkemPublicKey }]
+            : []
+        })
+      return jsonResponse({ devices: targets })
     }
     if (path === '/encryption/keys' && method === 'GET') {
       return jsonResponse({ keys: [...server.wrappedKeys].map(([key_id, wrapped_key]) => ({ key_id, wrapped_key })) })
@@ -348,6 +367,10 @@ const seedV2Account = async (
   const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
   server.envelopes.set('test-device-id', await wrapAK(ak, kp.ecdhPublicKey, kp.mlkemPublicKey))
   server.deviceTrusted.set('test-device-id', true)
+  server.devicePublicKeys.set('test-device-id', {
+    publicKey: await exportPublicKey(kp.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+  })
   server.metadata = {
     canaryIv,
     canaryCtext,
@@ -378,6 +401,10 @@ const seedV1Account = async (
   }
   server.envelopes.set('test-device-id', await wrapAK(legacyCK, kp.ecdhPublicKey, kp.mlkemPublicKey))
   server.deviceTrusted.set('test-device-id', true)
+  server.devicePublicKeys.set('test-device-id', {
+    publicKey: await exportPublicKey(kp.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+  })
   return { legacyCK, v1Secret }
 }
 
@@ -548,6 +575,26 @@ describe('encryption service (v2)', () => {
       await expect(
         rotateAK(clientFor(server), { listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')] }),
       ).rejects.toBeInstanceOf(RotationStaleError)
+    })
+
+    it('builds envelopes from the server list, skipping a trusted keyless bridge', async () => {
+      // No `listTrustedDevices` seam here on purpose: this exercises the real
+      // path, which asks the server who must be covered instead of reading the
+      // PowerSync-synced `devices` table. A bridge is trusted but has no public
+      // keys, so no envelope can exist for it — the server's coverage rule uses
+      // the same predicate, so the rotation is accepted.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      server.deviceTrusted.set('bridge-1', true)
+
+      const newPhrase = await rotateAK(clientFor(server))
+
+      expect(newPhrase.split(' ')).toHaveLength(24)
+      expect(server.envelopes.has('test-device-id')).toBe(true)
+      expect(server.envelopes.has('bridge-1')).toBe(false)
     })
 
     it('still returns the new phrase when post-commit local staging fails', async () => {

@@ -157,17 +157,49 @@ export const getTrustedNodeIds = async (database: typeof DbType, userId: string)
     )
 
 /**
- * List the ids of every trusted, non-revoked device for a user. Used by AK
- * rotation / upgrade coverage validation — the caller must supply a new-AK
- * envelope for exactly this set (a missing one locks a device out; an extra one
- * hands the new AK to a revoked/pending device).
+ * List the ids of every device that can actually HOLD an AK envelope: trusted,
+ * non-revoked, and holding both hybrid public keys. Used by AK rotation /
+ * upgrade coverage validation — the caller must supply a new-AK envelope for
+ * exactly this set (a missing one locks a device out; an extra one hands the new
+ * AK to a revoked/pending device).
+ *
+ * The public-key predicate is load-bearing, not a nicety. An envelope is
+ * `wrapAK(ak, ecdhPublicKey, mlkemPublicKey)` — with either key null the client
+ * CANNOT construct one, so demanding coverage for such a device is a requirement
+ * that can never be satisfied and every rotation/upgrade fails with a 400.
+ * Bridges are exactly that case: `registerBridge` inserts them trusted and
+ * non-revoked with no public keys at all. A not-yet-migrated v1 device that has
+ * never published v2 keys is the other.
+ *
+ * Relaxing coverage here cannot leak the AK — it only stops requiring envelopes
+ * for devices that are incapable of receiving one. Such a device gets its
+ * envelope the normal way (approval or recovery) once it publishes keys.
  */
-export const listTrustedDeviceIds = async (database: QueryableDatabase, userId: string) =>
+export const listEnvelopeCapableDevices = async (database: QueryableDatabase, userId: string) =>
   database
-    .select({ id: devicesTable.id })
+    .select({
+      id: devicesTable.id,
+      publicKey: devicesTable.publicKey,
+      mlkemPublicKey: devicesTable.mlkemPublicKey,
+    })
     .from(devicesTable)
-    .where(and(eq(devicesTable.userId, userId), eq(devicesTable.trusted, true), isNull(devicesTable.revokedAt)))
-    .then((rows) => rows.map((row) => row.id))
+    .where(
+      and(
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, true),
+        isNull(devicesTable.revokedAt),
+        isNotNull(devicesTable.publicKey),
+        isNotNull(devicesTable.mlkemPublicKey),
+      ),
+    )
+
+/**
+ * Ids only, derived from {@link listEnvelopeCapableDevices} so the coverage
+ * validator and the endpoint clients build envelopes from can never disagree
+ * about which devices must be covered.
+ */
+export const listEnvelopeCapableDeviceIds = async (database: QueryableDatabase, userId: string) =>
+  (await listEnvelopeCapableDevices(database, userId)).map((row) => row.id)
 
 /**
  * Register (or idempotently re-register) a BRIDGE device on the caller's account.

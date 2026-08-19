@@ -62,17 +62,19 @@ describe('Encryption API (v2)', () => {
   const insertDevice = async (
     id: string,
     userId: string,
-    options: { trusted?: boolean; approvalPending?: boolean; revokedAt?: Date } = {},
+    options: { trusted?: boolean; approvalPending?: boolean; revokedAt?: Date; keyless?: boolean } = {},
   ) => {
-    const { trusted = false, approvalPending = !trusted, revokedAt } = options
+    const { trusted = false, approvalPending = !trusted, revokedAt, keyless = false } = options
     await db.insert(devicesTable).values({
       id,
       userId,
       name: 'Test Device',
       trusted,
       approvalPending,
-      publicKey: 'pk-test',
-      mlkemPublicKey: 'mlkem-pk-test',
+      // `keyless` mirrors a bridge (`registerBridgeDevice`) or a v1 device that
+      // never published v2 keys: trusted, but no envelope can be built for it.
+      publicKey: keyless ? null : 'pk-test',
+      mlkemPublicKey: keyless ? null : 'mlkem-pk-test',
       lastSeen: now,
       createdAt: now,
       ...(revokedAt ? { revokedAt } : {}),
@@ -507,6 +509,40 @@ describe('Encryption API (v2)', () => {
 
   // ─── AK rotation ────────────────────────────────────────────────────
 
+  describe('GET /encryption/envelope-targets', () => {
+    it('returns exactly the devices a rotation must cover, with their public keys', async () => {
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('caller'), p('u'), { trusted: true })
+      await insertDevice(p('peer'), p('u'), { trusted: true })
+      // Excluded: cannot hold an envelope, or must not receive the new AK.
+      await insertDevice(p('bridge'), p('u'), { trusted: true, keyless: true })
+      await insertDevice(p('pending'), p('u'), { trusted: false })
+      await insertDevice(p('revoked'), p('u'), { trusted: true, revokedAt: now })
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/envelope-targets`, { headers: authHeaders(p('tok'), p('caller')) }),
+      )
+
+      expect(res.status).toBe(200)
+      const { devices } = (await res.json()) as {
+        devices: Array<{ device_id: string; public_key: string; mlkem_public_key: string }>
+      }
+      expect(devices.map((device) => device.device_id).sort()).toEqual([p('caller'), p('peer')].sort())
+      expect(devices[0].public_key).toBe('pk-test')
+      expect(devices[0].mlkem_public_key).toBe('mlkem-pk-test')
+    })
+
+    it('rejects a revoked caller', async () => {
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'), { trusted: true, revokedAt: now })
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/envelope-targets`, { headers: authHeaders(p('tok'), p('d')) }),
+      )
+      expect(res.status).toBe(403)
+    })
+  })
+
   describe('POST /encryption/rotate', () => {
     const setupRotatable = async (keyIds: string[]) => {
       const keypair = await generateSigningKeypair()
@@ -547,6 +583,40 @@ describe('Encryption API (v2)', () => {
         .from(wrappedKeysTable)
         .where(and(eq(wrappedKeysTable.userId, p('u')), eq(wrappedKeysTable.keyId, initialKeyId)))
       expect(key.wrappedKey).toBe(`rewrapped-${initialKeyId}`)
+    })
+
+    it('does not require an envelope for a trusted keyless device (bridge)', async () => {
+      // Regression: coverage used to demand an envelope for EVERY trusted device.
+      // A bridge has no public keys, so the client cannot wrap one — every
+      // rotation and upgrade on such an account failed with 400 forever.
+      const keypair = await setupRotatable([initialKeyId])
+      await insertDevice(p('bridge'), p('u'), { trusted: true, keyless: true })
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(await rotateBody(keypair, [initialKeyId])),
+        }),
+      )
+
+      expect(res.status).toBe(200)
+    })
+
+    it('still requires an envelope for a trusted device that has keys', async () => {
+      const keypair = await setupRotatable([initialKeyId])
+      await insertDevice(p('peer'), p('u'), { trusted: true })
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(await rotateBody(keypair, [initialKeyId])),
+        }),
+      )
+
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toContain(p('peer'))
     })
 
     it('re-covers the "v1" slot on an absorbed account (N5)', async () => {
@@ -594,7 +664,7 @@ describe('Encryption API (v2)', () => {
         }),
       )
       expect(res.status).toBe(400)
-      expect((await res.json()).error).toContain('every trusted device')
+      expect((await res.json()).error).toContain('every envelope-capable device')
     })
   })
 
@@ -725,7 +795,7 @@ describe('Encryption API (v2)', () => {
         }),
       )
       expect(res.status).toBe(400)
-      expect((await res.json()).error).toContain('every trusted device')
+      expect((await res.json()).error).toContain('every envelope-capable device')
     })
 
     it('a second concurrent migrator loses the CAS (409)', async () => {

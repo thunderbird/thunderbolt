@@ -17,6 +17,7 @@ import type {
   WrappedKeyEntry,
   WrappedKeyResponse,
   WrappedKeysListResponse,
+  EnvelopeTargetsResponse,
 } from '@shared/e2ee-types'
 
 // The authenticated HttpClient (`createAuthenticatedClient`) already attaches
@@ -131,6 +132,15 @@ export const fetchWrappedKeys = async (httpClient: HttpClient): Promise<WrappedK
 /** Fetch one wrapped DEK by key_id. Allowed for any non-revoked device (recovery relies on this). */
 export const fetchWrappedKey = async (httpClient: HttpClient, keyId: KeyId): Promise<WrappedKeyResponse> =>
   httpClient.get(`encryption/keys/${encodeURIComponent(keyId)}`).json<WrappedKeyResponse>()
+
+/**
+ * The devices an AK rotation / upgrade must cover, with the public keys needed to
+ * wrap for each. Server-authoritative on purpose: it is the same predicate the
+ * coverage validator uses, so the two can never disagree the way a
+ * PowerSync-synced local read could.
+ */
+export const fetchEnvelopeTargets = async (httpClient: HttpClient): Promise<EnvelopeTargetsResponse> =>
+  httpClient.get('encryption/envelope-targets').json<EnvelopeTargetsResponse>()
 
 /**
  * Mint a NEW key_id on the server-side keyring (DEK rotation / workspace DEK).

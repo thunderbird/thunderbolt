@@ -15,7 +15,8 @@ export {
   deleteRevokedBridgeDevice,
   setDeviceNodeId,
   getTrustedNodeIds,
-  listTrustedDeviceIds,
+  listEnvelopeCapableDeviceIds,
+  listEnvelopeCapableDevices,
   countActiveDevices,
 } from './devices'
 

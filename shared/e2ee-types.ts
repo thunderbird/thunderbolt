@@ -274,6 +274,20 @@ export type WrappedKeysListResponse = {
 }
 
 /**
+ * GET /v1/encryption/envelope-targets — the devices an AK rotation / upgrade must
+ * cover, with the hybrid public keys needed to wrap an envelope for each. Every
+ * entry is envelope-capable by construction (trusted, non-revoked, both keys
+ * present), so both fields are non-null.
+ */
+export type EnvelopeTargetsResponse = {
+  devices: Array<{
+    device_id: string
+    public_key: string
+    mlkem_public_key: string
+  }>
+}
+
+/**
  * POST /v1/encryption/rotate request body (atomic AK rotation). Request bodies
  * are camelCase (matching existing routes); responses use the snake_case DTOs
  * above. The FULL keyring is re-wrapped under the new AK — every existing

@@ -8,7 +8,7 @@
 // `isStandalone` and a fetch override so tests can wire fakes via constructor
 // arguments — pure dependency injection.
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 import { appVersionUnsupported, isAppVersionBlocked, resetAppVersionBlockedForTesting } from './app-version-unsupported'
@@ -90,6 +90,11 @@ describe('createProxyFetch — app-version gate', () => {
       fetchImpl: (async () => response()) as unknown as typeof fetch,
       isStandalone: () => false,
     })
+
+  // Both ends: start clean regardless of what ran before, and leave clean.
+  beforeEach(() => {
+    resetAppVersionBlockedForTesting()
+  })
 
   afterEach(() => {
     resetAppVersionBlockedForTesting()

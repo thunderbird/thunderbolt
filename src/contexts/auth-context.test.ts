@@ -4,6 +4,7 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -33,6 +34,7 @@ describe('buildFetchOptions onError', () => {
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
+    resetAppVersionBlockedForTesting()
     dispatchSpy = mock(() => true)
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
     clearAuthToken()
@@ -43,6 +45,9 @@ describe('buildFetchOptions onError', () => {
     window.dispatchEvent = originalDispatch
     clearAuthToken()
     clearCachedSession()
+    // The 426 test latches the module-level `versionBlocked` singleton; leaving
+    // it set breaks later files that assert the app is not version-blocked.
+    resetAppVersionBlockedForTesting()
   })
 
   const trigger401 = () => {

@@ -36,13 +36,24 @@ export const UnsavedRecoveryPhrasePrompt = () => {
   const [dismissed, setDismissed] = useState(false)
   const { status, newRecoveryKey, isRotating, error, confirmRotation, done } = useChangeRecoveryKey()
 
-  if (!pending && status !== 'display') {
+  /**
+   * Snapshot at mount, so this only ever speaks for a phrase left unacknowledged
+   * by an EARLIER session.
+   *
+   * Reacting to the live flag was wrong: it is set the moment a phrase is minted,
+   * which is precisely when some other surface (the setup wizard, the migration
+   * dialog) is displaying that phrase — so the prompt appeared on top of the very
+   * dialog the user was reading, claiming the phrase was never saved.
+   */
+  const [wasPendingAtStartup] = useState(pending)
+
+  if ((!wasPendingAtStartup || !pending) && status !== 'display') {
     return null
   }
 
   return (
     <>
-      <AlertDialog open={pending && !dismissed && status !== 'display'}>
+      <AlertDialog open={wasPendingAtStartup && pending && !dismissed && status !== 'display'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Your recovery phrase was never saved</AlertDialogTitle>

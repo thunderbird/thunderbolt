@@ -8,7 +8,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload, isEncryptionEnabled } from '@/db/encryption'
 import { getAK, getPrimaryKeyId, storePrimaryKeyId } from '@/crypto'
-import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
+import type { EncryptionMetadataResponse, KeyId } from '@shared/e2ee-types'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
 /**
@@ -157,37 +157,68 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
   }
 
   /**
-   * Ensure `codec.encode` can select a valid primary DEK before a batch is
-   * encoded (plan TD3). When E2EE is enabled and this device completed setup
-   * (an AK exists) but the primary key_id pointer is missing from IndexedDB, a
-   * light metadata fetch restores it. After a rotation no fetch is needed:
-   * `storePrimaryKeyId` + the keyring-invalidate broadcast already moved the
-   * pointer, so the next batch picks up the new primary automatically.
+   * Whether the ACCOUNT has E2EE set up, independent of what this device holds.
+   * `GET /encryption/canary` answers 200 with the metadata, or 404 ("Encryption
+   * not set up") for an account that never enabled it.
    *
-   * Failures are soft (warn + continue): the codec falls back to the initial
-   * DEK when staged, and otherwise applies its own fail-open/fail-closed rules.
+   * A failed probe (offline, 401/403/5xx) is `unknown`, never `absent` — "not
+   * encrypted" may only be concluded from an explicit 404.
    */
-  private async ensurePrimaryKeyIdLoaded(): Promise<void> {
+  private async probeAccountEncryption(): Promise<
+    { status: 'set-up'; primaryKeyId: KeyId } | { status: 'absent' } | { status: 'unknown' }
+  > {
     try {
-      if (!isEncryptionEnabled() || (await getPrimaryKeyId()) !== null) {
-        return
-      }
-      if (!(await getAK())) {
-        return // Setup incomplete — nothing to load; encode fails open by design
-      }
       const response = await this.fetchFn(`${this.backendUrl}/encryption/canary`, {
         headers: getAuthenticatedHeaders(),
         credentials: isSsoMode() ? 'include' : undefined,
       })
+      if (response.status === 404) {
+        return { status: 'absent' }
+      }
       if (!response.ok) {
-        console.warn('[PowerSync] Failed to load primary key_id before upload:', response.status)
-        return
+        return { status: 'unknown' }
       }
       const metadata = (await response.json()) as Pick<EncryptionMetadataResponse, 'primary_key_id'>
-      await storePrimaryKeyId(metadata.primary_key_id)
-    } catch (error) {
-      console.warn('[PowerSync] Error loading primary key_id before upload:', error)
+      return { status: 'set-up', primaryKeyId: metadata.primary_key_id }
+    } catch {
+      return { status: 'unknown' }
     }
+  }
+  /**
+   * Guarantee this batch can be encrypted before `encodeForUpload` touches it.
+   *
+   * Encryption happens at upload time, so a CRUD op sits in `ps_crud` as
+   * plaintext until it flushes. `codec.encode` fails OPEN when no primary key_id
+   * resolves (`encodeWithoutKeys`) — correct for an account that never enabled
+   * E2EE, catastrophic for one that did but whose keyring has not reached this
+   * device yet: the queue flushes as plaintext the moment sync connects, before
+   * the setup wizard runs. That is how a stale client's backlog leaks after an
+   * upgrade.
+   *
+   * The codec cannot make this call itself — it also runs in the SharedWorker,
+   * which has no auth token — so the connector resolves account state here and
+   * THROWS rather than letting a batch through unencrypted. Throwing skips
+   * `transaction.complete()`, so PowerSync simply retries: the writes wait,
+   * intact, until the keyring lands.
+   *
+   * A stored primary key_id means setup completed and `codec.encode` enforces
+   * its own fail-closed rule, so no probe is needed.
+   */
+  private async ensureUploadEncryptionReady(): Promise<void> {
+    if (!isEncryptionEnabled() || (await getPrimaryKeyId()) !== null) {
+      return
+    }
+    const account = await this.probeAccountEncryption()
+    if (account.status === 'absent') {
+      return // Genuinely pre-E2EE account — plaintext passthrough is by design.
+    }
+    if (account.status === 'unknown') {
+      throw new Error('Cannot confirm account encryption state — deferring upload instead of risking plaintext')
+    }
+    if (!(await getAK())) {
+      throw new Error('Account is E2EE but this device holds no access key — deferring upload instead of plaintext')
+    }
+    await storePrimaryKeyId(account.primaryKeyId)
   }
 
   /**
@@ -202,10 +233,11 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       return // No changes to upload
     }
 
-    // Make sure encode can select a valid primary DEK before processing the batch (TD3).
-    await this.ensurePrimaryKeyIdLoaded()
-
     try {
+      // Inside the try so a refusal is tracked and, crucially, leaves the
+      // transaction uncompleted for PowerSync to retry.
+      await this.ensureUploadEncryptionReady()
+
       // Convert CRUD operations to our API format (encrypt encrypted columns)
       const operations = await Promise.all(
         transaction.crud.map((op) =>

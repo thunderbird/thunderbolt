@@ -7,6 +7,7 @@ import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { useConfigStore } from '@/api/config-store'
 import { clearAllKeys, generateAK, getPrimaryKeyId, storeAK, storePrimaryKeyId } from '@/crypto'
+import { resetCodecState } from '@/db/encryption'
 import type { AbstractPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -370,5 +371,119 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
 
     expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
     expect(await getPrimaryKeyId()).toBe('3')
+  })
+})
+
+describe('ThunderboltConnector upload encryption gate', () => {
+  let savedAuthMode: string | undefined
+  let fetchMock: ReturnType<typeof mock>
+
+  /** A PATCH on an encrypted column (`tasks.item`) — the payload that must never
+   *  reach the server as plaintext once the account is encrypted. */
+  const makeDatabase = () => {
+    let completed = false
+    const database = {
+      getNextCrudTransaction: async () => ({
+        crud: [{ op: 'PATCH', table: 'tasks', id: 'row-1', opData: { item: 'buy milk' } }],
+        complete: async () => {
+          completed = true
+        },
+      }),
+    } as unknown as AbstractPowerSyncDatabase
+    return { database, wasCompleted: () => completed }
+  }
+
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+  /** Route `/encryption/canary` to `canary`; everything else succeeds. */
+  const routeCanary = (canary: () => Response | Promise<Response>) =>
+    mock((url: string) =>
+      url.includes('/encryption/canary') ? Promise.resolve(canary()) : Promise.resolve(jsonResponse({})),
+    )
+
+  const requestedUrls = (): string[] => fetchMock.mock.calls.map((call) => call[0] as string)
+  const uploadAttempted = (): boolean => requestedUrls().some((url) => url.includes('/powersync/upload'))
+
+  beforeEach(async () => {
+    savedAuthMode = import.meta.env.VITE_AUTH_MODE
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    setAuthToken(authToken)
+    await clearAllKeys()
+    resetCodecState()
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+  })
+
+  afterEach(async () => {
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    useConfigStore.getState().updateConfig({})
+    await clearAllKeys()
+    resetCodecState()
+    clearAuthToken()
+    clearDeviceId()
+  })
+
+  it('refuses to upload when the account is encrypted but this device has no access key', async () => {
+    // The regression: a stale client's queued writes flushing after an upgrade,
+    // before the keyring reaches this device. Must defer, never upload plaintext.
+    fetchMock = routeCanary(() => jsonResponse({ primary_key_id: '0' }))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+    const { database, wasCompleted } = makeDatabase()
+
+    await expect(connector.uploadData(database)).rejects.toThrow(/no access key/)
+
+    expect(uploadAttempted()).toBe(false)
+    // Not completing the transaction is what preserves the writes for a retry.
+    expect(wasCompleted()).toBe(false)
+  })
+
+  it('uploads plaintext for an account that never enabled E2EE (404)', async () => {
+    fetchMock = routeCanary(() => jsonResponse({ error: 'Encryption not set up' }, 404))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+    const { database, wasCompleted } = makeDatabase()
+
+    await connector.uploadData(database)
+
+    expect(uploadAttempted()).toBe(true)
+    expect(wasCompleted()).toBe(true)
+    const uploadCall = fetchMock.mock.calls.find((call) => (call[0] as string).includes('/powersync/upload'))
+    expect((uploadCall?.[1] as RequestInit).body).toContain('buy milk')
+  })
+
+  it('defers the upload when the encryption probe fails', async () => {
+    fetchMock = routeCanary(() => jsonResponse({ error: 'boom' }, 500))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+    const { database, wasCompleted } = makeDatabase()
+
+    await expect(connector.uploadData(database)).rejects.toThrow(/Cannot confirm account encryption state/)
+
+    expect(uploadAttempted()).toBe(false)
+    expect(wasCompleted()).toBe(false)
+  })
+
+  it('defers the upload when the encryption probe cannot reach the backend', async () => {
+    // Offline must not be read as "account not encrypted".
+    fetchMock = routeCanary(() => {
+      throw new Error('network down')
+    })
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+    const { database, wasCompleted } = makeDatabase()
+
+    await expect(connector.uploadData(database)).rejects.toThrow(/Cannot confirm account encryption state/)
+
+    expect(uploadAttempted()).toBe(false)
+    expect(wasCompleted()).toBe(false)
+  })
+
+  it('does not probe at all when E2EE is disabled for the deployment', async () => {
+    useConfigStore.getState().updateConfig({ e2eeEnabled: false })
+    fetchMock = routeCanary(() => jsonResponse({ primary_key_id: '0' }))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+    const { database, wasCompleted } = makeDatabase()
+
+    await connector.uploadData(database)
+
+    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
+    expect(wasCompleted()).toBe(true)
   })
 })

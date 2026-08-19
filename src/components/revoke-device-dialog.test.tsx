@@ -46,10 +46,21 @@ describe('RevokeDeviceDialog', () => {
     expect(screen.getByText('Revoke this device?')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync. If encryption is set up, your keys will be rotated and a new recovery phrase will be shown for you to save.',
+        'The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. If encryption is set up, your keys will be rotated and a new recovery phrase will be shown for you to save.',
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument()
+  })
+
+  it('does not promise that local data is erased remotely', () => {
+    // The revoked device defaults to "Keep data on device" and only clears on an
+    // explicit choice, so promising a wipe here would mislead someone revoking a
+    // lost or stolen device.
+    render(<RevokeDeviceDialog open onOpenChange={() => {}} onConfirm={() => {}} isPending={false} variant="trusted" />)
+
+    const description = screen.getByText(/will be signed out/)
+    expect(description.textContent).toContain('not erased remotely')
+    expect(description.textContent).not.toContain('cleared on next sync')
   })
 
   it('does not render content when closed', () => {

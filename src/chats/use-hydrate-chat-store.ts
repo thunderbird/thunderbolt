@@ -41,6 +41,16 @@ type UseHydrateChatStoreParams = {
    *  Passed in rather than read from `window.location` so the value is part of
    *  this hook's inputs and can be tested. */
   projectId?: string | null
+  /**
+   * Whether the first save should navigate to `/chats/<id>`.
+   *
+   * True for the chat route, where the URL must move off `/chats/new` so the
+   * thread is linkable and survives reload. False for a chat embedded in another
+   * surface (the Mini App side panel), where navigating would unmount the host
+   * page mid-send — taking the app, its bridge, and the context the model was
+   * about to be asked about with it.
+   */
+  navigateOnCreate?: boolean
 }
 
 /**
@@ -67,7 +77,12 @@ const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
   }
 }
 
-export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = null }: UseHydrateChatStoreParams) => {
+export const useHydrateChatStore = ({
+  id,
+  isNew,
+  projectId: newChatProjectId = null,
+  navigateOnCreate = true,
+}: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
@@ -129,7 +144,10 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
 
     if (!session.chatThread) {
       updateSession(id, { chatThread: thread })
-      navigate(`/chats/${id}`, { relative: 'path' })
+      // Embedded chats stay put — see `navigateOnCreate`.
+      if (navigateOnCreate) {
+        navigate(`/chats/${id}`, { relative: 'path' })
+      }
     }
   }
 

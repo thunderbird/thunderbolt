@@ -1,0 +1,129 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { describe, expect, it, mock } from 'bun:test'
+import type { Tool, ToolCallOptions } from 'ai'
+import { LineChart } from 'lucide-react'
+import type { MiniAppTool } from '@shared/mini-app-protocol'
+import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from './mini-app-tools'
+import type { MiniAppDefinition } from './registry'
+
+const app: MiniAppDefinition = {
+  id: 'finance-model',
+  name: 'Finance Model',
+  description: 'Quarterly revenue model.',
+  icon: LineChart,
+  url: 'http://localhost:5174',
+  origin: 'http://localhost:5174',
+}
+
+const writeTool: MiniAppTool = {
+  name: 'set_assumption',
+  description: 'Change an input and recompute.',
+  inputSchema: { type: 'object', properties: { key: { type: 'string' } } },
+  annotations: { readOnlyHint: false },
+}
+
+const readTool: MiniAppTool = {
+  name: 'get_totals',
+  description: 'Read the full-year totals.',
+  annotations: { readOnlyHint: true },
+}
+
+/** The minimum the AI SDK passes an `execute`; none of these tools read it. */
+const callOptions: ToolCallOptions = { toolCallId: 'test-call', messages: [] }
+
+/** Run a built tool's `execute`, which the AI SDK types as optional. */
+const run = async (tool: Tool, args: unknown) => await tool.execute?.(args as never, callOptions)
+
+const build = (tools: MiniAppTool[], overrides: { approve?: boolean; invoke?: ReturnType<typeof mock> } = {}) => {
+  const invoke = overrides.invoke ?? mock(async () => ({ content: 'done' }))
+  const requestApproval = mock(async () => overrides.approve ?? true)
+  const toolset = createMiniAppTools({ app, tools, invoke, requestApproval })
+  return { toolset, invoke, requestApproval }
+}
+
+describe('createMiniAppTools', () => {
+  // Namespaced for the same reason MCP tools are: a customer app calling its
+  // tool `search` must not shadow ours.
+  it('namespaces tools under the app prefix', () => {
+    const { toolset } = build([writeTool])
+    expect(Object.keys(toolset)).toEqual(['app_set_assumption'])
+    expect(toToolsetName(writeTool)).toBe('app_set_assumption')
+  })
+
+  it('runs a read-only tool without prompting', async () => {
+    const { toolset, invoke, requestApproval } = build([readTool])
+    const result = await run(toolset.app_get_totals, {})
+    expect(requestApproval).not.toHaveBeenCalled()
+    expect(invoke).toHaveBeenCalled()
+    expect(result).toBe('done')
+  })
+
+  it('prompts before running a write tool', async () => {
+    const { toolset, requestApproval, invoke } = build([writeTool])
+    await run(toolset.app_set_assumption, { key: 'growthRate' })
+    expect(requestApproval).toHaveBeenCalled()
+    expect(invoke).toHaveBeenCalled()
+  })
+
+  it('does not invoke the app when the user denies', async () => {
+    const { toolset, invoke } = build([writeTool], { approve: false })
+    const result = await run(toolset.app_set_assumption, { key: 'growthRate' })
+    expect(invoke).not.toHaveBeenCalled()
+    expect(String(result)).toContain('declined')
+  })
+
+  /*
+   * The host decides from the descriptor it received, so a guest can only ever
+   * cause an *extra* prompt — never skip one. Absent annotations must therefore
+   * mean "needs approval", not "safe".
+   */
+  it('treats a missing readOnlyHint as needing approval', async () => {
+    const bare: MiniAppTool = { name: 'do_thing', description: 'Unannotated.' }
+    const { toolset, requestApproval } = build([bare])
+    await run(toolset.app_do_thing, {})
+    expect(requestApproval).toHaveBeenCalled()
+  })
+
+  it('treats an empty annotations object as needing approval', async () => {
+    const bare: MiniAppTool = { name: 'do_thing', description: 'Unannotated.', annotations: {} }
+    const { toolset, requestApproval } = build([bare])
+    await run(toolset.app_do_thing, {})
+    expect(requestApproval).toHaveBeenCalled()
+  })
+
+  // A failed tool should read to the model as a recoverable problem, not a crash.
+  it('surfaces a tool error as text rather than throwing', async () => {
+    const invoke = mock(async () => ({ content: 'value out of range', isError: true }))
+    const { toolset } = build([readTool], { invoke })
+    const result = await run(toolset.app_get_totals, {})
+    expect(String(result)).toContain('value out of range')
+  })
+
+  it('gives a tool with no declared schema a usable empty one', () => {
+    const { toolset } = build([readTool])
+    expect(toolset.app_get_totals.inputSchema).toBeDefined()
+  })
+})
+
+describe('buildMiniAppToolsPromptSection', () => {
+  it('returns null when the app exposes nothing', () => {
+    expect(buildMiniAppToolsPromptSection([])).toBeNull()
+  })
+
+  it('lists prefixed tool names so the model calls the registered name', () => {
+    const section = buildMiniAppToolsPromptSection([writeTool, readTool])
+    expect(section).toContain('app_set_assumption')
+    expect(section).toContain('app_get_totals')
+  })
+
+  it('flags which tools will prompt the user', () => {
+    const section = buildMiniAppToolsPromptSection([writeTool, readTool])
+    const writeLine = section?.split('\n').find((line) => line.includes('app_set_assumption'))
+    const readLine = section?.split('\n').find((line) => line.includes('app_get_totals'))
+    expect(writeLine).toContain('asks the user')
+    expect(readLine).not.toContain('asks the user')
+  })
+})

@@ -627,9 +627,20 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
     throw err
   }
 
-  await storeAK(await reimportAsNonExtractable(newAK))
-  await stageWrappedDEKs(wrappedKeys)
-  invalidateKeyringCache()
+  // PAST THE POINT OF NO RETURN. `postRotate` succeeded, so the server has
+  // already replaced the AK, canary and signing key — the caller's previous
+  // recovery phrase is dead. From here nothing may throw: `recoveryKey` is the
+  // only copy of the new phrase in existence, and losing it leaves the account
+  // with a phrase nobody knows. Local staging failing is independently
+  // recoverable (the codec's unwrap-failure path calls `refreshAK` and re-stages
+  // on next use), so it is logged rather than propagated.
+  try {
+    await storeAK(await reimportAsNonExtractable(newAK))
+    await stageWrappedDEKs(wrappedKeys)
+    invalidateKeyringCache()
+  } catch (err) {
+    console.error('[e2ee] AK rotation committed but local key staging failed — keys will re-stage on next use:', err)
+  }
 
   return recoveryKey
 }
@@ -667,10 +678,20 @@ export const rotateDEK = async (httpClient: HttpClient): Promise<KeyId> => {
 }
 
 /**
- * Device revocation double-rotation: cut server access, then rotate the AK
- * (locking the revoked device out of the keyring — its envelope is gone and
- * never re-issued) and the DEK (future writes use a key_id it never held).
+ * Device revocation double-rotation: cut server access, rotate the DEK (future
+ * writes use a key_id the revoked device never held), then rotate the AK
+ * (locking it out of the keyring — its envelope is gone and never re-issued).
  * Returns the NEW 24-word recovery key — the UI must show it.
+ *
+ * ORDER IS LOAD-BEARING. The AK rotation is the only irreversible step for the
+ * user: it invalidates the previous recovery phrase, and the new one exists
+ * nowhere but this function's return value. So it goes LAST — a failure in any
+ * earlier step aborts with the previous phrase still valid, instead of stranding
+ * the account between two phrases (the old one dead, the new one never shown).
+ *
+ * The revoked device cannot exploit the window where the new DEK is still
+ * wrapped under the old AK it holds: revocation already precedes it, and the
+ * keyring endpoints reject revoked callers.
  *
  * Remaining devices self-heal: their next decode of post-rotation data hits a
  * DEK that won't unwrap under their old AK, which triggers the responder's
@@ -682,9 +703,8 @@ export const revokeDeviceAndRotate = async (
   opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
 ): Promise<string> => {
   await revokeDeviceWithProof(httpClient, deviceId)
-  const recoveryKey = await rotateAK(httpClient, { ...opts, excludeDeviceIds: [deviceId] })
   await rotateDEK(httpClient)
-  return recoveryKey
+  return rotateAK(httpClient, { ...opts, excludeDeviceIds: [deviceId] })
 }
 
 // =============================================================================

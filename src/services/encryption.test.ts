@@ -19,6 +19,7 @@ import {
   unwrapAK,
   generateRecoverySeed,
   encodeRecoverySeed,
+  decodeRecoveryKey,
   generateKdfSalt,
   createCanary,
   encrypt,
@@ -38,6 +39,8 @@ let storedAK: CryptoKey | null = null
 const storedDEKs = new Map<KeyId, string>()
 let storedPrimaryKeyId: KeyId | null = null
 let storedKeyVersion: number | null = null
+/** Simulates an IndexedDB write failure inside `storeAK` (post-commit staging). */
+let failStoreAK = false
 
 // Capture the real module (spread into a fresh object — bun's mock.module mutates
 // the live namespace in place, so only a value-copy survives) so afterAll can
@@ -59,6 +62,9 @@ mock.module('@/crypto/key-storage', () => ({
   },
   getKeyPair: async () => storedKeyPair,
   storeAK: async (ak: CryptoKey) => {
+    if (failStoreAK) {
+      throw new Error('IndexedDB unavailable')
+    }
     storedAK = ak
   },
   getAK: async () => storedAK,
@@ -96,6 +102,7 @@ const {
   checkApprovalAndUnwrap,
   recoverWithKey,
   rotateAK,
+  revokeDeviceAndRotate,
   RotationStaleError,
   migrateToV2,
   followToV2,
@@ -126,6 +133,8 @@ type FakeServer = {
   /** Applied when /upgrade returns 409 — simulates the winning migrator's committed v2 state. */
   winner?: { metadata: MetaState; envelopes: Map<string, string>; wrappedKeys: Map<KeyId, string> }
   rotateStatus: number
+  /** Status for `POST /encryption/keys` — lets a DEK rotation fail mid-flow. */
+  wrappedKeyStatus: number
   fetch: (input: Request) => Promise<Response>
 }
 
@@ -140,6 +149,7 @@ const createFakeServer = (): FakeServer => {
     deviceTrusted: new Map(),
     upgradeConflict: false,
     rotateStatus: 200,
+    wrappedKeyStatus: 200,
     fetch: async () => jsonResponse({}),
   }
 
@@ -217,6 +227,9 @@ const createFakeServer = (): FakeServer => {
       return wrapped ? jsonResponse({ key_id: keyId, wrapped_key: wrapped }) : jsonResponse({ error: 'not found' }, 404)
     }
     if (path === '/encryption/keys' && method === 'POST') {
+      if (server.wrappedKeyStatus !== 200) {
+        return jsonResponse({ error: 'boom' }, server.wrappedKeyStatus)
+      }
       server.wrappedKeys.set(body!.keyId as KeyId, body!.wrappedKey as string)
       if (body!.setPrimary && server.metadata) {
         server.metadata.primaryKeyId = body!.keyId as KeyId
@@ -382,9 +395,11 @@ describe('encryption service (v2)', () => {
     storedDEKs.clear()
     storedPrimaryKeyId = null
     storedKeyVersion = null
+    failStoreAK = false
   })
 
   afterEach(() => {
+    failStoreAK = false
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
     clearCachedSession()
@@ -533,6 +548,78 @@ describe('encryption service (v2)', () => {
       await expect(
         rotateAK(clientFor(server), { listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')] }),
       ).rejects.toBeInstanceOf(RotationStaleError)
+    })
+
+    it('still returns the new phrase when post-commit local staging fails', async () => {
+      // The server already replaced the AK, so the old phrase is dead. A local
+      // IndexedDB failure must not swallow the only copy of the new one.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      failStoreAK = true
+
+      const newPhrase = await rotateAK(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(newPhrase.split(' ')).toHaveLength(24)
+      // And the phrase is the real one: it re-derives the AK the server now holds.
+      const rederived = await deriveAKFromSeed(decodeRecoveryKey(newPhrase), server.metadata!.kdfSalt!, {
+        extractable: true,
+      })
+      const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, rederived)
+      expect(dek0.algorithm.name).toBe('AES-GCM')
+    })
+  })
+
+  describe('revokeDeviceAndRotate', () => {
+    it('revokes, rotates the DEK, and returns the new phrase', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      const newPhrase = await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(newPhrase.split(' ')).toHaveLength(24)
+      // A fresh DEK became primary, and the whole keyring rides the new AK.
+      expect(server.metadata?.primaryKeyId).toBe('1')
+      for (const keyId of ['0', 'v1', '1']) {
+        const dek = await unwrapDEK(storedDEKs.get(keyId)!, storedAK!)
+        expect(dek.algorithm.name).toBe('AES-GCM')
+      }
+    })
+
+    it('leaves the previous phrase valid when the DEK rotation fails', async () => {
+      // Regression: the DEK rotation used to run AFTER the AK rotation, so a
+      // failure here invalidated the old phrase while the new one was never
+      // returned — leaving the account with a phrase nobody knows.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const originalPhrase = await completeFirstDeviceSetup(clientFor(server))
+      const saltBefore = server.metadata!.kdfSalt
+      server.wrappedKeyStatus = 500
+
+      await expect(
+        revokeDeviceAndRotate(clientFor(server), 'other-device', {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.toThrow()
+
+      // The AK rotation never ran, so the account still answers to the phrase
+      // the user already wrote down.
+      expect(server.metadata!.kdfSalt).toBe(saltBefore)
+      storedKeyPair = null
+      storedAK = null
+      storedDEKs.clear()
+      await recoverWithKey(clientFor(server), originalPhrase)
+      expect(storedAK).not.toBeNull()
     })
   })
 

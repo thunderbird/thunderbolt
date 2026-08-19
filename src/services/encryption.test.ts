@@ -766,12 +766,36 @@ describe('encryption service (v2)', () => {
       storedKeyPair = kp
       const realCK = await generateDEK(true)
       await seedV2Account(server, kp, realCK)
-      // Sample encrypted with a DIFFERENT key — the staged "v1" slot can't read it.
+      // Sample encrypted with a DIFFERENT key — the candidate "v1" slot can't read it.
       const impostorSample = await encrypt('tampered', await generateDEK(true))
 
       await expect(followToV2(clientFor(server), { getLegacyV1Sample: async () => impostorSample })).rejects.toThrow(
         'continuity check failed',
       )
+
+      // Nothing persisted: a rejected keyring must not leave key material behind.
+      expect(storedAK).toBeNull()
+      expect(storedDEKs.size).toBe(0)
+    })
+
+    it('re-runs the continuity check on the next attempt after a rejection', async () => {
+      // Regression: the keys used to be stored before the check, so a rejection
+      // left an AK behind and `ensureV2Encryption` reported `already-v2` forever
+      // — the check that had just failed never ran again.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      const impostorSample = await encrypt('tampered', await generateDEK(true))
+
+      await expect(
+        ensureV2Encryption(clientFor(server), { getLegacyV1Sample: async () => impostorSample }),
+      ).rejects.toThrow('continuity check failed')
+
+      // Second boot: still no AK, so the follower path (and the check) runs again.
+      await expect(
+        ensureV2Encryption(clientFor(server), { getLegacyV1Sample: async () => impostorSample }),
+      ).rejects.toThrow('continuity check failed')
     })
 
     it('returns awaiting-approval when no envelope exists yet', async () => {

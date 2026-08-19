@@ -914,19 +914,29 @@ const defaultGetLegacyV1Sample = async (): Promise<LegacyV1Sample | null> => {
 
 /**
  * D1 follower continuity check (defense-in-depth): decrypt one synced-down
- * legacy v1 value with the freshly-staged `"v1"` slot and NO AAD. A GCM
- * auth-tag success proves the slot is the genuine CK; a failure means the
- * keyring was tampered with (hostile migrator) → reject. Skips when no legacy
- * sample is available (nothing to verify).
+ * legacy v1 value with the candidate `"v1"` slot and NO AAD. A GCM auth-tag
+ * success proves the slot is the genuine CK; a failure means the keyring was
+ * tampered with (hostile migrator) → reject. Skips when no legacy sample is
+ * available (nothing to verify).
+ *
+ * Takes the candidate keyring as an ARGUMENT rather than reading the staged
+ * copy: it must be possible to run this before anything is written to
+ * IndexedDB. A rejected keyring that had already been persisted would leave the
+ * AK behind, and `ensureV2Encryption` short-circuits to `already-v2` on AK
+ * presence — so the check would never run again on that device.
  */
-const runContinuityCheck = async (ak: CryptoKey, getSample: () => Promise<LegacyV1Sample | null>): Promise<void> => {
+const runContinuityCheck = async (
+  ak: CryptoKey,
+  keyring: WrappedKeyEntry[],
+  getSample: () => Promise<LegacyV1Sample | null>,
+): Promise<void> => {
   const sample = await getSample()
   if (!sample) {
     return
   }
-  const wrappedV1 = await getDEK(legacyKeyId)
+  const wrappedV1 = keyring.find((entry) => entry.keyId === legacyKeyId)?.wrappedKey
   if (!wrappedV1) {
-    // No `"v1"` slot staged (account never had legacy data) — nothing to check.
+    // No `"v1"` slot (account never had legacy data) — nothing to check.
     return
   }
   const v1Dek = await unwrapDEK(wrappedV1, ak)
@@ -937,10 +947,18 @@ const runContinuityCheck = async (ak: CryptoKey, getSample: () => Promise<Legacy
 
 /**
  * Follow a migration performed by another device (WS5): `scheme_version == 2`
- * and this device has no local AK. Fetches this device's AK envelope (written
- * by the migrator), unwraps + stores the AK, stages the full keyring (the
- * `"v1"` slot rides along — followers NEVER absorb), and runs the continuity
- * check. Returns `awaiting-approval` when the envelope does not exist yet.
+ * and this device has no local AK. Fetches this device's AK envelope (written by
+ * the migrator), unwraps the AK, VERIFIES continuity, and only then persists the
+ * AK + keyring (the `"v1"` slot rides along — followers NEVER absorb). Returns
+ * `awaiting-approval` when the envelope does not exist yet.
+ *
+ * Verify-then-persist is the whole point of the ordering: the continuity check
+ * exists to reject a keyring planted by a hostile migrator, and persisting first
+ * defeated it. A rejected keyring left the AK in IndexedDB, and
+ * `ensureV2Encryption` returns `already-v2` whenever an AK is present — so the
+ * next boot skipped straight past the check that had just failed, permanently.
+ * Nothing is written until the keyring proves it can read this account's legacy
+ * data, so a rejection leaves the device untouched and the check re-runs.
  */
 export const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options = {}): Promise<FollowResult> => {
   const metadata = await fetchEncryptionMetadata(httpClient)
@@ -964,10 +982,13 @@ export const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options
   }
 
   const ak = await unwrapAK(envelope.wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
+
+  const { keys } = await fetchWrappedKeys(httpClient)
+  const keyring: WrappedKeyEntry[] = keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key }))
+  await runContinuityCheck(ak, keyring, opts.getLegacyV1Sample ?? defaultGetLegacyV1Sample)
+
   await storeAK(ak)
   await stageKeyring(httpClient)
-
-  await runContinuityCheck(ak, opts.getLegacyV1Sample ?? defaultGetLegacyV1Sample)
 
   return { outcome: 'followed' }
 }

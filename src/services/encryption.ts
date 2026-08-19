@@ -56,6 +56,7 @@ import {
   fetchEncryptionMetadata,
   fetchWrappedKeys,
   fetchWrappedKey,
+  fetchEnvelopeTargets,
   postWrappedKey,
   fetchChallenge,
   postRotate,
@@ -65,7 +66,6 @@ import {
   setDeviceNodeId as setDeviceNodeIdApi,
   type RegisterDeviceResponse,
 } from '@/api/encryption'
-import { getAllDevices } from '@/dal'
 import { getDb } from '@/db/database'
 import { encPrefix, encV2Prefix, invalidateKeyringCache, resetCodecState } from '@/db/encryption'
 import { encryptedColumnsMap } from '@/db/encryption'
@@ -516,17 +516,27 @@ export type TrustedDevicePublicKeys = {
 }
 
 /**
- * Read the trusted, non-revoked devices (with their envelope public keys) from
- * the local synced `devices` table. Devices without public keys (e.g. bridge
- * devices) cannot hold an AK envelope and are skipped.
+ * The devices this rotation/upgrade must cover, read from the SERVER rather than
+ * the local synced `devices` table.
+ *
+ * The server validates coverage against its own device rows, so deriving the set
+ * from a PowerSync-replicated copy meant the two could disagree: a peer that had
+ * not replicated locally yet was silently omitted, and the whole payload came
+ * back 400 "must cover every envelope-capable device". Two devices migrating at
+ * once hit this simultaneously and neither could ever win — the account stayed on
+ * v1. Asking the server removes the class of bug rather than narrowing the race.
+ *
+ * Devices that cannot hold an envelope (no public keys — bridges, and v1 devices
+ * that never published v2 keys) are excluded by the endpoint itself, using the
+ * same predicate the validator applies.
  */
-const listTrustedDeviceKeys = async (): Promise<TrustedDevicePublicKeys[]> => {
-  const devices = await getAllDevices(getDb())
-  return devices.flatMap((device) =>
-    device.trusted === 1 && device.revokedAt == null && device.publicKey && device.mlkemPublicKey
-      ? [{ id: device.id, publicKey: device.publicKey, mlkemPublicKey: device.mlkemPublicKey }]
-      : [],
-  )
+const listTrustedDeviceKeys = async (httpClient: HttpClient): Promise<TrustedDevicePublicKeys[]> => {
+  const { devices } = await fetchEnvelopeTargets(httpClient)
+  return devices.map((device) => ({
+    id: device.device_id,
+    publicKey: device.public_key,
+    mlkemPublicKey: device.mlkem_public_key,
+  }))
 }
 
 /** Wrap `ak` into a device-envelope for each trusted device, honoring exclusions. */
@@ -600,7 +610,7 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
 
   // New-AK envelope for every live trusted device, minus explicit exclusions
   // (a just-revoked device may still look trusted through sync lag).
-  const trustedDevices = await (opts.listTrustedDevices ?? listTrustedDeviceKeys)()
+  const trustedDevices = await (opts.listTrustedDevices ?? (() => listTrustedDeviceKeys(httpClient)))()
   const envelopes = await buildDeviceEnvelopes(newAK, trustedDevices, opts.excludeDeviceIds)
 
   // New canary under DEK '0' (the DEK itself did not change) + new signing keypair.
@@ -784,7 +794,7 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   // synced `devices` table, which may not have replicated this (freshly trusted)
   // device yet. Without self here, a migrator whose own row hasn't synced sends
   // an empty `envelopes` array and the upgrade is rejected (422 minItems).
-  const trustedDevices = await (opts.listTrustedDevices ?? listTrustedDeviceKeys)()
+  const trustedDevices = await (opts.listTrustedDevices ?? (() => listTrustedDeviceKeys(httpClient)))()
   const self: TrustedDevicePublicKeys = {
     id: getDeviceId(),
     publicKey: await exportPublicKey(keyPair.ecdhPublicKey),

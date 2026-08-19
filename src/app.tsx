@@ -40,7 +40,7 @@ import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
 import { UpgradeRequired } from './components/upgrade-required'
 import { useConfigStore } from '@/api/config-store'
-import { compareSemver } from '@shared/compare-semver'
+import { isVersionBelowMinimum } from '@/lib/app-version'
 import { AuthGate } from './components/auth-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -310,8 +310,9 @@ export const App = () => {
   const appVersion = import.meta.env.VITE_APP_VERSION
   // A response-triggered 426 (`forceUpgrade`) blocks immediately for the session;
   // the config-driven semver gate blocks on every load below the enforced minimum.
-  const upgradeRequired =
-    forceUpgrade || (!!minAppVersion && !!appVersion && compareSemver(appVersion, minAppVersion) < 0)
+  // Same rule the sync layer enforces via `isAppVersionUnsupported` — shared so the
+  // blocker and the sync teardown can never disagree about what "too old" means.
+  const upgradeRequired = forceUpgrade || isVersionBelowMinimum(appVersion, minAppVersion)
 
   const renderAppContent = () => {
     if (upgradeRequired) {

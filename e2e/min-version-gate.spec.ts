@@ -99,9 +99,9 @@ test.describe('minimum app-version gate', () => {
     // wholesale — so it must never mount.
     await expect(page.locator('textarea')).toHaveCount(0)
 
-    // "Sync cannot start": the blocker replaces the app before PowerSync connects
-    // (connect is gated behind isSyncEnabled(), which the blocked app never turns on),
-    // so no sync-token request is attempted in the page — and certainly none succeeds.
+    // "Sync cannot start" — on this fresh profile `isSyncEnabled()` is false, so
+    // connect is never attempted. The returning-user case (sync already enabled)
+    // is the one that matters and is covered separately below.
     const tokenStatuses = gatedStatuses.get('/v1/powersync/token') ?? []
     expect(tokenStatuses).not.toContain(200)
 
@@ -111,6 +111,49 @@ test.describe('minimum app-version gate', () => {
       headers: { 'X-App-Version': '0.1.123' },
     })
     expect(gated.status()).toBe(426)
+
+    expect(errors).toHaveLength(0)
+  })
+
+  test('below-min build with sync already enabled never opens a sync stream', async ({ page }) => {
+    const errors = collectPageErrors(page)
+
+    const syncRequests: string[] = []
+    page.on('request', (request) => {
+      const url = request.url()
+      if (url.startsWith(gateBackend) && /\/v1\/powersync\/(token|upload)/.test(url)) {
+        syncRequests.push(new URL(url).pathname)
+      }
+    })
+
+    // A returning user: sync already on and the enforced minimum already persisted
+    // from a previous session's `/config`. This is the case that produced plaintext
+    // uploads — the blocker renders, but `initialize()` used to connect anyway
+    // (`syncEnabled` is true), holding a stream and queueing CRUD ops that flush
+    // after the upgrade, before the E2EE keyring exists.
+    await page.addInitScript(
+      ([minVersion]) => {
+        window.localStorage.setItem(
+          'thunderbolt-local-settings',
+          JSON.stringify({ state: { syncEnabled: true }, version: 0 }),
+        )
+        window.localStorage.setItem(
+          'thunderbolt-config',
+          JSON.stringify({ state: { config: { minAppVersion: minVersion } }, version: 0 }),
+        )
+      },
+      [gateMinAppVersion],
+    )
+
+    await page.goto(gateFrontendUrl)
+    await expect(page.getByRole('heading', { name: 'Update required' })).toBeVisible({ timeout: 30_000 })
+
+    // Give the fire-and-forget connect from `initialize()` room to have happened.
+    await page.waitForTimeout(3_000)
+
+    // The persisted minimum is enough for `isAppVersionUnsupported()` to refuse the
+    // connect outright, so the stale client never even asks for a sync token.
+    expect(syncRequests).toEqual([])
 
     expect(errors).toHaveLength(0)
   })

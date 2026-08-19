@@ -8,6 +8,7 @@ import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
+import { createTestSettings } from '@/test-utils/settings'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -137,7 +138,9 @@ describe('Encryption API', () => {
     db = testEnv.db
     cleanup = testEnv.cleanup
     const auth = createAuth(db)
-    app = new Elysia().use(createEncryptionRoutes(auth, db)) as unknown as ReturnType<typeof createEncryptionRoutes>
+    app = new Elysia().use(createEncryptionRoutes(auth, createTestSettings(), db)) as unknown as ReturnType<
+      typeof createEncryptionRoutes
+    >
   })
 
   afterEach(async () => {

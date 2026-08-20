@@ -195,13 +195,18 @@ describe('useSignInFormState', () => {
         await result.current.actions.handleOtpComplete('12345678')
       })
 
-      expect(emailOtpSpy).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        otp: '12345678',
-        fetchOptions: {
-          headers: { 'x-challenge-token': 'pre-existing-token' },
-        },
-      })
+      // Asserted per-key rather than as a whole object: the per-call headers must
+      // also re-include the client-level ones (X-App-Version above all), because
+      // Better Auth replaces them instead of merging and the gate is fail-closed.
+      // `mock(async () => …)` declares no parameters, so `calls` is typed as an
+      // empty tuple — widen before indexing.
+      const [call] = emailOtpSpy.mock.calls[0] as unknown as [
+        { email: string; otp: string; fetchOptions: { headers: Record<string, string> } },
+      ]
+      expect(call.email).toBe('test@example.com')
+      expect(call.otp).toBe('12345678')
+      expect(call.fetchOptions.headers['x-challenge-token']).toBe('pre-existing-token')
+      expect(call.fetchOptions.headers).toHaveProperty('X-Client-Platform')
     })
 
     it('defaults challengeToken to empty string without initialChallengeToken', () => {

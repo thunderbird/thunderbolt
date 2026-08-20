@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { challengeTokenHeader } from '@/lib/constants'
 import { useAuth } from '@/contexts'
+import { authRequestHeaders } from '@/contexts/auth-context'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
 
@@ -61,7 +62,9 @@ export const MagicLinkVerify = () => {
         const result = await authClient.signIn.emailOtp({
           email,
           otp,
-          fetchOptions: challengeToken ? { headers: { [challengeTokenHeader]: challengeToken } } : undefined,
+          fetchOptions: challengeToken
+            ? { headers: authRequestHeaders({ [challengeTokenHeader]: challengeToken }) }
+            : undefined,
         })
 
         if (result.error) {

@@ -157,6 +157,27 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       schema,
     }),
     trustedOrigins,
+    // Land auth failures on the app, not on the API. Better Auth otherwise
+    // resolves its error redirect as `${baseURL}/error` (see better-auth's
+    // oauth2/state.mjs), which is its own handler on the backend, and in
+    // production that handler bounces to `/` on the API origin — so a
+    // recoverable error like a stale `state` cookie renders a bare "NOT_FOUND"
+    // on the API domain instead of a page the user can retry from. Only
+    // observable when the app and API are on separate origins; where one origin
+    // proxies both, the SPA's catch-all already absorbed this.
+    //
+    // Points at /auth-error rather than the app root on purpose: in SSO mode the
+    // root is behind the auth gate, which sends unauthenticated users to
+    // /sso-redirect, which starts a new IdP round-trip on mount. A persistent
+    // failure (unlinked account, IdP misconfiguration) would loop through the
+    // IdP forever. /auth-error is unguarded and terminal.
+    //
+    // Covers the OIDC callback only: @better-auth/sso's SAML assertion-consumer
+    // path never reads this value. A linking failure there redirects to the
+    // flow's own `callbackURL` (the app root), which AuthGate diverts to
+    // /auth-error; an assertion-validation failure redirects to the API origin
+    // and still renders a bare NOT_FOUND.
+    onAPIError: { errorURL: `${settings.appUrl}/auth-error` },
     ...(ssoEnabled && {
       account: {
         accountLinking: {

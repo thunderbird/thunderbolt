@@ -40,7 +40,7 @@ import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
 import { UpgradeRequired } from './components/upgrade-required'
 import { useConfigStore } from '@/api/config-store'
-import { compareSemver } from '@/lib/compare-semver'
+import { isVersionBelowMinimum } from '@/lib/app-version'
 import { AuthGate } from './components/auth-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -49,6 +49,7 @@ import { UpdateNotification } from './components/update-notification'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
+import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupported-listener'
 import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
@@ -289,6 +290,7 @@ export const App = () => {
   useState(markAppMounted)
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
   const { revokedDeviceOpen } = useCredentialEvents()
+  useAppVersionUnsupportedListener()
 
   // Show the Tauri window after React mounts and CSS is applied.
   // The window starts hidden (tauri.conf.json visible: false) to prevent
@@ -303,12 +305,23 @@ export const App = () => {
   // Reactive gate: re-evaluates whenever the config store updates, so the
   // upgrade screen tracks the current server-enforced minimum.
   const minAppVersion = useConfigStore((s) => s.config.minAppVersion)
+  const forceUpgrade = useConfigStore((s) => s.forceUpgrade)
+  const forceUpgradeMinVersion = useConfigStore((s) => s.forceUpgradeMinVersion)
   const appVersion = import.meta.env.VITE_APP_VERSION
-  const upgradeRequired = !!minAppVersion && !!appVersion && compareSemver(appVersion, minAppVersion) < 0
+  // A response-triggered 426 (`forceUpgrade`) blocks immediately for the session;
+  // the config-driven semver gate blocks on every load below the enforced minimum.
+  // Same rule the sync layer enforces via `isAppVersionUnsupported` — shared so the
+  // blocker and the sync teardown can never disagree about what "too old" means.
+  const upgradeRequired = forceUpgrade || isVersionBelowMinimum(appVersion, minAppVersion)
 
   const renderAppContent = () => {
     if (upgradeRequired) {
-      return <UpgradeRequired currentVersion={appVersion ?? 'unknown'} minVersion={minAppVersion ?? 'unknown'} />
+      return (
+        <UpgradeRequired
+          currentVersion={appVersion ?? 'unknown'}
+          minVersion={forceUpgradeMinVersion ?? minAppVersion ?? 'unknown'}
+        />
+      )
     }
     if (initError) {
       if (initError.code === 'STORAGE_UNAVAILABLE') {
@@ -363,7 +376,9 @@ export const App = () => {
       <LazyMotion features={loadMotionFeatures} strict>
         {renderAppContent()}
         <WindowControls />
-        <RevokedDeviceModal open={revokedDeviceOpen} />
+        {/* The upgrade blocker replaces the whole app, so it must win over the
+            revoked-device modal that renders outside renderAppContent. */}
+        <RevokedDeviceModal open={revokedDeviceOpen && !upgradeRequired} />
       </LazyMotion>
     </ThemeProvider>
   )

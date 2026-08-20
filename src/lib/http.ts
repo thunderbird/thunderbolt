@@ -8,6 +8,8 @@
  * error throwing on non-2xx, prefixUrl, and beforeRequest hooks.
  */
 
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getDeviceId } from '@/lib/auth-token'
 import { getDeviceDisplayName } from '@/lib/platform'
 
@@ -192,8 +194,8 @@ export const createAuthenticatedClient = (
               request.headers.set('X-Device-ID', deviceId)
               request.headers.set('X-Device-Name', getDeviceDisplayName())
             }
-            if (import.meta.env.VITE_APP_VERSION) {
-              request.headers.set('X-App-Version', import.meta.env.VITE_APP_VERSION)
+            for (const [key, value] of Object.entries(appVersionHeader())) {
+              request.headers.set(key, value)
             }
           }
         },
@@ -202,15 +204,23 @@ export const createAuthenticatedClient = (
         // Event name + reason kept in sync with src/db/powersync/connector.ts. Importing from there
         // would create a cycle (connector → sync-tracker → posthog → http).
         (request, response) => {
-          if (response.status !== 401 || !request.headers.has('Authorization')) {
-            return
-          }
+          // Only app-backend responses are actionable — external APIs use this same
+          // client with caller-provided tokens, so their 401/426 are not signals about
+          // our app session or app version. Same prefix guard as the beforeRequest hook.
           if (request.url !== prefixUrl && !request.url.startsWith(normalizedPrefix)) {
             return
           }
-          window.dispatchEvent(
-            new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
-          )
+          // A 426 from our backend means this build is below the enforced minimum —
+          // status-only (the body stream belongs to the caller).
+          if (response.status === 426) {
+            handleAppVersionUnsupported(response.status)
+            return
+          }
+          if (response.status === 401 && request.headers.has('Authorization')) {
+            window.dispatchEvent(
+              new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
+            )
+          }
         },
       ],
     },

@@ -135,6 +135,15 @@ Both the main API (`backend/src/index.ts`) and the PostHog proxy route (`backend
 
 If you ever need a browser-readable response header in cross-origin code, you must add it to `corsExposeHeaders` in `backend/src/config/settings.ts` — browsers expose only the headers listed there to `Response.headers` cross-origin.
 
+## App version gate
+
+The backend enforces a minimum app version via `createAppVersionMiddleware` (mounted globally in `backend/src/index.ts`). It is a no-op until `MIN_APP_VERSION` is set; when set, every `/v1` request from a below-minimum client gets a **426 Upgrade Required** unless its path is in `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`). The gate is **fail-closed** — a missing `X-App-Version` header is rejected on non-exempt routes.
+
+- **Adding a backend route hit by a browser redirect or a header-less client** (OAuth/SSO callbacks, WebSocket upgrades, posthog-js, CLI device-grant) — add its prefix to `appVersionExemptPrefixes`, or it will 426 silently once the gate is enabled.
+- **Adding a frontend→backend fetch client** — route it through `appVersionHeader()` (`src/lib/app-version.ts`) so it sends `X-App-Version`. The universal proxy adds the header to the outer hop only; it must never leak to external upstreams (see `skipHeaders` in `src/lib/proxy-fetch.ts`).
+- **Passing per-call headers to a Better Auth method** (`authClient.signIn.emailOtp({ fetchOptions: { headers } })`) — Better Auth **replaces** the client-level headers instead of merging them, so a bare `headers` object silently drops `X-App-Version` and the call 426s on a perfectly current build. Build it with `authRequestHeaders()` (`src/contexts/auth-context.tsx`) instead.
+- Enabling the gate is a config change (`MIN_APP_VERSION`), not a deploy. `getSettings()` memoizes per process, so **restart the backend** after changing it.
+
 ## Responsive Sizing
 
 The project overrides Tailwind's CSS theme variables in `/src/index.css` `:root` with responsive mobile/desktop values that switch at the 768px breakpoint. Use standard Tailwind classes — **do NOT** use `var()` syntax for properties that have Tailwind equivalents.

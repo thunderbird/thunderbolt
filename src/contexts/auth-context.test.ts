@@ -4,13 +4,20 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { getPlatform } from '@/lib/platform'
 import { cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { buildFetchOptions, hydrateSessionFromCache, subscribeSessionCachePersist } from './auth-context'
+import {
+  authRequestHeaders,
+  buildFetchOptions,
+  hydrateSessionFromCache,
+  subscribeSessionCachePersist,
+} from './auth-context'
 import type { createAuthClient } from 'better-auth/react'
 
 const authTokenKey = 'thunderbolt_auth_token'
@@ -29,10 +36,43 @@ const fireStorageEvent = (newValue: string | null, oldValue: string | null) => {
 
 const originalDispatch = window.dispatchEvent
 
+describe('authRequestHeaders', () => {
+  const env = import.meta.env as Record<string, unknown>
+  let savedVersion: unknown
+
+  beforeEach(() => {
+    savedVersion = env.VITE_APP_VERSION
+  })
+
+  afterEach(() => {
+    env.VITE_APP_VERSION = savedVersion
+  })
+
+  it('carries the app version alongside a per-call header', () => {
+    // Better Auth REPLACES client-level headers with a per-call `headers` object,
+    // so a call site that only sets its own header loses X-App-Version and the
+    // fail-closed gate answers 426 on a perfectly current build.
+    env.VITE_APP_VERSION = '1.2.3'
+
+    const headers = authRequestHeaders({ 'X-Challenge-Token': 'tok' })
+
+    expect(headers['X-App-Version']).toBe('1.2.3')
+    expect(headers['X-Challenge-Token']).toBe('tok')
+    expect(headers['X-Client-Platform']).toBeTruthy()
+  })
+
+  it('matches the client-level headers when no extras are passed', () => {
+    env.VITE_APP_VERSION = '1.2.3'
+
+    expect(authRequestHeaders()).toEqual(buildFetchOptions(getPlatform()).headers)
+  })
+})
+
 describe('buildFetchOptions onError', () => {
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
+    resetAppVersionBlockedForTesting()
     dispatchSpy = mock(() => true)
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
     clearAuthToken()
@@ -43,6 +83,9 @@ describe('buildFetchOptions onError', () => {
     window.dispatchEvent = originalDispatch
     clearAuthToken()
     clearCachedSession()
+    // The 426 test latches the module-level `versionBlocked` singleton; leaving
+    // it set breaks later files that assert the app is not version-blocked.
+    resetAppVersionBlockedForTesting()
   })
 
   const trigger401 = () => {
@@ -78,6 +121,19 @@ describe('buildFetchOptions onError', () => {
 
     expect(getAuthToken()).toBe('valid-token')
     expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('dispatches app_version_unsupported on a 426 without clearing the token', () => {
+    setAuthToken('valid-token')
+    const options = buildFetchOptions('web')
+
+    options.onError({ response: new Response(null, { status: 426 }) })
+
+    // A version block is not a session-expiry — the token stays put.
+    expect(getAuthToken()).toBe('valid-token')
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    const event = dispatchSpy.mock.calls[0][0] as CustomEvent
+    expect(event.type).toBe('app_version_unsupported')
   })
 
   it('clears the cached session on 401 so a future offline boot does not show stale data', () => {

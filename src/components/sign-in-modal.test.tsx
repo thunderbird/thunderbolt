@@ -450,13 +450,18 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockSignInEmailOtp).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        otp: '12345678',
-        fetchOptions: {
-          headers: { 'x-challenge-token': challengeToken },
-        },
-      })
+      // Per-key: the call must carry the client-level headers too (Better Auth
+      // replaces rather than merges them, and a missing X-App-Version means a
+      // fail-closed 426 from the version gate).
+      const call = mockSignInEmailOtp.mock.calls[0][0] as {
+        email: string
+        otp: string
+        fetchOptions: { headers: Record<string, string> }
+      }
+      expect(call.email).toBe('test@example.com')
+      expect(call.otp).toBe('12345678')
+      expect(call.fetchOptions.headers['x-challenge-token']).toBe(challengeToken)
+      expect(call.fetchOptions.headers).toHaveProperty('X-Client-Platform')
     })
   })
 

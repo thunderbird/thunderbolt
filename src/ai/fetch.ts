@@ -29,6 +29,8 @@ import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { hydrateQuotesAsText } from '@/lib/quotes'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { classifyErrorKind } from '@/lib/error-utils'
@@ -97,6 +99,30 @@ export const sanitizeToolPrefix = (serverName: string | null | undefined): strin
 const fetch: typeof baseFetch = (input, init) =>
   baseFetch(input, isSsoMode() ? { ...init, credentials: 'include' } : init)
 fetch.preconnect = baseFetch.preconnect
+
+/**
+ * Wrap a fetch so every request carries the `X-App-Version` header. Only apply
+ * to fetches that hit OUR backend (the thunderbolt provider posts direct to
+ * `cloudUrl`) — external LLM/MCP upstreams must never receive it.
+ *
+ * Sending the header means this hop is subject to the version gate, so it must
+ * also raise the 426: otherwise a below-minimum client just sees the model call
+ * fail with no upgrade blocker. A bare status check is safe here precisely
+ * because the target is always our backend.
+ */
+export const withAppVersionHeader = (base: typeof fetch): typeof fetch => {
+  const wrapped: typeof fetch = async (input, init) => {
+    const headers = new Headers(init?.headers)
+    for (const [key, value] of Object.entries(appVersionHeader())) {
+      headers.set(key, value)
+    }
+    const response = await base(input, { ...init, headers })
+    handleAppVersionUnsupported(response.status)
+    return response
+  }
+  wrapped.preconnect = base.preconnect
+  return wrapped
+}
 
 export const ollama = createOpenAI({
   baseURL: 'http://localhost:11434/v1',
@@ -271,7 +297,7 @@ export const resolveOpenAiCompatConnection = (
         },
         { preconnect: fetch.preconnect },
       )
-      const providerFetch: FetchFn = sso && !hasRealToken ? ssoFetch : fetch
+      const providerFetch: FetchFn = withAppVersionHeader(sso && !hasRealToken ? ssoFetch : fetch)
       return { baseURL: cloudUrl, apiKey: token, fetch: providerFetch }
     }
     case 'openai':
@@ -438,6 +464,9 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         const wrappedFetch: typeof fetch = Object.assign(
           async (input: RequestInfo | URL, init?: RequestInit) => {
             const headers = new Headers(init?.headers)
+            for (const [key, value] of Object.entries(appVersionHeader())) {
+              headers.set(key, value)
+            }
             const upstreamInit: RequestInit = { ...init, headers }
             if (sso && !token) {
               upstreamInit.credentials = 'include'
@@ -446,7 +475,10 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
               headers.set('Authorization', `Bearer ${token}`)
             }
             try {
-              return await client.fetch(input, upstreamInit)
+              const response = await client.fetch(input, upstreamInit)
+              // Routed through our backend, so the version gate applies here too.
+              handleAppVersionUnsupported(response.status)
+              return response
             } catch (err) {
               if (isTinfoilTransportWedgedError(err)) {
                 evictSystemTinfoilClient()

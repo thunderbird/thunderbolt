@@ -19,6 +19,7 @@
     "src/**/*.d.ts",
     "test/**/*.ts",
     "../shared/acp-types.ts",
+    "../shared/compare-semver.ts",
     "../shared/powersync-tables.ts",
     "../shared/proxy-protocol.ts",
     "../shared/url.ts",

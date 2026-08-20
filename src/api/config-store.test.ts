@@ -8,7 +8,7 @@ import { selectAllowCustomAgents, selectBuiltInAgentEnabled, useConfigStore } fr
 const storageKey = 'thunderbolt-config'
 
 const resetStore = () => {
-  useConfigStore.setState({ config: {} })
+  useConfigStore.setState({ config: {}, forceUpgrade: undefined, forceUpgradeMinVersion: undefined })
   localStorage.removeItem(storageKey)
 }
 
@@ -46,6 +46,23 @@ describe('config store', () => {
     useConfigStore.getState().updateConfig({ e2eeEnabled: false })
 
     expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: false })
+  })
+
+  it('setForceUpgrade flips the transient flag and records the min version', () => {
+    useConfigStore.getState().setForceUpgrade('5.0.0')
+
+    expect(useConfigStore.getState().forceUpgrade).toBe(true)
+    expect(useConfigStore.getState().forceUpgradeMinVersion).toBe('5.0.0')
+  })
+
+  it('does not persist the transient upgrade flag (only config is persisted)', () => {
+    useConfigStore.getState().updateConfig({ minAppVersion: '2.0.0' })
+    useConfigStore.getState().setForceUpgrade('2.0.0')
+
+    const persisted = JSON.parse(localStorage.getItem(storageKey) ?? '{}')
+    expect(persisted.state.config).toEqual({ minAppVersion: '2.0.0' })
+    expect(persisted.state.forceUpgrade).toBeUndefined()
+    expect(persisted.state.forceUpgradeMinVersion).toBeUndefined()
   })
 })
 

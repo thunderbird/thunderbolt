@@ -153,6 +153,29 @@ describe('auth-token', () => {
 
       expect(headers1['X-Device-ID']).toBe(headers2['X-Device-ID'])
     })
+
+    describe('X-App-Version', () => {
+      const env = import.meta.env as Record<string, unknown>
+      let savedVersion: unknown
+
+      beforeEach(() => {
+        savedVersion = env.VITE_APP_VERSION
+      })
+
+      afterEach(() => {
+        env.VITE_APP_VERSION = savedVersion
+      })
+
+      it('includes X-App-Version when VITE_APP_VERSION is set', () => {
+        env.VITE_APP_VERSION = '7.8.9'
+        expect(getAuthenticatedHeaders()['X-App-Version']).toBe('7.8.9')
+      })
+
+      it('omits X-App-Version when VITE_APP_VERSION is unset', () => {
+        env.VITE_APP_VERSION = undefined
+        expect(getAuthenticatedHeaders()['X-App-Version']).toBeUndefined()
+      })
+    })
   })
 })
 

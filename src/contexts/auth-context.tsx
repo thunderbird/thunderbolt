@@ -5,6 +5,8 @@
 import { useHttpClient } from '@/contexts/http-client-context'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
@@ -108,9 +110,28 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
   })
 }
 
+/**
+ * The client-level headers every Better Auth request must carry.
+ *
+ * Better Auth REPLACES these with a per-call `fetchOptions.headers` instead of
+ * merging, so any call site that passes its own headers must spread this in or it
+ * silently loses `X-App-Version` — and the version gate is fail-closed, so the
+ * request comes back 426 on a build that is perfectly up to date.
+ */
+export const authRequestHeaders = (
+  extra: Record<string, string> = {},
+  platform: string = getPlatform(),
+): Record<string, string> => ({
+  'X-Client-Platform': platform,
+  ...appVersionHeader(),
+  ...extra,
+})
+
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  headers: { 'X-Client-Platform': platform },
+  // Same helper the per-call sites use, so the two can never define a different
+  // header set.
+  headers: authRequestHeaders({}, platform),
   auth: {
     type: 'Bearer' as const,
     token: () => getAuthToken() ?? '',
@@ -122,6 +143,13 @@ export const buildFetchOptions = (platform: string) => ({
     }
   },
   onError: (ctx: { response: Response }) => {
+    // A 426 from our backend means this build is below the enforced minimum —
+    // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
+    // below). Status-only: the response body belongs to Better Auth here.
+    if (ctx.response.status === 426) {
+      handleAppVersionUnsupported(ctx.response.status)
+      return
+    }
     if (ctx.response?.status !== 401) {
       return
     }

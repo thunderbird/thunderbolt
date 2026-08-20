@@ -26,6 +26,8 @@ import {
   wsTargetPrefix,
 } from '@shared/proxy-protocol'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
+import { appVersionHeader } from './app-version'
+import { handleAppVersionUnsupported } from './app-version-unsupported'
 import { getAuthToken } from './auth-token'
 import { getCapabilities, isTauri } from './platform'
 
@@ -76,6 +78,9 @@ const skipHeaders = new Set([
   'sec-fetch-site',
   'sec-fetch-user',
   'upgrade-insecure-requests',
+  // Belongs on the OUTER request to our backend only — never promote it to a
+  // passthrough header, or it would leak to external LLM/MCP upstreams.
+  'x-app-version',
 ])
 
 const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: RequestInit): Request => {
@@ -131,6 +136,29 @@ const unwrapHostedResponse = (response: Response): Response => {
     statusText: response.statusText,
     headers: passthrough,
   })
+}
+
+/**
+ * Raise the upgrade blocker when the OUTER hop — our backend's version gate —
+ * rejected the proxy request.
+ *
+ * Status alone is not a safe signal on this transport: the proxy relays upstream
+ * status codes verbatim, so an external provider answering 426 would otherwise
+ * blank the whole app. Our gate is the only party that pairs 426 with the
+ * `APP_VERSION_UNSUPPORTED` envelope, so that code is the discriminator. Reads a
+ * clone so the response body reaches the caller intact.
+ */
+const raiseOuterHopVersionBlock = async (response: Response): Promise<void> => {
+  if (response.status !== 426) {
+    return
+  }
+  const body = (await response
+    .clone()
+    .json()
+    .catch(() => ({}))) as { code?: string }
+  if (body.code === 'APP_VERSION_UNSUPPORTED') {
+    handleAppVersionUnsupported(response.status, body)
+  }
 }
 
 export type ProxyFetchOptions = {
@@ -192,8 +220,15 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
         proxyRequest.headers.set('Authorization', `Bearer ${token}`)
       }
     }
+    // The outer hop targets `${cloudUrl}/proxy` (our backend), so it carries the
+    // app-version header directly. `x-app-version` is in `skipHeaders`, so it is
+    // never promoted to a passthrough header bound for the external upstream.
+    for (const [key, value] of Object.entries(appVersionHeader())) {
+      proxyRequest.headers.set(key, value)
+    }
     const f = options.fetchImpl ?? globalThis.fetch
     const proxyResponse = await f(proxyRequest)
+    await raiseOuterHopVersionBlock(proxyResponse)
     return unwrapHostedResponse(proxyResponse)
   }
   return Object.assign(proxyFetch, { preconnect: () => Promise.resolve(false) })

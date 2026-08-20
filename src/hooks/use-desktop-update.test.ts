@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { updateReducer, initialUpdateState, type UpdateState } from './use-desktop-update'
+import {
+  updateReducer,
+  initialUpdateState,
+  selectUpdateAction,
+  type UpdateState,
+  type UpdateStatus,
+} from './use-desktop-update'
 
 describe('updateReducer', () => {
   describe('CHECK_START', () => {
@@ -146,5 +152,21 @@ describe('updateReducer', () => {
       expect(state.error).toBeNull()
       expect(state.errorPhase).toBeNull()
     })
+  })
+})
+
+describe('selectUpdateAction', () => {
+  const cases: Array<[UpdateStatus, 'download' | 'restart' | 'check']> = [
+    ['available', 'download'],
+    ['ready', 'restart'],
+    ['initial', 'check'],
+    ['idle', 'check'],
+    ['checking', 'check'],
+    ['downloading', 'check'],
+    ['error', 'check'],
+  ]
+
+  it.each(cases)('maps %s → %s', (status, expected) => {
+    expect(selectUpdateAction(status)).toBe(expected)
   })
 })

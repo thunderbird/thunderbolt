@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { appVersionUnsupported, resetAppVersionBlockedForTesting } from './app-version-unsupported'
 import { createAuthenticatedClient, createClient, HttpError } from './http'
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -204,6 +205,52 @@ describe('createAuthenticatedClient', () => {
     })
   })
 
+  describe('X-App-Version header', () => {
+    const env = import.meta.env as Record<string, unknown>
+    let savedVersion: unknown
+
+    beforeEach(() => {
+      savedVersion = env.VITE_APP_VERSION
+    })
+
+    afterEach(() => {
+      env.VITE_APP_VERSION = savedVersion
+    })
+
+    it('injects X-App-Version for app backend requests when set', async () => {
+      env.VITE_APP_VERSION = '9.9.9'
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('data')
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.headers.get('X-App-Version')).toBe('9.9.9')
+    })
+
+    it('does NOT inject X-App-Version for external API URLs', async () => {
+      env.VITE_APP_VERSION = '9.9.9'
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('https://other.com/data')
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.headers.get('X-App-Version')).toBeNull()
+    })
+
+    it('omits X-App-Version when VITE_APP_VERSION is unset', async () => {
+      env.VITE_APP_VERSION = undefined
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('data')
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.headers.get('X-App-Version')).toBeNull()
+    })
+  })
+
   describe('session expiry detection', () => {
     const originalDispatch = window.dispatchEvent
     let dispatchSpy: ReturnType<typeof mock>
@@ -299,5 +346,58 @@ describe('createAuthenticatedClient', () => {
 
       expect(dispatchSpy).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+describe('app-version-unsupported detection', () => {
+  const originalDispatch = window.dispatchEvent
+  let dispatchSpy: ReturnType<typeof mock>
+
+  beforeEach(() => {
+    resetAppVersionBlockedForTesting()
+    dispatchSpy = mock(() => true)
+    window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+  })
+
+  afterEach(() => {
+    window.dispatchEvent = originalDispatch
+    // The 426s driven here latch the module-level `versionBlocked` singleton.
+    // Leaving it set makes an unrelated file's "not blocked" assertion fail —
+    // the classic passes-alone/fails-together flake.
+    resetAppVersionBlockedForTesting()
+  })
+
+  it('dispatches app_version_unsupported on a backend 426 without reading the response body', async () => {
+    const body = new Response('should not be read', { status: 426 })
+    const fetch = mock<FetchFn>(() => Promise.resolve(body))
+    const client = createAuthenticatedClient('https://api.example.com', () => 'token', { fetch })
+
+    await expect(client.get('https://api.example.com/data')).rejects.toBeInstanceOf(HttpError)
+
+    const event = dispatchSpy.mock.calls.find((call) => (call[0] as CustomEvent).type === appVersionUnsupported)
+    expect(event).toBeTruthy()
+    // The body stream belongs to the caller — detection must not consume it.
+    expect(body.bodyUsed).toBe(false)
+  })
+
+  it('does not dispatch app_version_unsupported on other backend error statuses', async () => {
+    const fetch = mock<FetchFn>(() => Promise.resolve(new Response(null, { status: 500 })))
+    const client = createAuthenticatedClient('https://api.example.com', () => 'token', { fetch })
+
+    await expect(client.get('https://api.example.com/data')).rejects.toBeInstanceOf(HttpError)
+
+    const event = dispatchSpy.mock.calls.find((call) => (call[0] as CustomEvent).type === appVersionUnsupported)
+    expect(event).toBeUndefined()
+  })
+
+  it('ignores a 426 from an external URL (only app-backend 426 blocks the app)', async () => {
+    const fetch = mock<FetchFn>(() => Promise.resolve(new Response(null, { status: 426 })))
+    // Bare client used for external APIs — an external 426 must not trip the upgrade blocker.
+    const client = createClient({ fetch })
+
+    await expect(client.get('https://external.example.com/data')).rejects.toBeInstanceOf(HttpError)
+
+    const event = dispatchSpy.mock.calls.find((call) => (call[0] as CustomEvent).type === appVersionUnsupported)
+    expect(event).toBeUndefined()
   })
 })

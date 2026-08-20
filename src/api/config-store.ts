@@ -30,6 +30,14 @@ export type AppConfig = {
 type ConfigStore = {
   config: AppConfig
   updateConfig: (config: AppConfig) => void
+  /** Transient (never persisted): set when the backend hard-rejects this build
+   *  with HTTP 426. Flips the app into the upgrade blocker for the current
+   *  session only — a reload re-derives the gate from `config.minAppVersion`. */
+  forceUpgrade?: boolean
+  /** Server-advertised minimum version carried by the 426 response, shown in the
+   *  upgrade blocker. Optional — the response may omit it. */
+  forceUpgradeMinVersion?: string
+  setForceUpgrade: (minVersion?: string) => void
 }
 
 const initialState = { config: {} as AppConfig }
@@ -39,8 +47,11 @@ export const useConfigStore = create<ConfigStore>()(
     (set) => ({
       ...initialState,
       updateConfig: (config) => set({ config }),
+      setForceUpgrade: (minVersion) => set({ forceUpgrade: true, forceUpgradeMinVersion: minVersion }),
     }),
-    { name: 'thunderbolt-config' },
+    // Persist only `config` — the transient upgrade flag must not survive a
+    // reload (the reload itself is the upgrade path once the build is updated).
+    { name: 'thunderbolt-config', partialize: (state) => ({ config: state.config }) },
   ),
 )
 

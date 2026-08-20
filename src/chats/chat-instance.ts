@@ -446,6 +446,22 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
   }
 }
 
+const isEmptyAssistantMessage = (message: ThunderboltUIMessage | undefined): boolean =>
+  message?.role === 'assistant' && !message.parts?.length
+
+/** A reasoning part still mid-stream keeps its spinner running (reasoning-group.tsx)
+ *  even after the turn settles — true when an aborted turn stopped during thinking. */
+const hasStreamingReasoning = (message: ThunderboltUIMessage | undefined): boolean =>
+  !!message?.parts?.some((part) => part.type === 'reasoning' && part.state === 'streaming')
+
+/** Mark every still-streaming reasoning part `done` so its spinner stops. */
+const finalizeReasoning = (message: ThunderboltUIMessage): ThunderboltUIMessage => ({
+  ...message,
+  parts: message.parts.map((part) =>
+    part.type === 'reasoning' && part.state === 'streaming' ? { ...part, state: 'done' as const } : part,
+  ),
+})
+
 type ChatMessageInput = Parameters<Chat<ThunderboltUIMessage>['sendMessage']>[0]
 
 /** Count user-authored text across both AI SDK message input shapes. */
@@ -713,13 +729,32 @@ export const createChatInstance = (
       }
 
       if (isAbort) {
-        // Persist whatever streamed before the user hit Stop. Streaming partial
-        // saves are throttled and their pending trailing write is cancelled the
-        // moment streaming stops (see SavePartialAssistantMessagesHandler), so
-        // onFinish is the authoritative final save on abort just as it is on
-        // success — without this, the last streamed chunk of an aborted turn
-        // would be lost on reload.
-        if (message?.parts?.length) {
+        // Settle the aborted turn so no spinner survives the stop (THU-791). Three
+        // cases, keyed off the trailing assistant message:
+        const lastIndex = instance.messages.length - 1
+        const lastMessage = instance.messages[lastIndex]
+
+        if (isEmptyAssistantMessage(lastMessage)) {
+          // Stopped on the loader, before any content: the empty assistant shell
+          // re-triggers the empty-turn-recovery spinner and the Stop button stays
+          // up (a second press was needed). Drop it so one press settles to idle.
+          instance.messages = instance.messages.slice(0, -1)
+        } else if (hasStreamingReasoning(lastMessage)) {
+          // Stopped mid-reasoning: the reasoning part is left `streaming`, so its
+          // spinner never stops. Finalize it in the live list and the saved copy.
+          const finalized = finalizeReasoning(lastMessage!)
+          const next = instance.messages.slice()
+          next[lastIndex] = finalized
+          instance.messages = next
+          finishedTurn.telemetry?.startPhase('final_save')
+          await saveMessages({ id, messages: [finalized] })
+          finishedTurn.telemetry?.endPhase('final_save')
+        } else if (message?.parts?.length) {
+          // Stopped mid-answer: persist the partial. Streaming partial saves are
+          // throttled and their pending trailing write is cancelled the moment
+          // streaming stops (see SavePartialAssistantMessagesHandler), so onFinish
+          // is the authoritative final save on abort — without this the last
+          // streamed chunk would be lost on reload.
           finishedTurn.telemetry?.startPhase('final_save')
           await saveMessages({ id, messages: [message] })
           finishedTurn.telemetry?.endPhase('final_save')
@@ -937,6 +972,30 @@ export const createChatInstance = (
       } as ThunderboltUIMessage,
       options,
     )
+  }
+
+  const originalStop = instance.stop.bind(instance)
+
+  /**
+   * Stop the active turn and settle to idle (THU-791). In-flight aborts let
+   * `onFinish({ isAbort })` settle on the correct turn — emitting/resetting here
+   * would swap `currentTurn` out from under it. Backoff/recovery fires no
+   * `onFinish`, so cancel the retry, drop a trailing empty shell, and settle here.
+   */
+  instance.stop = async function () {
+    if (retryTimeout) {
+      clearTimeout(retryTimeout)
+      retryTimeout = null
+    }
+    if (instance.status === 'streaming' || instance.status === 'submitted') {
+      void originalStop()
+      return
+    }
+    if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
+      instance.messages = instance.messages.slice(0, -1)
+    }
+    emitTurnCompleted(currentTurn, 'abort')
+    resetRetryStateForNewTurn()
   }
 
   return instance

@@ -501,6 +501,21 @@ describe('createChatInstance — retry policy', () => {
     expect(instance.messages[1]!.role).toBe('assistant')
   })
 
+  it('stop() delegates an in-flight abort to onFinish (no drop/reset in the handler)', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      { id: 'a1', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+
+    // The abort's onFinish settles the turn on the correct `currentTurn`; the
+    // handler must not swap it out early, so it neither drops the shell nor resets.
+    expect(instance.messages).toHaveLength(2)
+  })
+
   it('stop() cancels a pending auto-retry and settles the session to idle', async () => {
     const { finishWithError, regenerate, instance } = createRetryHarness()
 

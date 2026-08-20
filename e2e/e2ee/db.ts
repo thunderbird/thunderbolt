@@ -159,8 +159,8 @@ export const waitForSchemeV2 = async (userId: string, expectedKeyIds: readonly s
     }
     const keyIds = Object.keys(snapshot.wrappedKeys).sort()
     return [...expectedKeyIds].sort().every((id) => keyIds.includes(id)) ? true : null
-  // Concurrent migrators reload and race their app-init flip; allow headroom for
-  // the winner's CAS upgrade to land on a loaded CI runner.
+    // Concurrent migrators reload and race their app-init flip; allow headroom for
+    // the winner's CAS upgrade to land on a loaded CI runner.
   }, 150_000)
 }
 
@@ -336,6 +336,20 @@ export const waitForEncryptedSetting = async (userId: string, key: string): Prom
     `
     return rows[0]?.value?.startsWith('__enc:v2:0:') ? true : null
   }, 30_000)
+}
+
+/**
+ * Read one settings row exactly as it sits on the server. Used by
+ * `waitForTasksPreference`'s failure diagnostics to tell "the account's value was
+ * overwritten" apart from "the value is fine but this device can't read it".
+ */
+export const getServerSetting = async (userId: string, key: string): Promise<string | null> => {
+  const rows = await sql<{ value: string | null }[]>`
+    SELECT value
+    FROM powersync.settings
+    WHERE user_id = ${userId} AND id = ${key}
+  `
+  return rows[0]?.value ?? null
 }
 
 export const waitForNewEncryptedTasks = async (

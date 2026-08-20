@@ -46,26 +46,27 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
   const canDismiss = !isRecoveryKeyStep && !setup.isLoading
 
-  // Stable identity so the listener isn't torn down and re-added every render.
-  const closeForMigration = useCallback(() => onOpenChange(false), [onOpenChange])
-
-  // Only one recovery-phrase surface at a time: if the init-time migration lands
-  // while this wizard is open, the wizard closes instead of stacking under the
-  // migration dialog. See `useYieldToMigration`.
-  useYieldToMigration({
-    open,
-    isShowingOwnRecoveryKey: isRecoveryKeyStep,
-    close: closeForMigration,
-  })
-
-  const completeAndClose = () => {
+  // Stable identity so the yield listener isn't torn down and re-added every render.
+  const completeAndClose = useCallback(() => {
     if (hasCompletedRef.current) {
       return
     }
     hasCompletedRef.current = true
     onComplete()
     onOpenChange(false)
-  }
+  }, [onComplete, onOpenChange])
+
+  // Only one recovery-phrase surface at a time: if the init-time migration lands
+  // while this wizard is open, the wizard steps aside instead of stacking under
+  // the migration dialog. It COMPLETES rather than merely closing — the migration
+  // provisioned this device's keys, which is exactly what the wizard was opened
+  // to do, so cancelling here would drop the user's request to enable sync and
+  // flip the toggle back off. See `useYieldToMigration`.
+  useYieldToMigration({
+    open,
+    isShowingOwnRecoveryKey: isRecoveryKeyStep,
+    onYield: completeAndClose,
+  })
 
   const showSuccess = () => {
     setup.completeSetup()

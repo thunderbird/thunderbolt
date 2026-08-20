@@ -95,7 +95,7 @@ test.describe('PowerSync E2EE key rotation', () => {
       await setupDialog.getByRole('button', { name: 'Submit' }).click()
       await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(device.page)
-      await waitForTasksPreference(device.page)
+      await waitForTasksPreference(device.page, userId)
       await device.page.goto('/tasks')
       await expect(device.page.getByText(taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
     } finally {
@@ -130,7 +130,7 @@ test.describe('PowerSync E2EE key rotation', () => {
       await page.getByRole('alertdialog').getByRole('button', { name: 'Approve' }).click()
       await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(device.page)
-      await waitForTasksPreference(device.page)
+      await waitForTasksPreference(device.page, userId)
       await device.page.goto('/tasks')
       await expect(device.page.getByText(oldTaskText, { exact: true })).toBeVisible({ timeout: 30_000 })
 
@@ -145,7 +145,7 @@ test.describe('PowerSync E2EE key rotation', () => {
       await page.getByRole('alertdialog').getByRole('button', { name: 'Approve' }).click()
       await waitForDeviceState(userId, remainingDeviceId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(remainingDevice.page)
-      await waitForTasksPreference(remainingDevice.page)
+      await waitForTasksPreference(remainingDevice.page, userId)
       await remainingDevice.page.goto('/tasks')
       await expect(remainingDevice.page.getByText(oldTaskText, { exact: true })).toBeVisible({ timeout: 30_000 })
 

@@ -34,14 +34,17 @@ import {
 } from './db'
 import { expect, test } from './fixtures'
 import {
+  acknowledgeRecoveryPhrase,
   createE2eeEmail,
   createIsolatedDevice,
   createTask,
+  enableSyncWithoutWizard,
   enableTasks,
   finishAdditionalDeviceSetup,
   getDeviceId,
   getEncryptionKeyNames,
   loginViaConsumerOtp,
+  recoveryPhraseDialog,
   registerDeviceOnly,
   runSeamlessMigration,
   seedV1Account,
@@ -123,7 +126,7 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
         .poll(() => getEncryptionKeyNames(follower.page))
         .toEqual(expect.arrayContaining(['thunderbolt_ak', 'thunderbolt_dek_0', 'thunderbolt_dek_v1']))
 
-      await waitForTasksPreference(follower.page)
+      await waitForTasksPreference(follower.page, userId)
       await follower.page.goto('/tasks')
       await expect(follower.page.getByText(seeded.taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
       await expect(follower.page.getByText(postFlipTaskText, { exact: true })).toBeVisible({ timeout: 30_000 })
@@ -143,7 +146,7 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
       await waitForDeviceState(userId, recoveredId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(recovered.page)
 
-      await waitForTasksPreference(recovered.page)
+      await waitForTasksPreference(recovered.page, userId)
       await recovered.page.goto('/tasks')
       await expect(recovered.page.getByText(seeded.taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
     } finally {
@@ -166,6 +169,7 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
       // are migrator-eligible — the CAS on scheme_version decides the winner.
       const deviceKeys = await waitForDeviceKeys(userId, 2)
       const seeded = await seedV1Account(userId, deviceKeys)
+      const keyVersionBefore = (await getEncryptionServerSnapshot(userId)).keyVersion
 
       // Kick both app-init migration checks concurrently via reload; the winner
       // flips (dispatches the new recovery phrase), the loser 409s and follows.
@@ -176,8 +180,9 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
       const snapshot = await getEncryptionServerSnapshot(userId)
       expect(snapshot.schemeVersion).toBe(2)
       expect(Object.keys(snapshot.wrappedKeys).sort()).toEqual(['0', 'v1'])
-      // A pure upgrade — no AK rotation happened as part of losing the race.
-      expect(snapshot.keyVersion).toBe(1)
+      // A pure upgrade — exactly one bump, from `flipSchemeToV2`. A second bump
+      // would mean the loser rotated the AK instead of following the winner.
+      expect(snapshot.keyVersion).toBe(keyVersionBefore + 1)
 
       // Both devices converge to a readable state (winner migrated, loser followed).
       for (const device of [page, second.page]) {
@@ -186,10 +191,32 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
           .toEqual(expect.arrayContaining(['thunderbolt_ak', 'thunderbolt_dek_0', 'thunderbolt_dek_v1']))
       }
 
+      // Exactly ONE device minted a phrase — the CAS winner. That is the whole
+      // point of the race, and it has to be acknowledged: every mint marks the
+      // phrase pending, and an unacknowledged one correctly blocks the next boot
+      // behind the "recovery phrase was never saved" re-prompt.
+      const phraseDialogs = [recoveryPhraseDialog(page), recoveryPhraseDialog(second.page)]
+      await expect
+        .poll(async () => (await Promise.all(phraseDialogs.map((dialog) => dialog.isVisible()))).filter(Boolean).length)
+        .toBe(1)
+      for (const dialog of phraseDialogs) {
+        if (await dialog.isVisible()) {
+          await acknowledgeRecoveryPhrase(dialog)
+        }
+      }
+
+      // Both devices dismissed the wizard in `registerDeviceOnly`, so sync is
+      // still off: the headless migrator provisions keys, it does not opt a
+      // device into syncing. Turn it on now that both hold the keyring, so the
+      // seeded legacy rows actually reach them.
+      for (const device of [page, second.page]) {
+        await enableSyncWithoutWizard(device)
+      }
+
       await enableTasks(page)
       await page.goto('/tasks')
       await expect(page.getByText(seeded.taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
-      await waitForTasksPreference(second.page)
+      await waitForTasksPreference(second.page, userId)
       await second.page.goto('/tasks')
       await expect(second.page.getByText(seeded.taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
     } finally {

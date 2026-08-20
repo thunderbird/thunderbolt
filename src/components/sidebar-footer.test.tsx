@@ -9,6 +9,7 @@ import { Cloud, CloudAlert, CloudOff, Loader2 } from 'lucide-react'
 import { type ReactElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
+import { useConfigStore } from '@/api/config-store'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -225,7 +226,15 @@ describe('sync retry flow', () => {
   // The test database is bun-sqlite (no PowerSync instance), so usePowerSyncStatus
   // reports 'not-configured' — with sync enabled that is exactly the
   // "needs attention" state that surfaces the Retry button.
+  //
+  // Enabling sync also puts the encryption config on the render path: with E2EE
+  // on, `useSyncEnabledToggle` reads the Content Key out of IndexedDB — absent in
+  // happy-dom — and silently turns sync back off when there is none. The config
+  // store is a persisted module global that another test FILE can leave switched
+  // on, so pin it off here. That keeps sync enabled for the whole block and keeps
+  // the encryption path (and IndexedDB with it) off the render path entirely.
   beforeEach(() => {
+    useConfigStore.setState({ config: {} })
     useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
   })
 

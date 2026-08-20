@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AuthClient } from '@/contexts'
+import { authRequestHeaders } from '@/contexts/auth-context'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { HttpError, type HttpClient } from '@/lib/http'
@@ -223,7 +224,7 @@ export const useSignInFormState = ({
         email: state.email.trim(),
         otp: value,
         fetchOptions: {
-          headers: { [challengeTokenHeader]: state.challengeToken },
+          headers: authRequestHeaders({ [challengeTokenHeader]: state.challengeToken }),
         },
       })
 

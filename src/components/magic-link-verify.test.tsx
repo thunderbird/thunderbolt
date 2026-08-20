@@ -50,13 +50,16 @@ describe('MagicLinkVerify', () => {
     cleanup()
   })
 
-  const renderComponent = (email?: string, otp?: string) => {
+  const renderComponent = (email?: string, otp?: string, challengeToken?: string) => {
     const params = new URLSearchParams()
     if (email) {
       params.set('email', email)
     }
     if (otp) {
       params.set('otp', otp)
+    }
+    if (challengeToken) {
+      params.set('challengeToken', challengeToken)
     }
     const url = `/verify${params.toString() ? `?${params.toString()}` : ''}`
 
@@ -161,6 +164,20 @@ describe('MagicLinkVerify', () => {
         email: 'user@example.com',
         otp: '123456',
       })
+    })
+
+    it('keeps the client-level headers when sending a challenge token', async () => {
+      // Better Auth REPLACES the client-level headers with a per-call `headers`
+      // object, so this call has to re-include them — without X-App-Version the
+      // fail-closed version gate answers 426 on a perfectly current build.
+      renderComponent('user@example.com', '123456', 'challenge-abc')
+      await waitForStateChange()
+
+      const call = mockSignInEmailOtp.mock.calls[0][0] as {
+        fetchOptions: { headers: Record<string, string> }
+      }
+      expect(call.fetchOptions.headers['x-challenge-token']).toBe('challenge-abc')
+      expect(call.fetchOptions.headers).toHaveProperty('X-Client-Platform')
     })
 
     it('navigates to home on continue click', async () => {

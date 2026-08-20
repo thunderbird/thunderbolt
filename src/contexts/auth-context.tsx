@@ -110,9 +110,28 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
   })
 }
 
+/**
+ * The client-level headers every Better Auth request must carry.
+ *
+ * Better Auth REPLACES these with a per-call `fetchOptions.headers` instead of
+ * merging, so any call site that passes its own headers must spread this in or it
+ * silently loses `X-App-Version` — and the version gate is fail-closed, so the
+ * request comes back 426 on a build that is perfectly up to date.
+ */
+export const authRequestHeaders = (
+  extra: Record<string, string> = {},
+  platform: string = getPlatform(),
+): Record<string, string> => ({
+  'X-Client-Platform': platform,
+  ...appVersionHeader(),
+  ...extra,
+})
+
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  headers: { 'X-Client-Platform': platform, ...appVersionHeader() },
+  // Same helper the per-call sites use, so the two can never define a different
+  // header set.
+  headers: authRequestHeaders({}, platform),
   auth: {
     type: 'Bearer' as const,
     token: () => getAuthToken() ?? '',

@@ -5,6 +5,7 @@
 import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in-form-state'
 import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
+import { authRequestHeaders } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
@@ -123,7 +124,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
         email: state.email.trim(),
         otp: value,
         fetchOptions: {
-          headers: { [challengeTokenHeader]: state.challengeToken },
+          headers: authRequestHeaders({ [challengeTokenHeader]: state.challengeToken }),
         },
       })
 

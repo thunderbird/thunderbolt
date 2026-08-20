@@ -12,56 +12,56 @@ const fireMigration = () => act(() => dispatchMigrationRecoveryKey('word '.repea
 describe('useYieldToMigration', () => {
   afterEach(cleanup)
 
-  it('closes the competing surface when the migration completes', () => {
-    const close = mock(() => {})
-    renderHook(() => useYieldToMigration({ open: true, isShowingOwnRecoveryKey: false, close }))
+  it('stands the competing surface down when the migration completes', () => {
+    const onYield = mock(() => {})
+    renderHook(() => useYieldToMigration({ open: true, isShowingOwnRecoveryKey: false, onYield }))
 
     fireMigration()
 
-    expect(close).toHaveBeenCalledTimes(1)
+    expect(onYield).toHaveBeenCalledTimes(1)
   })
 
   it('does nothing when the surface is not open', () => {
-    const close = mock(() => {})
-    renderHook(() => useYieldToMigration({ open: false, isShowingOwnRecoveryKey: false, close }))
+    const onYield = mock(() => {})
+    renderHook(() => useYieldToMigration({ open: false, isShowingOwnRecoveryKey: false, onYield }))
 
     fireMigration()
 
-    expect(close).not.toHaveBeenCalled()
+    expect(onYield).not.toHaveBeenCalled()
   })
 
-  it('does not close while the surface is showing its own recovery phrase', () => {
-    // Closing here would drop the phrase the user is mid-way through writing down.
-    const close = mock(() => {})
-    renderHook(() => useYieldToMigration({ open: true, isShowingOwnRecoveryKey: true, close }))
+  it('does not yield while the surface is showing its own recovery phrase', () => {
+    // Yielding here would drop the phrase the user is mid-way through writing down.
+    const onYield = mock(() => {})
+    renderHook(() => useYieldToMigration({ open: true, isShowingOwnRecoveryKey: true, onYield }))
 
     fireMigration()
 
-    expect(close).not.toHaveBeenCalled()
+    expect(onYield).not.toHaveBeenCalled()
   })
 
   it('stops listening once unmounted', () => {
-    const close = mock(() => {})
-    const { unmount } = renderHook(() => useYieldToMigration({ open: true, isShowingOwnRecoveryKey: false, close }))
+    const onYield = mock(() => {})
+    const { unmount } = renderHook(() => useYieldToMigration({ open: true, isShowingOwnRecoveryKey: false, onYield }))
 
     unmount()
     fireMigration()
 
-    expect(close).not.toHaveBeenCalled()
+    expect(onYield).not.toHaveBeenCalled()
   })
 
   it('starts listening when the surface opens later', () => {
-    const close = mock(() => {})
+    const onYield = mock(() => {})
     const { rerender } = renderHook(
-      ({ open }: { open: boolean }) => useYieldToMigration({ open, isShowingOwnRecoveryKey: false, close }),
+      ({ open }: { open: boolean }) => useYieldToMigration({ open, isShowingOwnRecoveryKey: false, onYield }),
       { initialProps: { open: false } },
     )
 
     fireMigration()
-    expect(close).not.toHaveBeenCalled()
+    expect(onYield).not.toHaveBeenCalled()
 
     rerender({ open: true })
     fireMigration()
-    expect(close).toHaveBeenCalledTimes(1)
+    expect(onYield).toHaveBeenCalledTimes(1)
   })
 })

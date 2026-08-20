@@ -72,7 +72,7 @@ test.describe('PowerSync E2EE multi-device enrollment', () => {
         .poll(() => getEncryptionKeyNames(device.page))
         .toEqual(expect.arrayContaining(['thunderbolt_ak', 'thunderbolt_dek_0']))
 
-      await waitForTasksPreference(device.page)
+      await waitForTasksPreference(device.page, userId)
       await device.page.goto('/tasks')
       await expect(device.page.getByText(taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
 
@@ -179,7 +179,7 @@ test.describe('PowerSync E2EE multi-device enrollment', () => {
       await waitForConsumedChallenge(userId, 'approve')
       await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(device.page)
-      await waitForTasksPreference(device.page)
+      await waitForTasksPreference(device.page, userId)
       await device.page.goto('/tasks')
       await expect(device.page.getByText(taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
     } finally {

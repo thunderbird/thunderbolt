@@ -12,6 +12,7 @@ import { expect, type Browser, type BrowserContext, type Locator, type Page } fr
 import { encrypt, importMlKemPublicKey, importPublicKey, wrapAK } from '../../src/crypto/primitives'
 import {
   getCurrentOtp,
+  getServerSetting,
   seedV1ChatThread,
   seedV1Envelope,
   seedV1Metadata,
@@ -64,13 +65,35 @@ export const loginViaConsumerOtp = async (page: Page, email: string): Promise<vo
   await expect(page).toHaveURL(/\/chats\//, { timeout: 30_000 })
 }
 
+/**
+ * Bounded tail of each device's console output, so a failure can report what the
+ * page was actually doing. Secondary devices are plain `browser.newContext()`
+ * pages, which Playwright does not trace — without this, a device that fails to
+ * sync leaves no evidence at all beyond a screenshot.
+ */
+const consoleTails = new WeakMap<Page, string[]>()
+const consoleTailLimit = 200
+
+const recordConsole = (page: Page): void => {
+  const lines: string[] = []
+  consoleTails.set(page, lines)
+  page.on('console', (message) => {
+    lines.push(`${message.type()}: ${message.text()}`)
+    if (lines.length > consoleTailLimit) {
+      lines.shift()
+    }
+  })
+}
+
 export const createIsolatedDevice = async (browser: Browser, profile: DeviceProfile): Promise<DeviceSession> => {
   const context = await browser.newContext({
     baseURL: 'http://localhost:1423',
     permissions: ['clipboard-read', 'clipboard-write'],
     userAgent: deviceUserAgents[profile],
   })
-  return { context, page: await context.newPage() }
+  const page = await context.newPage()
+  recordConsole(page)
+  return { context, page }
 }
 
 export const getDeviceId = async (page: Page): Promise<string> => {
@@ -131,6 +154,31 @@ export const readRecoveryPhrase = async (dialog: Locator): Promise<string> => {
   return recoveryPhrase
 }
 
+/**
+ * Whichever dialog is currently showing a recovery phrase — the setup wizard's
+ * own step or the global migration dialog. Identified by the phrase region
+ * rather than by title, so it resolves to exactly one node even while a yielding
+ * wizard is still animating out alongside the migration dialog.
+ */
+export const recoveryPhraseDialog = (page: Page): Locator =>
+  page.getByRole('dialog').filter({ has: page.getByRole('region', { name: 'Recovery phrase' }) })
+
+/**
+ * Read the phrase, confirm it was saved, and dismiss.
+ *
+ * Confirming is not cosmetic: it clears the pending flag that every mint sets.
+ * Skip it and the account is left owing a phrase, so `UnsavedRecoveryPhrasePrompt`
+ * blocks the whole UI on the next boot — correctly, which is why a test that
+ * mints a phrase has to acknowledge it like a user would.
+ */
+export const acknowledgeRecoveryPhrase = async (dialog: Locator): Promise<string> => {
+  const recoveryPhrase = await readRecoveryPhrase(dialog)
+  await dialog.getByRole('checkbox').click()
+  await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect(dialog).toBeHidden()
+  return recoveryPhrase
+}
+
 export const enableTasks = async (page: Page): Promise<void> => {
   await page.goto('/settings/preferences')
   const tasksSwitch = page.getByRole('switch', { name: 'Tasks' })
@@ -151,12 +199,42 @@ export const enableTasks = async (page: Page): Promise<void> => {
   await expect(tasksSwitch).toBeChecked()
 }
 
-export const waitForTasksPreference = async (page: Page): Promise<void> => {
+export const waitForTasksPreference = async (page: Page, userId: string): Promise<void> => {
   await page.goto('/settings/preferences')
   // The Tasks preference is an encrypted setting that must sync down to this
   // device and decrypt before the switch reflects checked — allow generous
   // headroom for PowerSync propagation on a loaded CI runner.
-  await expect(page.getByRole('switch', { name: 'Tasks' })).toBeChecked({ timeout: 120_000 })
+  try {
+    await expect(page.getByRole('switch', { name: 'Tasks' })).toBeChecked({ timeout: 120_000 })
+  } catch (error) {
+    throw new Error(await describeTasksPreferenceFailure(page, userId), { cause: error })
+  }
+}
+
+/**
+ * Explain WHY the Tasks switch never flipped. The three states look identical in
+ * the UI but have completely different causes:
+ *
+ *  - server value is plaintext `false` → something overwrote the account's
+ *    setting (a joining device seeding bundle defaults before first sync);
+ *  - server value is still `__enc:…` but this device holds no `thunderbolt_dek_*`
+ *    → the keyring never landed, so the codec stored ciphertext as the value;
+ *  - server value encrypted and the keyring is complete → a download/decode
+ *    problem, and the console tail should show the codec or key-request failing.
+ */
+const describeTasksPreferenceFailure = async (page: Page, userId: string): Promise<string> => {
+  const [serverValue, keyNames] = await Promise.all([
+    getServerSetting(userId, 'experimental_feature_tasks').catch((err: unknown) => `<unreadable: ${String(err)}>`),
+    getEncryptionKeyNames(page).catch((err: unknown) => [`<unreadable: ${String(err)}>`]),
+  ])
+  const tail = (consoleTails.get(page) ?? []).slice(-60)
+  return [
+    'Tasks preference never synced/decrypted on this device.',
+    `  server experimental_feature_tasks: ${serverValue ?? '<row missing>'}`,
+    `  device IndexedDB keys: ${keyNames.join(', ') || '<none>'}`,
+    `  device console (last ${tail.length}):`,
+    ...tail.map((line) => `    ${line}`),
+  ].join('\n')
 }
 
 export const getEncryptionKeyNames = async (page: Page): Promise<string[]> =>
@@ -302,6 +380,25 @@ export const seedV1Account = async (userId: string, deviceKeys: DeviceKeys[]): P
 // =============================================================================
 
 /**
+ * Turn sync on for a device that already holds the keyring, so no wizard opens
+ * (`needsSyncSetupWizard` is false once an AK and at least one DEK are staged).
+ *
+ * Needed after a HEADLESS migration: `runEncryptionInit` provisions keys, but it
+ * deliberately does not opt the device into syncing — that stays the user's
+ * choice, expressed through this toggle.
+ */
+export const enableSyncWithoutWizard = async (page: Page): Promise<void> => {
+  await page.goto('/settings/preferences')
+  const syncSwitch = page.getByRole('switch', { name: 'Sync This Device With Cloud' })
+  await expect(syncSwitch).toBeVisible()
+  if (await syncSwitch.isChecked()) {
+    return
+  }
+  await syncSwitch.click()
+  await expect(syncSwitch).toBeChecked()
+}
+
+/**
  * Drive the sync-setup wizard just far enough to REGISTER this device (generate
  * its transport key pair in IndexedDB and POST its public keys), then dismiss it
  * WITHOUT setting up v2 encryption. Leaves the account at scheme "none" so the
@@ -325,10 +422,22 @@ export const registerDeviceOnly = async (page: Page): Promise<void> => {
 }
 
 /**
- * Drive the seamless v1→v2 migration through the sync-setup wizard: a v1 account
- * routes intro → detecting → `migrated` (NOT a reset), which reuses the
- * recovery-key display step to show the freshly minted 24-word phrase. Returns
- * the new phrase; sync is enabled on completion so legacy rows sync down.
+ * Drive the seamless v1→v2 migration and return the freshly minted 24-word
+ * phrase. Sync is enabled on completion so legacy rows sync down.
+ *
+ * TWO surfaces can legitimately show the phrase, because two code paths race to
+ * call `ensureV2Encryption`:
+ *
+ *  - the sync-setup wizard, when the user's Continue lands first, and
+ *  - the global migration dialog, when `runEncryptionInit`'s headless check
+ *    (fire-and-forget at every boot) gets there first — at which point the
+ *    wizard yields and completes itself.
+ *
+ * Init usually wins: it starts during boot, while the wizard cannot start before
+ * the user reaches the switch. So Continue is best-effort, and the phrase is read
+ * from whichever dialog ends up holding it. Both outcomes are the same product
+ * behaviour — one phrase, shown once, sync on — and the spec asserts the
+ * "migrated, not reset" invariant against the server keyring rather than the UI.
  */
 export const runSeamlessMigration = async (page: Page): Promise<string> => {
   await page.goto('/settings/preferences')
@@ -336,18 +445,21 @@ export const runSeamlessMigration = async (page: Page): Promise<string> => {
   await expect(syncSwitch).toBeVisible()
   await syncSwitch.click()
 
-  const dialog = page.getByRole('dialog')
-  await expect(dialog.getByText('Set up sync', { exact: true })).toBeVisible()
-  await dialog.getByRole('button', { name: 'Continue' }).click()
+  const wizard = page.getByRole('dialog')
+  await expect(wizard.getByText('Set up sync', { exact: true })).toBeVisible()
+  await wizard
+    .getByRole('button', { name: 'Continue' })
+    .click({ timeout: 15_000 })
+    // The wizard can be torn down mid-click when init wins the race.
+    .catch(() => {})
 
-  // Seamless migration lands directly on the recovery-phrase display (no separate
-  // "First device setup" confirm, and never an "Encryption was upgraded" reset).
-  const recoveryPhrase = await readRecoveryPhrase(dialog)
-  await expect(dialog.getByText('Encryption was upgraded', { exact: true })).toBeHidden()
+  const phraseDialog = recoveryPhraseDialog(page)
+  await expect(phraseDialog).toBeVisible({ timeout: 30_000 })
+  // A seamless upgrade never routes through first-device bootstrap — that step
+  // is the reset path, which would abandon the legacy CK instead of absorbing it.
+  await expect(page.getByText('First device setup', { exact: true })).toBeHidden()
 
-  await dialog.getByRole('checkbox').click()
-  await dialog.getByRole('button', { name: 'Done' }).click()
-  await expect(dialog).toBeHidden()
+  const recoveryPhrase = await acknowledgeRecoveryPhrase(phraseDialog)
   await expect(syncSwitch).toBeChecked()
   return recoveryPhrase
 }

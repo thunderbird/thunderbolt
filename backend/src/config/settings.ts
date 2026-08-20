@@ -24,6 +24,19 @@ const settingsSchema = z
     // Include the `/v1` API prefix — Tinfoil's OpenAI-compatible endpoints live
     // under `/v1/chat/completions`, `/v1/models`, etc.
     tinfoilEnclaveUrl: z.string().default('https://inference.tinfoil.sh/v1'),
+    // Self-hosted OpenAI-compatible inference gateway. Include the `/v1` prefix,
+    // same convention as `tinfoilEnclaveUrl`. Requests are proxied through
+    // /v1/chat/completions, so the key never reaches the browser and the gateway
+    // needs no CORS setup. Deliberately not validated in `superRefine`: these
+    // vars are already plumbed through the Helm/Pulumi/CI deploy paths, so a
+    // boot-time error here would break deployments that set the URL today.
+    // Misconfiguration surfaces lazily, when a gateway model is first requested.
+    thunderboltInferenceUrl: z.string().default(''),
+    thunderboltInferenceApiKey: z.string().default(''),
+    // Comma-separated `id` or `id=Label` entries naming the models the gateway
+    // serves, e.g. `llama-3.3-70b=Llama 3.3 70B,qwen-2.5-coder`. Nothing routes
+    // to the gateway until at least one model is listed.
+    thunderboltInferenceModels: z.string().default(''),
 
     // Health Check Configuration
     monitoringToken: z.string().default(''),
@@ -177,6 +190,9 @@ const parseSettings = (): Settings => {
     exaApiKey: process.env.EXA_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
     tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',
+    thunderboltInferenceUrl: process.env.THUNDERBOLT_INFERENCE_URL || '',
+    thunderboltInferenceApiKey: process.env.THUNDERBOLT_INFERENCE_API_KEY || '',
+    thunderboltInferenceModels: process.env.THUNDERBOLT_INFERENCE_MODELS || '',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',

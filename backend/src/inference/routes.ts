@@ -4,7 +4,9 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
+import { getSettings } from '@/config/settings'
 import { classifyInferenceError } from '@/inference/error-kind'
+import { ensureGatewayModels, isGatewayModel } from '@/inference/gateway-models'
 import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
@@ -127,7 +129,20 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         throw new Error('Non-streaming requests are not supported')
       }
 
-      const modelConfig = supportedModels[body.model]
+      // Shipped models win over gateway models, so a deployment cannot shadow a
+      // built-in id by listing it in THUNDERBOLT_INFERENCE_MODELS. Gateway ids
+      // pass through unchanged: the gateway knows them by their own name.
+      // Refresh discovery only when the id is not a built-in, so the common path
+      // never awaits the network. Warm cache makes this a no-op anyway.
+      const settings = getSettings()
+      if (!supportedModels[body.model]) {
+        await ensureGatewayModels(settings)
+      }
+      const modelConfig =
+        supportedModels[body.model] ??
+        (isGatewayModel(body.model, settings)
+          ? ({ provider: 'thunderbolt-inference', internalName: body.model } satisfies ModelConfig)
+          : undefined)
       if (!modelConfig) {
         throw new Error('Model not found')
       }

@@ -977,24 +977,21 @@ export const createChatInstance = (
   const originalStop = instance.stop.bind(instance)
 
   /**
-   * Stop the active turn now and settle the thread to idle — one path for every
-   * state (live stream, thinking, auto-retry backoff, empty-turn recovery).
-   *
-   * The SDK's own stop only aborts an in-flight fetch and is a no-op during the
-   * retry/recovery backoff, so on its own the turn restarts itself (THU-791). We
-   * do all of: cancel the pending retry, abort the fetch, drop a trailing empty
-   * assistant turn (left in place it re-triggers the recovery spinner, so the
-   * thread looks like it's still working right after a stop), and reset retry
-   * state. Abort is fire-and-forget so the UI settles immediately.
+   * Stop the active turn and settle to idle (THU-791). In-flight aborts let
+   * `onFinish({ isAbort })` settle on the correct turn — emitting/resetting here
+   * would swap `currentTurn` out from under it. Backoff/recovery fires no
+   * `onFinish`, so cancel the retry, drop a trailing empty shell, and settle here.
    */
   instance.stop = async function () {
     if (retryTimeout) {
       clearTimeout(retryTimeout)
       retryTimeout = null
     }
-    void originalStop()
-    const lastMessage = instance.messages[instance.messages.length - 1]
-    if (lastMessage?.role === 'assistant' && !lastMessage.parts?.length) {
+    if (instance.status === 'streaming' || instance.status === 'submitted') {
+      void originalStop()
+      return
+    }
+    if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
       instance.messages = instance.messages.slice(0, -1)
     }
     emitTurnCompleted(currentTurn, 'abort')

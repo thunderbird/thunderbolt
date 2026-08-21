@@ -286,22 +286,83 @@ export const registerThisDevice = async (httpClient: HttpClient): Promise<Regist
 // Keyring staging + AK refresh (consumed by the key-request responder, Track C)
 // =============================================================================
 
+/** Fetched keyring + pointers, written to IndexedDB as one unit. */
+type FetchedKeyring = {
+  keys: Array<{ key_id: KeyId; wrapped_key: string }>
+  primaryKeyId: KeyId
+  keyVersion: number
+}
+
+/**
+ * Re-fetch this device's envelope, unwrap the AK it carries, and store it.
+ * Split out of `refreshAK` so `stageKeyring` can adopt a rotated AK without
+ * recursing back through it.
+ */
+const adoptEnvelopeAK = async (httpClient: HttpClient): Promise<void> => {
+  const { wrappedCK } = await fetchMyEnvelope(httpClient)
+  const keyPair = await getKeyPair()
+  if (!keyPair) {
+    throw new Error('Key pair not found in IndexedDB')
+  }
+  await storeAK(await unwrapAK(wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey))
+}
+
+/**
+ * Does the locally stored AK still open the keyring the server just handed us?
+ * A `false` means the AK was rotated elsewhere and this device has not caught
+ * up yet. No local AK (first setup, mid-recovery) is not a contradiction —
+ * there is nothing to be stale.
+ */
+const keyringUnwrapsUnderLocalAK = async (keyring: FetchedKeyring): Promise<boolean> => {
+  const ak = await getAK()
+  if (!ak) {
+    return true
+  }
+  const probe = keyring.keys.find((key) => key.key_id === keyring.primaryKeyId) ?? keyring.keys[0]
+  if (!probe) {
+    return true
+  }
+  return unwrapDEK(probe.wrapped_key, ak).then(
+    () => true,
+    () => false,
+  )
+}
+
+const applyKeyring = async (keyring: FetchedKeyring): Promise<void> => {
+  await stageWrappedDEKs(keyring.keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key })))
+  await storePrimaryKeyId(keyring.primaryKeyId)
+  await storeKeyVersion(keyring.keyVersion)
+  invalidateKeyringCache()
+}
+
 /**
  * Stage the full server-side keyring into IndexedDB for the SharedWorker: fetch
  * every wrapped DEK (including the `"v1"` slot), refresh the primary key_id +
  * key_version from metadata, and invalidate the codec caches so encoders pick
  * up the new state.
  *
+ * INVARIANT: never leave IndexedDB holding DEKs the stored AK cannot unwrap.
+ * The server wraps every DEK under the CURRENT AK, so staging blindly onto a
+ * device whose AK was rotated elsewhere produces a keyring that opens nothing —
+ * every decode then fails open to raw ciphertext until something escalates to
+ * `unwrap-failed`. Probing the primary before the write and adopting the
+ * rotated AK first keeps the two halves consistent by construction.
+ *
  * Track F wires the responder's zero-arg `stageKeyring: () => Promise<void>`
  * with `() => stageKeyring(client)`.
  */
 export const stageKeyring = async (httpClient: HttpClient): Promise<void> => {
-  const { keys } = await fetchWrappedKeys(httpClient)
-  await stageWrappedDEKs(keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key })))
-  const metadata = await fetchEncryptionMetadata(httpClient)
-  await storePrimaryKeyId(metadata.primary_key_id)
-  await storeKeyVersion(metadata.key_version)
-  invalidateKeyringCache()
+  const [{ keys }, metadata] = await Promise.all([fetchWrappedKeys(httpClient), fetchEncryptionMetadata(httpClient)])
+  const keyring: FetchedKeyring = {
+    keys,
+    primaryKeyId: metadata.primary_key_id,
+    keyVersion: metadata.key_version,
+  }
+
+  if (!(await keyringUnwrapsUnderLocalAK(keyring))) {
+    await adoptEnvelopeAK(httpClient)
+  }
+  await applyKeyring(keyring)
 }
 
 /**
@@ -314,15 +375,10 @@ export const stageKeyring = async (httpClient: HttpClient): Promise<void> => {
  * `() => refreshAK(client)`.
  */
 export const refreshAK = async (httpClient: HttpClient): Promise<void> => {
-  const { wrappedCK } = await fetchMyEnvelope(httpClient)
-  const keyPair = await getKeyPair()
-  if (!keyPair) {
-    throw new Error('Key pair not found in IndexedDB')
-  }
-  const ak = await unwrapAK(wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
-  await storeAK(ak)
+  await adoptEnvelopeAK(httpClient)
   await stageKeyring(httpClient)
 }
+
 // =============================================================================
 // Flow C — First device setup
 // =============================================================================

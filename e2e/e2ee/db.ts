@@ -78,12 +78,22 @@ export type FirstDeviceServerState = {
   wrappedKeyIds: string[]
   trustedDeviceCount: number
   envelopeCount: number
+  /** All three recovery-slot columns populated — bootstrap must write the phrase's virtual-device envelope. */
+  hasRecoverySlot: boolean
 }
 
 export const waitForFirstDeviceState = async (userId: string): Promise<FirstDeviceServerState> =>
   poll(async () => {
-    const metadata = await sql<{ key_version: number; primary_key_id: string }[]>`
-      SELECT key_version, primary_key_id
+    const metadata = await sql<
+      {
+        key_version: number
+        primary_key_id: string
+        recovery_ecdh_public_key: string | null
+        recovery_mlkem_public_key: string | null
+        recovery_wrapped_ak: string | null
+      }[]
+    >`
+      SELECT key_version, primary_key_id, recovery_ecdh_public_key, recovery_mlkem_public_key, recovery_wrapped_ak
       FROM encryption_metadata
       WHERE user_id = ${userId}
     `
@@ -109,6 +119,10 @@ export const waitForFirstDeviceState = async (userId: string): Promise<FirstDevi
       wrappedKeyIds: wrappedKeys.map((row) => row.key_id),
       trustedDeviceCount: deviceRow.trusted_device_count,
       envelopeCount: deviceRow.envelope_count,
+      hasRecoverySlot:
+        !!metadataRow.recovery_ecdh_public_key &&
+        !!metadataRow.recovery_mlkem_public_key &&
+        !!metadataRow.recovery_wrapped_ak,
     }
   })
 
@@ -118,11 +132,36 @@ export type EncryptionServerSnapshot = {
   schemeVersion: number
   wrappedKeys: Record<string, string>
   envelopes: Record<string, string>
+  /**
+   * The recovery slot — the phrase-as-virtual-device envelope. The two public
+   * keys are derived from the seed, so they change ONLY when the user mints a
+   * new phrase; `recoveryWrappedAk` changes on every AK rotation. That pair of
+   * facts is what distinguishes a silent re-anchor (revoke) from a phrase change.
+   */
+  recoveryEcdhPublicKey: string | null
+  recoveryMlkemPublicKey: string | null
+  recoveryWrappedAk: string | null
+}
+
+type EncryptionMetadataRow = {
+  key_version: number
+  primary_key_id: string
+  scheme_version: number
+  recovery_ecdh_public_key: string | null
+  recovery_mlkem_public_key: string | null
+  recovery_wrapped_ak: string | null
 }
 
 export const getEncryptionServerSnapshot = async (userId: string): Promise<EncryptionServerSnapshot> => {
-  const metadata = await sql<{ key_version: number; primary_key_id: string; scheme_version: number }[]>`
-    SELECT key_version, primary_key_id, scheme_version FROM encryption_metadata WHERE user_id = ${userId}
+  const metadata = await sql<EncryptionMetadataRow[]>`
+    SELECT
+      key_version,
+      primary_key_id,
+      scheme_version,
+      recovery_ecdh_public_key,
+      recovery_mlkem_public_key,
+      recovery_wrapped_ak
+    FROM encryption_metadata WHERE user_id = ${userId}
   `
   const wrappedKeys = await sql<{ key_id: string; wrapped_key: string }[]>`
     SELECT key_id, wrapped_key FROM wrapped_keys WHERE user_id = ${userId} ORDER BY key_id
@@ -140,6 +179,9 @@ export const getEncryptionServerSnapshot = async (userId: string): Promise<Encry
     schemeVersion: metadataRow.scheme_version,
     wrappedKeys: Object.fromEntries(wrappedKeys.map((row) => [row.key_id, row.wrapped_key])),
     envelopes: Object.fromEntries(envelopes.map((row) => [row.device_id, row.wrapped_ck])),
+    recoveryEcdhPublicKey: metadataRow.recovery_ecdh_public_key,
+    recoveryMlkemPublicKey: metadataRow.recovery_mlkem_public_key,
+    recoveryWrappedAk: metadataRow.recovery_wrapped_ak,
   }
 }
 

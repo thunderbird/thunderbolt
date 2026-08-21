@@ -192,6 +192,38 @@ export const acknowledgeRecoveryPhrase = async (dialog: Locator): Promise<string
   return recoveryPhrase
 }
 
+/**
+ * Revoke a trusted device from the devices settings page.
+ *
+ * Revocation still rotates the Account Key — that is the only step that
+ * cryptographically locks the revoked device out — but the recovery phrase is a
+ * virtual device now, so the rotation re-anchors the EXISTING recovery slot
+ * instead of minting a new phrase. The flow is therefore silent, and the confirm
+ * copy must not promise a new phrase; `expectNoRecoveryPhraseShown` checks the
+ * other half once the rotation has landed server-side.
+ */
+export const revokeTrustedDevice = async (page: Page, deviceLabel: string): Promise<void> => {
+  await page.goto('/settings/devices')
+  await page.getByRole('button', { name: `Revoke ${deviceLabel}` }).click()
+  const revokeDialog = page.getByRole('alertdialog')
+  await expect(revokeDialog.getByText('Revoke this device?')).toBeVisible()
+  await expect(revokeDialog.getByText(/new recovery phrase/i)).toBeHidden()
+  await revokeDialog.getByRole('button', { name: 'Revoke' }).click()
+  await expect(revokeDialog).toBeHidden({ timeout: 30_000 })
+}
+
+/**
+ * Assert nothing on screen is offering the user a phrase to write down.
+ *
+ * Only meaningful AFTER the rotation is observable server-side: the phrase
+ * dialog would open from the mutation's success callback, so asserting earlier
+ * would pass vacuously against a dialog that has simply not rendered yet.
+ */
+export const expectNoRecoveryPhraseShown = async (page: Page): Promise<void> => {
+  await expect(recoveryPhraseDialog(page)).toBeHidden()
+  await expect(page.getByRole('dialog').filter({ hasText: 'Save your new recovery phrase' })).toBeHidden()
+}
+
 export const enableTasks = async (page: Page): Promise<void> => {
   await page.goto('/settings/preferences')
   const tasksSwitch = page.getByRole('switch', { name: 'Tasks' })

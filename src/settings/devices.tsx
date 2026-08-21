@@ -7,7 +7,6 @@ import { getAllDevices, getPendingDevices, type Device } from '@/dal'
 import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
-import { RecoveryKeyDialog } from '@/components/recovery-key-dialog'
 import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { RemoveBridgeDialog } from '@/components/remove-bridge-dialog'
 import { Button } from '@/components/ui/button'
@@ -247,9 +246,6 @@ export default function DevicesSettingsPage() {
     query: toCompilableQuery(getPendingDevices(db)),
   })
   const [confirmationTarget, setConfirmationTarget] = useState<ConfirmationTarget | null>(null)
-  // The new recovery phrase returned by a revoke-with-rotation — must be shown
-  // exactly once before the user can continue (the old phrase is dead).
-  const [rotatedRecoveryKey, setRotatedRecoveryKey] = useState<string | null>(null)
 
   const visibleDevices = devices.filter((d) => {
     if (d.revokedAt != null) {
@@ -286,20 +282,6 @@ export default function DevicesSettingsPage() {
     }
     mutation.mutate(confirmationTarget.deviceId, {
       onSuccess: () => setConfirmationTarget(null),
-    })
-  }
-
-  /** Revoke needs its own confirm path: with E2EE active the mutation resolves
-   *  with a NEW recovery phrase that must be displayed afterward. */
-  const confirmRevoke = () => {
-    if (confirmationTarget?.action !== 'revoke') {
-      return
-    }
-    revokeMutation.mutate(confirmationTarget.deviceId, {
-      onSuccess: (newRecoveryKey) => {
-        setConfirmationTarget(null)
-        setRotatedRecoveryKey(newRecoveryKey)
-      },
     })
   }
 
@@ -375,17 +357,9 @@ export default function DevicesSettingsPage() {
       <RevokeDeviceDialog
         open={confirmationTarget?.action === 'revoke'}
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
-        onConfirm={confirmRevoke}
+        onConfirm={() => confirmPendingAction('revoke', revokeMutation)}
         isPending={revokeMutation.isPending}
         variant="trusted"
-      />
-
-      <RecoveryKeyDialog
-        open={rotatedRecoveryKey != null}
-        recoveryKey={rotatedRecoveryKey ?? ''}
-        title="Save your new recovery phrase"
-        description="Revoking a device rotates your encryption keys, so a new recovery phrase was generated. Your old phrase no longer works — write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
-        onDone={() => setRotatedRecoveryKey(null)}
       />
 
       <RevokeDeviceDialog

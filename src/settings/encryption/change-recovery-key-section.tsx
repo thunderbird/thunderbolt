@@ -18,15 +18,18 @@ import { useChangeRecoveryKey } from './use-change-recovery-key'
 import type { HttpClient } from '@/contexts'
 
 type ChangeRecoveryKeySectionProps = {
-  /** Dependency seam for the AK rotation (tests). Defaults to `rotateAK`. */
+  /** Dependency seam for the rotation (tests). Defaults to `changeRecoveryPhrase`. */
   rotate?: (httpClient: HttpClient) => Promise<string>
 }
 
 /**
  * "Change recovery phrase" row for the preferences Data section. Rotates the
- * Account Key (0 rows re-encrypted) and shows the NEW 24-word phrase exactly
- * once behind the saved-it confirmation gate. Hidden until E2EE v2 is fully
- * set up on this device — there is no key to rotate before then.
+ * Account Key (0 rows re-encrypted), re-anchors the recovery slot to a new
+ * phrase, and shows those 24 words exactly once behind the saved-it
+ * confirmation gate. This is the only place outside first-device setup and the
+ * v1→v2 migration that mints a phrase — device revocation rotates silently.
+ * Hidden until E2EE v2 is fully set up on this device — there is no key to
+ * rotate before then.
  */
 export const ChangeRecoveryKeySection = ({ rotate }: ChangeRecoveryKeySectionProps) => {
   const ready = useE2eeReady()

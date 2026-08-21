@@ -28,6 +28,7 @@ import {
   getErrorName,
   getErrorRetryable,
   getErrorStatusCode,
+  isAcpSessionBusyError,
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
@@ -771,6 +772,14 @@ export const createChatInstance = (
 
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
       if (isRateLimitError(lastError)) {
+        markRetriesExhausted(finishedTurn)
+        lastError = null
+        return
+      }
+
+      // Don't auto-retry ACP SESSION_BUSY — the prior turn still owns the slot
+      // (common right after Stop). Blind retries worsen the race.
+      if (isAcpSessionBusyError(lastError)) {
         markRetriesExhausted(finishedTurn)
         lastError = null
         return

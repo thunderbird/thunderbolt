@@ -14,10 +14,11 @@ import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-
  * is fully set up with no phrase anywhere — silently, because nothing recorded
  * that one was owed.
  *
- * The phrase itself is deliberately NOT persisted: `AK = PBKDF2(seed, salt)`, so
- * writing the seed beside the keys it protects would defeat its purpose. What
- * persists is the unacknowledged FACT; the remedy is to mint a fresh phrase via
- * `rotateAK`, which is what the re-prompt offers.
+ * The phrase itself is deliberately NOT persisted: the seed derives the recovery
+ * keypair that opens the AK envelope, so writing it beside the keys it protects
+ * would defeat its purpose. What persists is the unacknowledged FACT; the remedy
+ * is to mint a fresh phrase via `changeRecoveryPhrase`, which is what the
+ * re-prompt offers.
  *
  * Set by the minting services, cleared only by an explicit user confirmation.
  * Never derive it from "E2EE is set up but no phrase seen" — followers and

@@ -101,6 +101,7 @@ const {
   registerThisDevice,
   completeFirstDeviceSetup,
   approveDevice,
+  stageKeyring,
   checkApprovalAndUnwrap,
   recoverWithKey,
   rotateAccountKey,
@@ -563,6 +564,56 @@ describe('encryption service (v2)', () => {
       storedKeyPair = await generateFullKeyPair()
       const result = await checkApprovalAndUnwrap(clientFor(server))
       expect(result).toBe(false)
+    })
+  })
+
+  describe('stageKeyring', () => {
+    /**
+     * Rotate the account elsewhere: re-wrap the server keyring under a brand-new
+     * AK, replace this device's envelope with one carrying it, and bump the
+     * version — exactly the state another device's rotation leaves behind.
+     */
+    const rotateOnServer = async (server: FakeServer, kp: StoredKeyPair): Promise<CryptoKey> => {
+      const oldAK = await unwrapAK(server.envelopes.get('test-device-id')!, kp.ecdhPrivateKey, kp.mlkemSecretKey)
+      const newAK = await generateAK(true)
+      for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+        server.wrappedKeys.set(keyId, await wrapDEK(await unwrapDEK(wrapped, oldAK, true), newAK))
+      }
+      server.envelopes.set('test-device-id', await wrapAK(newAK, kp.ecdhPublicKey, kp.mlkemPublicKey))
+      server.metadata!.keyVersion += 1
+      return newAK
+    }
+
+    it('adopts the rotated AK instead of staging a keyring the stored AK cannot open', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      await rotateOnServer(server, kp)
+      await stageKeyring(clientFor(server))
+
+      // The invariant: whatever landed in IndexedDB opens under the stored AK.
+      // Pre-fix this staged new-AK wrappings next to the old AK, and every
+      // decode failed open to raw ciphertext until an unwrap-failed escalation.
+      for (const keyId of ['0', 'v1']) {
+        expect(await unwrapDEK(storedDEKs.get(keyId)!, storedAK!).then(() => true)).toBe(true)
+      }
+      expect(storedKeyVersion).toBe(2)
+    })
+
+    it('does not re-fetch the envelope when the stored AK still opens the keyring', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      server.requests.length = 0
+      await stageKeyring(clientFor(server))
+
+      expect(server.requests).not.toContain('GET /devices/me/envelope')
     })
   })
 

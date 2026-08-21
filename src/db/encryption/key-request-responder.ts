@@ -102,7 +102,13 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
   const inflight = new Map<KeyId, Promise<void>>()
   const lastAttempts = new Map<KeyId, { action: ResponderAction; at: number }>()
 
-  /** A polled key_version strictly newer than the last one applied means the AK was rotated. */
+  /**
+   * A polled key_version strictly newer than the last one applied means the AK
+   * was rotated. An unknown baseline (a key-request landing before `prime`
+   * resolves) takes the stage-only branch, which is safe: `stageKeyring` refuses
+   * to write a keyring the stored AK cannot open and adopts the rotated AK
+   * itself.
+   */
   const isVersionBump = (version: number): boolean => lastKeyVersion !== null && version > lastKeyVersion
 
   const recordKeyVersion = async (version: number): Promise<void> => {

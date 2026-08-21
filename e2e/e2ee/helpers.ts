@@ -70,15 +70,28 @@ export const loginViaConsumerOtp = async (page: Page, email: string): Promise<vo
  * page was actually doing. Secondary devices are plain `browser.newContext()`
  * pages, which Playwright does not trace — without this, a device that fails to
  * sync leaves no evidence at all beyond a screenshot.
+ *
+ * The cap has to span EVERY boot of the device, not just the failing one: the
+ * causes worth diagnosing (defaults seeded before first sync, a swallowed
+ * pending-CRUD reset at sign-in) happen several page loads earlier than the
+ * assertion that trips. A whole spec produces a few hundred lines per device.
  */
 const consoleTails = new WeakMap<Page, string[]>()
-const consoleTailLimit = 200
+const consoleTailLimit = 2_000
 
-const recordConsole = (page: Page): void => {
+const recordConsole = (page: Page, profile: DeviceProfile): void => {
   const lines: string[] = []
   consoleTails.set(page, lines)
+  // Set E2EE_DEBUG_CONSOLE=1 to stream it live instead of only on failure —
+  // the only way to get a baseline from a run that PASSES, which is what you
+  // need when a failure reproduces on CI but not locally.
+  const stream = process.env.E2EE_DEBUG_CONSOLE === '1'
   page.on('console', (message) => {
-    lines.push(`${message.type()}: ${message.text()}`)
+    const line = `${message.type()}: ${message.text()}`
+    if (stream) {
+      console.log(`[${profile}] ${line}`)
+    }
+    lines.push(line)
     if (lines.length > consoleTailLimit) {
       lines.shift()
     }
@@ -92,7 +105,7 @@ export const createIsolatedDevice = async (browser: Browser, profile: DeviceProf
     userAgent: deviceUserAgents[profile],
   })
   const page = await context.newPage()
-  recordConsole(page)
+  recordConsole(page, profile)
   return { context, page }
 }
 
@@ -212,27 +225,35 @@ export const waitForTasksPreference = async (page: Page, userId: string): Promis
 }
 
 /**
- * Explain WHY the Tasks switch never flipped. The three states look identical in
- * the UI but have completely different causes:
+ * Explain WHY the Tasks switch never flipped. The states look identical in the
+ * UI but have completely different causes:
  *
- *  - server value is plaintext `false` → something overwrote the account's
- *    setting (a joining device seeding bundle defaults before first sync);
- *  - server value is still `__enc:…` but this device holds no `thunderbolt_dek_*`
- *    → the keyring never landed, so the codec stored ciphertext as the value;
+ *  - server value decrypts to `false` → something overwrote the account's
+ *    setting. Read it off the ciphertext length: base64 ct of 28 chars is 21
+ *    bytes, minus the 16-byte GCM tag, so a 5-byte plaintext (`false`); `true`
+ *    is 4 bytes and encodes to 27 (or 28 WITH an `=`).
+ *  - server value encrypted but this device holds no `thunderbolt_dek_*` → the
+ *    keyring never landed, so the codec stored ciphertext as the value;
  *  - server value encrypted and the keyring is complete → a download/decode
- *    problem, and the console tail should show the codec or key-request failing.
+ *    problem, and the console should show the codec or key-request failing.
+ *
+ * The console is dumped in FULL rather than tailed: the interesting lines
+ * ("Uploading N operations to backend" as a joining device flushes bundle
+ * defaults over the account, or "Failed to clear pending CRUD after sign-in"
+ * when the reset that normally hides that is skipped) come from boots well
+ * before the failing one.
  */
 const describeTasksPreferenceFailure = async (page: Page, userId: string): Promise<string> => {
   const [serverValue, keyNames] = await Promise.all([
     getServerSetting(userId, 'experimental_feature_tasks').catch((err: unknown) => `<unreadable: ${String(err)}>`),
     getEncryptionKeyNames(page).catch((err: unknown) => [`<unreadable: ${String(err)}>`]),
   ])
-  const tail = (consoleTails.get(page) ?? []).slice(-60)
+  const tail = consoleTails.get(page) ?? []
   return [
     'Tasks preference never synced/decrypted on this device.',
     `  server experimental_feature_tasks: ${serverValue ?? '<row missing>'}`,
     `  device IndexedDB keys: ${keyNames.join(', ') || '<none>'}`,
-    `  device console (last ${tail.length}):`,
+    `  device console (${tail.length} lines${tail.length >= consoleTailLimit ? ', TRUNCATED at the cap' : ''}):`,
     ...tail.map((line) => `    ${line}`),
   ].join('\n')
 }

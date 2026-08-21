@@ -125,6 +125,9 @@ describe('DAL: encryption', () => {
       expect(metadata?.keyVersion).toBe(1)
       expect(metadata?.canarySecretHash).toBe('hash')
       expect(metadata?.signingPublicKey).toBeNull()
+      expect(metadata?.recoveryEcdhPublicKey).toBeNull()
+      expect(metadata?.recoveryMlkemPublicKey).toBeNull()
+      expect(metadata?.recoveryWrappedAk).toBeNull()
     })
 
     it('flipSchemeToV2 CAS succeeds once and returns null on a second flip', async () => {
@@ -137,6 +140,9 @@ describe('DAL: encryption', () => {
           signingPublicKey: 'spki',
           kdfSalt: 'salt',
           primaryKeyId: '0',
+          recoveryEcdhPublicKey: 'r-ecdh',
+          recoveryMlkemPublicKey: 'r-mlkem',
+          recoveryWrappedAk: 'r-wrapped',
         })
 
       const first = await flip()
@@ -152,6 +158,9 @@ describe('DAL: encryption', () => {
         .where(and(eq(encryptionMetadataTable.userId, userId)))
       expect(row.schemeVersion).toBe(2)
       expect(row.signingPublicKey).toBe('spki')
+      expect(row.recoveryEcdhPublicKey).toBe('r-ecdh')
+      expect(row.recoveryMlkemPublicKey).toBe('r-mlkem')
+      expect(row.recoveryWrappedAk).toBe('r-wrapped')
     })
   })
 })

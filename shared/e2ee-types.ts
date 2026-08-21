@@ -214,10 +214,14 @@ export type ChallengeProof = {
 }
 
 // =============================================================================
-// KDF — recovery seed → AK (THU-414)
+// KDF — recovery seed → recovery keypair (THU-414)
 // =============================================================================
 
-/** PBKDF2-SHA512 parameters for deriving the AK from the 24-word recovery seed. */
+/**
+ * PBKDF2-SHA512 parameters for deriving the recovery hybrid keypair from the
+ * 24-word recovery seed. The phrase is a VIRTUAL DEVICE: it derives a keypair,
+ * not the AK itself, so the AK can rotate without invalidating the phrase.
+ */
 export const kdfAlgorithm = 'PBKDF2' as const
 export const kdfHash = 'SHA-512' as const
 export const kdfIterations = 600_000
@@ -251,6 +255,15 @@ export type EncryptionMetadataResponse = {
   kdf_salt: string | null
   /** Base64 SPKI ECDSA P-256 public key for challenge-response verification (null pre-flip). */
   signing_public_key: string | null
+  /** Base64 raw SEC1 ECDH P-256 public key of the phrase-derived recovery keypair (null pre-flip). */
+  recovery_ecdh_public_key: string | null
+  /** Base64 raw ML-KEM-768 public key of the phrase-derived recovery keypair (null pre-flip). */
+  recovery_mlkem_public_key: string | null
+  /**
+   * The AK wrapped to the recovery keypair (null pre-flip). Inert without the
+   * phrase-derived private keys, so serving it to any authenticated caller is safe.
+   */
+  recovery_wrapped_ak: string | null
   /** Bumped on every AK rotation — a bump tells devices to refresh their AK envelope. */
   key_version: number
   /** The key_id all new writes must encrypt under. */
@@ -285,12 +298,27 @@ export type EnvelopeTargetsResponse = {
 }
 
 /**
+ * The recovery slot every v2 write path must supply as a complete triple: the
+ * phrase-derived hybrid PUBLIC keys plus the AK wrapped to them. A silent
+ * rotation resubmits the STORED public keys (the phrase keeps working); an
+ * explicit phrase change submits freshly derived ones.
+ */
+export type RecoverySlotRequest = {
+  /** Base64 raw SEC1 ECDH P-256 public key of the phrase-derived recovery keypair. */
+  recoveryEcdhPublicKey: string
+  /** Base64 raw ML-KEM-768 public key of the phrase-derived recovery keypair. */
+  recoveryMlkemPublicKey: string
+  /** The AK hybrid-wrapped to the recovery public keys. */
+  recoveryWrappedAK: string
+}
+
+/**
  * POST /v1/encryption/rotate request body (atomic AK rotation). Request bodies
  * are camelCase (matching existing routes); responses use the snake_case DTOs
  * above. The FULL keyring is re-wrapped under the new AK — every existing
  * key_id, including the `"v1"` slot when present (coverage validation, Risk 1).
  */
-export type RotateRequest = {
+export type RotateRequest = RecoverySlotRequest & {
   /** Challenge proof with operation 'rotate'. */
   proof: ChallengeProof
   /** The new AK wrapped per trusted device (`wrappedCK` historically named — it carries the AK). */
@@ -318,7 +346,7 @@ export type RotateResponse = {
  * `canarySecret` recovered by a v1-style CK decrypt of the stored canary (NO
  * AAD) — NOT a challenge signature (the signing key does not exist pre-flip).
  */
-export type UpgradeRequest = {
+export type UpgradeRequest = RecoverySlotRequest & {
   /** Replay nonce with operation 'upgrade' (bootstrap op — not signature-verified). */
   nonce: string
   /** D1 CK-possession proof: the canarySecret recovered by CK-decrypting canary_ctext (no AAD). */

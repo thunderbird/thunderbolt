@@ -54,10 +54,21 @@ export const deleteEnvelope = async (database: typeof DbType, deviceId: string, 
 // ─── Encryption metadata ──────────────────────────────────────────────
 
 /**
+ * The recovery slot written by every v2 write path: the phrase-derived hybrid
+ * PUBLIC keys plus the AK wrapped to them. The recovery phrase is a virtual
+ * device, so rotating the AK only needs these public halves — never the phrase.
+ */
+export type RecoverySlot = {
+  recoveryEcdhPublicKey: string
+  recoveryMlkemPublicKey: string
+  recoveryWrappedAk: string
+}
+
+/**
  * Get encryption metadata for a user: the canary, the challenge-response
- * signing public key, the KDF salt, and the polled keyring pointers
- * (`keyVersion`/`primaryKeyId`/`schemeVersion`). `canarySecretHash` is RETAINED
- * as the v1 CK-possession anchor consumed by `/upgrade` (Decision B).
+ * signing public key, the KDF salt, the recovery slot, and the polled keyring
+ * pointers (`keyVersion`/`primaryKeyId`/`schemeVersion`). `canarySecretHash` is
+ * RETAINED as the v1 CK-possession anchor consumed by `/upgrade` (Decision B).
  */
 export const getEncryptionMetadata = async (database: typeof DbType, userId: string) =>
   database
@@ -67,6 +78,9 @@ export const getEncryptionMetadata = async (database: typeof DbType, userId: str
       canarySecretHash: encryptionMetadataTable.canarySecretHash,
       signingPublicKey: encryptionMetadataTable.signingPublicKey,
       kdfSalt: encryptionMetadataTable.kdfSalt,
+      recoveryEcdhPublicKey: encryptionMetadataTable.recoveryEcdhPublicKey,
+      recoveryMlkemPublicKey: encryptionMetadataTable.recoveryMlkemPublicKey,
+      recoveryWrappedAk: encryptionMetadataTable.recoveryWrappedAk,
       keyVersion: encryptionMetadataTable.keyVersion,
       primaryKeyId: encryptionMetadataTable.primaryKeyId,
       schemeVersion: encryptionMetadataTable.schemeVersion,
@@ -80,11 +94,12 @@ export const getEncryptionMetadata = async (database: typeof DbType, userId: str
  * Insert v2 first-device-setup metadata. Idempotent — does nothing if a row
  * already exists (so a re-bootstrap can never overwrite an established account).
  * A freshly set-up v2 account has no `canarySecretHash` (that column is a v1
- * artifact); `signingPublicKey`/`kdfSalt` are always present for v2.
+ * artifact); `signingPublicKey`/`kdfSalt`/the recovery slot are always present
+ * for v2.
  */
 export const insertEncryptionMetadataIfNotExists = async (
   database: typeof DbType,
-  metadata: {
+  metadata: RecoverySlot & {
     userId: string
     canaryIv: string
     canaryCtext: string
@@ -101,18 +116,30 @@ export const insertEncryptionMetadataIfNotExists = async (
       canaryCtext: metadata.canaryCtext,
       signingPublicKey: metadata.signingPublicKey,
       kdfSalt: metadata.kdfSalt,
+      recoveryEcdhPublicKey: metadata.recoveryEcdhPublicKey,
+      recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
+      recoveryWrappedAk: metadata.recoveryWrappedAk,
       primaryKeyId: metadata.primaryKeyId ?? undefined,
       schemeVersion: 2,
     })
     .onConflictDoNothing({ target: encryptionMetadataTable.userId })
 
 /**
- * Replace the canary + signing key + KDF salt in one UPDATE (AK rotation).
- * `keyVersion` is bumped separately via `bumpKeyVersion` in the same transaction.
+ * Replace the canary + signing key + KDF salt + recovery slot in one UPDATE (AK
+ * rotation). The recovery public keys are unchanged on a silent rotation and
+ * differ only when the user explicitly changes their phrase; either way the
+ * wrapped AK is re-anchored. `keyVersion` is bumped separately via
+ * `bumpKeyVersion` in the same transaction.
  */
 export const replaceEncryptionMetadata = async (
   database: typeof DbType,
-  metadata: { userId: string; canaryIv: string; canaryCtext: string; signingPublicKey: string; kdfSalt: string },
+  metadata: RecoverySlot & {
+    userId: string
+    canaryIv: string
+    canaryCtext: string
+    signingPublicKey: string
+    kdfSalt: string
+  },
 ) =>
   database
     .update(encryptionMetadataTable)
@@ -121,21 +148,25 @@ export const replaceEncryptionMetadata = async (
       canaryCtext: metadata.canaryCtext,
       signingPublicKey: metadata.signingPublicKey,
       kdfSalt: metadata.kdfSalt,
+      recoveryEcdhPublicKey: metadata.recoveryEcdhPublicKey,
+      recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
+      recoveryWrappedAk: metadata.recoveryWrappedAk,
     })
     .where(eq(encryptionMetadataTable.userId, metadata.userId))
     .returning()
 
 /**
  * Atomic v1→v2 flip (the LAST step of `/upgrade`, plan §6.1). CAS on
- * `scheme_version = 1`: registers the signing key + KDF salt, re-encrypts the
- * canary under the new primary DEK, points the primary at the new key_id, and
- * bumps `key_version` — all conditional on the row still being scheme 1. Returns
- * the new metadata on success, or `null` when a concurrent migrator already
- * flipped the account (0 rows matched → the caller must 409 and roll back).
+ * `scheme_version = 1`: registers the signing key + KDF salt + recovery slot,
+ * re-encrypts the canary under the new primary DEK, points the primary at the
+ * new key_id, and bumps `key_version` — all conditional on the row still being
+ * scheme 1. Returns the new metadata on success, or `null` when a concurrent
+ * migrator already flipped the account (0 rows matched → the caller must 409
+ * and roll back).
  */
 export const flipSchemeToV2 = async (
   database: typeof DbType,
-  metadata: {
+  metadata: RecoverySlot & {
     userId: string
     canaryIv: string
     canaryCtext: string
@@ -151,6 +182,9 @@ export const flipSchemeToV2 = async (
       canaryCtext: metadata.canaryCtext,
       signingPublicKey: metadata.signingPublicKey,
       kdfSalt: metadata.kdfSalt,
+      recoveryEcdhPublicKey: metadata.recoveryEcdhPublicKey,
+      recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
+      recoveryWrappedAk: metadata.recoveryWrappedAk,
       primaryKeyId: metadata.primaryKeyId,
       schemeVersion: 2,
       keyVersion: sql`${encryptionMetadataTable.keyVersion} + 1`,

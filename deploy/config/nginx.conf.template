@@ -55,6 +55,30 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    # PowerSync's wa-sqlite wasm/worker assets, copied into public/@powersync by
+    # the `copy-powersync-assets` Vite plugin. Content-hashed filenames like
+    # `3322bc84de986b63c2cd.wasm`, so they are as immutable as /assets/ -- and they
+    # total ~17MB, which is worth not revalidating on every boot. Without this they
+    # fall through to `location /`, which sets no caching directives at all.
+    location /@powersync/ {
+        include /etc/nginx/snippets/security-headers.conf;
+        expires 1y;
+        # nosemgrep: generic.nginx.security.header-redefinition.header-redefinition
+        add_header Cache-Control "public, immutable";
+    }
+
+    # The SPA shell decides which hashed entry chunk a client loads, so a cached
+    # copy pins the client to an old build. `no-cache` (not `no-store`) still
+    # allows a conditional request, so the common case stays a cheap 304.
+    #
+    # The `/index.html` fallback below is a URI, so nginx does an internal redirect
+    # and re-runs location matching: deep links like /settings land here too.
+    location = /index.html {
+        include /etc/nginx/snippets/security-headers.conf;
+        # nosemgrep: generic.nginx.security.header-redefinition.header-redefinition
+        add_header Cache-Control "no-cache" always;
+    }
+
     # Block source maps (they are uploaded to PostHog for error tracking, not served publicly)
     location ~* \.map$ {
         return 404;

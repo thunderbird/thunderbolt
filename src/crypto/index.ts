@@ -42,12 +42,12 @@ export {
   type SigningKeyPair,
 } from './canary'
 
-// Recovery key (seed <-> mnemonic, KDF -> AK)
+// Recovery key (seed <-> mnemonic, KDF -> recovery-slot hybrid keypair)
 export {
   generateRecoverySeed,
   encodeRecoverySeed,
   decodeRecoveryKey,
-  deriveAKFromSeed,
+  deriveRecoveryKeyPairFromSeed,
   generateKdfSalt,
 } from './recovery-key'
 

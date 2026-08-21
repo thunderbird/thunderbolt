@@ -174,7 +174,7 @@ describe('prime — startup staging + key_version polling', () => {
     const wireValue = await encryptUnder(deks.get('0')!.dek, '0', 'still readable')
 
     // Server-side AK rotation: the SAME DEK re-wrapped under a NEW AK (mirrors
-    // rotateAK: unwrap extractable under old AK, wrap under new), key_version 2.
+    // rotateAccountKey: unwrap extractable under old AK, wrap under new), key_version 2.
     const newAK = await generateAK()
     const rewrappedDEK0 = await wrapDEK(await unwrapDEK(deks.get('0')!.wrappedKey, ak, true), newAK)
 

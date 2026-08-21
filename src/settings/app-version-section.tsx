@@ -6,8 +6,10 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { useDesktopUpdate, type UpdateErrorPhase, type UpdateStatus } from '@/hooks/use-desktop-update'
+import { useWebAppUpdate, type WebUpdateStatus } from '@/hooks/use-web-app-update'
 import { downloadLinks } from '@/lib/download-links'
 import { getPlatform, isDesktop, isMobile, isTauri } from '@/lib/platform'
+import { isServiceWorkerSupported } from '@/lib/service-worker'
 
 const errorPrefix = (phase: UpdateErrorPhase | null): string => {
   switch (phase) {
@@ -50,14 +52,41 @@ const desktopStatusText = (
   }
 }
 
+/** Status line for the web/PWA channel. There is no download phase: the service
+ *  worker has already fetched the new build, so it is only ever "current",
+ *  "checking", or "waiting for you to reload". */
+const webStatusText = (status: WebUpdateStatus, ready: boolean): string => {
+  if (!ready) {
+    return 'Preparing the update channel...'
+  }
+  switch (status) {
+    case 'checking':
+      return 'Checking for updates...'
+    case 'available':
+      return 'A new version is ready. Reload to apply it.'
+    case 'idle':
+      return "You're on the latest version."
+  }
+}
+
 export const AppVersionSection = () => {
   const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
   const desktop = isDesktop()
   const mobile = isMobile()
   const showCheckButton = isTauri() && (desktop || mobile)
+  // Browsers (including an installed PWA) update through the service worker.
+  const web = !isTauri() && isServiceWorkerSupported()
 
   const { status, update, error, errorPhase, downloadProgress, checkForUpdates } = useDesktopUpdate()
   const checkDisabled = desktop && (status === 'checking' || status === 'downloading' || status === 'ready')
+
+  const {
+    status: webStatus,
+    ready: webReady,
+    updateAvailable: webUpdateAvailable,
+    applyUpdate: applyWebUpdate,
+    checkForUpdates: checkForWebUpdates,
+  } = useWebAppUpdate()
 
   const handleDesktopCheck = () => {
     checkForUpdates()
@@ -95,6 +124,28 @@ export const AppVersionSection = () => {
                 onClick={desktop ? handleDesktopCheck : handleMobileCheck}
               >
                 {desktop && status === 'checking' ? 'Checking...' : 'Check for updates'}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {web && (
+          <>
+            <div className="h-px bg-border -mx-6" />
+
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Updates</label>
+              <p className="text-sm text-muted-foreground">{webStatusText(webStatus, webReady)}</p>
+              <Button
+                variant={webUpdateAvailable ? 'default' : 'secondary'}
+                disabled={!webReady || webStatus === 'checking'}
+                onClick={webUpdateAvailable ? applyWebUpdate : () => void checkForWebUpdates()}
+              >
+                {webUpdateAvailable
+                  ? 'Reload to update'
+                  : webStatus === 'checking'
+                    ? 'Checking...'
+                    : 'Check for updates'}
               </Button>
             </div>
           </>

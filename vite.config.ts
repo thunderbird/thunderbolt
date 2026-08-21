@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
+import { VitePWA } from 'vite-plugin-pwa'
 import pkg from './package.json' with { type: 'json' }
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
@@ -66,6 +67,76 @@ export default defineConfig({
     },
     tailwindcss(),
     react(),
+    // Installable web app (home screen / desktop install) plus the update
+    // channel behind the "Update available" prompt in Settings → About.
+    //
+    // Tauri builds run this same `vite build`, and a service worker inside the
+    // webview only shadows assets the native shell already serves locally — so
+    // the plugin is switched off whenever Tauri is driving the build. Keeping the
+    // plugin in the array (rather than conditionally adding it) means
+    // `virtual:pwa-register/react` still resolves, to a no-op stub.
+    VitePWA({
+      disable: !!process.env.TAURI_ENV_PLATFORM,
+      // We render our own prompt, so a waiting worker must NOT auto-activate:
+      // swapping the bundle under a live session would leave the running React
+      // tree calling chunks that no longer exist.
+      registerType: 'prompt',
+      // Registered from React (`use-app-update.ts`) instead of an injected
+      // inline script, so the prompt and the registration share one lifecycle.
+      injectRegister: null,
+      // Vite emits hashed filenames, so a plain `dist` glob is safe to precache.
+      includeAssets: ['favicon.ico', 'favicon.svg', 'favicon-32x32.png', 'apple-touch-icon.png'],
+      manifest: {
+        name: 'Thunderbolt',
+        short_name: 'Thunderbolt',
+        description: 'Thunderbird’s AI-native email and chat client.',
+        // Both must stay inside `scope`, or the browser refuses to install.
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        // Matches the pre-paint background in index.html so the splash screen
+        // does not flash a different colour than the app it hands off to.
+        theme_color: '#1b1e1f',
+        background_color: '#1b1e1f',
+        icons: [
+          { src: '/pwa-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          // Separate opaque, padded artwork: Android crops `any` icons to its
+          // own mask shape, which would clip a transparent edge-to-edge bolt.
+          { src: '/pwa-icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+      workbox: {
+        // Precache the app SHELL ONLY — deliberately not `**/*`.
+        //
+        // `dist` is ~36MB: 17MB of that is wa-sqlite / ACP wasm (each blob
+        // emitted twice, once under `assets/` and once under `@powersync/`), plus
+        // multi-MB lazy route chunks like agent-core, maplibre and pdf.worker. A
+        // `**/*` glob precaches 263 entries / 31MB, which every install would
+        // download up front over cellular before the app was usable.
+        //
+        // The shell is ~2.3MB and is all that is needed to boot and to make the
+        // app installable. Lazy chunks and wasm stay on the network, where
+        // nginx's `immutable, 1y` on /assets/ (hashed filenames) already makes
+        // them cheap on repeat visits. That also means this is NOT a
+        // work-offline app: it needs the backend for auth and inference anyway.
+        globPatterns: ['index.html', 'assets/entry-*.js', 'assets/index-*.css'],
+        // The entry chunk alone is ~2MB; the 2MiB default would silently skip it.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        cleanupOutdatedCaches: true,
+        navigateFallback: '/index.html',
+        // The API is same-origin in the compose/nginx topology, so without these
+        // the navigation fallback would answer API and well-known requests with
+        // the SPA shell. SSE streams (`/v1/.../chat`) must reach the network
+        // untouched.
+        navigateFallbackDenylist: [/^\/v1\//, /^\/\.well-known\//],
+        // No `runtimeCaching`: every API response here is user data or an auth
+        // exchange, and a stale cached answer is worse than an offline error.
+        // Precached app-shell assets are already immutable-by-hash.
+      },
+      // A dev-mode service worker caches Vite's unbundled modules and fights HMR.
+      devOptions: { enabled: false },
+    }),
     // Include the bundle analyzer plugin only when explicitly requested.
     ...(shouldAnalyze
       ? [

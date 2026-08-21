@@ -41,6 +41,7 @@ test.describe.serial('PowerSync E2EE first device', () => {
       wrappedKeyIds: ['0'],
       trustedDeviceCount: 1,
       envelopeCount: 1,
+      hasRecoverySlot: true,
     })
 
     await enableTasks(page)

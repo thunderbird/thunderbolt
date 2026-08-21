@@ -40,6 +40,7 @@ import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import {
   type ChallengeOperation,
+  type RecoverySlotRequest,
   type WrappedKeyEntry,
   challengeNonceTtlMs,
   challengeOperations,
@@ -178,6 +179,23 @@ const assertUpgradeKeyCoverage = (wrappedKeys: WrappedKeyEntry[], primaryKeyId: 
   }
 }
 
+/**
+ * Recovery-slot coverage (AK rotation + upgrade): the phrase-derived hybrid
+ * public keys and the AK wrapped to them must arrive as a complete triple. A
+ * partial write would leave the account with a recovery slot no phrase can
+ * open — the AK becomes unrecoverable the moment the last device is lost.
+ * Submitting public keys that DIFFER from the stored ones is legal: that is an
+ * explicit phrase change, gated by the 'rotate' challenge proof.
+ * Throws BadRequestError unless all three are present.
+ */
+const assertRecoveryCoverage = (recovery: RecoverySlotRequest): void => {
+  if (!recovery.recoveryEcdhPublicKey || !recovery.recoveryMlkemPublicKey || !recovery.recoveryWrappedAK) {
+    throw new BadRequestError(
+      'recoveryEcdhPublicKey, recoveryMlkemPublicKey and recoveryWrappedAK must be supplied together',
+    )
+  }
+}
+
 /** Map a thrown BadRequest/Forbidden/SchemeConflict error onto the response; rethrow anything else. */
 const mapEncryptionError = (err: unknown, set: { status?: number | string }): { error: string } => {
   if (err instanceof BadRequestError) {
@@ -306,8 +324,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
     // Two shapes:
     // 1. First-device bootstrap — NO encryption metadata exists, caller==target:
     //    requires the full atomic v2 setup payload (canary + signing key +
-    //    kdf_salt + initial wrapped keyring incl key_id "0"). Everything is
-    //    created in one transaction so half-configured accounts cannot exist.
+    //    kdf_salt + recovery slot + initial wrapped keyring incl key_id "0").
+    //    Everything is created in one transaction so half-configured accounts
+    //    cannot exist.
     // 2. Approval / self-recovery — metadata exists: requires a ChallengeProof
     //    (operation 'approve'). A pre-flip v1 account (NULL signing key) fails
     //    verification closed and must go through POST /encryption/upgrade first;
@@ -317,7 +336,18 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       async ({ params, body, request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const { deviceId } = params
-        const { wrappedCK, proof, canaryIv, canaryCtext, signingPublicKey, kdfSalt, wrappedKeys } = body
+        const {
+          wrappedCK,
+          proof,
+          canaryIv,
+          canaryCtext,
+          signingPublicKey,
+          kdfSalt,
+          wrappedKeys,
+          recoveryEcdhPublicKey,
+          recoveryMlkemPublicKey,
+          recoveryWrappedAK,
+        } = body
 
         // Pre-transaction fast-path rejection; re-checked inside tx to close race window.
         const device = await getDeviceById(database, deviceId)
@@ -359,9 +389,18 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               if (envelopesExist || callerDeviceId !== deviceId) {
                 throw new ForbiddenError('Encryption is not set up — only first-device bootstrap can store envelopes')
               }
-              if (!canaryIv || !canaryCtext || !signingPublicKey || !kdfSalt || !wrappedKeys?.length) {
+              if (
+                !canaryIv ||
+                !canaryCtext ||
+                !signingPublicKey ||
+                !kdfSalt ||
+                !wrappedKeys?.length ||
+                !recoveryEcdhPublicKey ||
+                !recoveryMlkemPublicKey ||
+                !recoveryWrappedAK
+              ) {
                 throw new BadRequestError(
-                  'First device bootstrap requires canaryIv, canaryCtext, signingPublicKey, kdfSalt, and wrappedKeys',
+                  'First device bootstrap requires canaryIv, canaryCtext, signingPublicKey, kdfSalt, wrappedKeys, recoveryEcdhPublicKey, recoveryMlkemPublicKey, and recoveryWrappedAK',
                 )
               }
               if (!wrappedKeys.some((entry) => entry.keyId === initialKeyId)) {
@@ -373,6 +412,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
                 canaryCtext,
                 signingPublicKey,
                 kdfSalt,
+                recoveryEcdhPublicKey,
+                recoveryMlkemPublicKey,
+                recoveryWrappedAk: recoveryWrappedAK,
               })
               for (const entry of wrappedKeys) {
                 await insertWrappedKey(txDb, { userId, keyId: entry.keyId, wrappedKey: entry.wrappedKey })
@@ -441,6 +483,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           signingPublicKey: t.Optional(t.String({ maxLength: 500 })),
           kdfSalt: t.Optional(t.String({ maxLength: 500 })),
           wrappedKeys: t.Optional(t.Array(wrappedKeyEntrySchema, { maxItems: 100 })),
+          recoveryEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
+          recoveryMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
+          recoveryWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
         }),
       },
     )
@@ -506,6 +551,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           canary_ctext: metadata.canaryCtext,
           kdf_salt: metadata.kdfSalt,
           signing_public_key: metadata.signingPublicKey,
+          recovery_ecdh_public_key: metadata.recoveryEcdhPublicKey,
+          recovery_mlkem_public_key: metadata.recoveryMlkemPublicKey,
+          recovery_wrapped_ak: metadata.recoveryWrappedAk,
           key_version: metadata.keyVersion,
           primary_key_id: metadata.primaryKeyId,
           scheme_version: metadata.schemeVersion,
@@ -668,11 +716,16 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         query: t.Object({ operation: t.String({ maxLength: 20 }) }),
       },
     )
-    // Atomic AK rotation: replace every trusted device's envelope, re-wrap EVERY
-    // key_id on the keyring under the new AK, replace canary + signing key +
-    // kdf_salt, and bump key_version — one all-or-nothing transaction under the
-    // per-user advisory lock (shared with envelope approval, upgrade and revoke,
-    // so rotation can't race them). Gated by a 'rotate' challenge signature.
+    // Atomic AK rotation: replace every trusted device's envelope, re-anchor the
+    // recovery slot, re-wrap EVERY key_id on the keyring under the new AK,
+    // replace canary + signing key + kdf_salt, and bump key_version — one
+    // all-or-nothing transaction under the per-user advisory lock (shared with
+    // envelope approval, upgrade and revoke, so rotation can't race them). Gated
+    // by a 'rotate' challenge signature.
+    //
+    // The recovery public keys normally match the stored ones (a silent rotation
+    // keeps the user's phrase working); submitting DIFFERENT ones is the explicit
+    // phrase-change path and is gated by the same proof.
     .post(
       '/encryption/rotate',
       async ({ body, request, set, user: sessionUser }) => {
@@ -706,6 +759,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             )
             const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
             assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
+            assertRecoveryCoverage(body)
 
             for (const envelope of body.envelopes) {
               await upsertEnvelope(txDb, { deviceId: envelope.deviceId, userId, wrappedCk: envelope.wrappedCK })
@@ -719,6 +773,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               canaryCtext: body.canaryCtext,
               signingPublicKey: body.signingPublicKey,
               kdfSalt: body.kdfSalt,
+              recoveryEcdhPublicKey: body.recoveryEcdhPublicKey,
+              recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
+              recoveryWrappedAk: body.recoveryWrappedAK,
             })
             const newVersion = await bumpKeyVersion(txDb, userId)
             if (newVersion == null) {
@@ -742,13 +799,17 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           canaryCtext: t.String({ maxLength: 500 }),
           signingPublicKey: t.String({ maxLength: 500 }),
           kdfSalt: t.String({ maxLength: 500 }),
+          recoveryEcdhPublicKey: t.String({ maxLength: 200 }),
+          recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
+          recoveryWrappedAK: t.String({ maxLength: 2200 }),
         }),
       },
     )
     // v1→v2 migration (WS1). The migrator absorbs the legacy CK into the keyring
     // as the reserved read-only `"v1"` slot AND mints a fresh primary DEK `"0"`,
-    // registers the signing key + kdf_salt, re-encrypts the canary under the new
-    // primary DEK, writes a new-AK envelope for every trusted device, and flips
+    // registers the signing key + kdf_salt + recovery slot, re-encrypts the canary
+    // under the new primary DEK, writes a new-AK envelope for every trusted
+    // device and for the phrase-derived recovery keypair, and flips
     // scheme_version 1→2 atomically (CAS) as the LAST step — one all-or-nothing
     // transaction under the per-user advisory lock.
     //
@@ -795,6 +856,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             assertUpgradeKeyCoverage(body.wrappedKeys, body.primaryKeyId)
             const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
             assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
+            assertRecoveryCoverage(body)
 
             for (const entry of body.wrappedKeys) {
               await insertWrappedKey(txDb, { userId, keyId: entry.keyId, wrappedKey: entry.wrappedKey })
@@ -812,6 +874,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               signingPublicKey: body.signingPublicKey,
               kdfSalt: body.kdfSalt,
               primaryKeyId: body.primaryKeyId,
+              recoveryEcdhPublicKey: body.recoveryEcdhPublicKey,
+              recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
+              recoveryWrappedAk: body.recoveryWrappedAK,
             })
             if (!flipped) {
               throw new SchemeConflictError('Account already migrated to scheme v2')
@@ -836,6 +901,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           canaryCtext: t.String({ maxLength: 500 }),
           signingPublicKey: t.String({ maxLength: 500 }),
           kdfSalt: t.String({ maxLength: 500 }),
+          recoveryEcdhPublicKey: t.String({ maxLength: 200 }),
+          recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
+          recoveryWrappedAK: t.String({ maxLength: 2200 }),
         }),
       },
     )

@@ -439,17 +439,35 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }
   }
 
+  /** How many operations are waiting to upload. */
+  private async countPendingCrud(powerSync: PowerSyncDatabase): Promise<number> {
+    const rows = await powerSync.getAll<{ count: number }>('SELECT COUNT(*) AS count FROM ps_crud')
+    return rows[0]?.count ?? 0
+  }
+
   /**
    * Clear pending CRUD operations from PowerSync queue.
    * Useful for returning users to avoid conflicts with cloud data.
+   *
+   * Every exit reports itself. This is the only thing standing between a
+   * returning device's local writes — including the bundle defaults that
+   * `reconcileDefaults` seeds on a pre-sign-in boot — and the account they
+   * would overwrite on the first connect. When it silently does nothing, the
+   * result is an account whose settings/models/skills revert to defaults with
+   * no error anywhere, so "did it run, and did it delete anything" has to be
+   * answerable from a log alone.
    */
   async clearPendingCrudOperations(): Promise<void> {
     if (!this.powerSync) {
+      console.warn('[PowerSync] Pending-CRUD reset skipped: database not initialized')
       return
     }
 
     try {
+      const before = await this.countPendingCrud(this.powerSync)
       await this.powerSync.execute('DELETE FROM ps_crud')
+      const after = await this.countPendingCrud(this.powerSync)
+      console.info(`[PowerSync] Pending-CRUD reset: ${before} → ${after} operations`)
     } catch (error) {
       console.warn('Failed to clear pending CRUD operations:', error)
     }

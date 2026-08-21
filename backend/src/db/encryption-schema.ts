@@ -40,17 +40,25 @@ export const envelopesTable = pgTable(
 
 /**
  * One row per user account. Stores the canary (v1: encrypted under CK; v2:
- * re-encrypted under the primary DEK), the KDF salt for recovery-seed → AK
- * derivation, the ECDSA P-256 public key for challenge-response verification,
- * and the keyring pointers polled by clients (`key_version` bumps on AK
- * rotation; `primary_key_id` moves on DEK rotation; `scheme_version` flips
- * 1→2 on migration).
+ * re-encrypted under the primary DEK), the KDF salt for recovery-seed →
+ * recovery-keypair derivation, the ECDSA P-256 public key for challenge-response
+ * verification, the recovery slot (see below), and the keyring pointers polled
+ * by clients (`key_version` bumps on AK rotation; `primary_key_id` moves on DEK
+ * rotation; `scheme_version` flips 1→2 on migration).
+ *
+ * The recovery phrase is a VIRTUAL DEVICE: the seed deterministically derives a
+ * hybrid keypair whose PUBLIC halves live in `recovery_ecdh_public_key` /
+ * `recovery_mlkem_public_key`, and `recovery_wrapped_ak` is the AK wrapped to
+ * them exactly like a device envelope. That is what lets any trusted device
+ * rotate the AK (wrapping needs only public keys) without invalidating the
+ * user's phrase. All three are nullable: a pre-flip (scheme 1) account has none
+ * of them until it upgrades.
  *
  * `canary_secret_hash` is RETAINED (Decision B): it is the v1 CK-possession
  * anchor consumed by `/upgrade` — the migrator CK-decrypts `canary_ctext` to
  * recover `canarySecret` and the server verifies `hash(canarySecret)` against
  * this column before accepting the new AK. `signing_public_key`/`kdf_salt` are
- * nullable: a pre-flip (scheme 1) account has neither until it upgrades.
+ * nullable for the same pre-flip reason.
  */
 export const encryptionMetadataTable = pgTable('encryption_metadata', {
   userId: text('user_id')
@@ -61,6 +69,9 @@ export const encryptionMetadataTable = pgTable('encryption_metadata', {
   canarySecretHash: text('canary_secret_hash'),
   signingPublicKey: text('signing_public_key'),
   kdfSalt: text('kdf_salt'),
+  recoveryEcdhPublicKey: text('recovery_ecdh_public_key'),
+  recoveryMlkemPublicKey: text('recovery_mlkem_public_key'),
+  recoveryWrappedAk: text('recovery_wrapped_ak'),
   keyVersion: integer('key_version').default(1).notNull(),
   primaryKeyId: text('primary_key_id').default('0').notNull(),
   schemeVersion: smallint('scheme_version').default(1).notNull(),

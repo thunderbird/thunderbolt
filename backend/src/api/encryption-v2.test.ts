@@ -24,6 +24,13 @@ const signToken = (token: string): string =>
 const counterKey = Symbol.for('encryption-v2-test-runId')
 ;(globalThis as Record<symbol, number>)[counterKey] ??= 0
 
+/** The recovery slot: the phrase-derived hybrid public keys plus the AK wrapped to them. */
+const recoverySlot = {
+  recoveryEcdhPublicKey: 'recovery-ecdh-pk',
+  recoveryMlkemPublicKey: 'recovery-mlkem-pk',
+  recoveryWrappedAK: 'recovery-wrapped-ak',
+}
+
 /** SHA-256 hex — matches the backend's hashCanarySecret (D1 possession anchor). */
 const hashSecret = async (secret: string): Promise<string> => {
   const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret))
@@ -89,7 +96,11 @@ describe('Encryption API (v2)', () => {
     await db.insert(wrappedKeysTable).values({ userId, keyId, wrappedKey, createdAt: now, updatedAt: now })
   }
 
-  /** Insert a fully set-up v2 encryption_metadata row (scheme 2, with a signing key). */
+  /**
+   * Insert a fully set-up v2 encryption_metadata row (scheme 2, with a signing
+   * key and a recovery slot). `signingKeyNull` models a pre-flip v1 account,
+   * which has neither a signing key nor a recovery slot.
+   */
   const insertV2Metadata = async (
     userId: string,
     signingPublicKey: string,
@@ -103,6 +114,9 @@ describe('Encryption API (v2)', () => {
       canarySecretHash: canarySecretHash ?? null,
       signingPublicKey: signingKeyNull ? null : signingPublicKey,
       kdfSalt: 'salt-test',
+      recoveryEcdhPublicKey: signingKeyNull ? null : recoverySlot.recoveryEcdhPublicKey,
+      recoveryMlkemPublicKey: signingKeyNull ? null : recoverySlot.recoveryMlkemPublicKey,
+      recoveryWrappedAk: signingKeyNull ? null : recoverySlot.recoveryWrappedAK,
       keyVersion: 1,
       primaryKeyId: initialKeyId,
       schemeVersion,
@@ -174,6 +188,7 @@ describe('Encryption API (v2)', () => {
             signingPublicKey,
             kdfSalt: 'boot-salt',
             wrappedKeys: [{ keyId: initialKeyId, wrappedKey: 'wrapped-dek-0' }],
+            ...recoverySlot,
           }),
         }),
       )
@@ -188,6 +203,9 @@ describe('Encryption API (v2)', () => {
       expect(metadata.schemeVersion).toBe(2)
       expect(metadata.signingPublicKey).toBe(signingPublicKey)
       expect(metadata.kdfSalt).toBe('boot-salt')
+      expect(metadata.recoveryEcdhPublicKey).toBe(recoverySlot.recoveryEcdhPublicKey)
+      expect(metadata.recoveryMlkemPublicKey).toBe(recoverySlot.recoveryMlkemPublicKey)
+      expect(metadata.recoveryWrappedAk).toBe(recoverySlot.recoveryWrappedAK)
       const [key] = await db
         .select()
         .from(wrappedKeysTable)
@@ -211,12 +229,50 @@ describe('Encryption API (v2)', () => {
             signingPublicKey: await exportSigningPublicKey(keypair),
             kdfSalt: 'salt',
             wrappedKeys: [{ keyId: 'ws1', wrappedKey: 'wrapped-ws' }],
+            ...recoverySlot,
           }),
         }),
       )
 
       expect(response.status).toBe(400)
       expect((await response.json()).error).toContain(initialKeyId)
+    })
+
+    it.each([
+      ['the whole recovery triple', {}],
+      ['recoveryEcdhPublicKey', { recoveryMlkemPublicKey: 'm', recoveryWrappedAK: 'w' }],
+      ['recoveryMlkemPublicKey', { recoveryEcdhPublicKey: 'e', recoveryWrappedAK: 'w' }],
+      ['recoveryWrappedAK', { recoveryEcdhPublicKey: 'e', recoveryMlkemPublicKey: 'm' }],
+    ])('rejects bootstrap missing %s — no account may exist without a usable recovery slot', async (_label, slot) => {
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          body: JSON.stringify({
+            wrappedCK: 'wrapped-ak',
+            canaryIv: 'iv',
+            canaryCtext: 'ctext',
+            signingPublicKey: await exportSigningPublicKey(keypair),
+            kdfSalt: 'salt',
+            wrappedKeys: [{ keyId: initialKeyId, wrappedKey: 'wrapped-dek-0' }],
+            ...slot,
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toContain('recoveryEcdhPublicKey')
+
+      // Nothing half-configured was written.
+      const rows = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(rows).toHaveLength(0)
     })
 
     it('rejects bootstrap when metadata already exists without a proof', async () => {
@@ -634,6 +690,7 @@ describe('Encryption API (v2)', () => {
       canaryCtext: 'new-ctext',
       signingPublicKey: await exportSigningPublicKey(keypair),
       kdfSalt: 'new-salt',
+      ...recoverySlot,
     })
 
     it('re-wraps the full keyring and bumps key_version', async () => {
@@ -736,6 +793,85 @@ describe('Encryption API (v2)', () => {
       expect(res.status).toBe(400)
       expect((await res.json()).error).toContain('every envelope-capable device')
     })
+
+    it('re-anchors the recovery slot to the same phrase on a silent rotation', async () => {
+      const keypair = await setupRotatable([initialKeyId])
+      const body = await rotateBody(keypair, [initialKeyId])
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({ ...body, recoveryWrappedAK: 'recovery-wrapped-new-ak' }),
+        }),
+      )
+      expect(res.status).toBe(200)
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(metadata.recoveryEcdhPublicKey).toBe(recoverySlot.recoveryEcdhPublicKey)
+      expect(metadata.recoveryWrappedAk).toBe('recovery-wrapped-new-ak')
+    })
+
+    it('accepts CHANGED recovery public keys — that is an explicit phrase change', async () => {
+      const keypair = await setupRotatable([initialKeyId])
+      const body = await rotateBody(keypair, [initialKeyId])
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({
+            ...body,
+            recoveryEcdhPublicKey: 'fresh-phrase-ecdh',
+            recoveryMlkemPublicKey: 'fresh-phrase-mlkem',
+            recoveryWrappedAK: 'fresh-phrase-wrapped-ak',
+          }),
+        }),
+      )
+      expect(res.status).toBe(200)
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(metadata.recoveryEcdhPublicKey).toBe('fresh-phrase-ecdh')
+      expect(metadata.recoveryMlkemPublicKey).toBe('fresh-phrase-mlkem')
+      expect(metadata.recoveryWrappedAk).toBe('fresh-phrase-wrapped-ak')
+    })
+
+    it.each(['recoveryEcdhPublicKey', 'recoveryMlkemPublicKey', 'recoveryWrappedAK'] as const)(
+      'rejects a rotation with a blank %s (partial recovery triple)',
+      async (field) => {
+        const keypair = await setupRotatable([initialKeyId])
+        const body = await rotateBody(keypair, [initialKeyId])
+        const res = await app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify({ ...body, [field]: '' }),
+          }),
+        )
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain('must be supplied together')
+      },
+    )
+
+    it.each(['recoveryEcdhPublicKey', 'recoveryMlkemPublicKey', 'recoveryWrappedAK'] as const)(
+      'rejects a rotation omitting %s entirely',
+      async (field) => {
+        const keypair = await setupRotatable([initialKeyId])
+        const { [field]: _omitted, ...body } = await rotateBody(keypair, [initialKeyId])
+        const res = await app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(body),
+          }),
+        )
+        expect(res.status).toBe(422)
+      },
+    )
   })
 
   // ─── v1→v2 upgrade ──────────────────────────────────────────────────
@@ -769,6 +905,7 @@ describe('Encryption API (v2)', () => {
         canaryCtext: 'v2-ctext',
         signingPublicKey: await exportSigningPublicKey(keypair),
         kdfSalt: 'v2-salt',
+        ...recoverySlot,
         ...overrides,
       }
     }
@@ -793,6 +930,9 @@ describe('Encryption API (v2)', () => {
         .where(eq(encryptionMetadataTable.userId, p('u')))
       expect(metadata.schemeVersion).toBe(2)
       expect(metadata.signingPublicKey).not.toBeNull()
+      expect(metadata.recoveryEcdhPublicKey).toBe(recoverySlot.recoveryEcdhPublicKey)
+      expect(metadata.recoveryMlkemPublicKey).toBe(recoverySlot.recoveryMlkemPublicKey)
+      expect(metadata.recoveryWrappedAk).toBe(recoverySlot.recoveryWrappedAK)
       const keys = await db
         .select()
         .from(wrappedKeysTable)
@@ -902,6 +1042,19 @@ describe('Encryption API (v2)', () => {
       expect(res.status).toBe(403)
       expect((await res.json()).error).toBe('Invalid or expired upgrade nonce')
     })
+
+    it('rejects an upgrade with a partial recovery triple', async () => {
+      await setupV1()
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(await upgradeBody({ recoveryWrappedAK: '' })),
+        }),
+      )
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toContain('must be supplied together')
+    })
   })
 
   // ─── deny (challenge proof) ─────────────────────────────────────────
@@ -967,6 +1120,22 @@ describe('Encryption API (v2)', () => {
       expect(body.key_version).toBe(1)
       expect(body.signing_public_key).toBe(signingPublicKey)
       expect(body.kdf_salt).toBe('salt-test')
+      expect(body.recovery_ecdh_public_key).toBe(recoverySlot.recoveryEcdhPublicKey)
+      expect(body.recovery_mlkem_public_key).toBe(recoverySlot.recoveryMlkemPublicKey)
+      expect(body.recovery_wrapped_ak).toBe(recoverySlot.recoveryWrappedAK)
+    })
+
+    it('returns null recovery fields for a pre-flip v1 account', async () => {
+      await createUserAndSession(p('u'), p('tok'))
+      await insertV2Metadata(p('u'), 'unused', { schemeVersion: 1, signingKeyNull: true })
+
+      const res = await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.scheme_version).toBe(1)
+      expect(body.recovery_ecdh_public_key).toBeNull()
+      expect(body.recovery_mlkem_public_key).toBeNull()
+      expect(body.recovery_wrapped_ak).toBeNull()
     })
   })
 })

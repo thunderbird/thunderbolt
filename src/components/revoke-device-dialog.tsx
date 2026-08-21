@@ -31,7 +31,7 @@ type RevokeDeviceDialogProps = {
  */
 const descriptions = {
   trusted:
-    'The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. If encryption is set up, your keys will be rotated and a new recovery phrase will be shown for you to save.',
+    'The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working.',
   pending: 'This will deny the device access to your encrypted data. The device will need to set up sync again.',
 }
 

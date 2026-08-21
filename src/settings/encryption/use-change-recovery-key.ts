@@ -4,7 +4,7 @@
 
 import { useReducer } from 'react'
 import { useHttpClient, type HttpClient } from '@/contexts'
-import { rotateAK, RotationStaleError } from '@/services/encryption'
+import { changeRecoveryPhrase, RotationStaleError } from '@/services/encryption'
 
 type ChangeRecoveryKeyState = {
   /** idle → confirming (dialog open) → display (new phrase shown) → idle */
@@ -52,10 +52,11 @@ export const reducer = (state: ChangeRecoveryKeyState, action: ChangeRecoveryKey
 
 /**
  * State machine for the "Change recovery phrase" settings action: confirm →
- * rotate the Account Key (`rotateAK`) → display the NEW 24-word phrase behind
- * the saved-it confirmation gate. `rotate` is a dependency seam for tests.
+ * rotate the Account Key and re-anchor the recovery slot to a freshly minted
+ * phrase (`changeRecoveryPhrase`) → display the NEW 24-word phrase behind the
+ * saved-it confirmation gate. `rotate` is a dependency seam for tests.
  */
-export const useChangeRecoveryKey = (rotate: (httpClient: HttpClient) => Promise<string> = rotateAK) => {
+export const useChangeRecoveryKey = (rotate: (httpClient: HttpClient) => Promise<string> = changeRecoveryPhrase) => {
   const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(reducer, initialState)
 

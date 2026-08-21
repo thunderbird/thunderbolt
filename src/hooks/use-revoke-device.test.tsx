@@ -35,32 +35,31 @@ describe('useRevokeDevice', () => {
 
   afterEach(cleanup)
 
-  it('revokes-and-rotates and resolves with the new phrase when E2EE is ready', async () => {
+  it('revokes-and-rotates silently when E2EE is ready', async () => {
     await storeAK(await generateAK())
     await storeDEK('0', 'd3JhcHBlZA==')
 
     let rotatedFor = ''
-    const revokeAndRotate = async (_client: HttpClient, deviceId: string): Promise<string> => {
+    const revokeAndRotate = async (_client: HttpClient, deviceId: string): Promise<void> => {
       rotatedFor = deviceId
-      return 'new phrase'
     }
     const revokePlain = async (): Promise<void> => {
       throw new Error('should not take the plain path')
     }
 
     const { result } = renderHook(() => useRevokeDevice({ revokeAndRotate, revokePlain }), { wrapper })
-    let resolved: string | null = 'unset'
+    let resolved: unknown = 'unset'
     await act(async () => {
       resolved = await result.current.mutateAsync('device-1')
     })
 
     expect(rotatedFor).toBe('device-1')
-    expect(resolved).toBe('new phrase')
+    expect(resolved).toBeUndefined()
   })
 
-  it('falls back to a plain revoke (null phrase) when E2EE is not set up', async () => {
+  it('falls back to a plain revoke when E2EE is not set up', async () => {
     let plainFor = ''
-    const revokeAndRotate = async (): Promise<string> => {
+    const revokeAndRotate = async (): Promise<void> => {
       throw new Error('should not rotate')
     }
     const revokePlain = async (_client: HttpClient, deviceId: string): Promise<void> => {
@@ -68,12 +67,12 @@ describe('useRevokeDevice', () => {
     }
 
     const { result } = renderHook(() => useRevokeDevice({ revokeAndRotate, revokePlain }), { wrapper })
-    let resolved: string | null = 'unset'
+    let resolved: unknown = 'unset'
     await act(async () => {
       resolved = await result.current.mutateAsync('device-2')
     })
 
     expect(plainFor).toBe('device-2')
-    expect(resolved).toBeNull()
+    expect(resolved).toBeUndefined()
   })
 })

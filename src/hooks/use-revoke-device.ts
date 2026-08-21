@@ -16,23 +16,23 @@ type UseRevokeDeviceDeps = {
 /**
  * Mutation for revoking a device, used by the devices settings page.
  *
- * With E2EE v2 active, revocation rotates both the Account Key and the DEK
- * (locking the revoked device out of the keyring) and resolves with the NEW
- * 24-word recovery phrase — the caller MUST display it (the old phrase is
- * dead). Pre-E2EE accounts get a plain revoke (server access cut only) and
- * resolve with null.
+ * With E2EE v2 active, revocation rotates both the Account Key and the DEK,
+ * locking the revoked device out of the keyring. The recovery slot is
+ * re-anchored to the user's existing recovery public keys, so their phrase
+ * keeps working and revocation stays silent. Pre-E2EE accounts get a plain
+ * revoke (server access cut only).
  */
 export const useRevokeDevice = (deps: UseRevokeDeviceDeps = {}) => {
   const httpClient = useHttpClient()
   const { revokeAndRotate = revokeDeviceAndRotate, revokePlain = revokeDeviceWithProof } = deps
 
   return useMutation({
-    mutationFn: async (deviceId: string): Promise<string | null> => {
+    mutationFn: async (deviceId: string): Promise<void> => {
       if (await isE2eeReady()) {
-        return revokeAndRotate(httpClient, deviceId)
+        await revokeAndRotate(httpClient, deviceId)
+        return
       }
       await revokePlain(httpClient, deviceId)
-      return null
     },
   })
 }

@@ -7,6 +7,7 @@ import { createHandleError } from '@/lib/error-utils'
 import { HttpError } from '@/lib/http'
 import { trackError } from '@/lib/posthog'
 import {
+  generateAK,
   generateKeyPair,
   generateMlKemKeyPair,
   reimportAsNonExtractable,
@@ -31,7 +32,7 @@ import {
   generateRecoverySeed,
   encodeRecoverySeed,
   decodeRecoveryKey,
-  deriveAKFromSeed,
+  deriveRecoveryKeyPairFromSeed,
   generateKdfSalt,
   storeKeyPair,
   getKeyPair,
@@ -77,6 +78,7 @@ import {
   type ChallengeOperation,
   type ChallengeProof,
   type KeyId,
+  type RecoverySlotRequest,
   type WrappedKeyEntry,
 } from '@shared/e2ee-types'
 
@@ -194,6 +196,69 @@ const buildProof = async (
 }
 
 // =============================================================================
+// Recovery slot — the recovery phrase as a virtual device
+// =============================================================================
+
+/**
+ * The phrase-derived hybrid PUBLIC keys an AK is wrapped to. Structurally a
+ * subset of `StoredKeyPair`, so a freshly derived recovery keypair passes
+ * directly; a re-anchor passes keys imported from server metadata.
+ */
+type RecoveryPublicKeys = { ecdhPublicKey: CryptoKey; mlkemPublicKey: Uint8Array }
+
+/**
+ * Wrap `ak` for the recovery phrase's virtual device. Wrapping needs only the
+ * public halves, which is what lets any trusted device rotate the AK without
+ * ever seeing the phrase.
+ */
+const buildRecoverySlot = async (ak: CryptoKey, recovery: RecoveryPublicKeys): Promise<RecoverySlotRequest> => ({
+  recoveryEcdhPublicKey: await exportPublicKey(recovery.ecdhPublicKey),
+  recoveryMlkemPublicKey: exportMlKemPublicKey(recovery.mlkemPublicKey),
+  recoveryWrappedAK: await wrapAK(ak, recovery.ecdhPublicKey, recovery.mlkemPublicKey),
+})
+
+/**
+ * How a write path anchors the recovery slot. `kdfSalt` travels with the plan
+ * because it is what re-derives the keypair from the phrase: minting a new
+ * phrase mints a new salt, and re-anchoring MUST resubmit the stored one.
+ */
+type RecoveryPlan = { kdfSalt: string; publicKeys: RecoveryPublicKeys } & (
+  | { mode: 'keep' }
+  | { mode: 'new'; recoveryPhrase: string }
+)
+
+/** Mint a fresh 24-word phrase and the recovery keypair it derives. */
+const mintRecoveryPlan = async (): Promise<Extract<RecoveryPlan, { mode: 'new' }>> => {
+  const seed = generateRecoverySeed()
+  const recoveryPhrase = encodeRecoverySeed(seed)
+  const kdfSalt = generateKdfSalt()
+  return { mode: 'new', recoveryPhrase, kdfSalt, publicKeys: await deriveRecoveryKeyPairFromSeed(seed, kdfSalt) }
+}
+
+/**
+ * Re-anchor to the phrase the user already has: read the stored recovery public
+ * keys and salt so the new AK is wrapped to the SAME virtual device. Null
+ * columns on a v2 account mean the recovery slot was never written — fail loud
+ * rather than silently minting a phrase the user would never be shown.
+ */
+const readStoredRecoveryPlan = async (httpClient: HttpClient): Promise<RecoveryPlan> => {
+  const metadata = await fetchEncryptionMetadata(httpClient)
+  if (!metadata.kdf_salt || !metadata.recovery_ecdh_public_key || !metadata.recovery_mlkem_public_key) {
+    throw new Error(
+      'Account has no recovery slot — the account key cannot be rotated without changing the recovery phrase',
+    )
+  }
+  return {
+    mode: 'keep',
+    kdfSalt: metadata.kdf_salt,
+    publicKeys: {
+      ecdhPublicKey: await importPublicKey(metadata.recovery_ecdh_public_key),
+      mlkemPublicKey: importMlKemPublicKey(metadata.recovery_mlkem_public_key),
+    },
+  }
+}
+
+// =============================================================================
 // Detecting step — register device and store key pair
 // =============================================================================
 
@@ -258,16 +323,16 @@ export const refreshAK = async (httpClient: HttpClient): Promise<void> => {
   await storeAK(ak)
   await stageKeyring(httpClient)
 }
-
 // =============================================================================
 // Flow C — First device setup
 // =============================================================================
 
 /**
- * Complete first device setup: derive the AK from a fresh recovery seed, mint
- * DEK '0', create the canary + signing keypair, and store everything on the
- * server in one atomic bootstrap envelope. Returns the 24-word recovery key.
- * Must be called after `registerThisDevice` (key pair already in IndexedDB).
+ * Complete first device setup: generate a random AK, mint DEK '0', create the
+ * canary + signing keypair, wrap the AK for this device AND for the recovery
+ * phrase's virtual device, and store everything on the server in one atomic
+ * bootstrap envelope. Returns the 24-word recovery key. Must be called after
+ * `registerThisDevice` (key pair already in IndexedDB).
  */
 export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<string> => {
   const keyPair = await getKeyPair()
@@ -275,17 +340,18 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
     throw new Error('Key pair not found — call registerThisDevice first')
   }
 
-  const seed = generateRecoverySeed()
-  const recoveryKey = encodeRecoverySeed(seed)
-  const kdfSalt = generateKdfSalt()
-  // Extractable only transiently — it must be wrapped into the device envelope.
-  const extractableAK = await deriveAKFromSeed(seed, kdfSalt, { extractable: true })
+  const recovery = await mintRecoveryPlan()
+  // Random, not phrase-derived: the phrase is a virtual device that receives its
+  // own envelope, so the AK can later rotate without invalidating it.
+  // Extractable only transiently — it must be wrapped into the two envelopes.
+  const extractableAK = await generateAK(true)
 
   const { dek, wrappedKey } = await mintDEK(extractableAK)
   const { canaryIv, canaryCtext, canarySecret } = await createCanary(dek, getUserId(), initialKeyId)
   const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
 
   const wrappedCK = await wrapAK(extractableAK, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey)
+  const recoverySlot = await buildRecoverySlot(extractableAK, recovery.publicKeys)
   const ak = await reimportAsNonExtractable(extractableAK)
 
   await storeEnvelope(httpClient, {
@@ -294,8 +360,9 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
     canaryIv,
     canaryCtext,
     signingPublicKey: publicKeySpki,
-    kdfSalt,
+    kdfSalt: recovery.kdfSalt,
     wrappedKeys: [{ keyId: initialKeyId, wrappedKey }],
+    ...recoverySlot,
   })
 
   // AK stored LAST so its presence always implies a complete local keyring.
@@ -310,7 +377,7 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   // the account's only recovery credential with no trace that one was owed.
   markRecoveryPhrasePending()
 
-  return recoveryKey
+  return recovery.recoveryPhrase
 }
 
 // =============================================================================
@@ -442,10 +509,11 @@ export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<bo
 // =============================================================================
 
 /**
- * Recover encryption access using the 24-word recovery key: re-derive the AK
- * (seed + server kdf_salt), verify it against the canary via DEK '0', then
- * self-approve this device with a challenge proof (pending devices may fetch
- * wrapped keys and challenges — the signature is the gate).
+ * Recover encryption access using the 24-word recovery key: re-derive the
+ * recovery keypair (seed + server kdf_salt), open the recovery envelope to get
+ * the AK, verify it against the canary via DEK '0', then self-approve this
+ * device with a challenge proof (pending devices may fetch wrapped keys and
+ * challenges — the signature is the gate).
  */
 export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: string): Promise<void> => {
   const seed = decodeRecoveryKey(recoveryPhrase)
@@ -454,6 +522,9 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
   if (
     metadata.signing_public_key == null ||
     metadata.kdf_salt == null ||
+    metadata.recovery_ecdh_public_key == null ||
+    metadata.recovery_mlkem_public_key == null ||
+    metadata.recovery_wrapped_ak == null ||
     !metadata.canary_iv ||
     !metadata.canary_ctext
   ) {
@@ -465,8 +536,23 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
     )
   }
 
-  // Extractable only transiently — it must be wrapped into this device's envelope.
-  const extractableAK = await deriveAKFromSeed(seed, metadata.kdf_salt, { extractable: true })
+  const recoveryKeyPair = await deriveRecoveryKeyPairFromSeed(seed, metadata.kdf_salt)
+
+  // Cheap, offline wrong-phrase check: the derivation is deterministic, so a
+  // correct phrase reproduces the stored public keys byte for byte. Done before
+  // the registration round trip so a typo costs nothing.
+  if (
+    (await exportPublicKey(recoveryKeyPair.ecdhPublicKey)) !== metadata.recovery_ecdh_public_key ||
+    exportMlKemPublicKey(recoveryKeyPair.mlkemPublicKey) !== metadata.recovery_mlkem_public_key
+  ) {
+    throw new ValidationError('Invalid recovery key')
+  }
+
+  const ak = await unwrapAK(
+    metadata.recovery_wrapped_ak,
+    recoveryKeyPair.ecdhPrivateKey,
+    recoveryKeyPair.mlkemSecretKey,
+  )
 
   // Register first: the keys/challenge endpoints require a registered
   // (pending is fine) caller device.
@@ -482,10 +568,10 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
     name: getDeviceDisplayName(),
   })
 
-  // Verify the phrase: unwrap DEK '0' with the derived AK and decrypt the
-  // canary. A wrong seed fails the AES-KW integrity check or the canary.
+  // Verify the recovered AK against the account: unwrap DEK '0' and decrypt the
+  // canary. Catches a recovery slot that no longer matches the live keyring.
   const { wrapped_key: wrappedDEK0 } = await fetchWrappedKey(httpClient, initialKeyId)
-  const dek0 = await unwrapDEK(wrappedDEK0, extractableAK).catch(() => null)
+  const dek0 = await unwrapDEK(wrappedDEK0, ak).catch(() => null)
   if (!dek0) {
     throw new ValidationError('Invalid recovery key')
   }
@@ -500,12 +586,18 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
     throw new ValidationError('Invalid recovery key')
   }
 
-  // Self-approve: wrap the AK for our own keys and prove key possession.
-  const wrappedCK = await wrapAK(extractableAK, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey)
+  // Self-approve: re-wrap the recovery envelope for our own keys (the stored AK
+  // stays non-extractable) and prove key possession.
+  const wrappedCK = await rewrapAK(
+    metadata.recovery_wrapped_ak,
+    recoveryKeyPair.ecdhPrivateKey,
+    recoveryKeyPair.mlkemSecretKey,
+    keyPair.ecdhPublicKey,
+    keyPair.mlkemPublicKey,
+  )
   const proof = await buildProof(httpClient, 'approve', canarySecret)
   await storeEnvelope(httpClient, { deviceId, wrappedCK, proof })
 
-  const ak = await reimportAsNonExtractable(extractableAK)
   await storeAK(ak)
   await stageKeyring(httpClient)
 }
@@ -574,17 +666,26 @@ export type RotateAKOptions = {
   listTrustedDevices?: () => Promise<TrustedDevicePublicKeys[]>
 }
 
+/** Resolves the recovery anchor for one rotation. Invoked AFTER the proof is built. */
+type ResolveRecoveryPlan = () => Promise<RecoveryPlan>
+
 /**
- * Rotate the Account Key (0 rows re-encrypted): derive a new AK from a fresh
- * recovery seed, re-wrap EVERY DEK on the live keyring under it, re-issue an
- * envelope for every live trusted device, and replace the canary + signing
- * keypair — submitted atomically via POST /encryption/rotate.
+ * The one AK rotation (0 rows re-encrypted): generate a random new AK, re-wrap
+ * EVERY DEK on the live keyring under it, re-issue an envelope for every live
+ * trusted device AND for the recovery phrase's virtual device, and replace the
+ * canary + signing keypair — submitted atomically via POST /encryption/rotate.
  *
- * Returns the NEW 24-word recovery key — the UI must show it (the old one is
- * now useless). On a 4xx (stale local state, e.g. a concurrent rotation) the
- * local AK/keyring are refreshed and a retryable `RotationStaleError` is thrown.
+ * `resolveRecovery` decides whether the phrase survives: 'keep' re-anchors to
+ * the stored recovery public keys, 'new' anchors to a freshly minted phrase.
+ *
+ * On a 4xx (stale local state, e.g. a concurrent rotation) the local AK/keyring
+ * are refreshed and a retryable `RotationStaleError` is thrown.
  */
-export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {}): Promise<string> => {
+const runAKRotation = async (
+  httpClient: HttpClient,
+  resolveRecovery: ResolveRecoveryPlan,
+  opts: RotateAKOptions,
+): Promise<void> => {
   // Proof FIRST — it must be signed with the OLD signing key, which the server
   // still holds until the rotate transaction commits.
   const proof = await buildProof(httpClient, 'rotate')
@@ -594,10 +695,10 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
     throw new Error('Account key not found in IndexedDB')
   }
 
-  const newSeed = generateRecoverySeed()
-  const recoveryKey = encodeRecoverySeed(newSeed)
-  const newKdfSalt = generateKdfSalt()
-  const newAK = await deriveAKFromSeed(newSeed, newKdfSalt, { extractable: true })
+  const recovery = await resolveRecovery()
+  // Random and machine-only — wrapping it to the recovery public keys needs no
+  // private key, which is what makes a phrase-preserving rotation possible.
+  const newAK = await generateAK(true)
 
   // Re-wrap the FULL live keyring under the new AK — re-wrapping only a subset
   // would strand the missing key_ids (esp. the `"v1"` slot) under the discarded
@@ -618,8 +719,12 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
   // (a just-revoked device may still look trusted through sync lag).
   const trustedDevices = await (opts.listTrustedDevices ?? (() => listTrustedDeviceKeys(httpClient)))()
   const envelopes = await buildDeviceEnvelopes(newAK, trustedDevices, opts.excludeDeviceIds)
+  const recoverySlot = await buildRecoverySlot(newAK, recovery.publicKeys)
 
-  // New canary under DEK '0' (the DEK itself did not change) + new signing keypair.
+  // New canary under DEK '0' (the DEK itself did not change) + new signing
+  // keypair. Independent of the phrase, so this happens in BOTH modes: a
+  // revoked device knows the old canary secret and could otherwise keep forging
+  // approve/revoke/rotate proofs.
   const { canaryIv, canaryCtext, canarySecret } = await createCanary(dek0, getUserId(), initialKeyId)
   const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
 
@@ -631,7 +736,8 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
       canaryIv,
       canaryCtext,
       signingPublicKey: publicKeySpki,
-      kdfSalt: newKdfSalt,
+      kdfSalt: recovery.kdfSalt,
+      ...recoverySlot,
     })
   } catch (err) {
     if (err instanceof HttpError && err.response.status >= 400 && err.response.status < 500) {
@@ -644,12 +750,13 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
   }
 
   // PAST THE POINT OF NO RETURN. `postRotate` succeeded, so the server has
-  // already replaced the AK, canary and signing key — the caller's previous
-  // recovery phrase is dead. From here nothing may throw: `recoveryKey` is the
-  // only copy of the new phrase in existence, and losing it leaves the account
-  // with a phrase nobody knows. Local staging failing is independently
-  // recoverable (the codec's unwrap-failure path calls `refreshAK` and re-stages
-  // on next use), so it is logged rather than propagated.
+  // already replaced the AK, canary and signing key. In 'new' mode this is what
+  // protects the caller's only copy of the freshly minted phrase: nothing here
+  // may throw, or the account is left with a phrase nobody knows. ('keep' mode
+  // has no unsaved secret to lose, but the same staging failure must not
+  // surface as a rotation failure either.) Local staging failing is
+  // independently recoverable — the codec's unwrap-failure path calls
+  // `refreshAK` and re-stages on next use — so it is logged, not propagated.
   try {
     await storeAK(await reimportAsNonExtractable(newAK))
     await stageWrappedDEKs(wrappedKeys)
@@ -658,9 +765,37 @@ export const rotateAK = async (httpClient: HttpClient, opts: RotateAKOptions = {
     console.error('[e2ee] AK rotation committed but local key staging failed — keys will re-stage on next use:', err)
   }
 
-  markRecoveryPhrasePending()
+  // Only a freshly minted phrase is owed to the user; a silent rotation must not
+  // nag them about a phrase that never changed.
+  if (recovery.mode === 'new') {
+    markRecoveryPhrasePending()
+  }
+}
 
-  return recoveryKey
+/**
+ * Silent AK rotation: re-anchors the recovery slot to the account's EXISTING
+ * recovery public keys, so the user's 24-word phrase keeps working and is never
+ * shown. This is what device revocation uses — rotating the AK is the only step
+ * that cryptographically locks a revoked device out of the keyring.
+ *
+ * Throws if the account has no stored recovery slot (see `readStoredRecoveryPlan`);
+ * throws a retryable `RotationStaleError` when the server rejects a stale payload.
+ */
+export const rotateAccountKey = (httpClient: HttpClient, opts: RotateAKOptions = {}): Promise<void> =>
+  runAKRotation(httpClient, () => readStoredRecoveryPlan(httpClient), opts)
+
+/**
+ * Explicit recovery-phrase change: rotates the AK AND re-anchors the recovery
+ * slot to a freshly minted phrase, so the old phrase stops working. Returns the
+ * NEW 24-word phrase — the caller MUST display it, it exists nowhere else.
+ */
+export const changeRecoveryPhrase = async (
+  httpClient: HttpClient,
+  opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
+): Promise<string> => {
+  const recovery = await mintRecoveryPlan()
+  await runAKRotation(httpClient, async () => recovery, opts)
+  return recovery.recoveryPhrase
 }
 
 /**
@@ -699,13 +834,13 @@ export const rotateDEK = async (httpClient: HttpClient): Promise<KeyId> => {
  * Device revocation double-rotation: cut server access, rotate the DEK (future
  * writes use a key_id the revoked device never held), then rotate the AK
  * (locking it out of the keyring — its envelope is gone and never re-issued).
- * Returns the NEW 24-word recovery key — the UI must show it.
+ * Silent for the user: the recovery slot is re-anchored to the phrase they
+ * already hold, so nothing needs to be shown.
  *
- * ORDER IS LOAD-BEARING. The AK rotation is the only irreversible step for the
- * user: it invalidates the previous recovery phrase, and the new one exists
- * nowhere but this function's return value. So it goes LAST — a failure in any
- * earlier step aborts with the previous phrase still valid, instead of stranding
- * the account between two phrases (the old one dead, the new one never shown).
+ * ORDER IS LOAD-BEARING. The AK rotation is the step that replaces the account's
+ * canary and signing key, and the only one that is unrecoverable from a partial
+ * run — the local AK and the server's diverge until a refresh. So it goes LAST:
+ * a failure in any earlier step aborts with the account fully intact.
  *
  * The revoked device cannot exploit the window where the new DEK is still
  * wrapped under the old AK it holds: revocation already precedes it, and the
@@ -719,10 +854,10 @@ export const revokeDeviceAndRotate = async (
   httpClient: HttpClient,
   deviceId: string,
   opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
-): Promise<string> => {
+): Promise<void> => {
   await revokeDeviceWithProof(httpClient, deviceId)
   await rotateDEK(httpClient)
-  return rotateAK(httpClient, { ...opts, excludeDeviceIds: [deviceId] })
+  await rotateAccountKey(httpClient, { ...opts, excludeDeviceIds: [deviceId] })
 }
 
 // =============================================================================
@@ -748,10 +883,10 @@ export type MigrateToV2Options = {
  * device holds the legacy CK (its v1 envelope unwraps and decrypts the canary),
  * and it is trusted. The migrator:
  *  1. absorbs the CK into the keyring as the reserved `"v1"` slot,
- *  2. mints a fresh primary DEK `"0"` + a fresh AK from a new recovery seed,
+ *  2. mints a fresh primary DEK `"0"` + a fresh random AK + a new recovery phrase,
  *  3. wraps the keyring (both `"0"` and `"v1"`) under the new AK,
- *  4. writes a new-AK envelope for every trusted device,
- *  5. registers the signing key + kdf_salt + new canary,
+ *  4. writes a new-AK envelope for every trusted device and for the phrase,
+ *  5. registers the signing key + kdf_salt + recovery slot + new canary,
  *  6. recovers the D1 possession proof (v1 CK decrypt of the canary, NO AAD),
  *  7. POSTs `/upgrade`, which CAS-flips `scheme_version 1→2` as its last step.
  *
@@ -787,10 +922,8 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   }
 
   // Mint the new AK + fresh primary DEK '0'; absorb the CK as the '"v1"' slot.
-  const seed = generateRecoverySeed()
-  const recoveryKey = encodeRecoverySeed(seed)
-  const kdfSalt = generateKdfSalt()
-  const newAK = await deriveAKFromSeed(seed, kdfSalt, { extractable: true })
+  const recovery = await mintRecoveryPlan()
+  const newAK = await generateAK(true)
 
   const { dek: dek0, wrappedKey: wrappedDek0 } = await mintDEK(newAK)
   const wrappedV1 = await wrapDEK(legacyCK, newAK)
@@ -812,6 +945,7 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     ? trustedDevices
     : [self, ...trustedDevices]
   const envelopes = await buildDeviceEnvelopes(newAK, devicesToCover)
+  const recoverySlot = await buildRecoverySlot(newAK, recovery.publicKeys)
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')
 
@@ -828,7 +962,8 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
       canaryIv,
       canaryCtext,
       signingPublicKey: publicKeySpki,
-      kdfSalt,
+      kdfSalt: recovery.kdfSalt,
+      ...recoverySlot,
     })
 
     // Persist ONLY after the server accepted the flip (crash-safe re-entrancy).
@@ -846,7 +981,7 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
 
     markRecoveryPhrasePending()
 
-    return { outcome: 'migrated', recoveryKey }
+    return { outcome: 'migrated', recoveryKey: recovery.recoveryPhrase }
   } catch (err) {
     // CAS-loss: another device migrated first. The candidate AK/phrase were
     // never persisted — re-classify as a follower and self-serve the winner's

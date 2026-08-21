@@ -61,6 +61,13 @@ const sampleProof: ChallengeProof = {
   deviceId: 'dev-1',
 }
 
+/** The recovery slot triple every v2 write path must carry. */
+const sampleRecoverySlot = {
+  recoveryEcdhPublicKey: 'recovery-ecdh-base64',
+  recoveryMlkemPublicKey: 'recovery-mlkem-base64',
+  recoveryWrappedAK: 'recovery-wrapped-ak-base64',
+}
+
 describe('encryption API client', () => {
   beforeEach(() => {
     localStorage.setItem(deviceIdKey, 'test-device-id')
@@ -100,7 +107,7 @@ describe('encryption API client', () => {
   })
 
   describe('storeEnvelope', () => {
-    it('sends the bootstrap payload (canary + signing key + keyring, no proof)', async () => {
+    it('sends the bootstrap payload (canary + signing key + recovery slot + keyring, no proof)', async () => {
       const { httpClient, getLastRequest } = createCapturingHttpClient({ trusted: true })
 
       await storeEnvelope(httpClient, {
@@ -111,6 +118,7 @@ describe('encryption API client', () => {
         signingPublicKey: 'spki-base64',
         kdfSalt: 'salt-base64',
         wrappedKeys: [{ keyId: '0', wrappedKey: 'dek0-base64' }],
+        ...sampleRecoverySlot,
       })
 
       const req = getLastRequest()
@@ -122,6 +130,7 @@ describe('encryption API client', () => {
         signingPublicKey: 'spki-base64',
         kdfSalt: 'salt-base64',
         wrappedKeys: [{ keyId: '0', wrappedKey: 'dek0-base64' }],
+        ...sampleRecoverySlot,
       })
     })
 
@@ -143,6 +152,9 @@ describe('encryption API client', () => {
         canary_ctext: 'ct',
         kdf_salt: 'salt',
         signing_public_key: 'spki',
+        recovery_ecdh_public_key: 'recovery-ecdh',
+        recovery_mlkem_public_key: 'recovery-mlkem',
+        recovery_wrapped_ak: 'recovery-wrapped-ak',
         key_version: 3,
         primary_key_id: '1',
         scheme_version: 2 as const,
@@ -191,7 +203,7 @@ describe('encryption API client', () => {
       expect(result.wrappedCK).toBe('w')
     })
 
-    it('postRotate posts the full rotation body', async () => {
+    it('postRotate posts the full rotation body including the recovery slot', async () => {
       const { httpClient, getLastRequest } = createCapturingHttpClient({ key_version: 2 })
       const body = {
         proof: { ...sampleProof, operation: 'rotate' as const },
@@ -201,9 +213,11 @@ describe('encryption API client', () => {
         canaryCtext: 'ct',
         signingPublicKey: 'spki',
         kdfSalt: 'salt',
+        ...sampleRecoverySlot,
       }
       const result = await postRotate(httpClient, body)
       expect(getLastRequest().url).toContain('/encryption/rotate')
+      expect(getLastRequest().body).toEqual(body)
       expect(result.key_version).toBe(2)
     })
 
@@ -222,8 +236,10 @@ describe('encryption API client', () => {
         canaryCtext: 'ct',
         signingPublicKey: 'spki',
         kdfSalt: 'salt',
+        ...sampleRecoverySlot,
       })
       expect(getLastRequest().url).toContain('/encryption/upgrade')
+      expect(getLastRequest().body).toMatchObject(sampleRecoverySlot)
       expect(result).toEqual({ key_version: 1, scheme_version: 2 })
     })
   })

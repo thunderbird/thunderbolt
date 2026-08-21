@@ -10,6 +10,7 @@ import type {
   ChallengeResponse,
   EncryptionMetadataResponse,
   KeyId,
+  RecoverySlotRequest,
   RotateRequest,
   RotateResponse,
   UpgradeRequest,
@@ -67,9 +68,11 @@ export const registerDevice = async (
 
 /**
  * First-device bootstrap payload: the full atomic v2 setup (envelope + canary +
- * signing public key + KDF salt + initial wrapped keyring) in one request.
+ * signing public key + KDF salt + recovery slot + initial wrapped keyring) in
+ * one request. The recovery slot is the phrase's "virtual device" envelope —
+ * the backend requires the complete triple on this branch.
  */
-export type BootstrapEnvelopeParams = {
+export type BootstrapEnvelopeParams = RecoverySlotRequest & {
   deviceId: string
   /** Hybrid envelope carrying the AK (field name kept from v1 for wire compatibility). */
   wrappedCK: string
@@ -77,7 +80,7 @@ export type BootstrapEnvelopeParams = {
   canaryCtext: string
   /** Base64 SPKI ECDSA P-256 public key derived from the canary secret. */
   signingPublicKey: string
-  /** Base64 random salt for the recovery-seed KDF. */
+  /** Base64 random salt for the recovery-keypair KDF. */
   kdfSalt: string
   /** Must include key_id '0' (`initialKeyId`). */
   wrappedKeys: WrappedKeyEntry[]
@@ -129,8 +132,8 @@ export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
  * Fetch the encryption metadata (canary, kdf_salt, signing key, key_version,
  * primary_key_id, scheme_version). 404 = encryption not set up. Rides the poll
  * clients already do at unlock — `key_version`/`scheme_version` detect rotations
- * and the v1→v2 flip. `signing_public_key`/`kdf_salt` are null for a pre-flip v1
- * account (scheme_version === 1).
+ * and the v1→v2 flip. `signing_public_key`/`kdf_salt` and the three
+ * `recovery_*` fields are null for a pre-flip v1 account (scheme_version === 1).
  */
 export const fetchEncryptionMetadata = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse> =>
   httpClient.get('encryption/canary').json<EncryptionMetadataResponse>()
@@ -186,18 +189,20 @@ export const fetchChallenge = async (
   httpClient.get('encryption/challenge', { searchParams: { operation } }).json<ChallengeResponse>()
 
 /**
- * Atomic AK rotation: replaces every trusted device's envelope, re-wraps the
- * FULL keyring, replaces canary + signing key + kdf_salt, bumps key_version.
- * The server rejects partial keyring or envelope coverage — build the payload
- * from live server state (see services `rotateAK`).
+ * Atomic AK rotation: replaces every trusted device's envelope, re-anchors the
+ * recovery slot, re-wraps the FULL keyring, replaces canary + signing key +
+ * kdf_salt, bumps key_version. The server rejects partial keyring, envelope or
+ * recovery-slot coverage — build the payload from live server state (see
+ * services `rotateAccountKey` / `changeRecoveryPhrase`).
  */
 export const postRotate = async (httpClient: HttpClient, body: RotateRequest): Promise<RotateResponse> =>
   httpClient.post('encryption/rotate', { json: body }).json<RotateResponse>()
 
 /**
  * v1→v2 migration (WS1): the migrator absorbs the legacy CK as the `"v1"` slot,
- * mints a fresh primary DEK `"0"`, registers the signing key + kdf_salt, writes
- * a new-AK envelope for every trusted device, and CAS-flips scheme_version 1→2
+ * mints a fresh primary DEK `"0"`, registers the signing key + kdf_salt +
+ * recovery slot, writes a new-AK envelope for every trusted device, and
+ * CAS-flips scheme_version 1→2
  * atomically. Gated by the D1 CK-possession proof (not a signature). A second
  * concurrent migrator loses the CAS and receives HTTP 409.
  */

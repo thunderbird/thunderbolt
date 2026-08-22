@@ -103,6 +103,26 @@ export const wrappedKeysTable = pgTable(
 )
 
 /**
+ * Org-escrow envelopes (THU-804 POC) — one row per user, the AK wrapped to the
+ * operator-supplied P-256 escrow public key. The server only ever holds the
+ * public half, so it cannot unwrap what it stores; recovery is a standalone
+ * offline tool run by the operator holding the private key. Upserted inside the
+ * same transaction as setup/rotate/upgrade whenever escrow is enabled.
+ */
+export const orgEnvelopesTable = pgTable('org_envelopes', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  wrappedAk: text('wrapped_ak').notNull(),
+  keyFingerprint: text('key_fingerprint').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at')
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+})
+
+/**
  * Single-use challenge nonces for ECDSA proof-of-key-possession (replaces the
  * v1 static canary secret). A nonce is bound to (user, operation, device) and
  * is consumed exactly once before expiry. Swept periodically (plan Track A A7).

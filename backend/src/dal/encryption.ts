@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType } from '@/db/client'
-import { challengeNoncesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/schema'
+import {
+  challengeNoncesTable,
+  encryptionMetadataTable,
+  envelopesTable,
+  orgEnvelopesTable,
+  wrappedKeysTable,
+} from '@/db/schema'
 import type { ChallengeOperation, KeyId } from '@shared/e2ee-types'
 import { and, eq, gt, lte, or, sql } from 'drizzle-orm'
 
@@ -50,6 +56,33 @@ export const upsertEnvelope = async (
 /** Delete an envelope for a device. Scoped by userId to prevent cross-user deletion. */
 export const deleteEnvelope = async (database: typeof DbType, deviceId: string, userId: string) =>
   database.delete(envelopesTable).where(and(eq(envelopesTable.deviceId, deviceId), eq(envelopesTable.userId, userId)))
+
+// ─── Org-escrow envelopes (THU-804) ───────────────────────────────────
+
+/** Get the org-escrow envelope for a user (the AK wrapped to the operator escrow key). */
+export const getOrgEnvelope = async (database: typeof DbType, userId: string) =>
+  database
+    .select({ wrappedAk: orgEnvelopesTable.wrappedAk, keyFingerprint: orgEnvelopesTable.keyFingerprint })
+    .from(orgEnvelopesTable)
+    .where(eq(orgEnvelopesTable.userId, userId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+/**
+ * Upsert the org-escrow envelope for a user. One row per user — every AK
+ * change (setup / rotate / upgrade) replaces it inside the same transaction.
+ */
+export const upsertOrgEnvelope = async (
+  database: typeof DbType,
+  envelope: { userId: string; wrappedAk: string; keyFingerprint: string },
+) =>
+  database
+    .insert(orgEnvelopesTable)
+    .values(envelope)
+    .onConflictDoUpdate({
+      target: orgEnvelopesTable.userId,
+      set: { wrappedAk: envelope.wrappedAk, keyFingerprint: envelope.keyFingerprint, updatedAt: new Date() },
+    })
 
 // ─── Encryption metadata ──────────────────────────────────────────────
 

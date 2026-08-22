@@ -152,7 +152,7 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createPowerSyncRoutes(auth, settings, database))
-      .use(createEncryptionRoutes(auth, database))
+      .use(createEncryptionRoutes(auth, database, settings))
       .use(createAccountRoutes(auth, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
@@ -184,6 +184,22 @@ const startServer = async () => {
     await runMigrations()
 
     const app = await createApp()
+
+    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7).
+    // No cron infra — a startup sweep plus an hourly interval keeps the table
+    // bounded (nonces have a ~5-minute TTL). Lazily imported to preserve the
+    // "no db init at module load" invariant that keeps tests/CI clean.
+    const { db: nonceDb } = await import('@/db/client')
+    const { deleteExpiredOrConsumedNonces } = await import('@/dal')
+    const sweepChallengeNonces = async () => {
+      try {
+        await deleteExpiredOrConsumedNonces(nonceDb)
+      } catch (err) {
+        log.error({ err }, 'Failed to sweep expired challenge nonces')
+      }
+    }
+    void sweepChallengeNonces()
+    const nonceSweepTimer = setInterval(() => void sweepChallengeNonces(), 60 * 60 * 1000)
 
     const hostname = process.env.HOST
       ? process.env.HOST
@@ -225,12 +241,14 @@ const startServer = async () => {
     // Graceful shutdown
     process.on('SIGINT', async () => {
       tinfoilKeepWarm.stop()
+      clearInterval(nonceSweepTimer)
       log.info('Received SIGINT, shutting down gracefully...')
       process.exit(0)
     })
 
     process.on('SIGTERM', async () => {
       tinfoilKeepWarm.stop()
+      clearInterval(nonceSweepTimer)
       log.info('Received SIGTERM, shutting down gracefully...')
       process.exit(0)
     })

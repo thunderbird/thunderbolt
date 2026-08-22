@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { validateOrgEscrowPublicKey } from '@/lib/org-escrow'
 import { z } from 'zod'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
@@ -109,6 +110,16 @@ const settingsSchema = z
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
 
+    // Org escrow (THU-804 POC) — operator-controlled AK recipient. When enabled, every
+    // AK create/change (setup / rotate / upgrade) must include an org envelope wrapped
+    // to `orgEscrowPublicKey` (base64 raw uncompressed P-256 point, 65 bytes). The
+    // server stores only the public half; recovery runs offline via
+    // scripts/org-escrow-decrypt.ts with the operator-held private key.
+    // Validated in the superRefine below so a typo fails the boot rather than 500ing
+    // every account setup once the flag is live.
+    orgEscrowEnabled: z.boolean().default(false),
+    orgEscrowPublicKey: z.string().default(''),
+
     // Minimum app version clients must run. Empty string disables enforcement.
     // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
     // Trimmed + semver-validated at startup so typos (`banana`, `0,2,0`) fail fast
@@ -160,6 +171,13 @@ const settingsSchema = z
         path: ['powersyncJwtSecret'],
         input: '[REDACTED]',
       })
+    }
+
+    if (data.orgEscrowEnabled) {
+      const orgKeyError = validateOrgEscrowPublicKey(data.orgEscrowPublicKey)
+      if (orgKeyError) {
+        ctx.addIssue({ code: 'custom', message: orgKeyError, path: ['orgEscrowPublicKey'] })
+      }
     }
   })
 
@@ -218,6 +236,8 @@ const parseSettings = (): Settings => {
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    orgEscrowEnabled: process.env.ORG_ESCROW_ENABLED === 'true',
+    orgEscrowPublicKey: process.env.ORG_ESCROW_PUBLIC_KEY || '',
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',

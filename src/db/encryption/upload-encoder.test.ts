@@ -2,36 +2,43 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, beforeEach, mock } from 'bun:test'
-import { generateCK } from '@/crypto'
+import 'fake-indexeddb/auto'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useConfigStore } from '@/api/config-store'
+import { clearAllKeys, generateAK, mintDEK, storeAK, storeDEK, storePrimaryKeyId } from '@/crypto'
 
-let mockCK: CryptoKey | null = null
-
-mock.module('@/crypto/key-storage', () => ({
-  getCK: async () => mockCK,
-  storeCK: async () => {},
-  storeKeyPair: async () => {},
-  getKeyPair: async () => null,
-  clearCK: async () => {},
-  clearAllKeys: async () => {},
-}))
-
-// Re-provide config module to override leaked mocks from other test files
-// (bun's mock.module leaks across files and can replace encryptedColumnsMap with {})
+// Re-provide the real config module to override leaked mocks from other test
+// files (bun's mock.module leaks across files and can replace encryptedColumnsMap).
 const realConfig = await import('./config')
-mock.module('@/db/encryption/config', () => ({
-  ...realConfig,
-  isEncryptionEnabled: () => useConfigStore.getState().config.e2eeEnabled === true,
-}))
+mock.module('@/db/encryption/config', () => ({ ...realConfig }))
 
-const { invalidateCKCache } = await import('./codec')
+const { codec, resetCodecState } = await import('./codec')
 const { encodeForUpload } = await import('./upload-encoder')
+const { isV2EncryptedValue } = await import('./wire-format')
+
+const deleteDatabase = (): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase('thunderbolt-keys')
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+
+const setupKeyring = async () => {
+  const ak = await generateAK()
+  await storeAK(ak)
+  const { wrappedKey } = await mintDEK(ak)
+  await storeDEK('0', wrappedKey)
+  await storePrimaryKeyId('0')
+}
 
 describe('encodeForUpload', () => {
   beforeEach(async () => {
-    invalidateCKCache()
-    mockCK = await generateCK()
+    await deleteDatabase()
+    // clearAllKeys empties whichever key-storage backend is bound (real, or the
+    // Map-backed mock leaked from services tests, which deleteDatabase misses).
+    await clearAllKeys()
+    resetCodecState()
+    await setupKeyring()
     useConfigStore.getState().updateConfig({ e2eeEnabled: true })
   })
 
@@ -39,45 +46,63 @@ describe('encodeForUpload', () => {
     useConfigStore.setState({ config: {} })
   })
 
-  it('encrypts encrypted columns for known tables', async () => {
+  it('encrypts configured columns, binding op.id as the AAD rowId (round-trip)', async () => {
     const op = {
       op: 'PUT' as const,
       type: 'tasks',
-      id: '123',
+      id: 'row-1',
       data: { item: 'Buy groceries', order: 1, is_complete: 0 },
     }
 
     const result = await encodeForUpload(op)
-
-    expect(typeof result.data?.item).toBe('string')
-    expect((result.data?.item as string).startsWith('__enc:')).toBe(true)
+    const encoded = result.data?.item as string
+    expect(isV2EncryptedValue(encoded)).toBe(true)
     expect(result.data?.order).toBe(1)
     expect(result.data?.is_complete).toBe(0)
+
+    // The middleware rebuilds ctx as {table: object_type, column, rowId: object_id}
+    // — decoding with op.id as rowId proves encode bound the same tuple.
+    expect(await codec.decode(encoded, { table: 'tasks', column: 'item', rowId: 'row-1' })).toBe('Buy groceries')
+    // A different rowId fails AES-GCM auth → raw value returned.
+    expect(await codec.decode(encoded, { table: 'tasks', column: 'item', rowId: 'row-2' })).toBe(encoded)
   })
 
-  it('passes through DELETE operations', async () => {
-    const op = { op: 'DELETE' as const, type: 'tasks', id: '123' }
+  it('encodes exactly once per op — one decode returns the original plaintext', async () => {
+    const op = { op: 'PUT' as const, type: 'tasks', id: 'row-1', data: { item: 'plain' } }
     const result = await encodeForUpload(op)
-    expect(result).toEqual(op)
+    const decodedOnce = await codec.decode(result.data?.item as string, {
+      table: 'tasks',
+      column: 'item',
+      rowId: 'row-1',
+    })
+    expect(decodedOnce).toBe('plain')
   })
 
-  it('passes through unknown tables', async () => {
+  it('encrypts encrypted columns for PATCH operations', async () => {
+    const op = { op: 'PATCH' as const, type: 'tasks', id: 'row-1', data: { item: 'Updated task' } }
+    const result = await encodeForUpload(op)
+    expect(isV2EncryptedValue(result.data?.item as string)).toBe(true)
+  })
+
+  it('encrypts multiple configured columns and leaves others untouched', async () => {
     const op = {
       op: 'PUT' as const,
-      type: 'unknown_table',
-      id: '123',
-      data: { foo: 'bar' },
+      type: 'chat_messages',
+      id: 'msg-1',
+      data: { content: 'Hello', parts: '[{"type":"text"}]', chat_thread_id: 'thread-1' },
     }
 
     const result = await encodeForUpload(op)
-    expect(result.data?.foo).toBe('bar')
+    expect(isV2EncryptedValue(result.data?.content as string)).toBe(true)
+    expect(isV2EncryptedValue(result.data?.parts as string)).toBe(true)
+    expect(result.data?.chat_thread_id).toBe('thread-1')
   })
 
-  it('does not encrypt non-string values', async () => {
+  it('skips configured columns holding non-string values explicitly', async () => {
     const op = {
       op: 'PUT' as const,
       type: 'tasks',
-      id: '123',
+      id: 'row-1',
       data: { item: null, order: 5 },
     }
 
@@ -86,34 +111,27 @@ describe('encodeForUpload', () => {
     expect(result.data?.order).toBe(5)
   })
 
-  it('encrypts encrypted columns for PATCH operations', async () => {
-    const op = {
-      op: 'PATCH' as const,
-      type: 'tasks',
-      id: '123',
-      data: { item: 'Updated task' },
-    }
-
+  it('skips configured columns absent from the payload', async () => {
+    const op = { op: 'PATCH' as const, type: 'tasks', id: 'row-1', data: { order: 2 } }
     const result = await encodeForUpload(op)
-    expect((result.data?.item as string).startsWith('__enc:')).toBe(true)
+    expect(result.data).toEqual({ order: 2 })
   })
 
-  it('encrypts multiple columns', async () => {
-    const op = {
-      op: 'PUT' as const,
-      type: 'chat_messages',
-      id: '456',
-      data: {
-        content: 'Hello',
-        parts: '[{"type":"text"}]',
-        chat_thread_id: 'thread-1',
-      },
-    }
+  it('passes through DELETE operations', async () => {
+    const op = { op: 'DELETE' as const, type: 'tasks', id: 'row-1' }
+    expect(await encodeForUpload(op)).toEqual(op)
+  })
 
+  it('passes through unconfigured tables', async () => {
+    const op = { op: 'PUT' as const, type: 'unknown_table', id: 'row-1', data: { foo: 'bar' } }
     const result = await encodeForUpload(op)
+    expect(result.data?.foo).toBe('bar')
+  })
 
-    expect((result.data?.content as string).startsWith('__enc:')).toBe(true)
-    expect((result.data?.parts as string).startsWith('__enc:')).toBe(true)
-    expect(result.data?.chat_thread_id).toBe('thread-1')
+  it('passes through when encryption is disabled', async () => {
+    useConfigStore.setState({ config: {} })
+    const op = { op: 'PUT' as const, type: 'tasks', id: 'row-1', data: { item: 'plain' } }
+    const result = await encodeForUpload(op)
+    expect(result.data?.item).toBe('plain')
   })
 })

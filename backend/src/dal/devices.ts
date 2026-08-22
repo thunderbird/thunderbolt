@@ -108,11 +108,30 @@ export const countActiveDevices = async (database: QueryableDatabase, userId: st
  * (node_id/node_id_attested_at) so a denied device stops being dialable — mirroring
  * revokeDevice. The trusted=false guard prevents a TOCTOU race from revoking a
  * concurrently-approved device. */
-export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const denyDevice = async (
+  database: typeof DbType,
+  deviceId: string,
+  userId: string,
+  /**
+   * Compare-and-swap guard: only clear the pending flag if the row still carries
+   * this `lastSeen`. `registerDevice` stamps a fresh `lastSeen` on every
+   * (re)registration and returns it, so a cancel issued for an EARLIER request
+   * matches nothing and becomes a no-op instead of destroying the newer one.
+   * Omit to clear unconditionally (an approver denying someone else's device).
+   */
+  expectedLastSeen?: Date,
+) =>
   database
     .update(devicesTable)
     .set({ approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), eq(devicesTable.trusted, false)))
+    .where(
+      and(
+        eq(devicesTable.id, deviceId),
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, false),
+        ...(expectedLastSeen ? [eq(devicesTable.lastSeen, expectedLastSeen)] : []),
+      ),
+    )
     .returning()
 
 /**
@@ -155,6 +174,51 @@ export const getTrustedNodeIds = async (database: typeof DbType, userId: string)
         isNotNull(devicesTable.nodeId),
       ),
     )
+
+/**
+ * List the ids of every device that can actually HOLD an AK envelope: trusted,
+ * non-revoked, and holding both hybrid public keys. Used by AK rotation /
+ * upgrade coverage validation — the caller must supply a new-AK envelope for
+ * exactly this set (a missing one locks a device out; an extra one hands the new
+ * AK to a revoked/pending device).
+ *
+ * The public-key predicate is load-bearing, not a nicety. An envelope is
+ * `wrapAK(ak, ecdhPublicKey, mlkemPublicKey)` — with either key null the client
+ * CANNOT construct one, so demanding coverage for such a device is a requirement
+ * that can never be satisfied and every rotation/upgrade fails with a 400.
+ * Bridges are exactly that case: `registerBridge` inserts them trusted and
+ * non-revoked with no public keys at all. A not-yet-migrated v1 device that has
+ * never published v2 keys is the other.
+ *
+ * Relaxing coverage here cannot leak the AK — it only stops requiring envelopes
+ * for devices that are incapable of receiving one. Such a device gets its
+ * envelope the normal way (approval or recovery) once it publishes keys.
+ */
+export const listEnvelopeCapableDevices = async (database: QueryableDatabase, userId: string) =>
+  database
+    .select({
+      id: devicesTable.id,
+      publicKey: devicesTable.publicKey,
+      mlkemPublicKey: devicesTable.mlkemPublicKey,
+    })
+    .from(devicesTable)
+    .where(
+      and(
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, true),
+        isNull(devicesTable.revokedAt),
+        isNotNull(devicesTable.publicKey),
+        isNotNull(devicesTable.mlkemPublicKey),
+      ),
+    )
+
+/**
+ * Ids only, derived from {@link listEnvelopeCapableDevices} so the coverage
+ * validator and the endpoint clients build envelopes from can never disagree
+ * about which devices must be covered.
+ */
+export const listEnvelopeCapableDeviceIds = async (database: QueryableDatabase, userId: string) =>
+  (await listEnvelopeCapableDevices(database, userId)).map((row) => row.id)
 
 /**
  * Register (or idempotently re-register) a BRIDGE device on the caller's account.

@@ -3,53 +3,33 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useConfigStore } from '@/api/config-store'
-import { getCK } from '@/crypto/key-storage'
+import { getAK, listDEKs } from '@/crypto'
 
 /** Whether E2E encryption is enabled. Reads from the persisted config store (hydrated from /config endpoint). */
 export const isEncryptionEnabled = (): boolean => useConfigStore.getState().config.e2eeEnabled === true
 
 /**
  * Returns true when the sync setup wizard is needed before enabling sync.
- * The wizard is required only when E2EE is enabled AND no Content Key exists yet.
+ * The wizard is required only when E2EE is enabled AND the v2 key hierarchy is
+ * incomplete — an AK plus at least one wrapped DEK must exist locally.
+ *
+ * Boolean contract unchanged from v1 ("is encryption set up? → bool"), so the
+ * existing consumers need no edit; only the underlying check moved from
+ * CK-exists to AK+DEK-exists.
  */
 export const needsSyncSetupWizard = async (): Promise<boolean> => {
   if (!isEncryptionEnabled()) {
     return false
   }
-  return !(await getCK())
+  const [ak, wrappedDEKs] = await Promise.all([getAK(), listDEKs()])
+  return !ak || wrappedDEKs.length === 0
 }
 
 /**
- * Single source of truth for encrypted tables and their columns.
- * Uses DB column names (snake_case) — matches both PowerSync sync data and CRUD upload operations.
- *
- * Adding a table here automatically enables:
- * - Download decryption via EncryptionMiddleware (sync pipeline)
- * - Upload encryption via encodeForUpload (connector)
+ * Re-exported from `@shared/e2ee-types`, which owns the map so the backend can
+ * enforce the same contract on upload. This module remains the frontend's
+ * import site: it is the encode-selection authority for the upload encoder.
+ * Decode stays prefix-gated (any `__enc:` value), so a stale client still
+ * decodes columns it does not know are encrypted.
  */
-export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = {
-  settings: ['value'],
-  chat_threads: ['title'],
-  chat_messages: ['content', 'parts', 'cache', 'metadata'],
-  tasks: ['item'],
-  models: ['name', 'model', 'url', 'vendor', 'description'],
-  prompts: ['title', 'prompt'],
-  triggers: ['trigger_time'],
-  model_profiles: [
-    'tools_override',
-    'link_previews_override',
-    'chat_mode_addendum',
-    'search_mode_addendum',
-    'research_mode_addendum',
-    'citation_reinforcement_prompt',
-    'nudge_final_step',
-    'nudge_preventive',
-    'nudge_retry',
-    'nudge_search_final_step',
-    'nudge_search_preventive',
-    'nudge_search_retry',
-    'provider_options',
-  ],
-  devices: ['name'],
-  skills: ['name', 'label', 'description', 'instruction'],
-}
+export { encryptedColumnsMap } from '@shared/e2ee-types'

@@ -281,4 +281,41 @@ describe('onSignInSuccess', () => {
     expect(getDatabase).toHaveBeenCalledTimes(1)
     expect(clearPendingCrudOperations).toHaveBeenCalledTimes(1)
   })
+
+  it('still clears the CRUD queue when the onboarding write throws', async () => {
+    // The two steps used to share one try/catch, so a failure here silently
+    // abandoned the reset — leaving a returning device's queued writes to
+    // overwrite the account on its first connect, with nothing in the UI.
+    const { clearPendingCrudOperations, getDatabase } = buildDeps()
+    const getDrizzle = mock(() => {
+      throw new Error('database not ready')
+    }) as unknown as NonNullable<Deps['getDrizzle']>
+
+    await onSignInSuccess(false, false, { getDatabase, getDrizzle })
+
+    expect(clearPendingCrudOperations).toHaveBeenCalledTimes(1)
+  })
+
+  it('resets the queue before writing onboarding, so that write survives to upload', async () => {
+    const calls: string[] = []
+    const clearPendingCrudOperations = mock(async () => {
+      calls.push('clear')
+    })
+    const getDatabase = mock(() => ({ clearPendingCrudOperations })) as unknown as NonNullable<Deps['getDatabase']>
+    const getDrizzle = mock(() => {
+      calls.push('write')
+      return { transaction: async (cb: (tx: unknown) => Promise<void>) => cb({}) }
+    }) as unknown as NonNullable<Deps['getDrizzle']>
+
+    await onSignInSuccess(false, false, { getDatabase, getDrizzle })
+
+    expect(calls).toEqual(['clear', 'write'])
+  })
+
+  it('survives a database with no CRUD queue', async () => {
+    const getDatabase = mock(() => ({})) as unknown as NonNullable<Deps['getDatabase']>
+    const { getDrizzle } = buildDeps()
+
+    await onSignInSuccess(false, false, { getDatabase, getDrizzle })
+  })
 })

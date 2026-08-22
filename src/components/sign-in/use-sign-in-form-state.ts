@@ -121,33 +121,55 @@ type OnSignInSuccessDeps = {
  * under the new identity. Wiping them here would silently destroy the user's anon-session
  * work.
  */
+/**
+ * Run one piece of post-auth housekeeping without letting it fail the sign-in.
+ *
+ * The caller translates any throw into a "verification failed" UI even though
+ * the OTP was already consumed and the user IS authenticated — so every step
+ * has to contain its own errors. Each step gets its own call: sharing one
+ * `try` meant a failure in the first silently abandoned the rest.
+ */
+const runContained = async (label: string, step: () => Promise<void>): Promise<void> => {
+  try {
+    await step()
+  } catch (error) {
+    console.error(`Sign-in housekeeping failed (${label}):`, error)
+  }
+}
+
 export const onSignInSuccess = async (
   isNewUser: boolean,
   wasAnonymous: boolean,
   deps: OnSignInSuccessDeps = {},
 ): Promise<void> => {
   if (isNewUser || wasAnonymous) {
+    // Worth a warn, not an info: these queued ops WILL upload once sync is
+    // enabled, so this line is the marker for "local writes were kept and may
+    // reach the server" — the one branch where that is intended.
+    console.warn(`[auth] Keeping pending CRUD after sign-in (isNewUser=${isNewUser}, wasAnonymous=${wasAnonymous})`)
     return
   }
 
   const { getDatabase = getDatabaseInstance, getDrizzle = getDb } = deps
 
-  // Error containment: failures in post-auth housekeeping must NOT propagate to the caller's
-  // sign-in handler, which translates any throw into a "verification failed" UI even though
-  // the OTP was already consumed and the user is authenticated. Log and swallow here.
-  try {
+  // Reset FIRST, then write. The old order did the reverse and wiped the
+  // onboarding flag it had just written, so that setting never left the device
+  // — and any throw from the write skipped the reset entirely, which is the
+  // failure that lets a returning device's queued defaults overwrite the
+  // account on its first connect.
+  await runContained('clear pending CRUD', async () => {
     const database = getDatabase()
-    if ('clearPendingCrudOperations' in database) {
-      // on sign in (existing user), set user_has_completed_onboarding to true
-      // we consider that an existing user has completed onboarding since they have signed in previously
-      // this is necessary because sync is disabled by default - so we don't have a way to know if they have actually completed onboarding
-      const db = getDrizzle()
-      await updateSettings(db, { user_has_completed_onboarding: true })
-      await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
+    if (!('clearPendingCrudOperations' in database)) {
+      return
     }
-  } catch (error) {
-    console.error('Failed to clear pending CRUD after sign-in:', error)
-  }
+    await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
+  })
+
+  // A returning user has signed in before, so they necessarily completed
+  // onboarding. Sync is off by default, so there is no other way to know.
+  await runContained('mark onboarding complete', async () => {
+    await updateSettings(getDrizzle(), { user_has_completed_onboarding: true })
+  })
 }
 
 /**

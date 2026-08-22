@@ -6,28 +6,70 @@
 export {
   generateKeyPair,
   generateMlKemKeyPair,
-  generateCK,
+  generateAK,
+  generateDEK,
+  mintDEK,
   reimportAsNonExtractable,
   exportPublicKey,
   importPublicKey,
   exportMlKemPublicKey,
   importMlKemPublicKey,
-  wrapCK,
-  rewrapCK,
-  unwrapCK,
+  deriveMlKemAtRestKey,
+  wrapAK,
+  rewrapAK,
+  unwrapAK,
+  wrapDEK,
+  unwrapDEK,
+  rewrapKeyring,
+  unwrapLegacyCK,
+  importOrgPublicKey,
+  wrapAKForOrg,
   encrypt,
   decrypt,
+  encryptBytes,
+  decryptBytes,
+  uint8ArrayToBase64,
+  base64ToUint8Array,
   type MlKemKeyPair,
+  type EncryptedBytes,
 } from './primitives'
 
-// Canary
-export { createCanary, verifyCanary } from './canary'
+// Canary + challenge-response signing
+export {
+  createCanary,
+  verifyCanary,
+  recoverCanarySecretV1,
+  deriveSigningKeyPair,
+  signChallenge,
+  type SigningKeyPair,
+} from './canary'
 
-// Recovery key
-export { encodeRecoveryKey, decodeRecoveryKey } from './recovery-key'
+// Recovery key (seed <-> mnemonic, KDF -> recovery-slot hybrid keypair)
+export {
+  generateRecoverySeed,
+  encodeRecoverySeed,
+  decodeRecoveryKey,
+  deriveRecoveryKeyPairFromSeed,
+  generateKdfSalt,
+} from './recovery-key'
 
 // Key storage (IndexedDB)
-export { storeKeyPair, getKeyPair, storeCK, getCK, clearCK, clearAllKeys, type StoredKeyPair } from './key-storage'
+export {
+  storeKeyPair,
+  getKeyPair,
+  storeAK,
+  getAK,
+  storeDEK,
+  getDEK,
+  stageWrappedDEKs,
+  listDEKs,
+  storePrimaryKeyId,
+  getPrimaryKeyId,
+  storeKeyVersion,
+  getKeyVersion,
+  clearAllKeys,
+  type StoredKeyPair,
+} from './key-storage'
 
 // Errors
-export { EncryptionError, DecryptionError, StorageError, ValidationError } from './errors'
+export { EncryptionError, DecryptionError, StorageError, ValidationError, KeyDerivationError } from './errors'

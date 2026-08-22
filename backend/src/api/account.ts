@@ -13,9 +13,19 @@ import {
   getEncryptionMetadata,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import { verifyCanaryProofWithMetadata } from '@/lib/canary'
+import { verifyChallengeSignature } from '@/lib/canary'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { challengeOperations } from '@shared/e2ee-types'
+import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
+
+/** Elysia schema for the shared ChallengeProof request DTO. */
+const proofSchema = t.Object({
+  signature: t.String({ maxLength: 200 }),
+  nonce: t.String({ maxLength: 128 }),
+  operation: t.Union(challengeOperations.map((op) => t.Literal(op))),
+  deviceId: t.String({ maxLength: 36 }),
+})
 
 /** Account API routes. All routes require authentication. */
 export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
@@ -33,18 +43,22 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
           return { error: 'X-Device-ID header is required' }
         }
 
-        // If E2EE is active (encryption metadata exists), require canary proof-of-CK-possession.
-        // Checks `metadata` (not `metadata?.canarySecretHash`) for fail-closed behavior:
-        // if metadata exists with a null hash, we still block rather than silently skip.
+        // If E2EE is active (encryption metadata exists), require a 'revoke'
+        // challenge signature. Checks `metadata` (not the signing key) for
+        // fail-closed behavior: a pre-flip v1 account (NULL signing key) fails
+        // verification closed and must upgrade before it can revoke. The
+        // client-side double-rotation (revoke access + rotate AK/DEK) runs the
+        // /rotate call separately; both take the same advisory lock below so they
+        // cannot interleave.
         const metadata = await getEncryptionMetadata(database, userId)
         if (metadata) {
-          if (!body.canarySecret) {
+          if (!body.proof) {
             set.status = 403
-            return { error: 'Canary secret required for device revocation' }
+            return { error: 'Challenge proof required for device revocation' }
           }
-          if (!(await verifyCanaryProofWithMetadata(body.canarySecret, metadata.canarySecretHash))) {
+          if (!(await verifyChallengeSignature(database, userId, body.proof, 'revoke', callerDeviceId))) {
             set.status = 403
-            return { error: 'Invalid canary secret' }
+            return { error: 'Invalid challenge proof' }
           }
 
           // Caller must be a trusted device (defense-in-depth)
@@ -57,6 +71,9 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
 
         await database.transaction(async (tx) => {
           const txDb = tx as unknown as typeof database
+          // Same per-user lock as /rotate and /upgrade so the double-rotation
+          // (revoke → rotate) can't race an in-flight rotation.
+          await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
           await deleteEnvelope(txDb, params.id, userId)
           const rows = await revokeDevice(txDb, params.id, userId)
 
@@ -69,7 +86,7 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
       {
         auth: true,
         body: t.Object({
-          canarySecret: t.Optional(t.String({ maxLength: 500 })),
+          proof: t.Optional(proofSchema),
         }),
       },
     )

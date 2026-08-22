@@ -6,6 +6,7 @@ import type { Settings } from '@/config/settings'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { devicesTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
+import { encryptionMetadataTable } from '@/db/encryption-schema'
 import { createTestDb } from '@/test-utils/db'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
@@ -63,6 +64,8 @@ const powersyncSettings: Settings = {
   deviceAuthInterval: '5s',
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   e2eeEnabled: true,
+  orgEscrowEnabled: false,
+  orgEscrowPublicKey: '',
   rateLimitEnabled: false,
   swaggerEnabled: false,
   trustedProxy: '',
@@ -2871,6 +2874,66 @@ describe('PowerSync API — anonymous sync guard', () => {
     expect(response.status).toBe(403)
     const data = await response.json()
     expect(data).toEqual({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' })
+  })
+
+  describe('PUT /powersync/upload — plaintext rejection on a v2 account', () => {
+    const ciphertext = '__enc:v2:0:aXYtYmFzZTY0:Y3QtYmFzZTY0'
+
+    /** Mark an account as migrated to the v2 keyring. */
+    const seedV2Metadata = (userId: string, schemeVersion: number) =>
+      db.insert(encryptionMetadataTable).values({
+        userId,
+        canaryIv: 'iv',
+        canaryCtext: 'ct',
+        signingPublicKey: 'spki',
+        kdfSalt: 'salt',
+        schemeVersion,
+      })
+
+    /** `settings.value` is an encrypted column, and a PUT upserts cleanly. */
+    const upload = async (suffix: string, schemeVersion: number, value: string) => {
+      const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+      const { userId, signedBearer, deviceId } = await seedRegularUser(suffix)
+      await seedV2Metadata(userId, schemeVersion)
+
+      return app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signedBearer}`,
+            'X-Device-ID': deviceId,
+          },
+          body: JSON.stringify({
+            operations: [{ op: 'PUT' as const, type: 'settings', id: 'data_collection', data: { value } }],
+          }),
+        }),
+      )
+    }
+
+    it('rejects plaintext in an encrypted column with 400 PLAINTEXT_UPLOAD_REJECTED', async () => {
+      const response = await upload('plaintext-v2', 2, 'enabled')
+
+      expect(response.status).toBe(400)
+      const data = (await response.json()) as { code: string; table: string; column: string }
+      expect(data.code).toBe('PLAINTEXT_UPLOAD_REJECTED')
+      expect(data.table).toBe('settings')
+      expect(data.column).toBe('value')
+    })
+
+    it('accepts v2 ciphertext', async () => {
+      const response = await upload('ciphertext-v2', 2, ciphertext)
+
+      expect(response.status).toBe(200)
+    })
+
+    it('does not enforce on a pre-flip v1 account', async () => {
+      // v1 accounts are not on the keyring yet — the cutover, not this guard,
+      // is what moves them; enforcing here would break the migration path.
+      const response = await upload('plaintext-v1', 1, 'enabled')
+
+      expect(response.status).toBe(200)
+    })
   })
 
   it('PUT /powersync/upload — non-anonymous user → 200 (regression)', async () => {

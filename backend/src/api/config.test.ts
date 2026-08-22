@@ -24,6 +24,14 @@ describe('Config Routes', () => {
       expect(enabled.body.e2eeEnabled).toBe(true)
     })
 
+    it('reflects orgEscrowEnabled', async () => {
+      const disabled = await fetchConfig(createTestSettings())
+      expect(disabled.body.orgEscrowEnabled).toBe(false)
+
+      const enabled = await fetchConfig(createTestSettings({ orgEscrowEnabled: true }))
+      expect(enabled.body.orgEscrowEnabled).toBe(true)
+    })
+
     it('exposes builtInAgentEnabled: true by default and false when disabled', async () => {
       const onByDefault = await fetchConfig(createTestSettings())
       expect(onByDefault.body.builtInAgentEnabled).toBe(true)

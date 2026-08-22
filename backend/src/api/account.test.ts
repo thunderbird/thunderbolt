@@ -4,10 +4,11 @@
 
 import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user } from '@/db/auth-schema'
-import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
+import { challengeNoncesTable, encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
-import { hashCanarySecret } from '@/lib/canary'
 import { createTestDb } from '@/test-utils/db'
+import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
+import type { ChallengeProof } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -35,15 +36,15 @@ const signToken = (token: string): string => {
 const counterKey = Symbol.for('account-test-runId')
 ;(globalThis as Record<symbol, number>)[counterKey] ??= 0
 
-/** Known canary secret for tests that require proof-of-CK-possession. */
-const testCanarySecret = 'test-canary-secret-for-revoke-proof'
-
 describe('Account API', () => {
   let app: ReturnType<typeof createAccountRoutes>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
   /** Prefix IDs with the current runId — see top-of-file comment for why. */
   let p: (id: string) => string
+  /** Account signing keypair — its public key is stored in encryption_metadata. */
+  let signingKeypair: CryptoKeyPair
+  let signingPublicKey: string
 
   beforeEach(async () => {
     const rid = ++(globalThis as Record<symbol, number>)[counterKey]
@@ -55,6 +56,8 @@ describe('Account API', () => {
     app = new Elysia({ prefix: '/v1' }).use(createAccountRoutes(auth, db)) as unknown as ReturnType<
       typeof createAccountRoutes
     >
+    signingKeypair = await generateSigningKeypair()
+    signingPublicKey = await exportSigningPublicKey(signingKeypair)
   })
 
   afterEach(async () => {
@@ -99,24 +102,50 @@ describe('Account API', () => {
     return now
   }
 
-  /** Insert encryption metadata with a known canary secret hash. */
-  const insertCanaryWithSecret = async (userId: string) => {
-    const hash = await hashCanarySecret(testCanarySecret)
-    const now = new Date()
+  /** Insert v2 encryption metadata (scheme 2) with the account signing public key. */
+  const insertV2Metadata = async (userId: string) => {
     await db.insert(encryptionMetadataTable).values({
       userId,
       canaryIv: 'iv-test',
       canaryCtext: 'ctext-test',
-      canarySecretHash: hash,
-      createdAt: now,
+      signingPublicKey,
+      kdfSalt: 'salt-test',
+      schemeVersion: 2,
+      primaryKeyId: '0',
+      keyVersion: 1,
+      createdAt: new Date(),
     })
+  }
+
+  /**
+   * Insert a single-use 'revoke' challenge nonce and sign it — the challenge
+   * route is not mounted in this suite, so tests seed the nonce directly. Pass a
+   * different keypair to forge an invalid signature.
+   */
+  const makeRevokeProof = async (
+    userId: string,
+    callerDeviceId: string,
+    keypair: CryptoKeyPair = signingKeypair,
+  ): Promise<ChallengeProof> => {
+    const nonce = crypto.randomUUID()
+    await db.insert(challengeNoncesTable).values({
+      nonce,
+      userId,
+      operation: 'revoke',
+      deviceId: callerDeviceId,
+      expiresAt: new Date(Date.now() + 3600 * 1000),
+      consumed: false,
+      createdAt: new Date(),
+    })
+    const signature = await signChallenge(keypair.privateKey, nonce, 'revoke', callerDeviceId)
+    return { signature, nonce, operation: 'revoke', deviceId: callerDeviceId }
   }
 
   /** Build a revoke request with proper headers and body. */
   const revokeRequest = (
     deviceId: string,
     token: string,
-    opts?: { callerDeviceId?: string; canarySecret?: string; omitDeviceHeader?: boolean },
+    opts?: { callerDeviceId?: string; proof?: ChallengeProof; omitDeviceHeader?: boolean },
   ) => {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${signToken(token)}`,
@@ -125,7 +154,7 @@ describe('Account API', () => {
     if (!opts?.omitDeviceHeader && opts?.callerDeviceId) {
       headers['X-Device-ID'] = opts.callerDeviceId
     }
-    const body = opts?.canarySecret ? JSON.stringify({ canarySecret: opts.canarySecret }) : '{}'
+    const body = opts?.proof ? JSON.stringify({ proof: opts.proof }) : '{}'
     return new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
       method: 'POST',
       headers,
@@ -487,7 +516,7 @@ describe('Account API', () => {
       const userId = p('no-header-user')
       const token = p('no-header-token')
       await createUserSessionAndDevice(userId, token, p('caller-no-header'))
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
       const response = await app.handle(revokeRequest(p('some-device'), token, { omitDeviceHeader: true }))
       expect(response.status).toBe(400)
@@ -495,35 +524,36 @@ describe('Account API', () => {
       expect(body.error).toContain('X-Device-ID')
     })
 
-    it('returns 403 when canarySecret is missing (E2EE active)', async () => {
+    it('returns 403 when the proof is missing (E2EE active)', async () => {
       const userId = p('no-canary-user')
       const token = p('no-canary-token')
       const callerDeviceId = p('caller-no-canary')
       await createUserSessionAndDevice(userId, token, callerDeviceId)
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
       const response = await app.handle(revokeRequest(p('target-device'), token, { callerDeviceId }))
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toContain('Canary secret required')
+      expect(body.error).toContain('Challenge proof required')
     })
 
-    it('returns 403 when canarySecret is invalid', async () => {
+    it('returns 403 when the proof signature is invalid (forged)', async () => {
       const userId = p('bad-canary-user')
       const token = p('bad-canary-token')
       const callerDeviceId = p('caller-bad-canary')
       await createUserSessionAndDevice(userId, token, callerDeviceId)
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
+      const forgedKeypair = await generateSigningKeypair()
       const response = await app.handle(
         revokeRequest(p('target-device'), token, {
           callerDeviceId,
-          canarySecret: 'wrong-secret',
+          proof: await makeRevokeProof(userId, callerDeviceId, forgedKeypair),
         }),
       )
       expect(response.status).toBe(403)
       const body = await response.json()
-      expect(body.error).toContain('Invalid canary secret')
+      expect(body.error).toContain('Invalid challenge proof')
     })
 
     it('returns 403 when caller device is not trusted', async () => {
@@ -531,7 +561,7 @@ describe('Account API', () => {
       const token = p('untrusted-caller-token')
       const callerDeviceId = p('caller-untrusted')
       const now = await createUserSessionAndDevice(userId, token, callerDeviceId)
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
       // Mark the caller device as untrusted
       await db.update(devicesTable).set({ trusted: false }).where(eq(devicesTable.id, callerDeviceId))
@@ -549,7 +579,7 @@ describe('Account API', () => {
       const response = await app.handle(
         revokeRequest(targetDeviceId, token, {
           callerDeviceId,
-          canarySecret: testCanarySecret,
+          proof: await makeRevokeProof(userId, callerDeviceId),
         }),
       )
       expect(response.status).toBe(403)
@@ -563,7 +593,7 @@ describe('Account API', () => {
       const callerDeviceId = p('caller-revoke')
       const deviceId = p('device-to-revoke')
       const now = await createUserSessionAndDevice(userId, token, callerDeviceId)
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
       await db.insert(devicesTable).values({
         id: deviceId,
@@ -584,7 +614,7 @@ describe('Account API', () => {
       const response = await app.handle(
         revokeRequest(deviceId, token, {
           callerDeviceId,
-          canarySecret: testCanarySecret,
+          proof: await makeRevokeProof(userId, callerDeviceId),
         }),
       )
 
@@ -633,12 +663,12 @@ describe('Account API', () => {
       const token = p('revoke-nonexistent-token')
       const callerDeviceId = p('caller-nonexist')
       await createUserSessionAndDevice(userId, token, callerDeviceId)
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
       const response = await app.handle(
         revokeRequest(p('does-not-exist'), token, {
           callerDeviceId,
-          canarySecret: testCanarySecret,
+          proof: await makeRevokeProof(userId, callerDeviceId),
         }),
       )
 
@@ -651,7 +681,7 @@ describe('Account API', () => {
       const callerDeviceId = p('caller-idempotent')
       const deviceId = p('device-already-revoked')
       const now = await createUserSessionAndDevice(userId, token, callerDeviceId)
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
       await db.insert(devicesTable).values({
         id: deviceId,
@@ -666,7 +696,7 @@ describe('Account API', () => {
       const firstResponse = await app.handle(
         revokeRequest(deviceId, token, {
           callerDeviceId,
-          canarySecret: testCanarySecret,
+          proof: await makeRevokeProof(userId, callerDeviceId),
         }),
       )
       expect(firstResponse.status).toBe(204)
@@ -678,7 +708,7 @@ describe('Account API', () => {
       const response = await app.handle(
         revokeRequest(deviceId, token, {
           callerDeviceId,
-          canarySecret: testCanarySecret,
+          proof: await makeRevokeProof(userId, callerDeviceId),
         }),
       )
 
@@ -695,7 +725,7 @@ describe('Account API', () => {
       const callerDeviceId = p('caller-no-envelope')
       const deviceId = p('device-no-envelope')
       const now = await createUserSessionAndDevice(userId, token, callerDeviceId)
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
       await db.insert(devicesTable).values({
         id: deviceId,
@@ -709,7 +739,7 @@ describe('Account API', () => {
       const response = await app.handle(
         revokeRequest(deviceId, token, {
           callerDeviceId,
-          canarySecret: testCanarySecret,
+          proof: await makeRevokeProof(userId, callerDeviceId),
         }),
       )
 
@@ -730,7 +760,7 @@ describe('Account API', () => {
       const victimDevice1 = p('victim-device-1')
       const victimDevice2 = p('victim-device-2')
       const now = await createUserSessionAndDevice(userId, token, victimDevice1)
-      await insertCanaryWithSecret(userId)
+      await insertV2Metadata(userId)
 
       await db.insert(devicesTable).values({
         id: victimDevice2,
@@ -746,15 +776,15 @@ describe('Account API', () => {
         { deviceId: victimDevice2, userId, wrappedCk: 'victim-ck-2', updatedAt: now },
       ])
 
-      // Attack step 1: Try to revoke device 1 without canary proof
+      // Attack step 1: Try to revoke device 1 without a challenge proof
       const attack1 = await app.handle(revokeRequest(victimDevice1, token, { callerDeviceId: victimDevice1 }))
       expect(attack1.status).toBe(403)
 
-      // Attack step 2: Try to revoke device 2 with a guessed canary
+      // Attack step 2: Try to revoke device 2 with a forged proof (attacker's own key)
       const attack2 = await app.handle(
         revokeRequest(victimDevice2, token, {
           callerDeviceId: victimDevice1,
-          canarySecret: 'attacker-guess',
+          proof: await makeRevokeProof(userId, victimDevice1, await generateSigningKeypair()),
         }),
       )
       expect(attack2.status).toBe(403)
@@ -771,7 +801,7 @@ describe('Account API', () => {
       const attack3 = await app.handle(
         revokeRequest(victimDevice1, token, {
           callerDeviceId: attackerDeviceId,
-          canarySecret: testCanarySecret,
+          proof: await makeRevokeProof(userId, attackerDeviceId),
         }),
       )
       expect(attack3.status).toBe(403)

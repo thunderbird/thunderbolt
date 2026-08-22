@@ -34,10 +34,13 @@ import {
   issueChallengeNonce,
   consumeChallengeNonce,
   revokeDeviceSessions,
+  upsertOrgEnvelope,
 } from '@/dal'
+import type { Settings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
+import { getOrgKeyInfo } from '@/lib/org-escrow'
 import {
   type ChallengeOperation,
   type RecoverySlotRequest,
@@ -196,6 +199,30 @@ const assertRecoveryCoverage = (recovery: RecoverySlotRequest): void => {
   }
 }
 
+/**
+ * Enforce + persist the org-escrow envelope (THU-804) inside an AK create/change
+ * transaction. Every flow that mints a new AK (first-device bootstrap, rotate,
+ * upgrade) must give the operator escrow key its wrapped copy atomically: when
+ * escrow is enabled the envelope is REQUIRED (400 when missing) and upserted;
+ * when disabled it is ignored entirely and never persisted. Device approval
+ * does NOT route through here — approving a device does not change the AK.
+ */
+const persistOrgEnvelope = async (
+  txDb: typeof DbType,
+  settings: Settings,
+  userId: string,
+  orgEnvelope: string | undefined,
+): Promise<void> => {
+  const orgKey = getOrgKeyInfo(settings)
+  if (!orgKey.enabled) {
+    return
+  }
+  if (!orgEnvelope) {
+    throw new BadRequestError('orgEnvelope is required when org escrow is enabled')
+  }
+  await upsertOrgEnvelope(txDb, { userId, wrappedAk: orgEnvelope, keyFingerprint: orgKey.fingerprint })
+}
+
 /** Map a thrown BadRequest/Forbidden/SchemeConflict error onto the response; rethrow anything else. */
 const mapEncryptionError = (err: unknown, set: { status?: number | string }): { error: string } => {
   if (err instanceof BadRequestError) {
@@ -218,7 +245,7 @@ const mapEncryptionError = (err: unknown, set: { status?: number | string }): { 
  * wrapped-DEK keyring, challenge-response, AK rotation, and the v1→v2 upgrade.
  * All routes require authentication via session.
  */
-export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
+export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, settings: Settings) =>
   new Elysia()
     .use(createAuthMacro(auth))
     .post(
@@ -347,6 +374,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           recoveryEcdhPublicKey,
           recoveryMlkemPublicKey,
           recoveryWrappedAK,
+          orgEnvelope,
         } = body
 
         // Pre-transaction fast-path rejection; re-checked inside tx to close race window.
@@ -419,6 +447,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               for (const entry of wrappedKeys) {
                 await insertWrappedKey(txDb, { userId, keyId: entry.keyId, wrappedKey: entry.wrappedKey })
               }
+              // Bootstrap mints the account's first AK — escrow it in the same tx.
+              await persistOrgEnvelope(txDb, settings, userId, orgEnvelope)
             } else {
               // ── Shape 2: metadata exists — approval / self-recovery. Every path
               // requires a valid 'approve' proof; a pre-flip v1 account (NULL
@@ -486,6 +516,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           recoveryEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
           recoveryMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
           recoveryWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
+          orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
     )
@@ -558,6 +589,20 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           primary_key_id: metadata.primaryKeyId,
           scheme_version: metadata.schemeVersion,
         }
+      },
+      { auth: true },
+    )
+    // Operator escrow public key (THU-804). The key itself is not a secret —
+    // it is public-key material — but the endpoint is auth-gated like every
+    // other encryption route so deployment configuration is not world-readable.
+    .get(
+      '/encryption/org-key',
+      () => {
+        const orgKey = getOrgKeyInfo(settings)
+        if (!orgKey.enabled) {
+          return { enabled: false, publicKey: null, fingerprint: null }
+        }
+        return { enabled: true, publicKey: orgKey.publicKey, fingerprint: orgKey.fingerprint }
       },
       { auth: true },
     )
@@ -767,6 +812,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             for (const entry of body.wrappedKeys) {
               await updateWrappedKey(txDb, userId, entry.keyId, entry.wrappedKey)
             }
+            // The org envelope wraps the NEW AK — replaced atomically with the rotation.
+            await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
             await replaceEncryptionMetadata(txDb, {
               userId,
               canaryIv: body.canaryIv,
@@ -802,6 +849,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           recoveryEcdhPublicKey: t.String({ maxLength: 200 }),
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
+          orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
     )
@@ -881,6 +929,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             if (!flipped) {
               throw new SchemeConflictError('Account already migrated to scheme v2')
             }
+            // The org envelope wraps the NEW AK minted by this migration.
+            await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
             return { keyVersion: flipped.keyVersion, schemeVersion: flipped.schemeVersion }
           })
 
@@ -904,6 +954,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           recoveryEcdhPublicKey: t.String({ maxLength: 200 }),
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
+          orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
     )

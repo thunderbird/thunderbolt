@@ -4,10 +4,17 @@
 
 import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
-import { challengeNoncesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/encryption-schema'
+import {
+  challengeNoncesTable,
+  encryptionMetadataTable,
+  envelopesTable,
+  orgEnvelopesTable,
+  wrappedKeysTable,
+} from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
+import { createTestSettings } from '@/test-utils/settings'
 import { initialKeyId, legacyKeyId } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
 import { and, eq } from 'drizzle-orm'
@@ -159,7 +166,9 @@ describe('Encryption API (v2)', () => {
     db = testEnv.db
     cleanup = testEnv.cleanup
     const auth = createAuth(db)
-    app = new Elysia().use(createEncryptionRoutes(auth, db)) as unknown as ReturnType<typeof createEncryptionRoutes>
+    app = new Elysia().use(createEncryptionRoutes(auth, db, createTestSettings())) as unknown as ReturnType<
+      typeof createEncryptionRoutes
+    >
   })
 
   afterEach(async () => {
@@ -1100,6 +1109,262 @@ describe('Encryption API (v2)', () => {
         }),
       )
       expect(res.status).toBe(403)
+    })
+  })
+
+  // ─── Org escrow (THU-804) ───────────────────────────────────────────
+
+  describe('org escrow', () => {
+    let escrowApp: ReturnType<typeof createEncryptionRoutes>
+    let orgPublicKey: string
+
+    beforeEach(async () => {
+      const orgKeypair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])
+      orgPublicKey = Buffer.from(await crypto.subtle.exportKey('raw', orgKeypair.publicKey)).toString('base64')
+      const escrowSettings = createTestSettings({ orgEscrowEnabled: true, orgEscrowPublicKey: orgPublicKey })
+      escrowApp = new Elysia().use(createEncryptionRoutes(createAuth(db), db, escrowSettings)) as unknown as ReturnType<
+        typeof createEncryptionRoutes
+      >
+    })
+
+    const expectedFingerprint = async () => {
+      const digest = await crypto.subtle.digest('SHA-256', Buffer.from(orgPublicKey, 'base64'))
+      return Buffer.from(digest).toString('base64')
+    }
+
+    const orgEnvelopeRow = async (userId: string) =>
+      db
+        .select()
+        .from(orgEnvelopesTable)
+        .where(eq(orgEnvelopesTable.userId, userId))
+        .then((rows) => rows[0] ?? null)
+
+    const bootstrapBody = async (extra: Record<string, unknown> = {}) => {
+      const keypair = await generateSigningKeypair()
+      return {
+        wrappedCK: 'wrapped-ak-boot',
+        canaryIv: 'boot-iv',
+        canaryCtext: 'boot-ctext',
+        signingPublicKey: await exportSigningPublicKey(keypair),
+        kdfSalt: 'boot-salt',
+        wrappedKeys: [{ keyId: initialKeyId, wrappedKey: 'wrapped-dek-0' }],
+        ...recoverySlot,
+        ...extra,
+      }
+    }
+
+    const bootstrap = async (target: ReturnType<typeof createEncryptionRoutes>, body: Record<string, unknown>) =>
+      target.handle(
+        new Request(`${baseUrl}/devices/${p('d')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          body: JSON.stringify(body),
+        }),
+      )
+
+    describe('GET /encryption/org-key', () => {
+      it('returns disabled with null key and fingerprint by default', async () => {
+        await createUserAndSession(p('u'), p('tok'))
+        const res = await app.handle(new Request(`${baseUrl}/encryption/org-key`, { headers: authHeaders(p('tok')) }))
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ enabled: false, publicKey: null, fingerprint: null })
+      })
+
+      it('returns the configured key and its SHA-256 fingerprint when enabled', async () => {
+        await createUserAndSession(p('u'), p('tok'))
+        const res = await escrowApp.handle(
+          new Request(`${baseUrl}/encryption/org-key`, { headers: authHeaders(p('tok')) }),
+        )
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({
+          enabled: true,
+          publicKey: orgPublicKey,
+          fingerprint: await expectedFingerprint(),
+        })
+      })
+    })
+
+    describe('first-device bootstrap', () => {
+      it('rejects a bootstrap missing orgEnvelope when escrow is enabled (400)', async () => {
+        await createUserAndSession(p('u'), p('tok'))
+        await insertDevice(p('d'), p('u'))
+
+        const res = await bootstrap(escrowApp, await bootstrapBody())
+
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain('orgEnvelope')
+        expect(await orgEnvelopeRow(p('u'))).toBeNull()
+      })
+
+      it('persists the org envelope with the key fingerprint when provided', async () => {
+        await createUserAndSession(p('u'), p('tok'))
+        await insertDevice(p('d'), p('u'))
+
+        const res = await bootstrap(escrowApp, await bootstrapBody({ orgEnvelope: 'org-wrapped-ak' }))
+
+        expect(res.status).toBe(200)
+        const row = await orgEnvelopeRow(p('u'))
+        expect(row?.wrappedAk).toBe('org-wrapped-ak')
+        expect(row?.keyFingerprint).toBe(await expectedFingerprint())
+      })
+
+      it('ignores a provided orgEnvelope entirely when escrow is disabled', async () => {
+        await createUserAndSession(p('u'), p('tok'))
+        await insertDevice(p('d'), p('u'))
+
+        const res = await bootstrap(app, await bootstrapBody({ orgEnvelope: 'org-wrapped-ak' }))
+
+        expect(res.status).toBe(200)
+        expect(await orgEnvelopeRow(p('u'))).toBeNull()
+      })
+    })
+
+    describe('device approval', () => {
+      it('does NOT require an orgEnvelope (approval does not change the AK)', async () => {
+        const keypair = await generateSigningKeypair()
+        await createUserAndSession(p('u'), p('tok'))
+        await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+        await insertDevice(p('caller'), p('u'), { trusted: true })
+        await insertEnvelope(p('caller'), p('u'))
+        await insertDevice(p('target'), p('u'))
+
+        const proof = await proofFor(p('tok'), p('caller'), 'approve', keypair)
+        const res = await escrowApp.handle(
+          new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+          }),
+        )
+
+        expect(res.status).toBe(200)
+        expect(await orgEnvelopeRow(p('u'))).toBeNull()
+      })
+    })
+
+    describe('POST /encryption/rotate', () => {
+      const setupRotatable = async () => {
+        const keypair = await generateSigningKeypair()
+        await createUserAndSession(p('u'), p('tok'))
+        await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+        await insertDevice(p('caller'), p('u'), { trusted: true })
+        await insertEnvelope(p('caller'), p('u'))
+        await insertWrappedKeyRow(p('u'), initialKeyId)
+        return keypair
+      }
+
+      const rotateBody = async (keypair: CryptoKeyPair, extra: Record<string, unknown> = {}) => ({
+        proof: await proofFor(p('tok'), p('caller'), 'rotate', keypair),
+        envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak' }],
+        wrappedKeys: [{ keyId: initialKeyId, wrappedKey: `rewrapped-${initialKeyId}` }],
+        canaryIv: 'new-iv',
+        canaryCtext: 'new-ctext',
+        signingPublicKey: await exportSigningPublicKey(keypair),
+        kdfSalt: 'new-salt',
+        ...recoverySlot,
+        ...extra,
+      })
+
+      const rotate = async (target: ReturnType<typeof createEncryptionRoutes>, body: Record<string, unknown>) =>
+        target.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(body),
+          }),
+        )
+
+      it('rejects a rotation missing orgEnvelope when escrow is enabled (400)', async () => {
+        const keypair = await setupRotatable()
+        const res = await rotate(escrowApp, await rotateBody(keypair))
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain('orgEnvelope')
+        expect(await orgEnvelopeRow(p('u'))).toBeNull()
+      })
+
+      it('persists the org envelope wrapping the NEW AK when provided', async () => {
+        const keypair = await setupRotatable()
+        const res = await rotate(escrowApp, await rotateBody(keypair, { orgEnvelope: 'org-wrapped-new-ak' }))
+        expect(res.status).toBe(200)
+        const row = await orgEnvelopeRow(p('u'))
+        expect(row?.wrappedAk).toBe('org-wrapped-new-ak')
+        expect(row?.keyFingerprint).toBe(await expectedFingerprint())
+      })
+
+      it('never persists an orgEnvelope when escrow is disabled', async () => {
+        const keypair = await setupRotatable()
+        const res = await rotate(app, await rotateBody(keypair, { orgEnvelope: 'org-wrapped-new-ak' }))
+        expect(res.status).toBe(200)
+        expect(await orgEnvelopeRow(p('u'))).toBeNull()
+      })
+    })
+
+    describe('POST /encryption/upgrade', () => {
+      const canarySecret = 'the-v1-content-key-canary-secret'
+
+      const setupV1 = async () => {
+        await createUserAndSession(p('u'), p('tok'))
+        await insertV2Metadata(p('u'), 'unused', {
+          schemeVersion: 1,
+          signingKeyNull: true,
+          canarySecretHash: await hashSecret(canarySecret),
+        })
+        await insertDevice(p('caller'), p('u'), { trusted: true })
+        await insertEnvelope(p('caller'), p('u'))
+      }
+
+      const upgradeBody = async (extra: Record<string, unknown> = {}) => {
+        const keypair = await generateSigningKeypair()
+        return {
+          nonce: await issueNonce(p('tok'), p('caller'), 'upgrade'),
+          possessionProof: canarySecret,
+          envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak' }],
+          wrappedKeys: [
+            { keyId: initialKeyId, wrappedKey: 'fresh-dek-0' },
+            { keyId: legacyKeyId, wrappedKey: 'absorbed-v1-ck' },
+          ],
+          primaryKeyId: initialKeyId,
+          canaryIv: 'v2-iv',
+          canaryCtext: 'v2-ctext',
+          signingPublicKey: await exportSigningPublicKey(keypair),
+          kdfSalt: 'v2-salt',
+          ...recoverySlot,
+          ...extra,
+        }
+      }
+
+      const upgrade = async (target: ReturnType<typeof createEncryptionRoutes>, body: Record<string, unknown>) =>
+        target.handle(
+          new Request(`${baseUrl}/encryption/upgrade`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(body),
+          }),
+        )
+
+      it('rejects an upgrade missing orgEnvelope when escrow is enabled (400)', async () => {
+        await setupV1()
+        const res = await upgrade(escrowApp, await upgradeBody())
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain('orgEnvelope')
+        expect(await orgEnvelopeRow(p('u'))).toBeNull()
+      })
+
+      it('persists the org envelope wrapping the NEW AK when provided', async () => {
+        await setupV1()
+        const res = await upgrade(escrowApp, await upgradeBody({ orgEnvelope: 'org-wrapped-migrated-ak' }))
+        expect(res.status).toBe(200)
+        const row = await orgEnvelopeRow(p('u'))
+        expect(row?.wrappedAk).toBe('org-wrapped-migrated-ak')
+        expect(row?.keyFingerprint).toBe(await expectedFingerprint())
+      })
+
+      it('never persists an orgEnvelope when escrow is disabled', async () => {
+        await setupV1()
+        const res = await upgrade(app, await upgradeBody({ orgEnvelope: 'org-wrapped-migrated-ak' }))
+        expect(res.status).toBe(200)
+        expect(await orgEnvelopeRow(p('u'))).toBeNull()
+      })
     })
   })
 

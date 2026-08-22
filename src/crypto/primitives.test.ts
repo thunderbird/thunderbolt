@@ -3,7 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { orgEnvelopeVersion, orgEscrowHkdfInfo, p256RawPublicKeyLength } from '@shared/e2ee-types'
 import {
+  importOrgPublicKey,
+  wrapAKForOrg,
   generateKeyPair,
   generateMlKemKeyPair,
   generateAK,
@@ -27,6 +30,7 @@ import {
   encryptBytes,
   decryptBytes,
   base64ToUint8Array,
+  uint8ArrayToBase64,
 } from './primitives'
 
 describe('generateKeyPair', () => {
@@ -328,6 +332,76 @@ describe('encryptBytes / decryptBytes', () => {
   it('fails with a different key', async () => {
     const encrypted = await encryptBytes(new Uint8Array([1, 2, 3]), await generateDEK())
     await expect(decryptBytes(encrypted, await generateDEK())).rejects.toThrow('Failed to decrypt bytes')
+  })
+})
+
+describe('importOrgPublicKey / wrapAKForOrg (THU-804 org escrow)', () => {
+  // The inverse of wrapAKForOrg exists in the frontend ONLY here, for test
+  // verification — production decryption lives in the offline operator tool.
+  const unwrapOrgEnvelope = async (envelopeBase64: string, orgPrivateKey: CryptoKey): Promise<CryptoKey> => {
+    const envelope = base64ToUint8Array(envelopeBase64)
+    expect(envelope[0]).toBe(orgEnvelopeVersion)
+    expect(envelope.length).toBe(1 + p256RawPublicKeyLength + 40)
+
+    const ephPubRaw = envelope.slice(1, 1 + p256RawPublicKeyLength)
+    const wrappedAKBytes = envelope.slice(1 + p256RawPublicKeyLength)
+    const ephemeralPublicKey = await crypto.subtle.importKey(
+      'raw',
+      ephPubRaw,
+      { name: 'ECDH', namedCurve: 'P-256' },
+      false,
+      [],
+    )
+    const ssEcdh = await crypto.subtle.deriveBits({ name: 'ECDH', public: ephemeralPublicKey }, orgPrivateKey, 256)
+    const hkdfKey = await crypto.subtle.importKey('raw', ssEcdh, 'HKDF', false, ['deriveKey'])
+    const kwKey = await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: ephPubRaw as BufferSource,
+        info: new TextEncoder().encode(orgEscrowHkdfInfo),
+      },
+      hkdfKey,
+      { name: 'AES-KW', length: 256 },
+      false,
+      ['unwrapKey'],
+    )
+    return crypto.subtle.unwrapKey('raw', wrappedAKBytes as BufferSource, kwKey, 'AES-KW', 'AES-KW', true, [
+      'wrapKey',
+      'unwrapKey',
+    ])
+  }
+
+  it('round-trips the AK through the org envelope (inverted locally in the test)', async () => {
+    const orgKeys = await generateKeyPair()
+    const orgPublicKey = await importOrgPublicKey(await exportPublicKey(orgKeys.publicKey))
+    const ak = await generateAK(true)
+
+    const recovered = await unwrapOrgEnvelope(await wrapAKForOrg(ak, orgPublicKey), orgKeys.privateKey)
+    const akRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ak))
+    const recoveredRaw = new Uint8Array(await crypto.subtle.exportKey('raw', recovered))
+    expect(recoveredRaw).toEqual(akRaw)
+  })
+
+  it('rejects a wrong-length org public key', async () => {
+    const tooShort = uint8ArrayToBase64(new Uint8Array(64))
+    await expect(importOrgPublicKey(tooShort)).rejects.toThrow('Invalid org public key: 64 bytes, expected 65')
+  })
+
+  it('produces different envelopes per wrap (fresh ephemeral) that invert to the same AK', async () => {
+    const orgKeys = await generateKeyPair()
+    const orgPublicKey = await importOrgPublicKey(await exportPublicKey(orgKeys.publicKey))
+    const ak = await generateAK(true)
+
+    const envelope1 = await wrapAKForOrg(ak, orgPublicKey)
+    const envelope2 = await wrapAKForOrg(ak, orgPublicKey)
+    expect(envelope1).not.toBe(envelope2)
+
+    const akRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ak))
+    for (const envelope of [envelope1, envelope2]) {
+      const recovered = await unwrapOrgEnvelope(envelope, orgKeys.privateKey)
+      expect(new Uint8Array(await crypto.subtle.exportKey('raw', recovered))).toEqual(akRaw)
+    }
   })
 })
 

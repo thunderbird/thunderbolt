@@ -46,6 +46,8 @@ export {
   hasEnvelopesForUser,
   upsertEnvelope,
   deleteEnvelope,
+  getOrgEnvelope,
+  upsertOrgEnvelope,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
   replaceEncryptionMetadata,

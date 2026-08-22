@@ -12,11 +12,13 @@ import {
   deleteExpiredOrConsumedNonces,
   flipSchemeToV2,
   getEncryptionMetadata,
+  getOrgEnvelope,
   getWrappedKey,
   insertWrappedKey,
   issueChallengeNonce,
   listWrappedKeys,
   updateWrappedKey,
+  upsertOrgEnvelope,
 } from './encryption'
 import { challengeNoncesTable } from '@/db/encryption-schema'
 
@@ -77,6 +79,20 @@ describe('DAL: encryption', () => {
       await insertWrappedKey(db, { userId, keyId: 'v1', wrappedKey: 'b' })
       const keys = await listWrappedKeys(db, userId)
       expect(keys.map((k) => k.keyId).sort()).toEqual(['0', 'v1'])
+    })
+  })
+
+  describe('org envelopes', () => {
+    it('getOrgEnvelope returns null when no envelope exists', async () => {
+      expect(await getOrgEnvelope(db, userId)).toBeNull()
+    })
+
+    it('upsertOrgEnvelope inserts then replaces the single per-user row', async () => {
+      await upsertOrgEnvelope(db, { userId, wrappedAk: 'wrapped-1', keyFingerprint: 'fp-1' })
+      expect(await getOrgEnvelope(db, userId)).toEqual({ wrappedAk: 'wrapped-1', keyFingerprint: 'fp-1' })
+
+      await upsertOrgEnvelope(db, { userId, wrappedAk: 'wrapped-2', keyFingerprint: 'fp-2' })
+      expect(await getOrgEnvelope(db, userId)).toEqual({ wrappedAk: 'wrapped-2', keyFingerprint: 'fp-2' })
     })
   })
 

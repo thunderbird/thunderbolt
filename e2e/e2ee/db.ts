@@ -206,6 +206,21 @@ export const waitForSchemeV2 = async (userId: string, expectedKeyIds: readonly s
   }, 150_000)
 }
 
+export type OrgEnvelopeRow = {
+  wrappedAk: string
+  keyFingerprint: string
+}
+
+/** Block until the org-escrow envelope row exists for the user (THU-804). */
+export const waitForOrgEnvelope = async (userId: string): Promise<OrgEnvelopeRow> =>
+  poll(async () => {
+    const rows = await sql<{ wrapped_ak: string; key_fingerprint: string }[]>`
+      SELECT wrapped_ak, key_fingerprint FROM org_envelopes WHERE user_id = ${userId}
+    `
+    const row = rows[0]
+    return row ? { wrappedAk: row.wrapped_ak, keyFingerprint: row.key_fingerprint } : null
+  }, 30_000)
+
 export const waitForConsumedChallenge = async (userId: string, operation: string): Promise<void> => {
   await poll(async () => {
     const rows = await sql<{ count: number }[]>`

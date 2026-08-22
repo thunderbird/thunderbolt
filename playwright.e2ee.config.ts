@@ -12,6 +12,7 @@
  */
 
 import { defineConfig, devices } from '@playwright/test'
+import { testOrgEscrowPublicKey } from './e2e/e2ee/org-escrow-key'
 
 const isCI = !!process.env.CI
 const frontendPort = 1423
@@ -41,6 +42,11 @@ const backendEnv = (port: number, extra: Record<string, string> = {}): Record<st
   // backend — `getSettings()` reads the process env, and a local MIN_APP_VERSION
   // would 426 every app request and fail the hard-cutover guard spec.
   MIN_APP_VERSION: '',
+  // Org escrow (THU-804) enabled suite-wide: every AK create/change in every
+  // spec must persist an org envelope, which exercises the required-when-enabled
+  // path across setup/rotate/upgrade. org-escrow.spec.ts holds the private key.
+  ORG_ESCROW_ENABLED: 'true',
+  ORG_ESCROW_PUBLIC_KEY: testOrgEscrowPublicKey,
   PORT: String(port),
   POSTHOG_API_KEY: '',
   POWERSYNC_JWT_KID: 'powersync-dev',

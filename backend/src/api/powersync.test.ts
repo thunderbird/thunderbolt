@@ -64,6 +64,8 @@ const powersyncSettings: Settings = {
   deviceAuthInterval: '5s',
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   e2eeEnabled: true,
+  orgEscrowEnabled: false,
+  orgEscrowPublicKey: '',
   rateLimitEnabled: false,
   inferenceQuotaAnonymousFiveHourCents: 10,
   inferenceQuotaAnonymousSevenDayCents: 60,

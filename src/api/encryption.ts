@@ -11,6 +11,7 @@ import type {
   EncryptionMetadataResponse,
   KeyId,
   RecoverySlotRequest,
+  OrgPublicKeyResponse,
   RotateRequest,
   RotateResponse,
   UpgradeRequest,
@@ -84,6 +85,11 @@ export type BootstrapEnvelopeParams = RecoverySlotRequest & {
   kdfSalt: string
   /** Must include key_id '0' (`initialKeyId`). */
   wrappedKeys: WrappedKeyEntry[]
+  /**
+   * The AK wrapped to the operator escrow key (THU-804). REQUIRED by the
+   * server when org escrow is enabled; ignored (never persisted) when disabled.
+   */
+  orgEnvelope?: string
 }
 
 /** Approval / self-recovery payload: gated by a ChallengeProof (operation 'approve'). */
@@ -137,6 +143,13 @@ export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
  */
 export const fetchEncryptionMetadata = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse> =>
   httpClient.get('encryption/canary').json<EncryptionMetadataResponse>()
+
+/**
+ * Fetch the operator escrow public key (THU-804). `enabled: false` (with null
+ * key/fingerprint) means the deployment has no org escrow configured.
+ */
+export const fetchOrgPublicKey = async (httpClient: HttpClient): Promise<OrgPublicKeyResponse> =>
+  httpClient.get('encryption/org-key').json<OrgPublicKeyResponse>()
 
 /** Check if the user has encryption set up (metadata exists on server). */
 export const checkCanaryExists = async (httpClient: HttpClient): Promise<boolean> => {

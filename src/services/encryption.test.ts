@@ -100,6 +100,7 @@ mock.module('@/crypto/key-storage', () => ({
 const {
   registerThisDevice,
   completeFirstDeviceSetup,
+  buildOrgEnvelope,
   approveDevice,
   stageKeyring,
   checkApprovalAndUnwrap,
@@ -155,6 +156,10 @@ type FakeServer = {
   wrappedKeyStatus: number
   /** `METHOD /path` of every request, in order — lets a test assert nothing was called. */
   requests: string[]
+  /** Operator escrow config served by GET /encryption/org-key (THU-804). */
+  orgEscrow: { enabled: boolean; publicKey: string | null }
+  /** `orgEnvelope` from the last bootstrap/rotate/upgrade body — null when the field was omitted. */
+  lastOrgEnvelope: string | null
   fetch: (input: Request) => Promise<Response>
 }
 
@@ -172,6 +177,8 @@ const createFakeServer = (): FakeServer => {
     rotateStatus: 200,
     wrappedKeyStatus: 200,
     requests: [],
+    orgEscrow: { enabled: false, publicKey: null },
+    lastOrgEnvelope: null,
     fetch: async () => jsonResponse({}),
   }
 
@@ -229,6 +236,7 @@ const createFakeServer = (): FakeServer => {
       server.envelopes.set(deviceId, body!.wrappedCK as string)
       server.deviceTrusted.set(deviceId, true)
       if (body!.canaryIv) {
+        server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
         // Bootstrap: create metadata + initial keyring atomically.
         server.metadata = {
           canaryIv: body!.canaryIv as string,
@@ -248,6 +256,10 @@ const createFakeServer = (): FakeServer => {
     }
     if (path === '/encryption/canary' && method === 'GET') {
       return metaResponse()
+    }
+    if (path === '/encryption/org-key' && method === 'GET') {
+      const { enabled, publicKey } = server.orgEscrow
+      return jsonResponse({ enabled, publicKey, fingerprint: publicKey ? 'test-fingerprint' : null })
     }
     if (path === '/encryption/envelope-targets' && method === 'GET') {
       // Mirrors the server predicate: trusted, non-revoked, both public keys present.
@@ -287,6 +299,7 @@ const createFakeServer = (): FakeServer => {
       if (server.rotateStatus !== 200) {
         return jsonResponse({ error: 'stale' }, server.rotateStatus)
       }
+      server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
       for (const env of body!.envelopes as Array<{ deviceId: string; wrappedCK: string }>) {
         server.envelopes.set(env.deviceId, env.wrappedCK)
       }
@@ -314,6 +327,7 @@ const createFakeServer = (): FakeServer => {
         }
         return jsonResponse({ error: 'already migrated' }, 409)
       }
+      server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
       for (const entry of body!.wrappedKeys as Array<{ keyId: KeyId; wrappedKey: string }>) {
         server.wrappedKeys.set(entry.keyId, entry.wrappedKey)
       }
@@ -517,6 +531,78 @@ describe('encryption service (v2)', () => {
       const server = createFakeServer()
       await expect(completeFirstDeviceSetup(clientFor(server))).rejects.toThrow()
       expect(isRecoveryPhrasePending()).toBe(false)
+    })
+  })
+
+  describe('org escrow (THU-804)', () => {
+    /** Configure the fake server with a freshly minted operator escrow key. */
+    const enableOrgEscrow = async (server: FakeServer): Promise<void> => {
+      const { publicKey } = await generateKeyPair()
+      server.orgEscrow = { enabled: true, publicKey: await exportPublicKey(publicKey) }
+    }
+
+    const makeAK = () => generateAK(true)
+
+    it('buildOrgEnvelope returns undefined when escrow is disabled', async () => {
+      const server = createFakeServer()
+      expect(await buildOrgEnvelope(await makeAK(), clientFor(server))).toBeUndefined()
+    })
+
+    it('buildOrgEnvelope wraps the AK to the operator key when enabled', async () => {
+      const server = createFakeServer()
+      await enableOrgEscrow(server)
+      const envelope = await buildOrgEnvelope(await makeAK(), clientFor(server))
+      expect(typeof envelope).toBe('string')
+      expect(envelope!.length).toBeGreaterThan(0)
+    })
+
+    it('completeFirstDeviceSetup omits orgEnvelope from the bootstrap body when disabled', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      expect(server.lastOrgEnvelope).toBeNull()
+    })
+
+    it('completeFirstDeviceSetup sends an orgEnvelope in the bootstrap body when enabled', async () => {
+      const server = createFakeServer()
+      await enableOrgEscrow(server)
+      storedKeyPair = await generateFullKeyPair()
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      expect(typeof server.lastOrgEnvelope).toBe('string')
+    })
+
+    it('rotateAccountKey sends an orgEnvelope in the rotate body when enabled', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      await enableOrgEscrow(server)
+
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(typeof server.lastOrgEnvelope).toBe('string')
+    })
+
+    it('migrateToV2 sends an orgEnvelope in the upgrade body when enabled', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+      await enableOrgEscrow(server)
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(result.outcome).toBe('migrated')
+      expect(typeof server.lastOrgEnvelope).toBe('string')
     })
   })
 

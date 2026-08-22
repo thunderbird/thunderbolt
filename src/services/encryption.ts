@@ -18,6 +18,8 @@ import {
   wrapAK,
   rewrapAK,
   unwrapAK,
+  importOrgPublicKey,
+  wrapAKForOrg,
   wrapDEK,
   unwrapDEK,
   mintDEK,
@@ -56,6 +58,7 @@ import {
   storeEnvelope,
   fetchMyEnvelope,
   fetchEncryptionMetadata,
+  fetchOrgPublicKey,
   fetchWrappedKeys,
   fetchWrappedKey,
   fetchEnvelopeTargets,
@@ -193,6 +196,21 @@ const buildProof = async (
   const deviceId = getDeviceId()
   const signature = await signChallenge(secret, nonce, operation, deviceId)
   return { signature, nonce, operation, deviceId }
+}
+
+/**
+ * Wrap `ak` to the operator escrow public key (THU-804), if the deployment has
+ * one configured. Returns `undefined` when org escrow is disabled — callers
+ * spread it into request bodies, where `JSON.stringify` simply omits the field.
+ * Always call this with the NEW AK of the flow (the same key being wrapped into
+ * the device envelopes) — never the old one.
+ */
+export const buildOrgEnvelope = async (ak: CryptoKey, httpClient: HttpClient): Promise<string | undefined> => {
+  const { enabled, publicKey } = await fetchOrgPublicKey(httpClient)
+  if (!enabled || publicKey === null) {
+    return undefined
+  }
+  return wrapAKForOrg(ak, await importOrgPublicKey(publicKey))
 }
 
 // =============================================================================
@@ -419,6 +437,7 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
     kdfSalt: recovery.kdfSalt,
     wrappedKeys: [{ keyId: initialKeyId, wrappedKey }],
     ...recoverySlot,
+    orgEnvelope: await buildOrgEnvelope(extractableAK, httpClient),
   })
 
   // AK stored LAST so its presence always implies a complete local keyring.
@@ -784,6 +803,10 @@ const runAKRotation = async (
   const { canaryIv, canaryCtext, canarySecret } = await createCanary(dek0, getUserId(), initialKeyId)
   const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
 
+  // Built OUTSIDE the try below: a failed org-key fetch must surface as-is, not
+  // masquerade as a stale-rotation 4xx.
+  const orgEnvelope = await buildOrgEnvelope(newAK, httpClient)
+
   try {
     await postRotate(httpClient, {
       proof,
@@ -794,6 +817,7 @@ const runAKRotation = async (
       signingPublicKey: publicKeySpki,
       kdfSalt: recovery.kdfSalt,
       ...recoverySlot,
+      orgEnvelope,
     })
   } catch (err) {
     if (err instanceof HttpError && err.response.status >= 400 && err.response.status < 500) {
@@ -1005,6 +1029,10 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')
 
+  // Built OUTSIDE the try below: a failed org-key fetch must surface as-is, not
+  // be re-classified as a 409 CAS-loss.
+  const orgEnvelope = await buildOrgEnvelope(newAK, httpClient)
+
   try {
     const { key_version: keyVersion } = await postUpgrade(httpClient, {
       nonce,
@@ -1020,6 +1048,7 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
       signingPublicKey: publicKeySpki,
       kdfSalt: recovery.kdfSalt,
       ...recoverySlot,
+      orgEnvelope,
     })
 
     // Persist ONLY after the server accepted the flip (crash-safe re-entrancy).

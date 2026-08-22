@@ -12,6 +12,7 @@ import {
   storeEnvelope,
   fetchMyEnvelope,
   fetchEncryptionMetadata,
+  fetchOrgPublicKey,
   fetchWrappedKeys,
   fetchWrappedKey,
   postWrappedKey,
@@ -119,6 +120,7 @@ describe('encryption API client', () => {
         kdfSalt: 'salt-base64',
         wrappedKeys: [{ keyId: '0', wrappedKey: 'dek0-base64' }],
         ...sampleRecoverySlot,
+        orgEnvelope: 'org-wrapped-base64',
       })
 
       const req = getLastRequest()
@@ -131,7 +133,26 @@ describe('encryption API client', () => {
         kdfSalt: 'salt-base64',
         wrappedKeys: [{ keyId: '0', wrappedKey: 'dek0-base64' }],
         ...sampleRecoverySlot,
+        orgEnvelope: 'org-wrapped-base64',
       })
+    })
+
+    it('omits orgEnvelope from the bootstrap body when undefined', async () => {
+      const { httpClient, getLastRequest } = createCapturingHttpClient({ trusted: true })
+
+      await storeEnvelope(httpClient, {
+        deviceId: 'dev-1',
+        wrappedCK: 'wrapped-base64',
+        canaryIv: 'iv-base64',
+        canaryCtext: 'ctext-base64',
+        signingPublicKey: 'spki-base64',
+        kdfSalt: 'salt-base64',
+        wrappedKeys: [{ keyId: '0', wrappedKey: 'dek0-base64' }],
+        ...sampleRecoverySlot,
+        orgEnvelope: undefined,
+      })
+
+      expect(Object.keys(getLastRequest().body!)).not.toContain('orgEnvelope')
     })
 
     it('sends the proof-gated approval payload', async () => {
@@ -165,6 +186,17 @@ describe('encryption API client', () => {
 
       expect(getLastRequest().url).toContain('/encryption/canary')
       expect(result).toEqual(meta)
+    })
+
+    it('fetchOrgPublicKey hits /encryption/org-key and returns the DTO', async () => {
+      const orgKey = { enabled: true, publicKey: 'org-pk-base64', fingerprint: 'fp-base64' }
+      const { httpClient, getLastRequest } = createCapturingHttpClient(orgKey)
+
+      const result = await fetchOrgPublicKey(httpClient)
+
+      expect(getLastRequest().url).toContain('/encryption/org-key')
+      expect(getLastRequest().method).toBe('GET')
+      expect(result).toEqual(orgKey)
     })
 
     it('fetchWrappedKeys / fetchWrappedKey hit the keyring routes', async () => {

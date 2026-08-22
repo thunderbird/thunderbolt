@@ -232,6 +232,40 @@ export const kdfIterations = 600_000
 export const kdfSaltLength = 32
 
 // =============================================================================
+// Org escrow (THU-804 POC) — operator-controlled AK recipient
+// =============================================================================
+
+/**
+ * Org-escrow envelope layout (base64 end to end):
+ * `[version 1B = 0x01][ephemeral ECDH-P256 pubkey raw, 65B][AES-KW-wrapped AK, 40B]`.
+ *
+ * Deliberately ECDH-only — no ML-KEM hybrid for this one recipient (disclosed
+ * downgrade; the operator key is a plain P-256 keypair generated offline).
+ * Derivation: ECDH deriveBits (256) → HKDF-SHA256 with `orgEscrowHkdfInfo` and
+ * `salt = ephPubRaw` → AES-KW-256 → wrap the raw AK.
+ */
+export const orgEnvelopeVersion = 0x01
+
+/**
+ * HKDF info string for the org-escrow AK wrap. Distinct from the device
+ * envelope's `thunderbolt-hybrid-ck-wrap-v1` — the two derivations must never
+ * collide. Shared by the frontend wrap path and the offline decrypt tool.
+ */
+export const orgEscrowHkdfInfo = 'thunderbolt-org-escrow-ak-wrap-v1'
+
+/** Byte length of a raw uncompressed P-256 point (the operator public key and the ephemeral key). */
+export const p256RawPublicKeyLength = 65
+
+/** GET /v1/encryption/org-key — the operator escrow public key, when enabled. */
+export type OrgPublicKeyResponse = {
+  enabled: boolean
+  /** Base64 raw uncompressed P-256 point (65 bytes), null when disabled. */
+  publicKey: string | null
+  /** base64(SHA-256(raw public key bytes)) — display/audit only. */
+  fingerprint: string | null
+}
+
+// =============================================================================
 // Migration — scheme_version (plan §6.1, Decision D2)
 // =============================================================================
 
@@ -334,6 +368,11 @@ export type RotateRequest = RecoverySlotRequest & {
   signingPublicKey: string
   /** Base64 random salt for the NEW recovery-seed KDF. */
   kdfSalt: string
+  /**
+   * The NEW AK wrapped to the operator escrow key (THU-804). REQUIRED by the
+   * server when org escrow is enabled; ignored (never persisted) when disabled.
+   */
+  orgEnvelope?: string
 }
 
 /** POST /v1/encryption/rotate response. */
@@ -367,6 +406,11 @@ export type UpgradeRequest = RecoverySlotRequest & {
   signingPublicKey: string
   /** Base64 random salt for the new recovery-seed KDF. */
   kdfSalt: string
+  /**
+   * The NEW AK wrapped to the operator escrow key (THU-804). REQUIRED by the
+   * server when org escrow is enabled; ignored (never persisted) when disabled.
+   */
+  orgEnvelope?: string
 }
 
 /** POST /v1/encryption/upgrade response. */

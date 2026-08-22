@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js'
+import { orgEnvelopeVersion, orgEscrowHkdfInfo, p256RawPublicKeyLength } from '@shared/e2ee-types'
 import { DecryptionError, EncryptionError } from './errors'
 
 const ecdhAlgorithm = 'ECDH'
@@ -27,6 +28,8 @@ const minEnvelopeLength = 1 + ephemeralPubKeyLength + mlkemCiphertextLength + ae
 const hybridHkdfInfo = new TextEncoder().encode('thunderbolt-hybrid-ck-wrap-v1')
 
 const mlkemAtRestHkdfInfo = new TextEncoder().encode('thunderbolt-mlkem-at-rest-v1')
+
+const orgEscrowHkdfInfoBytes = new TextEncoder().encode(orgEscrowHkdfInfo)
 
 // =============================================================================
 // ECDH key pair (for wrapping/unwrapping AK via ECIES)
@@ -410,6 +413,74 @@ export const unwrapLegacyCK = async (
       throw err
     }
     throw new DecryptionError('Failed to unwrap legacy content key', { cause: err })
+  }
+}
+
+// =============================================================================
+// Org escrow (THU-804 POC): Wrap AK to the operator escrow public key
+//
+// Deliberately ECDH-only — no ML-KEM hybrid for this one recipient (a disclosed
+// downgrade; the operator key is a plain P-256 keypair generated offline). The
+// frontend only ever wraps: there is no unwrap function here, because the org
+// envelope is decrypted exclusively by the offline operator tool
+// (scripts/org-escrow-decrypt.ts) holding the private key.
+// =============================================================================
+
+/**
+ * Import the operator org-escrow public key (base64 raw uncompressed P-256
+ * point, 65 bytes) for ECDH wrapping. ECDH-only by design — decryption happens
+ * only in the offline operator tool, never in the frontend.
+ */
+export const importOrgPublicKey = async (base64: string): Promise<CryptoKey> => {
+  const raw = base64ToUint8Array(base64)
+  if (raw.length !== p256RawPublicKeyLength) {
+    throw new EncryptionError(`Invalid org public key: ${raw.length} bytes, expected ${p256RawPublicKeyLength}`)
+  }
+  try {
+    return await crypto.subtle.importKey('raw', raw, { name: ecdhAlgorithm, namedCurve: ecdhCurve }, false, [])
+  } catch (err) {
+    throw new EncryptionError('Failed to import org public key', { cause: err })
+  }
+}
+
+/**
+ * Wrap the AK to the operator escrow public key (THU-804).
+ * Envelope, base64 end to end: `[orgEnvelopeVersion 1B][ephPubRaw 65B][AES-KW-wrapped AK 40B]`.
+ * Derivation: ephemeral ECDH P-256 deriveBits (256) → HKDF-SHA256 with
+ * `info = orgEscrowHkdfInfo`, `salt = ephPubRaw` → AES-KW-256 → wrap the raw AK.
+ *
+ * Same construction as the hybrid `wrapAK` minus ML-KEM — deliberately ECDH-only
+ * for this one recipient. The inverse lives only in the offline operator tool.
+ */
+export const wrapAKForOrg = async (ak: CryptoKey, orgPublicKey: CryptoKey): Promise<string> => {
+  try {
+    const ephemeral = await crypto.subtle.generateKey({ name: ecdhAlgorithm, namedCurve: ecdhCurve }, false, [
+      'deriveBits',
+    ])
+    const ephPubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey))
+    const ssEcdh = await crypto.subtle.deriveBits(
+      { name: ecdhAlgorithm, public: orgPublicKey },
+      ephemeral.privateKey,
+      256,
+    )
+
+    const hkdfKey = await crypto.subtle.importKey('raw', ssEcdh, 'HKDF', false, ['deriveKey'])
+    const wrappingKey = await crypto.subtle.deriveKey(
+      { name: 'HKDF', hash: hkdfHash, salt: ephPubRaw as BufferSource, info: orgEscrowHkdfInfoBytes },
+      hkdfKey,
+      { name: aesKwAlgorithm, length: aesKeyLength },
+      false,
+      ['wrapKey'],
+    )
+    const wrappedAKBytes = new Uint8Array(await crypto.subtle.wrapKey('raw', ak, wrappingKey, aesKwAlgorithm))
+
+    const envelope = new Uint8Array(1 + ephPubRaw.length + wrappedAKBytes.length)
+    envelope[0] = orgEnvelopeVersion
+    envelope.set(ephPubRaw, 1)
+    envelope.set(wrappedAKBytes, 1 + ephPubRaw.length)
+    return uint8ArrayToBase64(envelope)
+  } catch (err) {
+    throw new EncryptionError('Failed to wrap account key for org escrow', { cause: err })
   }
 }
 

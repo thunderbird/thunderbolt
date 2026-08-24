@@ -50,8 +50,15 @@
 }
 
 @theme {
-  /* Mozilla brand font for display headings (e.g. the empty-chat greeting). */
-  --font-heading: 'Mozilla Headline Variable', ui-sans-serif, system-ui, sans-serif;
+  /* Mozilla brand font for display headings (e.g. the empty-chat greeting).
+     The brand font is Latin-only; CSS falls back per character, so CJK text
+     resolves down the chain. The named CJK fonts after system-ui make that
+     fallback deterministic on platforms where system-ui lacks CJK coverage
+     (notably Linux for the Tauri desktop build) — macOS/Windows resolve via
+     system-ui first and never reach them. */
+  --font-heading:
+    'Mozilla Headline Variable', ui-sans-serif, system-ui, 'Hiragino Sans', 'Yu Gothic', 'Noto Sans CJK JP',
+    'Noto Sans JP', sans-serif;
 
   /* No pure white/black anywhere — remap Tailwind's white/black utilities
      (bg-white, text-white, bg-black/40 overlays, etc.) to the theme's off-white

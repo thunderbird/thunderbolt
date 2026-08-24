@@ -153,6 +153,8 @@ describe('inference attempt instrumentation', () => {
       host,
       status: 200,
     })
+    expect(Object.hasOwn(attemptLogs[1], 'retry_after')).toBeFalse()
+    expect(Object.hasOwn(attemptLogs[1], 'rate_limit_headers')).toBeFalse()
     expect(attemptLogs.every(({ duration_ms }) => duration_ms >= 0)).toBeTrue()
     expect(latencyLogs).toHaveLength(1)
     expect(latencyLogs[0]).toMatchObject({

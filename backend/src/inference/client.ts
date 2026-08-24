@@ -124,13 +124,18 @@ export const createInferenceFetch = ({
         const response = await fetchFn(input, init)
         const rateLimitHeaders = getRateLimitHeaders(response.headers)
         const retryAfter = response.headers.get('retry-after')
-        logUpstreamAttempt(logger, {
+        const logContext: Omit<InferenceUpstreamAttemptLog, 'event'> = {
           ...requestContext,
           status: response.status,
           duration_ms: elapsedMs(startedAt, nowFn()),
-          retry_after: retryAfter ?? undefined,
-          rate_limit_headers: Object.keys(rateLimitHeaders).length === 0 ? undefined : rateLimitHeaders,
-        })
+        }
+        if (retryAfter !== null) {
+          logContext.retry_after = retryAfter
+        }
+        if (Object.keys(rateLimitHeaders).length > 0) {
+          logContext.rate_limit_headers = rateLimitHeaders
+        }
+        logUpstreamAttempt(logger, logContext)
         return response
       } catch (error) {
         logUpstreamAttempt(logger, {

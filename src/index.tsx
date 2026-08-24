@@ -45,8 +45,11 @@ markBundleEvaluated()
 // keeps the localStorage mirror intact — passing `sourceLocale` here would
 // overwrite it with `en` on every load — and starts the right catalog fetch
 // before the synced setting hydrates. Once it does, useAppLanguage re-activates
-// whatever the setting resolves to.
-void activateLocale(getActiveLocale())
+// whatever the setting resolves to; until then this is also what `<html lang>`
+// reflects (index.html ships the static `lang="en"` as the pre-boot value).
+const bootLocale = getActiveLocale()
+document.documentElement.lang = bootLocale
+void activateLocale(bootLocale)
 
 // After an update+relaunch, the WebView may restore a stale route (e.g. /waitlist
 // verify screen). Detect this and force a clean start at root.

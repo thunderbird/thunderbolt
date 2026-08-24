@@ -59,13 +59,24 @@ export const useAppLanguage = () => {
     }
   }, [canSeed])
 
+  // Nothing is published while the query is in flight. `useSettings` reports the
+  // schema fallback until the row arrives, so publishing then would announce
+  // `en` on every page load — overwriting the boot-seeded locale in memory and
+  // in its localStorage mirror, and sending `X-App-Language: en` on every
+  // request that beats hydration.
   useEffect(() => {
+    if (isLoading) {
+      return
+    }
     void activateLocale(activeLocale)
     document.documentElement.lang = activeLocale
-  }, [activeLocale])
+  }, [activeLocale, isLoading])
 
   useEffect(() => {
+    if (isLoading) {
+      return
+    }
     posthog?.register({ locale: activeLocale })
     posthog?.setPersonProperties({ locale: activeLocale })
-  }, [activeLocale, posthog])
+  }, [activeLocale, isLoading, posthog])
 }

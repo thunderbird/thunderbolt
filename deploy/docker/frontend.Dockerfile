@@ -12,7 +12,9 @@ RUN bun install --frozen-lockfile
 COPY src ./src
 COPY public ./public
 COPY index.html ./
-COPY vite.config.ts tsconfig.json tsconfig.node.json ./
+# lingui.config.ts is load-bearing: @lingui/vite-plugin resolves it at build
+# time to locate and compile the .po catalogs (THU-806).
+COPY vite.config.ts lingui.config.ts tsconfig.json tsconfig.node.json ./
 COPY components.json ./
 COPY .storybook ./.storybook
 

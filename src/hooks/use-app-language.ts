@@ -12,8 +12,8 @@ import { useSettings } from './use-settings'
 /**
  * Owns the synced `language` setting's runtime side effects:
  *
- * - **Seeding** — the setting ships as null (read as `'en'` via the schema
- *   fallback); while it still holds that default and is unmodified, infer the
+ * - **Seeding** — the setting ships as null; while it still holds that default
+ *   and is unmodified, infer the
  *   language from `navigator.languages` and store it with `recomputeHash` so
  *   it stays a seeded default rather than a user edit (same mechanic as the
  *   country-derived unit defaults, whose null shipped default lets reconcile's
@@ -38,11 +38,20 @@ import { useSettings } from './use-settings'
 export const useAppLanguage = () => {
   const posthog = usePostHogClient()
   const { language } = useSettings({ language: sourceLocale as string })
-  const { value, isModified, isLoading, isSaving, setValue } = language
+  const { rawSetting, isModified, isLoading, isSaving, setValue } = language
 
-  const activeLocale = resolveLocale(value, getBrowserLanguages())
+  // The raw stored value, not the hook's schema-defaulted one: the setting ships
+  // as null, and reading it as `en` would be indistinguishable from an explicit
+  // English choice. `resolveLocale` would then return `en` for a German-browser
+  // user whose setting is merely unset, publishing `en` until the async seed
+  // write below lands — and mirroring it, so a reload in that window starts from
+  // `en` rather than negotiating. Passing null keeps "unset" meaning "negotiate",
+  // and matches what the settings handler passes to `applyLanguageSetting`.
+  const settingValue = rawSetting?.value ?? null
 
-  const canSeed = !isLoading && !isSaving && !isModified && value === sourceLocale
+  const activeLocale = resolveLocale(settingValue, getBrowserLanguages())
+
+  const canSeed = !isLoading && !isSaving && !isModified && settingValue === null
 
   // `useEffectEvent` keeps the unstable `setValue` out of the deps so the
   // effect fires only on the `canSeed` transition, not on every render.

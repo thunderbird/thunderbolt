@@ -369,8 +369,7 @@ Inference, Tinfoil, search, and universal-proxy routes reject unauthenticated re
 The repository needs these Actions secrets:
 
 - `ANTHROPIC_API_KEY` — Opus inference and Opus judge calls
-- `FIREWORKS_API_KEY` — DeepSeek V4 Flash inference and judge calls
-- `TINFOIL_API_KEY` — confidential GLM inference
+- `TINFOIL_API_KEY` — DeepSeek V4 Flash and confidential GLM inference
 - `EXA_API_KEY` — web search tool calls
 
 ### Manual runs

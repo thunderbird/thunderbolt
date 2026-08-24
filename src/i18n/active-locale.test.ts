@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { getActiveLocale, getBrowserLanguages, readInitialLocale, setActiveLocale } from './active-locale'
+import {
+  getActiveLocale,
+  getBrowserLanguages,
+  readInitialLocale,
+  setActiveLocale,
+  subscribeActiveLocale,
+} from './active-locale'
 
 const storageKey = 'thunderbolt_locale'
 
@@ -27,6 +33,58 @@ describe('setActiveLocale', () => {
     setActiveLocale('fr')
     expect(getActiveLocale()).toBe('fr')
     expect(localStorage.getItem(storageKey)).toBe('fr')
+  })
+
+  test('mirrors even when the locale is unchanged, so the value survives a reload', () => {
+    setActiveLocale('de')
+    localStorage.removeItem(storageKey)
+
+    setActiveLocale('de')
+
+    expect(localStorage.getItem(storageKey)).toBe('de')
+  })
+})
+
+describe('subscribeActiveLocale', () => {
+  test('notifies subscribers on a change', () => {
+    setActiveLocale('en')
+    let calls = 0
+    const unsubscribe = subscribeActiveLocale(() => {
+      calls += 1
+    })
+
+    setActiveLocale('ja')
+
+    expect(calls).toBe(1)
+    expect(getActiveLocale()).toBe('ja')
+    unsubscribe()
+  })
+
+  // useSyncExternalStore re-reads the snapshot on every notification, so a
+  // no-op write must stay silent or it churns every subscribed render path.
+  test('stays silent when the locale is set to its current value', () => {
+    setActiveLocale('ja')
+    let calls = 0
+    const unsubscribe = subscribeActiveLocale(() => {
+      calls += 1
+    })
+
+    setActiveLocale('ja')
+
+    expect(calls).toBe(0)
+    unsubscribe()
+  })
+
+  test('stops notifying after unsubscribe', () => {
+    setActiveLocale('en')
+    let calls = 0
+    subscribeActiveLocale(() => {
+      calls += 1
+    })()
+
+    setActiveLocale('fr')
+
+    expect(calls).toBe(0)
   })
 })
 

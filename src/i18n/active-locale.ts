@@ -70,6 +70,23 @@ let activeLocale: AppLocale = readInitialLocale()
  */
 export const getActiveLocale = (): AppLocale => activeLocale
 
+const listeners = new Set<() => void>()
+
+/**
+ * Subscribe to locale changes. Pairs with {@link getActiveLocale} as a
+ * `useSyncExternalStore` store, for render paths that must recompute when the
+ * locale changes — see `useActiveLocale`.
+ *
+ * @param listener Called after each change.
+ * @returns Unsubscribe function.
+ */
+export const subscribeActiveLocale = (listener: () => void): (() => void) => {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
 /**
  * Record the locale the app switched to and mirror it for the next boot.
  * Called by `activateLocale` — the single writer — before it awaits the
@@ -77,8 +94,12 @@ export const getActiveLocale = (): AppLocale => activeLocale
  * new tag rather than the one whose catalog is still loading.
  */
 export const setActiveLocale = (locale: AppLocale): void => {
-  activeLocale = locale
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(localeStorageKey, locale)
   }
+  if (locale === activeLocale) {
+    return
+  }
+  activeLocale = locale
+  listeners.forEach((listener) => listener())
 }

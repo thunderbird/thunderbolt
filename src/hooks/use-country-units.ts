@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useHttpClient, type HttpClient } from '@/contexts'
+import { useActiveLocale } from '@/i18n/use-active-locale'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { countryUnitsResponseSchema } from '@/schemas/api'
 import type { CountryUnitsData } from '@/types'
@@ -43,9 +44,14 @@ export const useCountryUnits = (country?: string) => {
 
   // Use provided country or extract from location_name, fallback to US
   const countryName = country || extractCountryFromLocation(locationName.value || '') || 'US'
+  // Part of the key because the response carries display names (currency, unit)
+  // and the request sends `X-App-Language`; a 24-hour cache would otherwise
+  // outlive a language change. Both keys below must include it, or the
+  // imperative fetch writes a cache entry the declarative query never reads.
+  const locale = useActiveLocale()
 
   const query = useQuery({
-    queryKey: ['country-units', countryName],
+    queryKey: ['country-units', countryName, locale],
     queryFn: createCountryUnitsQueryFn(countryName, httpClient),
     enabled: false,
     refetchOnMount: false,
@@ -58,7 +64,7 @@ export const useCountryUnits = (country?: string) => {
   const fetchCountryUnits = async (targetCountry: string): Promise<CountryUnitsData | null> => {
     return await queryClient
       .fetchQuery({
-        queryKey: ['country-units', targetCountry],
+        queryKey: ['country-units', targetCountry, locale],
         queryFn: createCountryUnitsQueryFn(targetCountry, httpClient),
         staleTime: staleTime,
       })

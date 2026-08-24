@@ -163,13 +163,17 @@ export const defaultSettingIntegrationsDoNotAskAgain: Setting = {
 }
 
 /**
- * UI language as a BCP-47 tag. Ships as 'en'; while unmodified it is seeded
- * from `navigator.languages` on boot (see `useAppLanguage`), so an explicit
- * user choice is the only thing that pins it.
+ * UI language as a BCP-47 tag. Ships as null (rendered as 'en' via the
+ * `useSettings` schema fallback); while unmodified it is seeded from
+ * `navigator.languages` on boot (see `useAppLanguage`), so an explicit user
+ * choice is the only thing that pins it. The null default matters: reconcile's
+ * `wouldOverwriteUserValue` guard only protects seeded values across
+ * `defaultSettingsVersion` bumps when the shipped default is null — the same
+ * mechanic as the country-derived unit defaults.
  */
 export const defaultSettingLanguage: Setting = {
   key: 'language',
-  value: 'en',
+  value: null,
   updatedAt: null,
   defaultHash: null,
   userId: null,

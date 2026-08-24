@@ -15,13 +15,16 @@ const getBrowserLanguages = (): readonly string[] =>
 /**
  * Owns the synced `language` setting's runtime side effects:
  *
- * - **Seeding** — the setting ships as `'en'`; while it still holds that
- *   default and is unmodified, infer the language from `navigator.languages`
- *   and store it with `recomputeHash` so it stays a seeded default rather
- *   than a user edit (same mechanic as the country-derived unit defaults).
- *   Seeding only fires from the shipped default, so devices with different
- *   browser languages never ping-pong the synced row; resetting the setting
- *   returns it to `'en'` and re-seeds — i.e. "back to auto".
+ * - **Seeding** — the setting ships as null (read as `'en'` via the schema
+ *   fallback); while it still holds that default and is unmodified, infer the
+ *   language from `navigator.languages` and store it with `recomputeHash` so
+ *   it stays a seeded default rather than a user edit (same mechanic as the
+ *   country-derived unit defaults, whose null shipped default lets reconcile's
+ *   `wouldOverwriteUserValue` guard preserve the seeded value across
+ *   `defaultSettingsVersion` bumps). Seeding only fires from the shipped
+ *   default, so devices with different browser languages never ping-pong the
+ *   synced row; resetting the setting returns it to null and re-seeds — i.e.
+ *   "back to auto".
  * - **`<html lang>`** — bound to the active locale (index.html ships the
  *   static `lang="en"` as the pre-boot value).
  * - **PostHog `locale`** — registered as a super property and person

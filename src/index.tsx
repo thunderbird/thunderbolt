@@ -41,7 +41,8 @@ markBundleEvaluated()
 
 // Kick off the locale catalog chunk immediately; rendering doesn't wait for it
 // (the source locale is active synchronously with per-message English fallback,
-// see src/i18n).
+// see src/i18n). Once the synced `language` setting loads, useAppLanguage
+// re-activates the resolved locale.
 void activateLocale(getAppLocale())
 
 // After an update+relaunch, the WebView may restore a stale route (e.g. /waitlist

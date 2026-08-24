@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { activateLocale, envLocaleOverride } from '@/i18n'
 import { sourceLocale } from '@/i18n/locales'
 import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
 import { usePostHogClient } from '@/lib/posthog'
@@ -21,23 +22,25 @@ import { useSettings } from './use-settings'
  *   default, so devices with different browser languages never ping-pong the
  *   synced row; resetting the setting returns it to null and re-seeds — i.e.
  *   "back to auto".
+ * - **Lingui catalog** — activates the resolved locale via `activateLocale`,
+ *   loading its catalog chunk and re-rendering translated text. The
+ *   `VITE_APP_LOCALE` env override (CI pseudo-locale builds) wins over the
+ *   setting.
  * - **`<html lang>`** — bound to the active locale (index.html ships the
  *   static `lang="en"` as the pre-boot value).
  * - **PostHog `locale`** — registered as a super property and person
  *   property. A coarse BCP-47 tag carries no sensitive payload, and capture
  *   is already consent-gated by `data_collection`.
  *
- * Both effects are legitimate per the `useEffect` discipline: a DB write and
- * DOM/analytics synchronization with external systems.
- *
- * The Lingui runtime additionally wires `activateLocale` to this setting.
+ * All effects are legitimate per the `useEffect` discipline: a DB write and
+ * i18n-store/DOM/analytics synchronization with external systems.
  */
 export const useAppLanguage = () => {
   const posthog = usePostHogClient()
   const { language } = useSettings({ language: sourceLocale as string })
   const { value, isModified, isLoading, isSaving, setValue } = language
 
-  const activeLocale = resolveLocale(value, getBrowserLanguages())
+  const activeLocale = envLocaleOverride() ?? resolveLocale(value, getBrowserLanguages())
 
   const canSeed = !isLoading && !isSaving && !isModified && value === sourceLocale
 
@@ -57,7 +60,11 @@ export const useAppLanguage = () => {
   }, [canSeed])
 
   useEffect(() => {
+    void activateLocale(activeLocale)
     document.documentElement.lang = activeLocale
+  }, [activeLocale])
+
+  useEffect(() => {
     posthog?.register({ locale: activeLocale })
     posthog?.setPersonProperties({ locale: activeLocale })
   }, [activeLocale, posthog])

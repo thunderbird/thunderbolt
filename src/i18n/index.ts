@@ -25,15 +25,17 @@ const isAppLocale = (value: string | undefined): value is AppLocale =>
   !!value && (appLocales as readonly string[]).includes(value)
 
 /**
- * Resolve the active UI locale. Fixed to the source locale until THU-805
- * lands the synced `language` setting and negotiation chain. VITE_APP_LOCALE
- * lets CI and local runs force a locale — the en-XA pseudo-locale build and
- * manual pseudo-localization checks use this.
+ * Env-forced locale, or null when unset. VITE_APP_LOCALE lets CI and local
+ * runs pin a locale (the en-XA pseudo-locale build, manual l10n checks); it
+ * wins over the synced `language` setting in `useAppLanguage`.
  */
-export const getAppLocale = (): AppLocale => {
+export const envLocaleOverride = (): AppLocale | null => {
   const override = import.meta.env.VITE_APP_LOCALE
-  return isAppLocale(override) ? override : sourceLocale
+  return isAppLocale(override) ? override : null
 }
+
+/** Locale to activate at boot, before the synced `language` setting loads. */
+export const getAppLocale = (): AppLocale => envLocaleOverride() ?? sourceLocale
 
 // Activate the source locale synchronously with an empty catalog so the first
 // render never blocks on a catalog chunk: the macro embeds the English source
@@ -42,8 +44,8 @@ export const getAppLocale = (): AppLocale => {
 i18n.loadAndActivate({ locale: sourceLocale, messages: {} })
 
 /**
- * Load a locale's catalog chunk and make it active. Also the locale-switch
- * entry point once THU-805 lands.
+ * Load a locale's catalog chunk and make it active. Called at boot
+ * (src/index.tsx) and whenever the resolved locale changes (`useAppLanguage`).
  */
 export const activateLocale = async (locale: AppLocale): Promise<void> => {
   const { messages } = await catalogLoaders[locale]()

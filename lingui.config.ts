@@ -4,7 +4,7 @@
 
 import { defineConfig } from '@lingui/cli'
 import { formatter } from '@lingui/format-po-gettext'
-import { appLocales, pseudoLocale, sourceLocale } from './src/i18n/locales'
+import { appLocales, pseudoLocale, sourceLocale } from './shared/i18n/locales'
 
 /**
  * Lingui configuration (THU-806).

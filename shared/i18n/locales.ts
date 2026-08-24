@@ -4,8 +4,10 @@
 
 /**
  * Single source of truth for the locale set, shared by `lingui.config.ts`
- * (extraction/compilation) and the runtime in `src/i18n`. Kept free of
- * runtime imports so the Lingui CLI can load it outside Vite.
+ * (extraction/compilation), the frontend runtime in `src/i18n`, and the
+ * backend's `X-App-Language` validation. Lives in `shared/` because the
+ * backend cannot import from `src/`. Kept free of runtime imports so the
+ * Lingui CLI can load it outside Vite.
  */
 
 /** Locales the app ships catalogs for. `en` is the source locale; `en-XA` is the CI pseudo-locale. */

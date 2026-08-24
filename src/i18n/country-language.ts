@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { AppLocale } from './locales'
+import type { AppLocale } from '@shared/i18n/locales'
 import { matchLocale } from './resolve-locale'
 
 /**

@@ -5,7 +5,7 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useSettings } from '@/hooks/use-settings'
 import { languageOptions } from '@/i18n/language-options'
-import { sourceLocale } from '@/i18n/locales'
+import { sourceLocale } from '@shared/i18n/locales'
 import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
 import { Languages } from 'lucide-react'
 import { OnboardingStepHeader } from './onboarding-step-header'

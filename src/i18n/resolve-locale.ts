@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { appLocales, pseudoLocale, sourceLocale, type AppLocale } from './locales'
+import { appLocales, pseudoLocale, sourceLocale, type AppLocale } from '@shared/i18n/locales'
 
 /** Locales eligible for browser-language negotiation — every shipped locale except the CI pseudo-locale. */
 export const negotiableLocales = appLocales.filter((locale) => locale !== pseudoLocale)

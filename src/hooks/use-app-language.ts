@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { activateLocale } from '@/i18n'
-import { sourceLocale } from '@/i18n/locales'
+import { sourceLocale } from '@shared/i18n/locales'
 import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
 import { usePostHogClient } from '@/lib/posthog'
 import { useEffect, useEffectEvent } from 'react'

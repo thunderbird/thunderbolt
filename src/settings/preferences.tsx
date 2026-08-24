@@ -52,7 +52,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePostHogClient } from '@/lib/posthog'
 import { localeForCountry } from '@/i18n/country-language'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
-import type { AppLocale } from '@/i18n/locales'
+import type { AppLocale } from '@shared/i18n/locales'
 import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'

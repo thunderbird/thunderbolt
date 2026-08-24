@@ -5,7 +5,7 @@
 import type { Messages } from '@lingui/core'
 import { i18n } from '@lingui/core'
 import { messages as sourceMessages } from '@/locales/en/messages.po'
-import { appLocales, sourceLocale, type AppLocale } from './locales'
+import { appLocales, sourceLocale, type AppLocale } from '@shared/i18n/locales'
 
 export { appLocales, sourceLocale, type AppLocale }
 

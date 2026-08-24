@@ -29,7 +29,7 @@ type FetchCall = {
 
 /**
  * Integration tests to verify PostHog privacy mode works correctly
- * in the actual inference routes with real client creation
+ * with real inference client creation
  */
 describe('Inference Routes - PostHog Privacy Integration', () => {
   let capturedFetches: FetchCall[] = []
@@ -41,7 +41,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
     originalEnv = {
       POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
       POSTHOG_HOST: process.env.POSTHOG_HOST,
-      FIREWORKS_API_KEY: process.env.FIREWORKS_API_KEY,
+      TINFOIL_API_KEY: process.env.TINFOIL_API_KEY,
     }
 
     capturedFetches = []
@@ -70,7 +70,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         })
       }
 
-      // Mock OpenAI/Fireworks completion response
+      // Mock Tinfoil completion response
       return new Response(
         JSON.stringify({
           id: 'chatcmpl-test',
@@ -152,14 +152,14 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   describe('Inference client with PostHog wrapper', () => {
     it('should create PostHogOpenAI client when PostHog is configured', () => {
       process.env.POSTHOG_API_KEY = 'test-key'
-      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+      process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
+      const { client } = getInferenceClient('tinfoil', { fetchFn: mockFetch })
 
       // Verify it's a PostHog-wrapped client
       expect(client.constructor.name).toBe('PostHogOpenAI')
@@ -169,14 +169,14 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Note: In this test environment, PostHog might be cached from previous tests
       // The important thing is that the client is created successfully
       delete process.env.POSTHOG_API_KEY
-      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+      process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
+      const { client } = getInferenceClient('tinfoil', { fetchFn: mockFetch })
 
       // Verify client exists and is functional
       expect(client).toBeDefined()
@@ -189,7 +189,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
     it('should not send conversation content to PostHog when making completions', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'
       process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
-      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+      process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
@@ -197,7 +197,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       clearPostHogClient()
 
       // Get the wrapped client with injected mock fetch
-      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
+      const { client } = getInferenceClient('tinfoil', { fetchFn: mockFetch })
 
       // Make a completion with sensitive data
       const completion = await (client as PostHogOpenAI).chat.completions.create({
@@ -210,7 +210,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         ],
         posthogDistinctId: 'test-user',
         posthogProperties: {
-          model_provider: 'fireworks',
+          model_provider: 'tinfoil',
           endpoint: '/chat/completions',
         },
       })
@@ -251,14 +251,14 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
 
     it('should verify privacy mode prevents content leakage in batch operations', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'
-      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+      process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
+      const { client } = getInferenceClient('tinfoil', { fetchFn: mockFetch })
 
       // Make multiple completions
       const conversations = [

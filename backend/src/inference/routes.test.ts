@@ -7,8 +7,7 @@ import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
-import type OpenAI from 'openai'
-import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
+import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import { createInferenceRoutes, supportedModels, type InferenceProxyLatencyLog } from './routes'
 import { defaultModels } from '@shared/defaults/models'
 
@@ -30,17 +29,17 @@ describe('Inference Routes', () => {
   // Mock OpenAI client
   const mockCreateCompletion = mock(() => Promise.resolve({}))
 
-  const mockOpenAIClient = {
+  const mockOpenAIClient = Object.assign(new OpenAI({ apiKey: 'test' }), {
     chat: {
       completions: {
         create: mockCreateCompletion,
       },
     },
-  }
+  })
 
   const getInferenceClientMock = mock(() => ({
-    client: mockOpenAIClient as unknown as OpenAI,
-    provider: 'fireworks' as const,
+    client: mockOpenAIClient,
+    provider: 'tinfoil' as const,
   }))
   const isPostHogConfiguredMock = mock(() => false)
 
@@ -83,8 +82,8 @@ describe('Inference Routes', () => {
       consoleSpies.error.mockClear()
       isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
-        client: mockOpenAIClient as unknown as OpenAI,
-        provider: 'fireworks' as const,
+        client: mockOpenAIClient,
+        provider: 'tinfoil' as const,
       }))
     })
 
@@ -110,7 +109,7 @@ describe('Inference Routes', () => {
       expect(response.headers.get('Connection')).toBe('keep-alive')
 
       expect(mockCreateCompletion).toHaveBeenCalledWith({
-        model: 'accounts/fireworks/models/deepseek-v4-flash-0731',
+        model: 'deepseek-v4-flash',
         messages: validRequestBody.messages,
         temperature: validRequestBody.temperature,
         tools: undefined,
@@ -119,7 +118,7 @@ describe('Inference Routes', () => {
       })
     })
 
-    it('should route DeepSeek V4 Flash to the Fireworks provider', async () => {
+    it('should route DeepSeek V4 Flash to the Tinfoil provider', async () => {
       const mockCompletion = createMockStream()
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
 
@@ -132,10 +131,10 @@ describe('Inference Routes', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(getInferenceClientMock).toHaveBeenCalledWith('fireworks')
+      expect(getInferenceClientMock).toHaveBeenCalledWith('tinfoil')
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'accounts/fireworks/models/deepseek-v4-flash-0731',
+          model: 'deepseek-v4-flash',
         }),
       )
     })
@@ -192,7 +191,7 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
           posthogProperties: expect.objectContaining({
-            model_provider: 'fireworks',
+            model_provider: 'tinfoil',
             endpoint: '/chat/completions',
             has_tools: false,
             temperature: validRequestBody.temperature,
@@ -287,7 +286,7 @@ describe('Inference Routes', () => {
 
       expect(response.status).toBe(400)
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
-        provider: 'fireworks',
+        provider: 'tinfoil',
         status: 400,
         model: 'deepseek-v4-flash',
         errorKind: 'context_length',
@@ -419,7 +418,7 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
       expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
-        provider: 'fireworks',
+        provider: 'tinfoil',
         status: 500,
         model: 'deepseek-v4-flash',
         errorKind: 'connection',
@@ -455,7 +454,7 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
       expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
-        provider: 'fireworks',
+        provider: 'tinfoil',
         status: 500,
         model: 'deepseek-v4-flash',
         errorKind: 'connection',
@@ -529,7 +528,7 @@ describe('Inference Routes', () => {
           context: {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
-            provider: 'fireworks',
+            provider: 'tinfoil',
             model: 'deepseek-v4-flash',
             status: 200,
             preMs: 20,
@@ -573,7 +572,7 @@ describe('Inference Routes', () => {
           context: {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
-            provider: 'fireworks',
+            provider: 'tinfoil',
             model: 'deepseek-v4-flash',
             status: 500,
             preMs: 30,
@@ -663,8 +662,8 @@ describe('Inference Routes', () => {
       isPostHogConfiguredMock.mockClear()
       isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
-        client: mockOpenAIClient as unknown as OpenAI,
-        provider: 'fireworks' as const,
+        client: mockOpenAIClient,
+        provider: 'tinfoil' as const,
       }))
       mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream()))
     })

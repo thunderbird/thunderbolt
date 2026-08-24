@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getActiveLocale } from '@/i18n/active-locale'
 import { http, type HttpClient } from '@/lib/http'
+import { baseLanguage } from '@shared/i18n/base-language'
 import { WeatherForecastDataSchema, type WeatherDay, type WeatherForecastData } from './lib'
 
 export type FetchWeatherForecastParams = {
@@ -79,10 +81,14 @@ export const fetchWeatherForecast = async (
 ): Promise<WeatherForecastData> => {
   const { location, region, country, days, temperatureUnit } = params
 
+  // Open-Meteo takes a bare two-letter code here, and the place, region and
+  // country names it returns come back in that language. Asking in the user's
+  // language also sharpens `disambiguateLocation`, which matches the region and
+  // country the user typed against those returned names.
   const geocoding = await httpClient
     .get(geocodingUrl, {
       timeout: requestTimeout,
-      searchParams: { name: location, count: 10, language: 'en', format: 'json' },
+      searchParams: { name: location, count: 10, language: baseLanguage(getActiveLocale()), format: 'json' },
     })
     .json<GeocodingResponse>()
 

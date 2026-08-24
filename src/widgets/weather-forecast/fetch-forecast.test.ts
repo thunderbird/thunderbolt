@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setActiveLocale } from '@/i18n/active-locale'
 import type { HttpClient, RequestOptions, ResponsePromise } from '@/lib/http'
 import { describe, expect, it } from 'bun:test'
 import { fetchWeatherForecast } from './fetch-forecast'
@@ -74,6 +75,25 @@ describe('fetchWeatherForecast', () => {
     expect(recorded[0].searchParams.name).toBe('London')
     expect(recorded[1].url).toContain('api.open-meteo.com/v1/forecast')
     expect(recorded[1].searchParams.temperature_unit).toBe('fahrenheit')
+  })
+
+  it('geocodes in the active language, stripped to the base subtag Open-Meteo expects', async () => {
+    setActiveLocale('pt-BR')
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(
+      { geocoding: { results: [{ name: 'Recife', latitude: -8.05, longitude: -34.9 }] }, forecast: buildForecast(1) },
+      recorded,
+    )
+
+    await fetchWeatherForecast(
+      { location: 'Recife', region: '', country: '', days: 1, temperatureUnit: 'c' },
+      httpClient,
+    )
+
+    expect(recorded[0].searchParams.language).toBe('pt')
+
+    setActiveLocale('en')
+    localStorage.removeItem('thunderbolt_locale')
   })
 
   it('disambiguates by region and country, selecting the matching result', async () => {

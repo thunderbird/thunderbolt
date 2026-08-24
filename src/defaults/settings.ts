@@ -163,6 +163,19 @@ export const defaultSettingIntegrationsDoNotAskAgain: Setting = {
 }
 
 /**
+ * UI language as a BCP-47 tag. Ships as 'en'; while unmodified it is seeded
+ * from `navigator.languages` on boot (see `useAppLanguage`), so an explicit
+ * user choice is the only thing that pins it.
+ */
+export const defaultSettingLanguage: Setting = {
+  key: 'language',
+  value: 'en',
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+/**
  * Array of all default settings for iteration
  */
 export const defaultSettings: ReadonlyArray<Setting> = [
@@ -183,6 +196,7 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingUserHasCompletedOnboarding,
   defaultSettingContentViewWidth,
   defaultSettingIntegrationsDoNotAskAgain,
+  defaultSettingLanguage,
 ] as const
 
 /**
@@ -196,4 +210,4 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 2
+export const defaultSettingsVersion = 3

@@ -50,11 +50,30 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePostHogClient } from '@/lib/posthog'
+import { pseudoLocale } from '@/i18n/locales'
+import { negotiableLocales } from '@/i18n/resolve-locale'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { SettingsPageShell } from '@/components/settings/settings-list'
 
 type PendingImport = { payload: unknown } & ExportSummary
+
+/**
+ * Options for the language selector, labelled as endonyms (each language
+ * named in itself, via `Intl.DisplayNames`) so the list reads naturally
+ * whatever the active UI language is. The `en-XA` pseudo-locale is offered
+ * in dev builds only.
+ */
+const languageOptions: ReadonlyArray<{ value: string; label: string }> = [
+  ...negotiableLocales.map((locale) => {
+    const endonym = new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale
+    return {
+      value: locale as string,
+      label: endonym.charAt(0).toLocaleUpperCase(locale) + endonym.slice(1),
+    }
+  }),
+  ...(import.meta.env.DEV ? [{ value: pseudoLocale as string, label: 'Pseudo-locale (en-XA)' }] : []),
+]
 
 type PreferencesState = {
   isResetting: boolean
@@ -200,6 +219,7 @@ export default function PreferencesSettingsPage() {
     dateFormat,
     timeFormat,
     currency,
+    language,
   } = useSettings({
     preferred_name: '',
     location_name: '',
@@ -213,6 +233,7 @@ export default function PreferencesSettingsPage() {
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
+    language: 'en',
   })
 
   const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
@@ -594,6 +615,43 @@ export default function PreferencesSettingsPage() {
 
       <SectionCard title="Localization">
         <div className="flex flex-col gap-6">
+          {/* Language */}
+          <div className="flex flex-row items-center gap-4">
+            <div className="flex-1">
+              <ModificationIndicator
+                as="label"
+                className="text-sm font-medium"
+                hasModifications={language.isModified}
+                onReset={async () => {
+                  await language.reset()
+                  trackEvent('settings_localization_reset')
+                }}
+              >
+                Language
+              </ModificationIndicator>
+            </div>
+            <Select
+              value={language.value}
+              onValueChange={async (v) => {
+                await language.setValue(v)
+                trackEvent('settings_localization_update')
+              }}
+            >
+              <SelectTrigger className="w-auto rounded-lg" aria-label="Language">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {languageOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="h-px bg-border -mx-6" />
+
           <div className="flex flex-col gap-2">
             <ModificationIndicator
               as="label"

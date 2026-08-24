@@ -31,6 +31,7 @@ import {
   useHttpClient,
 } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
+import { useAppLanguage } from '@/hooks/use-app-language'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
@@ -173,6 +174,7 @@ const useBootstrapSystemAgents = () => {
 const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useBootstrapSystemAgents()
+  useAppLanguage()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()

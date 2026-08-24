@@ -559,7 +559,7 @@ export const createServices = (args: ServiceArgs) => {
         name: 'frontend',
         image: args.images.frontend,
         essential: true,
-        portMappings: [{ containerPort: 80 }],
+        portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('frontend'),
         ...(repositoryCredentials && { repositoryCredentials }),
       },
@@ -577,7 +577,7 @@ export const createServices = (args: ServiceArgs) => {
     },
     serviceRegistries: { registryArn: args.discoveryServices['frontend'].arn },
     loadBalancers: [
-      { targetGroupArn: args.targetGroups.frontend.arn, containerName: 'frontend', containerPort: 80 },
+      { targetGroupArn: args.targetGroups.frontend.arn, containerName: 'frontend', containerPort: 8080 },
     ],
   }, { dependsOn: [args.albListener] })
 
@@ -595,7 +595,7 @@ export const createServices = (args: ServiceArgs) => {
         name: 'marketing',
         image: args.images.marketing,
         essential: true,
-        portMappings: [{ containerPort: 80 }],
+        portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('marketing'),
         ...(repositoryCredentials && { repositoryCredentials }),
       },
@@ -613,7 +613,7 @@ export const createServices = (args: ServiceArgs) => {
     },
     serviceRegistries: { registryArn: args.discoveryServices['marketing'].arn },
     loadBalancers: [
-      { targetGroupArn: args.targetGroups.marketing.arn, containerName: 'marketing', containerPort: 80 },
+      { targetGroupArn: args.targetGroups.marketing.arn, containerName: 'marketing', containerPort: 8080 },
     ],
   }, { dependsOn: [args.albListener] })
 

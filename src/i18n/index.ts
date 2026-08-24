@@ -27,12 +27,23 @@ const catalogLoaders: Record<AppLocale, () => Promise<{ messages: Messages }>> =
 // the real catalog arrives.
 i18n.loadAndActivate({ locale: sourceLocale, messages: {} })
 
+let activationToken = 0
+
 /**
  * Load a locale's catalog chunk and make it active. Called at boot
  * (src/index.tsx) and whenever the resolved locale changes (`useAppLanguage`).
+ *
+ * The token makes the last *requested* locale win: without it, concurrent
+ * calls (boot overlapping the hook's first activation, or a quick
+ * setting flip) would settle on whichever catalog chunk happened to
+ * resolve last.
  */
 export const activateLocale = async (locale: AppLocale): Promise<void> => {
+  const token = ++activationToken
   const { messages } = await catalogLoaders[locale]()
+  if (token !== activationToken) {
+    return
+  }
   i18n.loadAndActivate({ locale, messages })
 }
 

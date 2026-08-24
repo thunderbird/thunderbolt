@@ -15,17 +15,21 @@ type InferenceLog = InferenceUpstreamAttemptLog | InferenceProxyLatencyLog
 const successfulStream =
   'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
   'data: [DONE]\n\n'
+const tinfoilEnclaveUrl = 'https://staging-inference.tinfoil.sh/v1/'
 
 describe('inference attempt instrumentation', () => {
-  let originalFireworksApiKey: string | undefined
+  let originalTinfoilApiKey: string | undefined
+  let originalTinfoilEnclaveUrl: string | undefined
   let originalAnthropicApiKey: string | undefined
   let originalPostHogApiKey: string | undefined
 
   beforeEach(() => {
-    originalFireworksApiKey = process.env.FIREWORKS_API_KEY
+    originalTinfoilApiKey = process.env.TINFOIL_API_KEY
+    originalTinfoilEnclaveUrl = process.env.TINFOIL_ENCLAVE_URL
     originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
     originalPostHogApiKey = process.env.POSTHOG_API_KEY
-    process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+    process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
+    process.env.TINFOIL_ENCLAVE_URL = tinfoilEnclaveUrl
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
     delete process.env.POSTHOG_API_KEY
     clearSettingsCache()
@@ -34,10 +38,15 @@ describe('inference attempt instrumentation', () => {
   })
 
   afterEach(() => {
-    if (originalFireworksApiKey === undefined) {
-      delete process.env.FIREWORKS_API_KEY
+    if (originalTinfoilApiKey === undefined) {
+      delete process.env.TINFOIL_API_KEY
     } else {
-      process.env.FIREWORKS_API_KEY = originalFireworksApiKey
+      process.env.TINFOIL_API_KEY = originalTinfoilApiKey
+    }
+    if (originalTinfoilEnclaveUrl === undefined) {
+      delete process.env.TINFOIL_ENCLAVE_URL
+    } else {
+      process.env.TINFOIL_ENCLAVE_URL = originalTinfoilEnclaveUrl
     }
     if (originalAnthropicApiKey === undefined) {
       delete process.env.ANTHROPIC_API_KEY
@@ -57,9 +66,9 @@ describe('inference attempt instrumentation', () => {
   it.each([
     {
       model: 'deepseek-v4-flash',
-      provider: 'fireworks' as const,
-      host: 'api.fireworks.ai',
-      apiKey: 'test-fireworks-key',
+      provider: 'tinfoil' as const,
+      host: new URL(tinfoilEnclaveUrl).hostname,
+      apiKey: 'test-tinfoil-key',
     },
     {
       model: 'opus-5',
@@ -70,30 +79,33 @@ describe('inference attempt instrumentation', () => {
   ])('logs $provider 429 retry and surfaces attempts=2 after success', async ({ model, provider, host, apiKey }) => {
     const logs: Array<{ context: InferenceLog; message: string }> = []
     let callCount = 0
-    const fetchFn = (async () => {
-      callCount += 1
-      if (callCount === 1) {
-        return new Response(JSON.stringify({ error: { message: 'Rate limited' } }), {
-          status: 429,
-          headers: {
-            'Content-Type': 'application/json',
-            'Retry-After': '0',
-            'X-RateLimit-Limit-Requests': '60',
-            'X-RateLimit-Remaining-Requests': '0',
-          },
+    const fetchFn = Object.assign(
+      async () => {
+        callCount += 1
+        if (callCount === 1) {
+          return new Response(JSON.stringify({ error: { message: 'Rate limited' } }), {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'Retry-After': '0',
+              'X-RateLimit-Limit-Requests': '60',
+              'X-RateLimit-Remaining-Requests': '0',
+            },
+          })
+        }
+        return new Response(successfulStream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
         })
-      }
-      return new Response(successfulStream, {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      })
-    }) as unknown as typeof fetch
+      },
+      { preconnect: () => undefined },
+    )
     const app = new Elysia().use(
       createInferenceRoutes({
         auth: mockAuth,
         fetchFn,
         logger: {
-          info: (context, message) => logs.push({ context: context as InferenceLog, message }),
+          info: (context, message) => logs.push({ context, message }),
         },
       }),
     )
@@ -150,6 +162,6 @@ describe('inference attempt instrumentation', () => {
     })
     expect(JSON.stringify(logs)).not.toContain(apiKey)
     expect(JSON.stringify(logs)).not.toContain('Hello')
-    expect(JSON.stringify(logs)).not.toContain('/inference/v1/chat/completions')
+    expect(JSON.stringify(logs)).not.toContain('/v1/chat/completions')
   })
 })

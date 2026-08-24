@@ -4,6 +4,7 @@
 
 import { useHttpClient } from '@/contexts/http-client-context'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { getActiveLocale } from '@/i18n/active-locale'
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
@@ -111,11 +112,11 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
 }
 
 /**
- * The client-level headers every Better Auth request must carry.
+ * The headers every Better Auth request must carry.
  *
- * Better Auth REPLACES these with a per-call `fetchOptions.headers` instead of
- * merging, so any call site that passes its own headers must spread this in or it
- * silently loses `X-App-Version` — and the version gate is fail-closed, so the
+ * Also spread into a per-call `fetchOptions.headers`: better-fetch REPLACES that
+ * object rather than merging it, so a call site setting only its own header
+ * would drop `X-App-Version` — and the version gate is fail-closed, so the
  * request comes back 426 on a build that is perfectly up to date.
  */
 export const authRequestHeaders = (
@@ -123,15 +124,26 @@ export const authRequestHeaders = (
   platform: string = getPlatform(),
 ): Record<string, string> => ({
   'X-Client-Platform': platform,
+  'X-App-Language': getActiveLocale(),
   ...appVersionHeader(),
   ...extra,
 })
 
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  // Same helper the per-call sites use, so the two can never define a different
-  // header set.
-  headers: authRequestHeaders({}, platform),
+  // Applied per request instead of through `headers`. better-fetch merges the
+  // client-level and per-call options with a shallow spread
+  // (`{...config, ...options}`), so any call passing its own
+  // `fetchOptions.headers` — OTP verify, magic-link verify, both of which send a
+  // challenge token — replaced a client-level `headers` object wholesale.
+  // `onRequest` survives that spread because no call site overrides it, and
+  // re-reading the locale per request keeps it from being frozen at client
+  // construction, before the synced setting has hydrated.
+  onRequest: (ctx: { headers: Headers }) => {
+    for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
+      ctx.headers.set(key, value)
+    }
+  },
   auth: {
     type: 'Bearer' as const,
     token: () => getAuthToken() ?? '',

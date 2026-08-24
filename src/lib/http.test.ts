@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setActiveLocale } from '@/i18n/active-locale'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from './app-version-unsupported'
 import { createAuthenticatedClient, createClient, HttpError } from './http'
 
@@ -156,6 +157,8 @@ describe('createAuthenticatedClient', () => {
 
     afterEach(() => {
       localStorage.removeItem(deviceIdKey)
+      setActiveLocale('en')
+      localStorage.removeItem('thunderbolt_locale')
     })
 
     it('injects X-Device-ID and X-Device-Name for app backend requests (relative URL)', async () => {
@@ -202,6 +205,37 @@ describe('createAuthenticatedClient', () => {
       const req = fetch.mock.calls[0][0] as Request
       expect(req.headers.get('X-Device-ID')).toBeNull()
       expect(req.headers.get('X-Device-Name')).toBeNull()
+    })
+
+    it('injects X-App-Language for app backend requests', async () => {
+      setActiveLocale('ja')
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('data')
+
+      expect((fetch.mock.calls[0][0] as Request).headers.get('X-App-Language')).toBe('ja')
+    })
+
+    it('sends the locale switched to most recently', async () => {
+      setActiveLocale('ja')
+      setActiveLocale('pt-BR')
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('data')
+
+      expect((fetch.mock.calls[0][0] as Request).headers.get('X-App-Language')).toBe('pt-BR')
+    })
+
+    it('does NOT leak X-App-Language to external API URLs', async () => {
+      setActiveLocale('ja')
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('https://other.com/data')
+
+      expect((fetch.mock.calls[0][0] as Request).headers.get('X-App-Language')).toBeNull()
     })
   })
 

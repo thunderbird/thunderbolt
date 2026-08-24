@@ -8,6 +8,10 @@
  * error throwing on non-2xx, prefixUrl, and beforeRequest hooks.
  */
 
+// Imported from the leaf module rather than `@/i18n` so this client keeps out of
+// Lingui's dependency graph (the barrel pulls in @lingui/core and the catalog
+// loader map).
+import { getActiveLocale } from '@/i18n/active-locale'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getDeviceId } from '@/lib/auth-token'
@@ -197,6 +201,9 @@ export const createAuthenticatedClient = (
             for (const [key, value] of Object.entries(appVersionHeader())) {
               request.headers.set(key, value)
             }
+            // A single resolved tag, not a preference list — the client has already
+            // negotiated, so the backend forwards rather than re-negotiates.
+            request.headers.set('X-App-Language', getActiveLocale())
           }
         },
       ],

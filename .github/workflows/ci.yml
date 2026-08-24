@@ -29,6 +29,7 @@ jobs:
       cli: ${{ steps.filter.outputs.cli }}
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
       crate-src: ${{ steps.filter.outputs.crate-src }}
+      localization: ${{ steps.filter.outputs.localization }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,6 +63,18 @@ jobs:
               - 'crates/thunderbolt-acp-client/rust-toolchain.toml'
               - 'crates/thunderbolt-acp-client/.cargo/**'
               - 'crates/thunderbolt-acp-client/build.sh'
+            # Anything that can change extraction output or the pseudo-locale
+            # build: app source (strings + catalogs), shared/ (imported by the
+            # frontend build), build/i18n config, deps, and this workflow.
+            localization:
+              - 'src/**'
+              - 'shared/**'
+              - 'index.html'
+              - 'lingui.config.ts'
+              - 'vite.config.ts'
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/workflows/ci.yml'
 
   typescript:
     runs-on: ubuntu-latest
@@ -163,7 +176,12 @@ jobs:
   #     rendering in the DOM rather than a build error (an untransformed macro
   #     import bundles a runtime stub that throws). Grep the bundle for the
   #     stub's error text so that mode reds CI instead of shipping.
+  # Path-gated via detect-changes (like agent-core/cli/rust): the full
+  # install + en-XA build only runs when a change can affect extraction or
+  # the frontend build, not on backend/docs-only PRs.
   localization:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.localization == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

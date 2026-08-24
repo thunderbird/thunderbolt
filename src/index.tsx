@@ -7,6 +7,7 @@ import { App } from './app'
 import './polyfills'
 
 import './index.css'
+import { activateLocale, getAppLocale } from './i18n'
 import { markBundleEvaluated } from './lib/init-timing'
 import { initializeLinkInterception } from './lib/intercept-links'
 import { isMacDesktop, isMobile as isPlatformMobile, isTauri, isTauriDesktop } from './lib/platform'
@@ -37,6 +38,11 @@ if (isTauri() && isPlatformMobile()) {
 // Running here means every static import above (the whole entry bundle) has
 // been downloaded, parsed and evaluated — record that phase.
 markBundleEvaluated()
+
+// Kick off the locale catalog chunk immediately; rendering doesn't wait for it
+// (the source locale is active synchronously with per-message English fallback,
+// see src/i18n).
+void activateLocale(getAppLocale())
 
 // After an update+relaunch, the WebView may restore a stale route (e.g. /waitlist
 // verify screen). Detect this and force a clean start at root.

@@ -10,6 +10,14 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_MODE?: 'thunderbolt' | 'sso'
   readonly VITE_AUTH_ENABLE_ANONYMOUS?: 'true' | 'false'
   readonly VITE_APP_VERSION?: string
+  /** Forces the UI locale (CI pseudo-locale builds, local l10n checks). See src/i18n. */
+  readonly VITE_APP_LOCALE?: string
+}
+
+// .po catalogs are compiled to JS message objects by @lingui/vite-plugin.
+declare module '*.po' {
+  import type { Messages } from '@lingui/core'
+  export const messages: Messages
 }
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions

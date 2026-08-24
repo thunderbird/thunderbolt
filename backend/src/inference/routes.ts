@@ -46,8 +46,8 @@ export const supportedModels: Record<string, ModelConfig> = {
     omitTemperature: true,
   },
   'deepseek-v4-flash': {
-    provider: 'fireworks',
-    internalName: 'accounts/fireworks/models/deepseek-v4-flash',
+    provider: 'tinfoil',
+    internalName: 'deepseek-v4-flash',
   },
 }
 

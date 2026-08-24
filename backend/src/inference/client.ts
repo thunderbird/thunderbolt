@@ -9,7 +9,7 @@ import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import OpenAI from 'openai'
 
-export type InferenceProvider = 'fireworks' | 'mistral' | 'anthropic'
+export type InferenceProvider = 'fireworks' | 'mistral' | 'anthropic' | 'tinfoil'
 
 export type InferenceClient = {
   client: OpenAI | PostHogOpenAI
@@ -135,6 +135,11 @@ export const createInferenceFetch = ({
 let fireworksClient: OpenAI | PostHogOpenAI | null = null
 
 /**
+ * Lazily initialized direct Tinfoil client
+ */
+let tinfoilDirectClient: OpenAI | PostHogOpenAI | null = null
+
+/**
  * Lazily initialized Mistral client
  */
 let mistralClient: OpenAI | PostHogOpenAI | null = null
@@ -177,6 +182,42 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
   // Only cache if no custom fetchFn was provided
   if (!fetchFn) {
     fireworksClient = client
+  }
+
+  return client
+}
+
+/**
+ * Get the direct Tinfoil OpenAI-compatible client.
+ * This path uses standard HTTPS without SecureClient attestation or EHBP.
+ */
+const getTinfoilDirectClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
+  const { fetchFn, logger, nowFn } = options
+  if (tinfoilDirectClient && !fetchFn) {
+    return tinfoilDirectClient
+  }
+
+  const settings = getSettings()
+
+  if (!settings.tinfoilApiKey) {
+    throw new Error('Tinfoil API key not configured')
+  }
+
+  const params = {
+    apiKey: settings.tinfoilApiKey,
+    baseURL: 'https://inference.tinfoil.sh/v1',
+    fetch: createInferenceFetch({ provider: 'tinfoil', fetchFn, logger, nowFn }),
+  }
+
+  const client = isPostHogConfigured()
+    ? new PostHogOpenAI({
+        ...params,
+        posthog: getPostHogClient(fetchFn),
+      })
+    : new OpenAI(params)
+
+  if (!fetchFn) {
+    tinfoilDirectClient = client
   }
 
   return client
@@ -264,6 +305,7 @@ export const getInferenceClient = (
     mistral: () => getMistralClient(options),
     anthropic: () => getAnthropicClient(options),
     fireworks: () => getFireworksClient(options),
+    tinfoil: () => getTinfoilDirectClient(options),
   }
 
   const client = clientMap[provider]()
@@ -280,6 +322,7 @@ export const getInferenceClient = (
  */
 export const clearInferenceClientCache = () => {
   fireworksClient = null
+  tinfoilDirectClient = null
   mistralClient = null
   anthropicClient = null
 }

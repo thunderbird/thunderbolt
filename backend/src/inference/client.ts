@@ -28,7 +28,7 @@ export type InferenceUpstreamAttemptLog = {
   rate_limit_headers?: Record<string, string>
 }
 
-type InferenceProxyLatencyLogContext = {
+export type InferenceProxyLatencyLog = {
   event: 'inference_proxy_latency'
   route: string
   provider: InferenceProvider
@@ -40,7 +40,7 @@ type InferenceProxyLatencyLogContext = {
   attempts: number
 }
 
-type InferenceLogContext = InferenceUpstreamAttemptLog | InferenceProxyLatencyLogContext
+type InferenceLogContext = InferenceUpstreamAttemptLog | InferenceProxyLatencyLog
 
 export type InferenceLogger = {
   info: (context: InferenceLogContext, message: string) => void

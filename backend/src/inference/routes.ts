@@ -19,6 +19,7 @@ import {
   runWithInferenceAttemptTracking,
   type InferenceClient,
   type InferenceLogger,
+  type InferenceProxyLatencyLog,
   type InferenceProvider,
 } from './client'
 
@@ -49,18 +50,6 @@ export const supportedModels: Record<string, ModelConfig> = {
     provider: 'tinfoil',
     internalName: 'deepseek-v4-flash',
   },
-}
-
-export type InferenceProxyLatencyLog = {
-  event: 'inference_proxy_latency'
-  route: string
-  provider: InferenceProvider
-  model: string
-  status: number
-  preMs: number
-  upstreamMs: number
-  totalMs: number
-  attempts: number
 }
 
 export type CreateInferenceRoutesOptions = {

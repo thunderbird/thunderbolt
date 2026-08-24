@@ -7,8 +7,8 @@ import { clearPostHogClient } from '@/posthog/client'
 import { mockAuth } from '@/test-utils/mock-auth'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
-import { clearInferenceClientCache, type InferenceUpstreamAttemptLog } from './client'
-import { createInferenceRoutes, type InferenceProxyLatencyLog } from './routes'
+import { clearInferenceClientCache, type InferenceProxyLatencyLog, type InferenceUpstreamAttemptLog } from './client'
+import { createInferenceRoutes } from './routes'
 
 type InferenceLog = InferenceUpstreamAttemptLog | InferenceProxyLatencyLog
 

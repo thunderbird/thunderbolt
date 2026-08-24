@@ -8,7 +8,8 @@ import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
-import { createInferenceRoutes, supportedModels, type InferenceProxyLatencyLog } from './routes'
+import type { InferenceProxyLatencyLog } from './client'
+import { createInferenceRoutes, supportedModels } from './routes'
 import { defaultModels } from '@shared/defaults/models'
 
 describe('Thunderbolt model catalog parity', () => {

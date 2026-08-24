@@ -5,10 +5,27 @@
 import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
 import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
+import * as linguiMacros from '@/test-utils/lingui-macros'
 import type { Clock } from '@sinonjs/fake-timers'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, mock } from 'bun:test'
+
+// Lingui macros are compiled away by Babel in the Vite build, but bun test
+// never runs Babel — swap in identity implementations that render the English
+// source text so `getByText` assertions keep passing (see lingui-macros.tsx).
+mock.module('@lingui/react/macro', () => ({
+  Trans: linguiMacros.Trans,
+  Plural: linguiMacros.Plural,
+  useLingui: linguiMacros.useLingui,
+}))
+
+mock.module('@lingui/core/macro', () => ({
+  t: linguiMacros.t,
+  plural: linguiMacros.plural,
+  msg: linguiMacros.msg,
+  defineMessage: linguiMacros.defineMessage,
+}))
 
 /** Global spy for web-haptics' `trigger` — assert on it to verify haptic
  *  calls (see surface-haptics.test.tsx). Cleared automatically in beforeEach. */

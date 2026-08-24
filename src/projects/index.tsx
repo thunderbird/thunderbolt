@@ -13,6 +13,8 @@
  * positions itself against the pane, so both misplace themselves in a plain div.
  */
 
+import { plural } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { FolderOpen, Plus } from 'lucide-react'
 import { useReducer } from 'react'
 import { useNavigate, useParams } from 'react-router'
@@ -47,6 +49,7 @@ import { initialViewState, projectsViewReducer } from './projects-view-state'
 import { ProjectIcon } from './project-icon'
 
 const ProjectsPage = () => {
+  const { t } = useLingui()
   const db = useDatabase()
   const navigate = useNavigate()
   const projects = useProjects()
@@ -94,7 +97,9 @@ const ProjectsPage = () => {
 
   const countLabel = (id: string): string => {
     const count = chatCounts[id] ?? 0
-    return count === 1 ? '1 chat' : `${count} chats`
+    // Native plural (not a ternary) so the extracted .po carries
+    // msgid/msgid_plural and each locale supplies its own forms.
+    return t`${plural(count, { one: '# chat', other: '# chats' })}`
   }
 
   return (

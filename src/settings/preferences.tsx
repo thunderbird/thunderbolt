@@ -50,10 +50,11 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePostHogClient } from '@/lib/posthog'
+import { applyLanguageSetting, getBrowserLanguages } from '@/i18n'
 import { localeForCountry } from '@/i18n/country-language'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
 import type { AppLocale } from '@shared/i18n/locales'
-import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
+import { resolveLocale } from '@/i18n/resolve-locale'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { SettingsPageShell } from '@/components/settings/settings-list'
@@ -391,6 +392,7 @@ export default function PreferencesSettingsPage() {
     // Plain `setValue`, unlike the unit defaults above: this has to land as a
     // user edit so `useAppLanguage` stops re-seeding from `navigator.languages`
     // — otherwise confirming a switch to English would be undone on next boot.
+    void applyLanguageSetting(pendingLanguage)
     await language.setValue(pendingLanguage)
     dispatch({ type: 'CLOSE_LANGUAGE_DIALOG' })
     trackEvent('settings_localization_update')
@@ -683,6 +685,10 @@ export default function PreferencesSettingsPage() {
                 className="text-sm font-medium"
                 hasModifications={language.isModified}
                 onReset={async () => {
+                  // Publish before the write, not from an effect afterwards — see
+                  // applyLanguageSetting. Resetting returns the setting to "auto",
+                  // so the target is whatever the browser negotiates.
+                  void applyLanguageSetting(null)
                   await language.reset()
                   trackEvent('settings_localization_reset')
                 }}
@@ -693,6 +699,7 @@ export default function PreferencesSettingsPage() {
             <Select
               value={language.value}
               onValueChange={async (v) => {
+                void applyLanguageSetting(v)
                 await language.setValue(v)
                 trackEvent('settings_localization_update')
               }}

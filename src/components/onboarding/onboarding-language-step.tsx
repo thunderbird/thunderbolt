@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useSettings } from '@/hooks/use-settings'
 import { languageOptions } from '@/i18n/language-options'
 import { sourceLocale } from '@shared/i18n/locales'
-import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
+import { applyLanguageSetting, getBrowserLanguages } from '@/i18n'
+import { resolveLocale } from '@/i18n/resolve-locale'
 import { Languages } from 'lucide-react'
 import { OnboardingStepHeader } from './onboarding-step-header'
 
@@ -28,7 +29,15 @@ export const OnboardingLanguageStep = () => {
       />
 
       <div className="mt-10">
-        <Select value={activeLanguage} onValueChange={(value) => void language.setValue(value)}>
+        <Select
+          value={activeLanguage}
+          onValueChange={async (value) => {
+            // Publish before the write, not from an effect afterwards — see
+            // applyLanguageSetting.
+            void applyLanguageSetting(value)
+            await language.setValue(value)
+          }}
+        >
           <SelectTrigger className="w-full" aria-label="Language">
             <SelectValue />
           </SelectTrigger>

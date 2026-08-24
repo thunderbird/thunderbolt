@@ -61,7 +61,3 @@ export const resolveLocale = (setting: string | null, browserLanguages: readonly
   }
   return sourceLocale
 }
-
-/** Browser language preferences, most preferred first. */
-export const getBrowserLanguages = (): readonly string[] =>
-  navigator.languages?.length ? navigator.languages : [navigator.language]

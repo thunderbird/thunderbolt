@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { activateLocale } from '@/i18n'
+import { activateLocale, getBrowserLanguages } from '@/i18n'
 import { sourceLocale } from '@shared/i18n/locales'
-import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
+import { resolveLocale } from '@/i18n/resolve-locale'
 import { usePostHogClient } from '@/lib/posthog'
 import { useEffect, useEffectEvent } from 'react'
 import { useSettings } from './use-settings'
@@ -23,7 +23,9 @@ import { useSettings } from './use-settings'
  *   synced row; resetting the setting returns it to null and re-seeds — i.e.
  *   "back to auto".
  * - **Lingui catalog** — activates the resolved locale via `activateLocale`,
- *   loading its catalog chunk and re-rendering translated text.
+ *   loading its catalog chunk and re-rendering translated text. That call is
+ *   also what publishes the locale to non-React readers (`X-App-Language`) and
+ *   mirrors it to localStorage for the next boot.
  * - **`<html lang>`** — bound to the active locale (index.html ships the
  *   static `lang="en"` as the pre-boot value).
  * - **PostHog `locale`** — registered as a super property and person

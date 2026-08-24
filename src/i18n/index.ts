@@ -6,8 +6,11 @@ import type { Messages } from '@lingui/core'
 import { i18n } from '@lingui/core'
 import { messages as sourceMessages } from '@/locales/en/messages.po'
 import { appLocales, sourceLocale, type AppLocale } from '@shared/i18n/locales'
+import { getBrowserLanguages, setActiveLocale } from './active-locale'
+import { resolveLocale } from './resolve-locale'
 
 export { appLocales, sourceLocale, type AppLocale }
+export { getActiveLocale, getBrowserLanguages } from './active-locale'
 
 // Each translated catalog loads through import() so it ships as its own async
 // chunk — statically bundling all seven would grow the entry chunk with bytes
@@ -46,14 +49,35 @@ let activationToken = 0
  * calls (boot overlapping the hook's first activation, or a quick
  * setting flip) would settle on whichever catalog chunk happened to
  * resolve last.
+ *
+ * `setActiveLocale` runs before the await so `X-App-Language` reflects the
+ * requested locale immediately — a request issued right after a language
+ * change must not carry the outgoing tag just because a catalog chunk is
+ * still in flight.
  */
 export const activateLocale = async (locale: AppLocale): Promise<void> => {
   const token = ++activationToken
+  setActiveLocale(locale)
   const { messages } = await catalogLoaders[locale]()
   if (token !== activationToken) {
     return
   }
   i18n.loadAndActivate({ locale, messages })
 }
+
+/**
+ * Resolve a `language` setting value to a locale and activate it.
+ *
+ * Call this from the handler that changes the setting, not from an effect: the
+ * setting write queues a PowerSync CRUD upload, and that upload reads
+ * `X-App-Language` before React has had a chance to run an effect — so an
+ * effect-only publish sends the outgoing language on the very request that
+ * carries the change. `useAppLanguage` still reconciles hydration and
+ * cross-device changes.
+ *
+ * @param setting The raw `language` setting value, or null for "auto".
+ */
+export const applyLanguageSetting = async (setting: string | null): Promise<void> =>
+  activateLocale(resolveLocale(setting, getBrowserLanguages()))
 
 export { i18n }

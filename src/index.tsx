@@ -7,7 +7,7 @@ import { App } from './app'
 import './polyfills'
 
 import './index.css'
-import { activateLocale, getAppLocale } from './i18n'
+import { activateLocale, sourceLocale } from './i18n'
 import { markBundleEvaluated } from './lib/init-timing'
 import { initializeLinkInterception } from './lib/intercept-links'
 import { isMacDesktop, isMobile as isPlatformMobile, isTauri, isTauriDesktop } from './lib/platform'
@@ -43,7 +43,7 @@ markBundleEvaluated()
 // (the source locale is active synchronously with per-message English fallback,
 // see src/i18n). Once the synced `language` setting loads, useAppLanguage
 // re-activates the resolved locale.
-void activateLocale(getAppLocale())
+void activateLocale(sourceLocale)
 
 // After an update+relaunch, the WebView may restore a stale route (e.g. /waitlist
 // verify screen). Detect this and force a clean start at root.

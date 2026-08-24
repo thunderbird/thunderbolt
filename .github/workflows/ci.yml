@@ -169,16 +169,16 @@ jobs:
   #     dropped the old `--check` flag) and fails if the committed .po
   #     catalogs come out stale, i.e. a PR added or edited a user-facing
   #     string without re-running extraction.
-  #  2. en-XA pseudo-locale build — compiles every catalog (the pseudo-locale
-  #     is generated from the English source at compile time) and builds the
-  #     app with the pseudo-locale forced active.
+  #  2. Catalog-compiling build — every locale catalog, including the en-XA
+  #     pseudo-locale generated from the English source, is compiled at build
+  #     time, so a malformed catalog reds this build.
   #  3. Macro tripwire — the Lingui macro's failure mode is literal <Trans>
   #     rendering in the DOM rather than a build error (an untransformed macro
   #     import bundles a runtime stub that throws). Grep the bundle for the
   #     stub's error text so that mode reds CI instead of shipping.
   # Path-gated via detect-changes (like agent-core/cli/rust): the full
-  # install + en-XA build only runs when a change can affect extraction or
-  # the frontend build, not on backend/docs-only PRs.
+  # install + build only runs when a change can affect extraction or the
+  # frontend build, not on backend/docs-only PRs.
   localization:
     needs: detect-changes
     if: needs.detect-changes.outputs.localization == 'true'
@@ -215,12 +215,11 @@ jobs:
       - name: Lingui extraction check
         run: bun run i18n:check
 
-      - name: Pseudo-locale build (en-XA)
+      - name: Catalog-compiling build
         run: bun run build
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=4096
-          VITE_APP_LOCALE: en-XA
 
       - name: Guard against untransformed Lingui macros in the bundle
         run: |

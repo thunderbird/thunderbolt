@@ -21,22 +21,6 @@ const catalogLoaders: Record<AppLocale, () => Promise<{ messages: Messages }>> =
   'en-XA': () => import('@/locales/en-XA/messages.po'),
 }
 
-const isAppLocale = (value: string | undefined): value is AppLocale =>
-  !!value && (appLocales as readonly string[]).includes(value)
-
-/**
- * Env-forced locale, or null when unset. VITE_APP_LOCALE lets CI and local
- * runs pin a locale (the en-XA pseudo-locale build, manual l10n checks); it
- * wins over the synced `language` setting in `useAppLanguage`.
- */
-export const envLocaleOverride = (): AppLocale | null => {
-  const override = import.meta.env.VITE_APP_LOCALE
-  return isAppLocale(override) ? override : null
-}
-
-/** Locale to activate at boot, before the synced `language` setting loads. */
-export const getAppLocale = (): AppLocale => envLocaleOverride() ?? sourceLocale
-
 // Activate the source locale synchronously with an empty catalog so the first
 // render never blocks on a catalog chunk: the macro embeds the English source
 // message in the compiled code, and Lingui falls back to it per-message until

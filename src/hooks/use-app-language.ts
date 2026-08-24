@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { activateLocale, envLocaleOverride } from '@/i18n'
+import { activateLocale } from '@/i18n'
 import { sourceLocale } from '@/i18n/locales'
 import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
 import { usePostHogClient } from '@/lib/posthog'
@@ -23,9 +23,7 @@ import { useSettings } from './use-settings'
  *   synced row; resetting the setting returns it to null and re-seeds — i.e.
  *   "back to auto".
  * - **Lingui catalog** — activates the resolved locale via `activateLocale`,
- *   loading its catalog chunk and re-rendering translated text. The
- *   `VITE_APP_LOCALE` env override (CI pseudo-locale builds) wins over the
- *   setting.
+ *   loading its catalog chunk and re-rendering translated text.
  * - **`<html lang>`** — bound to the active locale (index.html ships the
  *   static `lang="en"` as the pre-boot value).
  * - **PostHog `locale`** — registered as a super property and person
@@ -40,7 +38,7 @@ export const useAppLanguage = () => {
   const { language } = useSettings({ language: sourceLocale as string })
   const { value, isModified, isLoading, isSaving, setValue } = language
 
-  const activeLocale = envLocaleOverride() ?? resolveLocale(value, getBrowserLanguages())
+  const activeLocale = resolveLocale(value, getBrowserLanguages())
 
   const canSeed = !isLoading && !isSaving && !isModified && value === sourceLocale
 

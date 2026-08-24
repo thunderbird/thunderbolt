@@ -59,6 +59,8 @@ afterEach(() => {
   clearAuthToken()
   clearDeviceId()
   clearUserCacheSecret()
+  setActiveLocale('en')
+  localStorage.removeItem('thunderbolt_locale')
 })
 
 describe('auth-token', () => {
@@ -184,9 +186,6 @@ describe('auth-token', () => {
       setActiveLocale('ja')
 
       expect(getAuthenticatedHeaders()['X-App-Language']).toBe('ja')
-
-      setActiveLocale('en')
-      localStorage.removeItem('thunderbolt_locale')
     })
   })
 })

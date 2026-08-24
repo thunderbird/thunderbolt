@@ -4,7 +4,7 @@
 
 import { setActiveLocale } from '@/i18n/active-locale'
 import type { HttpClient, RequestOptions, ResponsePromise } from '@/lib/http'
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { fetchWeatherForecast } from './fetch-forecast'
 
 type RecordedRequest = { url: string; searchParams: Record<string, string | number | boolean | undefined> }
@@ -41,6 +41,13 @@ const buildForecast = (count: number) => ({
     weather_code: Array.from({ length: count }, (_, i) => i),
     temperature_2m_max: Array.from({ length: count }, (_, i) => 20 + i),
   },
+})
+
+// The module-level locale and its mirror leak across test files — bun test shares
+// one module registry and one happy-dom localStorage for the whole run.
+afterEach(() => {
+  setActiveLocale('en')
+  localStorage.removeItem('thunderbolt_locale')
 })
 
 describe('fetchWeatherForecast', () => {
@@ -91,9 +98,6 @@ describe('fetchWeatherForecast', () => {
     )
 
     expect(recorded[0].searchParams.language).toBe('pt')
-
-    setActiveLocale('en')
-    localStorage.removeItem('thunderbolt_locale')
   })
 
   it('disambiguates by region and country, selecting the matching result', async () => {

@@ -13,7 +13,10 @@ import {
 
 const storageKey = 'thunderbolt_locale'
 
+// Both the module-level locale and the mirror leak across test files — bun test
+// shares one module registry and one happy-dom localStorage for the whole run.
 afterEach(() => {
+  setActiveLocale('en')
   localStorage.removeItem(storageKey)
 })
 

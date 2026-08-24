@@ -15,11 +15,18 @@ import { useSettings } from './use-settings'
 
 const storageKey = 'thunderbolt_locale'
 
-/** Pose as a browser with the given language preferences; returns a restore fn. */
+let restoreBrowserLanguages: (() => void) | null = null
+
+/**
+ * Pose as a browser with the given language preferences. Undone by `afterEach`
+ * rather than by the caller: `navigator` is a happy-dom global shared by every
+ * test in the run, so a restore placed after the assertions would be skipped on
+ * failure and leave later files negotiating against the stub.
+ */
 const stubBrowserLanguages = (languages: readonly string[]) => {
   const original = Object.getOwnPropertyDescriptor(navigator, 'languages')
   Object.defineProperty(navigator, 'languages', { value: languages, configurable: true })
-  return () => {
+  restoreBrowserLanguages = () => {
     if (original) {
       Object.defineProperty(navigator, 'languages', original)
       return
@@ -45,6 +52,15 @@ const renderWithSettingReader = () =>
     { wrapper: createTestProvider() },
   )
 
+let unsubscribeAnnouncements: (() => void) | null = null
+
+/** Collect every locale announced from now until `afterEach` tears the listener down. */
+const recordAnnouncements = (): string[] => {
+  const announced: string[] = []
+  unsubscribeAnnouncements = subscribeActiveLocale(() => announced.push(getActiveLocale()))
+  return announced
+}
+
 /** Drain the settings query and every effect it schedules (global fake clock). */
 const flush = async () => {
   await act(async () => {
@@ -62,6 +78,10 @@ afterAll(async () => {
 
 afterEach(async () => {
   await resetTestDatabase()
+  restoreBrowserLanguages?.()
+  restoreBrowserLanguages = null
+  unsubscribeAnnouncements?.()
+  unsubscribeAnnouncements = null
   setActiveLocale('en')
   localStorage.removeItem(storageKey)
 })
@@ -76,8 +96,7 @@ describe('useAppLanguage', () => {
    */
   it('does not announce the fallback locale while the setting is loading', () => {
     setActiveLocale('ja')
-    const announced: string[] = []
-    const unsubscribe = subscribeActiveLocale(() => announced.push(getActiveLocale()))
+    const announced = recordAnnouncements()
 
     const { result } = renderWithSettingReader()
 
@@ -85,7 +104,6 @@ describe('useAppLanguage', () => {
     expect(announced).not.toContain('en')
     expect(getActiveLocale()).toBe('ja')
     expect(localStorage.getItem(storageKey)).toBe('ja')
-    unsubscribe()
   })
 
   /**
@@ -97,10 +115,9 @@ describe('useAppLanguage', () => {
    * reload inside it would start from `en` instead of negotiating.
    */
   it('keeps the negotiated locale when the stored setting is merely unset', async () => {
-    const restoreLanguages = stubBrowserLanguages(['de'])
+    stubBrowserLanguages(['de'])
     setActiveLocale('de')
-    const announced: string[] = []
-    const unsubscribe = subscribeActiveLocale(() => announced.push(getActiveLocale()))
+    const announced = recordAnnouncements()
 
     const { result } = renderWithSettingReader()
     await flush()
@@ -109,13 +126,10 @@ describe('useAppLanguage', () => {
     expect(announced).not.toContain('en')
     expect(getActiveLocale()).toBe('de')
     expect(localStorage.getItem(storageKey)).toBe('de')
-
-    unsubscribe()
-    restoreLanguages()
   })
 
   it('publishes an explicit stored setting over the browser languages', async () => {
-    const restoreLanguages = stubBrowserLanguages(['de'])
+    stubBrowserLanguages(['de'])
     await updateSettings(getDb(), { language: 'ja' })
 
     const { result } = renderWithSettingReader()
@@ -124,7 +138,5 @@ describe('useAppLanguage', () => {
     expect(result.current.language.isLoading).toBe(false)
     expect(getActiveLocale()).toBe('ja')
     expect(localStorage.getItem(storageKey)).toBe('ja')
-
-    restoreLanguages()
   })
 })

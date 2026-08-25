@@ -77,7 +77,7 @@ export const ThunderboltCliRow = ({
       testId="agent-row-thunderbolt-cli"
       isSelected={isSelected}
       onOpen={onOpen}
-      ariaLabel="Open Thunderbolt CLI"
+      ariaLabel={t`Open Thunderbolt CLI`}
       icon={<Terminal className="size-5 text-muted-foreground" aria-hidden="true" />}
       title={t`Thunderbolt CLI`}
       subtitle={i18n._(cliProvenanceLine)}

@@ -81,6 +81,10 @@ msgstr "A new device is requesting access to your encrypted data."
 msgid "A new version is available!"
 msgstr "A new version is available!"
 
+#: src/settings/app-version-section.tsx
+msgid "A new version is available. See the update prompt to install."
+msgstr "A new version is available. See the update prompt to install."
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
 msgstr "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
@@ -140,6 +144,7 @@ msgstr "Add a skill"
 
 #: src/components/create-item/context.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
+#: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Add Agent"
 msgstr "Add Agent"
 
@@ -156,6 +161,7 @@ msgid "Add MCP Server"
 msgstr "Add MCP Server"
 
 #: src/components/create-item/context.tsx
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/index.tsx
 #: src/settings/models/models-list.tsx
@@ -190,6 +196,7 @@ msgid "Advanced (JSON)"
 msgstr "Advanced (JSON)"
 
 #: src/layout/sidebar/settings-sidebar.tsx
+#: src/routes/settings/agents/index.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Agents"
 msgstr "Agents"
@@ -264,6 +271,10 @@ msgstr "API Key is required for this provider"
 #: src/settings/models/models-list.tsx
 msgid "API key not configured"
 msgstr "API key not configured"
+
+#: src/settings/app-version-section.tsx
+msgid "App Version"
+msgstr "App Version"
 
 #: src/projects/project-form.tsx
 msgid "Applied to every chat in this project."
@@ -420,6 +431,10 @@ msgstr "Calendar"
 msgid "Cancel"
 msgstr "Cancel"
 
+#: src/components/ui/agent-selector/agent-selector.tsx
+msgid "Cannot change agent during reply"
+msgstr "Cannot change agent during reply"
+
 #: src/widgets/weather-forecast/display.tsx
 msgid "Celsius"
 msgstr "Celsius"
@@ -446,6 +461,10 @@ msgstr "Chats"
 msgid "Chats in a project inherit its instructions."
 msgstr "Chats in a project inherit its instructions."
 
+#: src/settings/app-version-section.tsx
+msgid "Check for updates"
+msgstr "Check for updates"
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Check now"
 msgstr "Check now"
@@ -464,6 +483,7 @@ msgid "Checking automatically…"
 msgstr "Checking automatically…"
 
 #: src/components/update-notification.tsx
+#: src/settings/app-version-section.tsx
 msgid "Checking for updates..."
 msgstr "Checking for updates..."
 
@@ -475,9 +495,17 @@ msgstr "Checking sign-in request…"
 msgid "Checking your session."
 msgstr "Checking your session."
 
+#: src/settings/app-version-section.tsx
+msgid "Checking..."
+msgstr "Checking..."
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Checking…"
 msgstr "Checking…"
+
+#: src/components/ui/agent-selector/agent-selector.tsx
+msgid "Choose agent"
+msgstr "Choose agent"
 
 #: src/projects/emoji-picker.tsx
 msgid "Choose an icon"
@@ -490,6 +518,10 @@ msgstr "Choose an icon for {label}"
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Choose an option"
 msgstr "Choose an option"
+
+#: src/components/ui/model-selector/model-selector.tsx
+msgid "Choose model"
+msgstr "Choose model"
 
 #: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/chat-list.tsx
@@ -536,8 +568,13 @@ msgstr "Clipboard unavailable. Please select the phrase above and copy it manual
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/window-controls.tsx
 msgid "Close"
 msgstr "Close"
+
+#: src/components/detail-panel.tsx
+msgid "Close details"
+msgstr "Close details"
 
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Close navigation"
@@ -777,6 +814,10 @@ msgstr "Could not connect to this server. Check the URL and that the server is r
 msgid "Could not create the project."
 msgstr "Could not create the project."
 
+#: src/components/device-qr-code.tsx
+msgid "Could not render pairing code."
+msgstr "Could not render pairing code."
+
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
 msgstr "Could not save the project."
@@ -789,6 +830,14 @@ msgstr "Couldn't add the agent. Please try again."
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 
+#: src/settings/app-version-section.tsx
+msgid "Couldn't check for updates"
+msgstr "Couldn't check for updates"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't download the update"
+msgstr "Couldn't download the update"
+
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr "Couldn’t load the emoji list. Close and reopen this picker to try again."
@@ -800,6 +849,10 @@ msgstr "Couldn't load this app's pairing identity: {error}"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
 msgstr "Couldn't pin {name}."
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't restart to apply the update"
+msgstr "Couldn't restart to apply the update"
 
 #: src/components/settings/agents/editable-field.tsx
 msgid "Couldn't save the {fieldName}. Please try again."
@@ -865,6 +918,10 @@ msgstr "Credential (optional)"
 #: src/settings/preferences.tsx
 msgid "Currency"
 msgstr "Currency"
+
+#: src/settings/app-version-section.tsx
+msgid "Current version"
+msgstr "Current version"
 
 #: src/settings/models/model-presentation.tsx
 msgid "Custom"
@@ -1040,6 +1097,10 @@ msgstr "Dev Settings"
 msgid "Device access revoked"
 msgstr "Device access revoked"
 
+#: src/components/device-qr-code.tsx
+msgid "Device pairing QR code"
+msgstr "Device pairing QR code"
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
@@ -1152,6 +1213,10 @@ msgstr "Download HTML"
 #: src/components/update-notification.tsx
 msgid "Downloading update..."
 msgstr "Downloading update..."
+
+#: src/settings/app-version-section.tsx
+msgid "Downloading update... {downloadProgress}%"
+msgstr "Downloading update... {downloadProgress}%"
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Drop file to attach"
@@ -1643,6 +1708,10 @@ msgstr "Manage integrations"
 msgid "Managed by your deployment — always available, no setup needed."
 msgstr "Managed by your deployment — always available, no setup needed."
 
+#: src/components/window-controls.tsx
+msgid "Maximize"
+msgstr "Maximize"
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
@@ -1656,6 +1725,10 @@ msgstr "Message Simulator"
 #: src/search/palette/entity-meta.ts
 msgid "Messages"
 msgstr "Messages"
+
+#: src/components/window-controls.tsx
+msgid "Minimize"
+msgstr "Minimize"
 
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -1732,6 +1805,10 @@ msgstr "Network"
 msgid "Network request failed (the browser blocked the request or the server is unreachable)."
 msgstr "Network request failed (the browser blocked the request or the server is unreachable)."
 
+#: src/routes/settings/agents/index.tsx
+msgid "New Agent"
+msgstr "New Agent"
+
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "New chat"
@@ -1770,6 +1847,10 @@ msgstr "New Skill"
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr "New Task"
+
+#: src/components/ui/agent-selector/agent-selector.tsx
+msgid "No agents found"
+msgstr "No agents found"
 
 #: src/projects/project-detail-panel.tsx
 msgid "No artifacts yet."
@@ -1830,6 +1911,10 @@ msgstr "No matching skills."
 #: src/settings/models/models-list.tsx
 msgid "No models configured"
 msgstr "No models configured"
+
+#: src/components/ui/model-selector/model-selector.tsx
+msgid "No models found"
+msgstr "No models found"
 
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -1944,6 +2029,14 @@ msgstr "Open in Sidebar"
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
 msgstr "Open Link"
+
+#: src/settings/app-version-section.tsx
+msgid "Open the store to check for updates."
+msgstr "Open the store to check for updates."
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Open Thunderbolt CLI"
+msgstr "Open Thunderbolt CLI"
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Open Thunderbolt on one of your trusted devices and go to Settings → Devices to approve this device."
@@ -2318,6 +2411,10 @@ msgstr "Search"
 msgid "Search across chats, models, skills, agents, and more"
 msgstr "Search across chats, models, skills, agents, and more"
 
+#: src/components/ui/agent-selector/agent-selector.tsx
+msgid "Search agents"
+msgstr "Search agents"
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
 msgstr "Search and work with your OneDrive files and documents."
@@ -2337,6 +2434,14 @@ msgstr "Search currencies..."
 #: src/projects/emoji-picker.tsx
 msgid "Search emoji"
 msgstr "Search emoji"
+
+#: src/components/location-search-combobox.tsx
+msgid "Search locations..."
+msgstr "Search locations..."
+
+#: src/components/ui/model-selector/model-selector.tsx
+msgid "Search Models"
+msgstr "Search Models"
 
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -2658,6 +2763,10 @@ msgstr "Take a look at the map on screen."
 #: src/voice/speakable.ts
 msgid "Take a look at the weather forecast on screen."
 msgstr "Take a look at the weather forecast on screen."
+
+#: src/settings/app-version-section.tsx
+msgid "Tap to check for updates."
+msgstr "Tap to check for updates."
 
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -3050,6 +3159,10 @@ msgstr "Update pairing for {deviceName}"
 msgid "Update ready! Restart to apply."
 msgstr "Update ready! Restart to apply."
 
+#: src/settings/app-version-section.tsx
+msgid "Update ready. Restart to apply."
+msgstr "Update ready. Restart to apply."
+
 #: src/components/upgrade-required.tsx
 msgid "Update required"
 msgstr "Update required"
@@ -3057,6 +3170,10 @@ msgstr "Update required"
 #: src/settings/preferences.tsx
 msgid "Update Units"
 msgstr "Update Units"
+
+#: src/settings/app-version-section.tsx
+msgid "Updates"
+msgstr "Updates"
 
 #: src/components/chat/chat-add-menu.tsx
 msgid "Upload file"
@@ -3124,6 +3241,10 @@ msgstr "Verifying…"
 #: src/components/update-notification.tsx
 msgid "Version {updateVersion}"
 msgstr "Version {updateVersion}"
+
+#: src/settings/app-version-section.tsx
+msgid "Version {updateVersion} is available. See the update prompt to install."
+msgstr "Version {updateVersion} is available. See the update prompt to install."
 
 #: src/settings/preferences.tsx
 msgid "Vibrate on tap"
@@ -3246,6 +3367,10 @@ msgstr "When to use this skill…"
 msgid "Where are you located?"
 msgstr "Where are you located?"
 
+#: src/components/window-controls.tsx
+msgid "Window controls"
+msgstr "Window controls"
+
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
 msgstr "word1 word2 word3 ..."
@@ -3299,6 +3424,10 @@ msgstr "You're all set! 🎉"
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "You're now signed in."
 msgstr "You're now signed in."
+
+#: src/settings/app-version-section.tsx
+msgid "You're on the latest version."
+msgstr "You're on the latest version."
 
 #: src/settings/models/model-detail.tsx
 msgid "You've customized this model."

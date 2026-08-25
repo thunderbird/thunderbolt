@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
@@ -12,12 +15,12 @@ import { getPlatform, isDesktop, isMobile, isTauri } from '@/lib/platform'
 const errorPrefix = (phase: UpdateErrorPhase | null): string => {
   switch (phase) {
     case 'download':
-      return "Couldn't download the update"
+      return i18n._(msg`Couldn't download the update`)
     case 'restart':
-      return "Couldn't restart to apply the update"
+      return i18n._(msg`Couldn't restart to apply the update`)
     case 'check':
     case null:
-      return "Couldn't check for updates"
+      return i18n._(msg`Couldn't check for updates`)
   }
 }
 
@@ -30,19 +33,19 @@ const desktopStatusText = (
 ): string => {
   switch (status) {
     case 'initial':
-      return 'Tap to check for updates.'
+      return i18n._(msg`Tap to check for updates.`)
     case 'idle':
-      return "You're on the latest version."
+      return i18n._(msg`You're on the latest version.`)
     case 'checking':
-      return 'Checking for updates...'
+      return i18n._(msg`Checking for updates...`)
     case 'available':
       return updateVersion
-        ? `Version ${updateVersion} is available. See the update prompt to install.`
-        : 'A new version is available. See the update prompt to install.'
+        ? i18n._(msg`Version ${updateVersion} is available. See the update prompt to install.`)
+        : i18n._(msg`A new version is available. See the update prompt to install.`)
     case 'downloading':
-      return `Downloading update... ${downloadProgress}%`
+      return i18n._(msg`Downloading update... ${downloadProgress}%`)
     case 'ready':
-      return 'Update ready. Restart to apply.'
+      return i18n._(msg`Update ready. Restart to apply.`)
     case 'error': {
       const prefix = errorPrefix(errorPhase)
       return error ? `${prefix}: ${error}` : `${prefix}.`
@@ -51,6 +54,7 @@ const desktopStatusText = (
 }
 
 export const AppVersionSection = () => {
+  const { t } = useLingui()
   const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
   const desktop = isDesktop()
   const mobile = isMobile()
@@ -69,11 +73,13 @@ export const AppVersionSection = () => {
   }
 
   return (
-    <SectionCard title="App Version">
+    <SectionCard title={t`App Version`}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-row items-center justify-between gap-4">
           <div>
-            <label className="text-sm font-medium">Current version</label>
+            <label className="text-sm font-medium">
+              <Trans>Current version</Trans>
+            </label>
             <p className="text-sm text-muted-foreground">{appVersion}</p>
           </div>
         </div>
@@ -83,18 +89,20 @@ export const AppVersionSection = () => {
             <div className="h-px bg-border -mx-6" />
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Updates</label>
+              <label className="text-sm font-medium">
+                <Trans>Updates</Trans>
+              </label>
               <p className="text-sm text-muted-foreground">
                 {desktop
                   ? desktopStatusText(status, update?.version, downloadProgress, error, errorPhase)
-                  : 'Open the store to check for updates.'}
+                  : t`Open the store to check for updates.`}
               </p>
               <Button
                 variant="secondary"
                 disabled={checkDisabled}
                 onClick={desktop ? handleDesktopCheck : handleMobileCheck}
               >
-                {desktop && status === 'checking' ? 'Checking...' : 'Check for updates'}
+                {desktop && status === 'checking' ? <Trans>Checking...</Trans> : <Trans>Check for updates</Trans>}
               </Button>
             </div>
           </>

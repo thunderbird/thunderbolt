@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import {
   SearchableMenu,
   searchableMenuRowClass,
@@ -114,6 +115,7 @@ export const ModelSelector = ({
   align,
   variant = 'pill',
 }: ModelSelectorProps) => {
+  const { t } = useLingui()
   const groupedItems = useMemo(() => categorizeModels(models, chatThread), [models, chatThread])
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
@@ -185,7 +187,7 @@ export const ModelSelector = ({
     return content
   }
 
-  const footerAction = onAddModels ? { label: 'Add Model', onAction: onAddModels } : undefined
+  const footerAction = onAddModels ? { label: t`Add Model`, onAction: onAddModels } : undefined
 
   const { triggerSelection } = useHaptics()
   const handleModelChange = useCallback(
@@ -202,9 +204,9 @@ export const ModelSelector = ({
       value={selectedModel?.id}
       onValueChange={handleModelChange}
       searchable={models.length > 10}
-      searchPlaceholder="Search Models"
-      emptyMessage="No models found"
-      mobileTitle="Choose model"
+      searchPlaceholder={t`Search Models`}
+      emptyMessage={t`No models found`}
+      mobileTitle={t`Choose model`}
       mobileSide="bottom"
       trigger={renderTrigger}
       renderItem={renderItem}

@@ -64,6 +64,14 @@ msgstr ""
 msgid "Accepts connections from your devices"
 msgstr ""
 
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Access token required"
+msgstr ""
+
+#: src/settings/connections/integration-detail.tsx
+msgid "Account"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Account menu"
 msgstr ""
@@ -74,6 +82,10 @@ msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "Actions"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Add & Authorize"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -89,16 +101,41 @@ msgstr ""
 msgid "Add Agent"
 msgstr ""
 
+#: src/settings/connections/index.tsx
+msgid "Add failed"
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "Add MCP Server"
+msgstr ""
+
 #: src/components/create-item/context.tsx
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/index.tsx
+#: src/settings/models/models-list.tsx
 msgid "Add Model"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Add Server"
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 msgid "Add to chat"
 msgstr ""
 
+#: src/settings/connections/connections-list.tsx
+msgid "Add your first server"
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
+#: src/settings/connections/mcp-server-form.tsx
+#: src/settings/models/add-model-form.tsx
 msgid "Adding…"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Advanced (JSON)"
 msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -147,6 +184,24 @@ msgstr ""
 msgid "API key"
 msgstr ""
 
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
+msgid "API Key"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+msgid "API Key (Optional)"
+msgstr ""
+
+#: src/settings/models/use-add-model-form.ts
+msgid "API Key is required for this provider"
+msgstr ""
+
+#: src/settings/models/model-detail.tsx
+#: src/settings/models/models-list.tsx
+msgid "API key not configured"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr ""
@@ -167,8 +222,33 @@ msgstr ""
 msgid "Ask me anything..."
 msgstr ""
 
+#: src/settings/connections/index.tsx
+msgid "Authorization error"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Authorization required"
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Authorize"
+msgstr ""
+
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Authorize this app on your bridge"
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Authorized. Re-run the OAuth flow if access was revoked."
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Authorizing…"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Available tools:"
 msgstr ""
 
 #: src/components/not-found.tsx
@@ -179,12 +259,24 @@ msgstr ""
 msgid "Base URL"
 msgstr ""
 
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Bearer token or API key"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Bridge"
 msgstr ""
 
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Bridge target"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
+msgstr ""
+
+#: src/settings/models/model-detail.tsx
+msgid "Built-in models can't be edited or removed"
 msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
@@ -201,7 +293,14 @@ msgstr ""
 #: src/components/ui/chat-nav-button.tsx
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/settings/connections/index.tsx
+#: src/settings/connections/mcp-server-form.tsx
+#: src/settings/models/index.tsx
 msgid "Cancel"
+msgstr ""
+
+#: src/settings/connections/use-mcp-server-form-controller.ts
+msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
@@ -234,6 +333,14 @@ msgstr ""
 #: src/layout/sidebar/chat-list.tsx
 #: src/search/commands/use-commands.ts
 msgid "Clear all chats"
+msgstr ""
+
+#: src/settings/models/edit-model-form.tsx
+msgid "Clear saved API key"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Clear saved credential"
 msgstr ""
 
 #: src/components/ui/search-input.tsx
@@ -288,8 +395,29 @@ msgstr ""
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
 msgstr ""
 
+#: src/settings/connections/use-integrations-controller.tsx
+msgid "Connect Google"
+msgstr ""
+
+#: src/settings/connections/use-integrations-controller.tsx
+msgid "Connect Microsoft"
+msgstr ""
+
+#: src/settings/connections/integration-detail.tsx
+msgid "Connect your account to make these tools available to agents."
+msgstr ""
+
+#: src/settings/connections/connections-list.tsx
+msgid "Connect your own MCP servers to give agents more tools."
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
+#: src/settings/connections/mcp-server-detail.tsx
 msgid "Connected"
+msgstr ""
+
+#: src/settings/connections/integration-detail.tsx
+msgid "Connected to {integrationName}"
 msgstr ""
 
 #: src/components/connect-provider-button.tsx
@@ -305,12 +433,21 @@ msgstr ""
 msgid "Connecting..."
 msgstr ""
 
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Connecting…"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Connection"
 msgstr ""
 
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Connection error"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
+#: src/settings/connections/mcp-server-form.tsx
 msgid "Connection failed"
 msgstr ""
 
@@ -319,6 +456,7 @@ msgid "Connection problem. Check your internet and try again."
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
+#: src/settings/connections/mcp-server-form.tsx
 msgid "Connection successful!"
 msgstr ""
 
@@ -326,6 +464,7 @@ msgstr ""
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
+#: src/settings/connections/connections-list.tsx
 msgid "Connections"
 msgstr ""
 
@@ -347,6 +486,10 @@ msgstr ""
 msgid "Copy allow command"
 msgstr ""
 
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Copy bridge target"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy build command"
 msgstr ""
@@ -363,8 +506,20 @@ msgstr ""
 msgid "Copy PATH command"
 msgstr ""
 
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Copy URL"
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Could not connect to the MCP server. Please check the URL and try again."
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Could not connect to this server. Check the URL and that the server is reachable."
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -420,8 +575,20 @@ msgstr ""
 msgid "Create Skill"
 msgstr ""
 
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Credential (optional)"
+msgstr ""
+
+#: src/settings/models/model-presentation.tsx
+msgid "Custom"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "Custom — OpenAI-compatible endpoint"
+msgstr ""
+
+#: src/settings/models/model-detail.tsx
+msgid "Customized model"
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
@@ -433,6 +600,8 @@ msgstr ""
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/layout/sidebar/chat-list-item.tsx
+#: src/settings/connections/index.tsx
+#: src/settings/models/index.tsx
 msgid "Delete"
 msgstr ""
 
@@ -444,8 +613,29 @@ msgstr ""
 msgid "Delete agent"
 msgstr ""
 
+#: src/settings/models/index.tsx
+msgid "Delete Model"
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "Delete Server"
+msgstr ""
+
 #: src/components/ui/chat-nav-button.tsx
 msgid "Delete the thread?"
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "Delete this MCP server and its saved credentials?"
+msgstr ""
+
+#: src/settings/models/index.tsx
+msgid "Delete this model from your configured models?"
+msgstr ""
+
+#: src/settings/connections/index.tsx
+#: src/settings/models/index.tsx
+msgid "Deleting…"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -481,6 +671,22 @@ msgstr ""
 msgid "Disable {customAgentName}"
 msgstr ""
 
+#: src/settings/connections/connections-list.tsx
+msgid "Disable {integrationName}"
+msgstr ""
+
+#: src/settings/models/models-list.tsx
+msgid "Disable {modelName}"
+msgstr ""
+
+#: src/settings/connections/connections-list.tsx
+msgid "Disable {title}"
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Disabled"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Disabled agents stay out of the chat agent picker."
 msgstr ""
@@ -490,9 +696,21 @@ msgstr ""
 msgid "Discard"
 msgstr ""
 
+#: src/settings/connections/integration-detail.tsx
+msgid "Disconnect"
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Disconnected"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 #: src/components/ui/mobile-blur-backdrop.tsx
 msgid "Dismiss"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+msgid "Display Name"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
@@ -511,6 +729,15 @@ msgstr ""
 msgid "Drop file to attach"
 msgstr ""
 
+#: src/settings/models/add-model-form.tsx
+msgid "e.g., GPT-4 Turbo"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
+msgid "e.g., gpt-4-turbo-preview"
+msgstr ""
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Early Access Login"
 msgstr ""
@@ -522,6 +749,14 @@ msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Edit file"
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "Edit MCP Server"
+msgstr ""
+
+#: src/settings/models/index.tsx
+msgid "Edit Model"
 msgstr ""
 
 #: src/components/create-item/context.tsx
@@ -542,6 +777,18 @@ msgstr ""
 msgid "Enable {customAgentName}"
 msgstr ""
 
+#: src/settings/connections/connections-list.tsx
+msgid "Enable {integrationName}"
+msgstr ""
+
+#: src/settings/models/models-list.tsx
+msgid "Enable {modelName}"
+msgstr ""
+
+#: src/settings/connections/connections-list.tsx
+msgid "Enable {title}"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Enable cloud sync"
 msgstr ""
@@ -556,6 +803,10 @@ msgstr ""
 
 #: src/components/settings/agents/validate-agent-url.ts
 msgid "Enter a wss:// or ws:// URL, or an iroh ticket"
+msgstr ""
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Enter an API key to test the connection before saving."
 msgstr ""
 
 #: src/components/sign-in-modal.tsx
@@ -574,6 +825,10 @@ msgstr ""
 msgid "Failed to connect to {agentName}"
 msgstr ""
 
+#: src/settings/models/model-catalog.ts
+msgid "Failed to load models"
+msgstr ""
+
 #: src/components/sign-in/use-sign-in-form-state.ts
 msgid "Failed to resend verification code. Please check your connection."
 msgstr ""
@@ -584,6 +839,14 @@ msgstr ""
 
 #: src/components/chat/inline-artifact-card.tsx
 msgid "Generating…"
+msgstr ""
+
+#: src/settings/connections/use-integrations-controller.tsx
+msgid "Get Pro"
+msgstr ""
+
+#: src/settings/models/models-list.tsx
+msgid "Get started by adding your first AI model."
 msgstr ""
 
 #: src/components/ui/back-button.tsx
@@ -617,6 +880,18 @@ msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "Import failed"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Import Servers"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Importing…"
 msgstr ""
 
 #: src/settings/voice.tsx
@@ -661,6 +936,14 @@ msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
+msgstr ""
+
+#: src/settings/models/edit-model-form.tsx
+msgid "Keep saved API key"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Keep saved credential"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -720,6 +1003,7 @@ msgid "Managed by your deployment — always available, no setup needed."
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
+#: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr ""
 
@@ -732,14 +1016,34 @@ msgstr ""
 msgid "Messages"
 msgstr ""
 
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
+#: src/settings/models/model-detail.tsx
+msgid "Model"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+msgid "Model may not be compatible"
+msgstr ""
+
+#: src/settings/models/use-add-model-form.ts
+#: src/settings/models/use-edit-model-form-state.ts
+msgid "Model name is required."
+msgstr ""
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
+#: src/settings/models/index.tsx
 msgid "Models"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Modified item"
+msgstr ""
+
+#: src/settings/models/model-detail.tsx
+msgid "Modified model"
 msgstr ""
 
 #: src/components/settings/detail-actions-menu.tsx
@@ -761,15 +1065,23 @@ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/settings/connections/mcp-server-form.tsx
+#: src/settings/models/edit-model-form.tsx
 msgid "Name"
 msgstr ""
 
 #: src/components/onboarding/onboarding-name-step.tsx
+#: src/settings/models/use-add-model-form.ts
+#: src/settings/models/use-edit-model-form-state.ts
 msgid "Name is required."
 msgstr ""
 
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Navigation"
+msgstr ""
+
+#: src/settings/models/model-catalog.ts
+msgid "Network request failed (the browser blocked the request or the server is unreachable)."
 msgstr ""
 
 #: src/search/commands/use-commands.ts
@@ -779,6 +1091,14 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 #: src/layout/sidebar/chat-sidebar.tsx
 msgid "New Chat"
+msgstr ""
+
+#: src/settings/connections/connections-list.tsx
+msgid "New Connection"
+msgstr ""
+
+#: src/settings/models/index.tsx
+msgid "New Model"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -809,8 +1129,21 @@ msgstr ""
 msgid "No longer accepts device connections"
 msgstr ""
 
+#: src/settings/connections/connections-list.tsx
+msgid "No matching connections."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "No matching skills"
+msgstr ""
+
+#: src/settings/models/models-list.tsx
+msgid "No models configured"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
+msgid "No models found."
 msgstr ""
 
 #: src/settings/voice.tsx
@@ -847,6 +1180,14 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "OneDrive Access"
+msgstr ""
+
+#: src/settings/models/models-list.tsx
+msgid "Open {modelName}"
+msgstr ""
+
+#: src/settings/connections/connections-list.tsx
+msgid "Open {title}"
 msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
@@ -894,6 +1235,10 @@ msgstr ""
 msgid "Pairing identity"
 msgstr ""
 
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Paste an <0>mcpServers</0> config. Only remote (http/sse) servers are supported; non-Bearer auth headers are ignored."
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Peer-to-peer via iroh — the connection is verified when a chat starts."
 msgstr ""
@@ -927,6 +1272,10 @@ msgstr ""
 msgid "Preferences"
 msgstr ""
 
+#: src/settings/models/model-detail.tsx
+msgid "Privacy"
+msgstr ""
+
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr ""
@@ -936,8 +1285,13 @@ msgstr ""
 msgid "Projects"
 msgstr ""
 
+#: src/settings/models/add-model-form.tsx
 #: src/settings/voice.tsx
 msgid "Provider"
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Re-authorize"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
@@ -950,6 +1304,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Read, compose, and organize your emails."
+msgstr ""
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Received an error while testing the model."
 msgstr ""
 
 #: src/layout/sidebar/chat-list.tsx
@@ -1008,6 +1366,14 @@ msgstr ""
 msgid "Retry"
 msgstr ""
 
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Retry connection"
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Retrying…"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Revoke"
 msgstr ""
@@ -1034,7 +1400,21 @@ msgstr ""
 
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/settings/models/edit-model-form.tsx
 msgid "Save"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Save Changes"
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "Save failed"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+#: src/settings/models/edit-model-form.tsx
+msgid "Saving…"
 msgstr ""
 
 #: src/components/chat/scroll-to-bottom-button.tsx
@@ -1060,6 +1440,15 @@ msgstr ""
 msgid "Search chats, models, skills, agents…"
 msgstr ""
 
+#: src/settings/connections/connections-list.tsx
+msgid "Search connections"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
+msgid "Search models…"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Search skills"
 msgstr ""
@@ -1067,6 +1456,15 @@ msgstr ""
 #: src/components/ui/combobox.tsx
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Search..."
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
+msgid "Select model…"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+msgid "Select provider"
 msgstr ""
 
 #: src/components/ui/combobox.tsx
@@ -1101,6 +1499,27 @@ msgstr ""
 
 #: src/components/chat/file-card.tsx
 msgid "Sent as text"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Server name (used to prefix tools)"
+msgstr ""
+
+#: src/settings/models/model-catalog.ts
+msgid "Server responded with an unknown error."
+msgstr ""
+
+#: src/settings/models/model-catalog.ts
+msgid "Server responded with status {status} {statusText}"
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Server URL"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Servers JSON"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
@@ -1160,6 +1579,10 @@ msgstr ""
 msgid "Signing you in..."
 msgstr ""
 
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Simple"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -1169,6 +1592,12 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
 msgid "Skip"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
+#: src/settings/models/index.tsx
+msgid "Something went wrong"
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -1190,6 +1619,10 @@ msgstr ""
 msgid "Start Using Thunderbolt"
 msgstr ""
 
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Status"
+msgstr ""
+
 #: src/components/ui/prompt-input.tsx
 msgid "Stop generating"
 msgstr ""
@@ -1200,6 +1633,10 @@ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Successfully connected to the agent."
+msgstr ""
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Successfully got a response from the model."
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -1218,12 +1655,33 @@ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/settings/connections/mcp-server-form.tsx
 #: src/settings/voice.tsx
 msgid "Test connection"
 msgstr ""
 
+#: src/settings/models/connection-test-section.tsx
+msgid "Test failed"
+msgstr ""
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Test model"
+msgstr ""
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Test successful!"
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Testing agent…"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Testing connection…"
+msgstr ""
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Testing model…"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
@@ -1240,6 +1698,10 @@ msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr ""
 
 #: src/components/chat/reasoning-part.tsx
@@ -1282,8 +1744,28 @@ msgstr ""
 msgid "This model couldn't read the attached file. Try a different model."
 msgstr ""
 
+#: src/settings/models/add-model-form.tsx
+msgid "This model does not seem to support tool usage."
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "This server needs a personal access token or API key. Paste it in the Credential field above, then test again."
+msgstr ""
+
+#: src/settings/connections/use-mcp-server-form-controller.ts
+msgid "This server no longer exists. It may have been removed on another device."
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "This server requires authorization. Click Authorize to connect."
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr ""
 
 #: src/settings/voice.tsx
@@ -1302,6 +1784,10 @@ msgstr ""
 msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
 msgstr ""
 
+#: src/settings/connections/use-integrations-controller.tsx
+msgid "Thunderbolt Pro is not available yet. Stay tuned!"
+msgstr ""
+
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
 msgstr ""
@@ -1310,6 +1796,10 @@ msgstr ""
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
 msgid "Toggle Sidebar"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Token rejected"
 msgstr ""
 
 #: src/lib/otp-error-messages.ts
@@ -1322,6 +1812,14 @@ msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Tool input"
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "Transport"
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Transport: {transportLabel}"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -1350,6 +1848,17 @@ msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 msgid "Upload file"
+msgstr ""
+
+#: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
+#: src/settings/models/model-detail.tsx
+msgid "URL"
+msgstr ""
+
+#: src/settings/models/use-add-model-form.ts
+#: src/settings/models/use-edit-model-form-state.ts
+msgid "URL is required for Custom providers"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
@@ -1481,6 +1990,10 @@ msgstr ""
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "You're now signed in."
+msgstr ""
+
+#: src/settings/models/model-detail.tsx
+msgid "You've customized this model."
 msgstr ""
 
 #: src/components/modification-indicator.tsx

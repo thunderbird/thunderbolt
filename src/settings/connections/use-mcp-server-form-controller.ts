@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { useRef, type Dispatch, type KeyboardEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
@@ -25,6 +27,9 @@ import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import type { McpServer } from '@/types'
 import type { AddServerMode } from './mcp-server-form'
 import type { ConnectionsPageAction } from './page-state'
+
+const serverGone = msg`This server no longer exists. It may have been removed on another device.`
+const reconnectFailed = msg`Changes were saved, but reconnecting failed. Please retry.`
 
 /**
  * Maps the edit form's credential tri-state to DAL semantics: a typed token
@@ -68,6 +73,7 @@ export const useMcpServerFormController = ({
   updateLiveServer,
   enrollIroh,
 }: FormControllerOptions) => {
+  const { i18n } = useLingui()
   const addPendingRef = useRef(false)
   const { url, isIroh, token, testResult, resolveServerName } = form
   const urlValidation = !isIroh && url ? validateMcpServerUrl(url) : null
@@ -181,7 +187,7 @@ export const useMcpServerFormController = ({
       console.error(`MCP server ${id} is being edited but no longer exists`)
       dispatch({
         type: 'SAVE_FAILED',
-        error: 'This server no longer exists. It may have been removed on another device.',
+        error: i18n._(serverGone),
       })
       return
     }
@@ -212,7 +218,7 @@ export const useMcpServerFormController = ({
       )
     } catch (error) {
       console.error('Failed to update live MCP server:', error)
-      dispatch({ type: 'SAVE_FAILED', error: 'Changes were saved, but reconnecting failed. Please retry.' })
+      dispatch({ type: 'SAVE_FAILED', error: i18n._(reconnectFailed) })
       return
     }
     cancel()

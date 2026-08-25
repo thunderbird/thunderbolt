@@ -9,7 +9,7 @@ import NotFound from './not-found'
 
 /**
  * NotFound uses <Trans> from @lingui/react/macro. In bun tests the macro is
- * replaced by the identity harness (src/test-utils/lingui-macros.tsx), so the
+ * replaced by the identity harness (src/i18n/identity-macros.tsx), so the
  * English source text must render with no I18nProvider in the tree — the
  * guarantee that keeps existing getByText assertions passing (THU-806).
  */

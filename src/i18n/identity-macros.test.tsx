@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
-import { Plural, Trans, plural, t, useLingui } from './lingui-macros'
+import { Plural, Trans, plural, t, useLingui } from './identity-macros'
 
 describe('lingui identity macros (bun test harness)', () => {
   it('Trans renders its children untouched', () => {

@@ -3,17 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Identity implementations of the Lingui macros for bun tests (THU-806).
+ * Identity implementations of the Lingui macros for code running under Bun
+ * rather than Vite (THU-806).
  *
- * Bun's test runner transpiles TS/TSX natively and never runs Babel, so the
+ * Bun transpiles TS/TSX natively and never runs Babel, so the
  * `@lingui/babel-plugin-lingui-macro` transform Vite applies at build time
  * does not happen here — the macro imports would hit runtime stubs that
  * throw. These equivalents render the English source text exactly as
  * written, so existing `getByText` assertions keep passing with no
  * I18nProvider or catalogs in the test tree.
  *
- * Registered globally via `mock.module` in `src/testing-library.ts` for both
- * `@lingui/react/macro` and `@lingui/core/macro`.
+ * Two consumers register these for both `@lingui/react/macro` and
+ * `@lingui/core/macro`: `src/testing-library.ts` via `mock.module` for bun
+ * tests, and `scripts/lingui-macro-bun-shim.ts` via `Bun.plugin` for the
+ * plain-Bun eval CLIs.
  *
  * `select` / `selectOrdinal` are intentionally NOT implemented: the
  * po-gettext catalog format cannot express them, so they are off-limits

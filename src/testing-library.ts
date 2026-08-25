@@ -5,7 +5,7 @@
 import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
 import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
-import * as linguiMacros from '@/test-utils/lingui-macros'
+import * as linguiMacros from '@/i18n/identity-macros'
 import type { Clock } from '@sinonjs/fake-timers'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
@@ -13,7 +13,7 @@ import { afterEach, beforeEach, expect, mock } from 'bun:test'
 
 // Lingui macros are compiled away by Babel in the Vite build, but bun test
 // never runs Babel — swap in identity implementations that render the English
-// source text so `getByText` assertions keep passing (see lingui-macros.tsx).
+// source text so `getByText` assertions keep passing (see src/i18n/identity-macros.tsx).
 mock.module('@lingui/react/macro', () => ({
   Trans: linguiMacros.Trans,
   Plural: linguiMacros.Plural,

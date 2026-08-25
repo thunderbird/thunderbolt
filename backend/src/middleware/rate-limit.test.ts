@@ -9,10 +9,10 @@ import { beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
-  createInferenceRateLimit,
-  createProRateLimit,
+  createUserTierRateLimit,
   type IpRateLimitSettings,
   type RateLimitSettings,
+  type UserRateLimitTier,
 } from './rate-limit'
 
 /**
@@ -23,12 +23,12 @@ import {
 const createTestApp = (
   database: typeof DbType,
   settings: RateLimitSettings,
-  middleware: (db: typeof DbType, s: RateLimitSettings) => ReturnType<typeof createInferenceRateLimit>,
+  tier: UserRateLimitTier,
   userId?: string,
 ) =>
   new Elysia()
     .derive(() => ({ user: userId ? { id: userId } : null }))
-    .use(middleware(database, settings))
+    .use(createUserTierRateLimit(database, settings, tier))
     .get('/v1/test', () => ({ ok: true }))
 
 /** Helper that creates a test app with IP-based rate limiting (trustedProxy=cloudflare). */
@@ -61,7 +61,7 @@ describe('Rate Limiting', () => {
 
   describe('user-based rate limiting', () => {
     it('should allow requests under the limit for an authenticated user', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-1')
+      const app = createTestApp(database, enabledSettings, 'inference', 'user-1')
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
@@ -69,7 +69,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should return 429 after an authenticated user exceeds the limit', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-2')
+      const app = createTestApp(database, enabledSettings, 'inference', 'user-2')
 
       for (let i = 0; i < 60; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
@@ -83,7 +83,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should set RateLimit headers on successful requests', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-3')
+      const app = createTestApp(database, enabledSettings, 'inference', 'user-3')
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
@@ -93,7 +93,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should set Retry-After header on 429 responses', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-4')
+      const app = createTestApp(database, enabledSettings, 'inference', 'user-4')
 
       for (let i = 0; i < 60; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
@@ -106,7 +106,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should skip rate limiting when no user context is available', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit)
+      const app = createTestApp(database, enabledSettings, 'inference')
 
       for (let i = 0; i < 65; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
@@ -115,8 +115,8 @@ describe('Rate Limiting', () => {
     })
 
     it('should track limits independently per user', async () => {
-      const appA = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-5a')
-      const appB = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-5b')
+      const appA = createTestApp(database, enabledSettings, 'inference', 'user-5a')
+      const appB = createTestApp(database, enabledSettings, 'inference', 'user-5b')
 
       // Exhaust user A's limit
       for (let i = 0; i < 60; i++) {
@@ -134,7 +134,7 @@ describe('Rate Limiting', () => {
 
   describe('pro rate limiting', () => {
     it('should allow requests under the pro tier limit', async () => {
-      const app = createTestApp(database, enabledSettings, createProRateLimit, 'pro-user-1')
+      const app = createTestApp(database, enabledSettings, 'pro', 'pro-user-1')
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
@@ -144,7 +144,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should return 429 after exceeding the pro tier limit', async () => {
-      const app = createTestApp(database, enabledSettings, createProRateLimit, 'pro-user-2')
+      const app = createTestApp(database, enabledSettings, 'pro', 'pro-user-2')
 
       for (let i = 0; i < 100; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
@@ -158,8 +158,8 @@ describe('Rate Limiting', () => {
     })
 
     it('should track limits independently from inference tier', async () => {
-      const inferenceApp = createTestApp(database, enabledSettings, createInferenceRateLimit, 'shared-user')
-      const proApp = createTestApp(database, enabledSettings, createProRateLimit, 'shared-user')
+      const inferenceApp = createTestApp(database, enabledSettings, 'inference', 'shared-user')
+      const proApp = createTestApp(database, enabledSettings, 'pro', 'shared-user')
 
       // Exhaust inference limit (60 requests)
       for (let i = 0; i < 60; i++) {
@@ -174,10 +174,27 @@ describe('Rate Limiting', () => {
     })
   })
 
+  describe('debug transcript rate limiting', () => {
+    it('allows ten uploads per user each hour', async () => {
+      const app = createTestApp(database, enabledSettings, 'debug-transcript', 'transcript-user')
+
+      for (let index = 0; index < 10; index++) {
+        const response = await app.handle(new Request('http://localhost/v1/test'))
+        expect(response.status).toBe(200)
+      }
+
+      const blockedResponse = await app.handle(new Request('http://localhost/v1/test'))
+
+      expect(blockedResponse.status).toBe(429)
+      expect(blockedResponse.headers.get('ratelimit-limit')).toBe('10')
+      expect(Number(blockedResponse.headers.get('ratelimit-reset'))).toBeGreaterThan(3500)
+    })
+  })
+
   describe('disabled rate limiting', () => {
     it('should not rate limit when disabled', async () => {
       const disabledSettings: RateLimitSettings = { enabled: false }
-      const app = createTestApp(database, disabledSettings, createInferenceRateLimit, 'user-6')
+      const app = createTestApp(database, disabledSettings, 'inference', 'user-6')
 
       for (let i = 0; i < 65; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
@@ -187,7 +204,7 @@ describe('Rate Limiting', () => {
 
     it('should not rate limit pro tier when disabled', async () => {
       const disabledSettings: RateLimitSettings = { enabled: false }
-      const app = createTestApp(database, disabledSettings, createProRateLimit, 'user-disabled-pro')
+      const app = createTestApp(database, disabledSettings, 'pro', 'user-disabled-pro')
 
       for (let i = 0; i < 105; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
@@ -286,7 +303,7 @@ describe('Rate Limiting', () => {
       const app = new Elysia()
         .derive(() => ({ user: { id: 'shared-ip-user' } }))
         .use(createAuthIpRateLimit(database, ipSettings))
-        .use(createInferenceRateLimit(database, enabledSettings))
+        .use(createUserTierRateLimit(database, enabledSettings, 'inference'))
         .get('/v1/test', () => ({ ok: true }))
 
       // Exhaust IP limit (10 requests)

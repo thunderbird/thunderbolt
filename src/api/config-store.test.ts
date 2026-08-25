@@ -3,7 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { selectAllowCustomAgents, selectBuiltInAgentEnabled, useConfigStore } from './config-store'
+import {
+  selectAllowCustomAgents,
+  selectBuiltInAgentEnabled,
+  selectDebugTranscriptsEnabled,
+  useConfigStore,
+} from './config-store'
 
 const storageKey = 'thunderbolt-config'
 
@@ -70,5 +75,16 @@ describe('selectAllowCustomAgents', () => {
 
   it('is forbidden only when explicitly false', () => {
     expect(selectAllowCustomAgents({ allowCustomAgents: false })).toBe(false)
+  })
+})
+
+describe('selectDebugTranscriptsEnabled', () => {
+  it('defaults to disabled when the server flag is absent', () => {
+    expect(selectDebugTranscriptsEnabled({})).toBe(false)
+  })
+
+  it('is enabled only when the server explicitly accepts uploads', () => {
+    expect(selectDebugTranscriptsEnabled({ debugTranscriptsEnabled: true })).toBe(true)
+    expect(selectDebugTranscriptsEnabled({ debugTranscriptsEnabled: false })).toBe(false)
   })
 })

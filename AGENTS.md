@@ -37,6 +37,7 @@
 
 - Use `useReducer` when a component needs 3+ `useState` hooks
 - Abstract state/logic into `use[Component]State()` hooks to separate computation from display logic and enable unit testing
+- Multi-file features in `src/components/` get their own subfolder (see `sign-in/`, `auth-gate/`) with an `index.ts` barrel exporting only the public surface; the feature's `use[Component]State` hook and tests live in that folder. Flat files directly under `src/components/` are for single-file components only
 
 ### `useEffect` Discipline
 

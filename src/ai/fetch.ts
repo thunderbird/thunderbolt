@@ -37,6 +37,8 @@ import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
+import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
+import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
 import type { Model, ModelProfile, Skill, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
@@ -118,6 +120,7 @@ type AiFetchStreamingResponseOptions = {
   turnBudget?: TurnBudgetConsumer
   webToolBudget?: WebToolBudget
   telemetry?: TurnTelemetry
+  debugTranscript?: { threadId: string; traceId: string }
   /** Returns the current proxy fetch. Production callers pass the getter from
    *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
    *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
@@ -674,6 +677,27 @@ export const buildVolatileSystemNotes = ({
   ...(askResponsesNote ? [askResponsesNote] : []),
 ]
 
+/** Record one legacy empty-response retry in telemetry and transcript vocabularies. */
+export const recordLegacyEmptyResponseRetry = (
+  telemetry: Pick<TurnTelemetry, 'recordRetry'> | undefined,
+  debugTranscript: { threadId: string; traceId: string } | undefined,
+  attemptNumber: number,
+): void => {
+  telemetry?.recordRetry({
+    layer: 'empty_response',
+    reason: 'empty_response',
+    attempt: attemptNumber + 1,
+  })
+  if (debugTranscript) {
+    recordDebugTranscriptRetry(
+      debugTranscript.threadId,
+      debugTranscript.traceId,
+      emptyResponseRetryReason,
+      attemptsMadeFromCompletedRetries(attemptNumber - 1),
+    )
+  }
+}
+
 /**
  * Stream one response through the legacy built-in pipeline.
  *
@@ -691,11 +715,12 @@ export const aiFetchStreamingResponse = async ({
   turnBudget,
   webToolBudget,
   telemetry,
+  debugTranscript,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
-  const body = JSON.parse(options.body)
+  const body = JSON.parse(options.body) as { messages: ThunderboltUIMessage[]; id: string }
   const abortSignal: AbortSignal | undefined = options.signal ?? undefined
-  const { messages } = body as { messages: ThunderboltUIMessage[]; id: string }
+  const { messages } = body
   const requestBudget = turnBudget ?? createTurnBudget().consumer
 
   // The chat instance saves the user message via `saveMessages` before
@@ -721,7 +746,7 @@ export const aiFetchStreamingResponse = async ({
     webToolBudget,
     // The chat id rides the request body (see the destructure above), which is
     // how this path knows which thread — and so which project — it is serving.
-    chatThreadId: typeof body?.id === 'string' ? body.id : undefined,
+    chatThreadId: body.id,
     telemetry,
   })
   if (!supportsTools) {
@@ -876,7 +901,9 @@ export const aiFetchStreamingResponse = async ({
     // layers need to classify it. Serialized as JSON so the client can parse it
     // back out (see `getErrorStatusCode`). Applied to every stream that can
     // surface the error — both `toUIMessageStream` calls and the outer stream.
-    const serializeStreamError = (error: unknown): string => {
+    // The AI SDK callback supplies unknown; this exact alias keeps its contract because anti-slop rejects an explicit unknown parameter.
+    type StreamError = Parameters<NonNullable<Parameters<typeof createUIMessageStream>[0]['onError']>>[0]
+    const serializeStreamError = (error: StreamError): string => {
       if (APICallError.isInstance(error)) {
         return JSON.stringify({
           error: error.responseBody ?? error.message,
@@ -923,7 +950,7 @@ export const aiFetchStreamingResponse = async ({
               .filter((message) => message.role === 'assistant')
               .map(async (message) => {
                 const stored = await getMessage(db, message.id)
-                return stored?.cache ? collectAskEntriesFromCache(stored.cache as Record<string, unknown>) : []
+                return stored?.cache ? collectAskEntriesFromCache(stored.cache) : []
               }),
           )
         ).flat()
@@ -954,6 +981,9 @@ export const aiFetchStreamingResponse = async ({
         )
         telemetry?.endPhase('attachment_hydration')
         let currentInput = assembleBuiltInModelInput(stableSystemPrompt, baseMessages, volatileSystemNotes)
+        if (debugTranscript) {
+          recordDebugTranscriptSystemPrompts(debugTranscript.threadId, debugTranscript.traceId, [currentInput.system])
+        }
         let attemptNumber = 1
         let isRetry = false
         // Track tool calls across ALL attempts — a retry may produce no tool calls
@@ -1004,7 +1034,7 @@ export const aiFetchStreamingResponse = async ({
                   : activeNudges.retry
 
               console.info(`Empty response detected, retrying (attempt ${attemptNumber + 1}/${maxAttempts})...`)
-              telemetry?.recordRetry({ layer: 'empty_response', reason: 'empty_response', attempt: attemptNumber + 1 })
+              recordLegacyEmptyResponseRetry(telemetry, debugTranscript, attemptNumber)
               currentInput = {
                 ...currentInput,
                 messages: [

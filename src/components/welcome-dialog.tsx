@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { useState } from 'react'
 import { create } from 'zustand'
 
@@ -35,8 +36,12 @@ export const WelcomeDialog = () => {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-md" showCloseButton={false}>
-        <DialogTitle className="sr-only">Welcome</DialogTitle>
-        <DialogDescription className="sr-only">Sign-in successful</DialogDescription>
+        <DialogTitle className="sr-only">
+          <Trans>Welcome</Trans>
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          <Trans>Sign-in successful</Trans>
+        </DialogDescription>
         <SignInSuccessStep
           displayName={preferredName.value as string}
           onContinue={() => setIsOpen(false)}

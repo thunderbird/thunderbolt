@@ -51,6 +51,10 @@ msgstr ""
 msgid "{title} — shown in side panel"
 msgstr ""
 
+#: src/components/sync-setup/recovery-key-entry-step.tsx
+msgid "{wordCount}/24 words"
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
 msgstr ""
@@ -202,12 +206,21 @@ msgstr ""
 msgid "API key not configured"
 msgstr ""
 
+#: src/components/device-approval.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Approve {deviceName}"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Approve CLI sign-in?"
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Approve this device"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -316,6 +329,10 @@ msgstr ""
 msgid "Chats"
 msgstr ""
 
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Check now"
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Check the backend logs"
 msgstr ""
@@ -323,6 +340,22 @@ msgstr ""
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Check your email"
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Checking automatically…"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Checking sign-in request…"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Checking your session."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Checking…"
 msgstr ""
 
 #: src/components/ui/searchable-menu/searchable-menu.tsx
@@ -347,7 +380,12 @@ msgstr ""
 msgid "Clear search"
 msgstr ""
 
+#: src/components/sync-setup/recovery-key-display-step.tsx
+msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
+msgstr ""
+
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/device-approval.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
@@ -361,6 +399,14 @@ msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Code"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Code didn't work"
 msgstr ""
 
 #: src/layout/sidebar/sidebar-header.tsx
@@ -383,8 +429,16 @@ msgstr ""
 msgid "Configuration"
 msgstr ""
 
+#: src/components/revoked-device-modal.tsx
+msgid "Confirm"
+msgstr ""
+
 #: src/components/chat/external-link-dialog.tsx
 msgid "Confirm opening an external link"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Confirm this code matches the one in your terminal."
 msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
@@ -468,14 +522,20 @@ msgstr ""
 msgid "Connections"
 msgstr ""
 
+#: src/components/device-approval.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
+#: src/components/sync-setup/sync-setup-modal.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Continue"
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-display-step.tsx
+msgid "Copied"
 msgstr ""
 
 #: src/components/chat/mobile-user-message.tsx
@@ -504,6 +564,10 @@ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy PATH command"
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-display-step.tsx
+msgid "Copy to clipboard"
 msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
@@ -613,6 +677,23 @@ msgstr ""
 msgid "Delete agent"
 msgstr ""
 
+#: src/components/delete-all-chats-dialog.tsx
+msgid "Delete All Chats"
+msgstr ""
+
+#: src/components/delete-all-chats-dialog.tsx
+msgid "Delete all chats?"
+msgstr ""
+
+#: src/components/delete-chat-dialog.tsx
+msgid "Delete Chat"
+msgstr ""
+
+#: src/components/logout-modal.tsx
+#: src/components/revoked-device-modal.tsx
+msgid "Delete data from device"
+msgstr ""
+
 #: src/settings/models/index.tsx
 msgid "Delete Model"
 msgstr ""
@@ -625,6 +706,10 @@ msgstr ""
 msgid "Delete the thread?"
 msgstr ""
 
+#: src/components/delete-chat-dialog.tsx
+msgid "Delete this chat?"
+msgstr ""
+
 #: src/settings/connections/index.tsx
 msgid "Delete this MCP server and its saved credentials?"
 msgstr ""
@@ -633,11 +718,17 @@ msgstr ""
 msgid "Delete this model from your configured models?"
 msgstr ""
 
+#: src/components/logout-modal.tsx
+#: src/components/revoked-device-modal.tsx
+msgid "Deleting..."
+msgstr ""
+
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
 msgid "Deleting…"
 msgstr ""
 
+#: src/components/device-approval.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr ""
@@ -658,6 +749,10 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Dev Settings"
+msgstr ""
+
+#: src/components/revoked-device-modal.tsx
+msgid "Device access revoked"
 msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -711,6 +806,12 @@ msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 msgid "Display Name"
+msgstr ""
+
+#: src/components/device-approval.tsx
+#: src/components/sync-setup/recovery-key-display-step.tsx
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Done"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
@@ -801,12 +902,28 @@ msgstr ""
 msgid "Endpoint"
 msgstr ""
 
+#: src/components/device-approval.tsx
+msgid "Enter a different code"
+msgstr ""
+
 #: src/components/settings/agents/validate-agent-url.ts
 msgid "Enter a wss:// or ws:// URL, or an iroh ticket"
 msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
 msgid "Enter an API key to test the connection before saving."
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-entry-step.tsx
+msgid "Enter recovery phrase"
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-entry-step.tsx
+msgid "Enter the 24-word recovery phrase you saved when you first set up sync."
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Enter the code shown in your terminal to continue."
 msgstr ""
 
 #: src/components/sign-in-modal.tsx
@@ -837,6 +954,14 @@ msgstr ""
 msgid "Failed to send verification code. Please check your connection."
 msgstr ""
 
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "First device setup"
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Generating keys…"
+msgstr ""
+
 #: src/components/chat/inline-artifact-card.tsx
 msgid "Generating…"
 msgstr ""
@@ -849,6 +974,7 @@ msgstr ""
 msgid "Get started by adding your first AI model."
 msgstr ""
 
+#: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
 msgid "Go back"
@@ -872,6 +998,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-display-step.tsx
+msgid "I have saved my recovery phrase"
 msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
@@ -934,6 +1064,10 @@ msgstr ""
 msgid "Just synced"
 msgstr ""
 
+#: src/components/revoked-device-modal.tsx
+msgid "Keep data on device"
+msgstr ""
+
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
 msgstr ""
@@ -946,12 +1080,20 @@ msgstr ""
 msgid "Keep saved credential"
 msgstr ""
 
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read your data."
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Keep your data synced across devices."
 msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Last seen {lastSeen}"
+msgstr ""
+
+#: src/components/logout-modal.tsx
+msgid "Leave data on device"
 msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
@@ -982,6 +1124,10 @@ msgstr ""
 msgid "Loading..."
 msgstr ""
 
+#: src/components/device-approval.tsx
+msgid "Loading…"
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
 msgstr ""
@@ -990,8 +1136,13 @@ msgstr ""
 msgid "Location is required."
 msgstr ""
 
+#: src/components/logout-modal.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Log out"
+msgstr ""
+
+#: src/components/logout-modal.tsx
+msgid "Logging out..."
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
@@ -1178,6 +1329,10 @@ msgstr ""
 msgid "Onboarding Wizard"
 msgstr ""
 
+#: src/components/device-approval.tsx
+msgid "One moment while we look up the code."
+msgstr ""
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "OneDrive Access"
 msgstr ""
@@ -1208,6 +1363,10 @@ msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Open Thunderbolt on one of your trusted devices and go to Settings → Devices to approve this device."
 msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
@@ -1259,6 +1418,10 @@ msgstr ""
 msgid "Please select a location from the dropdown to get coordinates."
 msgstr ""
 
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Please store your recovery key somewhere safe. You'll need it to access your data if you ever lose all your devices."
+msgstr ""
+
 #: src/components/magic-link-verify.tsx
 msgid "Please wait while we verify your link."
 msgstr ""
@@ -1306,6 +1469,10 @@ msgstr ""
 msgid "Read, compose, and organize your emails."
 msgstr ""
 
+#: src/components/sync-setup/recovery-key-entry-step.tsx
+msgid "Ready to submit"
+msgstr ""
+
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
 msgstr ""
@@ -1318,8 +1485,21 @@ msgstr ""
 msgid "Recent Projects"
 msgstr ""
 
+#: src/components/sync-setup/recovery-key-display-step.tsx
+msgid "Recovery phrase"
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Registering this device and detecting your account status."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Remove"
+msgstr ""
+
+#: src/components/logout-modal.tsx
+#: src/components/revoked-device-modal.tsx
+msgid "Remove all chats, settings, and cached data from this device."
 msgstr ""
 
 #: src/layout/sidebar/project-drop-list.tsx
@@ -1348,6 +1528,14 @@ msgstr ""
 
 #: src/components/chat/quote-reply-button.tsx
 msgid "Reply"
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Request denied"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Request expired"
 msgstr ""
 
 #: src/components/chat/file-card.tsx
@@ -1410,6 +1598,10 @@ msgstr ""
 
 #: src/settings/connections/index.tsx
 msgid "Save failed"
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-display-step.tsx
+msgid "Save your recovery phrase"
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
@@ -1530,12 +1722,28 @@ msgstr ""
 msgid "Set Light"
 msgstr ""
 
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Set up encrypted sync"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Set up pairing"
 msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Set up pairing for {deviceName}"
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Set up sync"
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Setting up encryption…"
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Setting up…"
 msgstr ""
 
 #: src/layout/sidebar/nav-toggle.tsx
@@ -1567,12 +1775,32 @@ msgstr ""
 msgid "Sign In"
 msgstr ""
 
+#: src/components/device-approval.tsx
+msgid "Sign in to the CLI"
+msgstr ""
+
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to Thunderbolt"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Sign-in approved"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Sign-in denied"
+msgstr ""
+
+#: src/components/welcome-dialog.tsx
+msgid "Sign-in successful"
+msgstr ""
+
+#: src/components/revoked-device-modal.tsx
+msgid "Signing out..."
 msgstr ""
 
 #: src/components/magic-link-verify.tsx
@@ -1594,6 +1822,7 @@ msgstr ""
 msgid "Skip"
 msgstr ""
 
+#: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/index.tsx
@@ -1629,6 +1858,10 @@ msgstr ""
 
 #: src/settings/voice.tsx
 msgid "STT model"
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-entry-step.tsx
+msgid "Submit"
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -1700,6 +1933,10 @@ msgstr ""
 msgid "The AI provider took too long to respond. Try again."
 msgstr ""
 
+#: src/components/device-approval.tsx
+msgid "The request was denied. You can safely close this page."
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr ""
@@ -1728,8 +1965,20 @@ msgstr ""
 msgid "This device"
 msgstr ""
 
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "This device has been approved and sync is now enabled across your devices."
+msgstr ""
+
+#: src/components/revoked-device-modal.tsx
+msgid "This device has been signed out remotely. Choose what to do with your local data."
+msgstr ""
+
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 msgstr ""
 
 #: src/lib/otp-error-messages.ts
@@ -1766,6 +2015,14 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server uses OAuth. Add it and authorize to connect."
+msgstr ""
+
+#: src/components/delete-all-chats-dialog.tsx
+msgid "This will permanently delete all your chats."
+msgstr ""
+
+#: src/components/delete-chat-dialog.tsx
+msgid "This will permanently delete this chat."
 msgstr ""
 
 #: src/settings/voice.tsx
@@ -1826,6 +2083,10 @@ msgstr ""
 msgid "Trusted devices"
 msgstr ""
 
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Try again"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "TTS model"
 msgstr ""
@@ -1861,6 +2122,10 @@ msgstr ""
 msgid "URL is required for Custom providers"
 msgstr ""
 
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Use my recovery key"
+msgstr ""
+
 #: src/search/commands/use-commands.ts
 msgid "Use System"
 msgstr ""
@@ -1880,6 +2145,7 @@ msgid "Verification failed. Please try again."
 msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
+#: src/components/sync-setup/recovery-key-entry-step.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Verifying…"
 msgstr ""
@@ -1934,6 +2200,10 @@ msgstr ""
 msgid "We've sent an email to <0>{email}</0> with your next steps."
 msgstr ""
 
+#: src/components/welcome-dialog.tsx
+msgid "Welcome"
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Welcome to Thunderbolt!"
 msgstr ""
@@ -1963,8 +2233,20 @@ msgstr ""
 msgid "What should we call you?"
 msgstr ""
 
+#: src/components/logout-modal.tsx
+msgid "What would you like to do with your local data?"
+msgstr ""
+
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Where are you located?"
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-entry-step.tsx
+msgid "word1 word2 word3 ..."
+msgstr ""
+
+#: src/components/sync-setup/recovery-key-display-step.tsx
+msgid "Write down these 24 words in order and store them somewhere safe. You'll need them to recover your data if you lose access to all your devices. This phrase won't be shown again."
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -1979,8 +2261,16 @@ msgstr ""
 msgid "You can attach up to {maxAttachmentCount} files."
 msgstr ""
 
+#: src/components/device-approval.tsx
+msgid "You can return to your terminal."
+msgstr ""
+
 #: src/skills/discard-create-dialog.tsx
 msgid "You'll lose what you've added so far."
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "You're all set!"
 msgstr ""
 
 #: src/components/onboarding/onboarding-celebration-step.tsx
@@ -2024,8 +2314,20 @@ msgstr ""
 msgid "Your changes won't be saved."
 msgstr ""
 
+#: src/components/logout-modal.tsx
+msgid "Your chats and settings will remain on this device for next time."
+msgstr ""
+
+#: src/components/revoked-device-modal.tsx
+msgid "Your chats and settings will remain on this device for offline use."
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"
+msgstr ""
+
+#: src/components/sync-setup/sync-setup-modal.tsx
+msgid "Your request to sync this device was denied by another device. You can try again or close this dialog."
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx

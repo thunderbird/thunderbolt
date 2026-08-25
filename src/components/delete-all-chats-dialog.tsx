@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { forwardRef } from 'react'
 
 import { ImperativeConfirmActionDialog, type ConfirmActionDialogRef } from '@/components/ui/confirm-action-dialog'
@@ -13,14 +14,18 @@ type DeleteAllChatsDialogProps = {
   onConfirm: () => void
 }
 
-export const DeleteAllChatsDialog = forwardRef<DeleteAllChatsDialogRef, DeleteAllChatsDialogProps>((props, ref) => (
-  <ImperativeConfirmActionDialog
-    ref={ref}
-    title="Delete all chats?"
-    description="This will permanently delete all your chats."
-    confirmLabel="Delete All Chats"
-    {...props}
-  />
-))
+export const DeleteAllChatsDialog = forwardRef<DeleteAllChatsDialogRef, DeleteAllChatsDialogProps>((props, ref) => {
+  const { t } = useLingui()
+
+  return (
+    <ImperativeConfirmActionDialog
+      ref={ref}
+      title={t`Delete all chats?`}
+      description={t`This will permanently delete all your chats.`}
+      confirmLabel={t`Delete All Chats`}
+      {...props}
+    />
+  )
+})
 
 DeleteAllChatsDialog.displayName = 'DeleteAllChatsDialog'

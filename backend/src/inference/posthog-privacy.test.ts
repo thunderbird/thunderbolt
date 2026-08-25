@@ -3,14 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { clearSettingsCache } from '@/config/settings'
+import { user } from '@/db/auth-schema'
+import { inferenceUsage } from '@/db/inference-usage-schema'
 import { clearPostHogClient, isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
+import { createTestDb } from '@/test-utils/db'
+import { mockAuth } from '@/test-utils/mock-auth'
 import { isPosthogRequest } from '@/test-utils/posthog'
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
-import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, jest, spyOn } from 'bun:test'
+import { eq } from 'drizzle-orm'
+import { Elysia } from 'elysia'
 import { clearInferenceClientCache, getInferenceClient } from './client'
+import { createInferenceRoutes } from './routes'
 
 type PostHogEvent = {
+  distinct_id?: string
   event?: string
   properties?: Record<string, unknown>
 }
@@ -25,6 +33,23 @@ type FetchCall = {
   url: string
   options: RequestInit
   body: PostHogRequestBody | null
+}
+
+type DirectUpstreamRequestBody = {
+  model: string
+  stream_options: { include_usage: boolean }
+}
+
+/** Parse a captured PostHog request body, ignoring endpoints that do not send JSON. */
+const parsePostHogRequestBody = (body: string): PostHogRequestBody | null => {
+  if (!body) {
+    return null
+  }
+  try {
+    return JSON.parse(body) as PostHogRequestBody
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -42,19 +67,13 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
       POSTHOG_HOST: process.env.POSTHOG_HOST,
       TINFOIL_API_KEY: process.env.TINFOIL_API_KEY,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     }
 
     capturedFetches = []
     mockFetch = jest.fn(async (url: string, options: RequestInit) => {
       // Capture all fetch calls
-      let parsedBody: PostHogRequestBody | null = null
-      if (options.body) {
-        try {
-          parsedBody = JSON.parse(options.body as string) as PostHogRequestBody
-        } catch {
-          // Not JSON, skip parsing
-        }
-      }
+      const parsedBody = parsePostHogRequestBody(options.body?.toString() ?? '')
 
       capturedFetches.push({
         url,
@@ -186,6 +205,140 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   describe('End-to-end privacy verification', () => {
+    it('preserves direct-route usage accounting and privacy with the real PostHog OpenAI wrapper', async () => {
+      const testDb = await createTestDb()
+      await testDb.db.insert(user).values({
+        id: 'test-user',
+        name: 'Test User',
+        email: 'test-user@example.com',
+        emailVerified: true,
+        isAnonymous: false,
+      })
+      process.env.POSTHOG_API_KEY = 'test-key'
+      process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
+      clearSettingsCache()
+      clearInferenceClientCache()
+      clearPostHogClient()
+
+      const secretPrompt = 'ROUTE_POSTHOG_SECRET_PROMPT'
+      const usageChunk = Object.freeze({
+        id: 'chatcmpl-usage',
+        object: 'chat.completion.chunk',
+        created: 0,
+        model: 'claude-opus-5',
+        choices: Object.freeze([]),
+        usage: Object.freeze({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 }),
+      })
+      const rawStream =
+        'data: {"id":"chatcmpl-content","object":"chat.completion.chunk","created":0,"model":"claude-opus-5","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
+        `data: ${JSON.stringify(usageChunk)}\n\n` +
+        'data: [DONE]\n\n'
+      let upstreamRequestBody: DirectUpstreamRequestBody | undefined
+      const routeFetch = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = input instanceof Request ? input.url : input.toString()
+          const requestBody = new Response(
+            init?.body ?? (input instanceof Request ? await input.clone().arrayBuffer() : undefined),
+          )
+          const bodyText =
+            new Headers(init?.headers).get('content-encoding') === 'gzip' && requestBody.body
+              ? await new Response(requestBody.body.pipeThrough(new DecompressionStream('gzip'))).text()
+              : await requestBody.text()
+          if (isPosthogRequest(url)) {
+            capturedFetches.push({
+              url,
+              options: init ?? {},
+              body: parsePostHogRequestBody(bodyText),
+            })
+            return new Response(JSON.stringify({ status: 1 }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          }
+
+          upstreamRequestBody = JSON.parse(bodyText) as DirectUpstreamRequestBody
+          return new Response(rawStream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          })
+        },
+        { preconnect: () => undefined },
+      )
+      const globalFetchSpy = spyOn(globalThis, 'fetch').mockImplementation(routeFetch)
+
+      try {
+        const app = new Elysia().use(createInferenceRoutes({ auth: mockAuth, database: testDb.db }))
+        const response = await app.handle(
+          new Request('http://localhost/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'opus-5',
+              messages: [{ role: 'user', content: secretPrompt }],
+              stream: true,
+              stream_options: { include_usage: false, client_value: 'ignored' },
+            }),
+          }),
+        )
+        const responseText = await response.text()
+        await shutdownPostHog(2_000)
+
+        expect(response.status).toBe(200)
+        expect(upstreamRequestBody).toMatchObject({
+          model: 'claude-opus-5',
+          stream_options: { include_usage: true },
+        })
+        expect(upstreamRequestBody?.stream_options).toEqual({ include_usage: true })
+        expect(responseText).toContain(`data: ${JSON.stringify(usageChunk)}\n\n`)
+        expect(usageChunk).toEqual({
+          id: 'chatcmpl-usage',
+          object: 'chat.completion.chunk',
+          created: 0,
+          model: 'claude-opus-5',
+          choices: [],
+          usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+        })
+
+        const rows = await testDb.db.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({
+          userId: 'test-user',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
+          promptTokens: 2,
+          completionTokens: 3,
+          totalTokens: 5,
+        })
+
+        const postHogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
+        const generationEvents = postHogRequests.flatMap((request) => {
+          if (!request.body) {
+            return []
+          }
+          return 'batch' in request.body ? request.body.batch : [request.body]
+        })
+        const generation = generationEvents.find((event) => event.event === '$ai_generation')
+        expect(generation).toMatchObject({
+          distinct_id: 'test-user',
+          properties: {
+            model_provider: 'anthropic',
+            model: 'claude-opus-5',
+          },
+        })
+        expect(generation?.properties?.$ai_input).toBeNullOrUndefined()
+        expect(generation?.properties?.$ai_output_choices).toBeNullOrUndefined()
+        expect(JSON.stringify(postHogRequests)).not.toContain(secretPrompt)
+      } finally {
+        try {
+          await shutdownPostHog(2_000)
+        } finally {
+          globalFetchSpy.mockRestore()
+          await testDb.cleanup()
+        }
+      }
+    })
+
     it('should not send conversation content to PostHog when making completions', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'
       process.env.POSTHOG_HOST = 'https://us.i.posthog.com'

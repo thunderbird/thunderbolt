@@ -40,7 +40,32 @@ export type InferenceProxyLatencyLog = {
   attempts: number
 }
 
-type InferenceLogContext = InferenceUpstreamAttemptLog | InferenceProxyLatencyLog
+export type InferenceUsageLog =
+  | {
+      event: 'inference_usage_completed'
+      provider: InferenceProvider
+      model: string
+      eventId: string
+      transport: 'direct'
+    }
+  | {
+      event: 'inference_usage_inserted'
+      provider: InferenceProvider
+      model: string
+      eventId: string
+      outcome: 'inserted' | 'duplicate'
+    }
+
+export type InferenceRouteLog =
+  | ({ provider: InferenceProvider; model: string; route: string } & (
+      | { event: 'inference_connection_timeout' }
+      | { event: 'inference_connection_failed' }
+      | { event: 'inference_usage_missing' }
+      | { event: 'inference_usage_callback_failed' }
+    ))
+  | InferenceUsageLog
+
+type InferenceLogContext = InferenceUpstreamAttemptLog | InferenceProxyLatencyLog | InferenceRouteLog
 
 export type InferenceLogger = {
   info: (context: InferenceLogContext, message: string) => void

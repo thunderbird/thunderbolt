@@ -4,8 +4,9 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
+import { getSettings } from '@/config/settings'
 import { classifyInferenceError } from '@/inference/error-kind'
-import { getErrorStatus, safeErrorHandler } from '@/middleware/error-handling'
+import { createErrorResponse, getErrorStatus, getSafeErrorMessage, safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import { elapsedMs } from '@/utils/timing'
@@ -21,7 +22,16 @@ import {
   type InferenceLogger,
   type InferenceProxyLatencyLog,
   type InferenceProvider,
+  type InferenceUsageLog,
 } from './client'
+import {
+  checkInferenceQuota,
+  getInferenceQuotaLimits,
+  loadInferencePrice,
+  recordInferenceUsage,
+  type InferenceDatabase,
+} from './usage-ledger'
+import { createPriceUnavailableResponse, createQuotaExceededResponse } from './usage-responses'
 
 type Message = { role: string; content: unknown }
 
@@ -34,8 +44,9 @@ const sanitizeMessageRoles = (messages: Message[]): Message[] =>
   messages.map((msg, i) => (i > 0 && privilegedRoles.has(msg.role) ? { ...msg, role: 'user' } : msg))
 
 type ModelConfig = {
-  provider: InferenceProvider
+  provider: 'anthropic' | 'tinfoil'
   internalName: string
+  supportsStreamUsage: true
   /** Whether to omit `temperature` from the upstream payload. */
   omitTemperature?: boolean
 }
@@ -45,16 +56,19 @@ export const supportedModels: Record<string, ModelConfig> = {
     provider: 'anthropic',
     internalName: 'claude-opus-5',
     omitTemperature: true,
+    supportsStreamUsage: true,
   },
   'deepseek-v4-flash': {
     provider: 'tinfoil',
     internalName: 'deepseek-v4-flash',
+    supportsStreamUsage: true,
   },
 }
 
 export type CreateInferenceRoutesOptions = {
   auth: Auth
   captureInferenceErrorFn?: typeof captureInferenceError
+  database: InferenceDatabase
   fetchFn?: typeof fetch
   getClient?: (provider: InferenceProvider) => InferenceClient
   isPostHogConfiguredFn?: () => boolean
@@ -77,11 +91,25 @@ const getApiErrorMetadata = (error: unknown) => {
   }
 }
 
+/** Emit successful usage telemetry without allowing the logger to alter accounting control flow. */
+const logInferenceUsageSafely = (
+  logger: InferenceLogger | undefined,
+  context: InferenceUsageLog,
+  message: string,
+): void => {
+  try {
+    logger?.info(context, message)
+  } catch {
+    // Usage persistence must not depend on telemetry availability.
+  }
+}
+
 /**
  * Inference API routes
  */
 export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => {
-  const { auth, fetchFn, logger, rateLimit } = options
+  const { auth, database, fetchFn, logger, rateLimit } = options
+  const settings = getSettings()
   const nowFn = options.nowFn ?? (() => performance.now())
   const isPostHogConfiguredFn = options.isPostHogConfiguredFn ?? isPostHogConfigured
   const captureInferenceErrorFn = options.captureInferenceErrorFn ?? captureInferenceError
@@ -119,11 +147,26 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         throw new Error('Model not found')
       }
 
-      const { provider, internalName, omitTemperature } = modelConfig
+      const { provider, internalName, omitTemperature, supportsStreamUsage } = modelConfig
+      const route = new URL(ctx.request.url).pathname
 
+      const price = await loadInferencePrice(database, { provider, model: internalName })
+      if (!price) {
+        return createPriceUnavailableResponse()
+      }
+
+      const quota = await checkInferenceQuota(
+        database,
+        ctx.user.id,
+        getInferenceQuotaLimits(settings, ctx.user.isAnonymous === true),
+      )
+      if (!quota.allowed) {
+        return createQuotaExceededResponse(quota)
+      }
+
+      const usageEventId = crypto.randomUUID()
       const { client } = getClient(provider)
       const attemptTracker = createInferenceAttemptTracker()
-      const route = new URL(ctx.request.url).pathname
       /** Emit route phase telemetry in structured logs and response headers. */
       const recordLatency = (status: number, completedAt: number) => {
         const upstreamMs = elapsedMs(handlerStartedAt, completedAt)
@@ -155,13 +198,15 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
             tools: body.tools,
             tool_choice: body.tool_choice,
             stream: true,
+            ...(supportsStreamUsage && { stream_options: { include_usage: true } }),
             ...(isPostHogConfiguredFn() && {
+              posthogDistinctId: ctx.user.id,
               posthogProperties: {
                 model_provider: provider,
+                model: internalName,
                 endpoint: '/chat/completions',
                 has_tools: !!body.tools,
                 temperature: body.temperature,
-                // @todo add distinct id and trace id
               },
             }),
           }),
@@ -170,6 +215,48 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         recordLatency(200, upstreamResolvedAt)
 
         const stream = createSSEStreamFromCompletion(completion, {
+          onUsage: async (counts) => {
+            logInferenceUsageSafely(
+              logger,
+              {
+                event: 'inference_usage_completed',
+                provider,
+                model: internalName,
+                eventId: usageEventId,
+                transport: 'direct',
+              },
+              'Inference usage completed',
+            )
+            const outcome = await recordInferenceUsage(database, {
+              id: usageEventId,
+              userId: ctx.user.id,
+              counts,
+              price,
+            })
+            logInferenceUsageSafely(
+              logger,
+              {
+                event: 'inference_usage_inserted',
+                provider,
+                model: internalName,
+                eventId: usageEventId,
+                outcome,
+              },
+              'Inference usage inserted',
+            )
+          },
+          onUsageMissing: () => {
+            logger?.info(
+              { event: 'inference_usage_missing', provider, model: internalName, route },
+              'Inference usage missing',
+            )
+          },
+          onUsageError: () => {
+            logger?.info(
+              { event: 'inference_usage_callback_failed', provider, model: internalName, route },
+              'Inference usage callback failed',
+            )
+          },
           onError: (error) => {
             captureInferenceErrorFn({
               provider,
@@ -210,15 +297,22 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           ...getApiErrorMetadata(error),
           distinctId: ctx.user.id,
         })
+        if (!(error instanceof APIError)) {
+          throw error
+        }
         if (error instanceof APIConnectionTimeoutError) {
-          console.error('Connection timeout to inference provider', error.cause)
-          throw new Error('Connection timeout to inference provider', { cause: error })
+          logger?.info(
+            { event: 'inference_connection_timeout', provider, model: internalName, route },
+            'Connection timeout to inference provider',
+          )
+        } else if (error instanceof APIConnectionError) {
+          logger?.info(
+            { event: 'inference_connection_failed', provider, model: internalName, route },
+            'Failed to connect to inference provider',
+          )
         }
-        if (error instanceof APIConnectionError) {
-          console.error('Failed to connect to inference provider', error.cause)
-          throw new Error('Failed to connect to inference provider', { cause: error })
-        }
-        throw error
+        ctx.set.status = status
+        return createErrorResponse(getSafeErrorMessage(status))
       }
     })
   })

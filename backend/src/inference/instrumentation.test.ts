@@ -3,17 +3,28 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { clearSettingsCache } from '@/config/settings'
+import { user } from '@/db/auth-schema'
+import { inferenceUsage } from '@/db/inference-usage-schema'
 import { clearPostHogClient } from '@/posthog/client'
+import { createTestDb } from '@/test-utils/db'
 import { mockAuth } from '@/test-utils/mock-auth'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
-import { clearInferenceClientCache, type InferenceProxyLatencyLog, type InferenceUpstreamAttemptLog } from './client'
+import {
+  clearInferenceClientCache,
+  type InferenceLogger,
+  type InferenceProxyLatencyLog,
+  type InferenceUpstreamAttemptLog,
+} from './client'
 import { createInferenceRoutes } from './routes'
 
-type InferenceLog = InferenceUpstreamAttemptLog | InferenceProxyLatencyLog
+type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
+type InferenceLog = Parameters<InferenceLogger['info']>[0]
 
 const successfulStream =
   'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
+  'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,"model":"test","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}\n\n' +
   'data: [DONE]\n\n'
 const tinfoilEnclaveUrl = 'https://staging-inference.tinfoil.sh/v1/'
 
@@ -22,8 +33,20 @@ describe('inference attempt instrumentation', () => {
   let originalTinfoilEnclaveUrl: string | undefined
   let originalAnthropicApiKey: string | undefined
   let originalPostHogApiKey: string | undefined
+  let database: TestDatabase
+  let cleanup: () => Promise<void>
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const testDb = await createTestDb()
+    database = testDb.db
+    cleanup = testDb.cleanup
+    await database.insert(user).values({
+      id: 'test-user',
+      name: 'Test User',
+      email: 'test-user@example.com',
+      emailVerified: true,
+      isAnonymous: false,
+    })
     originalTinfoilApiKey = process.env.TINFOIL_API_KEY
     originalTinfoilEnclaveUrl = process.env.TINFOIL_ENCLAVE_URL
     originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
@@ -37,7 +60,7 @@ describe('inference attempt instrumentation', () => {
     clearPostHogClient()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     if (originalTinfoilApiKey === undefined) {
       delete process.env.TINFOIL_API_KEY
     } else {
@@ -61,6 +84,7 @@ describe('inference attempt instrumentation', () => {
     clearSettingsCache()
     clearInferenceClientCache()
     clearPostHogClient()
+    await cleanup()
   })
 
   it.each([
@@ -78,10 +102,12 @@ describe('inference attempt instrumentation', () => {
     },
   ])('logs $provider 429 retry and surfaces attempts=2 after success', async ({ model, provider, host, apiKey }) => {
     const logs: Array<{ context: InferenceLog; message: string }> = []
+    const upstreamBodies: string[] = []
     let callCount = 0
     const fetchFn = Object.assign(
-      async () => {
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
         callCount += 1
+        upstreamBodies.push(await new Response(init?.body).text())
         if (callCount === 1) {
           return new Response(JSON.stringify({ error: { message: 'Rate limited' } }), {
             status: 429,
@@ -103,6 +129,7 @@ describe('inference attempt instrumentation', () => {
     const app = new Elysia().use(
       createInferenceRoutes({
         auth: mockAuth,
+        database,
         fetchFn,
         logger: {
           info: (context, message) => logs.push({ context, message }),
@@ -121,7 +148,7 @@ describe('inference attempt instrumentation', () => {
         }),
       }),
     )
-    await response.text()
+    const responseText = await response.text()
 
     const attemptLogs = logs
       .map(({ context }) => context)
@@ -132,6 +159,9 @@ describe('inference attempt instrumentation', () => {
 
     expect(response.status).toBe(200)
     expect(callCount).toBe(2)
+    expect(upstreamBodies).toHaveLength(2)
+    expect(upstreamBodies.every((body) => body.includes('"stream_options":{"include_usage":true}'))).toBeTrue()
+    expect(responseText).toContain('"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}')
     expect(response.headers.get('x-proxy-timing')).toContain('attempts=2')
     expect(attemptLogs).toHaveLength(2)
     expect(attemptLogs[0]).toMatchObject({
@@ -161,6 +191,16 @@ describe('inference attempt instrumentation', () => {
       provider,
       status: 200,
       attempts: 2,
+    })
+    const rows = await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      userId: 'test-user',
+      provider,
+      model: model === 'opus-5' ? 'claude-opus-5' : 'deepseek-v4-flash',
+      promptTokens: 2,
+      completionTokens: 3,
+      totalTokens: 5,
     })
     expect(JSON.stringify(logs)).not.toContain(apiKey)
     expect(JSON.stringify(logs)).not.toContain('Hello')

@@ -100,6 +100,19 @@ export const createInferenceUsageReceiptRoutes = (options: ReceiptRouteOptions):
           if (error instanceof InferenceTokenCountOutOfRangeError || error instanceof InferenceCostOverflowError) {
             return emptyResponse(400)
           }
+          try {
+            logger?.info(
+              {
+                event: 'inference_usage_callback_failed',
+                provider: 'tinfoil',
+                model: 'glm-5-2',
+                route: new URL(request.url).pathname,
+              },
+              'Inference usage callback failed',
+            )
+          } catch {
+            // Telemetry failure must not change the body-free receipt response.
+          }
           return emptyResponse(503)
         }
       }),

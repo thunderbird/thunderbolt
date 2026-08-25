@@ -434,6 +434,61 @@ describe('inference usage receipt routes', () => {
     expect(await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, eventId))).toHaveLength(1)
   })
 
+  it('reports unexpected persistence failures without exposing error details or changing the empty 503', async () => {
+    const eventId = crypto.randomUUID()
+    const receipt = issueReceipt({ eventId })
+    const sensitivePrompt = 'private prompt text'
+    const sensitiveCompletion = 'private completion text'
+    const sensitiveMessage = 'database connection failed with private details'
+    const sensitiveCause = { receipt, prompt: sensitivePrompt, completion: sensitiveCompletion }
+    const persistenceError = new Error(sensitiveMessage, { cause: sensitiveCause })
+    const insert = spyOn(database, 'insert').mockImplementation(() => {
+      throw persistenceError
+    })
+    const capturedLogs: CapturedLog[] = []
+    const throwingLogger: InferenceLogger = {
+      info: (context, message) => {
+        capturedLogs.push({ context, message })
+        throw new Error('logger unavailable')
+      },
+    }
+    const failureApp = new Elysia().use(
+      createInferenceUsageReceiptRoutes({
+        auth: mockAuth,
+        database,
+        secret,
+        nowSeconds: () => nowSeconds,
+        logger: throwingLogger,
+      }),
+    )
+
+    try {
+      await expectEmptyResponse(await postJson(failureApp, { receipt, ...defaultCounts }), 503)
+    } finally {
+      insert.mockRestore()
+    }
+
+    expect(capturedLogs).toEqual([
+      {
+        context: {
+          event: 'inference_usage_callback_failed',
+          provider: 'tinfoil',
+          model: 'glm-5-2',
+          route: '/inference-usage/receipts',
+        },
+        message: 'Inference usage callback failed',
+      },
+    ])
+    const serializedLogs = JSON.stringify(capturedLogs)
+    expect(serializedLogs).not.toContain(receipt)
+    expect(serializedLogs).not.toContain(sensitivePrompt)
+    expect(serializedLogs).not.toContain(sensitiveCompletion)
+    expect(serializedLogs).not.toContain(sensitiveMessage)
+    expect(serializedLogs).not.toContain('cause')
+    expect(Object.values(capturedLogs[0].context)).not.toContain(persistenceError)
+    expect(Object.values(capturedLogs[0].context)).not.toContain(sensitiveCause)
+  })
+
   it('returns an empty 503 on a real database failure without logging sensitive fields', async () => {
     const eventId = crypto.randomUUID()
     const receipt = issueReceipt({ eventId })

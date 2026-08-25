@@ -13,12 +13,80 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
+msgstr "\"{filename}\" is too large (max {maxMegabytes}MB)."
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "\"{filename}\" isn't a supported file type."
+msgstr "\"{filename}\" isn't a supported file type."
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 msgid "# chat"
 msgid_plural "# chats"
 msgstr[0] "# chat"
 msgstr[1] "# chats"
+
+#: src/components/chat/artifact-message-part.tsx
+msgid "{title} — shown in side panel"
+msgstr "{title} — shown in side panel"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Action"
+msgstr "Action"
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "Add a skill"
+msgstr "Add a skill"
+
+#: src/components/create-item/context.tsx
+msgid "Add Agent"
+msgstr "Add Agent"
+
+#: src/components/create-item/context.tsx
+msgid "Add Model"
+msgstr "Add Model"
+
+#: src/components/chat/chat-add-menu.tsx
+msgid "Add to chat"
+msgstr "Add to chat"
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "All skills are pinned"
+msgstr "All skills are pinned"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Always allow all actions of this kind"
+msgstr "Always allow all actions of this kind"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Always allow all Delete actions"
+msgstr "Always allow all Delete actions"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Always allow all Edit file actions"
+msgstr "Always allow all Edit file actions"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Always allow all Move file actions"
+msgstr "Always allow all Move file actions"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Always allow all Run command actions"
+msgstr "Always allow all Run command actions"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Always allow everything from this agent"
+msgstr "Always allow everything from this agent"
+
+#: src/components/modification-indicator.tsx
+msgid "Are you sure? You will lose any changes that you made."
+msgstr "Are you sure? You will lose any changes that you made."
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Ask me anything..."
+msgstr "Ask me anything..."
 
 #: src/components/not-found.tsx
 msgid "Back to App"
@@ -32,8 +100,10 @@ msgstr "By continuing, you agree to our <0>Terms of Service</0> and <1>Privacy P
 msgid "Calendar"
 msgstr "Calendar"
 
+#: src/components/chat/external-link-dialog.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/ui/chat-nav-button.tsx
+#: src/components/ui/confirm-action-dialog.tsx
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -46,10 +116,15 @@ msgstr "Check the backend logs"
 msgid "Check your email"
 msgstr "Check your email"
 
+#: src/components/ui/searchable-menu/searchable-menu.tsx
+msgid "Choose an option"
+msgstr "Choose an option"
+
 #: src/components/ui/search-input.tsx
 msgid "Clear search"
 msgstr "Clear search"
 
+#: src/components/chat/external-link-dialog.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
@@ -61,6 +136,10 @@ msgstr "Close"
 msgid "Close navigation"
 msgstr "Close navigation"
 
+#: src/components/chat/permission-dialog.tsx
+msgid "Command / arguments"
+msgstr "Command / arguments"
+
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Complete the setup process to get started with Thunderbolt"
 msgstr "Complete the setup process to get started with Thunderbolt"
@@ -69,9 +148,37 @@ msgstr "Complete the setup process to get started with Thunderbolt"
 msgid "Completing..."
 msgstr "Completing..."
 
+#: src/components/chat/external-link-dialog.tsx
+msgid "Confirm opening an external link"
+msgstr "Confirm opening an external link"
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Connect {providerName}"
 msgstr "Connect {providerName}"
+
+#: src/components/connect-provider-button.tsx
+msgid "Connected!"
+msgstr "Connected!"
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Connecting to {agentName}..."
+msgstr "Connecting to {agentName}..."
+
+#: src/components/connect-provider-button.tsx
+msgid "Connecting..."
+msgstr "Connecting..."
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Connection failed"
+msgstr "Connection failed"
+
+#: src/components/chat/error-message.tsx
+msgid "Connection problem. Check your internet and try again."
+msgstr "Connection problem. Check your internet and try again."
+
+#: src/components/chat/chat-add-menu.tsx
+msgid "Connections"
+msgstr "Connections"
 
 #: src/components/magic-link-verify.tsx
 #: src/components/onboarding/onboarding-action-buttons.tsx
@@ -83,10 +190,47 @@ msgstr "Connect {providerName}"
 msgid "Continue"
 msgstr "Continue"
 
+#: src/components/chat/mobile-user-message.tsx
+msgid "Copy"
+msgstr "Copy"
+
+#: src/components/artifact/artifact-actions.tsx
+msgid "Copy HTML"
+msgstr "Copy HTML"
+
+#: src/components/chat/copy-message-button.tsx
+msgid "Copy message"
+msgstr "Copy message"
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
+msgstr "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "Couldn't pin {name}."
+msgstr "Couldn't pin {name}."
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "Couldn't save the new order."
+msgstr "Couldn't save the new order."
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "Couldn't unpin {name}."
+msgstr "Couldn't unpin {name}."
+
+#: src/components/chat/error-message.tsx
+msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
+msgstr "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
+
+#: src/components/create-item/context.tsx
+msgid "Create Skill"
+msgstr "Create Skill"
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Data is stored securely on your device."
 msgstr "Data is stored securely on your device."
 
+#: src/components/chat/permission-dialog.tsx
 #: src/components/ui/chat-nav-button.tsx
 msgid "Delete"
 msgstr "Delete"
@@ -95,13 +239,34 @@ msgstr "Delete"
 msgid "Delete the thread?"
 msgstr "Delete the thread?"
 
+#: src/skills/discard-create-dialog.tsx
+msgid "Discard"
+msgstr "Discard"
+
+#: src/components/chat/chat-prompt-input.tsx
 #: src/components/ui/mobile-blur-backdrop.tsx
 msgid "Dismiss"
 msgstr "Dismiss"
 
+#: src/components/artifact/artifact-actions.tsx
+msgid "Download HTML"
+msgstr "Download HTML"
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Drop file to attach"
+msgstr "Drop file to attach"
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Early Access Login"
 msgstr "Early Access Login"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Edit file"
+msgstr "Edit file"
+
+#: src/components/create-item/context.tsx
+msgid "Edit Skill"
+msgstr "Edit Skill"
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
@@ -125,6 +290,10 @@ msgstr "Enter your name"
 msgid "Expand Sidebar"
 msgstr "Expand Sidebar"
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Failed to connect to {agentName}"
+msgstr "Failed to connect to {agentName}"
+
 #: src/components/sign-in/use-sign-in-form-state.ts
 msgid "Failed to resend verification code. Please check your connection."
 msgstr "Failed to resend verification code. Please check your connection."
@@ -132,6 +301,10 @@ msgstr "Failed to resend verification code. Please check your connection."
 #: src/components/sign-in/use-sign-in-form-state.ts
 msgid "Failed to send verification code. Please check your connection."
 msgstr "Failed to send verification code. Please check your connection."
+
+#: src/components/chat/inline-artifact-card.tsx
+msgid "Generating…"
+msgstr "Generating…"
 
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
@@ -162,6 +335,18 @@ msgstr "Invalid code. Please try again."
 msgid "Invalid verification link. Please request a new one."
 msgstr "Invalid verification link. Please request a new one."
 
+#: src/skills/discard-create-dialog.tsx
+msgid "Keep editing"
+msgstr "Keep editing"
+
+#: src/skills/discard-create-dialog.tsx
+msgid "Leave without creating?"
+msgstr "Leave without creating?"
+
+#: src/components/create-item/create-skill-panel.tsx
+msgid "Leave without saving?"
+msgstr "Leave without saving?"
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
 msgstr "Local Storage"
@@ -169,6 +354,14 @@ msgstr "Local Storage"
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Location is required."
 msgstr "Location is required."
+
+#: src/components/modification-indicator.tsx
+msgid "Modified item"
+msgstr "Modified item"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Move file"
+msgstr "Move file"
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Name is required."
@@ -178,9 +371,29 @@ msgstr "Name is required."
 msgid "Navigation"
 msgstr "Navigation"
 
+#: src/components/chat/chat-skills-bar.tsx
+msgid "New Skill"
+msgstr "New Skill"
+
+#: src/components/ui/searchable-menu/searchable-menu.tsx
+msgid "No items found"
+msgstr "No items found"
+
+#: src/components/ui/combobox.tsx
+msgid "No items found."
+msgstr "No items found."
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "No logs or training on your data"
 msgstr "No logs or training on your data"
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "No matching skills"
+msgstr "No matching skills"
+
+#: src/components/chat/source-list.tsx
+msgid "No sources available"
+msgstr "No sources available"
 
 #: src/components/not-found.tsx
 msgid "Not Found"
@@ -194,6 +407,30 @@ msgstr "Onboarding Wizard"
 msgid "OneDrive Access"
 msgstr "OneDrive Access"
 
+#: src/components/chat/external-link-dialog.tsx
+msgid "Open External Link"
+msgstr "Open External Link"
+
+#: src/components/chat/external-link-dialog.tsx
+msgid "Open in Browser"
+msgstr "Open in Browser"
+
+#: src/components/chat/inline-artifact-card.tsx
+msgid "Open in side panel"
+msgstr "Open in side panel"
+
+#: src/components/chat/external-link-dialog.tsx
+msgid "Open in Sidebar"
+msgstr "Open in Sidebar"
+
+#: src/components/chat/external-link-dialog.tsx
+msgid "Open Link"
+msgstr "Open Link"
+
+#: src/components/chat/external-link-dialog.tsx
+msgid "Opening…"
+msgstr "Opening…"
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr "Or click the magic link in your email"
@@ -201,6 +438,14 @@ msgstr "Or click the magic link in your email"
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or enter the 8-digit code"
 msgstr "Or enter the 8-digit code"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Permission Required"
+msgstr "Permission Required"
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
+msgstr "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Please select a location from the dropdown to get coordinates."
@@ -222,9 +467,41 @@ msgstr "Read your emails and compose drafts."
 msgid "Read, compose, and organize your emails."
 msgstr "Read, compose, and organize your emails."
 
+#: src/components/chat/quote-chip.tsx
+msgid "Remove quote"
+msgstr "Remove quote"
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "Reorder skills"
+msgstr "Reorder skills"
+
+#: src/components/chat/quote-reply-button.tsx
+msgid "Reply"
+msgstr "Reply"
+
+#: src/components/chat/file-card.tsx
+msgid "Resend as images"
+msgstr "Resend as images"
+
+#: src/components/chat/file-card.tsx
+msgid "Resend as text"
+msgstr "Resend as text"
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Resend Email"
 msgstr "Resend Email"
+
+#: src/components/chat/error-message.tsx
+msgid "Retry"
+msgstr "Retry"
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Run command"
+msgstr "Run command"
+
+#: src/components/chat/scroll-to-bottom-button.tsx
+msgid "Scroll to bottom"
+msgstr "Scroll to bottom"
 
 #: src/components/ui/page-search.tsx
 msgid "Search"
@@ -233,6 +510,19 @@ msgstr "Search"
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
 msgstr "Search and work with your OneDrive files and documents."
+
+#: src/components/chat/chat-skills-bar.tsx
+msgid "Search skills"
+msgstr "Search skills"
+
+#: src/components/ui/combobox.tsx
+#: src/components/ui/searchable-menu/searchable-menu.tsx
+msgid "Search..."
+msgstr "Search..."
+
+#: src/components/ui/combobox.tsx
+msgid "Select..."
+msgstr "Select..."
 
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Send Magic Link"
@@ -256,6 +546,18 @@ msgstr "Sending…"
 msgid "Sent"
 msgstr "Sent"
 
+#: src/components/chat/file-card.tsx
+msgid "Sent as images"
+msgstr "Sent as images"
+
+#: src/components/chat/file-card.tsx
+msgid "Sent as text"
+msgstr "Sent as text"
+
+#: src/components/chat/artifact-message-part.tsx
+msgid "Show inline"
+msgstr "Show inline"
+
 #: src/components/sign-in-modal.tsx
 msgid "Sign In"
 msgstr "Sign In"
@@ -272,11 +574,16 @@ msgstr "Signing you in..."
 msgid "Skip"
 msgstr "Skip"
 
+#: src/components/chat/error-message.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/use-waitlist-state.ts
 msgid "Something went wrong. Please try again."
 msgstr "Something went wrong. Please try again."
+
+#: src/components/chat/error-message.tsx
+msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})..."
+msgstr "Something went wrong. Retrying ({retryCount}/{maxRetries})..."
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Start Using Thunderbolt"
@@ -286,13 +593,37 @@ msgstr "Start Using Thunderbolt"
 msgid "Stop generating"
 msgstr "Stop generating"
 
+#: src/components/chat/error-message.tsx
+msgid "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
+msgstr "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
+
+#: src/components/chat/error-message.tsx
+msgid "The AI provider is having trouble right now. Try again in a moment."
+msgstr "The AI provider is having trouble right now. Try again in a moment."
+
+#: src/components/chat/error-message.tsx
+msgid "The AI provider took too long to respond. Try again."
+msgstr "The AI provider took too long to respond. Try again."
+
+#: src/components/chat/reasoning-part.tsx
+msgid "Thinking"
+msgstr "Thinking"
+
 #: src/components/ui/chat-nav-button.tsx
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
 msgstr "This action cannot be undone. This will permanently delete this chat and all its messages."
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "This chat uses {agentName}, which is not available on this platform."
+msgstr "This chat uses {agentName}, which is not available on this platform."
+
 #: src/lib/otp-error-messages.ts
 msgid "This code has expired. Please request a new one."
 msgstr "This code has expired. Please request a new one."
+
+#: src/components/chat/error-message.tsx
+msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
+msgstr "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
@@ -306,6 +637,10 @@ msgstr "This link has expired. Please request a new one."
 msgid "This link is invalid. Please request a new one."
 msgstr "This link is invalid. Please request a new one."
 
+#: src/components/chat/error-message.tsx
+msgid "This model couldn't read the attached file. Try a different model."
+msgstr "This model couldn't read the attached file. Try a different model."
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Thunderbolt is open-source"
 msgstr "Thunderbolt is open-source"
@@ -318,6 +653,18 @@ msgstr "Toggle Sidebar"
 #: src/lib/otp-error-messages.ts
 msgid "Too many attempts. Please request a new code."
 msgstr "Too many attempts. Please request a new code."
+
+#: src/components/chat/error-message.tsx
+msgid "Too many requests. Please try again in a moment."
+msgstr "Too many requests. Please try again in a moment."
+
+#: src/components/chat/permission-dialog.tsx
+msgid "Tool input"
+msgstr "Tool input"
+
+#: src/components/chat/chat-add-menu.tsx
+msgid "Upload file"
+msgstr "Upload file"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
@@ -337,6 +684,10 @@ msgstr "Verifying…"
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View and manage your schedule; create + reschedule events."
 msgstr "View and manage your schedule; create + reschedule events."
+
+#: src/components/chat/quote-chip.tsx
+msgid "View quote"
+msgstr "View quote"
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
@@ -391,6 +742,14 @@ msgstr "Where are you located?"
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 msgstr "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "You can attach up to {maxAttachmentCount} files."
+msgstr "You can attach up to {maxAttachmentCount} files."
+
+#: src/skills/discard-create-dialog.tsx
+msgid "You'll lose what you've added so far."
+msgstr "You'll lose what you've added so far."
+
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "You're all set! 🎉"
 msgstr "You're all set! 🎉"
@@ -399,6 +758,10 @@ msgstr "You're all set! 🎉"
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "You're now signed in."
 msgstr "You're now signed in."
+
+#: src/components/modification-indicator.tsx
+msgid "You've customized this setting."
+msgstr "You've customized this setting."
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Your AI assistant will use this name to address you personally."
@@ -411,6 +774,10 @@ msgstr "Your assistant can help you manage your email and calendar."
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Your assistant can help you manage your email, calendar, and documents."
 msgstr "Your assistant can help you manage your email, calendar, and documents."
+
+#: src/components/create-item/create-skill-panel.tsx
+msgid "Your changes won't be saved."
+msgstr "Your changes won't be saved."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"

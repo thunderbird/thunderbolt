@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Trans } from '@lingui/react/macro'
 import { ExternalLink, PanelRight, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 
@@ -53,14 +54,20 @@ export const ExternalLinkDialog = memo(
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Open External Link</AlertDialogTitle>
-            <AlertDialogDescription className="sr-only">Confirm opening an external link</AlertDialogDescription>
+            <AlertDialogTitle>
+              <Trans>Open External Link</Trans>
+            </AlertDialogTitle>
+            <AlertDialogDescription className="sr-only">
+              <Trans>Confirm opening an external link</Trans>
+            </AlertDialogDescription>
             <button
               onClick={() => onOpenChange(false)}
               className="absolute right-4 top-4 flex size-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <X className="size-[var(--icon-size-default)]" />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">
+                <Trans>Close</Trans>
+              </span>
             </button>
           </AlertDialogHeader>
 
@@ -72,17 +79,23 @@ export const ExternalLinkDialog = memo(
 
           <AlertDialogFooter>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
+              <Trans>Cancel</Trans>
             </Button>
             {onOpenInApp && (
               <Button onClick={onOpenInApp} variant="outline" disabled={isOpening}>
                 <PanelRight className="size-4" />
-                Open in Sidebar
+                <Trans>Open in Sidebar</Trans>
               </Button>
             )}
             <Button onClick={handleConfirmClick} disabled={isOpening}>
               {onOpenInApp && <ExternalLink className="size-4" />}
-              {isOpening ? 'Opening…' : onOpenInApp ? 'Open in Browser' : 'Open Link'}
+              {isOpening ? (
+                <Trans>Opening…</Trans>
+              ) : onOpenInApp ? (
+                <Trans>Open in Browser</Trans>
+              ) : (
+                <Trans>Open Link</Trans>
+              )}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

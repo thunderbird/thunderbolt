@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useAppSettled } from '@/hooks/use-app-settled'
 import { useOnScreen } from '@/hooks/use-on-screen'
 import { cn } from '@/lib/utils'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { AppWindow, PanelRight } from 'lucide-react'
 import { useRef, useState } from 'react'
 
@@ -45,6 +46,7 @@ type InlineArtifactCardProps = {
  * than scrolling inside it) and runtime errors surface as a strip.
  */
 export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPanel }: InlineArtifactCardProps) => {
+  const { t } = useLingui()
   const [open, setOpen] = useState(true)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -106,7 +108,9 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
           <div className="flex min-w-0 flex-1 items-center gap-2 pl-4">{titleLabel}</div>
         )}
         {streaming ? (
-          <span className="shimmer-text flex shrink-0 items-center pr-4 text-xs font-medium">Generating…</span>
+          <span className="shimmer-text flex shrink-0 items-center pr-4 text-xs font-medium">
+            <Trans>Generating…</Trans>
+          </span>
         ) : (
           // The header highlights on hover, so a plain ghost hover would blend in — these buttons
           // use a stronger translucent-foreground circle that reads on top of it. pr-2 lines the
@@ -122,7 +126,7 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
                 variant="ghost"
                 size="icon"
                 className="size-8 shrink-0 rounded-full text-muted-foreground hover:bg-foreground/10 dark:hover:bg-foreground/20"
-                title="Open in side panel"
+                title={t`Open in side panel`}
                 onClick={onOpenInPanel}
               >
                 <PanelRight className="size-4" />

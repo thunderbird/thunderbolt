@@ -5,6 +5,9 @@
 import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { findAllowOption } from '@/chats/chat-store'
 import { Button } from '@/components/ui/button'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
 
@@ -15,27 +18,43 @@ type PermissionDialogProps = {
   request: RequestPermissionRequest
 }
 
-const toolKindLabel = (kind?: string | null) => {
+const permissionRequired = msg`Permission Required`
+
+const toolKindLabel = (kind?: string | null): MessageDescriptor => {
   switch (kind) {
     case 'edit':
-      return 'Edit file'
+      return msg`Edit file`
     case 'delete':
-      return 'Delete'
+      return msg`Delete`
     case 'execute':
-      return 'Run command'
+      return msg`Run command`
     case 'move':
-      return 'Move file'
+      return msg`Move file`
     default:
-      return 'Action'
+      return msg`Action`
   }
 }
 
 /** Label for the kind-scoped always-allow button. Names the breadth granted so
  *  the user sees they're allowing every action of this kind, not just the one
- *  command shown. */
-const alwaysAllowKindLabel = (kind?: string | null): string => {
-  const label = toolKindLabel(kind)
-  return label === 'Action' ? 'Always allow all actions of this kind' : `Always allow all ${label} actions`
+ *  command shown.
+ *
+ *  One whole message per kind rather than the kind label interpolated into a
+ *  sentence template: a translated fragment dropped into a translated frame
+ *  gets the grammar wrong in most languages. */
+const alwaysAllowKindLabel = (kind?: string | null): MessageDescriptor => {
+  switch (kind) {
+    case 'edit':
+      return msg`Always allow all Edit file actions`
+    case 'delete':
+      return msg`Always allow all Delete actions`
+    case 'execute':
+      return msg`Always allow all Run command actions`
+    case 'move':
+      return msg`Always allow all Move file actions`
+    default:
+      return msg`Always allow all actions of this kind`
+  }
 }
 
 const optionVariant = (kind: PermissionOption['kind']): 'default' | 'destructive' | 'outline' | 'secondary' => {
@@ -66,11 +85,12 @@ export const PermissionDialog = ({
   onAlwaysAllowTool,
   onAlwaysAllowAgent,
 }: PermissionDialogProps) => {
+  const { i18n, t } = useLingui()
   const [responded, setResponded] = useState(false)
 
   const allowOption = findAllowOption(request.options)
   const toolCall = request.toolCall
-  const title = toolCall?.title ?? 'Permission Required'
+  const title = toolCall?.title ?? i18n._(permissionRequired)
   const kind = toolCall?.kind
   const toolInput = toolCall?.rawInput === undefined ? undefined : formatToolInput(toolCall.rawInput)
 
@@ -93,16 +113,18 @@ export const PermissionDialog = ({
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 my-2" role="dialog">
       <div className="flex items-center gap-2">
         <ShieldAlert className="size-4 text-amber-500" />
-        <span className="font-medium text-[length:var(--font-size-body)]">{toolKindLabel(kind)}</span>
+        <span className="font-medium text-[length:var(--font-size-body)]">{i18n._(toolKindLabel(kind))}</span>
       </div>
 
       <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{title}</p>
 
       {toolInput !== undefined && (
         <div className="flex flex-col gap-1">
-          <p className="text-[length:var(--font-size-xs)] text-muted-foreground">Command / arguments</p>
+          <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+            <Trans>Command / arguments</Trans>
+          </p>
           <pre
-            aria-label="Tool input"
+            aria-label={t`Tool input`}
             className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-[length:var(--font-size-xs)]"
           >
             {toolInput}
@@ -138,10 +160,10 @@ export const PermissionDialog = ({
       {allowOption && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowTool)}>
-            {alwaysAllowKindLabel(kind)}
+            {i18n._(alwaysAllowKindLabel(kind))}
           </Button>
           <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowAgent)}>
-            Always allow everything from this agent
+            <Trans>Always allow everything from this agent</Trans>
           </Button>
         </div>
       )}

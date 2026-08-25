@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
@@ -135,7 +136,9 @@ const ResponsiveModalDialogContent = ({
               }}
             >
               <XIcon className="size-[var(--icon-size-default)]" />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">
+                <Trans>Close</Trans>
+              </span>
             </DialogClose>
           )}
         </DialogPrimitive.Content>

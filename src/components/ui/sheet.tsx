@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import * as SheetPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
@@ -73,7 +74,9 @@ const SheetContent = ({
         {!hideCloseButton && (
           <SheetPrimitive.Close className={cn(modalCloseClass, 'top-4 right-4')}>
             <XIcon className="size-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">
+              <Trans>Close</Trans>
+            </span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>

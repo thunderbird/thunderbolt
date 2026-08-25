@@ -24,6 +24,114 @@ msgstr[1] ""
 msgid "Back to App"
 msgstr ""
 
+#: src/components/ui/chat-nav-button.tsx
+msgid "Cancel"
+msgstr ""
+
+#: src/components/ui/search-input.tsx
+msgid "Clear search"
+msgstr ""
+
+#: src/components/ui/dialog.tsx
+#: src/components/ui/responsive-modal.tsx
+#: src/components/ui/sheet.tsx
+msgid "Close"
+msgstr ""
+
+#: src/components/ui/mobile-sidebar.tsx
+msgid "Close navigation"
+msgstr ""
+
+#: src/components/ui/chat-nav-button.tsx
+msgid "Delete"
+msgstr ""
+
+#: src/components/ui/chat-nav-button.tsx
+msgid "Delete the thread?"
+msgstr ""
+
+#: src/components/ui/mobile-blur-backdrop.tsx
+msgid "Dismiss"
+msgstr ""
+
+#: src/components/ui/header.tsx
+msgid "Expand Sidebar"
+msgstr ""
+
+#: src/components/ui/back-button.tsx
+#: src/components/ui/header.tsx
+msgid "Go back"
+msgstr ""
+
+#: src/components/ui/header.tsx
+msgid "Go forward"
+msgstr ""
+
+#: src/lib/otp-error-messages.ts
+msgid "Invalid code. Please try again."
+msgstr ""
+
+#: src/components/onboarding/onboarding-name-step.tsx
+msgid "Name is required."
+msgstr ""
+
+#: src/components/ui/mobile-sidebar.tsx
+msgid "Navigation"
+msgstr ""
+
 #: src/components/not-found.tsx
 msgid "Not Found"
+msgstr ""
+
+#: src/components/ui/private-badge.tsx
+msgid "Private"
+msgstr ""
+
+#: src/components/ui/page-search.tsx
+msgid "Search"
+msgstr ""
+
+#: src/components/ui/prompt-input.tsx
+msgid "Send message"
+msgstr ""
+
+#: src/components/ui/action-feedback-button.tsx
+msgid "Sending..."
+msgstr ""
+
+#: src/components/ui/action-feedback-button.tsx
+msgid "Sent"
+msgstr ""
+
+#: src/components/ui/prompt-input.tsx
+msgid "Stop generating"
+msgstr ""
+
+#: src/components/ui/chat-nav-button.tsx
+msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
+msgstr ""
+
+#: src/lib/otp-error-messages.ts
+msgid "This code has expired. Please request a new one."
+msgstr ""
+
+#: src/lib/otp-error-messages.ts
+msgid "This link has expired. Please request a new one."
+msgstr ""
+
+#: src/lib/otp-error-messages.ts
+msgid "This link is invalid. Please request a new one."
+msgstr ""
+
+#: src/components/ui/header.tsx
+#: src/components/ui/sidebar.tsx
+msgid "Toggle Sidebar"
+msgstr ""
+
+#: src/lib/otp-error-messages.ts
+msgid "Too many attempts. Please request a new code."
+msgstr ""
+
+#: src/lib/otp-error-messages.ts
+msgid "Verification failed. Please try again."
 msgstr ""

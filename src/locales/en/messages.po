@@ -24,6 +24,114 @@ msgstr[1] "# chats"
 msgid "Back to App"
 msgstr "Back to App"
 
+#: src/components/ui/chat-nav-button.tsx
+msgid "Cancel"
+msgstr "Cancel"
+
+#: src/components/ui/search-input.tsx
+msgid "Clear search"
+msgstr "Clear search"
+
+#: src/components/ui/dialog.tsx
+#: src/components/ui/responsive-modal.tsx
+#: src/components/ui/sheet.tsx
+msgid "Close"
+msgstr "Close"
+
+#: src/components/ui/mobile-sidebar.tsx
+msgid "Close navigation"
+msgstr "Close navigation"
+
+#: src/components/ui/chat-nav-button.tsx
+msgid "Delete"
+msgstr "Delete"
+
+#: src/components/ui/chat-nav-button.tsx
+msgid "Delete the thread?"
+msgstr "Delete the thread?"
+
+#: src/components/ui/mobile-blur-backdrop.tsx
+msgid "Dismiss"
+msgstr "Dismiss"
+
+#: src/components/ui/header.tsx
+msgid "Expand Sidebar"
+msgstr "Expand Sidebar"
+
+#: src/components/ui/back-button.tsx
+#: src/components/ui/header.tsx
+msgid "Go back"
+msgstr "Go back"
+
+#: src/components/ui/header.tsx
+msgid "Go forward"
+msgstr "Go forward"
+
+#: src/lib/otp-error-messages.ts
+msgid "Invalid code. Please try again."
+msgstr "Invalid code. Please try again."
+
+#: src/components/onboarding/onboarding-name-step.tsx
+msgid "Name is required."
+msgstr "Name is required."
+
+#: src/components/ui/mobile-sidebar.tsx
+msgid "Navigation"
+msgstr "Navigation"
+
 #: src/components/not-found.tsx
 msgid "Not Found"
 msgstr "Not Found"
+
+#: src/components/ui/private-badge.tsx
+msgid "Private"
+msgstr "Private"
+
+#: src/components/ui/page-search.tsx
+msgid "Search"
+msgstr "Search"
+
+#: src/components/ui/prompt-input.tsx
+msgid "Send message"
+msgstr "Send message"
+
+#: src/components/ui/action-feedback-button.tsx
+msgid "Sending..."
+msgstr "Sending..."
+
+#: src/components/ui/action-feedback-button.tsx
+msgid "Sent"
+msgstr "Sent"
+
+#: src/components/ui/prompt-input.tsx
+msgid "Stop generating"
+msgstr "Stop generating"
+
+#: src/components/ui/chat-nav-button.tsx
+msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
+msgstr "This action cannot be undone. This will permanently delete this chat and all its messages."
+
+#: src/lib/otp-error-messages.ts
+msgid "This code has expired. Please request a new one."
+msgstr "This code has expired. Please request a new one."
+
+#: src/lib/otp-error-messages.ts
+msgid "This link has expired. Please request a new one."
+msgstr "This link has expired. Please request a new one."
+
+#: src/lib/otp-error-messages.ts
+msgid "This link is invalid. Please request a new one."
+msgstr "This link is invalid. Please request a new one."
+
+#: src/components/ui/header.tsx
+#: src/components/ui/sidebar.tsx
+msgid "Toggle Sidebar"
+msgstr "Toggle Sidebar"
+
+#: src/lib/otp-error-messages.ts
+msgid "Too many attempts. Please request a new code."
+msgstr "Too many attempts. Please request a new code."
+
+#: src/lib/otp-error-messages.ts
+msgid "Verification failed. Please try again."
+msgstr "Verification failed. Please try again."

@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getActiveLocale } from '@/i18n/active-locale'
 import { http, type HttpClient } from '@/lib/http'
-import { baseLanguage } from '@shared/i18n/base-language'
 import { WeatherForecastDataSchema, type WeatherDay, type WeatherForecastData } from './lib'
 
 export type FetchWeatherForecastParams = {
@@ -81,14 +79,20 @@ export const fetchWeatherForecast = async (
 ): Promise<WeatherForecastData> => {
   const { location, region, country, days, temperatureUnit } = params
 
-  // Open-Meteo takes a bare two-letter code here, and the place, region and
-  // country names it returns come back in that language. Asking in the user's
-  // language also sharpens `disambiguateLocation`, which matches the region and
-  // country the user typed against those returned names.
+  // Deliberately English, not the active locale. Open-Meteo localizes the `name`,
+  // `admin1` and `country` it returns, and `disambiguateLocation` matches
+  // `region`/`country` against them — but those two come from the model's widget
+  // arguments, whose language we cannot know (the instructions prompt English
+  // examples, so they are usually English whatever the UI language is). Asking in
+  // French would return `États-Unis` for a model-supplied `United States`, match
+  // nothing, and let `narrowMatches` fall back to every candidate — silently
+  // returning Paris, France for Paris, Texas. Localizing the displayed location
+  // needs disambiguation on a language-independent key (country_code or
+  // coordinates) first.
   const geocoding = await httpClient
     .get(geocodingUrl, {
       timeout: requestTimeout,
-      searchParams: { name: location, count: 10, language: baseLanguage(getActiveLocale()), format: 'json' },
+      searchParams: { name: location, count: 10, language: 'en', format: 'json' },
     })
     .json<GeocodingResponse>()
 

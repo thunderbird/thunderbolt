@@ -84,7 +84,14 @@ describe('fetchWeatherForecast', () => {
     expect(recorded[1].searchParams.temperature_unit).toBe('fahrenheit')
   })
 
-  it('geocodes in the active language, stripped to the base subtag Open-Meteo expects', async () => {
+  /**
+   * Geocoding stays English whatever the UI language is. `region`/`country` come
+   * from the model's widget arguments and are usually English, so localizing the
+   * response would break `disambiguateLocation` — the country filter would match
+   * nothing and `narrowMatches` would fall back to every candidate, silently
+   * returning the wrong city's forecast.
+   */
+  it('geocodes in English even when the UI is in another language', async () => {
     setActiveLocale('pt-BR')
     const recorded: RecordedRequest[] = []
     const httpClient = createFakeHttpClient(
@@ -97,7 +104,34 @@ describe('fetchWeatherForecast', () => {
       httpClient,
     )
 
-    expect(recorded[0].searchParams.language).toBe('pt')
+    expect(recorded[0].searchParams.language).toBe('en')
+  })
+
+  // The disambiguation above must hold regardless of UI language — the test that
+  // exercises it runs under the default locale, so this pins the non-English case.
+  it('still disambiguates by region and country when the UI is in another language', async () => {
+    setActiveLocale('fr')
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(
+      {
+        geocoding: {
+          results: [
+            { name: 'Paris', admin1: 'Île-de-France', country: 'France', latitude: 48.85, longitude: 2.35 },
+            { name: 'Paris', admin1: 'Texas', country: 'United States', latitude: 33.66, longitude: -95.55 },
+          ],
+        },
+        forecast: buildForecast(1),
+      },
+      recorded,
+    )
+
+    const result = await fetchWeatherForecast(
+      { location: 'Paris', region: 'Texas', country: 'United States', days: 1, temperatureUnit: 'c' },
+      httpClient,
+    )
+
+    expect(result.location).toBe('Paris, Texas, United States')
+    expect(recorded[1].searchParams.latitude).toBe(33.66)
   })
 
   it('disambiguates by region and country, selecting the matching result', async () => {

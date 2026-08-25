@@ -21,12 +21,27 @@ msgstr "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "\"{filename}\" isn't a supported file type."
 
+#. placeholder {0}: mcpServers.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
+#: src/components/settings/agents/agent-detail.tsx
+msgid "# MCP server"
+msgid_plural "# MCP servers"
+msgstr[0] "# MCP server"
+msgstr[1] "# MCP servers"
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 msgid "# chat"
 msgid_plural "# chats"
 msgstr[0] "# chat"
 msgstr[1] "# chats"
+
+#. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
+#: src/components/settings/agents/agent-detail.tsx
+msgid "# skill"
+msgid_plural "# skills"
+msgstr[0] "# skill"
+msgstr[1] "# skills"
 
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "{label} — already in this project"
@@ -35,6 +50,19 @@ msgstr "{label} — already in this project"
 #: src/components/chat/artifact-message-part.tsx
 msgid "{title} — shown in side panel"
 msgstr "{title} — shown in side panel"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
+msgstr "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
+
+#: src/components/settings/agents/agent-detail.tsx
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "About"
+msgstr "About"
+
+#: src/settings/devices.tsx
+msgid "Accepts connections from your devices"
+msgstr "Accepts connections from your devices"
 
 #: src/components/sidebar-footer.tsx
 msgid "Account menu"
@@ -48,11 +76,16 @@ msgstr "Action"
 msgid "Actions"
 msgstr "Actions"
 
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
+msgstr "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "Add a skill"
 
 #: src/components/create-item/context.tsx
+#: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Add Agent"
 msgstr "Add Agent"
 
@@ -63,6 +96,10 @@ msgstr "Add Model"
 #: src/components/chat/chat-add-menu.tsx
 msgid "Add to chat"
 msgstr "Add to chat"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "Adding…"
+msgstr "Adding…"
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/palette/entity-meta.ts
@@ -106,6 +143,22 @@ msgstr "Always allow all Run command actions"
 msgid "Always allow everything from this agent"
 msgstr "Always allow everything from this agent"
 
+#: src/settings/voice.tsx
+msgid "API key"
+msgstr "API key"
+
+#: src/settings/devices.tsx
+msgid "Approve"
+msgstr "Approve"
+
+#: src/settings/devices.tsx
+msgid "Approve {deviceName}"
+msgstr "Approve {deviceName}"
+
+#: src/settings/devices.tsx
+msgid "Approving…"
+msgstr "Approving…"
+
 #: src/components/modification-indicator.tsx
 msgid "Are you sure? You will lose any changes that you made."
 msgstr "Are you sure? You will lose any changes that you made."
@@ -114,9 +167,25 @@ msgstr "Are you sure? You will lose any changes that you made."
 msgid "Ask me anything..."
 msgstr "Ask me anything..."
 
+#: src/components/settings/iroh-pairing-panel.tsx
+msgid "Authorize this app on your bridge"
+msgstr "Authorize this app on your bridge"
+
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr "Back to App"
+
+#: src/settings/voice.tsx
+msgid "Base URL"
+msgstr "Base URL"
+
+#: src/settings/devices.tsx
+msgid "Bridge"
+msgstr "Bridge"
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Build it from source instead (requires Bun):"
+msgstr "Build it from source instead (requires Bun):"
 
 #: src/waitlist/waitlist-page.tsx
 msgid "By continuing, you agree to our <0>Terms of Service</0> and <1>Privacy Policy</1>."
@@ -127,6 +196,7 @@ msgid "Calendar"
 msgstr "Calendar"
 
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/settings/agents/agent-detail.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/components/ui/confirm-action-dialog.tsx
@@ -202,6 +272,10 @@ msgstr "Complete the setup process to get started with Thunderbolt"
 msgid "Completing..."
 msgstr "Completing..."
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Configuration"
+msgstr "Configuration"
+
 #: src/components/chat/external-link-dialog.tsx
 msgid "Confirm opening an external link"
 msgstr "Confirm opening an external link"
@@ -209,6 +283,10 @@ msgstr "Confirm opening an external link"
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Connect {providerName}"
 msgstr "Connect {providerName}"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "Connect a remote agent that speaks the Agent Client Protocol."
+msgstr "Connect a remote agent that speaks the Agent Client Protocol."
 
 #: src/components/sidebar-footer.tsx
 msgid "Connected"
@@ -227,13 +305,22 @@ msgstr "Connecting to {agentName}..."
 msgid "Connecting..."
 msgstr "Connecting..."
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Connection"
+msgstr "Connection"
+
 #: src/components/chat/chat-prompt-input.tsx
+#: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Connection failed"
 msgstr "Connection failed"
 
 #: src/components/chat/error-message.tsx
 msgid "Connection problem. Check your internet and try again."
 msgstr "Connection problem. Check your internet and try again."
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "Connection successful!"
+msgstr "Connection successful!"
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -256,6 +343,14 @@ msgstr "Continue"
 msgid "Copy"
 msgstr "Copy"
 
+#: src/components/settings/iroh-pairing-panel.tsx
+msgid "Copy allow command"
+msgstr "Copy allow command"
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Copy build command"
+msgstr "Copy build command"
+
 #: src/components/artifact/artifact-actions.tsx
 msgid "Copy HTML"
 msgstr "Copy HTML"
@@ -264,13 +359,33 @@ msgstr "Copy HTML"
 msgid "Copy message"
 msgstr "Copy message"
 
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Copy PATH command"
+msgstr "Copy PATH command"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "Could not connect to the agent."
+msgstr "Could not connect to the agent."
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "Couldn't add the agent. Please try again."
+msgstr "Couldn't add the agent. Please try again."
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 
+#: src/components/settings/iroh-pairing-panel.tsx
+msgid "Couldn't load this app's pairing identity: {error}"
+msgstr "Couldn't load this app's pairing identity: {error}"
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
 msgstr "Couldn't pin {name}."
+
+#: src/components/settings/agents/editable-field.tsx
+msgid "Couldn't save the {fieldName}. Please try again."
+msgstr "Couldn't save the {fieldName}. Please try again."
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't save the new order."
@@ -279,6 +394,10 @@ msgstr "Couldn't save the new order."
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "Couldn't unpin {name}."
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Couldn't update. Please try again."
+msgstr "Couldn't update. Please try again."
 
 #: src/components/chat/error-message.tsx
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
@@ -301,19 +420,50 @@ msgstr "Create Model"
 msgid "Create Skill"
 msgstr "Create Skill"
 
+#: src/settings/voice.tsx
+msgid "Custom — OpenAI-compatible endpoint"
+msgstr "Custom — OpenAI-compatible endpoint"
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Data is stored securely on your device."
 msgstr "Data is stored securely on your device."
 
 #: src/components/chat/permission-dialog.tsx
+#: src/components/settings/detail-actions-menu.tsx
+#: src/components/settings/edit-delete-context-menu.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Delete"
 msgstr "Delete"
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Delete {agentName}?"
+msgstr "Delete {agentName}?"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Delete agent"
+msgstr "Delete agent"
+
 #: src/components/ui/chat-nav-button.tsx
 msgid "Delete the thread?"
 msgstr "Delete the thread?"
+
+#: src/settings/devices.tsx
+msgid "Deny"
+msgstr "Deny"
+
+#: src/settings/devices.tsx
+msgid "Deny {deviceName}"
+msgstr "Deny {deviceName}"
+
+#: src/settings/devices.tsx
+msgid "Denying…"
+msgstr "Denying…"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Description"
+msgstr "Description"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -323,9 +473,19 @@ msgstr "Dev Settings"
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
+#: src/settings/devices.tsx
 msgid "Devices"
 msgstr "Devices"
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Disable {customAgentName}"
+msgstr "Disable {customAgentName}"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Disabled agents stay out of the chat agent picker."
+msgstr "Disabled agents stay out of the chat agent picker."
+
+#: src/components/settings/agents/editable-field.tsx
 #: src/skills/discard-create-dialog.tsx
 msgid "Discard"
 msgstr "Discard"
@@ -355,6 +515,11 @@ msgstr "Drop file to attach"
 msgid "Early Access Login"
 msgstr "Early Access Login"
 
+#: src/components/settings/detail-actions-menu.tsx
+#: src/components/settings/edit-delete-context-menu.tsx
+msgid "Edit"
+msgstr "Edit"
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Edit file"
 msgstr "Edit file"
@@ -373,9 +538,25 @@ msgstr "Email"
 msgid "Email address"
 msgstr "Email address"
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Enable {customAgentName}"
+msgstr "Enable {customAgentName}"
+
 #: src/components/sidebar-footer.tsx
 msgid "Enable cloud sync"
 msgstr "Enable cloud sync"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Enabled"
+msgstr "Enabled"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Endpoint"
+msgstr "Endpoint"
+
+#: src/components/settings/agents/validate-agent-url.ts
+msgid "Enter a wss:// or ws:// URL, or an iroh ticket"
+msgstr "Enter a wss:// or ws:// URL, or an iroh ticket"
 
 #: src/components/sign-in-modal.tsx
 msgid "Enter your code"
@@ -418,6 +599,14 @@ msgstr "Go forward"
 msgid "Go to"
 msgstr "Go to"
 
+#: src/settings/devices.tsx
+msgid "Hide QR"
+msgstr "Hide QR"
+
+#: src/settings/devices.tsx
+msgid "Hide QR code for {deviceName}"
+msgstr "Hide QR code for {deviceName}"
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
 msgstr "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
@@ -430,6 +619,30 @@ msgstr "If you have access, we've sent an 8-digit code to <0>{email}</0>"
 msgid "If you received a code to log in, enter it here:"
 msgstr "If you received a code to log in, enter it here:"
 
+#: src/settings/voice.tsx
+msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
+msgstr "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Install"
+msgstr "Install"
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Install CLI"
+msgstr "Install CLI"
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Installed to <0>{installedPath}</0>"
+msgstr "Installed to <0>{installedPath}</0>"
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Installing…"
+msgstr "Installing…"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Integrations"
+msgstr "Integrations"
+
 #: src/lib/otp-error-messages.ts
 msgid "Invalid code. Please try again."
 msgstr "Invalid code. Please try again."
@@ -437,6 +650,10 @@ msgstr "Invalid code. Please try again."
 #: src/components/magic-link-verify.tsx
 msgid "Invalid verification link. Please request a new one."
 msgstr "Invalid verification link. Please request a new one."
+
+#: src/components/settings/agents/validate-agent-url.ts
+msgid "iOS requires a secure URL (wss://)"
+msgstr "iOS requires a secure URL (wss://)"
 
 #: src/components/sidebar-footer.tsx
 msgid "Just synced"
@@ -450,6 +667,10 @@ msgstr "Keep editing"
 msgid "Keep your data synced across devices."
 msgstr "Keep your data synced across devices."
 
+#: src/settings/devices.tsx
+msgid "Last seen {lastSeen}"
+msgstr "Last seen {lastSeen}"
+
 #: src/skills/discard-create-dialog.tsx
 msgid "Leave without creating?"
 msgstr "Leave without creating?"
@@ -457,6 +678,22 @@ msgstr "Leave without creating?"
 #: src/components/create-item/create-skill-panel.tsx
 msgid "Leave without saving?"
 msgstr "Leave without saving?"
+
+#: src/settings/voice.tsx
+msgid "Load models"
+msgstr "Load models"
+
+#: src/settings/devices.tsx
+msgid "Loading code…"
+msgstr "Loading code…"
+
+#: src/settings/devices.tsx
+msgid "Loading devices…"
+msgstr "Loading devices…"
+
+#: src/components/settings/iroh-pairing-panel.tsx
+msgid "Loading this app's pairing identity…"
+msgstr "Loading this app's pairing identity…"
 
 #: src/components/sidebar-footer.tsx
 msgid "Loading..."
@@ -473,6 +710,18 @@ msgstr "Location is required."
 #: src/components/sidebar-footer.tsx
 msgid "Log out"
 msgstr "Log out"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Manage integrations"
+msgstr "Manage integrations"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Managed by your deployment — always available, no setup needed."
+msgstr "Managed by your deployment — always available, no setup needed."
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "MCP servers"
+msgstr "MCP servers"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -493,6 +742,10 @@ msgstr "Models"
 msgid "Modified item"
 msgstr "Modified item"
 
+#: src/components/settings/detail-actions-menu.tsx
+msgid "More"
+msgstr "More"
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Move file"
 msgstr "Move file"
@@ -501,6 +754,15 @@ msgstr "Move file"
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "Move to project"
 msgstr "Move to project"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "My Agent"
+msgstr "My Agent"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Name"
+msgstr "Name"
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Name is required."
@@ -527,6 +789,10 @@ msgstr "New Skill"
 msgid "No chats yet"
 msgstr "No chats yet"
 
+#: src/settings/devices.tsx
+msgid "No devices yet. Sign in with sync to see devices here."
+msgstr "No devices yet. Sign in with sync to see devices here."
+
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "No items found"
 msgstr "No items found"
@@ -539,9 +805,17 @@ msgstr "No items found."
 msgid "No logs or training on your data"
 msgstr "No logs or training on your data"
 
+#: src/settings/devices.tsx
+msgid "No longer accepts device connections"
+msgstr "No longer accepts device connections"
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "No matching skills"
 msgstr "No matching skills"
+
+#: src/settings/voice.tsx
+msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
+msgstr "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 
 #: src/search/palette/search-palette.tsx
 msgid "No results found."
@@ -551,9 +825,17 @@ msgstr "No results found."
 msgid "No sources available"
 msgstr "No sources available"
 
+#: src/settings/devices.tsx
+msgid "Not configured"
+msgstr "Not configured"
+
 #: src/components/not-found.tsx
 msgid "Not Found"
 msgstr "Not Found"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Not tested"
+msgstr "Not tested"
 
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
@@ -591,6 +873,15 @@ msgstr "Open Link"
 msgid "Opening…"
 msgstr "Opening…"
 
+#: src/components/settings/agents/add-custom-agent-form.tsx
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Optional"
+msgstr "Optional"
+
+#: src/settings/voice.tsx
+msgid "Optional — leave blank for local servers that don’t require auth."
+msgstr "Optional — leave blank for local servers that don’t require auth."
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr "Or click the magic link in your email"
@@ -598,6 +889,18 @@ msgstr "Or click the magic link in your email"
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or enter the 8-digit code"
 msgstr "Or enter the 8-digit code"
+
+#: src/settings/devices.tsx
+msgid "Pairing identity"
+msgstr "Pairing identity"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Peer-to-peer via iroh — the connection is verified when a chat starts."
+msgstr "Peer-to-peer via iroh — the connection is verified when a chat starts."
+
+#: src/settings/devices.tsx
+msgid "Pending approvals"
+msgstr "Pending approvals"
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Permission Required"
@@ -615,6 +918,10 @@ msgstr "Please select a location from the dropdown to get coordinates."
 msgid "Please wait while we verify your link."
 msgstr "Please wait while we verify your link."
 
+#: src/settings/voice.tsx
+msgid "Point at any server exposing /v1/audio/transcriptions and /v1/audio/speech. Its CORS must allow this app’s origin."
+msgstr "Point at any server exposing /v1/audio/transcriptions and /v1/audio/speech. Its CORS must allow this app’s origin."
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 msgid "Preferences"
@@ -628,6 +935,14 @@ msgstr "Private"
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
 msgstr "Projects"
+
+#: src/settings/voice.tsx
+msgid "Provider"
+msgstr "Provider"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Reachable {relative}"
+msgstr "Reachable {relative}"
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Read your emails and compose drafts."
@@ -645,6 +960,10 @@ msgstr "Recent Chats"
 msgid "Recent Projects"
 msgstr "Recent Projects"
 
+#: src/settings/devices.tsx
+msgid "Remove"
+msgstr "Remove"
+
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "Remove from project"
 msgstr "Remove from project"
@@ -652,6 +971,10 @@ msgstr "Remove from project"
 #: src/components/chat/quote-chip.tsx
 msgid "Remove quote"
 msgstr "Remove quote"
+
+#: src/settings/devices.tsx
+msgid "Removing…"
+msgstr "Removing…"
 
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Rename"
@@ -685,10 +1008,31 @@ msgstr "Resend Email"
 msgid "Retry"
 msgstr "Retry"
 
+#: src/settings/devices.tsx
+msgid "Revoke"
+msgstr "Revoke"
+
+#: src/settings/devices.tsx
+msgid "Revoke {deviceName}"
+msgstr "Revoke {deviceName}"
+
+#: src/settings/devices.tsx
+msgid "Revoked"
+msgstr "Revoked"
+
+#: src/settings/devices.tsx
+msgid "Revoking…"
+msgstr "Revoking…"
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Run command"
 msgstr "Run command"
 
+#: src/components/settings/iroh-pairing-panel.tsx
+msgid "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
+msgstr "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
+
+#: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 msgid "Save"
 msgstr "Save"
@@ -767,6 +1111,14 @@ msgstr "Set Dark"
 msgid "Set Light"
 msgstr "Set Light"
 
+#: src/settings/devices.tsx
+msgid "Set up pairing"
+msgstr "Set up pairing"
+
+#: src/settings/devices.tsx
+msgid "Set up pairing for {deviceName}"
+msgstr "Set up pairing for {deviceName}"
+
 #: src/layout/sidebar/nav-toggle.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 msgid "Settings"
@@ -775,6 +1127,14 @@ msgstr "Settings"
 #: src/components/chat/artifact-message-part.tsx
 msgid "Show inline"
 msgstr "Show inline"
+
+#: src/settings/devices.tsx
+msgid "Show QR"
+msgstr "Show QR"
+
+#: src/settings/devices.tsx
+msgid "Show QR code for {deviceName}"
+msgstr "Show QR code for {deviceName}"
 
 #: src/layout/sidebar/nav-toggle.tsx
 msgid "Sidebar sections"
@@ -800,6 +1160,7 @@ msgstr "Sign out"
 msgid "Signing you in..."
 msgstr "Signing you in..."
 
+#: src/components/settings/agents/agent-detail.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
@@ -821,6 +1182,10 @@ msgstr "Something went wrong. Please try again."
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})..."
 msgstr "Something went wrong. Retrying ({retryCount}/{maxRetries})..."
 
+#: src/settings/voice.tsx
+msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
+msgstr "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
+
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Start Using Thunderbolt"
 msgstr "Start Using Thunderbolt"
@@ -829,15 +1194,41 @@ msgstr "Start Using Thunderbolt"
 msgid "Stop generating"
 msgstr "Stop generating"
 
+#: src/settings/voice.tsx
+msgid "STT model"
+msgstr "STT model"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "Successfully connected to the agent."
+msgstr "Successfully connected to the agent."
+
 #: src/components/sidebar-footer.tsx
 msgid "Synced {relative}"
 msgstr "Synced {relative}"
+
+#: src/components/settings/agents/agent-list.tsx
+msgid "System agents"
+msgstr "System agents"
 
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
 msgid "Tasks"
 msgstr "Tasks"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+#: src/components/settings/agents/agent-detail.tsx
+#: src/settings/voice.tsx
+msgid "Test connection"
+msgstr "Test connection"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "Testing agent…"
+msgstr "Testing agent…"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Testing…"
+msgstr "Testing…"
 
 #: src/components/chat/error-message.tsx
 msgid "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
@@ -871,6 +1262,10 @@ msgstr "This code has expired. Please request a new one."
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 msgstr "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 
+#: src/settings/devices.tsx
+msgid "This device"
+msgstr "This device"
+
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
 msgstr "This helps us personalize your experience with local settings and features."
@@ -887,9 +1282,25 @@ msgstr "This link is invalid. Please request a new one."
 msgid "This model couldn't read the attached file. Try a different model."
 msgstr "This model couldn't read the attached file. Try a different model."
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
+msgstr "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
+
+#: src/settings/voice.tsx
+msgid "Thunderbolt (hosted, private)"
+msgstr "Thunderbolt (hosted, private)"
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Thunderbolt CLI"
+msgstr "Thunderbolt CLI"
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Thunderbolt is open-source"
 msgstr "Thunderbolt is open-source"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
+msgstr "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
 
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
@@ -913,6 +1324,30 @@ msgstr "Too many requests. Please try again in a moment."
 msgid "Tool input"
 msgstr "Tool input"
 
+#: src/settings/devices.tsx
+msgid "Trusted devices"
+msgstr "Trusted devices"
+
+#: src/settings/voice.tsx
+msgid "TTS model"
+msgstr "TTS model"
+
+#: src/settings/voice.tsx
+msgid "TTS voice"
+msgstr "TTS voice"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Unreachable {relative}"
+msgstr "Unreachable {relative}"
+
+#: src/settings/devices.tsx
+msgid "Update pairing"
+msgstr "Update pairing"
+
+#: src/settings/devices.tsx
+msgid "Update pairing for {deviceName}"
+msgstr "Update pairing for {deviceName}"
+
 #: src/components/chat/chat-add-menu.tsx
 msgid "Upload file"
 msgstr "Upload file"
@@ -920,6 +1355,10 @@ msgstr "Upload file"
 #: src/search/commands/use-commands.ts
 msgid "Use System"
 msgstr "Use System"
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Use Thunderbolt from the command line."
+msgstr "Use Thunderbolt from the command line."
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
@@ -940,6 +1379,10 @@ msgstr "Verifying…"
 msgid "View and manage your schedule; create + reschedule events."
 msgstr "View and manage your schedule; create + reschedule events."
 
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "View install guide"
+msgstr "View install guide"
+
 #: src/components/chat/quote-chip.tsx
 msgid "View quote"
 msgstr "View quote"
@@ -950,8 +1393,17 @@ msgstr "View your schedule and upcoming events."
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
+#: src/settings/voice.tsx
 msgid "Voice"
 msgstr "Voice"
+
+#: src/settings/voice.tsx
+msgid "Voice engine"
+msgstr "Voice engine"
+
+#: src/settings/devices.tsx
+msgid "Waiting for approval"
+msgstr "Waiting for approval"
 
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
@@ -994,6 +1446,10 @@ msgstr "Welcome!"
 msgid "What agents use"
 msgstr "What agents use"
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "What it uses"
+msgstr "What it uses"
+
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "What should we call you?"
 msgstr "What should we call you?"
@@ -1001,6 +1457,10 @@ msgstr "What should we call you?"
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Where are you located?"
 msgstr "Where are you located?"
+
+#: src/components/settings/agents/add-custom-agent-form.tsx
+msgid "wss://example.com/ws or paste an iroh ticket"
+msgstr "wss://example.com/ws or paste an iroh ticket"
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
@@ -1026,6 +1486,14 @@ msgstr "You're now signed in."
 #: src/components/modification-indicator.tsx
 msgid "You've customized this setting."
 msgstr "You've customized this setting."
+
+#: src/components/settings/agents/thunderbolt-cli.tsx
+msgid "Your agent · runs in your terminal"
+msgstr "Your agent · runs in your terminal"
+
+#: src/components/settings/agents/agent-list.tsx
+msgid "Your agents"
+msgstr "Your agents"
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Your AI assistant will use this name to address you personally."

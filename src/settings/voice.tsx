@@ -9,6 +9,7 @@
  * device-local (holds a key + machine-specific URL) and applies on the next voice
  * turn.
  */
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -95,6 +96,7 @@ const ComboField = ({
 }
 
 export const VoiceSettingsPage = () => {
+  const { t } = useLingui()
   const config = useLocalSettingsStore((s) => s.voiceProvider)
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
   const [ui, setUi] = useState<{ conn: ConnState; models: DiscoveredModels | null; loadingModels: boolean }>({
@@ -125,25 +127,36 @@ export const VoiceSettingsPage = () => {
 
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 p-4 pb-12">
-      <PageHeader title="Voice" />
+      <PageHeader title={t`Voice`} />
 
-      <SectionCard title="Voice engine">
+      <SectionCard title={t`Voice engine`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="voice-provider">Provider</Label>
+            <Label htmlFor="voice-provider">
+              <Trans>Provider</Trans>
+            </Label>
             <Select value={config.kind} onValueChange={(kind) => update({ kind: kind as VoiceProviderConfig['kind'] })}>
               <SelectTrigger id="voice-provider" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="thunderbolt">Thunderbolt (hosted, private)</SelectItem>
-                <SelectItem value="openai-compatible">Custom — OpenAI-compatible endpoint</SelectItem>
+                <SelectItem value="thunderbolt">
+                  <Trans>Thunderbolt (hosted, private)</Trans>
+                </SelectItem>
+                <SelectItem value="openai-compatible">
+                  <Trans>Custom — OpenAI-compatible endpoint</Trans>
+                </SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-              {isCustom
-                ? 'Point at any server exposing /v1/audio/transcriptions and /v1/audio/speech. Its CORS must allow this app’s origin.'
-                : 'Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave.'}
+              {isCustom ? (
+                <Trans>
+                  Point at any server exposing /v1/audio/transcriptions and /v1/audio/speech. Its CORS must allow this
+                  app’s origin.
+                </Trans>
+              ) : (
+                <Trans>Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave.</Trans>
+              )}
             </p>
           </div>
 
@@ -151,24 +164,24 @@ export const VoiceSettingsPage = () => {
             <>
               <Field
                 id="voice-base-url"
-                label="Base URL"
+                label={t`Base URL`}
                 placeholder="http://localhost:8880/v1"
-                hint="Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
+                hint={t`Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below.`}
                 value={config.baseUrl}
                 onChange={(baseUrl) => update({ baseUrl })}
               />
               <Field
                 id="voice-api-key"
-                label="API key"
+                label={t`API key`}
                 type="password"
-                hint="Optional — leave blank for local servers that don’t require auth."
+                hint={t`Optional — leave blank for local servers that don’t require auth.`}
                 value={config.apiKey}
                 onChange={(apiKey) => update({ apiKey })}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <ComboField
                   id="voice-stt-model"
-                  label="STT model"
+                  label={t`STT model`}
                   placeholder="whisper-large-v3-turbo"
                   options={sttOptions}
                   value={config.sttModel}
@@ -176,7 +189,7 @@ export const VoiceSettingsPage = () => {
                 />
                 <ComboField
                   id="voice-tts-model"
-                  label="TTS model"
+                  label={t`TTS model`}
                   placeholder="kokoro"
                   options={ttsOptions}
                   value={config.ttsModel}
@@ -185,7 +198,7 @@ export const VoiceSettingsPage = () => {
               </div>
               <ComboField
                 id="voice-tts-voice"
-                label="TTS voice"
+                label={t`TTS voice`}
                 placeholder="af_bella"
                 options={voiceOptions}
                 value={config.ttsVoice}
@@ -196,18 +209,20 @@ export const VoiceSettingsPage = () => {
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" variant="outline" onClick={loadModels} disabled={!canTest || ui.loadingModels}>
                     {ui.loadingModels && <Loader2 className="size-4 animate-spin" />}
-                    Load models
+                    <Trans>Load models</Trans>
                   </Button>
                   <Button type="button" onClick={runTest} disabled={!canTest || ui.conn.status === 'testing'}>
                     {ui.conn.status === 'testing' && <Loader2 className="size-4 animate-spin" />}
-                    Test connection
+                    <Trans>Test connection</Trans>
                   </Button>
                 </div>
 
                 {ui.models !== null && ui.models.stt.length === 0 && ui.models.tts.length === 0 && (
                   <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                    No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids
-                    manually.
+                    <Trans>
+                      No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids
+                      manually.
+                    </Trans>
                   </p>
                 )}
 

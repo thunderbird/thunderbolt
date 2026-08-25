@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import dayjs from 'dayjs'
@@ -88,6 +89,7 @@ export const AgentDetail = ({
   onDelete,
   testAcpConnection = defaultTestAcpConnection,
 }: AgentDetailProps) => {
+  const agentName = agent.name
   const Icon = iconForAgent(agent)
   const flavor = agentFlavor(agent)
   const isEditable = flavor === 'custom' && !!currentUserId && agent.userId === currentUserId
@@ -112,7 +114,7 @@ export const AgentDetail = ({
     <DetailActionsMenu>
       <DropdownMenuItem onClick={() => setConfirmOpen(true)} className="cursor-pointer">
         <Trash2 />
-        Delete agent
+        <Trans>Delete agent</Trans>
       </DropdownMenuItem>
     </DetailActionsMenu>
   )
@@ -151,9 +153,11 @@ export const AgentDetail = ({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {agent.name}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Delete {agentName}?</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the connection from Thunderbolt only. Nothing on the remote server is changed.
+              <Trans>This removes the connection from Thunderbolt only. Nothing on the remote server is changed.</Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           {removeError && (
@@ -162,9 +166,11 @@ export const AgentDetail = ({
             </p>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
             <Button variant="destructive" onClick={() => void handleRemove()}>
-              Delete agent
+              <Trans>Delete agent</Trans>
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -176,6 +182,7 @@ export const AgentDetail = ({
 /** Read-only info view for the built-in Thunderbolt agent: what it is, plus
  *  live links into the Library surfaces it draws on. */
 const BuiltInBody = () => {
+  const { t } = useLingui()
   const db = useDatabase()
   const { skills } = useLibrarySkills()
   const enabledSkills = skills.filter((s) => s.enabled === 1).length
@@ -187,43 +194,49 @@ const BuiltInBody = () => {
   return (
     <>
       <div className="flex shrink-0 flex-col gap-2">
-        <DetailSectionTitle>About</DetailSectionTitle>
+        <DetailSectionTitle>
+          <Trans>About</Trans>
+        </DetailSectionTitle>
         <p className="text-base leading-snug text-foreground">
-          Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have
-          enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on.
+          <Trans>
+            Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have
+            enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on.
+          </Trans>
         </p>
       </div>
 
       <DetailDivider />
 
       <div className="flex flex-col gap-4">
-        <DetailSectionTitle>What it uses</DetailSectionTitle>
+        <DetailSectionTitle>
+          <Trans>What it uses</Trans>
+        </DetailSectionTitle>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <FieldLabel>Skills</FieldLabel>
+            <FieldLabel>{t`Skills`}</FieldLabel>
             <Link
               to="/settings/skills"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
-              {enabledSkills} {enabledSkills === 1 ? 'skill' : 'skills'}
+              <Plural value={enabledSkills} one="# skill" other="# skills" />
             </Link>
           </div>
           <div className="flex flex-col gap-1">
-            <FieldLabel>MCP servers</FieldLabel>
+            <FieldLabel>{t`MCP servers`}</FieldLabel>
             <Link
               to="/settings/connections"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
-              {mcpServers.length} {mcpServers.length === 1 ? 'MCP server' : 'MCP servers'}
+              <Plural value={mcpServers.length} one="# MCP server" other="# MCP servers" />
             </Link>
           </div>
           <div className="flex flex-col gap-1">
-            <FieldLabel>Integrations</FieldLabel>
+            <FieldLabel>{t`Integrations`}</FieldLabel>
             <Link
               to="/settings/connections"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
-              Manage integrations
+              <Trans>Manage integrations</Trans>
             </Link>
           </div>
         </div>
@@ -233,27 +246,37 @@ const BuiltInBody = () => {
 }
 
 /** Read-only info view for a deployment-provided system agent. */
-const SystemBody = ({ agent }: { agent: Agent }) => (
-  <>
-    {agent.description && (
-      <>
-        <div className="flex shrink-0 flex-col gap-2">
-          <DetailSectionTitle>About</DetailSectionTitle>
-          <p className="whitespace-pre-wrap text-base leading-snug text-foreground">{agent.description}</p>
+const SystemBody = ({ agent }: { agent: Agent }) => {
+  const { t } = useLingui()
+
+  return (
+    <>
+      {agent.description && (
+        <>
+          <div className="flex shrink-0 flex-col gap-2">
+            <DetailSectionTitle>
+              <Trans>About</Trans>
+            </DetailSectionTitle>
+            <p className="whitespace-pre-wrap text-base leading-snug text-foreground">{agent.description}</p>
+          </div>
+          <DetailDivider />
+        </>
+      )}
+      <div className="flex flex-col gap-4">
+        <DetailSectionTitle>
+          <Trans>Connection</Trans>
+        </DetailSectionTitle>
+        <div className="flex flex-col gap-1">
+          <FieldLabel>{t`Endpoint`}</FieldLabel>
+          <p className="truncate text-base text-foreground">{acpEndpointLabel(agent)}</p>
         </div>
-        <DetailDivider />
-      </>
-    )}
-    <div className="flex flex-col gap-4">
-      <DetailSectionTitle>Connection</DetailSectionTitle>
-      <div className="flex flex-col gap-1">
-        <FieldLabel>Endpoint</FieldLabel>
-        <p className="truncate text-base text-foreground">{acpEndpointLabel(agent)}</p>
+        <p className="text-sm text-muted-foreground">
+          <Trans>Managed by your deployment — always available, no setup needed.</Trans>
+        </p>
       </div>
-      <p className="text-sm text-muted-foreground">Managed by your deployment — always available, no setup needed.</p>
-    </div>
-  </>
-)
+    </>
+  )
+}
 
 /** Management view for a user-connected custom agent: inline-editable
  *  configuration plus an on-demand connection test. */
@@ -268,6 +291,8 @@ const CustomBody = ({
   onUpdate: AgentDetailProps['onUpdate']
   testAcpConnection: NonNullable<AgentDetailProps['testAcpConnection']>
 }) => {
+  const { i18n, t } = useLingui()
+  const customAgentName = agent.name
   const [testResult, setTestResult] = useState<TestState>('idle')
   const [enabledError, setEnabledError] = useState<string | null>(null)
   const isWebSocket = agent.transport === 'websocket'
@@ -279,7 +304,7 @@ const CustomBody = ({
     } catch (error) {
       // The optimistic Switch reverts on the next render; say why.
       console.error('Failed to update agent enabled state', error)
-      setEnabledError("Couldn't update. Please try again.")
+      setEnabledError(t`Couldn't update. Please try again.`)
     }
   }
 
@@ -298,22 +323,24 @@ const CustomBody = ({
   return (
     <>
       <div className="flex flex-col gap-4">
-        <DetailSectionTitle>Configuration</DetailSectionTitle>
+        <DetailSectionTitle>
+          <Trans>Configuration</Trans>
+        </DetailSectionTitle>
         <EditableField
           id="agent-detail-name"
-          label="Name"
+          label={t`Name`}
           value={agent.name}
           isEditable={isEditable}
           onSave={(name) => onUpdate({ name })}
         />
         <EditableField
           id="agent-detail-endpoint"
-          label="Endpoint"
+          label={t`Endpoint`}
           value={agent.url ?? ''}
           isEditable={isEditable}
           validate={(url) => {
             const validation = validateAgentUrl(url)
-            return 'error' in validation ? validation.error : null
+            return 'error' in validation ? i18n._(validation.error) : null
           }}
           onSave={(url) => {
             // Re-infer the transport (ws vs iroh) for the validated draft —
@@ -331,24 +358,26 @@ const CustomBody = ({
         />
         <EditableField
           id="agent-detail-description"
-          label="Description"
+          label={t`Description`}
           value={agent.description ?? ''}
           isEditable={isEditable}
           allowEmpty
-          placeholder="Optional"
+          placeholder={t`Optional`}
           onSave={(description) => onUpdate({ description: description === '' ? null : description })}
         />
         {isEditable && (
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-col">
-                <FieldLabel>Enabled</FieldLabel>
-                <p className="text-sm text-muted-foreground">Disabled agents stay out of the chat agent picker.</p>
+                <FieldLabel>{t`Enabled`}</FieldLabel>
+                <p className="text-sm text-muted-foreground">
+                  <Trans>Disabled agents stay out of the chat agent picker.</Trans>
+                </p>
               </div>
               <Switch
                 checked={agent.enabled === 1}
                 onCheckedChange={(next) => void handleEnabledChange(next)}
-                aria-label={agent.enabled === 1 ? `Disable ${agent.name}` : `Enable ${agent.name}`}
+                aria-label={agent.enabled === 1 ? t`Disable ${customAgentName}` : t`Enable ${customAgentName}`}
               />
             </div>
             {enabledError && (
@@ -363,7 +392,9 @@ const CustomBody = ({
       <DetailDivider />
 
       <div className="flex flex-col gap-3">
-        <DetailSectionTitle>Connection</DetailSectionTitle>
+        <DetailSectionTitle>
+          <Trans>Connection</Trans>
+        </DetailSectionTitle>
         {isWebSocket ? (
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-3">
@@ -375,7 +406,7 @@ const CustomBody = ({
                 disabled={testResult === 'testing'}
                 className="bg-card"
               >
-                Test connection
+                <Trans>Test connection</Trans>
               </Button>
             </div>
             {typeof testResult === 'object' && testResult.error && (
@@ -384,7 +415,7 @@ const CustomBody = ({
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Peer-to-peer via iroh — the connection is verified when a chat starts.
+            <Trans>Peer-to-peer via iroh — the connection is verified when a chat starts.</Trans>
           </p>
         )}
       </div>
@@ -394,16 +425,21 @@ const CustomBody = ({
 
 /** The Status line's dot + label, derived from the last explicit test run. */
 const TestStatus = ({ result }: { result: TestState }) => {
+  const relative = typeof result === 'object' ? dayjs(result.testedAt).fromNow() : ''
   if (result === 'testing') {
     return (
       <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
         <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-        Testing…
+        <Trans>Testing…</Trans>
       </span>
     )
   }
   if (result === 'idle') {
-    return <span className="text-sm text-muted-foreground">Not tested</span>
+    return (
+      <span className="text-sm text-muted-foreground">
+        <Trans>Not tested</Trans>
+      </span>
+    )
   }
   return (
     <span
@@ -416,7 +452,7 @@ const TestStatus = ({ result }: { result: TestState }) => {
         className={cn('inline-block size-2 rounded-full', result.isReachable ? 'bg-green-500' : 'bg-destructive')}
         aria-hidden="true"
       />
-      {`${result.isReachable ? 'Reachable' : 'Unreachable'} ${dayjs(result.testedAt).fromNow()}`}
+      {result.isReachable ? <Trans>Reachable {relative}</Trans> : <Trans>Unreachable {relative}</Trans>}
     </span>
   )
 }

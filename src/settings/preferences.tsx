@@ -55,6 +55,7 @@ import { useLanguageSetting } from '@/hooks/use-language-setting'
 import { localeForCountry } from '@/i18n/country-language'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
 import type { AppLocale } from '@shared/i18n/locales'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { SettingsPageShell } from '@/components/settings/settings-list'
@@ -169,6 +170,7 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
 }
 
 export default function PreferencesSettingsPage() {
+  const { t } = useLingui()
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
     isResetting,
@@ -261,6 +263,9 @@ export default function PreferencesSettingsPage() {
    *  Read from the store rather than re-derived from `language.value`, which is the
    *  schema-defaulted `en` and so cannot tell "unset" from an explicit English choice. */
   const activeLanguage = useActiveLocale()
+  // Named so the catalog gets `{activeLanguageLabel}` rather than a positional `{0}`.
+  const activeLanguageLabel = languageLabel(activeLanguage)
+  const suggestedLanguageLabel = pendingLanguage ? languageLabel(pendingLanguage) : ''
 
   // Get units options and country units for localization
   const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
@@ -582,11 +587,16 @@ export default function PreferencesSettingsPage() {
     return c ? `${c.name} (${c.symbol})` : ''
   }, [unitsOptionsData?.currencies, currency.value])
 
+  // Bound so the catalog placeholders are named rather than positional.
+  const importRowCount = pendingImport?.totalRows.toLocaleString() ?? ''
+  const importSourceEmail = pendingImport?.sourceEmail ?? ''
+  const importExportedAt = pendingImport?.exportedAtLabel ?? ''
+
   return (
     <SettingsPageShell className="gap-6 md:pb-12">
-      <PageHeader title="Preferences" />
+      <PageHeader title={t`Preferences`} />
 
-      <SectionCard title="User Experience">
+      <SectionCard title={t`User Experience`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Theme</label>
@@ -603,14 +613,16 @@ export default function PreferencesSettingsPage() {
                 hasModifications={hapticsEnabled !== initialLocalSettings.hapticsEnabled}
                 onReset={() => setLocalSetting('hapticsEnabled', initialLocalSettings.hapticsEnabled)}
               >
-                Haptic Feedback
+                <Trans>Haptic Feedback</Trans>
               </ModificationIndicator>
-              <p className="text-sm text-muted-foreground">Vibrate on tap</p>
+              <p className="text-sm text-muted-foreground">
+                <Trans>Vibrate on tap</Trans>
+              </p>
             </div>
             <Switch
               checked={hapticsEnabled}
               onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)}
-              aria-label="Haptic Feedback"
+              aria-label={t`Haptic Feedback`}
             />
           </div>
         </div>
@@ -618,7 +630,7 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Personalization">
+      <SectionCard title={t`Personalization`}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <ModificationIndicator
@@ -630,10 +642,10 @@ export default function PreferencesSettingsPage() {
                 setNameInput('')
               }}
             >
-              Preferred Name
+              <Trans>Preferred Name</Trans>
             </ModificationIndicator>
             <Input
-              placeholder="Your name"
+              placeholder={t`Your name`}
               className="rounded-lg"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
@@ -655,7 +667,7 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Localization">
+      <SectionCard title={t`Localization`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <ModificationIndicator
@@ -665,7 +677,7 @@ export default function PreferencesSettingsPage() {
               hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
               onReset={handleResetLocation}
             >
-              Location
+              <Trans>Location</Trans>
             </ModificationIndicator>
             <LocationSearchCombobox
               value={locationName.value}
@@ -673,7 +685,9 @@ export default function PreferencesSettingsPage() {
               id="localization-location-trigger"
               aria-labelledby="localization-location-label localization-location-trigger"
             />
-            <p className="text-sm text-muted-foreground">Enables location-based responses</p>
+            <p className="text-sm text-muted-foreground">
+              <Trans>Enables location-based responses</Trans>
+            </p>
           </div>
 
           <div className="h-px bg-border -mx-6" />
@@ -690,7 +704,7 @@ export default function PreferencesSettingsPage() {
                   trackEvent('settings_localization_reset')
                 }}
               >
-                Language
+                <Trans>Language</Trans>
               </ModificationIndicator>
             </div>
             <Select
@@ -700,7 +714,7 @@ export default function PreferencesSettingsPage() {
                 trackEvent('settings_localization_update')
               }}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label="Language">
+              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Language`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -722,7 +736,7 @@ export default function PreferencesSettingsPage() {
                 hasModifications={distanceUnit.isModified}
                 onReset={() => handleResetLocalizationSetting('distance')}
               >
-                Distance
+                <Trans>Distance</Trans>
               </ModificationIndicator>
             </div>
             <Select
@@ -733,8 +747,8 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label="Distance unit">
-                <SelectValue placeholder="Loading..." />
+              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Distance unit`}>
+                <SelectValue placeholder={t`Loading...`} />
               </SelectTrigger>
               <SelectContent>
                 {(unitsOptionsData?.units ?? []).map((u) => (
@@ -755,7 +769,7 @@ export default function PreferencesSettingsPage() {
                 hasModifications={temperatureUnit.isModified}
                 onReset={() => handleResetLocalizationSetting('temperature')}
               >
-                Temperature
+                <Trans>Temperature</Trans>
               </ModificationIndicator>
             </div>
             <Select
@@ -766,8 +780,8 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label="Temperature unit">
-                <SelectValue placeholder="Loading..." />
+              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Temperature unit`}>
+                <SelectValue placeholder={t`Loading...`} />
               </SelectTrigger>
               <SelectContent>
                 {(unitsOptionsData?.temperature ?? []).map((t) => (
@@ -788,7 +802,7 @@ export default function PreferencesSettingsPage() {
                 hasModifications={dateFormat.isModified}
                 onReset={() => handleResetLocalizationSetting('date')}
               >
-                Date Format
+                <Trans>Date Format</Trans>
               </ModificationIndicator>
             </div>
             <Select
@@ -799,8 +813,8 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label="Date format">
-                <SelectValue placeholder="Loading..." />
+              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Date format`}>
+                <SelectValue placeholder={t`Loading...`} />
               </SelectTrigger>
               <SelectContent>
                 {(unitsOptionsData?.dateFormats ?? []).map((f) => (
@@ -821,7 +835,7 @@ export default function PreferencesSettingsPage() {
                 hasModifications={timeFormat.isModified}
                 onReset={() => handleResetLocalizationSetting('time')}
               >
-                Time Format
+                <Trans>Time Format</Trans>
               </ModificationIndicator>
             </div>
             <Select
@@ -832,8 +846,8 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label="Time format">
-                <SelectValue placeholder="Loading..." />
+              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Time format`}>
+                <SelectValue placeholder={t`Loading...`} />
               </SelectTrigger>
               <SelectContent>
                 {(unitsOptionsData?.timeFormat ?? []).map((f) => (
@@ -855,7 +869,7 @@ export default function PreferencesSettingsPage() {
                 hasModifications={currency.isModified}
                 onReset={() => handleResetLocalizationSetting('currency')}
               >
-                Currency
+                <Trans>Currency</Trans>
               </ModificationIndicator>
             </div>
             <Combobox
@@ -868,8 +882,8 @@ export default function PreferencesSettingsPage() {
               displayValue={currencyDisplayValue || undefined}
               id="localization-currency-trigger"
               aria-labelledby="localization-currency-label localization-currency-trigger"
-              placeholder="Loading..."
-              searchPlaceholder="Search currencies..."
+              placeholder={t`Loading...`}
+              searchPlaceholder={t`Search currencies...`}
               loading={unitsOptionsLoading}
               className="w-auto"
               contentClassName="w-[300px]"
@@ -882,7 +896,7 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Help Thunderbolt Improve">
+      <SectionCard title={t`Help Thunderbolt Improve`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
             <label className="text-sm font-medium">Preview Features</label>
@@ -895,13 +909,13 @@ export default function PreferencesSettingsPage() {
                   hasModifications={experimentalFeatureTasks.isModified}
                   onReset={experimentalFeatureTasks.reset}
                 >
-                  Tasks
+                  <Trans>Tasks</Trans>
                 </ModificationIndicator>
               </div>
               <Switch
                 checked={experimentalFeatureTasks.value}
                 onCheckedChange={handleExperimentalFeaturesToggle}
-                aria-label="Tasks"
+                aria-label={t`Tasks`}
               />
             </div>
 
@@ -913,13 +927,13 @@ export default function PreferencesSettingsPage() {
                   hasModifications={experimentalFeatureVoice.isModified}
                   onReset={experimentalFeatureVoice.reset}
                 >
-                  Custom voice provider
+                  <Trans>Custom voice provider</Trans>
                 </ModificationIndicator>
               </div>
               <Switch
                 checked={experimentalFeatureVoice.value}
                 onCheckedChange={(value) => experimentalFeatureVoice.setValue(value)}
-                aria-label="Custom voice provider"
+                aria-label={t`Custom voice provider`}
               />
             </div>
           </div>
@@ -935,25 +949,27 @@ export default function PreferencesSettingsPage() {
                   hasModifications={dataCollection.isModified}
                   onReset={dataCollection.reset}
                 >
-                  Anonymous Usage Data
+                  <Trans>Anonymous Usage Data</Trans>
                 </ModificationIndicator>
               </div>
               {telemetryAvailable ? (
                 <p className="text-sm text-muted-foreground">
-                  Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. Read
-                  more about our{' '}
-                  <a
-                    className="text-primary underline-offset-4 hover:underline"
-                    href={privacyPolicyUrl}
-                    target="_blank"
-                  >
-                    privacy policy
-                  </a>
-                  .
+                  <Trans>
+                    Help us improve the app by sending anonymous usage info such as crashes, performance, and usage.
+                    Read more about our{' '}
+                    <a
+                      className="text-primary underline-offset-4 hover:underline"
+                      href={privacyPolicyUrl}
+                      target="_blank"
+                    >
+                      privacy policy
+                    </a>
+                    .
+                  </Trans>
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Telemetry isn't configured for this organization, so no usage data is being collected.
+                  <Trans>Telemetry isn't configured for this organization, so no usage data is being collected.</Trans>
                 </p>
               )}
             </div>
@@ -961,7 +977,7 @@ export default function PreferencesSettingsPage() {
               checked={telemetryAvailable && dataCollection.value}
               onCheckedChange={handleDataCollectionToggle}
               disabled={!telemetryAvailable}
-              aria-label="Anonymous Usage Data"
+              aria-label={t`Anonymous Usage Data`}
             />
           </div>
         </div>
@@ -969,12 +985,14 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Network">
+      <SectionCard title={t`Network`}>
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Use Cloud Proxy</label>
+            <label className="text-sm font-medium">
+              <Trans>Use Cloud Proxy</Trans>
+            </label>
             <p className="text-sm text-muted-foreground">
-              When enabled, requests are routed through Thunderbolt's cloud proxy.
+              <Trans>When enabled, requests are routed through Thunderbolt's cloud proxy.</Trans>
             </p>
           </div>
           {proxyDisabled ? (
@@ -984,7 +1002,7 @@ export default function PreferencesSettingsPage() {
                   <Switch
                     checked={proxyChecked}
                     disabled
-                    aria-label="Use Cloud Proxy"
+                    aria-label={t`Use Cloud Proxy`}
                     className="pointer-events-none"
                   />
                 </span>
@@ -997,7 +1015,7 @@ export default function PreferencesSettingsPage() {
             <Switch
               checked={proxyChecked}
               onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
-              aria-label="Use Cloud Proxy"
+              aria-label={t`Use Cloud Proxy`}
             />
           )}
         </div>
@@ -1005,7 +1023,7 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title="Data">
+      <SectionCard title={t`Data`}>
         <div className="flex flex-col gap-6">
           {isFullUser ? (
             <div className="flex-row flex items-center gap-4 justify-between">
@@ -1016,13 +1034,17 @@ export default function PreferencesSettingsPage() {
                 checked={syncEnabled}
                 onCheckedChange={handleSyncToggle}
                 disabled={isConnecting}
-                aria-label="Sync This Device With Cloud"
+                aria-label={t`Sync This Device With Cloud`}
               />
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Sync This Device With Cloud</label>
-              <Button onClick={openSignInModal}>Sign In</Button>
+              <label className="text-sm font-medium">
+                <Trans>Sync This Device With Cloud</Trans>
+              </label>
+              <Button onClick={openSignInModal}>
+                <Trans>Sign In</Trans>
+              </Button>
             </div>
           )}
 
@@ -1032,10 +1054,10 @@ export default function PreferencesSettingsPage() {
 
               <div className="flex flex-col gap-2">
                 <label htmlFor="export-data-button" className="text-sm font-medium">
-                  Export Your Data
+                  <Trans>Export Your Data</Trans>
                 </label>
                 <p id="export-data-description" className="text-sm text-muted-foreground">
-                  Export all of your data as JSON.
+                  <Trans>Export all of your data as JSON.</Trans>
                 </p>
                 {exportError && (
                   <p id="export-data-error" className="text-sm text-destructive" role="alert">
@@ -1058,10 +1080,10 @@ export default function PreferencesSettingsPage() {
 
               <div className="flex flex-col gap-2">
                 <label htmlFor="import-data-button" className="text-sm font-medium">
-                  Import Your Data
+                  <Trans>Import Your Data</Trans>
                 </label>
                 <p id="import-data-description" className="text-sm text-muted-foreground">
-                  Import your data from previously exported JSON.
+                  <Trans>Import your data from previously exported JSON.</Trans>
                 </p>
                 {importError && (
                   <p id="import-data-error" className="text-sm text-destructive" role="alert">
@@ -1115,9 +1137,9 @@ export default function PreferencesSettingsPage() {
                 </Button>
                 <ConfirmActionDialog
                   open={resetDialogOpen}
-                  title="Reset Local Database?"
-                  description="This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
-                  confirmLabel="Reset Database"
+                  title={t`Reset Local Database?`}
+                  description={t`This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone.`}
+                  confirmLabel={t`Reset Database`}
                   isPending={isResetting}
                   onConfirm={() => {
                     dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: false })
@@ -1136,7 +1158,7 @@ export default function PreferencesSettingsPage() {
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Delete Your Account</label>
                 <p className="text-sm text-muted-foreground">
-                  Permanently delete your account and all data on our servers and this device.
+                  <Trans>Permanently delete your account and all data on our servers and this device.</Trans>
                 </p>
                 {deleteAccountError && (
                   <p className="text-sm text-destructive" role="alert">
@@ -1154,9 +1176,9 @@ export default function PreferencesSettingsPage() {
                 </Button>
                 <ConfirmActionDialog
                   open={deleteAccountDialogOpen}
-                  title="Delete your account?"
-                  description="This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
-                  confirmLabel="Delete account"
+                  title={t`Delete your account?`}
+                  description={t`This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone.`}
+                  confirmLabel={t`Delete account`}
                   isPending={isDeletingAccount}
                   onConfirm={() => {
                     dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })
@@ -1183,23 +1205,44 @@ export default function PreferencesSettingsPage() {
       <AlertDialog open={pendingImport !== null} onOpenChange={(open) => !open && handleCancelImport()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Import this backup?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Import this backup?</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingImport && (
                 <>
-                  This file contains {pendingImport.totalRows.toLocaleString()} rows
-                  {pendingImport.sourceEmail ? ` exported by ${pendingImport.sourceEmail}` : ''}
-                  {pendingImport.exportedAtLabel ? ` on ${pendingImport.exportedAtLabel}` : ''}. Rows that share an ID
-                  with existing data will be overwritten with the file's version and synced to your other devices. This
-                  can't be undone.
+                  {/* One whole sentence per provenance combination rather than
+                      appending optional clauses: a translator needs to place
+                      "exported by X" and "on Y" in their own grammar. */}
+                  {pendingImport.sourceEmail && pendingImport.exportedAtLabel ? (
+                    <Trans>
+                      This file contains {importRowCount} rows exported by {importSourceEmail} on {importExportedAt}.
+                    </Trans>
+                  ) : pendingImport.sourceEmail ? (
+                    <Trans>
+                      This file contains {importRowCount} rows exported by {importSourceEmail}.
+                    </Trans>
+                  ) : pendingImport.exportedAtLabel ? (
+                    <Trans>
+                      This file contains {importRowCount} rows on {importExportedAt}.
+                    </Trans>
+                  ) : (
+                    <Trans>This file contains {importRowCount} rows.</Trans>
+                  )}{' '}
+                  <Trans>
+                    Rows that share an ID with existing data will be overwritten with the file's version and synced to
+                    your other devices. This can't be undone.
+                  </Trans>
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {pendingImport?.accountMismatch && (
             <p className="text-sm text-destructive font-medium" role="alert">
-              ⚠ This export was made by a different account ({pendingImport.sourceEmail}). Importing it here will mix
-              that data into your account. Confirm only if you intend to.
+              <Trans>
+                ⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that
+                data into your account. Confirm only if you intend to.
+              </Trans>
             </p>
           )}
           {importError && (
@@ -1208,7 +1251,9 @@ export default function PreferencesSettingsPage() {
             </p>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isImporting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isImporting}>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmImport}
               disabled={isImporting}
@@ -1224,15 +1269,19 @@ export default function PreferencesSettingsPage() {
       <AlertDialog open={localizationDialogOpen} onOpenChange={(open) => !open && handleDeclineLocalizationSettings()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Update Defaults?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Update Defaults?</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Would you like to update your units based on the new location?
+              <Trans>Would you like to update your units based on the new location?</Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep Current Units</AlertDialogCancel>
+            <AlertDialogCancel>
+              <Trans>Keep Current Units</Trans>
+            </AlertDialogCancel>
             <AlertDialogAction autoFocus onClick={handleApplyLocalizationSettings}>
-              Update Units
+              <Trans>Update Units</Trans>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1242,15 +1291,19 @@ export default function PreferencesSettingsPage() {
         <AlertDialog open={languageDialogOpen} onOpenChange={(open) => !open && handleDeclineLanguage()}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Change Language?</AlertDialogTitle>
+              <AlertDialogTitle>
+                <Trans>Change Language?</Trans>
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                Would you like to change the language to {languageLabel(pendingLanguage)}?
+                <Trans>Would you like to change the language to {suggestedLanguageLabel}?</Trans>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Keep {languageLabel(activeLanguage)}</AlertDialogCancel>
+              <AlertDialogCancel>
+                <Trans>Keep {activeLanguageLabel}</Trans>
+              </AlertDialogCancel>
               <AlertDialogAction autoFocus onClick={handleApplyLanguage}>
-                Switch to {languageLabel(pendingLanguage)}
+                <Trans>Switch to {suggestedLanguageLabel}</Trans>
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

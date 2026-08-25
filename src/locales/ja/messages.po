@@ -69,6 +69,10 @@ msgstr ""
 msgid "{wordCount}/24 words"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
+msgstr ""
+
 #: src/components/pending-device-modal.tsx
 msgid "A new device is requesting access to your encrypted data."
 msgstr ""
@@ -229,6 +233,10 @@ msgstr ""
 
 #: src/projects/emoji-catalog.ts
 msgid "Animals & nature"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Anonymous Usage Data"
 msgstr ""
 
 #: src/widgets/ask/display.tsx
@@ -407,6 +415,7 @@ msgstr ""
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/index.tsx
+#: src/settings/preferences.tsx
 #: src/skills/dependents-dialog.tsx
 msgid "Cancel"
 msgstr ""
@@ -853,12 +862,20 @@ msgstr ""
 msgid "Credential (optional)"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Currency"
+msgstr ""
+
 #: src/settings/models/model-presentation.tsx
 msgid "Custom"
 msgstr ""
 
 #: src/settings/voice.tsx
 msgid "Custom — OpenAI-compatible endpoint"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Custom voice provider"
 msgstr ""
 
 #: src/settings/models/model-detail.tsx
@@ -873,8 +890,20 @@ msgstr ""
 msgid "daily-brief"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Data"
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Data is stored securely on your device."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Date format"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Date Format"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
@@ -902,6 +931,10 @@ msgstr ""
 
 #: src/skills/dependents-dialog.tsx
 msgid "Delete {targetName}?"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Delete account"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
@@ -960,6 +993,10 @@ msgstr ""
 
 #: src/projects/project-detail-panel.tsx
 msgid "Delete this project?"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Delete your account?"
 msgstr ""
 
 #: src/components/logout-modal.tsx
@@ -1074,6 +1111,14 @@ msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 msgid "Display Name"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Distance"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Distance unit"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
@@ -1206,6 +1251,10 @@ msgstr ""
 msgid "Enabled"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Enables location-based responses"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Endpoint"
 msgstr ""
@@ -1252,6 +1301,14 @@ msgstr ""
 
 #: src/components/ui/header.tsx
 msgid "Expand Sidebar"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Export all of your data as JSON."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Export Your Data"
 msgstr ""
 
 #: src/widgets/weather-forecast/display.tsx
@@ -1329,6 +1386,18 @@ msgstr ""
 msgid "Got it, working on that next."
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Haptic Feedback"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Help Thunderbolt Improve"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. Read more about our <0>privacy policy</0>."
+msgstr ""
+
 #: src/skills/skill-detail.tsx
 #: src/skills/skill-form.tsx
 msgid "Helps the agent decide when to use this skill. Be specific about when it applies."
@@ -1368,6 +1437,18 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Import Servers"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Import this backup?"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Import Your Data"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Import your data from previously exported JSON."
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
@@ -1436,6 +1517,10 @@ msgstr ""
 msgid "Just synced"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Keep Current Units"
+msgstr ""
+
 #: src/components/revoked-device-modal.tsx
 msgid "Keep data on device"
 msgstr ""
@@ -1458,6 +1543,10 @@ msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Keep your data synced across devices."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Language"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -1512,6 +1601,7 @@ msgid "Loading this app's pairing identity…"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
+#: src/settings/preferences.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading..."
 msgstr ""
@@ -1522,6 +1612,14 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Localization"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Location"
 msgstr ""
 
 #: src/components/onboarding/onboarding-location-step.tsx
@@ -1624,6 +1722,10 @@ msgstr ""
 
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Navigation"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Network"
 msgstr ""
 
 #: src/settings/models/model-catalog.ts
@@ -1896,8 +1998,16 @@ msgstr ""
 msgid "Pending approvals"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Permanently delete your account and all data on our servers and this device."
+msgstr ""
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Permission Required"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Personalization"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -1930,7 +2040,12 @@ msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
+#: src/settings/preferences.tsx
 msgid "Preferences"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Preferred Name"
 msgstr ""
 
 #: src/content-view/sidebar-webview.tsx
@@ -2095,6 +2210,14 @@ msgstr ""
 msgid "Resend Email"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Reset Database"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Reset Local Database?"
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr ""
@@ -2131,6 +2254,10 @@ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Revoking…"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Rows that share an ID with existing data will be overwritten with the file's version and synced to your other devices. This can't be undone."
 msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
@@ -2201,6 +2328,10 @@ msgstr ""
 
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Search currencies..."
 msgstr ""
 
 #: src/projects/emoji-picker.tsx
@@ -2365,6 +2496,7 @@ msgid "Sign in"
 msgstr ""
 
 #: src/components/sign-in-modal.tsx
+#: src/settings/preferences.tsx
 msgid "Sign In"
 msgstr ""
 
@@ -2507,6 +2639,10 @@ msgstr ""
 msgid "Symbols"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Sync This Device With Cloud"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Synced {relative}"
 msgstr ""
@@ -2526,12 +2662,25 @@ msgstr ""
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
+#: src/settings/preferences.tsx
 #: src/tasks/index.tsx
 msgid "Tasks"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Telemetry isn't configured for this organization, so no usage data is being collected."
+msgstr ""
+
 #: src/components/telemetry-required-modal.tsx
 msgid "Telemetry Required"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Temperature"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Temperature unit"
 msgstr ""
 
 #: src/widgets/weather-forecast/display.tsx
@@ -2642,6 +2791,22 @@ msgstr ""
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "This file contains {importRowCount} rows exported by {importSourceEmail} on {importExportedAt}."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "This file contains {importRowCount} rows exported by {importSourceEmail}."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "This file contains {importRowCount} rows on {importExportedAt}."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "This file contains {importRowCount} rows."
+msgstr ""
+
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
 msgstr ""
@@ -2702,6 +2867,10 @@ msgstr ""
 msgid "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
+msgstr ""
+
 #: src/components/delete-all-chats-dialog.tsx
 msgid "This will permanently delete all your chats."
 msgstr ""
@@ -2712,6 +2881,10 @@ msgstr ""
 
 #: src/components/delete-chat-dialog.tsx
 msgid "This will permanently delete this chat."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 msgstr ""
 
 #: src/components/approve-device-dialog.tsx
@@ -2752,6 +2925,14 @@ msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Time format"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Time Format"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
@@ -2849,6 +3030,10 @@ msgstr ""
 msgid "Untitled chat"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Update Defaults?"
+msgstr ""
+
 #: src/components/update-notification.tsx
 msgid "Update failed"
 msgstr ""
@@ -2869,6 +3054,10 @@ msgstr ""
 msgid "Update required"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Update Units"
+msgstr ""
+
 #: src/components/chat/chat-add-menu.tsx
 msgid "Upload file"
 msgstr ""
@@ -2886,6 +3075,10 @@ msgstr ""
 
 #: src/lib/mcp-url-validation.ts
 msgid "Use an http:// or https:// URL"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Use Cloud Proxy"
 msgstr ""
 
 #: src/lib/mcp-url-validation.ts
@@ -2908,6 +3101,10 @@ msgstr ""
 msgid "Use Thunderbolt from the command line."
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "User Experience"
+msgstr ""
+
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
 msgstr ""
@@ -2926,6 +3123,10 @@ msgstr ""
 
 #: src/components/update-notification.tsx
 msgid "Version {updateVersion}"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Vibrate on tap"
 msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
@@ -3033,6 +3234,10 @@ msgstr ""
 msgid "What would you like to do with your local data?"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
+msgstr ""
+
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"
 msgstr ""
@@ -3043,6 +3248,10 @@ msgstr ""
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Would you like to update your units based on the new location?"
 msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
@@ -3138,6 +3347,10 @@ msgstr ""
 
 #: src/components/context-overflow-modal.tsx
 msgid "Your message would exceed the model's {formattedMaxTokens}-token context window."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Your name"
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx

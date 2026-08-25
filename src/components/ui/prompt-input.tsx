@@ -88,7 +88,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     {
       value = '',
       onChange,
-      placeholder = 'Say something...',
+      placeholder,
       showSubmitButton = true,
       onSubmit,
       canSubmit,
@@ -203,7 +203,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
             onSelect={onTextareaSelect}
             onScroll={hasTextareaHooks ? handleScroll : undefined}
             onPaste={onTextareaPaste}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t`Say something...`}
             minHeight={42}
             maxHeight={240}
             autoFocus={autoFocus}

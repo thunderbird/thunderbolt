@@ -15,7 +15,7 @@ const temperatureUnitItemClass =
   'h-full aspect-square flex-none rounded-xl px-0 text-[length:var(--font-size-sm)] text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 data-[state=on]:bg-accent data-[state=on]:text-foreground'
 
 export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecastProps) => {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>(temperature_unit)
   const today = days[0]
   const forecastDays = days.slice(1)
@@ -41,9 +41,11 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
               </span>
               <span className="text-[20px] leading-none tracking-tight text-muted-foreground">{unit}</span>
             </div>
-            <p className="hidden text-[length:var(--font-size-xs)] text-foreground md:block">{todayMeta.description}</p>
+            <p className="hidden text-[length:var(--font-size-xs)] text-foreground md:block">
+              {i18n._(todayMeta.description)}
+            </p>
           </div>
-          <img className="size-[72px] md:size-[92px]" src={todayMeta.icon} alt={todayMeta.description} />
+          <img className="size-[72px] md:size-[92px]" src={todayMeta.icon} alt={i18n._(todayMeta.description)} />
           <div className="flex flex-col items-end gap-1 md:hidden">
             <div className="flex items-start">
               <span className="text-[32px] font-medium leading-none tracking-tight">
@@ -51,7 +53,9 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
               </span>
               <span className="text-[16px] leading-none tracking-tight text-muted-foreground">{unit}</span>
             </div>
-            <p className="text-[length:var(--font-size-xs)] text-right text-foreground">{todayMeta.description}</p>
+            <p className="text-[length:var(--font-size-xs)] text-right text-foreground">
+              {i18n._(todayMeta.description)}
+            </p>
           </div>
         </div>
 
@@ -63,7 +67,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
                 <p className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">
                   {dayjs(day.date).format('ddd')}
                 </p>
-                <img className="size-10" src={meta.icon} alt={meta.description} />
+                <img className="size-10" src={meta.icon} alt={i18n._(meta.description)} />
                 <p className="text-[length:var(--font-size-body)] font-medium leading-none tracking-tight">
                   {convertTemperature(day.temperature_max, temperature_unit, temperatureUnit)}°
                 </p>

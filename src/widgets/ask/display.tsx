@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Check, Lightbulb, Sparkles, X } from 'lucide-react'
 import { useReducer, useRef } from 'react'
 
@@ -99,6 +99,7 @@ export const Ask = ({
   initialSubmitted,
   onSubmit,
 }: AskProps) => {
+  const { t } = useLingui()
   const [state, dispatch] = useReducer(askUiReducer, undefined, () => ({
     selected: new Set(initialSelectedIds),
     submitted: initialSubmitted ?? false,
@@ -138,7 +139,7 @@ export const Ask = ({
     dispatch({ type: 'OPTION_TOGGLED', id, isMultiple })
   }
 
-  const label = isMultiple ? 'Select all that apply' : isGraded ? 'Choose one' : 'Your call'
+  const label = isMultiple ? t`Select all that apply` : isGraded ? t`Choose one` : t`Your call`
 
   return (
     <div className="my-4 w-full">

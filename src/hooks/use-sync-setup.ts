@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { i18n } from '@/i18n'
 import { msg } from '@lingui/core/macro'
 import { useReducer } from 'react'
@@ -108,6 +109,7 @@ export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSet
  * Orchestrates device registration, key generation, and encryption setup flows.
  */
 export const useSyncSetup = () => {
+  const { t } = useLingui()
   const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(reducer, initialState)
 
@@ -146,7 +148,7 @@ export const useSyncSetup = () => {
         })
         return 'error' as const
       }
-      const message = err instanceof Error ? err.message : 'Failed to register device'
+      const message = err instanceof Error ? err.message : t`Failed to register device`
       dispatch({ type: 'SET_ERROR', payload: message })
       return 'error' as const
     }
@@ -174,7 +176,7 @@ export const useSyncSetup = () => {
           return
         }
       }
-      const message = err instanceof Error ? err.message : 'Failed to set up encryption'
+      const message = err instanceof Error ? err.message : t`Failed to set up encryption`
       dispatch({ type: 'SET_ERROR', payload: message })
     }
   }
@@ -236,7 +238,7 @@ export const useSyncSetup = () => {
         dispatch({ type: 'DEVICE_DENIED' })
         return false
       }
-      const message = err instanceof Error ? err.message : 'Failed to check approval'
+      const message = err instanceof Error ? err.message : t`Failed to check approval`
       dispatch({ type: 'SET_APPROVAL_ERROR', payload: message })
       return false
     }

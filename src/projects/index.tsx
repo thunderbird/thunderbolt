@@ -138,7 +138,7 @@ const ProjectsPage = () => {
                 description={
                   term
                     ? undefined
-                    : 'A project keeps your instructions in one place, so every chat inside it starts with the same context.'
+                    : t`A project keeps your instructions in one place, so every chat inside it starts with the same context.`
                 }
                 action={
                   term ? undefined : (

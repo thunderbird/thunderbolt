@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { cn, formatNumber } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
@@ -17,6 +18,8 @@ type ContextUsageIndicatorProps = {
 export const ContextUsageIndicator = ({ usedTokens = 0, maxTokens, className }: ContextUsageIndicatorProps) => {
   const percentage = Math.min((usedTokens / maxTokens) * 100, 100)
   const roundedPercentage = Math.round(percentage)
+  const usedTokensLabel = formatNumber(usedTokens)
+  const maxTokensLabel = formatNumber(maxTokens)
 
   const strokeColor = 'rgb(107 114 128)' // gray-500 - consistent darker gray
 
@@ -64,7 +67,9 @@ export const ContextUsageIndicator = ({ usedTokens = 0, maxTokens, className }: 
           </TooltipTrigger>
           <TooltipContent>
             <p>
-              Using {formatNumber(usedTokens)} of {formatNumber(maxTokens)} Context Window
+              <Trans>
+                Using {usedTokensLabel} of {maxTokensLabel} context window
+              </Trans>
             </p>
           </TooltipContent>
         </Tooltip>

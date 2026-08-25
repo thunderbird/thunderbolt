@@ -73,7 +73,7 @@ export const useMcpServerFormController = ({
   updateLiveServer,
   enrollIroh,
 }: FormControllerOptions) => {
-  const { i18n } = useLingui()
+  const { i18n, t } = useLingui()
   const addPendingRef = useRef(false)
   const { url, isIroh, token, testResult, resolveServerName } = form
   const urlValidation = !isIroh && url ? validateMcpServerUrl(url) : null
@@ -86,7 +86,7 @@ export const useMcpServerFormController = ({
     onError: (error) =>
       dispatch({
         type: 'INTEGRATION_FAILED',
-        error: error instanceof Error ? error.message : 'Failed to update MCP server',
+        error: error instanceof Error ? error.message : t`Failed to update MCP server`,
       }),
   })
   const addMutation = useMutation({
@@ -141,7 +141,7 @@ export const useMcpServerFormController = ({
     onError: (error) =>
       dispatch({
         type: 'INTEGRATION_FAILED',
-        error: error instanceof Error ? error.message : 'Failed to remove MCP server',
+        error: error instanceof Error ? error.message : t`Failed to remove MCP server`,
       }),
   })
 

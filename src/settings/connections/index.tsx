@@ -199,7 +199,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       dispatch({
         type: 'SERVER_FAILED',
         serverId,
-        error: error instanceof Error ? error.message : 'Failed to reconnect MCP server',
+        error: error instanceof Error ? error.message : t`Failed to reconnect MCP server`,
       })
     } finally {
       dispatch({ type: 'RETRY_SETTLED' })

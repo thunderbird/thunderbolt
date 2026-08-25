@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
+import type { I18n } from '@lingui/core'
 import { type ReasoningGroupItem, type ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
@@ -54,16 +57,19 @@ const getToolItemData = (
   return { Icon: metadata.icon || DotIcon, displayName: metadata.displayName, isLoading }
 }
 
+const thinkingLabel = msg`Thinking`
+
 const getItemData = (
   part: ReasoningGroupItem,
   isGroupReasoning: boolean,
+  i18n: I18n,
   mcpTools?: UIMessageMetadata['mcpTools'],
 ): ItemData | null => {
   if (part.type === 'reasoning') {
     const reasoningPart = part.content as ReasoningUIPart
     return {
       Icon: Brain,
-      displayName: 'Thinking',
+      displayName: i18n._(thinkingLabel),
       isLoading: isGroupReasoning && reasoningPart.state === 'streaming',
     }
   }
@@ -76,7 +82,8 @@ const getItemData = (
 }
 
 export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning, mcpTools }: ReasoningItemProps) => {
-  const itemData = getItemData(part, isGroupReasoning, mcpTools)
+  const { i18n } = useLingui()
+  const itemData = getItemData(part, isGroupReasoning, i18n, mcpTools)
 
   if (!itemData) {
     return null

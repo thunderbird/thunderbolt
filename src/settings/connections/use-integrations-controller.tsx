@@ -106,7 +106,7 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
       console.error('Failed to disconnect integration', error)
       dispatch({
         type: 'INTEGRATION_FAILED',
-        error: error instanceof Error ? error.message : 'Failed to disconnect integration',
+        error: error instanceof Error ? error.message : t`Failed to disconnect integration`,
       })
     }
   }
@@ -123,7 +123,7 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
       console.error('Failed to update integration', error)
       dispatch({
         type: 'INTEGRATION_FAILED',
-        error: error instanceof Error ? error.message : 'Failed to update integration',
+        error: error instanceof Error ? error.message : t`Failed to update integration`,
       })
     }
   }

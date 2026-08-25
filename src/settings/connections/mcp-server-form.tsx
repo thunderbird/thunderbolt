@@ -289,8 +289,10 @@ export const McpServerForm = ({
                 <p className="text-[length:var(--font-size-xs)] text-destructive">{i18n._(urlValidation.reason)}</p>
               )}
               <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only
-                if the peer is discoverable).
+                <Trans>
+                  A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works
+                  only if the peer is discoverable).
+                </Trans>
               </p>
             </div>
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import type { HttpClient } from '@/contexts'
 import { docxToHtml } from '@/files/transformers/docx-to-html'
 import { getAttachment } from '@/lib/file-blob-storage'
@@ -44,6 +45,7 @@ const convertDocxIfNeeded = async (blob: Blob, fileType: FileType): Promise<stri
  * identity changing on every render doesn't retrigger the effect.
  */
 const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => Promise<Blob>): DocumentBlobState => {
+  const { t } = useLingui()
   const [state, dispatch] = useReducer(reducer, { status: 'loading' })
   const loadBlobRef = useRef(loadBlob)
   loadBlobRef.current = loadBlob
@@ -70,7 +72,7 @@ const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => P
 
     load().catch((err) => {
       if (!cancelled) {
-        dispatch({ type: 'failed', message: err instanceof Error ? err.message : 'Failed to load document' })
+        dispatch({ type: 'failed', message: err instanceof Error ? err.message : t`Failed to load document` })
       }
     })
 

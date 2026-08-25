@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
+import { i18n } from '@lingui/core'
 import { createContext, useContext, type ReactNode } from 'react'
 import { isTauri, isTauriDesktop } from './platform'
 
@@ -172,12 +174,12 @@ export class TrayManager {
           items: [
             {
               id: 'show',
-              text: 'Show',
+              text: i18n._(msg`Show`),
               action: this.handleShowClick.bind(this),
             },
             {
               id: 'quit',
-              text: 'Quit',
+              text: i18n._(msg`Quit`),
               action: this.handleQuitClick.bind(this),
             },
           ],

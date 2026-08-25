@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -33,6 +33,7 @@ type Status = { kind: 'idle' } | { kind: 'scanning' } | { kind: 'error'; message
  * pairing code or scanning one from an uploaded QR image. Default export for lazy loading.
  */
 const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending }: SetNodeIdDialogProps) => {
+  const { t } = useLingui()
   const [text, setText] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -44,7 +45,7 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
       setText(decoded)
       setStatus({ kind: 'idle' })
     } catch (err) {
-      setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Could not read QR code' })
+      setStatus({ kind: 'error', message: err instanceof Error ? err.message : t`Could not read QR code` })
     }
   }
 
@@ -54,10 +55,10 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
       try {
         await onConfirm(nodeId)
       } catch (err) {
-        setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Could not bind the pairing code' })
+        setStatus({ kind: 'error', message: err instanceof Error ? err.message : t`Could not bind the pairing code` })
       }
     } catch (err) {
-      setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Invalid pairing code' })
+      setStatus({ kind: 'error', message: err instanceof Error ? err.message : t`Invalid pairing code` })
     }
   }
 

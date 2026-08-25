@@ -80,7 +80,7 @@ const isProviderConnected = (
  */
 export const ConnectIntegrationWidget = memo(
   ({ provider, service, reason, messageId, override }: ConnectIntegrationWidgetProps) => {
-    const { i18n } = useLingui()
+    const { i18n, t } = useLingui()
     const location = useLocation()
     const navigate = useNavigate()
     const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
@@ -237,7 +237,9 @@ export const ConnectIntegrationWidget = memo(
           <CardContent className="p-6 flex flex-col min-h-[400px]">
             <div className="flex flex-col items-center space-y-4 flex-1">
               <div className="text-center space-y-2">
-                <h3 className="text-lg font-semibold">Choose your email provider {displayReason}</h3>
+                <h3 className="text-lg font-semibold">
+                  <Trans>Choose your email provider {displayReason}</Trans>
+                </h3>
               </div>
 
               <div className="w-full grid grid-cols-2 gap-3">
@@ -253,7 +255,7 @@ export const ConnectIntegrationWidget = memo(
                   </div>
                   <span className="text-sm font-medium">Google</span>
                   <span className="text-xs text-muted-foreground">
-                    {service === 'email' ? 'Gmail' : service === 'calendar' ? 'Calendar' : 'Gmail & Calendar'}
+                    {service === 'email' ? 'Gmail' : service === 'calendar' ? t`Calendar` : t`Gmail & Calendar`}
                   </span>
                 </button>
 
@@ -269,7 +271,7 @@ export const ConnectIntegrationWidget = memo(
                   </div>
                   <span className="text-sm font-medium">Microsoft</span>
                   <span className="text-xs text-muted-foreground">
-                    {service === 'email' ? 'Outlook' : service === 'calendar' ? 'Calendar' : 'Outlook & Calendar'}
+                    {service === 'email' ? 'Outlook' : service === 'calendar' ? t`Calendar` : t`Outlook & Calendar`}
                   </span>
                 </button>
               </div>

@@ -60,7 +60,7 @@ const DropRow = ({ dropId, label, icon, isDragging, isCurrent, isActive, onClick
         <span className="truncate">{label}</span>
         {isDragging && !isCurrent && (
           <span className="ml-auto text-[length:var(--font-size-xs)] text-muted-foreground">
-            {isOver ? 'Drop' : ''}
+            {isOver ? t`Drop` : ''}
           </span>
         )}
       </SidebarMenuButton>

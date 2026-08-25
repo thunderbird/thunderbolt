@@ -252,7 +252,7 @@ export const ChatSidebarContent = ({
         {draggingChat && (
           <div className="pointer-events-none flex max-w-[15rem] items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
             <MessageCircle className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="truncate text-[length:var(--font-size-sm)]">{draggingChat.title ?? 'Untitled chat'}</span>
+            <span className="truncate text-[length:var(--font-size-sm)]">{draggingChat.title ?? t`Untitled chat`}</span>
           </div>
         )}
       </DragOverlay>

@@ -130,23 +130,27 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }
 const DefaultTrigger = <T,>({
   selected,
   isOpen,
-  placeholder = 'Select...',
+  placeholder,
 }: {
   selected: SearchableMenuItem<T> | undefined
   isOpen: boolean
   placeholder?: string
-}) => (
-  <div
-    className={cn(
-      'flex items-center gap-2 px-3 py-1 rounded-xl cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
-      isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
-    )}
-  >
-    {selected?.icon}
-    <span className="font-medium">{selected?.label ?? placeholder}</span>
-    <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
-  </div>
-)
+}) => {
+  const { t } = useLingui()
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 px-3 py-1 rounded-xl cursor-pointer transition-colors text-[length:var(--font-size-body)] border',
+        isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+      )}
+    >
+      {selected?.icon}
+      <span className="font-medium">{selected?.label ?? placeholder ?? t`Select...`}</span>
+      <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
+    </div>
+  )
+}
 
 export const SearchableMenu = <T,>({
   items,

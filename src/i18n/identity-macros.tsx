@@ -25,6 +25,15 @@
 
 import { i18n } from '@lingui/core'
 import type { ReactNode } from 'react'
+import { sourceLocale } from '@shared/i18n/locales'
+
+// `i18n._` throws without an active locale. Consumers of this module (bun tests,
+// `bun run` entrypoints) may never import `src/i18n`, which is what activates the
+// singleton in the browser — so activate it here for anything resolving a
+// `msg` descriptor through the identity `useLingui`.
+if (!i18n.locale) {
+  i18n.loadAndActivate({ locale: sourceLocale, messages: {} })
+}
 
 const pluralRules = new Intl.PluralRules('en')
 
@@ -76,5 +85,5 @@ export const t = identityT
 export const msg = identityT
 export const defineMessage = identityT
 
-/** Identity `useLingui`: the shared runtime i18n (activated as `en` in src/i18n) plus the identity `t`. */
+/** Identity `useLingui`: the shared runtime i18n (activated above) plus the identity `t`. */
 export const useLingui = () => ({ t: identityT, i18n })

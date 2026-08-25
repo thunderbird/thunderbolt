@@ -202,8 +202,10 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
               <Trans>Approve CLI sign-in?</Trans>
             </DialogTitle>
             <DialogDescription className="text-center">
-              A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this
-              from your own terminal.
+              <Trans>
+                A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this
+                from your own terminal.
+              </Trans>
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4 py-4">

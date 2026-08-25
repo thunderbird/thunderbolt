@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { createModel } from '@/ai/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
@@ -122,6 +123,7 @@ const defaultProbe: ConnectionTestProbe = async (config, getProxyFetch, signal) 
  * `generateText` request both surface as a timeout error.
  */
 export const useModelConnectionTest = (current: ModelConnectionConfig, probe: ConnectionTestProbe = defaultProbe) => {
+  const { t } = useLingui()
   const getProxyFetch = useProxyFetchGetter()
   const [state, dispatch] = useReducer(reducer, initialState)
   const runIdRef = useRef(0)
@@ -156,7 +158,7 @@ export const useModelConnectionTest = (current: ModelConnectionConfig, probe: Co
         dispatch({
           type: 'FAILURE',
           tested,
-          error: err instanceof Error ? err.message : 'Failed to connect to model',
+          error: err instanceof Error ? err.message : t`Failed to connect to model`,
         })
       }
     },

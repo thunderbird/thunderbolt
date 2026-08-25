@@ -17,7 +17,7 @@ type LocationSearchComboboxProps = Omit<ComponentPropsWithoutRef<'button'>, 'val
 export const LocationSearchCombobox = ({
   value,
   onSelect,
-  placeholder = 'Select location...',
+  placeholder,
   autoOpen = false,
   className,
   disabled,
@@ -44,14 +44,14 @@ export const LocationSearchCombobox = ({
       items={items}
       onValueChange={handleValueChange}
       displayValue={value || undefined}
-      placeholder={placeholder}
+      placeholder={placeholder ?? t`Select location...`}
       searchPlaceholder={t`Search locations...`}
       searchValue={locationSearch.searchQuery}
       onSearchChange={locationSearch.setSearchQuery}
       loading={locationSearch.searchQuery.trim().length > 0 && (locationSearch.isSearching || locationSearch.isPending)}
       emptyMessage={
         locationSearch.searchQuery.trim().length > 0 && locationSearch.locations.length === 0
-          ? 'No locations found.'
+          ? t`No locations found.`
           : ''
       }
       open={locationSearch.open}

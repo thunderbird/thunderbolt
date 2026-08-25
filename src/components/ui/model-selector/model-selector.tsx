@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
+import type { I18n } from '@lingui/core'
 import {
   SearchableMenu,
   searchableMenuRowClass,
@@ -53,9 +55,13 @@ const toMenuItem = (
   data: { model, disabledByEncryption },
 })
 
+const disabledStandardLabel = msg`Not available in private chats.`
+const disabledConfidentialLabel = msg`Only available in private chats.`
+
 export const categorizeModels = (
   models: Model[],
   chatThread: ModelSelectorProps['chatThread'],
+  i18n: I18n,
 ): SearchableMenuGroup<ModelItemData>[] => {
   // Custom and built-in models share one group — the selector only splits by
   // confidentiality (available vs the greyed-out opposite-mode section below).
@@ -90,14 +96,14 @@ export const categorizeModels = (
   if (disabledStandard.length > 0) {
     groups.push({
       id: 'standard-disabled',
-      label: 'Not available in private chats.',
+      label: i18n._(disabledStandardLabel),
       items: disabledStandard,
     })
   }
   if (disabledConfidential.length > 0) {
     groups.push({
       id: 'confidential-disabled',
-      label: 'Only available in private chats.',
+      label: i18n._(disabledConfidentialLabel),
       items: disabledConfidential,
     })
   }
@@ -115,8 +121,8 @@ export const ModelSelector = ({
   align,
   variant = 'pill',
 }: ModelSelectorProps) => {
-  const { t } = useLingui()
-  const groupedItems = useMemo(() => categorizeModels(models, chatThread), [models, chatThread])
+  const { t, i18n } = useLingui()
+  const groupedItems = useMemo(() => categorizeModels(models, chatThread, i18n), [models, chatThread, i18n])
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
@@ -140,7 +146,7 @@ export const ModelSelector = ({
       ) : null}
       {/* Muted in both variants — trigger labels are chrome, not content.
           Truncates instead of wrapping when the composer gets narrow. */}
-      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? 'Select model'}</span>
+      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? t`Select model`}</span>
       <ChevronDown
         className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
       />
@@ -178,7 +184,7 @@ export const ModelSelector = ({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>{content}</TooltipTrigger>
-            <TooltipContent side="right">API key not configured</TooltipContent>
+            <TooltipContent side="right">{t`API key not configured`}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )

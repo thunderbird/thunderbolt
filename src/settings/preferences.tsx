@@ -203,8 +203,8 @@ export default function PreferencesSettingsPage() {
   )
   const proxyDisabled = !runningInTauri || !isAuthenticated
   const proxyTooltipReason = !runningInTauri
-    ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
-    : 'Sign in to enable cloud proxy.'
+    ? t`Proxying is required in the web app to bypass browser CORS restrictions.`
+    : t`Sign in to enable cloud proxy.`
   const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
 
   const { fetchCountryUnits } = useCountryUnits()
@@ -435,7 +435,12 @@ export default function PreferencesSettingsPage() {
       console.error('Failed to read import file:', error)
       dispatch({
         type: 'SET_IMPORT_ERROR',
-        payload: error instanceof Error ? error.message : 'Could not read the import file.',
+        payload:
+          error instanceof ImportFormatError
+            ? t`This file doesn't look like a Thunderbolt export.`
+            : error instanceof Error
+              ? error.message
+              : t`Could not read the import file.`,
       })
     }
   }
@@ -446,7 +451,7 @@ export default function PreferencesSettingsPage() {
     }
     const userId = session?.user?.id
     if (!userId) {
-      dispatch({ type: 'SET_IMPORT_ERROR', payload: 'You must be signed in to import data.' })
+      dispatch({ type: 'SET_IMPORT_ERROR', payload: t`You must be signed in to import data.` })
       return
     }
     dispatch({ type: 'SET_IS_IMPORTING', payload: true })
@@ -464,7 +469,7 @@ export default function PreferencesSettingsPage() {
       console.error('Failed to import data:', error)
       dispatch({
         type: 'SET_IMPORT_ERROR',
-        payload: error instanceof Error ? error.message : 'Failed to import data.',
+        payload: error instanceof Error ? error.message : t`Failed to import data.`,
       })
     } finally {
       dispatch({ type: 'SET_IS_IMPORTING', payload: false })
@@ -496,7 +501,7 @@ export default function PreferencesSettingsPage() {
       console.error('Failed to export data:', error)
       dispatch({
         type: 'SET_EXPORT_ERROR',
-        payload: error instanceof Error ? error.message : 'Failed to export data.',
+        payload: error instanceof Error ? error.message : t`Failed to export data.`,
       })
     } finally {
       dispatch({ type: 'SET_IS_EXPORTING', payload: false })
@@ -525,7 +530,7 @@ export default function PreferencesSettingsPage() {
       window.location.reload()
     } catch (error) {
       console.error('Failed to delete account:', error)
-      setDeleteAccountError(error instanceof Error ? error.message : 'Failed to delete account.')
+      setDeleteAccountError(error instanceof Error ? error.message : t`Failed to delete account.`)
     } finally {
       dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: false })
     }
@@ -599,7 +604,9 @@ export default function PreferencesSettingsPage() {
       <SectionCard title={t`User Experience`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium">Theme</label>
+            <label className="text-sm font-medium">
+              <Trans>Theme</Trans>
+            </label>
             <ThemeToggleGroup />
           </div>
 
@@ -660,7 +667,9 @@ export default function PreferencesSettingsPage() {
                 }
               }}
             />
-            <p className="text-sm text-muted-foreground">How Thunderbolt salutes you</p>
+            <p className="text-sm text-muted-foreground">
+              <Trans>How Thunderbolt salutes you</Trans>
+            </p>
           </div>
         </div>
       </SectionCard>
@@ -899,7 +908,9 @@ export default function PreferencesSettingsPage() {
       <SectionCard title={t`Help Thunderbolt Improve`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
-            <label className="text-sm font-medium">Preview Features</label>
+            <label className="text-sm font-medium">
+              <Trans>Preview Features</Trans>
+            </label>
 
             <div className="flex-row flex items-center gap-4">
               <div className="flex-1">
@@ -1028,7 +1039,9 @@ export default function PreferencesSettingsPage() {
           {isFullUser ? (
             <div className="flex-row flex items-center gap-4 justify-between">
               <div>
-                <label className="text-sm font-medium">Sync This Device With Cloud</label>
+                <label className="text-sm font-medium">
+                  <Trans>Sync This Device With Cloud</Trans>
+                </label>
               </div>
               <Switch
                 checked={syncEnabled}
@@ -1072,7 +1085,7 @@ export default function PreferencesSettingsPage() {
                   aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
                   onClick={handleExportData}
                 >
-                  {isExporting ? 'Exporting...' : 'Export My Data'}
+                  {isExporting ? t`Exporting...` : t`Export My Data`}
                 </Button>
               </div>
 
@@ -1116,7 +1129,7 @@ export default function PreferencesSettingsPage() {
                   }
                   onClick={handleImportClick}
                 >
-                  {isImporting ? 'Importing...' : 'Import Data'}
+                  {isImporting ? t`Importing...` : t`Import Data`}
                 </Button>
               </div>
             </>
@@ -1127,13 +1140,15 @@ export default function PreferencesSettingsPage() {
               <div className="h-px bg-border -mx-6" />
 
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Delete All Local Data</label>
+                <label className="text-sm font-medium">
+                  <Trans>Delete All Local Data</Trans>
+                </label>
                 <Button
                   variant="secondary"
                   disabled={isResetting}
                   onClick={() => dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: true })}
                 >
-                  {isResetting ? 'Resetting...' : 'Reset Database'}
+                  {isResetting ? t`Resetting...` : t`Reset Database`}
                 </Button>
                 <ConfirmActionDialog
                   open={resetDialogOpen}
@@ -1156,7 +1171,9 @@ export default function PreferencesSettingsPage() {
               <div className="h-px bg-border -mx-6" />
 
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Delete Your Account</label>
+                <label className="text-sm font-medium">
+                  <Trans>Delete Your Account</Trans>
+                </label>
                 <p className="text-sm text-muted-foreground">
                   <Trans>Permanently delete your account and all data on our servers and this device.</Trans>
                 </p>
@@ -1172,7 +1189,7 @@ export default function PreferencesSettingsPage() {
                   disabled={isDeletingAccount}
                   onClick={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: true })}
                 >
-                  {isDeletingAccount ? 'Deleting...' : 'Delete My Account'}
+                  {isDeletingAccount ? t`Deleting...` : t`Delete My Account`}
                 </Button>
                 <ConfirmActionDialog
                   open={deleteAccountDialogOpen}
@@ -1260,7 +1277,7 @@ export default function PreferencesSettingsPage() {
               aria-busy={isImporting}
               variant="destructive"
             >
-              {isImporting ? 'Importing...' : 'Import'}
+              {isImporting ? t`Importing...` : t`Import`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

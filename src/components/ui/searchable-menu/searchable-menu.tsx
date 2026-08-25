@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { Input } from '@/components/ui/input'
 import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { edgeSpacing } from '@/lib/constants'
@@ -152,9 +153,9 @@ export const SearchableMenu = <T,>({
   value,
   onValueChange,
   searchable = true,
-  searchPlaceholder = 'Search...',
-  emptyMessage = 'No items found',
-  mobileTitle = 'Choose an option',
+  searchPlaceholder: searchPlaceholderProp,
+  emptyMessage: emptyMessageProp,
+  mobileTitle: mobileTitleProp,
   mobileSide = 'bottom',
   trigger,
   renderItem,
@@ -167,7 +168,11 @@ export const SearchableMenu = <T,>({
   side,
   maxHeight = 300,
 }: SearchableMenuProps<T>) => {
+  const { t } = useLingui()
   const [internalOpen, setInternalOpen] = useState(false)
+  const searchPlaceholder = searchPlaceholderProp ?? t`Search...`
+  const emptyMessage = emptyMessageProp ?? t`No items found`
+  const mobileTitle = mobileTitleProp ?? t`Choose an option`
   const [searchQuery, setSearchQuery] = useState('')
 
   const isControlled = controlledOpen !== undefined

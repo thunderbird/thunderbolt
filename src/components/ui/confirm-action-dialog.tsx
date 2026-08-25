@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { MobileActionSheet, MobileActionSheetFooter } from '@/components/ui/mobile-action-sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useLingui } from '@lingui/react/macro'
 
 type ConfirmActionDialogProps = {
   open: boolean
@@ -42,12 +43,16 @@ export const ConfirmActionDialog = ({
   title,
   description,
   confirmLabel,
-  cancelLabel = 'Cancel',
+  cancelLabel,
   isPending = false,
   onConfirm,
   onCancel,
 }: ConfirmActionDialogProps) => {
+  const { t } = useLingui()
   const { isMobile } = useIsMobile()
+  // Default resolved in the body, not the signature: a parameter default is
+  // evaluated at module scope where `t` would freeze at the boot locale.
+  const cancelText = cancelLabel ?? t`Cancel`
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
 
   if (isMobile) {
@@ -66,7 +71,7 @@ export const ConfirmActionDialog = ({
       >
         <MobileActionSheetFooter>
           <Button ref={cancelButtonRef} variant="outline" onClick={onCancel}>
-            {cancelLabel}
+            {cancelText}
           </Button>
           <Button variant="destructive" isLoading={isPending} onClick={onConfirm}>
             {confirmLabel}
@@ -86,7 +91,7 @@ export const ConfirmActionDialog = ({
         <AlertDialogFooter>
           {/* Radix's Cancel closes the dialog itself; onCancel arrives once
               via onOpenChange(false), so no onClick here. */}
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel>{cancelText}</AlertDialogCancel>
           <Button variant="destructive" isLoading={isPending} onClick={onConfirm}>
             {confirmLabel}
           </Button>

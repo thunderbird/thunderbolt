@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -73,12 +74,16 @@ export const ModificationIndicator = ({
   as: Component = 'span',
   className = '',
   id,
-  customMessage = "You've customized this setting.",
-  confirmMessage = 'Are you sure? You will lose any changes that you made.',
-  ariaLabel = 'Modified item',
+  customMessage: customMessageProp,
+  confirmMessage: confirmMessageProp,
+  ariaLabel: ariaLabelProp,
   requireConfirmation = false,
 }: ModificationIndicatorProps) => {
+  const { t } = useLingui()
   const [isPopoverOpen, setIsPopoverOpen] = useState(false)
+  const customMessage = customMessageProp ?? t`You've customized this setting.`
+  const confirmMessage = confirmMessageProp ?? t`Are you sure? You will lose any changes that you made.`
+  const ariaLabel = ariaLabelProp ?? t`Modified item`
   const [showConfirmation, setShowConfirmation] = useState(false)
 
   const handleResetClick = () => {

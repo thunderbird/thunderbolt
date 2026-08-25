@@ -17,12 +17,12 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import {
   createInferenceAttemptTracker,
   getInferenceClient,
+  logInferenceSafely,
   runWithInferenceAttemptTracking,
   type InferenceClient,
   type InferenceLogger,
   type InferenceProxyLatencyLog,
   type InferenceProvider,
-  type InferenceUsageLog,
 } from './client'
 import {
   checkInferenceQuota,
@@ -46,7 +46,7 @@ const sanitizeMessageRoles = (messages: Message[]): Message[] =>
 type ModelConfig = {
   provider: 'anthropic' | 'tinfoil'
   internalName: string
-  supportsStreamUsage: true
+  supportsStreamUsage: boolean
   /** Whether to omit `temperature` from the upstream payload. */
   omitTemperature?: boolean
 }
@@ -88,19 +88,6 @@ const getApiErrorMetadata = (error: unknown) => {
     errorType: apiError?.type,
     errorCode: apiError?.code ?? undefined,
     requestId: apiError?.requestID ?? undefined,
-  }
-}
-
-/** Emit successful usage telemetry without allowing the logger to alter accounting control flow. */
-const logInferenceUsageSafely = (
-  logger: InferenceLogger | undefined,
-  context: InferenceUsageLog,
-  message: string,
-): void => {
-  try {
-    logger?.info(context, message)
-  } catch {
-    // Usage persistence must not depend on telemetry availability.
   }
 }
 
@@ -216,7 +203,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
 
         const stream = createSSEStreamFromCompletion(completion, {
           onUsage: async (counts) => {
-            logInferenceUsageSafely(
+            logInferenceSafely(
               logger,
               {
                 event: 'inference_usage_completed',
@@ -233,7 +220,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
               counts,
               price,
             })
-            logInferenceUsageSafely(
+            logInferenceSafely(
               logger,
               {
                 event: 'inference_usage_inserted',

@@ -34,7 +34,7 @@ export type InferenceQuotaDecision =
       sevenDaySpentNanoUsd: bigint
       limits: InferenceQuotaLimits
     }>
-export type InferenceDatabase = Pick<typeof db, 'execute' | 'insert' | 'select'>
+export type InferenceDatabase = Pick<typeof db, 'insert' | 'select'>
 export type RecordInferenceUsageInput = Readonly<{
   id: string
   userId: string

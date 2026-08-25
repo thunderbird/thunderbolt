@@ -78,6 +78,19 @@ export type InferenceLogger = {
   info: (context: InferenceLogContext, message: string) => void
 }
 
+/** Emit usage telemetry without allowing logger failures to alter accounting control flow. */
+export const logInferenceSafely = (
+  logger: InferenceLogger | undefined,
+  context: InferenceUsageLog,
+  message: string,
+): void => {
+  try {
+    logger?.info(context, message)
+  } catch {
+    // Inference behavior must not depend on usage telemetry availability.
+  }
+}
+
 export type InferenceClientOptions = {
   fetchFn?: typeof fetch
   logger?: InferenceLogger

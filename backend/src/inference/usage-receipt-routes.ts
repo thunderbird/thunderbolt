@@ -8,7 +8,7 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import type { InferenceUsageReceiptRequest } from '@shared/inference-usage'
 import { Elysia, type AnyElysia } from 'elysia'
 import { z } from 'zod'
-import type { InferenceLogger } from './client'
+import { logInferenceSafely, type InferenceLogger } from './client'
 import { verifyInferenceUsageReceipt } from './usage-receipt'
 import {
   InferenceCostOverflowError,
@@ -39,22 +39,6 @@ const parseReceiptRequest = async (request: Request): Promise<InferenceUsageRece
     return parsed.success ? parsed.data : null
   } catch {
     return null
-  }
-}
-
-/** Emit only the receipt event identity and persistence outcome without affecting the response. */
-const logReceiptOutcomeSafely = (
-  logger: InferenceLogger | undefined,
-  eventId: string,
-  outcome: 'inserted' | 'duplicate',
-): void => {
-  try {
-    logger?.info(
-      { event: 'inference_usage_inserted', provider: 'tinfoil', model: 'glm-5-2', eventId, outcome },
-      'Inference usage receipt stored',
-    )
-  } catch {
-    // Persistence responses must not depend on telemetry availability.
   }
 }
 
@@ -100,7 +84,17 @@ export const createInferenceUsageReceiptRoutes = (options: ReceiptRouteOptions):
               outputNanoUsdPerToken: BigInt(claims.outputNanoUsdPerToken),
             },
           })
-          logReceiptOutcomeSafely(logger, claims.eventId, outcome)
+          logInferenceSafely(
+            logger,
+            {
+              event: 'inference_usage_inserted',
+              provider: 'tinfoil',
+              model: 'glm-5-2',
+              eventId: claims.eventId,
+              outcome,
+            },
+            'Inference usage receipt stored',
+          )
           return emptyResponse(204)
         } catch (error) {
           if (error instanceof InferenceTokenCountOutOfRangeError || error instanceof InferenceCostOverflowError) {

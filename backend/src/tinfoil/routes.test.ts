@@ -475,10 +475,24 @@ describe('createTinfoilRoutes', () => {
       },
     )
 
+    it('classifies a percent-encoded equivalent pathname while preserving its URL bytes and query', async () => {
+      const response = await buildApp().handle(
+        new Request('http://localhost/tinfoil/v1/%63hat/completions?stream=true', {
+          method: 'POST',
+          body: 'opaque-bytes',
+        }),
+      )
+
+      expect(response.headers.get(inferenceUsageReceiptHeader)).toMatch(/^iu1\./)
+      expect(mockFetch.mock.calls[0]?.[0]).toBe('https://inference.tinfoil.sh/v1/%63hat/completions?stream=true')
+      await response.arrayBuffer()
+    })
+
     it.each([
       ['GET', '/v1/chat/completions'],
       ['OPTIONS', '/v1/chat/completions'],
       ['POST', '/v1/chat/completions/'],
+      ['POST', '/v1/%63hat/completions%'],
       ['POST', '/v1/chat/completion'],
       ['POST', '/v1/chat/completions-extra'],
       ['POST', '/chat/completions'],
@@ -489,7 +503,6 @@ describe('createTinfoilRoutes', () => {
     ] as const)('does not apply managed policy to %s %s', async (method, path) => {
       let policySelectCalls = 0
       const countingDatabase: InferenceDatabase = {
-        execute: database.execute,
         insert: database.insert,
         select: ((fields) => {
           policySelectCalls += 1
@@ -1429,7 +1442,6 @@ describe('createTinfoilRoutes', () => {
     it('returns 401 before managed policy for an unauthenticated exact chat request', async () => {
       let policySelectCalls = 0
       const countingDatabase: InferenceDatabase = {
-        execute: database.execute,
         insert: database.insert,
         select: ((fields) => {
           policySelectCalls += 1

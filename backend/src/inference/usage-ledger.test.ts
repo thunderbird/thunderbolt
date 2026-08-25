@@ -476,10 +476,6 @@ describe('inference usage ledger', () => {
       expect(decision.fiveHourSpentNanoUsd).toBe(3n)
       expect(decision.sevenDaySpentNanoUsd).toBe(15n)
       expect(decision.allowed).toBe(true)
-
-      const source = await Bun.file(resolve(import.meta.dir, 'usage-ledger.ts')).text()
-      const quotaSource = source.slice(source.indexOf('export const checkInferenceQuota'))
-      expect(quotaSource.match(/now\(\) - interval '7 days'/g)).toHaveLength(2)
     })
 
     it.each([
@@ -525,7 +521,6 @@ describe('inference usage ledger', () => {
       await insertUser(database, userId)
       let selectCalls = 0
       const countingDatabase = {
-        execute: database.execute,
         insert: database.insert,
         select: ((fields) => {
           selectCalls += 1

@@ -21,6 +21,7 @@ export type ReceiptStep = Readonly<{
 export const isSystemGlmModel = (model: ReceiptModel): boolean =>
   model.provider === 'tinfoil' && model.model === 'glm-5-2' && model.isSystem === 1
 
+/** Check whether an optional token count is a nonnegative JavaScript safe integer. */
 const isNonnegativeSafeInteger = (value: number | undefined): value is number =>
   Number.isSafeInteger(value) && value !== undefined && value >= 0
 

@@ -6,7 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { errorKindFromStatus } from '@/inference/error-kind'
-import type { InferenceLogger } from '@/inference/client'
+import { logInferenceSafely, type InferenceLogger } from '@/inference/client'
 import { createPriceUnavailableResponse, createQuotaExceededResponse } from '@/inference/usage-responses'
 import {
   checkInferenceQuota,
@@ -75,6 +75,15 @@ const errorCauseIncludes = (error: unknown, target: unknown): boolean =>
 const isClientAbortError = (error: unknown, requestSignal: AbortSignal): boolean =>
   requestSignal.aborted ||
   (error instanceof Error && error.name === 'AbortError' && errorCauseIncludes(error, requestSignal))
+
+/** Decode percent escapes only for managed-policy path comparison. */
+const decodePolicyPathname = (pathname: string): string => {
+  try {
+    return decodeURIComponent(pathname)
+  } catch {
+    return pathname
+  }
+}
 
 /** Resolve an optional ATC-assigned enclave origin, applying the configured API path prefix. */
 const resolveEnclaveUrl = (
@@ -216,7 +225,8 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     upstreamOriginStore.record(upstreamUrl)
 
     let receipt: { eventId: string; token: string } | null = null
-    const isManagedGlmChat = method === 'POST' && new URL(upstreamUrl).pathname === '/v1/chat/completions'
+    const isManagedGlmChat =
+      method === 'POST' && decodePolicyPathname(new URL(upstreamUrl).pathname) === '/v1/chat/completions'
     if (isManagedGlmChat) {
       const price = await loadInferencePrice(database, { provider: 'tinfoil', model: 'glm-5-2' })
       if (!price) {
@@ -294,20 +304,17 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       ])
       if (upstream.ok && receipt) {
         responseHeaders.set(inferenceUsageReceiptHeader, receipt.token)
-        try {
-          usageLogger?.info(
-            {
-              event: 'inference_usage_receipt_issued',
-              provider: 'tinfoil',
-              model: 'glm-5-2',
-              eventId: receipt.eventId,
-              route,
-            },
-            'Inference usage receipt issued',
-          )
-        } catch {
-          // Successful inference responses do not depend on telemetry availability.
-        }
+        logInferenceSafely(
+          usageLogger,
+          {
+            event: 'inference_usage_receipt_issued',
+            provider: 'tinfoil',
+            model: 'glm-5-2',
+            eventId: receipt.eventId,
+            route,
+          },
+          'Inference usage receipt issued',
+        )
       }
 
       const responseBody = upstream.body

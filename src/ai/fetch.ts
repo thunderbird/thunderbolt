@@ -811,7 +811,7 @@ export const aiFetchStreamingResponse = async ({
           try {
             await submitGlmStepUsageReceipt({ model, step, httpClient })
           } catch {
-            return
+            // Receipt submission failures must not interrupt the chat stream.
           }
         },
         onError: () => undefined,

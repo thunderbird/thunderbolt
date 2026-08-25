@@ -814,10 +814,15 @@ export const aiFetchStreamingResponse = async ({
             // Receipt submission failures must not interrupt the chat stream.
           }
         },
-        onError: () => undefined,
+        onError: () => {
+          console.error('streamText error')
+        },
 
         // Handle malformed tool calls from models with weaker tool-calling capabilities
-        experimental_repairToolCall: async () => null,
+        experimental_repairToolCall: async () => {
+          console.warn('Tool call failed validation, skipping')
+          return null
+        },
       })
     }
 

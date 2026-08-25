@@ -918,6 +918,7 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
 
       await pumpClockUntil(() => responseState.settled)
 
+      expect(consoleSpies.error).toHaveBeenCalledWith('streamText error')
       expect(serializeConsoleCalls(consoleSpies)).not.toContain(privateError)
     } finally {
       consoleSpies.restore()
@@ -925,7 +926,8 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
     }
   })
 
-  it('does not write raw invalid tool arguments or validation messages to console callbacks', async () => {
+  it('does not write provider-controlled tool names, arguments, or validation messages to console callbacks', async () => {
+    const privateToolName = 'PRIVATE_TOOL_NAME_FROM_PROMPT'
     const privateToolArguments = 'PRIVATE_TOOL_ARGUMENTS'
     const upstreamState = { requests: 0 }
     const systemClient = {
@@ -946,7 +948,7 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
                       {
                         index: 0,
                         id: 'invalid-skill-call',
-                        function: { name: 'skill', arguments: privateToolArguments },
+                        function: { name: privateToolName, arguments: privateToolArguments },
                       },
                     ],
                   },
@@ -986,7 +988,10 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
 
       await pumpClockUntil(() => responseState.settled)
 
-      expect(serializeConsoleCalls(consoleSpies)).not.toContain(privateToolArguments)
+      expect(consoleSpies.warn).toHaveBeenCalledWith('Tool call failed validation, skipping')
+      const serializedConsoleCalls = serializeConsoleCalls(consoleSpies)
+      expect(serializedConsoleCalls).not.toContain(privateToolName)
+      expect(serializedConsoleCalls).not.toContain(privateToolArguments)
     } finally {
       consoleSpies.restore()
       getSystemClient.mockRestore()

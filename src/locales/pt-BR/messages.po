@@ -28,12 +28,24 @@ msgid_plural "# chats"
 msgstr[0] ""
 msgstr[1] ""
 
+#: src/layout/sidebar/project-drop-list.tsx
+msgid "{label} — already in this project"
+msgstr ""
+
 #: src/components/chat/artifact-message-part.tsx
 msgid "{title} — shown in side panel"
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "Account menu"
+msgstr ""
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Action"
+msgstr ""
+
+#: src/search/palette/search-palette.tsx
+msgid "Actions"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -50,6 +62,20 @@ msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 msgid "Add to chat"
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/palette/entity-meta.ts
+msgid "Agents"
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+msgid "All agents"
+msgstr ""
+
+#: src/layout/sidebar/project-drop-list.tsx
+msgid "All projects"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -104,7 +130,21 @@ msgstr ""
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/components/ui/confirm-action-dialog.tsx
+#: src/layout/sidebar/rename-chat-dialog.tsx
 msgid "Cancel"
+msgstr ""
+
+#: src/layout/sidebar/chat-list-item.tsx
+msgid "Chat actions"
+msgstr ""
+
+#: src/layout/sidebar/rename-chat-dialog.tsx
+msgid "Chat name"
+msgstr ""
+
+#: src/layout/sidebar/nav-toggle.tsx
+#: src/search/palette/entity-meta.ts
+msgid "Chats"
 msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
@@ -118,6 +158,12 @@ msgstr ""
 
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Choose an option"
+msgstr ""
+
+#: src/layout/sidebar/chat-actions.tsx
+#: src/layout/sidebar/chat-list.tsx
+#: src/search/commands/use-commands.ts
+msgid "Clear all chats"
 msgstr ""
 
 #: src/components/ui/search-input.tsx
@@ -134,6 +180,14 @@ msgstr ""
 
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Close navigation"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+msgid "Cloud Sync"
+msgstr ""
+
+#: src/layout/sidebar/sidebar-header.tsx
+msgid "Collapse Sidebar"
 msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
@@ -156,6 +210,10 @@ msgstr ""
 msgid "Connect {providerName}"
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "Connected"
+msgstr ""
+
 #: src/components/connect-provider-button.tsx
 msgid "Connected!"
 msgstr ""
@@ -165,6 +223,7 @@ msgid "Connecting to {agentName}..."
 msgstr ""
 
 #: src/components/connect-provider-button.tsx
+#: src/components/sidebar-footer.tsx
 msgid "Connecting..."
 msgstr ""
 
@@ -177,6 +236,9 @@ msgid "Connection problem. Check your internet and try again."
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/search/palette/entity-meta.ts
 msgid "Connections"
 msgstr ""
 
@@ -222,7 +284,20 @@ msgstr ""
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 msgstr ""
 
+#: src/search/palette/search-palette.tsx
+msgid "Create"
+msgstr ""
+
+#: src/search/commands/create-commands.ts
+msgid "Create Agent"
+msgstr ""
+
+#: src/search/commands/create-commands.ts
+msgid "Create Model"
+msgstr ""
+
 #: src/components/create-item/context.tsx
+#: src/search/commands/create-commands.ts
 msgid "Create Skill"
 msgstr ""
 
@@ -232,11 +307,23 @@ msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 #: src/components/ui/chat-nav-button.tsx
+#: src/layout/sidebar/chat-list-item.tsx
 msgid "Delete"
 msgstr ""
 
 #: src/components/ui/chat-nav-button.tsx
 msgid "Delete the thread?"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+#: src/search/commands/navigation.ts
+msgid "Dev Settings"
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/search/palette/entity-meta.ts
+msgid "Devices"
 msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
@@ -246,6 +333,14 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 #: src/components/ui/mobile-blur-backdrop.tsx
 msgid "Dismiss"
+msgstr ""
+
+#: src/search/commands/use-commands.ts
+msgid "Download app"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+msgid "Download App"
 msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
@@ -276,6 +371,10 @@ msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Email address"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+msgid "Enable cloud sync"
 msgstr ""
 
 #: src/components/sign-in-modal.tsx
@@ -315,6 +414,10 @@ msgstr ""
 msgid "Go forward"
 msgstr ""
 
+#: src/search/palette/search-palette.tsx
+msgid "Go to"
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
 msgstr ""
@@ -335,8 +438,16 @@ msgstr ""
 msgid "Invalid verification link. Please request a new one."
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "Just synced"
+msgstr ""
+
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+msgid "Keep your data synced across devices."
 msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
@@ -347,12 +458,35 @@ msgstr ""
 msgid "Leave without saving?"
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "Loading..."
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
 msgstr ""
 
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Location is required."
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+msgid "Log out"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+#: src/search/commands/navigation.ts
+msgid "Message Simulator"
+msgstr ""
+
+#: src/search/palette/entity-meta.ts
+msgid "Messages"
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/search/palette/entity-meta.ts
+msgid "Models"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
@@ -363,6 +497,11 @@ msgstr ""
 msgid "Move file"
 msgstr ""
 
+#: src/layout/sidebar/chat-list-item.tsx
+#: src/layout/sidebar/project-drop-list.tsx
+msgid "Move to project"
+msgstr ""
+
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Name is required."
 msgstr ""
@@ -371,8 +510,21 @@ msgstr ""
 msgid "Navigation"
 msgstr ""
 
+#: src/search/commands/use-commands.ts
+msgid "New chat"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "New Chat"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "New Skill"
+msgstr ""
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "No chats yet"
 msgstr ""
 
 #: src/components/ui/searchable-menu/searchable-menu.tsx
@@ -391,12 +543,20 @@ msgstr ""
 msgid "No matching skills"
 msgstr ""
 
+#: src/search/palette/search-palette.tsx
+msgid "No results found."
+msgstr ""
+
 #: src/components/chat/source-list.tsx
 msgid "No sources available"
 msgstr ""
 
 #: src/components/not-found.tsx
 msgid "Not Found"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+msgid "Offline. Changes will sync when back online."
 msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -455,8 +615,18 @@ msgstr ""
 msgid "Please wait while we verify your link."
 msgstr ""
 
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+msgid "Preferences"
+msgstr ""
+
 #: src/components/ui/private-badge.tsx
 msgid "Private"
+msgstr ""
+
+#: src/layout/sidebar/chat-sidebar.tsx
+#: src/search/palette/entity-meta.ts
+msgid "Projects"
 msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
@@ -467,8 +637,28 @@ msgstr ""
 msgid "Read, compose, and organize your emails."
 msgstr ""
 
+#: src/layout/sidebar/chat-list.tsx
+msgid "Recent Chats"
+msgstr ""
+
+#: src/layout/sidebar/project-drop-list.tsx
+msgid "Recent Projects"
+msgstr ""
+
+#: src/layout/sidebar/project-drop-list.tsx
+msgid "Remove from project"
+msgstr ""
+
 #: src/components/chat/quote-chip.tsx
 msgid "Remove quote"
+msgstr ""
+
+#: src/layout/sidebar/chat-list-item.tsx
+msgid "Rename"
+msgstr ""
+
+#: src/layout/sidebar/rename-chat-dialog.tsx
+msgid "Rename chat"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -499,16 +689,31 @@ msgstr ""
 msgid "Run command"
 msgstr ""
 
+#: src/layout/sidebar/rename-chat-dialog.tsx
+msgid "Save"
+msgstr ""
+
 #: src/components/chat/scroll-to-bottom-button.tsx
 msgid "Scroll to bottom"
 msgstr ""
 
 #: src/components/ui/page-search.tsx
+#: src/layout/sidebar/chat-actions.tsx
+#: src/layout/sidebar/chat-list.tsx
+#: src/search/palette/search-palette.tsx
 msgid "Search"
+msgstr ""
+
+#: src/search/palette/search-palette.tsx
+msgid "Search across chats, models, skills, agents, and more"
 msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
+msgstr ""
+
+#: src/search/palette/search-palette.tsx
+msgid "Search chats, models, skills, agents…"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -554,8 +759,29 @@ msgstr ""
 msgid "Sent as text"
 msgstr ""
 
+#: src/search/commands/use-commands.ts
+msgid "Set Dark"
+msgstr ""
+
+#: src/search/commands/use-commands.ts
+msgid "Set Light"
+msgstr ""
+
+#: src/layout/sidebar/nav-toggle.tsx
+#: src/layout/sidebar/settings-sidebar.tsx
+msgid "Settings"
+msgstr ""
+
 #: src/components/chat/artifact-message-part.tsx
 msgid "Show inline"
+msgstr ""
+
+#: src/layout/sidebar/nav-toggle.tsx
+msgid "Sidebar sections"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+msgid "Sign in"
 msgstr ""
 
 #: src/components/sign-in-modal.tsx
@@ -566,8 +792,18 @@ msgstr ""
 msgid "Sign in to Thunderbolt"
 msgstr ""
 
+#: src/search/commands/use-commands.ts
+msgid "Sign out"
+msgstr ""
+
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in..."
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/search/palette/entity-meta.ts
+msgid "Skills"
 msgstr ""
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
@@ -591,6 +827,16 @@ msgstr ""
 
 #: src/components/ui/prompt-input.tsx
 msgid "Stop generating"
+msgstr ""
+
+#: src/components/sidebar-footer.tsx
+msgid "Synced {relative}"
+msgstr ""
+
+#: src/layout/sidebar/chat-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/search/palette/entity-meta.ts
+msgid "Tasks"
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -645,8 +891,13 @@ msgstr ""
 msgid "Thunderbolt is open-source"
 msgstr ""
 
+#: src/search/commands/use-commands.ts
+msgid "Toggle sidebar"
+msgstr ""
+
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
+#: src/layout/sidebar/sidebar-header.tsx
 msgid "Toggle Sidebar"
 msgstr ""
 
@@ -664,6 +915,10 @@ msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 msgid "Upload file"
+msgstr ""
+
+#: src/search/commands/use-commands.ts
+msgid "Use System"
 msgstr ""
 
 #: src/components/magic-link-verify.tsx
@@ -691,6 +946,11 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+msgid "Voice"
 msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
@@ -728,6 +988,10 @@ msgstr ""
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "Welcome!"
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+msgid "What agents use"
 msgstr ""
 
 #: src/components/onboarding/onboarding-name-step.tsx

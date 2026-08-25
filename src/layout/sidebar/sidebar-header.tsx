@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -63,7 +64,9 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
             onClick={onToggle}
           >
             <PanelLeftRounded className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Collapse Sidebar</span>
+            <span className="sr-only">
+              <Trans>Collapse Sidebar</Trans>
+            </span>
           </Button>
           {navToggle && (
             <div data-tauri-drag-region className="flex flex-1 items-center justify-end">
@@ -113,7 +116,9 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
                       className="cursor-pointer size-8 justify-center text-muted-foreground"
                     >
                       <PanelLeftRounded className="size-[var(--icon-size-default)]" />
-                      <span className="sr-only">Toggle Sidebar</span>
+                      <span className="sr-only">
+                        <Trans>Toggle Sidebar</Trans>
+                      </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { LogoutModal } from '@/components/logout-modal'
@@ -77,6 +78,7 @@ export const SearchPalette = ({
   useSearch = useSearchImpl,
   trackEvent = trackEventImpl,
 }: SearchPaletteProps) => {
+  const { i18n, t } = useLingui()
   const navigate = useNavigate()
   const db = useDatabase()
   // No-op on desktop / when the drawer is closed; on mobile it dismisses the
@@ -180,21 +182,21 @@ export const SearchPalette = ({
   const commandSections = (
     <>
       {createCommands.length > 0 ? (
-        <CommandGroup heading="Create">
+        <CommandGroup heading={t`Create`}>
           {createCommands.map((command) => (
             <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
           ))}
         </CommandGroup>
       ) : null}
       {navCommands.length > 0 ? (
-        <CommandGroup heading="Go to">
+        <CommandGroup heading={t`Go to`}>
           {navCommands.map((command) => (
             <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
           ))}
         </CommandGroup>
       ) : null}
       {actionCommands.length > 0 ? (
-        <CommandGroup heading="Actions">
+        <CommandGroup heading={t`Actions`}>
           {actionCommands.map((command) => (
             <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
           ))}
@@ -208,23 +210,25 @@ export const SearchPalette = ({
       <CommandDialog
         open={open}
         onOpenChange={handleOpenChange}
-        title="Search"
-        description="Search across chats, models, skills, agents, and more"
+        title={t`Search`}
+        description={t`Search across chats, models, skills, agents, and more`}
         className="rounded-2xl"
         // FTS already filters result rows and we filter commands manually; cmdk's
         // fuzzy filter would otherwise hide valid stemmed/prefixed FTS matches.
         shouldFilter={false}
       >
-        <CommandInput placeholder="Search chats, models, skills, agents…" value={query} onValueChange={setQuery} />
+        <CommandInput placeholder={t`Search chats, models, skills, agents…`} value={query} onValueChange={setQuery} />
         <CommandList>
           {!hasQuery ? (
             commandSections
           ) : (
             <>
-              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandEmpty>
+                <Trans>No results found.</Trans>
+              </CommandEmpty>
               {commandSections}
               {groups.map(({ entity, hits }) => (
-                <CommandGroup key={entity.type} heading={entityLabels[entity.type]}>
+                <CommandGroup key={entity.type} heading={i18n._(entityLabels[entity.type])}>
                   {hits.map((result) => (
                     <SearchResultItem
                       key={`${result.entityType}-${result.id}`}

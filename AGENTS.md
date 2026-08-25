@@ -171,3 +171,44 @@ Corners step **down** as you nest (outer radius − padding ≈ inner radius): a
 - Icons: `size-[var(--icon-size-default)]`, `size-[var(--icon-size-sm)]`
 - Minimum heights: `min-h-[var(--min-touch-height)]`
 - Composer-control radius: `rounded-[var(--radius-control)]` — the one sanctioned `rounded-[var()]` exception, sized between `lg` and `xl` for the compact prompt-area controls (see the rationale in `src/index.css`). Everything else uses the named tiers above.
+
+## Localization (i18n)
+
+The app runs on Lingui v6 with `.po` catalogs in `src/locales/{locale}/messages.po`. The message id is the English source text, so **there are no keys to invent** — write the copy, run `bun run i18n:extract`, and commit the catalogs. CI (`bun run i18n:check`) fails if they are stale.
+
+**Every user-facing string goes through a macro.** That includes `aria-label`, `title`, and `placeholder` — a translated UI with English screen-reader labels is a half-finished job.
+
+```tsx
+import { Trans, useLingui } from '@lingui/react/macro'
+
+<h1><Trans>Not Found</Trans></h1>              // JSX text
+<button aria-label={t`Go back`} />             // string position; t from useLingui()
+```
+
+Pick by position: `<Trans>` for anything rendered as JSX (it handles inline elements and interpolation), and `` t`…` `` from `useLingui()` for values that must be strings.
+
+**Never build a sentence from fragments.** One message per sentence, values as placeholders — `` t`Deleted ${name}` ``, not `'Deleted ' + name`. Word order differs across languages, so a joined fragment is untranslatable.
+
+### Module scope freezes the locale
+
+`` t`…` `` resolves against the catalog active *where it is evaluated*. At module scope that is import time, so the string pins to the boot locale and never follows a language change. One rule covers every case: **module scope declares `` msg`…` `` descriptors; the point of use resolves them with `i18n._(descriptor)`.**
+
+- **Constant tables** (error copy, option labels) hold descriptors and the render site resolves them. See `src/lib/otp-error-messages.ts`.
+- **Zod schemas and other builders** become factories taking `i18n: I18n`, called during render. See `src/components/onboarding/onboarding-name-step.tsx`. Don't reach for `useMemo` — `i18n` is a stable singleton, so the only usable dependency is `i18n.locale`, which `exhaustive-deps` rejects as redundant.
+
+Do **not** pass `t` into a helper to work around this. The extractor only recognises a macro it can see imported in the file, so a `t` arriving as a parameter produces no catalog entry — the string silently never reaches translators, and nothing fails to tell you.
+
+Resolving eagerly in an async event handler — `i18n._(getOtpErrorMessage(...))` before storing the result in state — is fine and deliberate: the snapshot is taken while the user is looking at the screen. Use the `i18n` singleton there rather than `useLingui()`, which would imply a reactivity the stored string doesn't have.
+
+### Constraints
+
+- **No `select` / `selectOrdinal`.** The `po-gettext` catalog format cannot express them (see the rationale in `lingui.config.ts`). Plurals use `<Plural>` / `plural()`, which map to native gettext plural forms.
+- **Don't reword while extracting.** The English source *is* the id, so a copy edit orphans its translations — and 30 Playwright selectors in `e2e/` match on English text. Copy changes belong in their own commit.
+- **Thrown Errors stay English; the display boundary translates.** Localizing internal control flow buys nothing. Code-mapped user copy (`otp-error-messages.ts`) is display, not control flow, and is translated.
+- **Model-facing text stays English**: widget contracts in `src/widgets/*/instructions.ts`, skill instructions, system prompts, and the citation/widget schema messages. One language means no translation drift in behaviour-critical prompts.
+- **Dev-only surfaces are excluded** in `lingui.config.ts` (`src/devtools/**`, `src/settings/dev-settings.tsx`).
+- **`label`/`description` on synced default rows** (skills, tasks, automations, agents, models) are reconciled by content hash — translating them breaks reconciliation across devices. Leave them alone; THU-811 owns that problem.
+
+### Verifying
+
+Switch Settings → Localization to **Pseudo-locale (en-XA)**, available in dev builds only. Anything still rendering plain English was missed. Bun tests need no provider: `src/testing-library.ts` mocks the macros with identity implementations that render the English source, so `getByText` assertions keep working.

@@ -7,6 +7,7 @@ import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts'
+import { i18n } from '@/i18n'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
@@ -129,7 +130,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       })
 
       if (result.error) {
-        dispatch({ type: 'VERIFY_ERROR', payload: getOtpErrorMessage(result.error, 'code') })
+        dispatch({ type: 'VERIFY_ERROR', payload: i18n._(getOtpErrorMessage(result.error, 'code')) })
         return
       }
 

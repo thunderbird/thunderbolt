@@ -12,6 +12,7 @@ import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { challengeTokenHeader } from '@/lib/constants'
 import { useAuth } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
+import { i18n } from '@/i18n'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
 
@@ -68,7 +69,7 @@ export const MagicLinkVerify = () => {
         })
 
         if (result.error) {
-          setState({ status: 'error', message: getOtpErrorMessage(result.error, 'link') })
+          setState({ status: 'error', message: i18n._(getOtpErrorMessage(result.error, 'link')) })
           return
         }
 

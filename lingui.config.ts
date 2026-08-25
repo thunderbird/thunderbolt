@@ -36,6 +36,11 @@ export default defineConfig({
         '**/*.d.ts',
         // Generated wasm-bindgen glue (build artifact, breaks the parser).
         'src/acp/iroh/pkg/**',
+        // Dev-only surfaces (both gated on `import.meta.env.DEV` in src/app.tsx).
+        // No shipped build renders them, so putting their strings in front of
+        // translators would only spend volunteer effort on developer tooling.
+        'src/devtools/**',
+        'src/settings/dev-settings.tsx',
       ],
     },
   ],

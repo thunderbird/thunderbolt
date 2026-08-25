@@ -34,6 +34,10 @@ export type InferenceQuotaDecision =
       sevenDaySpentNanoUsd: bigint
       limits: InferenceQuotaLimits
     }>
+export type ManagedInferenceAdmission =
+  | Readonly<{ outcome: 'allowed'; price: InferencePrice }>
+  | Readonly<{ outcome: 'price-unavailable' }>
+  | Readonly<{ outcome: 'quota-exceeded'; decision: Extract<InferenceQuotaDecision, { allowed: false }> }>
 export type InferenceDatabase = Pick<typeof db, 'insert' | 'select'>
 export type RecordInferenceUsageInput = Readonly<{
   id: string
@@ -133,6 +137,33 @@ export const checkInferenceQuota = async (
   return exceededWindow
     ? { allowed: false, exceededWindow, ...spend }
     : { allowed: true, exceededWindow: null, ...spend }
+}
+
+/** Load the current price and rolling spend concurrently, with price errors taking precedence. */
+export const checkManagedInferenceAdmission = async (
+  database: InferenceDatabase,
+  identity: ManagedInferenceIdentity,
+  userId: string,
+  limits: InferenceQuotaLimits,
+): Promise<ManagedInferenceAdmission> => {
+  const [priceResult, quotaResult] = await Promise.allSettled([
+    loadInferencePrice(database, identity),
+    checkInferenceQuota(database, userId, limits),
+  ])
+
+  if (priceResult.status === 'rejected') {
+    throw priceResult.reason
+  }
+  if (priceResult.value === null) {
+    return { outcome: 'price-unavailable' }
+  }
+  if (quotaResult.status === 'rejected') {
+    throw quotaResult.reason
+  }
+  if (!quotaResult.value.allowed) {
+    return { outcome: 'quota-exceeded', decision: quotaResult.value }
+  }
+  return { outcome: 'allowed', price: priceResult.value }
 }
 
 /** Select quota limits for an anonymous or registered user. */

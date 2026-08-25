@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { resolve } from 'path'
 import {
   calculateInferenceCost,
+  checkManagedInferenceAdmission,
   checkInferenceQuota,
   getInferenceQuotaLimits,
   InferenceCostOverflowError,
@@ -531,6 +532,51 @@ describe('inference usage ledger', () => {
       await checkInferenceQuota(countingDatabase, userId, { fiveHourCents: 1, sevenDayCents: 1 })
 
       expect(selectCalls).toBe(1)
+    })
+
+    it('starts the current-price and quota reads concurrently', async () => {
+      let selectCalls = 0
+      const concurrentDatabase = {
+        insert: database.insert,
+        select: ((fields) => {
+          selectCalls += 1
+          return database.select(fields)
+        }) as InferenceDatabase['select'],
+      }
+
+      const admissionPromise = checkManagedInferenceAdmission(
+        concurrentDatabase,
+        deepseekIdentity,
+        'concurrent-admission-user',
+        { fiveHourCents: 1, sevenDayCents: 1 },
+      )
+
+      expect(selectCalls).toBe(2)
+      expect(await admissionPromise).toEqual({
+        outcome: 'allowed',
+        price: { ...deepseekIdentity, inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
+      })
+    })
+
+    it('preserves missing-price precedence when quota is also exceeded', async () => {
+      const userId = 'missing-price-exceeded-quota-user'
+      await insertUser(database, userId)
+      await insertSpend(userId, 'missing-price-exceeded-quota-usage', oneCentNanoUsd, '1 hour')
+      await database
+        .delete(inferencePrices)
+        .where(
+          and(
+            eq(inferencePrices.provider, deepseekIdentity.provider),
+            eq(inferencePrices.model, deepseekIdentity.model),
+          ),
+        )
+
+      expect(
+        await checkManagedInferenceAdmission(database, deepseekIdentity, userId, {
+          fiveHourCents: 1,
+          sevenDayCents: 1,
+        }),
+      ).toEqual({ outcome: 'price-unavailable' })
     })
 
     it('combines costs from all three canonical models in one user budget', async () => {

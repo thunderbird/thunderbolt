@@ -25,9 +25,8 @@ import {
   type InferenceProvider,
 } from './client'
 import {
-  checkInferenceQuota,
+  checkManagedInferenceAdmission,
   getInferenceQuotaLimits,
-  loadInferencePrice,
   recordInferenceUsage,
   type InferenceDatabase,
 } from './usage-ledger'
@@ -137,19 +136,19 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
       const { provider, internalName, omitTemperature, supportsStreamUsage } = modelConfig
       const route = new URL(ctx.request.url).pathname
 
-      const price = await loadInferencePrice(database, { provider, model: internalName })
-      if (!price) {
-        return createPriceUnavailableResponse()
-      }
-
-      const quota = await checkInferenceQuota(
+      const admission = await checkManagedInferenceAdmission(
         database,
+        { provider, model: internalName },
         ctx.user.id,
         getInferenceQuotaLimits(settings, ctx.user.isAnonymous === true),
       )
-      if (!quota.allowed) {
-        return createQuotaExceededResponse(quota)
+      if (admission.outcome === 'price-unavailable') {
+        return createPriceUnavailableResponse()
       }
+      if (admission.outcome === 'quota-exceeded') {
+        return createQuotaExceededResponse(admission.decision)
+      }
+      const { price } = admission
 
       const usageEventId = crypto.randomUUID()
       const { client } = getClient(provider)

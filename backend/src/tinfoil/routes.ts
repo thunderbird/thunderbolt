@@ -9,9 +9,8 @@ import { errorKindFromStatus } from '@/inference/error-kind'
 import { logInferenceSafely, type InferenceLogger } from '@/inference/client'
 import { createPriceUnavailableResponse, createQuotaExceededResponse } from '@/inference/usage-responses'
 import {
-  checkInferenceQuota,
+  checkManagedInferenceAdmission,
   getInferenceQuotaLimits,
-  loadInferencePrice,
   type InferenceDatabase,
 } from '@/inference/usage-ledger'
 import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
@@ -228,16 +227,21 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     const isManagedGlmChat =
       method === 'POST' && decodePolicyPathname(new URL(upstreamUrl).pathname) === '/v1/chat/completions'
     if (isManagedGlmChat) {
-      const price = await loadInferencePrice(database, { provider: 'tinfoil', model: 'glm-5-2' })
-      if (!price) {
+      const admission = await checkManagedInferenceAdmission(
+        database,
+        { provider: 'tinfoil', model: 'glm-5-2' },
+        distinctId,
+        getInferenceQuotaLimits(settings, isAnonymous),
+      )
+      if (admission.outcome === 'price-unavailable') {
         recordLatency({ status: 503, completedAt: nowFn() })
         return createPriceUnavailableResponse()
       }
-      const quota = await checkInferenceQuota(database, distinctId, getInferenceQuotaLimits(settings, isAnonymous))
-      if (!quota.allowed) {
+      if (admission.outcome === 'quota-exceeded') {
         recordLatency({ status: 429, completedAt: nowFn() })
-        return createQuotaExceededResponse(quota)
+        return createQuotaExceededResponse(admission.decision)
       }
+      const { price } = admission
       const eventId = crypto.randomUUID()
       receipt = {
         eventId,

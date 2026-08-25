@@ -2,24 +2,107 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
+import { defaultModelGlm52 } from '@shared/defaults/models'
 import { fetch as baseFetch } from '@/lib/fetch'
+import { createAuthenticatedClient } from '@/lib/http'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import type { Model, Skill } from '@/types'
+import { getClock } from '@/testing-library'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { setupConsoleSpy, type ConsoleSpies } from '@/test-utils/console-spies'
 import type { Tool } from 'ai'
+import * as tinfoilClient from './tinfoil-client'
 import {
   addSkillTool,
   buildVolatileSystemNotes,
+  createModel,
   mergeMcpTools,
   resolveOpenAiCompatConnection,
   sanitizeToolPrefix,
   selectPromptSkillDefinitions,
+  aiFetchStreamingResponse,
 } from './fetch'
+
+const usageSse = (...counts: Array<readonly [number, number, number]>): string =>
+  `${counts
+    .map(
+      ([promptTokens, completionTokens, totalTokens]) =>
+        `data: ${JSON.stringify({
+          id: 'response-id',
+          choices: [],
+          usage: {
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            total_tokens: totalTokens,
+          },
+        })}`,
+    )
+    .join('\n\n')}\n\ndata: [DONE]\n\n`
+
+const createTinfoilFetchClient = () => {
+  const requestBodies: string[] = []
+  const client = {
+    getBaseURL: () => 'https://enclave.example.com/v1',
+    fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(String(init?.body))
+      return new Response(usageSse([4, 0, 4], [8, 1, 9], [12, 1, 13], [16, 2, 18]), {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'x-inference-usage-receipt': 'iu1.payload.signature',
+        },
+      })
+    },
+  }
+  return { client, requestBodies }
+}
+
+type CapturedOpenAiBody = {
+  stream_options?: { include_usage?: boolean }
+}
+
+const completedSse = (receipt: string): Response =>
+  new Response(
+    `${[
+      {
+        id: 'response-id',
+        choices: [{ delta: { content: 'Completed response' }, finish_reason: null }],
+        usage: { prompt_tokens: 8, completion_tokens: 1, total_tokens: 9 },
+      },
+      {
+        id: 'response-id',
+        choices: [{ delta: {}, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 16, completion_tokens: 2, total_tokens: 18 },
+      },
+    ]
+      .map((chunk) => `data: ${JSON.stringify(chunk)}`)
+      .join('\n\n')}\n\ndata: [DONE]\n\n`,
+    {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'x-inference-usage-receipt': receipt,
+      },
+    },
+  )
+
+const pumpClockUntil = async (predicate: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await Promise.resolve()
+    await getClock().runAllAsync()
+    if (predicate()) {
+      return
+    }
+  }
+  throw new Error('Timed out while draining the AI response')
+}
+
+const serializeConsoleCalls = ({ log, info, error, warn }: ConsoleSpies): string =>
+  JSON.stringify([...log.mock.calls, ...info.mock.calls, ...error.mock.calls, ...warn.mock.calls])
 
 /** Mirror the `MCPClientError` the SDK throws after a transport drop. The
  *  runtime instance `name` is `'MCPClientError'` (the `AI_MCPClientError`
@@ -429,5 +512,484 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
     expect(
       resolveOpenAiCompatConnection(customModel('http://localhost:1234', 'sk-abc'), () => stubProxyFetch)?.apiKey,
     ).toBe('sk-abc')
+  })
+})
+
+describe('createModel (managed Tinfoil usage)', () => {
+  it('forces encrypted streaming usage on for the system provider and exposes normalized receipt headers', async () => {
+    const { client, requestBodies } = createTinfoilFetchClient()
+    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(client as never)
+
+    try {
+      const model = await createModel({ ...defaultModelGlm52, apiKey: null }, () => stubProxyFetch)
+      const result = await model.doStream({
+        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+        providerOptions: { tinfoil: { stream_options: { include_usage: false } } },
+      })
+      const parts = await Array.fromAsync(result.stream)
+      const body = JSON.parse(requestBodies[0]) as CapturedOpenAiBody
+      const finish = parts.find((part) => part.type === 'finish')
+
+      expect(body.stream_options).toEqual({ include_usage: true })
+      expect(result.response?.headers?.['x-inference-usage-receipt']).toBe('iu1.payload.signature')
+      expect(finish).toMatchObject({
+        type: 'finish',
+        usage: {
+          inputTokens: { total: 16 },
+          outputTokens: { total: 2 },
+        },
+      })
+    } finally {
+      getSystemClient.mockRestore()
+    }
+  })
+
+  it('does not request streaming usage for a user-added Tinfoil model', async () => {
+    const { client, requestBodies } = createTinfoilFetchClient()
+    const getUserClient = spyOn(tinfoilClient, 'getTinfoilClient').mockResolvedValue(client as never)
+
+    try {
+      const model = await createModel(
+        { ...defaultModelGlm52, id: 'user-glm', isSystem: 0, apiKey: 'user-key' },
+        () => stubProxyFetch,
+      )
+      const result = await model.doStream({
+        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+      })
+      await Array.fromAsync(result.stream)
+      const body = JSON.parse(requestBodies[0]) as CapturedOpenAiBody
+
+      expect(body.stream_options).toBeUndefined()
+    } finally {
+      getUserClient.mockRestore()
+    }
+  })
+
+  it('does not request streaming usage for a non-GLM system Tinfoil model', async () => {
+    const { client, requestBodies } = createTinfoilFetchClient()
+    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(client as never)
+
+    try {
+      const model = await createModel(
+        { ...defaultModelGlm52, id: 'future-system-tinfoil', model: 'future-system-model', apiKey: null },
+        () => stubProxyFetch,
+      )
+      const result = await model.doStream({
+        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+      })
+      await Array.fromAsync(result.stream)
+      const body = JSON.parse(requestBodies[0]) as CapturedOpenAiBody
+
+      expect(body.stream_options).toBeUndefined()
+    } finally {
+      getSystemClient.mockRestore()
+    }
+  })
+})
+
+describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  const init: RequestInit = {
+    body: JSON.stringify({
+      id: 'thread-id',
+      messages: [{ id: 'user-message', role: 'user', parts: [{ type: 'text', text: 'Hello' }] }],
+    }),
+  }
+
+  it('awaits the authenticated receipt POST before the final chat stream settles', async () => {
+    const receipt = 'iu1.awaited.signature'
+    const systemClient = {
+      getBaseURL: () => 'https://enclave.example.com/v1',
+      fetch: async () => completedSse(receipt),
+    }
+    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
+    const requests: Request[] = []
+    let resolveReceiptResponse: ((response: Response) => void) | undefined
+    const receiptResponse = new Promise<Response>((resolve) => {
+      resolveReceiptResponse = resolve
+    })
+    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
+      fetch: async (input) => {
+        requests.push(input as Request)
+        return receiptResponse
+      },
+    })
+
+    try {
+      const response = await aiFetchStreamingResponse({
+        init,
+        modelId: defaultModelGlm52.id,
+        httpClient,
+        getProxyFetch: () => stubProxyFetch,
+      })
+      const responseState = { settled: false }
+      const responseBody = response.text().finally(() => {
+        responseState.settled = true
+      })
+
+      await pumpClockUntil(() => requests.length === 1)
+
+      expect(responseState.settled).toBeFalse()
+      expect(requests[0].url).toBe('https://app.example.com/v1/inference-usage/receipts')
+      expect(requests[0].headers.get('authorization')).toBe('Bearer session-token')
+      expect(await requests[0].json()).toEqual({
+        receipt,
+        promptTokens: 16,
+        completionTokens: 2,
+        totalTokens: 18,
+      })
+
+      resolveReceiptResponse?.(new Response(null, { status: 204 }))
+      await pumpClockUntil(() => responseState.settled)
+      expect(await responseBody).toContain('finish')
+    } finally {
+      getSystemClient.mockRestore()
+    }
+  })
+
+  it('continues the chat when the awaited receipt POST returns an error status', async () => {
+    const systemClient = {
+      getBaseURL: () => 'https://enclave.example.com/v1',
+      fetch: async () => completedSse('iu1.failed.signature'),
+    }
+    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
+    const requests: Request[] = []
+    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
+      fetch: async (input) => {
+        requests.push(input as Request)
+        return new Response(null, { status: 503 })
+      },
+    })
+
+    try {
+      const response = await aiFetchStreamingResponse({
+        init,
+        modelId: defaultModelGlm52.id,
+        httpClient,
+        getProxyFetch: () => stubProxyFetch,
+      })
+      const responseState = { settled: false }
+      const responseBody = response.text().finally(() => {
+        responseState.settled = true
+      })
+
+      await pumpClockUntil(() => responseState.settled)
+
+      expect(requests).toHaveLength(1)
+      expect(await responseBody).toContain('finish')
+    } finally {
+      getSystemClient.mockRestore()
+    }
+  })
+
+  it('settles each tool-loop receipt before starting the next upstream step', async () => {
+    const upstreamRequests: string[] = []
+    const systemClient = {
+      getBaseURL: () => 'https://enclave.example.com/v1',
+      fetch: async (_input: RequestInfo | URL, upstreamInit?: RequestInit) => {
+        const stepNumber = upstreamRequests.length + 1
+        upstreamRequests.push(String(upstreamInit?.body))
+        if (stepNumber === 1) {
+          return new Response(
+            `${[
+              {
+                id: 'tool-step',
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: 'skill-call',
+                          function: { name: 'skill', arguments: '{"name":"weather"}' },
+                        },
+                      ],
+                    },
+                    finish_reason: null,
+                  },
+                ],
+                usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+              },
+              {
+                id: 'tool-step',
+                choices: [{ delta: {}, finish_reason: 'tool_calls' }],
+                usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 },
+              },
+            ]
+              .map((chunk) => `data: ${JSON.stringify(chunk)}`)
+              .join('\n\n')}\n\ndata: [DONE]\n\n`,
+            {
+              headers: {
+                'Content-Type': 'text/event-stream',
+                'x-inference-usage-receipt': 'iu1.first.signature',
+              },
+            },
+          )
+        }
+        return new Response(
+          `${[
+            {
+              id: 'final-step',
+              choices: [{ delta: { content: 'Tool result used' }, finish_reason: null }],
+              usage: { prompt_tokens: 20, completion_tokens: 4, total_tokens: 24 },
+            },
+            {
+              id: 'final-step',
+              choices: [{ delta: {}, finish_reason: 'stop' }],
+              usage: { prompt_tokens: 24, completion_tokens: 7, total_tokens: 31 },
+            },
+          ]
+            .map((chunk) => `data: ${JSON.stringify(chunk)}`)
+            .join('\n\n')}\n\ndata: [DONE]\n\n`,
+          {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'x-inference-usage-receipt': 'iu1.second.signature',
+            },
+          },
+        )
+      },
+    }
+    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
+    const receiptRequests: Request[] = []
+    let resolveFirstReceipt: ((response: Response) => void) | undefined
+    const firstReceiptResponse = new Promise<Response>((resolve) => {
+      resolveFirstReceipt = resolve
+    })
+    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
+      fetch: async (input) => {
+        receiptRequests.push(input as Request)
+        return receiptRequests.length === 1 ? firstReceiptResponse : new Response(null, { status: 204 })
+      },
+    })
+
+    try {
+      const response = await aiFetchStreamingResponse({
+        init,
+        modelId: defaultModelGlm52.id,
+        httpClient,
+        getProxyFetch: () => stubProxyFetch,
+      })
+      const responseState = { settled: false }
+      const responseBody = response.text().finally(() => {
+        responseState.settled = true
+      })
+
+      await pumpClockUntil(() => receiptRequests.length === 1)
+
+      expect(upstreamRequests).toHaveLength(1)
+      expect(responseState.settled).toBeFalse()
+
+      resolveFirstReceipt?.(new Response(null, { status: 204 }))
+      await pumpClockUntil(() => upstreamRequests.length === 2)
+      await pumpClockUntil(() => receiptRequests.length === 2 && responseState.settled)
+
+      expect(await Promise.all(receiptRequests.map((request) => request.json()))).toEqual([
+        {
+          receipt: 'iu1.first.signature',
+          promptTokens: 10,
+          completionTokens: 3,
+          totalTokens: 13,
+        },
+        {
+          receipt: 'iu1.second.signature',
+          promptTokens: 24,
+          completionTokens: 7,
+          totalTokens: 31,
+        },
+      ])
+      expect(upstreamRequests).toHaveLength(2)
+      expect(receiptRequests).toHaveLength(2)
+      expect(await responseBody).toContain('finish')
+    } finally {
+      getSystemClient.mockRestore()
+    }
+  })
+
+  it('does not submit a receipt for an aborted partial upstream step', async () => {
+    const abortController = new AbortController()
+    const streamState = { pulls: 0, awaitingMore: false }
+    const encoder = new TextEncoder()
+    const systemClient = {
+      getBaseURL: () => 'https://enclave.example.com/v1',
+      fetch: async (_input: RequestInfo | URL, upstreamInit?: RequestInit) => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            upstreamInit?.signal?.addEventListener(
+              'abort',
+              () => controller.error(upstreamInit.signal?.reason ?? new DOMException('Aborted', 'AbortError')),
+              { once: true },
+            )
+          },
+          pull(controller) {
+            streamState.pulls++
+            if (streamState.pulls === 1) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    id: 'partial-step',
+                    choices: [{ delta: { content: 'Partial' }, finish_reason: null }],
+                    usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
+                  })}\n\n`,
+                ),
+              )
+              return
+            }
+            streamState.awaitingMore = true
+          },
+        })
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'x-inference-usage-receipt': 'iu1.partial.signature',
+          },
+        })
+      },
+    }
+    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
+    const receiptRequests: Request[] = []
+    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
+      fetch: async (input) => {
+        receiptRequests.push(input as Request)
+        return new Response(null, { status: 204 })
+      },
+    })
+
+    try {
+      const response = await aiFetchStreamingResponse({
+        init: { ...init, signal: abortController.signal },
+        modelId: defaultModelGlm52.id,
+        httpClient,
+        getProxyFetch: () => stubProxyFetch,
+      })
+      const responseState = { settled: false }
+      const responseBody = response.text().then(
+        (body) => ({ body }),
+        () => ({ aborted: true }),
+      )
+      responseBody.finally(() => {
+        responseState.settled = true
+      })
+
+      await pumpClockUntil(() => streamState.awaitingMore)
+      abortController.abort(new DOMException('Interrupted', 'AbortError'))
+      await pumpClockUntil(() => responseState.settled)
+
+      expect(receiptRequests).toHaveLength(0)
+      await responseBody
+    } finally {
+      getSystemClient.mockRestore()
+    }
+  })
+
+  it('does not write raw stream errors to console callbacks', async () => {
+    const privateError = 'PRIVATE_STREAM_ERROR_MESSAGE'
+    const systemClient = {
+      getBaseURL: () => 'https://enclave.example.com/v1',
+      fetch: async () =>
+        new Response(`data: ${JSON.stringify({ error: { message: privateError } })}\n\ndata: [DONE]\n\n`, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+    }
+    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
+    const consoleSpies = setupConsoleSpy()
+    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
+      fetch: async () => new Response(null, { status: 204 }),
+    })
+
+    try {
+      const response = await aiFetchStreamingResponse({
+        init,
+        modelId: defaultModelGlm52.id,
+        httpClient,
+        getProxyFetch: () => stubProxyFetch,
+      })
+      const responseState = { settled: false }
+      response.text().finally(() => {
+        responseState.settled = true
+      })
+
+      await pumpClockUntil(() => responseState.settled)
+
+      expect(serializeConsoleCalls(consoleSpies)).not.toContain(privateError)
+    } finally {
+      consoleSpies.restore()
+      getSystemClient.mockRestore()
+    }
+  })
+
+  it('does not write raw invalid tool arguments or validation messages to console callbacks', async () => {
+    const privateToolArguments = 'PRIVATE_TOOL_ARGUMENTS'
+    const upstreamState = { requests: 0 }
+    const systemClient = {
+      getBaseURL: () => 'https://enclave.example.com/v1',
+      fetch: async () => {
+        upstreamState.requests++
+        if (upstreamState.requests > 1) {
+          return completedSse('')
+        }
+        return new Response(
+          `${[
+            {
+              id: 'invalid-tool-step',
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: 'invalid-skill-call',
+                        function: { name: 'skill', arguments: privateToolArguments },
+                      },
+                    ],
+                  },
+                  finish_reason: null,
+                },
+              ],
+            },
+            {
+              id: 'invalid-tool-step',
+              choices: [{ delta: {}, finish_reason: 'tool_calls' }],
+              usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
+            },
+          ]
+            .map((chunk) => `data: ${JSON.stringify(chunk)}`)
+            .join('\n\n')}\n\ndata: [DONE]\n\n`,
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        )
+      },
+    }
+    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
+    const consoleSpies = setupConsoleSpy()
+    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
+      fetch: async () => new Response(null, { status: 204 }),
+    })
+
+    try {
+      const response = await aiFetchStreamingResponse({
+        init,
+        modelId: defaultModelGlm52.id,
+        httpClient,
+        getProxyFetch: () => stubProxyFetch,
+      })
+      const responseState = { settled: false }
+      response.text().finally(() => {
+        responseState.settled = true
+      })
+
+      await pumpClockUntil(() => responseState.settled)
+
+      expect(serializeConsoleCalls(consoleSpies)).not.toContain(privateToolArguments)
+    } finally {
+      consoleSpies.restore()
+      getSystemClient.mockRestore()
+    }
   })
 })

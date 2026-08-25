@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useLingui } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -118,7 +118,7 @@ export const ModificationIndicator = ({
     // Show transparent underline for unmodified state (non-interactive)
     // Maintains consistent vertical text position
     return (
-      <Component className={className} aria-label="Default setting">
+      <Component className={className} aria-label={t`Default setting`}>
         <span id={id} className={cn(underlineClasses, 'border-transparent')}>
           {children}
         </span>
@@ -158,11 +158,11 @@ export const ModificationIndicator = ({
           <div className="p-3 pt-2">
             {!showConfirmation ? (
               <Button size="sm" onClick={handleResetClick} className="w-full">
-                Reset to Default
+                <Trans>Reset to Default</Trans>
               </Button>
             ) : (
               <Button size="sm" onClick={handleResetConfirm} className="w-full">
-                Confirm
+                <Trans>Confirm</Trans>
               </Button>
             )}
           </div>

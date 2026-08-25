@@ -16,6 +16,8 @@
  * edits while scanning the list.
  */
 
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import dayjs from 'dayjs'
 import '@/lib/dayjs'
 import { LayoutTemplate, MessageCircle, MessageCirclePlus } from 'lucide-react'
@@ -34,9 +36,9 @@ import { ProjectIcon } from './project-icon'
  * the affordance (⋯ → Delete); the list page renders the dialog.
  */
 export const deleteProjectPrompt = {
-  title: 'Delete this project?',
-  description: 'Its instructions are removed. Chats in the project are kept and become ordinary chats.',
-  confirmLabel: 'Delete project',
+  title: msg`Delete this project?`,
+  description: msg`Its instructions are removed. Chats in the project are kept and become ordinary chats.`,
+  confirmLabel: msg`Delete project`,
 } as const
 
 type ProjectDetailPanelProps = {
@@ -86,78 +88,90 @@ export const ProjectDetailPanel = ({
   onClose,
   onOpenChat,
   onNewChat,
-}: ProjectDetailPanelProps) => (
-  <DetailPanel
-    icon={
-      <IconTile>
-        <ProjectIcon icon={project.icon} className="size-5 text-[1.15rem]" />
-      </IconTile>
-    }
-    title={project.name}
-    subtitle={project.description ?? undefined}
-    actions={
-      <DetailActionsMenu>
-        <DetailEditDeleteMenuItems onEdit={onEdit} onDelete={onDelete} />
-      </DetailActionsMenu>
-    }
-    onClose={onClose}
-  >
-    {/* The one action worth having here rather than behind ⋯ → Edit: starting a
+}: ProjectDetailPanelProps) => {
+  const { t } = useLingui()
+
+  return (
+    <DetailPanel
+      icon={
+        <IconTile>
+          <ProjectIcon icon={project.icon} className="size-5 text-[1.15rem]" />
+        </IconTile>
+      }
+      title={project.name}
+      subtitle={project.description ?? undefined}
+      actions={
+        <DetailActionsMenu>
+          <DetailEditDeleteMenuItems onEdit={onEdit} onDelete={onDelete} />
+        </DetailActionsMenu>
+      }
+      onClose={onClose}
+    >
+      {/* The one action worth having here rather than behind ⋯ → Edit: starting a
         chat is what a project is *for*, and it isn't an edit. */}
-    <Button variant="outline" size="sm" className="w-full gap-2" onClick={onNewChat}>
-      <MessageCirclePlus className="size-[var(--icon-size-sm)]" aria-hidden="true" />
-      New chat in this project
-    </Button>
+      <Button variant="outline" size="sm" className="w-full gap-2" onClick={onNewChat}>
+        <MessageCirclePlus className="size-[var(--icon-size-sm)]" aria-hidden="true" />
+        <Trans>New chat in this project</Trans>
+      </Button>
 
-    <div className="flex flex-col gap-2">
-      <DetailSectionTitle>Chats</DetailSectionTitle>
-      {chats.length === 0 ? (
-        <p className="text-base leading-snug text-muted-foreground">No chats yet.</p>
-      ) : (
-        <ul className="flex flex-col gap-1.5">
-          {chats.map((chat) => (
-            <li key={chat.id}>
-              <OpenChatRow
-                label={chat.title ?? 'Untitled chat'}
-                icon={
-                  <MessageCircle
-                    className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                }
-                onClick={() => onOpenChat(chat.id)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+      <div className="flex flex-col gap-2">
+        <DetailSectionTitle>
+          <Trans>Chats</Trans>
+        </DetailSectionTitle>
+        {chats.length === 0 ? (
+          <p className="text-base leading-snug text-muted-foreground">
+            <Trans>No chats yet.</Trans>
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {chats.map((chat) => (
+              <li key={chat.id}>
+                <OpenChatRow
+                  label={chat.title ?? t`Untitled chat`}
+                  icon={
+                    <MessageCircle
+                      className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  }
+                  onClick={() => onOpenChat(chat.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-    <DetailDivider />
+      <DetailDivider />
 
-    <div className="flex flex-col gap-2">
-      <DetailSectionTitle>Artifacts</DetailSectionTitle>
-      {artifacts.length === 0 ? (
-        <p className="text-base leading-snug text-muted-foreground">No artifacts yet.</p>
-      ) : (
-        <ul className="flex flex-col gap-1.5">
-          {artifacts.map((artifact) => (
-            <li key={artifact.id}>
-              <OpenChatRow
-                label={artifact.title}
-                meta={dayjs(artifact.createdAt).fromNow()}
-                icon={
-                  <LayoutTemplate
-                    className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                }
-                onClick={() => onOpenChat(artifact.chatThreadId)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  </DetailPanel>
-)
+      <div className="flex flex-col gap-2">
+        <DetailSectionTitle>
+          <Trans>Artifacts</Trans>
+        </DetailSectionTitle>
+        {artifacts.length === 0 ? (
+          <p className="text-base leading-snug text-muted-foreground">
+            <Trans>No artifacts yet.</Trans>
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {artifacts.map((artifact) => (
+              <li key={artifact.id}>
+                <OpenChatRow
+                  label={artifact.title}
+                  meta={dayjs(artifact.createdAt).fromNow()}
+                  icon={
+                    <LayoutTemplate
+                      className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  }
+                  onClick={() => onOpenChat(artifact.chatThreadId)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </DetailPanel>
+  )
+}

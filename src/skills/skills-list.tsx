@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { LayoutGroup, m } from 'framer-motion'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -42,6 +43,7 @@ export const SkillsList = ({
   onEditSkill: (id: string) => void
   onDeleteSkill: (id: string) => void
 }) => {
+  const { t } = useLingui()
   const [search, setSearch] = useState('')
 
   const isLibraryEmpty = skills.length === 0
@@ -65,12 +67,12 @@ export const SkillsList = ({
   return (
     <SettingsListPane>
       <PageSearch onSearch={setSearch}>
-        <PageHeader title="Skills">
+        <PageHeader title={t`Skills`}>
           <PageSearch.Button />
-          <PageCreateAction label="New Skill" onClick={onCreate} />
+          <PageCreateAction label={t`New Skill`} onClick={onCreate} />
         </PageHeader>
 
-        <PageSearch.Input placeholder="Search skills" onSearch={setSearch} />
+        <PageSearch.Input placeholder={t`Search skills`} onSearch={setSearch} />
       </PageSearch>
 
       {/* LayoutGroup links the Enabled and Disabled <ul>s so a row's
@@ -108,7 +110,9 @@ export const SkillsList = ({
             // mt-4 visually separates the Disabled group from the enabled rows
             // above (the body's gap alone reads as one continuous list).
             <m.div layout="position" transition={skillRowTransition} className="mt-4 flex flex-col gap-2">
-              <SettingsSectionLabel>Disabled</SettingsSectionLabel>
+              <SettingsSectionLabel>
+                <Trans>Disabled</Trans>
+              </SettingsSectionLabel>
               <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-4">
                 {disabledRows.map((skill) => (
                   <LibraryRow
@@ -130,24 +134,26 @@ export const SkillsList = ({
             // The "I deleted everything" empty state — the list is the page's
             // main surface now, so the create CTA lives here.
             <SettingsEmptyState
-              title="No skills yet"
+              title={t`No skills yet`}
               description={
-                <>
+                <Trans>
                   Skills are reusable instruction templates you summon in chat with{' '}
                   <code className="rounded-md bg-secondary px-1 font-mono text-xs">/name</code>.
-                </>
+                </Trans>
               }
               action={
                 <Button size="sm" variant="outline" onClick={onCreate}>
                   <Plus />
-                  Create your first skill
+                  <Trans>Create your first skill</Trans>
                 </Button>
               }
             />
           )}
           {!isLibraryEmpty && enabledRows.length === 0 && disabledRows.length === 0 && (
             // Search-empty state: the library has skills but none match.
-            <SettingsNoResults>No matching skills.</SettingsNoResults>
+            <SettingsNoResults>
+              <Trans>No matching skills.</Trans>
+            </SettingsNoResults>
           )}
         </SettingsListBody>
       </LayoutGroup>

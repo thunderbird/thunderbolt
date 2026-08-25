@@ -9,6 +9,7 @@
  * The fields come from `ProjectForm`, shared with edit, so the two cannot drift.
  */
 
+import { useLingui } from '@lingui/react/macro'
 import { DetailPanel } from '@/components/detail-panel'
 import { useDatabase } from '@/contexts'
 import { createProject } from '@/dal/projects'
@@ -20,10 +21,11 @@ type CreateProjectPanelProps = {
 }
 
 export const CreateProjectPanel = ({ onClose, onCreated }: CreateProjectPanelProps) => {
+  const { t } = useLingui()
   const db = useDatabase()
 
   return (
-    <DetailPanel title="Create project" onClose={onClose}>
+    <DetailPanel title={t`Create project`} onClose={onClose}>
       <ProjectForm
         mode="create"
         onCancel={onClose}

@@ -425,7 +425,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                   ) : (
                     <RefreshCw className="mr-1 size-3" />
                   )}
-                  Retry
+                  <Trans>Retry</Trans>
                 </Button>
               )}
             </div>

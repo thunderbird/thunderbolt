@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { File, ListOrdered, Pin, Plus, SquarePen } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 
@@ -44,6 +45,7 @@ export const SuggestionChip = ({
   onReorder?: () => void
   onUnpin?: () => void
 }) => {
+  const { t } = useLingui()
   const [open, setOpen] = useState(false)
 
   // Long-press detection for touch — opens the action menu without firing
@@ -112,26 +114,26 @@ export const SuggestionChip = ({
         setOpen(true)
       }}
       className={cn(chipSurfaceClass, 'h-[var(--touch-height-sm)] px-3 text-sm font-normal')}
-      aria-label={`Pinned skill ${label}`}
+      aria-label={t`Pinned skill ${label}`}
     >
       {label}
     </Button>
   )
 
   const actions: ResponsiveActionMenuAction[] = [
-    { label: 'Add to chat', icon: <Plus className="size-[var(--icon-size-sm)]" />, onSelect: onClick },
+    { label: t`Add to chat`, icon: <Plus className="size-[var(--icon-size-sm)]" />, onSelect: onClick },
     {
-      label: 'Add instructions to chat',
+      label: t`Add instructions to chat`,
       icon: <File className="size-[var(--icon-size-sm)]" />,
       onSelect: onAddInstruction,
     },
     ...(onEdit
-      ? [{ label: 'Edit skill', icon: <SquarePen className="size-[var(--icon-size-sm)]" />, onSelect: onEdit }]
+      ? [{ label: t`Edit skill`, icon: <SquarePen className="size-[var(--icon-size-sm)]" />, onSelect: onEdit }]
       : []),
     ...(onReorder
-      ? [{ label: 'Reorder', icon: <ListOrdered className="size-[var(--icon-size-sm)]" />, onSelect: onReorder }]
+      ? [{ label: t`Reorder`, icon: <ListOrdered className="size-[var(--icon-size-sm)]" />, onSelect: onReorder }]
       : []),
-    ...(onUnpin ? [{ label: 'Unpin', icon: <Pin className="size-[var(--icon-size-sm)]" />, onSelect: onUnpin }] : []),
+    ...(onUnpin ? [{ label: t`Unpin`, icon: <Pin className="size-[var(--icon-size-sm)]" />, onSelect: onUnpin }] : []),
   ]
 
   return (

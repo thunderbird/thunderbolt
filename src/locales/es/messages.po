@@ -36,6 +36,20 @@ msgid_plural "# chats"
 msgstr[0] ""
 msgstr[1] ""
 
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
+#: src/skills/dependents-dialog.tsx
+msgid "One skill references this. If you delete it, that skill may no longer resolve."
+msgid_plural "# skills reference this. If you delete it, they may no longer resolve."
+msgstr[0] ""
+msgstr[1] ""
+
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+disable+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+disable+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
+#: src/skills/dependents-dialog.tsx
+msgid "One skill references this. If you disable it, that skill may no longer resolve."
+msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
+msgstr[0] ""
+msgstr[1] ""
+
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
 msgid "# skill"
@@ -88,12 +102,20 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
+#: src/projects/emoji-catalog.ts
+msgid "Activity"
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add & Authorize"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
+msgstr ""
+
+#: src/tasks/index.tsx
+msgid "Add a new task..."
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -107,6 +129,10 @@ msgstr ""
 
 #: src/settings/connections/index.tsx
 msgid "Add failed"
+msgstr ""
+
+#: src/skills/suggestion-chip.tsx
+msgid "Add instructions to chat"
 msgstr ""
 
 #: src/settings/connections/index.tsx
@@ -125,11 +151,16 @@ msgid "Add Server"
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
+#: src/skills/suggestion-chip.tsx
 msgid "Add to chat"
 msgstr ""
 
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
+msgstr ""
+
+#: src/tasks/index.tsx
+msgid "Add Your First Task"
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -184,6 +215,10 @@ msgstr ""
 msgid "Always allow everything from this agent"
 msgstr ""
 
+#: src/projects/emoji-catalog.ts
+msgid "Animals & nature"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "API key"
 msgstr ""
@@ -204,6 +239,10 @@ msgstr ""
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx
 msgid "API key not configured"
+msgstr ""
+
+#: src/projects/project-form.tsx
+msgid "Applied to every chat in this project."
 msgstr ""
 
 #: src/components/device-approval.tsx
@@ -229,6 +268,10 @@ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Are you sure? You will lose any changes that you made."
+msgstr ""
+
+#: src/projects/project-detail-panel.tsx
+msgid "Artifacts"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
@@ -292,6 +335,10 @@ msgstr ""
 msgid "Built-in models can't be edited or removed"
 msgstr ""
 
+#: src/skills/skill-detail.tsx
+msgid "Built-in skill · Read-only"
+msgstr ""
+
 #: src/waitlist/waitlist-page.tsx
 msgid "By continuing, you agree to our <0>Terms of Service</0> and <1>Privacy Policy</1>."
 msgstr ""
@@ -309,6 +356,7 @@ msgstr ""
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/index.tsx
+#: src/skills/dependents-dialog.tsx
 msgid "Cancel"
 msgstr ""
 
@@ -325,8 +373,13 @@ msgid "Chat name"
 msgstr ""
 
 #: src/layout/sidebar/nav-toggle.tsx
+#: src/projects/project-detail-panel.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
+msgstr ""
+
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "Chats in a project inherit its instructions."
 msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
@@ -356,6 +409,14 @@ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Checking…"
+msgstr ""
+
+#: src/projects/emoji-picker.tsx
+msgid "Choose an icon"
+msgstr ""
+
+#: src/projects/emoji-picker.tsx
+msgid "Choose an icon for {label}"
 msgstr ""
 
 #: src/components/ui/searchable-menu/searchable-menu.tsx
@@ -397,6 +458,10 @@ msgstr ""
 msgid "Close navigation"
 msgstr ""
 
+#: src/skills/reorder-panel.tsx
+msgid "Close reorder"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
 msgstr ""
@@ -417,6 +482,14 @@ msgstr ""
 msgid "Command / arguments"
 msgstr ""
 
+#: src/tasks/index.tsx
+msgid "Complete {taskItem}"
+msgstr ""
+
+#: src/tasks/index.tsx
+msgid "Complete new task"
+msgstr ""
+
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Complete the setup process to get started with Thunderbolt"
 msgstr ""
@@ -429,6 +502,7 @@ msgstr ""
 msgid "Configuration"
 msgstr ""
 
+#: src/components/modification-indicator.tsx
 #: src/components/revoked-device-modal.tsx
 msgid "Confirm"
 msgstr ""
@@ -586,12 +660,24 @@ msgstr ""
 msgid "Could not connect to this server. Check the URL and that the server is reachable."
 msgstr ""
 
+#: src/projects/project-form.tsx
+msgid "Could not create the project."
+msgstr ""
+
+#: src/projects/project-form.tsx
+msgid "Could not save the project."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
+msgstr ""
+
+#: src/projects/emoji-picker.tsx
+msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr ""
 
 #: src/components/settings/iroh-pairing-panel.tsx
@@ -622,7 +708,9 @@ msgstr ""
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 msgstr ""
 
+#: src/projects/project-form.tsx
 #: src/search/palette/search-palette.tsx
+#: src/skills/skill-form.tsx
 msgid "Create"
 msgstr ""
 
@@ -634,9 +722,27 @@ msgstr ""
 msgid "Create Model"
 msgstr ""
 
+#: src/projects/create-project-panel.tsx
+msgid "Create project"
+msgstr ""
+
 #: src/components/create-item/context.tsx
 #: src/search/commands/create-commands.ts
+#: src/skills/skills-view.tsx
 msgid "Create Skill"
+msgstr ""
+
+#: src/projects/index.tsx
+msgid "Create your first project"
+msgstr ""
+
+#: src/skills/skills-list.tsx
+msgid "Create your first skill"
+msgstr ""
+
+#: src/projects/project-form.tsx
+#: src/skills/skill-form.tsx
+msgid "Creating…"
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
@@ -655,8 +761,20 @@ msgstr ""
 msgid "Customized model"
 msgstr ""
 
+#: src/skills/skill-form.tsx
+msgid "Daily Brief"
+msgstr ""
+
+#: src/skills/skill-form.tsx
+msgid "daily-brief"
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Data is stored securely on your device."
+msgstr ""
+
+#: src/components/modification-indicator.tsx
+msgid "Default setting"
 msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
@@ -666,11 +784,20 @@ msgstr ""
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
+#: src/skills/library-row.tsx
 msgid "Delete"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Delete {agentName}?"
+msgstr ""
+
+#: src/skills/delete-skill-dialog.tsx
+msgid "Delete {skillName}?"
+msgstr ""
+
+#: src/skills/dependents-dialog.tsx
+msgid "Delete {targetName}?"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
@@ -698,8 +825,17 @@ msgstr ""
 msgid "Delete Model"
 msgstr ""
 
+#: src/projects/project-detail-panel.tsx
+msgid "Delete project"
+msgstr ""
+
 #: src/settings/connections/index.tsx
 msgid "Delete Server"
+msgstr ""
+
+#: src/skills/delete-skill-dialog.tsx
+#: src/skills/dependents-dialog.tsx
+msgid "Delete skill"
 msgstr ""
 
 #: src/components/ui/chat-nav-button.tsx
@@ -716,6 +852,10 @@ msgstr ""
 
 #: src/settings/models/index.tsx
 msgid "Delete this model from your configured models?"
+msgstr ""
+
+#: src/projects/project-detail-panel.tsx
+msgid "Delete this project?"
 msgstr ""
 
 #: src/components/logout-modal.tsx
@@ -743,6 +883,9 @@ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/projects/project-form.tsx
+#: src/skills/skill-detail.tsx
+#: src/skills/skill-form.tsx
 msgid "Description"
 msgstr ""
 
@@ -774,11 +917,24 @@ msgstr ""
 msgid "Disable {modelName}"
 msgstr ""
 
+#: src/skills/library-row.tsx
+msgid "Disable {skillName}"
+msgstr ""
+
+#: src/skills/dependents-dialog.tsx
+msgid "Disable {targetName}?"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "Disable {title}"
 msgstr ""
 
+#: src/skills/dependents-dialog.tsx
+msgid "Disable skill"
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/skills/skills-list.tsx
 msgid "Disabled"
 msgstr ""
 
@@ -791,6 +947,7 @@ msgstr ""
 msgid "Discard"
 msgstr ""
 
+#: src/components/connect-provider-button.tsx
 #: src/settings/connections/integration-detail.tsx
 msgid "Disconnect"
 msgstr ""
@@ -845,6 +1002,7 @@ msgstr ""
 
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
+#: src/skills/library-row.tsx
 msgid "Edit"
 msgstr ""
 
@@ -860,7 +1018,16 @@ msgstr ""
 msgid "Edit Model"
 msgstr ""
 
+#: src/projects/index.tsx
+msgid "Edit project"
+msgstr ""
+
+#: src/skills/suggestion-chip.tsx
+msgid "Edit skill"
+msgstr ""
+
 #: src/components/create-item/context.tsx
+#: src/skills/skills-view.tsx
 msgid "Edit Skill"
 msgstr ""
 
@@ -884,6 +1051,10 @@ msgstr ""
 
 #: src/settings/models/models-list.tsx
 msgid "Enable {modelName}"
+msgstr ""
+
+#: src/skills/library-row.tsx
+msgid "Enable {skillName}"
 msgstr ""
 
 #: src/settings/connections/connections-list.tsx
@@ -958,6 +1129,14 @@ msgstr ""
 msgid "First device setup"
 msgstr ""
 
+#: src/projects/emoji-catalog.ts
+msgid "Flags"
+msgstr ""
+
+#: src/projects/emoji-catalog.ts
+msgid "Food & drink"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Generating keys…"
 msgstr ""
@@ -986,6 +1165,11 @@ msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "Go to"
+msgstr ""
+
+#: src/skills/skill-detail.tsx
+#: src/skills/skill-form.tsx
+msgid "Helps the agent decide when to use this skill. Be specific about when it applies."
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -1044,6 +1228,12 @@ msgstr ""
 msgid "Installing…"
 msgstr ""
 
+#: src/projects/project-form.tsx
+#: src/skills/skill-detail.tsx
+#: src/skills/skill-form.tsx
+msgid "Instructions"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Integrations"
 msgstr ""
@@ -1058,6 +1248,10 @@ msgstr ""
 
 #: src/components/settings/agents/validate-agent-url.ts
 msgid "iOS requires a secure URL (wss://)"
+msgstr ""
+
+#: src/projects/project-detail-panel.tsx
+msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -1097,10 +1291,12 @@ msgid "Leave data on device"
 msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
+#: src/skills/skills-view.tsx
 msgid "Leave without creating?"
 msgstr ""
 
 #: src/components/create-item/create-skill-panel.tsx
+#: src/skills/skills-view.tsx
 msgid "Leave without saving?"
 msgstr ""
 
@@ -1114,6 +1310,10 @@ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Loading devices…"
+msgstr ""
+
+#: src/projects/emoji-picker.tsx
+msgid "Loading emoji…"
 msgstr ""
 
 #: src/components/settings/iroh-pairing-panel.tsx
@@ -1207,6 +1407,7 @@ msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/layout/sidebar/project-drop-list.tsx
+#: src/projects/move-chat-to-project-dialog.tsx
 msgid "Move to project"
 msgstr ""
 
@@ -1216,8 +1417,10 @@ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
+#: src/skills/skill-form.tsx
 msgid "Name"
 msgstr ""
 
@@ -1244,6 +1447,10 @@ msgstr ""
 msgid "New Chat"
 msgstr ""
 
+#: src/projects/project-detail-panel.tsx
+msgid "New chat in this project"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
 msgstr ""
@@ -1252,12 +1459,29 @@ msgstr ""
 msgid "New Model"
 msgstr ""
 
+#: src/projects/index.tsx
+msgid "New project"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
+#: src/skills/skills-list.tsx
 msgid "New Skill"
+msgstr ""
+
+#: src/tasks/index.tsx
+msgid "New Task"
+msgstr ""
+
+#: src/projects/project-detail-panel.tsx
+msgid "No artifacts yet."
 msgstr ""
 
 #: src/layout/sidebar/chat-list.tsx
 msgid "No chats yet"
+msgstr ""
+
+#: src/projects/project-detail-panel.tsx
+msgid "No chats yet."
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -1280,12 +1504,28 @@ msgstr ""
 msgid "No longer accepts device connections"
 msgstr ""
 
+#: src/projects/emoji-picker.tsx
+msgid "No matches"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
 msgstr ""
 
+#: src/projects/index.tsx
+msgid "No matching projects"
+msgstr ""
+
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "No matching projects."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "No matching skills"
+msgstr ""
+
+#: src/skills/skills-list.tsx
+msgid "No matching skills."
 msgstr ""
 
 #: src/settings/models/models-list.tsx
@@ -1301,12 +1541,32 @@ msgstr ""
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr ""
 
+#: src/projects/index.tsx
+msgid "No projects yet"
+msgstr ""
+
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "No projects yet. Create one from the Projects page, then move this chat into it."
+msgstr ""
+
 #: src/search/palette/search-palette.tsx
 msgid "No results found."
 msgstr ""
 
+#: src/skills/skills-list.tsx
+msgid "No skills yet"
+msgstr ""
+
 #: src/components/chat/source-list.tsx
 msgid "No sources available"
+msgstr ""
+
+#: src/tasks/index.tsx
+msgid "No tasks found matching \"{searchQuery}\""
+msgstr ""
+
+#: src/tasks/index.tsx
+msgid "No tasks yet"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -1319,6 +1579,10 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
+msgstr ""
+
+#: src/projects/emoji-catalog.ts
+msgid "Objects"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -1339,6 +1603,10 @@ msgstr ""
 
 #: src/settings/models/models-list.tsx
 msgid "Open {modelName}"
+msgstr ""
+
+#: src/skills/library-row.tsx
+msgid "Open {skillName}"
 msgstr ""
 
 #: src/settings/connections/connections-list.tsx
@@ -1382,6 +1650,10 @@ msgstr ""
 msgid "Optional — leave blank for local servers that don’t require auth."
 msgstr ""
 
+#: src/projects/project-form.tsx
+msgid "Optional — what this project is for"
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr ""
@@ -1414,6 +1686,10 @@ msgstr ""
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr ""
 
+#: src/skills/suggestion-chip.tsx
+msgid "Pinned skill {label}"
+msgstr ""
+
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Please select a location from the dropdown to get coordinates."
 msgstr ""
@@ -1444,6 +1720,7 @@ msgid "Private"
 msgstr ""
 
 #: src/layout/sidebar/chat-sidebar.tsx
+#: src/projects/index.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
 msgstr ""
@@ -1451,6 +1728,10 @@ msgstr ""
 #: src/settings/models/add-model-form.tsx
 #: src/settings/voice.tsx
 msgid "Provider"
+msgstr ""
+
+#: src/projects/project-form.tsx
+msgid "Q3 planning"
 msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
@@ -1503,7 +1784,12 @@ msgid "Remove all chats, settings, and cached data from this device."
 msgstr ""
 
 #: src/layout/sidebar/project-drop-list.tsx
+#: src/projects/move-chat-to-project-dialog.tsx
 msgid "Remove from project"
+msgstr ""
+
+#: src/projects/emoji-picker.tsx
+msgid "Remove icon"
 msgstr ""
 
 #: src/components/chat/quote-chip.tsx
@@ -1522,12 +1808,21 @@ msgstr ""
 msgid "Rename chat"
 msgstr ""
 
+#: src/skills/suggestion-chip.tsx
+msgid "Reorder"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
+#: src/skills/reorder-panel.tsx
 msgid "Reorder skills"
 msgstr ""
 
 #: src/components/chat/quote-reply-button.tsx
 msgid "Reply"
+msgstr ""
+
+#: src/projects/project-form.tsx
+msgid "Reply in British English. Prefer bullet points over prose."
 msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -1550,7 +1845,12 @@ msgstr ""
 msgid "Resend Email"
 msgstr ""
 
+#: src/components/modification-indicator.tsx
+msgid "Reset to Default"
+msgstr ""
+
 #: src/components/chat/error-message.tsx
+#: src/components/sidebar-footer.tsx
 msgid "Retry"
 msgstr ""
 
@@ -1589,7 +1889,12 @@ msgstr ""
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/settings/models/edit-model-form.tsx
+#: src/skills/skill-form.tsx
 msgid "Save"
+msgstr ""
+
+#: src/projects/project-form.tsx
+msgid "Save changes"
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
@@ -1604,8 +1909,10 @@ msgstr ""
 msgid "Save your recovery phrase"
 msgstr ""
 
+#: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
+#: src/skills/skill-form.tsx
 msgid "Saving…"
 msgstr ""
 
@@ -1636,13 +1943,27 @@ msgstr ""
 msgid "Search connections"
 msgstr ""
 
+#: src/projects/emoji-picker.tsx
+msgid "Search emoji"
+msgstr ""
+
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 msgid "Search models…"
 msgstr ""
 
+#: src/projects/index.tsx
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "Search projects"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
+#: src/skills/skills-list.tsx
 msgid "Search skills"
+msgstr ""
+
+#: src/tasks/index.tsx
+msgid "Search tasks..."
 msgstr ""
 
 #: src/components/ui/combobox.tsx
@@ -1763,6 +2084,10 @@ msgstr ""
 msgid "Show QR code for {deviceName}"
 msgstr ""
 
+#: src/tasks/index.tsx
+msgid "Showing 50 of {totalCount} tasks"
+msgstr ""
+
 #: src/layout/sidebar/nav-toggle.tsx
 msgid "Sidebar sections"
 msgstr ""
@@ -1815,11 +2140,28 @@ msgstr ""
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
+#: src/skills/skills-list.tsx
 msgid "Skills"
+msgstr ""
+
+#: src/skills/skills-list.tsx
+msgid "Skills are reusable instruction templates you summon in chat with <0>/name</0>."
 msgstr ""
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
 msgid "Skip"
+msgstr ""
+
+#: src/skills/slash-popup.tsx
+msgid "Slash commands"
+msgstr ""
+
+#: src/skills/skill-form.tsx
+msgid "Slug"
+msgstr ""
+
+#: src/projects/emoji-catalog.ts
+msgid "Smileys & people"
 msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -1872,6 +2214,14 @@ msgstr ""
 msgid "Successfully got a response from the model."
 msgstr ""
 
+#: src/projects/emoji-picker.tsx
+msgid "Suggested"
+msgstr ""
+
+#: src/projects/emoji-catalog.ts
+msgid "Symbols"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Synced {relative}"
 msgstr ""
@@ -1883,6 +2233,7 @@ msgstr ""
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
+#: src/tasks/index.tsx
 msgid "Tasks"
 msgstr ""
 
@@ -1997,6 +2348,10 @@ msgstr ""
 msgid "This model does not seem to support tool usage."
 msgstr ""
 
+#: src/projects/project-form.tsx
+msgid "this project"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
 msgstr ""
@@ -2019,6 +2374,10 @@ msgstr ""
 
 #: src/components/delete-all-chats-dialog.tsx
 msgid "This will permanently delete all your chats."
+msgstr ""
+
+#: src/skills/delete-skill-dialog.tsx
+msgid "This will permanently delete the skill. Other skills that reference it may no longer resolve."
 msgstr ""
 
 #: src/components/delete-chat-dialog.tsx
@@ -2079,6 +2438,10 @@ msgstr ""
 msgid "Transport: {transportLabel}"
 msgstr ""
 
+#: src/projects/emoji-catalog.ts
+msgid "Travel & places"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Trusted devices"
 msgstr ""
@@ -2095,8 +2458,16 @@ msgstr ""
 msgid "TTS voice"
 msgstr ""
 
+#: src/skills/suggestion-chip.tsx
+msgid "Unpin"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
+msgstr ""
+
+#: src/projects/project-detail-panel.tsx
+msgid "Untitled chat"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -2225,6 +2596,11 @@ msgstr ""
 msgid "What agents use"
 msgstr ""
 
+#: src/skills/skill-detail.tsx
+#: src/skills/skill-form.tsx
+msgid "What is this for?"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "What it uses"
 msgstr ""
@@ -2233,8 +2609,16 @@ msgstr ""
 msgid "What should we call you?"
 msgstr ""
 
+#: src/skills/skill-form.tsx
+msgid "What the assistant should do…"
+msgstr ""
+
 #: src/components/logout-modal.tsx
 msgid "What would you like to do with your local data?"
+msgstr ""
+
+#: src/skills/skill-form.tsx
+msgid "When to use this skill…"
 msgstr ""
 
 #: src/components/onboarding/onboarding-location-step.tsx
@@ -2266,6 +2650,7 @@ msgid "You can return to your terminal."
 msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
+#: src/skills/skills-view.tsx
 msgid "You'll lose what you've added so far."
 msgstr ""
 
@@ -2311,6 +2696,7 @@ msgid "Your assistant can help you manage your email, calendar, and documents."
 msgstr ""
 
 #: src/components/create-item/create-skill-panel.tsx
+#: src/skills/skills-view.tsx
 msgid "Your changes won't be saved."
 msgstr ""
 

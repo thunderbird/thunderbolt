@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
+  clearActiveLocale,
   getActiveLocale,
   getBrowserLanguages,
   readInitialLocale,
@@ -45,6 +46,39 @@ describe('setActiveLocale', () => {
     setActiveLocale('de')
 
     expect(localStorage.getItem(storageKey)).toBe('de')
+  })
+})
+
+describe('clearActiveLocale', () => {
+  test('drops the mirror so the next boot negotiates', () => {
+    setActiveLocale('ja')
+
+    clearActiveLocale()
+
+    expect(localStorage.getItem(storageKey)).toBeNull()
+    // happy-dom reports en-US, so negotiation lands on en.
+    expect(readInitialLocale()).toBe('en')
+  })
+
+  test('falls back to the negotiated locale in memory too', () => {
+    setActiveLocale('ja')
+
+    clearActiveLocale()
+
+    expect(getActiveLocale()).toBe('en')
+  })
+
+  test('notifies subscribers, so locale-keyed queries refetch', () => {
+    setActiveLocale('ja')
+    let calls = 0
+    const unsubscribe = subscribeActiveLocale(() => {
+      calls += 1
+    })
+
+    clearActiveLocale()
+
+    expect(calls).toBe(1)
+    unsubscribe()
   })
 })
 

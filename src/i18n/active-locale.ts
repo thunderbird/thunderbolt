@@ -87,6 +87,14 @@ export const subscribeActiveLocale = (listener: () => void): (() => void) => {
   }
 }
 
+const publish = (locale: AppLocale): void => {
+  if (locale === activeLocale) {
+    return
+  }
+  activeLocale = locale
+  listeners.forEach((listener) => listener())
+}
+
 /**
  * Record the locale the app switched to and mirror it for the next boot.
  * Called by `activateLocale` — the single writer — before it awaits the
@@ -97,9 +105,22 @@ export const setActiveLocale = (locale: AppLocale): void => {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(localeStorageKey, locale)
   }
-  if (locale === activeLocale) {
-    return
+  publish(locale)
+}
+
+/**
+ * Drop the mirror and fall back to browser negotiation.
+ *
+ * Called from `clearLocalData` when the settings database is cleared: the mirror
+ * caches a value from that database, so once it is gone the mirror is stale and
+ * would boot the next identity in the previous account's language. Deliberately
+ * *not* called when the caller keeps the database — the retained `language` row
+ * still matches the mirror, and clearing it would only flash the browser
+ * language before that row hydrates.
+ */
+export const clearActiveLocale = (): void => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(localeStorageKey)
   }
-  activeLocale = locale
-  listeners.forEach((listener) => listener())
+  publish(readInitialLocale())
 }

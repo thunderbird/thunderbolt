@@ -14,7 +14,7 @@
  */
 
 import type { LucideIcon } from 'lucide-react'
-import { LineChart } from 'lucide-react'
+import { LineChart, Route } from 'lucide-react'
 
 export type MiniAppDefinition = {
   /** URL segment and stable key: `/apps/<id>`. */
@@ -48,7 +48,21 @@ const financeModelApp: MiniAppDefinition = {
   origin: 'http://localhost:5174',
 }
 
-export const miniAppRegistry: MiniAppDefinition[] = [financeModelApp]
+/**
+ * Patient Journeys (`~/code/patient_journeys_app`). Runs on 5180 rather than the
+ * next port up from the finance app: `next dev` silently walks forward when its
+ * port is taken, so two sample apps on adjacent numbers can quietly swap places.
+ */
+const patientJourneysApp: MiniAppDefinition = {
+  id: 'patient-journeys',
+  name: 'Patient Journeys',
+  description: 'Disease-by-disease maps of how patients reach diagnosis and treatment, for launch planning.',
+  icon: Route,
+  url: 'http://localhost:5180',
+  origin: 'http://localhost:5180',
+}
+
+export const miniAppRegistry: MiniAppDefinition[] = [financeModelApp, patientJourneysApp]
 
 /** Look up a registered app by its route id. */
 export const findMiniApp = (id: string | undefined): MiniAppDefinition | undefined =>

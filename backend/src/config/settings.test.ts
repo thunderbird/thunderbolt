@@ -99,12 +99,13 @@ describe('Config Settings', () => {
       expect(isOriginAllowed('http://localhost:1420', settings)).toBe(true)
     })
 
-    it('should expose proxy and server timing to cross-origin clients by default', () => {
+    it('should expose proxy timing, server timing, and inference receipts to cross-origin clients by default', () => {
       delete process.env.CORS_EXPOSE_HEADERS
       const settings = getSettings()
 
       expect(settings.corsExposeHeaders.split(',')).toContain('X-Proxy-Timing')
       expect(settings.corsExposeHeaders.split(',')).toContain('Server-Timing')
+      expect(settings.corsExposeHeaders.split(',')).toContain('X-Inference-Usage-Receipt')
       expect(settings.corsExposeHeaders.split(',')).not.toContain('Timing-Allow-Origin')
     })
 

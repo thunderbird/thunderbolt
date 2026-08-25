@@ -9,6 +9,7 @@ import { GradientTriangleAlert } from '@/components/ui/gradient-triangle-alert'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { otpLength } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Check, Loader2 } from 'lucide-react'
 
@@ -43,6 +44,7 @@ export const SignInOtpStep = ({
   onCancel,
   variant,
 }: SignInOtpStepProps) => {
+  const { t } = useLingui()
   const isVerifying = status === 'verifying'
 
   // Shared building blocks — the page and modal variants are pure layout
@@ -80,11 +82,11 @@ export const SignInOtpStep = ({
       successContent={
         <>
           <Check className="mr-2 h-4 w-4" />
-          Sent
+          <Trans>Sent</Trans>
         </>
       }
     >
-      Resend Email
+      <Trans>Resend Email</Trans>
     </ActionFeedbackButton>
   )
 
@@ -93,9 +95,13 @@ export const SignInOtpStep = ({
       <div className="flex h-full w-full flex-col items-center">
         {/* Title + subtitle — centered vertically */}
         <div className="my-auto flex flex-col items-center text-center">
-          <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Check your email</p>
+          <p className="font-sans text-[28px] font-medium leading-normal text-foreground">
+            <Trans>Check your email</Trans>
+          </p>
           <p className="mt-2 text-base text-foreground">
-            If you have access, we&apos;ve sent an 8-digit code to <span className="font-bold">{email}</span>
+            <Trans>
+              If you have access, we&apos;ve sent an 8-digit code to <span className="font-bold">{email}</span>
+            </Trans>
           </p>
           {renderResendButton('mt-1')}
         </div>
@@ -110,14 +116,14 @@ export const SignInOtpStep = ({
             type="button"
             onClick={() => onOtpComplete(otp)}
             isLoading={isVerifying}
-            loadingLabel="Verifying…"
+            loadingLabel={t`Verifying…`}
             disabled={otp.length !== otpLength}
             // Deliberate hero-CTA treatment for the auth flows (taller than
             // the standard button and rounded-xl instead of the usual
             // rounded-lg atom tier) — matches waitlist-page.tsx.
             className="h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
-            Continue
+            <Trans>Continue</Trans>
           </Button>
         </div>
       </div>
@@ -131,30 +137,34 @@ export const SignInOtpStep = ({
         {isLocalhost ? <GradientTriangleAlert className="h-12 w-12" /> : <GradientMail className="h-12 w-12" />}
 
         <div className="mt-4 text-center">
-          <p className="text-xl font-semibold">{isLocalhost ? 'Check the backend logs' : 'Check your email'}</p>
+          <p className="text-xl font-semibold">
+            {isLocalhost ? <Trans>Check the backend logs</Trans> : <Trans>Check your email</Trans>}
+          </p>
           <p className="mt-2 text-sm text-muted-foreground">
             {isLocalhost ? (
-              <>
+              <Trans>
                 You appear to be using a{' '}
                 <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">localhost</code> backend. Check your
                 backend server logs for the code or magic link.
-              </>
+              </Trans>
             ) : (
-              <>
+              <Trans>
                 We sent a code to <span className="font-medium text-foreground">{email}</span>
-              </>
+              </Trans>
             )}
           </p>
         </div>
 
         <div className="mt-6 flex w-full flex-col items-center gap-3">
-          <p className="text-sm text-muted-foreground">Or enter the 8-digit code</p>
+          <p className="text-sm text-muted-foreground">
+            <Trans>Or enter the 8-digit code</Trans>
+          </p>
           {renderOtpInput('off')}
 
           {isVerifying && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Verifying…
+              <Trans>Verifying…</Trans>
             </div>
           )}
 
@@ -162,13 +172,17 @@ export const SignInOtpStep = ({
 
           {renderResendButton()}
 
-          {!isLocalhost && <p className="text-xs text-muted-foreground">Or click the magic link in your email</p>}
+          {!isLocalhost && (
+            <p className="text-xs text-muted-foreground">
+              <Trans>Or click the magic link in your email</Trans>
+            </p>
+          )}
         </div>
       </div>
 
       <div className="mt-6 w-full shrink-0">
         <Button variant="outline" className="w-full" onClick={onCancel}>
-          Cancel
+          <Trans>Cancel</Trans>
         </Button>
       </div>
     </div>

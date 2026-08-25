@@ -6,6 +6,9 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from '@/component
 import type { LocationData } from '@/hooks/use-location-search'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { MapPin } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -13,26 +16,32 @@ import { z } from 'zod'
 import { LocationSearchCombobox } from '../location-search-combobox'
 import { OnboardingStepHeader } from './onboarding-step-header'
 
-const locationFormSchema = z
-  .object({
-    locationName: z.string().min(1, { message: 'Location is required.' }),
-    locationLat: z.number().optional(),
-    locationLng: z.number().optional(),
-  })
-  .refine(
-    (data) => {
-      if (data.locationName && data.locationName.length > 0) {
-        return data.locationLat !== undefined && data.locationLng !== undefined
-      }
-      return true
-    },
-    {
-      message: 'Please select a location from the dropdown to get coordinates.',
-      path: ['locationName'],
-    },
-  )
+const locationRequired = msg`Location is required.`
+const coordinatesRequired = msg`Please select a location from the dropdown to get coordinates.`
 
-type LocationFormData = z.infer<typeof locationFormSchema>
+/** Built per render so the messages resolve against the active catalog — see the
+ *  "Localization" section in AGENTS.md. */
+const createLocationFormSchema = (i18n: I18n) =>
+  z
+    .object({
+      locationName: z.string().min(1, { message: i18n._(locationRequired) }),
+      locationLat: z.number().optional(),
+      locationLng: z.number().optional(),
+    })
+    .refine(
+      (data) => {
+        if (data.locationName && data.locationName.length > 0) {
+          return data.locationLat !== undefined && data.locationLng !== undefined
+        }
+        return true
+      },
+      {
+        message: i18n._(coordinatesRequired),
+        path: ['locationName'],
+      },
+    )
+
+type LocationFormData = z.infer<ReturnType<typeof createLocationFormSchema>>
 
 type OnboardingLocationStepProps = {
   state: OnboardingState
@@ -49,7 +58,9 @@ type OnboardingLocationStepProps = {
 }
 
 export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: OnboardingLocationStepProps) => {
+  const { i18n } = useLingui()
   const [isInitialized, setIsInitialized] = useState(false)
+  const locationFormSchema = createLocationFormSchema(i18n)
 
   const form = useForm<LocationFormData>({
     resolver: zodResolver(locationFormSchema),
@@ -130,8 +141,8 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     <div className="flex w-full flex-1 flex-col justify-center">
       <OnboardingStepHeader
         icon={<MapPin className="size-10 text-primary" />}
-        title="Where are you located?"
-        description="This helps us personalize your experience with local settings and features."
+        title={<Trans>Where are you located?</Trans>}
+        description={<Trans>This helps us personalize your experience with local settings and features.</Trans>}
       />
 
       <Form {...form}>

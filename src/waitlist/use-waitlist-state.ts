@@ -8,11 +8,15 @@ import type { AuthClient } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts'
 import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
+
+const joinFailed = msg`Something went wrong. Please try again.`
+const verifyFailed = msg`Verification failed. Please try again.`
 
 type WaitlistStatus = 'idle' | 'joining' | 'checkEmail' | 'verifying' | 'error'
 
@@ -103,7 +107,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       dispatch({ type: 'JOIN_SUCCESS', payload: challengeToken ?? '' })
     } catch (error) {
       console.error('Waitlist join error:', error)
-      dispatch({ type: 'JOIN_ERROR', payload: 'Something went wrong. Please try again.' })
+      dispatch({ type: 'JOIN_ERROR', payload: i18n._(joinFailed) })
     }
   }
 
@@ -144,7 +148,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       onVerified?.()
     } catch (error) {
       console.error('OTP verification error:', error)
-      dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
+      dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
     }
   }
 

@@ -4,7 +4,7 @@
 
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
-import { useLingui } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
@@ -49,7 +49,7 @@ type OnboardingNameStepProps = {
 }
 
 export const OnboardingNameStep = ({ state, actions, onFormDirtyChange }: OnboardingNameStepProps) => {
-  const { i18n } = useLingui()
+  const { i18n, t } = useLingui()
   const inputRef = useRef<HTMLInputElement>(null)
   const [isInitialized, setIsInitialized] = useState(false)
   // Built during render rather than memoized: `i18n` is a stable singleton, so
@@ -108,8 +108,8 @@ export const OnboardingNameStep = ({ state, actions, onFormDirtyChange }: Onboar
     <div className="flex w-full flex-1 flex-col justify-center">
       <OnboardingStepHeader
         icon={<User className="size-10 text-primary" />}
-        title="What should we call you?"
-        description="Your AI assistant will use this name to address you personally."
+        title={<Trans>What should we call you?</Trans>}
+        description={<Trans>Your AI assistant will use this name to address you personally.</Trans>}
       />
 
       <Form {...form}>
@@ -120,7 +120,7 @@ export const OnboardingNameStep = ({ state, actions, onFormDirtyChange }: Onboar
             render={({ field }) => (
               <FormItem>
                 <FormControl>
-                  <Input placeholder="Enter your name" {...field} ref={inputRef} autoComplete="off" />
+                  <Input placeholder={t`Enter your name`} {...field} ref={inputRef} autoComplete="off" />
                 </FormControl>
                 <FormMessage />
               </FormItem>

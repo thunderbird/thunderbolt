@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
@@ -110,9 +111,11 @@ export const OnboardingDialog = () => {
         className={cn('overflow-hidden p-0', !isMobile && 'h-[650px] max-h-[calc(100dvh-2rem)]')}
         showCloseButton={false}
       >
-        <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
+        <DialogTitle className="sr-only">
+          <Trans>Onboarding Wizard</Trans>
+        </DialogTitle>
         <DialogDescription className="sr-only">
-          Complete the setup process to get started with Thunderbolt
+          <Trans>Complete the setup process to get started with Thunderbolt</Trans>
         </DialogDescription>
         <div
           className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
@@ -163,7 +166,17 @@ export const OnboardingDialog = () => {
                         ? !state.isLocationValid
                         : isCelebration && isCompleting
               }
-              continueText={isCelebration ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'}
+              continueText={
+                isCelebration ? (
+                  isCompleting ? (
+                    <Trans>Completing...</Trans>
+                  ) : (
+                    <Trans>Start Using Thunderbolt</Trans>
+                  )
+                ) : (
+                  <Trans>Continue</Trans>
+                )
+              }
             />
           </div>
         </div>

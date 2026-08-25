@@ -10,6 +10,7 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
+import { Trans } from '@lingui/react/macro'
 import { useRef, useState } from 'react'
 import { SignInForm } from './sign-in'
 
@@ -72,12 +73,14 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
       <ResponsiveModalContent centered className="flex flex-col gap-4">
         <ResponsiveModalHeader className={step === 'email' ? 'text-center' : ''}>
           <ResponsiveModalTitle className={step === 'email' ? 'text-2xl font-semibold' : 'sr-only'}>
-            {step === 'email' ? 'Sign In' : 'Enter your code'}
+            {step === 'email' ? <Trans>Sign In</Trans> : <Trans>Enter your code</Trans>}
           </ResponsiveModalTitle>
           {/* sr-only: Radix dialogs want a description for a11y, but the title
               says everything the sighted user needs. */}
           {step === 'email' && (
-            <ResponsiveModalDescription className="sr-only">Sign in to Thunderbolt</ResponsiveModalDescription>
+            <ResponsiveModalDescription className="sr-only">
+              <Trans>Sign in to Thunderbolt</Trans>
+            </ResponsiveModalDescription>
           )}
         </ResponsiveModalHeader>
         <SignInForm

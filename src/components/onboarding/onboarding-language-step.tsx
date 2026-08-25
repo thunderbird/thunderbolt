@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useLanguageSetting } from '@/hooks/use-language-setting'
 import { languageOptions } from '@/i18n/language-options'
 import { useActiveLocale } from '@/i18n/use-active-locale'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Languages } from 'lucide-react'
 import { OnboardingStepHeader } from './onboarding-step-header'
 
@@ -15,6 +16,7 @@ import { OnboardingStepHeader } from './onboarding-step-header'
  * living abroad doesn't quietly change the UI language.
  */
 export const OnboardingLanguageStep = () => {
+  const { t } = useLingui()
   const { setLanguage } = useLanguageSetting()
   // The store, not the raw setting: an unset `language` reads back as the
   // schema-defaulted `en`, which is indistinguishable from an explicit choice.
@@ -24,13 +26,13 @@ export const OnboardingLanguageStep = () => {
     <div className="flex w-full flex-1 flex-col justify-center">
       <OnboardingStepHeader
         icon={<Languages className="size-10 text-primary" />}
-        title="Which language do you prefer?"
-        description="Thunderbolt will use it across the app. You can change it later in Preferences."
+        title={<Trans>Which language do you prefer?</Trans>}
+        description={<Trans>Thunderbolt will use it across the app. You can change it later in Preferences.</Trans>}
       />
 
       <div className="mt-10">
         <Select value={activeLanguage} onValueChange={setLanguage}>
-          <SelectTrigger className="w-full" aria-label="Language">
+          <SelectTrigger className="w-full" aria-label={t`Language`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

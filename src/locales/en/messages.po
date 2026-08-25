@@ -24,14 +24,33 @@ msgstr[1] "# chats"
 msgid "Back to App"
 msgstr "Back to App"
 
+#: src/waitlist/waitlist-page.tsx
+msgid "By continuing, you agree to our <0>Terms of Service</0> and <1>Privacy Policy</1>."
+msgstr "By continuing, you agree to our <0>Terms of Service</0> and <1>Privacy Policy</1>."
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "Calendar"
+msgstr "Calendar"
+
+#: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/ui/chat-nav-button.tsx
 msgid "Cancel"
 msgstr "Cancel"
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "Check the backend logs"
+msgstr "Check the backend logs"
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Check your email"
+msgstr "Check your email"
 
 #: src/components/ui/search-input.tsx
 msgid "Clear search"
 msgstr "Clear search"
 
+#: src/components/magic-link-verify.tsx
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
@@ -41,6 +60,32 @@ msgstr "Close"
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Close navigation"
 msgstr "Close navigation"
+
+#: src/components/onboarding/onboarding-dialog.tsx
+msgid "Complete the setup process to get started with Thunderbolt"
+msgstr "Complete the setup process to get started with Thunderbolt"
+
+#: src/components/onboarding/onboarding-dialog.tsx
+msgid "Completing..."
+msgstr "Completing..."
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "Connect {providerName}"
+msgstr "Connect {providerName}"
+
+#: src/components/magic-link-verify.tsx
+#: src/components/onboarding/onboarding-action-buttons.tsx
+#: src/components/onboarding/onboarding-dialog.tsx
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/components/sign-in/sign-in-otp-step.tsx
+#: src/components/sign-in/sign-in-success-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Continue"
+msgstr "Continue"
+
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "Data is stored securely on your device."
+msgstr "Data is stored securely on your device."
 
 #: src/components/ui/chat-nav-button.tsx
 msgid "Delete"
@@ -54,9 +99,39 @@ msgstr "Delete the thread?"
 msgid "Dismiss"
 msgstr "Dismiss"
 
+#: src/components/sign-in/sign-in-email-step.tsx
+msgid "Early Access Login"
+msgstr "Early Access Login"
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Email"
+msgstr "Email"
+
+#: src/components/sign-in/sign-in-email-step.tsx
+msgid "Email address"
+msgstr "Email address"
+
+#: src/components/sign-in-modal.tsx
+msgid "Enter your code"
+msgstr "Enter your code"
+
+#: src/components/onboarding/onboarding-name-step.tsx
+msgid "Enter your name"
+msgstr "Enter your name"
+
 #: src/components/ui/header.tsx
 msgid "Expand Sidebar"
 msgstr "Expand Sidebar"
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+msgid "Failed to resend verification code. Please check your connection."
+msgstr "Failed to resend verification code. Please check your connection."
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+msgid "Failed to send verification code. Please check your connection."
+msgstr "Failed to send verification code. Please check your connection."
 
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
@@ -67,9 +142,33 @@ msgstr "Go back"
 msgid "Go forward"
 msgstr "Go forward"
 
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
+msgstr "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "If you have access, we've sent an 8-digit code to <0>{email}</0>"
+msgstr "If you have access, we've sent an 8-digit code to <0>{email}</0>"
+
+#: src/waitlist/waitlist-page.tsx
+msgid "If you received a code to log in, enter it here:"
+msgstr "If you received a code to log in, enter it here:"
+
 #: src/lib/otp-error-messages.ts
 msgid "Invalid code. Please try again."
 msgstr "Invalid code. Please try again."
+
+#: src/components/magic-link-verify.tsx
+msgid "Invalid verification link. Please request a new one."
+msgstr "Invalid verification link. Please request a new one."
+
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "Local Storage"
+msgstr "Local Storage"
+
+#: src/components/onboarding/onboarding-location-step.tsx
+msgid "Location is required."
+msgstr "Location is required."
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Name is required."
@@ -79,29 +178,109 @@ msgstr "Name is required."
 msgid "Navigation"
 msgstr "Navigation"
 
+#: src/components/sign-in/sign-in-email-step.tsx
+msgid "No logs or training on your data"
+msgstr "No logs or training on your data"
+
 #: src/components/not-found.tsx
 msgid "Not Found"
 msgstr "Not Found"
+
+#: src/components/onboarding/onboarding-dialog.tsx
+msgid "Onboarding Wizard"
+msgstr "Onboarding Wizard"
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "OneDrive Access"
+msgstr "OneDrive Access"
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "Or click the magic link in your email"
+msgstr "Or click the magic link in your email"
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "Or enter the 8-digit code"
+msgstr "Or enter the 8-digit code"
+
+#: src/components/onboarding/onboarding-location-step.tsx
+msgid "Please select a location from the dropdown to get coordinates."
+msgstr "Please select a location from the dropdown to get coordinates."
+
+#: src/components/magic-link-verify.tsx
+msgid "Please wait while we verify your link."
+msgstr "Please wait while we verify your link."
 
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "Private"
 
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "Read your emails and compose drafts."
+msgstr "Read your emails and compose drafts."
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "Read, compose, and organize your emails."
+msgstr "Read, compose, and organize your emails."
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "Resend Email"
+msgstr "Resend Email"
+
 #: src/components/ui/page-search.tsx
 msgid "Search"
 msgstr "Search"
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "Search and work with your OneDrive files and documents."
+msgstr "Search and work with your OneDrive files and documents."
+
+#: src/components/sign-in/sign-in-email-step.tsx
+msgid "Send Magic Link"
+msgstr "Send Magic Link"
 
 #: src/components/ui/prompt-input.tsx
 msgid "Send message"
 msgstr "Send message"
 
+#: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
 msgid "Sending..."
 msgstr "Sending..."
 
+#: src/waitlist/waitlist-page.tsx
+msgid "Sending…"
+msgstr "Sending…"
+
+#: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/ui/action-feedback-button.tsx
 msgid "Sent"
 msgstr "Sent"
+
+#: src/components/sign-in-modal.tsx
+msgid "Sign In"
+msgstr "Sign In"
+
+#: src/components/sign-in-modal.tsx
+msgid "Sign in to Thunderbolt"
+msgstr "Sign in to Thunderbolt"
+
+#: src/components/magic-link-verify.tsx
+msgid "Signing you in..."
+msgstr "Signing you in..."
+
+#: src/components/onboarding/onboarding-action-buttons.tsx
+msgid "Skip"
+msgstr "Skip"
+
+#: src/components/magic-link-verify.tsx
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/use-waitlist-state.ts
+msgid "Something went wrong. Please try again."
+msgstr "Something went wrong. Please try again."
+
+#: src/components/onboarding/onboarding-dialog.tsx
+msgid "Start Using Thunderbolt"
+msgstr "Start Using Thunderbolt"
 
 #: src/components/ui/prompt-input.tsx
 msgid "Stop generating"
@@ -115,6 +294,10 @@ msgstr "This action cannot be undone. This will permanently delete this chat and
 msgid "This code has expired. Please request a new one."
 msgstr "This code has expired. Please request a new one."
 
+#: src/components/onboarding/onboarding-location-step.tsx
+msgid "This helps us personalize your experience with local settings and features."
+msgstr "This helps us personalize your experience with local settings and features."
+
 #: src/lib/otp-error-messages.ts
 msgid "This link has expired. Please request a new one."
 msgstr "This link has expired. Please request a new one."
@@ -122,6 +305,10 @@ msgstr "This link has expired. Please request a new one."
 #: src/lib/otp-error-messages.ts
 msgid "This link is invalid. Please request a new one."
 msgstr "This link is invalid. Please request a new one."
+
+#: src/components/sign-in/sign-in-email-step.tsx
+msgid "Thunderbolt is open-source"
+msgstr "Thunderbolt is open-source"
 
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
@@ -132,6 +319,107 @@ msgstr "Toggle Sidebar"
 msgid "Too many attempts. Please request a new code."
 msgstr "Too many attempts. Please request a new code."
 
+#: src/components/magic-link-verify.tsx
+msgid "Verification Failed"
+msgstr "Verification Failed"
+
+#: src/components/sign-in/use-sign-in-form-state.ts
 #: src/lib/otp-error-messages.ts
+#: src/waitlist/use-waitlist-state.ts
 msgid "Verification failed. Please try again."
 msgstr "Verification failed. Please try again."
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Verifying…"
+msgstr "Verifying…"
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "View and manage your schedule; create + reschedule events."
+msgstr "View and manage your schedule; create + reschedule events."
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "View your schedule and upcoming events."
+msgstr "View your schedule and upcoming events."
+
+#: src/waitlist/waitlist-page.tsx
+msgid "Want early access?"
+msgstr "Want early access?"
+
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "We don't keep logs of your conversations."
+msgstr "We don't keep logs of your conversations."
+
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "We don't train models on your data."
+msgstr "We don't train models on your data."
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "We sent a code to <0>{email}</0>"
+msgstr "We sent a code to <0>{email}</0>"
+
+#: src/waitlist/waitlist-page.tsx
+msgid "We've sent an email to <0>{email}</0> with your next steps."
+msgstr "We've sent an email to <0>{email}</0> with your next steps."
+
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "Welcome to Thunderbolt!"
+msgstr "Welcome to Thunderbolt!"
+
+#: src/components/magic-link-verify.tsx
+msgid "Welcome, {displayName}"
+msgstr "Welcome, {displayName}"
+
+#: src/components/sign-in/sign-in-success-step.tsx
+msgid "Welcome, {displayName}!"
+msgstr "Welcome, {displayName}!"
+
+#: src/components/magic-link-verify.tsx
+#: src/components/sign-in/sign-in-success-step.tsx
+msgid "Welcome!"
+msgstr "Welcome!"
+
+#: src/components/onboarding/onboarding-name-step.tsx
+msgid "What should we call you?"
+msgstr "What should we call you?"
+
+#: src/components/onboarding/onboarding-location-step.tsx
+msgid "Where are you located?"
+msgstr "Where are you located?"
+
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
+msgstr "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
+
+#: src/components/onboarding/onboarding-celebration-step.tsx
+msgid "You're all set! 🎉"
+msgstr "You're all set! 🎉"
+
+#: src/components/magic-link-verify.tsx
+#: src/components/sign-in/sign-in-success-step.tsx
+msgid "You're now signed in."
+msgstr "You're now signed in."
+
+#: src/components/onboarding/onboarding-name-step.tsx
+msgid "Your AI assistant will use this name to address you personally."
+msgstr "Your AI assistant will use this name to address you personally."
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "Your assistant can help you manage your email and calendar."
+msgstr "Your assistant can help you manage your email and calendar."
+
+#: src/components/onboarding/onboarding-auth-step.tsx
+msgid "Your assistant can help you manage your email, calendar, and documents."
+msgstr "Your assistant can help you manage your email, calendar, and documents."
+
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "Your private AI assistant"
+msgstr "Your private AI assistant"
+
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "Zero Logs"
+msgstr "Zero Logs"
+
+#: src/components/onboarding/onboarding-privacy-step.tsx
+msgid "Zero Training"
+msgstr "Zero Training"

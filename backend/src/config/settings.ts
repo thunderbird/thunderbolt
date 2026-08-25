@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { z } from 'zod'
+import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
-const defaultCorsExposeHeaders =
-  'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing'
+const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,${inferenceUsageReceiptHeader}`
 
 /**
  * Settings schema for environment variables validation

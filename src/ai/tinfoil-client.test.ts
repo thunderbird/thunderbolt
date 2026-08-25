@@ -4,7 +4,21 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
-import type { SecureClient } from 'tinfoil'
+import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import {
+  bytesToHex,
+  deriveResponseKeys,
+  encryptChunk,
+  EXPORT_LABEL,
+  EXPORT_LENGTH,
+  hexToBytes,
+  HPKE_REQUEST_INFO,
+  Identity,
+  RESPONSE_NONCE_LENGTH,
+  Transport,
+} from 'ehbp'
+import { AEAD_AES_256_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_X25519_HKDF_SHA256, type Key } from 'hpke'
+import { SecureClient } from 'tinfoil'
 import { createTinfoilClientLifecycle, isTinfoilTransportWedgedError } from './tinfoil-client'
 
 /** Build the `SecureClient` slice consumed by the lifecycle. */
@@ -14,6 +28,127 @@ const createClient = (ready: () => Promise<void> = async () => {}): SecureClient
     fetch: async () => new Response(),
     getBaseURL: () => 'https://enclave.example.com/v1/',
   }) as unknown as SecureClient
+
+const responseSuite = new CipherSuite(KEM_DHKEM_X25519_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_256_GCM)
+const responseInfo = new TextEncoder().encode(HPKE_REQUEST_INFO)
+const responseExportLabel = new TextEncoder().encode(EXPORT_LABEL)
+
+/** Frame one encrypted EHBP response chunk with its network-order length. */
+const frameEncryptedChunk = (payload: Uint8Array): Uint8Array => {
+  const framed = new Uint8Array(4 + payload.byteLength)
+  new DataView(framed.buffer).setUint32(0, payload.byteLength, false)
+  framed.set(payload, 4)
+  return framed
+}
+
+/** Copy bytes into an ArrayBuffer accepted consistently by DOM Response typings. */
+const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy.buffer
+}
+
+/** Create a real SecureClient fetch path with attestation already represented by a real EHBP transport. */
+const createReadySecureClient = async (): Promise<{ client: SecureClient; privateKey: Key }> => {
+  const { publicKey, privateKey } = await responseSuite.GenerateKeyPair(true)
+  const publicKeyBytes = new Uint8Array(await responseSuite.SerializePublicKey(publicKey))
+  const identity = await Identity.fromPublicKeyHex(bytesToHex(publicKeyBytes))
+  const transport = new Transport(identity, 'proxy.example.com')
+  const client = new SecureClient({ baseURL: 'https://proxy.example.com/v1', userCacheSecret: 'test-secret' })
+  Object.defineProperties(client, {
+    initPromise: { value: Promise.resolve(), writable: true },
+    resolvedBaseURL: { value: 'https://proxy.example.com/v1', writable: true },
+    _transport: {
+      value: {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) => transport.request(input, init),
+        getSessionRecoveryToken: () => Promise.resolve(transport.getSessionRecoveryToken()),
+      },
+      writable: true,
+    },
+  })
+  return { client, privateKey }
+}
+
+/** Build the enclave's encrypted response from the real request HPKE context. */
+const buildEncryptedResponse = async (
+  request: Request,
+  privateKey: Key,
+  plaintext: string,
+  headers: Record<string, string>,
+): Promise<Response> => {
+  const encapsulatedKey = request.headers.get('Ehbp-Encapsulated-Key')
+  if (!encapsulatedKey) {
+    throw new Error('Expected a real EHBP request')
+  }
+  const requestEnc = hexToBytes(encapsulatedKey)
+  const recipientContext = await responseSuite.SetupRecipient(privateKey, requestEnc, { info: responseInfo })
+  const encryptedRequest = new Uint8Array(await request.arrayBuffer())
+  const requestChunkLength = new DataView(encryptedRequest.buffer, encryptedRequest.byteOffset, 4).getUint32(0, false)
+  await recipientContext.Open(encryptedRequest.slice(4, 4 + requestChunkLength))
+
+  const responseNonce = crypto.getRandomValues(new Uint8Array(RESPONSE_NONCE_LENGTH))
+  const exportedSecret = await recipientContext.Export(responseExportLabel, EXPORT_LENGTH)
+  const keyMaterial = await deriveResponseKeys(exportedSecret, requestEnc, responseNonce)
+  const ciphertext = await encryptChunk(keyMaterial, 0, new TextEncoder().encode(plaintext))
+
+  return new Response(toArrayBuffer(frameEncryptedChunk(ciphertext)), {
+    headers: { ...headers, 'Ehbp-Response-Nonce': bytesToHex(responseNonce) },
+  })
+}
+
+describe('SecureClient proxy response contract', () => {
+  it('preserves the usage receipt header through the real EHBP decrypt path', async () => {
+    const { client, privateKey } = await createReadySecureClient()
+    const receipt = 'iu1.canonicalPayload.canonicalSignature'
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        const request = input instanceof Request ? input : new Request(input)
+        return buildEncryptedResponse(request, privateKey, 'decrypted response', {
+          [inferenceUsageReceiptHeader]: receipt,
+        })
+      },
+      { preconnect: originalFetch.preconnect },
+    )
+
+    try {
+      const response = await client.fetch('https://proxy.example.com/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({ model: 'glm-5-2' }),
+      })
+
+      expect(await response.text()).toBe('decrypted response')
+      expect(response.headers.get(inferenceUsageReceiptHeader)).toBe(receipt)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('passes a plaintext quota rejection through as a readable response', async () => {
+    const { client } = await createReadySecureClient()
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        const request = input instanceof Request ? input : new Request(input)
+        expect(request.headers.get('Ehbp-Encapsulated-Key')).not.toBeNull()
+        return Response.json({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } }, { status: 429 })
+      },
+      { preconnect: originalFetch.preconnect },
+    )
+
+    try {
+      const response = await client.fetch('https://proxy.example.com/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({ model: 'glm-5-2' }),
+      })
+
+      expect(response.status).toBe(429)
+      expect(await response.json()).toEqual({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
 
 describe('Tinfoil client lifecycle', () => {
   it('wraps malformed attestation responses, preserves telemetry fidelity, and evicts the client', async () => {

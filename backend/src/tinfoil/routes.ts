@@ -6,12 +6,22 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { errorKindFromStatus } from '@/inference/error-kind'
+import type { InferenceLogger } from '@/inference/client'
+import { createPriceUnavailableResponse, createQuotaExceededResponse } from '@/inference/usage-responses'
+import {
+  checkInferenceQuota,
+  getInferenceQuotaLimits,
+  loadInferencePrice,
+  type InferenceDatabase,
+} from '@/inference/usage-ledger'
+import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
 import { filterHeaders } from '@/utils/request'
 import { elapsedMs } from '@/utils/timing'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
+import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { Elysia, type AnyElysia } from 'elysia'
 import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
@@ -93,8 +103,10 @@ const resolveEnclaveUrl = (
 /** Forwards HPKE-encrypted bodies to the Tinfoil enclave; injects the bearer key from env. */
 export type CreateTinfoilRoutesOptions = {
   auth: Auth
+  database: InferenceDatabase
   fetchFn?: typeof fetch
   logger?: TinfoilProxyLogger
+  usageLogger?: InferenceLogger
   /** Monotonic clock used for latency instrumentation. */
   nowFn?: () => number
   rateLimit?: AnyElysia
@@ -111,9 +123,10 @@ export type CreateTinfoilRoutesOptions = {
 }
 
 export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
-  const { auth, rateLimit } = options
+  const { auth, database, rateLimit } = options
   const fetchFn = options.fetchFn ?? globalThis.fetch
   const logger = options.logger
+  const usageLogger = options.usageLogger
   const nowFn = options.nowFn ?? (() => performance.now())
   const settings = getSettings()
   const apiKey = options.apiKey ?? settings.tinfoilApiKey
@@ -131,6 +144,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     server: Bun.Server<unknown> | null,
     setHeaders: Record<string, string | string[] | number>,
     distinctId: string,
+    isAnonymous: boolean,
   ): Promise<Response> => {
     const handlerStartedAt = nowFn()
     const preHandlerMs = elapsedMs(requestStartedAt, handlerStartedAt)
@@ -201,6 +215,32 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     const upstreamUrl = `${upstreamBaseUrl}${subpath}${search}`
     upstreamOriginStore.record(upstreamUrl)
 
+    let receipt: { eventId: string; token: string } | null = null
+    const isManagedGlmChat = method === 'POST' && new URL(upstreamUrl).pathname === '/v1/chat/completions'
+    if (isManagedGlmChat) {
+      const price = await loadInferencePrice(database, { provider: 'tinfoil', model: 'glm-5-2' })
+      if (!price) {
+        recordLatency({ status: 503, completedAt: nowFn() })
+        return createPriceUnavailableResponse()
+      }
+      const quota = await checkInferenceQuota(database, distinctId, getInferenceQuotaLimits(settings, isAnonymous))
+      if (!quota.allowed) {
+        recordLatency({ status: 429, completedAt: nowFn() })
+        return createQuotaExceededResponse(quota)
+      }
+      const eventId = crypto.randomUUID()
+      receipt = {
+        eventId,
+        token: issueInferenceUsageReceipt({
+          eventId,
+          userId: distinctId,
+          price: { ...price, provider: 'tinfoil', model: 'glm-5-2' },
+          secret: settings.betterAuthSecret,
+          nowSeconds: Math.floor(Date.now() / 1_000),
+        }),
+      }
+    }
+
     const headers = new Headers()
     request.headers.forEach((value, key) => {
       const lower = key.toLowerCase()
@@ -246,7 +286,29 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       // `Access-Control-Allow-Credentials: true, true`, which browsers reject
       // outright. Our own cors() middleware sets the correct CORS headers for
       // our origin (including Ehbp-Response-Nonce in expose-headers).
-      const responseHeaders = filterHeaders(upstream.headers, ['transfer-encoding', 'connection', /^access-control-/i])
+      const responseHeaders = filterHeaders(upstream.headers, [
+        'transfer-encoding',
+        'connection',
+        inferenceUsageReceiptHeader,
+        /^access-control-/i,
+      ])
+      if (upstream.ok && receipt) {
+        responseHeaders.set(inferenceUsageReceiptHeader, receipt.token)
+        try {
+          usageLogger?.info(
+            {
+              event: 'inference_usage_receipt_issued',
+              provider: 'tinfoil',
+              model: 'glm-5-2',
+              eventId: receipt.eventId,
+              route,
+            },
+            'Inference usage receipt issued',
+          )
+        } catch {
+          // Successful inference responses do not depend on telemetry availability.
+        }
+      }
 
       const responseBody = upstream.body
         ? capStream(upstream.body, {
@@ -362,6 +424,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
                 ctx.server,
                 ctx.set.headers,
                 ctx.user.id,
+                ctx.user.isAnonymous === true,
               ),
             { parse: 'none' },
           )
@@ -376,6 +439,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             ctx.server,
             ctx.set.headers,
             ctx.user.id,
+            ctx.user.isAnonymous === true,
           ),
         { parse: 'none' },
       )

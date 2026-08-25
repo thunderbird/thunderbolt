@@ -55,6 +55,13 @@ export type InferenceUsageLog =
       eventId: string
       outcome: 'inserted' | 'duplicate'
     }
+  | {
+      event: 'inference_usage_receipt_issued'
+      provider: 'tinfoil'
+      model: 'glm-5-2'
+      eventId: string
+      route: string
+    }
 
 export type InferenceRouteLog =
   | ({ provider: InferenceProvider; model: string; route: string } & (

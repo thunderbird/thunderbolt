@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -66,9 +67,11 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Pair {deviceName}</DialogTitle>
+          <DialogTitle>
+            <Trans>Pair {deviceName}</Trans>
+          </DialogTitle>
           <DialogDescription>
-            Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity.
+            <Trans>Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity.</Trans>
           </DialogDescription>
         </DialogHeader>
 
@@ -104,7 +107,7 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
             onClick={() => fileInputRef.current?.click()}
           >
             {scanning ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Upload className="size-4 mr-1" />}
-            Scan from image
+            <Trans>Scan from image</Trans>
           </Button>
 
           {status.kind === 'error' && (
@@ -114,11 +117,11 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
           <Button onClick={() => void handleSave()} disabled={isPending || scanning || text.trim().length === 0}>
             {isPending ? <Loader2 className="size-4 mr-1 animate-spin" /> : null}
-            Save
+            <Trans>Save</Trans>
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
 import { useReducer } from 'react'
 import { HttpError } from '@/lib/http'
 import { useHttpClient } from '@/contexts'
@@ -138,7 +140,9 @@ export const useSyncSetup = () => {
       if (err instanceof HttpError && err.response.status === 422) {
         dispatch({
           type: 'SET_ERROR',
-          payload: 'You have reached the maximum number of devices. Revoke an existing device to add a new one.',
+          payload: i18n._(
+            msg`You have reached the maximum number of devices. Revoke an existing device to add a new one.`,
+          ),
         })
         return 'error' as const
       }
@@ -201,10 +205,12 @@ export const useSyncSetup = () => {
       if (err instanceof ValidationError) {
         dispatch({
           type: 'SET_RECOVERY_KEY_ERROR',
-          payload: 'Invalid recovery phrase. Please check that all words are correct and in the right order.',
+          payload: i18n._(
+            msg`Invalid recovery phrase. Please check that all words are correct and in the right order.`,
+          ),
         })
       } else {
-        const message = err instanceof Error ? err.message : 'Recovery failed'
+        const message = err instanceof Error ? err.message : i18n._(msg`Recovery failed`)
         dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: message })
       }
       return false
@@ -219,7 +225,7 @@ export const useSyncSetup = () => {
       if (!approved) {
         dispatch({
           type: 'SET_APPROVAL_ERROR',
-          payload: 'This device has not been approved yet. Please approve it from a trusted device first.',
+          payload: i18n._(msg`This device has not been approved yet. Please approve it from a trusted device first.`),
         })
         return false
       }

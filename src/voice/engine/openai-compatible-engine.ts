@@ -13,6 +13,8 @@
  * origin (and it must be reachable — http localhost is mixed-content-blocked from
  * an https page).
  */
+import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
 import { HttpError, http } from '@/lib/http'
 import type { VoiceProviderConfig } from '@/stores/local-settings-store'
 import { type AudioTransport, createAudioEngine } from './audio-engine'
@@ -75,7 +77,7 @@ export const testOpenAiConnection = async (config: VoiceProviderConfig): Promise
       headers: withAuth(config.apiKey),
       timeout: 20_000,
     })
-    return { ok: true, detail: 'Connected — synthesis succeeded.' }
+    return { ok: true, detail: i18n._(msg`Connected — synthesis succeeded.`) }
   } catch (err) {
     if (err instanceof HttpError) {
       return { ok: false, detail: `${err.response.status} ${await err.response.text().catch(() => '')}`.trim() }

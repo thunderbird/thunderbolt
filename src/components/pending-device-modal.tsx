@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { useState } from 'react'
 import { Smartphone } from 'lucide-react'
 
@@ -59,16 +60,20 @@ export const PendingDeviceModal = () => {
                 <Smartphone className="w-8 h-8 text-primary" />
               </IconCircle>
               <ResponsiveModalTitle className="text-2xl font-bold leading-normal">
-                New device waiting
+                <Trans>New device waiting</Trans>
               </ResponsiveModalTitle>
-              <p className="text-muted-foreground">A new device is requesting access to your encrypted data.</p>
+              <p className="text-muted-foreground">
+                <Trans>A new device is requesting access to your encrypted data.</Trans>
+              </p>
 
               {pendingDeviceToNotify && (
                 <div className="flex items-center gap-3 rounded-lg border bg-secondary/50 p-4 text-left">
                   <Smartphone className="size-5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <span className="font-medium truncate">{pendingDeviceToNotify.name}</span>
-                    <p className="text-sm text-muted-foreground">Waiting for approval</p>
+                    <p className="text-sm text-muted-foreground">
+                      <Trans>Waiting for approval</Trans>
+                    </p>
                   </div>
                 </div>
               )}
@@ -76,10 +81,12 @@ export const PendingDeviceModal = () => {
 
             <div className="pt-5 flex flex-col gap-2">
               <Button className="w-full" onClick={() => setConfirmApproveOpen(true)}>
-                Approve
+                <Trans>Approve</Trans>
               </Button>
               <Button className="w-full" variant="ghost" onClick={() => setConfirmDenyOpen(true)}>
-                <span className="text-destructive">Deny</span>
+                <span className="text-destructive">
+                  <Trans>Deny</Trans>
+                </span>
               </Button>
             </div>
           </div>

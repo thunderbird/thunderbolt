@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,13 +27,19 @@ export const RemoveBridgeDialog = ({ open, onOpenChange, onConfirm, isPending }:
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Remove this bridge?</AlertDialogTitle>
+        <AlertDialogTitle>
+          <Trans>Remove this bridge?</Trans>
+        </AlertDialogTitle>
         <AlertDialogDescription>
-          This permanently removes the revoked bridge registration. The bridge can register again afterward.
+          <Trans>
+            This permanently removes the revoked bridge registration. The bridge can register again afterward.
+          </Trans>
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+        <AlertDialogCancel disabled={isPending}>
+          <Trans>Cancel</Trans>
+        </AlertDialogCancel>
         <AlertDialogAction onClick={onConfirm} disabled={isPending}>
           {isPending ? 'Removing…' : 'Remove'}
         </AlertDialogAction>

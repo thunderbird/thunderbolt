@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import dayjs from 'dayjs'
@@ -14,6 +15,7 @@ const temperatureUnitItemClass =
   'h-full aspect-square flex-none rounded-xl px-0 text-[length:var(--font-size-sm)] text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 data-[state=on]:bg-accent data-[state=on]:text-foreground'
 
 export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecastProps) => {
+  const { t } = useLingui()
   const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>(temperature_unit)
   const today = days[0]
   const forecastDays = days.slice(1)
@@ -78,19 +80,19 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
           rel="noopener noreferrer"
           className="text-[10px] leading-none text-muted-foreground/60 hover:text-muted-foreground"
         >
-          Weather data provided by Open-Meteo.com
+          <Trans>Weather data provided by Open-Meteo.com</Trans>
         </a>
         <ToggleGroup
           type="single"
           value={temperatureUnit}
           onValueChange={(value) => value && setTemperatureUnit(value as 'c' | 'f')}
-          aria-label="Temperature Unit"
+          aria-label={t`Temperature Unit`}
           className="h-[var(--touch-height-lg)] gap-0.5 rounded-none md:h-[var(--touch-height-default)] md:p-0.5"
         >
-          <ToggleGroupItem value="c" aria-label="Celsius" className={temperatureUnitItemClass}>
+          <ToggleGroupItem value="c" aria-label={t`Celsius`} className={temperatureUnitItemClass}>
             °C
           </ToggleGroupItem>
-          <ToggleGroupItem value="f" aria-label="Fahrenheit" className={temperatureUnitItemClass}>
+          <ToggleGroupItem value="f" aria-label={t`Fahrenheit`} className={temperatureUnitItemClass}>
             °F
           </ToggleGroupItem>
         </ToggleGroup>

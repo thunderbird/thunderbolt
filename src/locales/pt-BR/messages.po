@@ -69,6 +69,14 @@ msgstr ""
 msgid "{wordCount}/24 words"
 msgstr ""
 
+#: src/components/pending-device-modal.tsx
+msgid "A new device is requesting access to your encrypted data."
+msgstr ""
+
+#: src/components/update-notification.tsx
+msgid "A new version is available!"
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
 msgstr ""
@@ -88,6 +96,10 @@ msgstr ""
 
 #: src/settings/connections/integration-detail.tsx
 msgid "Account"
+msgstr ""
+
+#: src/components/account-deleted.tsx
+msgid "Account Deleted"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -219,6 +231,10 @@ msgstr ""
 msgid "Animals & nature"
 msgstr ""
 
+#: src/widgets/ask/display.tsx
+msgid "Answer"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "API key"
 msgstr ""
@@ -245,7 +261,9 @@ msgstr ""
 msgid "Applied to every chat in this project."
 msgstr ""
 
+#: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
+#: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr ""
@@ -262,6 +280,11 @@ msgstr ""
 msgid "Approve this device"
 msgstr ""
 
+#: src/components/approve-device-dialog.tsx
+msgid "Approve this device?"
+msgstr ""
+
+#: src/components/approve-device-dialog.tsx
 #: src/settings/devices.tsx
 msgid "Approving…"
 msgstr ""
@@ -278,12 +301,32 @@ msgstr ""
 msgid "Ask me anything..."
 msgstr ""
 
+#: src/components/sync-enable-warning-dialog.tsx
+msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
+msgstr ""
+
 #: src/settings/connections/index.tsx
 msgid "Authorization error"
 msgstr ""
 
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "Authorization failed."
+msgstr ""
+
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "Authorization failed. Please try again."
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Authorization required"
+msgstr ""
+
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "Authorization was cancelled."
+msgstr ""
+
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "Authorization was declined."
 msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
@@ -307,6 +350,7 @@ msgstr ""
 msgid "Available tools:"
 msgstr ""
 
+#: src/components/account-deleted.tsx
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr ""
@@ -347,9 +391,16 @@ msgstr ""
 msgid "Calendar"
 msgstr ""
 
+#: src/components/app-error-screen.tsx
+#: src/components/approve-device-dialog.tsx
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/remove-bridge-dialog.tsx
+#: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
+#: src/components/sync-enable-warning-dialog.tsx
+#: src/components/telemetry-required-modal.tsx
+#: src/components/telemetry-warning-modal.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
@@ -358,6 +409,10 @@ msgstr ""
 #: src/settings/models/index.tsx
 #: src/skills/dependents-dialog.tsx
 msgid "Cancel"
+msgstr ""
+
+#: src/widgets/weather-forecast/display.tsx
+msgid "Celsius"
 msgstr ""
 
 #: src/settings/connections/use-mcp-server-form-controller.ts
@@ -399,6 +454,10 @@ msgstr ""
 msgid "Checking automatically…"
 msgstr ""
 
+#: src/components/update-notification.tsx
+msgid "Checking for updates..."
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "Checking sign-in request…"
 msgstr ""
@@ -429,6 +488,18 @@ msgstr ""
 msgid "Clear all chats"
 msgstr ""
 
+#: src/components/app-error-screen.tsx
+msgid "Clear Database"
+msgstr ""
+
+#: src/components/app-error-screen.tsx
+msgid "Clear Local Database"
+msgstr ""
+
+#: src/components/app-error-screen.tsx
+msgid "Clear Local Database?"
+msgstr ""
+
 #: src/settings/models/edit-model-form.tsx
 msgid "Clear saved API key"
 msgstr ""
@@ -441,11 +512,16 @@ msgstr ""
 msgid "Clear search"
 msgstr ""
 
+#: src/components/app-error-screen.tsx
+msgid "Clearing Database..."
+msgstr ""
+
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
 msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/context-overflow-modal.tsx
 #: src/components/device-approval.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/ui/dialog.tsx
@@ -516,6 +592,7 @@ msgid "Confirm this code matches the one in your terminal."
 msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
+#: src/widgets/connect-integration/widget.tsx
 msgid "Connect {providerName}"
 msgstr ""
 
@@ -541,7 +618,24 @@ msgstr ""
 
 #: src/components/sidebar-footer.tsx
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/widgets/connect-integration/widget.tsx
 msgid "Connected"
+msgstr ""
+
+#: src/voice/engine/openai-compatible-engine.ts
+msgid "Connected — synthesis succeeded."
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Connected to {connectedProviderName} Calendar"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Connected to {connectedProviderName} Email"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Connected to {connectedProviderName} Email and Calendar"
 msgstr ""
 
 #: src/settings/connections/integration-detail.tsx
@@ -558,6 +652,7 @@ msgstr ""
 
 #: src/components/connect-provider-button.tsx
 #: src/components/sidebar-footer.tsx
+#: src/widgets/connect-integration/widget.tsx
 msgid "Connecting..."
 msgstr ""
 
@@ -594,6 +689,14 @@ msgstr ""
 #: src/search/palette/entity-meta.ts
 #: src/settings/connections/connections-list.tsx
 msgid "Connections"
+msgstr ""
+
+#: src/components/app-error-screen.tsx
+msgid "Contact Support"
+msgstr ""
+
+#: src/components/context-overflow-modal.tsx
+msgid "Context Window Exceeded"
 msgstr ""
 
 #: src/components/device-approval.tsx
@@ -644,6 +747,7 @@ msgstr ""
 msgid "Copy to clipboard"
 msgstr ""
 
+#: src/content-view/sidebar-webview.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Copy URL"
 msgstr ""
@@ -869,6 +973,7 @@ msgid "Deleting…"
 msgstr ""
 
 #: src/components/device-approval.tsx
+#: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr ""
@@ -933,6 +1038,10 @@ msgstr ""
 msgid "Disable skill"
 msgstr ""
 
+#: src/components/telemetry-warning-modal.tsx
+msgid "Disable Telemetry"
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
 #: src/skills/skills-list.tsx
 msgid "Disabled"
@@ -957,12 +1066,18 @@ msgid "Disconnected"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
+#: src/components/download-app-banner-mobile.tsx
 #: src/components/ui/mobile-blur-backdrop.tsx
+#: src/components/update-notification.tsx
 msgid "Dismiss"
 msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 msgid "Display Name"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Do not ask again"
 msgstr ""
 
 #: src/components/device-approval.tsx
@@ -971,16 +1086,26 @@ msgstr ""
 msgid "Done"
 msgstr ""
 
+#: src/components/download-app-banner-mobile.tsx
+#: src/components/update-notification.tsx
+msgid "Download"
+msgstr ""
+
 #: src/search/commands/use-commands.ts
 msgid "Download app"
 msgstr ""
 
+#: src/components/download-app-banner-desktop.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Download App"
 msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Download HTML"
+msgstr ""
+
+#: src/components/update-notification.tsx
+msgid "Downloading update..."
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
@@ -1065,6 +1190,18 @@ msgstr ""
 msgid "Enable cloud sync"
 msgstr ""
 
+#: src/components/sync-enable-warning-dialog.tsx
+msgid "Enable sync without encryption"
+msgstr ""
+
+#: src/components/sync-enable-warning-dialog.tsx
+msgid "Enable sync?"
+msgstr ""
+
+#: src/components/telemetry-required-modal.tsx
+msgid "Enable Telemetry"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Enabled"
 msgstr ""
@@ -1075,6 +1212,10 @@ msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Enter a different code"
+msgstr ""
+
+#: src/lib/mcp-url-validation.ts
+msgid "Enter a valid URL"
 msgstr ""
 
 #: src/components/settings/agents/validate-agent-url.ts
@@ -1105,12 +1246,24 @@ msgstr ""
 msgid "Enter your name"
 msgstr ""
 
+#: src/voice/ui/voice-mode-composer.tsx
+msgid "Exit voice mode"
+msgstr ""
+
 #: src/components/ui/header.tsx
 msgid "Expand Sidebar"
 msgstr ""
 
+#: src/widgets/weather-forecast/display.tsx
+msgid "Fahrenheit"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Failed to connect to {agentName}"
+msgstr ""
+
+#: src/components/app-error-screen.tsx
+msgid "Failed to initialize app"
 msgstr ""
 
 #: src/settings/models/model-catalog.ts
@@ -1153,6 +1306,11 @@ msgstr ""
 msgid "Get started by adding your first AI model."
 msgstr ""
 
+#: src/components/download-app-banner-desktop.tsx
+#: src/components/download-app-banner-mobile.tsx
+msgid "Get Thunderbolt free app"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
@@ -1165,6 +1323,10 @@ msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "Go to"
+msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Got it, working on that next."
 msgstr ""
 
 #: src/skills/skill-detail.tsx
@@ -1188,6 +1350,10 @@ msgstr ""
 msgid "I have saved my recovery phrase"
 msgstr ""
 
+#: src/components/storage-unavailable-screen.tsx
+msgid "If you are using iOS Lockdown Mode, exclude Thunderbolt from the \"Configure Web Browsing\" setting, then reopen the app."
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "If you have access, we've sent an 8-digit code to <0>{email}</0>"
 msgstr ""
@@ -1208,6 +1374,10 @@ msgstr ""
 msgid "Importing…"
 msgstr ""
 
+#: src/components/telemetry-required-modal.tsx
+msgid "In order to use preview features, we ask that you help us improve the product by sharing telemetry data."
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr ""
@@ -1222,6 +1392,10 @@ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Installed to <0>{installedPath}</0>"
+msgstr ""
+
+#: src/components/upgrade-required.tsx
+msgid "Installed: {currentVersion} · Minimum required: {minVersion}"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -1240,6 +1414,10 @@ msgstr ""
 
 #: src/lib/otp-error-messages.ts
 msgid "Invalid code. Please try again."
+msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "Invalid recovery phrase. Please check that all words are correct and in the right order."
 msgstr ""
 
 #: src/components/magic-link-verify.tsx
@@ -1286,6 +1464,11 @@ msgstr ""
 msgid "Last seen {lastSeen}"
 msgstr ""
 
+#: src/components/download-app-banner-desktop.tsx
+#: src/components/update-notification.tsx
+msgid "Later"
+msgstr ""
+
 #: src/components/logout-modal.tsx
 msgid "Leave data on device"
 msgstr ""
@@ -1298,6 +1481,10 @@ msgstr ""
 #: src/components/create-item/create-skill-panel.tsx
 #: src/skills/skills-view.tsx
 msgid "Leave without saving?"
+msgstr ""
+
+#: src/voice/ui/voice-mode-composer.tsx
+msgid "Listening"
 msgstr ""
 
 #: src/settings/voice.tsx
@@ -1316,11 +1503,16 @@ msgstr ""
 msgid "Loading emoji…"
 msgstr ""
 
+#: src/content-view/sidebar-webview.tsx
+msgid "Loading preview..."
+msgstr ""
+
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
+#: src/widgets/connect-integration/widget.tsx
 msgid "Loading..."
 msgstr ""
 
@@ -1442,6 +1634,7 @@ msgstr ""
 msgid "New chat"
 msgstr ""
 
+#: src/components/context-overflow-modal.tsx
 #: src/components/sidebar-footer.tsx
 #: src/layout/sidebar/chat-sidebar.tsx
 msgid "New Chat"
@@ -1453,6 +1646,10 @@ msgstr ""
 
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
+msgstr ""
+
+#: src/components/pending-device-modal.tsx
+msgid "New device waiting"
 msgstr ""
 
 #: src/settings/models/index.tsx
@@ -1577,6 +1774,10 @@ msgstr ""
 msgid "Not Found"
 msgstr ""
 
+#: src/widgets/connect-integration/widget.tsx
+msgid "Not now"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
 msgstr ""
@@ -1591,6 +1792,11 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
+msgstr ""
+
+#: src/components/download-app-banner-desktop.tsx
+#: src/components/download-app-banner-mobile.tsx
+msgid "One app, every AI model"
 msgstr ""
 
 #: src/components/device-approval.tsx
@@ -1615,6 +1821,10 @@ msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
+msgstr ""
+
+#: src/content-view/sidebar-webview.tsx
+msgid "Open in browser"
 msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
@@ -1662,8 +1872,16 @@ msgstr ""
 msgid "Or enter the 8-digit code"
 msgstr ""
 
+#: src/components/set-node-id-dialog.tsx
+msgid "Pair {deviceName}"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Pairing identity"
+msgstr ""
+
+#: src/components/set-node-id-dialog.tsx
+msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
@@ -1690,6 +1908,10 @@ msgstr ""
 msgid "Pinned skill {label}"
 msgstr ""
 
+#: src/voice/speakable.ts
+msgid "Please choose one of the options on screen."
+msgstr ""
+
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Please select a location from the dropdown to get coordinates."
 msgstr ""
@@ -1709,6 +1931,22 @@ msgstr ""
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 msgid "Preferences"
+msgstr ""
+
+#: src/content-view/sidebar-webview.tsx
+msgid "Preview"
+msgstr ""
+
+#: src/components/telemetry-warning-modal.tsx
+msgid "Preview Features Will Be Disabled"
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Preview not available for this file type. Use the download button to view it."
+msgstr ""
+
+#: src/content-view/sidebar-webview.tsx
+msgid "Preview webview is only available in the desktop app"
 msgstr ""
 
 #: src/settings/models/model-detail.tsx
@@ -1766,12 +2004,20 @@ msgstr ""
 msgid "Recent Projects"
 msgstr ""
 
+#: src/hooks/use-sync-setup.ts
+msgid "Recovery failed"
+msgstr ""
+
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Recovery phrase"
 msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
+msgstr ""
+
+#: src/components/storage-unavailable-screen.tsx
+msgid "Reload"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -1794,6 +2040,10 @@ msgstr ""
 
 #: src/components/chat/quote-chip.tsx
 msgid "Remove quote"
+msgstr ""
+
+#: src/components/remove-bridge-dialog.tsx
+msgid "Remove this bridge?"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -1849,8 +2099,13 @@ msgstr ""
 msgid "Reset to Default"
 msgstr ""
 
+#: src/components/update-notification.tsx
+msgid "Restart Now"
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 #: src/components/sidebar-footer.tsx
+#: src/components/update-notification.tsx
 msgid "Retry"
 msgstr ""
 
@@ -1886,6 +2141,7 @@ msgstr ""
 msgid "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
 msgstr ""
 
+#: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -1914,6 +2170,10 @@ msgstr ""
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Saving…"
+msgstr ""
+
+#: src/components/set-node-id-dialog.tsx
+msgid "Scan from image"
 msgstr ""
 
 #: src/components/chat/scroll-to-bottom-button.tsx
@@ -1969,6 +2229,14 @@ msgstr ""
 #: src/components/ui/combobox.tsx
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Search..."
+msgstr ""
+
+#: src/voice/speakable.ts
+msgid "See the document on screen."
+msgstr ""
+
+#: src/voice/speakable.ts
+msgid "See the equation on screen."
 msgstr ""
 
 #: src/settings/models/add-model-form.tsx
@@ -2182,12 +2450,24 @@ msgstr ""
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})..."
 msgstr ""
 
+#: src/voice/ui/voice-mode-composer.tsx
+msgid "Speaking"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
 msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Start Using Thunderbolt"
+msgstr ""
+
+#: src/voice/ui/voice-mode-button.tsx
+msgid "Start voice mode"
+msgstr ""
+
+#: src/voice/ui/voice-mode-composer.tsx
+msgid "Starting…"
 msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
@@ -2198,11 +2478,16 @@ msgstr ""
 msgid "Stop generating"
 msgstr ""
 
+#: src/components/storage-unavailable-screen.tsx
+msgid "Storage is disabled"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "STT model"
 msgstr ""
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
+#: src/widgets/ask/display.tsx
 msgid "Submit"
 msgstr ""
 
@@ -2230,11 +2515,27 @@ msgstr ""
 msgid "System agents"
 msgstr ""
 
+#: src/voice/speakable.ts
+msgid "Take a look at the map on screen."
+msgstr ""
+
+#: src/voice/speakable.ts
+msgid "Take a look at the weather forecast on screen."
+msgstr ""
+
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
 #: src/tasks/index.tsx
 msgid "Tasks"
+msgstr ""
+
+#: src/components/telemetry-required-modal.tsx
+msgid "Telemetry Required"
+msgstr ""
+
+#: src/widgets/weather-forecast/display.tsx
+msgid "Temperature Unit"
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -2272,6 +2573,10 @@ msgstr ""
 msgid "Testing…"
 msgstr ""
 
+#: src/lib/device-grant.ts
+msgid "That code isn't valid or has already been used. Check your terminal and try again."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
 msgstr ""
@@ -2292,12 +2597,21 @@ msgstr ""
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr ""
 
+#: src/lib/device-grant.ts
+msgid "The sign-in service is unavailable right now. Check your connection and try again."
+msgstr ""
+
 #: src/components/chat/reasoning-part.tsx
+#: src/voice/ui/voice-mode-composer.tsx
 msgid "Thinking"
 msgstr ""
 
 #: src/components/ui/chat-nav-button.tsx
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
+msgstr ""
+
+#: src/components/storage-unavailable-screen.tsx
+msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
@@ -2324,6 +2638,10 @@ msgstr ""
 msgid "This device has been signed out remotely. Choose what to do with your local data."
 msgstr ""
 
+#: src/hooks/use-sync-setup.ts
+msgid "This device has not been approved yet. Please approve it from a trusted device first."
+msgstr ""
+
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
 msgstr ""
@@ -2346,6 +2664,10 @@ msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 msgid "This model does not seem to support tool usage."
+msgstr ""
+
+#: src/components/remove-bridge-dialog.tsx
+msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr ""
 
 #: src/projects/project-form.tsx
@@ -2372,6 +2694,14 @@ msgstr ""
 msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr ""
 
+#: src/lib/device-grant.ts
+msgid "This sign-in request has expired. Start a new one from your terminal."
+msgstr ""
+
+#: src/components/upgrade-required.tsx
+msgid "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
+msgstr ""
+
 #: src/components/delete-all-chats-dialog.tsx
 msgid "This will permanently delete all your chats."
 msgstr ""
@@ -2382,6 +2712,10 @@ msgstr ""
 
 #: src/components/delete-chat-dialog.tsx
 msgid "This will permanently delete this chat."
+msgstr ""
+
+#: src/components/approve-device-dialog.tsx
+msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
 msgstr ""
 
 #: src/settings/voice.tsx
@@ -2400,8 +2734,36 @@ msgstr ""
 msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
 msgstr ""
 
+#: src/components/storage-unavailable-screen.tsx
+msgid "Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled."
+msgstr ""
+
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Thunderbolt wants to connect to {providerName} Calendar"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Thunderbolt wants to connect to {providerName} Email"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "to access your calendar"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "to access your email"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "to access your email and calendar"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
@@ -2446,6 +2808,7 @@ msgstr ""
 msgid "Trusted devices"
 msgstr ""
 
+#: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Try again"
 msgstr ""
@@ -2456,6 +2819,22 @@ msgstr ""
 
 #: src/settings/voice.tsx
 msgid "TTS voice"
+msgstr ""
+
+#: src/components/telemetry-warning-modal.tsx
+msgid "Turning off telemetry will disable all preview features. Are you sure you want to continue?"
+msgstr ""
+
+#: src/components/sso-redirect.tsx
+msgid "Unable to connect to the identity provider. Check your network connection and SSO configuration."
+msgstr ""
+
+#: src/components/app-error-screen.tsx
+msgid "Unfortunately, the local database encountered an error while being migrated to the latest version of this app. Deleting your local data will resolve the issue but you will permanently lose your settings and chat history. This action cannot be undone."
+msgstr ""
+
+#: src/components/context-overflow-modal.tsx
+msgid "unknown"
 msgstr ""
 
 #: src/skills/suggestion-chip.tsx
@@ -2470,12 +2849,24 @@ msgstr ""
 msgid "Untitled chat"
 msgstr ""
 
+#: src/components/update-notification.tsx
+msgid "Update failed"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Update pairing"
 msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Update pairing for {deviceName}"
+msgstr ""
+
+#: src/components/update-notification.tsx
+msgid "Update ready! Restart to apply."
+msgstr ""
+
+#: src/components/upgrade-required.tsx
+msgid "Update required"
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -2493,12 +2884,24 @@ msgstr ""
 msgid "URL is required for Custom providers"
 msgstr ""
 
+#: src/lib/mcp-url-validation.ts
+msgid "Use an http:// or https:// URL"
+msgstr ""
+
+#: src/lib/mcp-url-validation.ts
+msgid "Use https:// (http is only allowed for localhost or a local network)"
+msgstr ""
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Use my recovery key"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Use System"
+msgstr ""
+
+#: src/voice/speakable.ts
+msgid "Use the connection prompt on screen to continue."
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -2519,6 +2922,10 @@ msgstr ""
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Verifying…"
+msgstr ""
+
+#: src/components/update-notification.tsx
+msgid "Version {updateVersion}"
 msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
@@ -2547,6 +2954,11 @@ msgstr ""
 msgid "Voice engine"
 msgstr ""
 
+#: src/voice/ui/voice-mode-composer.tsx
+msgid "Voice mode: {status}"
+msgstr ""
+
+#: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
 msgid "Waiting for approval"
 msgstr ""
@@ -2569,6 +2981,10 @@ msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
+msgstr ""
+
+#: src/widgets/weather-forecast/display.tsx
+msgid "Weather data provided by Open-Meteo.com"
 msgstr ""
 
 #: src/components/welcome-dialog.tsx
@@ -2645,8 +3061,16 @@ msgstr ""
 msgid "You can attach up to {maxAttachmentCount} files."
 msgstr ""
 
+#: src/widgets/connect-integration/widget.tsx
+msgid "You can connect integrations later in Settings."
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "You can return to your terminal."
+msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "You have reached the maximum number of devices. Revoke an existing device to add a new one."
 msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
@@ -2673,6 +3097,10 @@ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "You've customized this setting."
+msgstr ""
+
+#: src/components/account-deleted.tsx
+msgid "Your account has been deleted and local data has been cleared."
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -2706,6 +3134,10 @@ msgstr ""
 
 #: src/components/revoked-device-modal.tsx
 msgid "Your chats and settings will remain on this device for offline use."
+msgstr ""
+
+#: src/components/context-overflow-modal.tsx
+msgid "Your message would exceed the model's {formattedMaxTokens}-token context window."
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx

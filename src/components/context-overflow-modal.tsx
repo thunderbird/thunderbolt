@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { formatNumber } from '@/lib/utils'
 import { AlertTriangle } from 'lucide-react'
 import {
@@ -26,7 +27,8 @@ type ContextOverflowModalProps = {
  * Modal shown when a message would exceed the model's context window
  */
 export const ContextOverflowModal = ({ isOpen, onClose, onNewChat, maxTokens }: ContextOverflowModalProps) => {
-  const formattedMaxTokens = maxTokens ? formatNumber(maxTokens) : 'unknown'
+  const { t } = useLingui()
+  const formattedMaxTokens = maxTokens ? formatNumber(maxTokens) : t`unknown`
 
   return (
     <AlertDialog open={isOpen} onOpenChange={() => onClose()}>
@@ -34,22 +36,28 @@ export const ContextOverflowModal = ({ isOpen, onClose, onNewChat, maxTokens }: 
         <AlertDialogHeader>
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-amber-600" />
-            <AlertDialogTitle>Context Window Exceeded</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Context Window Exceeded</Trans>
+            </AlertDialogTitle>
           </div>
           <AlertDialogDescription>
-            <p>Your message would exceed the model's {formattedMaxTokens}-token context window.</p>
+            <p>
+              <Trans>Your message would exceed the model's {formattedMaxTokens}-token context window.</Trans>
+            </p>
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onClose}>Close</AlertDialogCancel>
+          <AlertDialogCancel onClick={onClose}>
+            <Trans>Close</Trans>
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
               onNewChat()
               onClose()
             }}
           >
-            New Chat
+            <Trans>New Chat</Trans>
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

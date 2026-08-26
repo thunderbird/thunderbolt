@@ -1620,6 +1620,18 @@ msgstr "進む"
 msgid "Go to"
 msgstr "移動"
 
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good afternoon"
+msgstr "こんにちは"
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good evening"
+msgstr "こんばんは"
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good morning"
+msgstr "おはようございます"
+
 #: src/widgets/ask/display.tsx
 msgid "Got it, working on that next."
 msgstr "承知しました。次に取り組みます。"
@@ -3563,6 +3575,10 @@ msgstr "{relative}に到達不能"
 #: src/projects/project-detail-panel.tsx
 msgid "Untitled chat"
 msgstr "無題のチャット"
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Up late?"
+msgstr "夜更かしですか？"
 
 #: src/settings/preferences.tsx
 msgid "Update Defaults?"

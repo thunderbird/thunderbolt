@@ -1626,6 +1626,18 @@ msgstr ""
 msgid "Go to"
 msgstr ""
 
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good afternoon"
+msgstr ""
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good evening"
+msgstr ""
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good morning"
+msgstr ""
+
 #: src/widgets/ask/display.tsx
 msgid "Got it, working on that next."
 msgstr ""
@@ -3568,6 +3580,10 @@ msgstr ""
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/projects/project-detail-panel.tsx
 msgid "Untitled chat"
+msgstr ""
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Up late?"
 msgstr ""
 
 #: src/settings/preferences.tsx

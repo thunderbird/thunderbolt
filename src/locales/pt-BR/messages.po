@@ -1632,6 +1632,18 @@ msgstr "Avançar"
 msgid "Go to"
 msgstr "Ir para"
 
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good afternoon"
+msgstr "Boa tarde"
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good evening"
+msgstr "Boa noite"
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Good morning"
+msgstr "Bom dia"
+
 #: src/widgets/ask/display.tsx
 msgid "Got it, working on that next."
 msgstr "Entendi, vou cuidar disso em seguida."
@@ -3575,6 +3587,10 @@ msgstr "Inacessível {relative}"
 #: src/projects/project-detail-panel.tsx
 msgid "Untitled chat"
 msgstr "Conversa sem título"
+
+#: src/components/chat/chat-ui-greeting.ts
+msgid "Up late?"
+msgstr "Ainda acordado?"
 
 #: src/settings/preferences.tsx
 msgid "Update Defaults?"

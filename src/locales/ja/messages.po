@@ -65,27 +65,27 @@ msgstr "{label} — すでにこのプロジェクトにあります"
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
-#~ msgid "This file contains # row exported by {importSourceEmail} on {importExportedAt}."
-#~ msgid_plural "This file contains # rows exported by {importSourceEmail} on {importExportedAt}."
-#~ msgstr[0] "このファイルには、{importSourceEmail} が {importExportedAt} にエクスポートした # 行が含まれています。"
+msgid "This file contains # row exported by {importSourceEmail} on {importExportedAt}."
+msgid_plural "This file contains # rows exported by {importSourceEmail} on {importExportedAt}."
+msgstr[0] "このファイルには、{importSourceEmail} が {importExportedAt} にエクスポートした # 行が含まれています。"
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
-#~ msgid "This file contains # row exported by {importSourceEmail}."
-#~ msgid_plural "This file contains # rows exported by {importSourceEmail}."
-#~ msgstr[0] "このファイルには、{importSourceEmail} がエクスポートした # 行が含まれています。"
+msgid "This file contains # row exported by {importSourceEmail}."
+msgid_plural "This file contains # rows exported by {importSourceEmail}."
+msgstr[0] "このファイルには、{importSourceEmail} がエクスポートした # 行が含まれています。"
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
-#~ msgid "This file contains # row on {importExportedAt}."
-#~ msgid_plural "This file contains # rows on {importExportedAt}."
-#~ msgstr[0] "このファイルには、{importExportedAt} 時点の # 行が含まれています。"
+msgid "This file contains # row on {importExportedAt}."
+msgid_plural "This file contains # rows on {importExportedAt}."
+msgstr[0] "このファイルには、{importExportedAt} 時点の # 行が含まれています。"
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row.%7D+other+%7BThis+file+contains+%23+rows.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
-#~ msgid "This file contains # row."
-#~ msgid_plural "This file contains # rows."
-#~ msgstr[0] "このファイルには # 行が含まれています。"
+msgid "This file contains # row."
+msgid_plural "This file contains # rows."
+msgstr[0] "このファイルには # 行が含まれています。"
 
 #. js-lingui:icu=%7BstepCount%2C+plural%2C+one+%7BCompleted+%23+step+in+%7Bduration%7D%7D+other+%7BCompleted+%23+steps+in+%7Bduration%7D%7D%7D&pluralize_on=stepCount
 #: src/components/chat/reasoning-group-title.tsx
@@ -99,13 +99,9 @@ msgstr "{title} — サイドパネルに表示中"
 
 #. js-lingui:icu=%7Btotal%2C+plural%2C+one+%7BImported+%23+row.+The+app+may+take+a+moment+to+reflect+new+chats.%7D+other+%7BImported+%23+rows.+The+app+may+take+a+moment+to+reflect+new+chats.%7D%7D&pluralize_on=total
 #: src/settings/preferences.tsx
-#~ msgid "Imported # row. The app may take a moment to reflect new chats."
-#~ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
-#~ msgstr[0] "# 行をインポートしました。新しいチャットが反映されるまで少し時間がかかる場合があります。"
-
-#: src/lib/tool-metadata.ts
-msgid "{verbPhrase}…"
-msgstr "{verbPhrase}…"
+msgid "Imported # row. The app may take a moment to reflect new chats."
+msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
+msgstr[0] "# 行をインポートしました。新しいチャットが反映されるまで少し時間がかかる場合があります。"
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "{wordCount}/24 words"
@@ -296,10 +292,6 @@ msgstr "すべてのコマンド実行操作を常に許可"
 msgid "Always allow everything from this agent"
 msgstr "このエージェントからのすべてを常に許可"
 
-#: src/lib/tool-metadata.ts
-msgid "Analyzing…"
-msgstr "分析中…"
-
 #: src/projects/emoji-catalog.ts
 msgid "Animals & nature"
 msgstr "動物と自然"
@@ -406,10 +398,6 @@ msgstr "認可に失敗しました。もう一度お試しください。"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Authorization required"
 msgstr "認可が必要です"
-
-#: src/lib/mcp-auth/callback-validation.ts
-msgid "Authorization server omitted the required issuer (iss)."
-msgstr "認可サーバーが必須の発行者 (iss) を返しませんでした。"
 
 #: src/hooks/use-mcp-server-oauth.ts
 msgid "Authorization was cancelled."
@@ -1051,7 +1039,6 @@ msgstr "最初のプロジェクトを作成"
 msgid "Create your first skill"
 msgstr "最初のスキルを作成"
 
-#: src/lib/tool-metadata.ts
 #: src/projects/project-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Creating…"
@@ -1461,14 +1448,6 @@ msgstr "スキルを編集"
 msgid "Edit Skill"
 msgstr "スキルを編集"
 
-#: src/lib/tool-metadata.ts
-msgid "Editing {fileName}…"
-msgstr "{fileName} を編集中…"
-
-#: src/lib/tool-metadata.ts
-msgid "Editing…"
-msgstr "編集中…"
-
 #: src/components/onboarding/onboarding-auth-step.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -1704,14 +1683,6 @@ msgstr "まずは最初の AI モデルを追加しましょう。"
 msgid "Get Thunderbolt free app"
 msgstr "Thunderbolt の無料アプリを入手"
 
-#: src/lib/tool-metadata.ts
-msgid "Getting weather for {location}…"
-msgstr "{location} の天気を取得中…"
-
-#: src/lib/tool-metadata.ts
-msgid "Getting weather…"
-msgstr "天気を取得中…"
-
 #: src/widgets/connect-integration/widget.tsx
 msgid "Gmail & Calendar"
 msgstr "Gmail とカレンダー"
@@ -1838,10 +1809,6 @@ msgstr "データをインポート"
 #: src/settings/preferences.tsx
 msgid "Import your data from previously exported JSON."
 msgstr "以前にエクスポートした JSON からデータをインポートします。"
-
-#: src/settings/preferences.tsx
-msgid "Imported {importedRowCount} rows. The app may take a moment to reflect new chats."
-msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/preferences.tsx
@@ -2088,10 +2055,6 @@ msgstr "メッセージ"
 msgid "Minimize"
 msgstr "最小化"
 
-#: src/lib/mcp-auth/callback-validation.ts
-msgid "Missing CSRF state — restart the authorization."
-msgstr "CSRF ステートがありません。認可をやり直してください。"
-
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -2194,7 +2157,6 @@ msgstr "新しいチャット"
 #: src/components/context-overflow-modal.tsx
 #: src/components/sidebar-footer.tsx
 #: src/layout/sidebar/chat-sidebar.tsx
-#: src/lib/title-generator.ts
 msgid "New Chat"
 msgstr "新しいチャット"
 
@@ -2355,14 +2317,6 @@ msgstr "後で"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
 msgstr "未テスト"
-
-#: src/lib/mcp-auth/callback-validation.ts
-msgid "OAuth issuer mismatch — authorization rejected."
-msgstr "OAuth の発行者が一致しません。認可を拒否しました。"
-
-#: src/lib/mcp-auth/callback-validation.ts
-msgid "OAuth state mismatch — possible CSRF, authorization rejected."
-msgstr "OAuth のステートが一致しません。CSRF の可能性があるため認可を拒否しました。"
 
 #: src/hooks/use-oauth-connect.ts
 msgid "OAuth validation failed"
@@ -2584,10 +2538,6 @@ msgstr "プライバシー"
 msgid "Private"
 msgstr "非公開"
 
-#: src/lib/tool-metadata.ts
-msgid "Processing…"
-msgstr "処理中…"
-
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/projects/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -2626,10 +2576,6 @@ msgstr "メールを読み、下書きを作成します。"
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Read, compose, and organize your emails."
 msgstr "メールの読み取り、作成、整理を行います。"
-
-#: src/lib/tool-metadata.ts
-msgid "Reading {fileName}…"
-msgstr "{fileName} を読み込み中…"
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
@@ -2696,7 +2642,6 @@ msgid "Remove this bridge?"
 msgstr "このブリッジを削除しますか？"
 
 #: src/components/remove-bridge-dialog.tsx
-#: src/lib/tool-metadata.ts
 #: src/settings/devices.tsx
 msgid "Removing…"
 msgstr "削除しています…"
@@ -2769,10 +2714,6 @@ msgstr "今すぐ再起動"
 #: src/components/upgrade-required.tsx
 msgid "Restart to update"
 msgstr "再起動して更新"
-
-#: src/lib/tool-metadata.ts
-msgid "Retrieving data…"
-msgstr "データを取得中…"
 
 #: src/components/chat/error-message.tsx
 #: src/components/sidebar-footer.tsx
@@ -2937,14 +2878,6 @@ msgstr "タスクを検索…"
 msgid "Search…"
 msgstr "検索…"
 
-#: src/lib/tool-metadata.ts
-msgid "Searching for \"{query}\"…"
-msgstr "「{query}」を検索中…"
-
-#: src/lib/tool-metadata.ts
-msgid "Searching…"
-msgstr "検索中…"
-
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr "画面のドキュメントをご覧ください。"
@@ -2989,7 +2922,6 @@ msgstr "メッセージを送信"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
-#: src/lib/tool-metadata.ts
 #: src/waitlist/waitlist-page.tsx
 msgid "Sending…"
 msgstr "送信しています…"
@@ -3447,22 +3379,6 @@ msgid "This device has not been approved yet. Please approve it from a trusted d
 msgstr "このデバイスはまだ承認されていません。先に信頼済みのデバイスから承認してください。"
 
 #: src/settings/preferences.tsx
-msgid "This file contains {importRowCount} rows exported by {importSourceEmail} on {importExportedAt}."
-msgstr ""
-
-#: src/settings/preferences.tsx
-msgid "This file contains {importRowCount} rows exported by {importSourceEmail}."
-msgstr ""
-
-#: src/settings/preferences.tsx
-msgid "This file contains {importRowCount} rows on {importExportedAt}."
-msgstr ""
-
-#: src/settings/preferences.tsx
-msgid "This file contains {importRowCount} rows."
-msgstr ""
-
-#: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr "このファイルは Thunderbolt のエクスポートではないようです。"
 
@@ -3725,7 +3641,8 @@ msgstr "ピン留めを解除"
 msgid "Unreachable {relative}"
 msgstr "{relative}に到達不能"
 
-#: src/lib/title-generator.ts
+#: src/layout/sidebar/chat-sidebar.tsx
+#: src/projects/project-detail-panel.tsx
 msgid "Untitled chat"
 msgstr "無題のチャット"
 

@@ -56,6 +56,7 @@ import { localeForCountry } from '@/i18n/country-language'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
 import type { AppLocale } from '@shared/i18n/locales'
 import { useFormatters } from '@/i18n/use-formatters'
+import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
@@ -172,7 +173,6 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
 
 export default function PreferencesSettingsPage() {
   const { t } = useLingui()
-  const formatters = useFormatters()
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
     isResetting,
@@ -460,11 +460,12 @@ export default function PreferencesSettingsPage() {
     try {
       const result = await importUserData(db, pendingImport.payload, { id: userId })
       const total = Object.values(result.tables).reduce((sum, t) => sum + (t?.upserted ?? 0), 0)
-      // Bound so the catalog placeholder is named rather than positional.
-      const importedRowCount = formatters.number(total)
       dispatch({
         type: 'SET_IMPORT_SUCCESS',
-        payload: t`Imported ${importedRowCount} rows. The app may take a moment to reflect new chats.`,
+        payload: plural(total, {
+          one: 'Imported # row. The app may take a moment to reflect new chats.',
+          other: 'Imported # rows. The app may take a moment to reflect new chats.',
+        }),
       })
       trackEvent('settings_data_import')
       dispatch({ type: 'SET_PENDING_IMPORT', payload: null })
@@ -596,9 +597,40 @@ export default function PreferencesSettingsPage() {
   }, [unitsOptionsData?.currencies, currency.value])
 
   // Bound so the catalog placeholders are named rather than positional.
-  const importRowCount = pendingImport ? formatters.number(pendingImport.totalRows) : ''
   const importSourceEmail = pendingImport?.sourceEmail ?? ''
   const importExportedAt = pendingImport?.exportedAtLabel ?? ''
+
+  /**
+   * One whole sentence per provenance combination rather than appending optional
+   * clauses: a translator needs to place "exported by X" and "on Y" in their own
+   * grammar, and each combination needs its own plural forms for the row count.
+   * ICU's `#` formats the count for the active locale, so it doesn't go through
+   * `useFormatters` on the way in.
+   */
+  const importSummary = (rows: number): string => {
+    if (importSourceEmail && importExportedAt) {
+      return plural(rows, {
+        one: `This file contains # row exported by ${importSourceEmail} on ${importExportedAt}.`,
+        other: `This file contains # rows exported by ${importSourceEmail} on ${importExportedAt}.`,
+      })
+    }
+    if (importSourceEmail) {
+      return plural(rows, {
+        one: `This file contains # row exported by ${importSourceEmail}.`,
+        other: `This file contains # rows exported by ${importSourceEmail}.`,
+      })
+    }
+    if (importExportedAt) {
+      return plural(rows, {
+        one: `This file contains # row on ${importExportedAt}.`,
+        other: `This file contains # rows on ${importExportedAt}.`,
+      })
+    }
+    return plural(rows, {
+      one: 'This file contains # row.',
+      other: 'This file contains # rows.',
+    })
+  }
 
   return (
     <SettingsPageShell className="gap-6 md:pb-12">
@@ -1231,24 +1263,7 @@ export default function PreferencesSettingsPage() {
             <AlertDialogDescription>
               {pendingImport && (
                 <>
-                  {/* One whole sentence per provenance combination rather than
-                      appending optional clauses: a translator needs to place
-                      "exported by X" and "on Y" in their own grammar. */}
-                  {pendingImport.sourceEmail && pendingImport.exportedAtLabel ? (
-                    <Trans>
-                      This file contains {importRowCount} rows exported by {importSourceEmail} on {importExportedAt}.
-                    </Trans>
-                  ) : pendingImport.sourceEmail ? (
-                    <Trans>
-                      This file contains {importRowCount} rows exported by {importSourceEmail}.
-                    </Trans>
-                  ) : pendingImport.exportedAtLabel ? (
-                    <Trans>
-                      This file contains {importRowCount} rows on {importExportedAt}.
-                    </Trans>
-                  ) : (
-                    <Trans>This file contains {importRowCount} rows.</Trans>
-                  )}{' '}
+                  {importSummary(pendingImport.totalRows)}{' '}
                   <Trans>
                     Rows that share an ID with existing data will be overwritten with the file's version and synced to
                     your other devices. This can't be undone.

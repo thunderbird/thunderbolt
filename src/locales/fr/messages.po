@@ -77,35 +77,35 @@ msgstr "{label} — déjà dans ce projet"
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
-#~ msgid "This file contains # row exported by {importSourceEmail} on {importExportedAt}."
-#~ msgid_plural "This file contains # rows exported by {importSourceEmail} on {importExportedAt}."
-#~ msgstr[0] "Ce fichier contient # ligne exportée par {importSourceEmail} le {importExportedAt}."
-#~ msgstr[1] "Ce fichier contient # lignes exportées par {importSourceEmail} le {importExportedAt}."
-#~ msgstr[2] "Ce fichier contient # lignes exportées par {importSourceEmail} le {importExportedAt}."
+msgid "This file contains # row exported by {importSourceEmail} on {importExportedAt}."
+msgid_plural "This file contains # rows exported by {importSourceEmail} on {importExportedAt}."
+msgstr[0] "Ce fichier contient # ligne exportée par {importSourceEmail} le {importExportedAt}."
+msgstr[1] "Ce fichier contient # lignes exportées par {importSourceEmail} le {importExportedAt}."
+msgstr[2] "Ce fichier contient # lignes exportées par {importSourceEmail} le {importExportedAt}."
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
-#~ msgid "This file contains # row exported by {importSourceEmail}."
-#~ msgid_plural "This file contains # rows exported by {importSourceEmail}."
-#~ msgstr[0] "Ce fichier contient # ligne exportée par {importSourceEmail}."
-#~ msgstr[1] "Ce fichier contient # lignes exportées par {importSourceEmail}."
-#~ msgstr[2] "Ce fichier contient # lignes exportées par {importSourceEmail}."
+msgid "This file contains # row exported by {importSourceEmail}."
+msgid_plural "This file contains # rows exported by {importSourceEmail}."
+msgstr[0] "Ce fichier contient # ligne exportée par {importSourceEmail}."
+msgstr[1] "Ce fichier contient # lignes exportées par {importSourceEmail}."
+msgstr[2] "Ce fichier contient # lignes exportées par {importSourceEmail}."
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
-#~ msgid "This file contains # row on {importExportedAt}."
-#~ msgid_plural "This file contains # rows on {importExportedAt}."
-#~ msgstr[0] "Ce fichier contient # ligne datée du {importExportedAt}."
-#~ msgstr[1] "Ce fichier contient # lignes datées du {importExportedAt}."
-#~ msgstr[2] "Ce fichier contient # lignes datées du {importExportedAt}."
+msgid "This file contains # row on {importExportedAt}."
+msgid_plural "This file contains # rows on {importExportedAt}."
+msgstr[0] "Ce fichier contient # ligne datée du {importExportedAt}."
+msgstr[1] "Ce fichier contient # lignes datées du {importExportedAt}."
+msgstr[2] "Ce fichier contient # lignes datées du {importExportedAt}."
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row.%7D+other+%7BThis+file+contains+%23+rows.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
-#~ msgid "This file contains # row."
-#~ msgid_plural "This file contains # rows."
-#~ msgstr[0] "Ce fichier contient # ligne."
-#~ msgstr[1] "Ce fichier contient # lignes."
-#~ msgstr[2] "Ce fichier contient # lignes."
+msgid "This file contains # row."
+msgid_plural "This file contains # rows."
+msgstr[0] "Ce fichier contient # ligne."
+msgstr[1] "Ce fichier contient # lignes."
+msgstr[2] "Ce fichier contient # lignes."
 
 #. js-lingui:icu=%7BstepCount%2C+plural%2C+one+%7BCompleted+%23+step+in+%7Bduration%7D%7D+other+%7BCompleted+%23+steps+in+%7Bduration%7D%7D%7D&pluralize_on=stepCount
 #: src/components/chat/reasoning-group-title.tsx
@@ -121,15 +121,11 @@ msgstr "{title} — affiché dans le panneau latéral"
 
 #. js-lingui:icu=%7Btotal%2C+plural%2C+one+%7BImported+%23+row.+The+app+may+take+a+moment+to+reflect+new+chats.%7D+other+%7BImported+%23+rows.+The+app+may+take+a+moment+to+reflect+new+chats.%7D%7D&pluralize_on=total
 #: src/settings/preferences.tsx
-#~ msgid "Imported # row. The app may take a moment to reflect new chats."
-#~ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
-#~ msgstr[0] "# ligne importée. L'application peut prendre un moment pour afficher les nouvelles conversations."
-#~ msgstr[1] "# lignes importées. L'application peut prendre un moment pour afficher les nouvelles conversations."
-#~ msgstr[2] "# lignes importées. L'application peut prendre un moment pour afficher les nouvelles conversations."
-
-#: src/lib/tool-metadata.ts
-msgid "{verbPhrase}…"
-msgstr "{verbPhrase}…"
+msgid "Imported # row. The app may take a moment to reflect new chats."
+msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
+msgstr[0] "# ligne importée. L'application peut prendre un moment pour afficher les nouvelles conversations."
+msgstr[1] "# lignes importées. L'application peut prendre un moment pour afficher les nouvelles conversations."
+msgstr[2] "# lignes importées. L'application peut prendre un moment pour afficher les nouvelles conversations."
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "{wordCount}/24 words"
@@ -320,10 +316,6 @@ msgstr "Toujours autoriser toutes les actions d'exécution de commande"
 msgid "Always allow everything from this agent"
 msgstr "Toujours tout autoriser depuis cet agent"
 
-#: src/lib/tool-metadata.ts
-msgid "Analyzing…"
-msgstr "Analyse…"
-
 #: src/projects/emoji-catalog.ts
 msgid "Animals & nature"
 msgstr "Animaux et nature"
@@ -430,10 +422,6 @@ msgstr "Échec de l'autorisation. Veuillez réessayer."
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Authorization required"
 msgstr "Autorisation requise"
-
-#: src/lib/mcp-auth/callback-validation.ts
-msgid "Authorization server omitted the required issuer (iss)."
-msgstr "Le serveur d'autorisation a omis l'émetteur requis (iss)."
 
 #: src/hooks/use-mcp-server-oauth.ts
 msgid "Authorization was cancelled."
@@ -1075,7 +1063,6 @@ msgstr "Créez votre premier projet"
 msgid "Create your first skill"
 msgstr "Créez votre première compétence"
 
-#: src/lib/tool-metadata.ts
 #: src/projects/project-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Creating…"
@@ -1485,14 +1472,6 @@ msgstr "Modifier la compétence"
 msgid "Edit Skill"
 msgstr "Modifier la compétence"
 
-#: src/lib/tool-metadata.ts
-msgid "Editing {fileName}…"
-msgstr "Modification de {fileName}…"
-
-#: src/lib/tool-metadata.ts
-msgid "Editing…"
-msgstr "Modification…"
-
 #: src/components/onboarding/onboarding-auth-step.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -1728,14 +1707,6 @@ msgstr "Commencez par ajouter votre premier modèle d'IA."
 msgid "Get Thunderbolt free app"
 msgstr "Obtenir l'application Thunderbolt gratuite"
 
-#: src/lib/tool-metadata.ts
-msgid "Getting weather for {location}…"
-msgstr "Récupération de la météo pour {location}…"
-
-#: src/lib/tool-metadata.ts
-msgid "Getting weather…"
-msgstr "Récupération de la météo…"
-
 #: src/widgets/connect-integration/widget.tsx
 msgid "Gmail & Calendar"
 msgstr "Gmail et Agenda"
@@ -1862,10 +1833,6 @@ msgstr "Importer vos données"
 #: src/settings/preferences.tsx
 msgid "Import your data from previously exported JSON."
 msgstr "Importez vos données depuis un fichier JSON exporté précédemment."
-
-#: src/settings/preferences.tsx
-msgid "Imported {importedRowCount} rows. The app may take a moment to reflect new chats."
-msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/preferences.tsx
@@ -2112,10 +2079,6 @@ msgstr "Messages"
 msgid "Minimize"
 msgstr "Réduire"
 
-#: src/lib/mcp-auth/callback-validation.ts
-msgid "Missing CSRF state — restart the authorization."
-msgstr "État CSRF manquant — relancez l'autorisation."
-
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -2218,7 +2181,6 @@ msgstr "Nouvelle conversation"
 #: src/components/context-overflow-modal.tsx
 #: src/components/sidebar-footer.tsx
 #: src/layout/sidebar/chat-sidebar.tsx
-#: src/lib/title-generator.ts
 msgid "New Chat"
 msgstr "Nouvelle conversation"
 
@@ -2379,14 +2341,6 @@ msgstr "Pas maintenant"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
 msgstr "Non testé"
-
-#: src/lib/mcp-auth/callback-validation.ts
-msgid "OAuth issuer mismatch — authorization rejected."
-msgstr "Émetteur OAuth non concordant — autorisation refusée."
-
-#: src/lib/mcp-auth/callback-validation.ts
-msgid "OAuth state mismatch — possible CSRF, authorization rejected."
-msgstr "État OAuth non concordant — CSRF possible, autorisation refusée."
 
 #: src/hooks/use-oauth-connect.ts
 msgid "OAuth validation failed"
@@ -2608,10 +2562,6 @@ msgstr "Confidentialité"
 msgid "Private"
 msgstr "Privé"
 
-#: src/lib/tool-metadata.ts
-msgid "Processing…"
-msgstr "Traitement…"
-
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/projects/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -2650,10 +2600,6 @@ msgstr "Lire vos e-mails et rédiger des brouillons."
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Read, compose, and organize your emails."
 msgstr "Lire, rédiger et organiser vos e-mails."
-
-#: src/lib/tool-metadata.ts
-msgid "Reading {fileName}…"
-msgstr "Lecture de {fileName}…"
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
@@ -2720,7 +2666,6 @@ msgid "Remove this bridge?"
 msgstr "Supprimer ce bridge ?"
 
 #: src/components/remove-bridge-dialog.tsx
-#: src/lib/tool-metadata.ts
 #: src/settings/devices.tsx
 msgid "Removing…"
 msgstr "Suppression…"
@@ -2793,10 +2738,6 @@ msgstr "Redémarrer maintenant"
 #: src/components/upgrade-required.tsx
 msgid "Restart to update"
 msgstr "Redémarrer pour mettre à jour"
-
-#: src/lib/tool-metadata.ts
-msgid "Retrieving data…"
-msgstr "Récupération des données…"
 
 #: src/components/chat/error-message.tsx
 #: src/components/sidebar-footer.tsx
@@ -2961,14 +2902,6 @@ msgstr "Rechercher des tâches…"
 msgid "Search…"
 msgstr "Rechercher…"
 
-#: src/lib/tool-metadata.ts
-msgid "Searching for \"{query}\"…"
-msgstr "Recherche de « {query} »…"
-
-#: src/lib/tool-metadata.ts
-msgid "Searching…"
-msgstr "Recherche…"
-
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr "Consultez le document à l'écran."
@@ -3013,7 +2946,6 @@ msgstr "Envoyer le message"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
-#: src/lib/tool-metadata.ts
 #: src/waitlist/waitlist-page.tsx
 msgid "Sending…"
 msgstr "Envoi…"
@@ -3471,22 +3403,6 @@ msgid "This device has not been approved yet. Please approve it from a trusted d
 msgstr "Cet appareil n'a pas encore été approuvé. Veuillez d'abord l'approuver depuis un appareil de confiance."
 
 #: src/settings/preferences.tsx
-msgid "This file contains {importRowCount} rows exported by {importSourceEmail} on {importExportedAt}."
-msgstr ""
-
-#: src/settings/preferences.tsx
-msgid "This file contains {importRowCount} rows exported by {importSourceEmail}."
-msgstr ""
-
-#: src/settings/preferences.tsx
-msgid "This file contains {importRowCount} rows on {importExportedAt}."
-msgstr ""
-
-#: src/settings/preferences.tsx
-msgid "This file contains {importRowCount} rows."
-msgstr ""
-
-#: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr "Ce fichier ne semble pas être un export Thunderbolt."
 
@@ -3749,7 +3665,8 @@ msgstr "Désépingler"
 msgid "Unreachable {relative}"
 msgstr "Injoignable {relative}"
 
-#: src/lib/title-generator.ts
+#: src/layout/sidebar/chat-sidebar.tsx
+#: src/projects/project-detail-panel.tsx
 msgid "Untitled chat"
 msgstr "Conversation sans titre"
 

@@ -70,6 +70,16 @@ describe('ErrorMessage', () => {
       expect(screen.getByText('Too many requests. Please try again in a moment.')).toBeTruthy()
     })
 
+    it('should show rate limit message for a pi-ai flattened JSON 429', () => {
+      const error = new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}')
+      const onRetry = mock(() => {})
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} error={error} onRetry={onRetry} />)
+
+      expect(screen.getByText('Too many requests. Please try again in a moment.')).toBeTruthy()
+      expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()
+      expect(screen.queryByText('Retry')).toBeNull()
+    })
+
     it('should not show retry button or spinner for rate limit errors', () => {
       const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))
       const onRetry = mock(() => {})

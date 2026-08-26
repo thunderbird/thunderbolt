@@ -34,7 +34,11 @@ const firstString = (...values: unknown[]): string | undefined =>
   values.find((value): value is string => typeof value === 'string')
 
 const getPiErrorStatusCode = (message: string): number | undefined => {
-  const match = message.match(/^(\d{3}):\s/) ?? message.match(/^[^(]*\((\d{3})\):/)
+  const jsonBodyMatch = message.match(/^(\d{3})\s+((?:\{|\[)[\s\S]*)$/)
+  const match =
+    message.match(/^(\d{3}):\s/) ??
+    message.match(/^[^(]*\((\d{3})\):/) ??
+    (jsonBodyMatch && parseJson(jsonBodyMatch[2]) !== undefined ? jsonBodyMatch : null)
   const status = match ? Number(match[1]) : undefined
   return status !== undefined && status >= 400 && status <= 599 ? status : undefined
 }
@@ -145,7 +149,8 @@ export const isRateLimitError = (error?: Error | null): boolean => {
  * is present. The frontend serializes API errors as `{"error":...,"status":N}`
  * (see `aiFetchStreamingResponse`). The Pi path instead flattens errors to text
  * through pi-ai's `formatProviderError`, using either `"<status>: <body>"` or
- * `"<prefix> (<status>): <message>"`.
+ * `"<prefix> (<status>): <message>"`. Direct managed inference errors may use
+ * `"<status> <JSON body>"` instead.
  */
 export const getErrorStatusCode = (error?: Error | null): number | undefined => {
   if (!error?.message) {

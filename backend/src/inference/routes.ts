@@ -135,27 +135,13 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
 
       const { provider, internalName, omitTemperature, supportsStreamUsage } = modelConfig
       const route = new URL(ctx.request.url).pathname
-
-      const admission = await checkManagedInferenceAdmission(
-        database,
-        { provider, model: internalName },
-        ctx.user.id,
-        getInferenceQuotaLimits(settings, ctx.user.isAnonymous === true),
-      )
-      if (admission.outcome === 'price-unavailable') {
-        return createPriceUnavailableResponse()
-      }
-      if (admission.outcome === 'quota-exceeded') {
-        return createQuotaExceededResponse(admission.decision)
-      }
-      const { price } = admission
-
-      const usageEventId = crypto.randomUUID()
-      const { client } = getClient(provider)
       const attemptTracker = createInferenceAttemptTracker()
       /** Emit route phase telemetry in structured logs and response headers. */
-      const recordLatency = (status: number, completedAt: number) => {
-        const upstreamMs = elapsedMs(handlerStartedAt, completedAt)
+      const recordLatency = (
+        status: number,
+        completedAt: number,
+        upstreamMs: number | null = elapsedMs(handlerStartedAt, completedAt),
+      ) => {
         const totalMs = elapsedMs(ctx.inferenceRequestStartedAt, completedAt)
         const latency: InferenceProxyLatencyLog = {
           event: 'inference_proxy_latency',
@@ -169,11 +155,32 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           attempts: attemptTracker.attempts,
         }
 
-        ctx.set.headers[inferenceProxyTimingHeader] =
-          `pre=${preMs};upstream=${upstreamMs};total=${totalMs};attempts=${attemptTracker.attempts}`
-        ctx.set.headers[serverTimingHeader] = formatServerTiming(preMs, upstreamMs, totalMs)
-        logger?.info(latency, 'Inference proxy latency')
+        if (upstreamMs !== null) {
+          ctx.set.headers[inferenceProxyTimingHeader] =
+            `pre=${preMs};upstream=${upstreamMs};total=${totalMs};attempts=${attemptTracker.attempts}`
+          ctx.set.headers[serverTimingHeader] = formatServerTiming(preMs, upstreamMs, totalMs)
+        }
+        logInferenceSafely(logger, latency, 'Inference proxy latency')
       }
+
+      const admission = await checkManagedInferenceAdmission(
+        database,
+        { provider, model: internalName },
+        ctx.user.id,
+        getInferenceQuotaLimits(settings, ctx.user.isAnonymous === true),
+      )
+      if (admission.outcome === 'price-unavailable') {
+        recordLatency(503, nowFn(), null)
+        return createPriceUnavailableResponse()
+      }
+      if (admission.outcome === 'quota-exceeded') {
+        recordLatency(429, nowFn(), null)
+        return createQuotaExceededResponse(admission.decision)
+      }
+      const { price } = admission
+
+      const usageEventId = crypto.randomUUID()
+      const { client } = getClient(provider)
 
       try {
         const completion = await runWithInferenceAttemptTracking(attemptTracker, () =>

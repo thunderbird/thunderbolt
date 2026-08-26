@@ -3,26 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { managedGlmIdentity } from '@shared/inference-usage'
 import { z } from 'zod'
 import type { InferencePrice } from './usage-ledger'
-
-export type InferenceUsageReceiptClaims = Readonly<{
-  purpose: 'inference-usage-receipt'
-  version: 1
-  eventId: string
-  userId: string
-  provider: 'tinfoil'
-  model: 'glm-5-2'
-  inputNanoUsdPerToken: string
-  outputNanoUsdPerToken: string
-  issuedAt: number
-  expiresAt: number
-}>
 
 export type IssueReceiptInput = Readonly<{
   eventId: string
   userId: string
-  price: InferencePrice & { provider: 'tinfoil'; model: 'glm-5-2' }
+  price: InferencePrice & typeof managedGlmIdentity
   secret: string
   nowSeconds: number
 }>
@@ -39,14 +27,16 @@ const receiptClaimsSchema = z
     version: z.literal(1),
     eventId: z.string().regex(canonicalUuidV4Pattern),
     userId: z.string().min(1),
-    provider: z.literal('tinfoil'),
-    model: z.literal('glm-5-2'),
+    provider: z.literal(managedGlmIdentity.provider),
+    model: z.literal(managedGlmIdentity.model),
     inputNanoUsdPerToken: z.string().regex(canonicalUnsignedDecimalPattern),
     outputNanoUsdPerToken: z.string().regex(canonicalUnsignedDecimalPattern),
     issuedAt: z.number().int().safe().nonnegative(),
     expiresAt: z.number().int().safe().nonnegative(),
   })
   .refine((claims) => claims.expiresAt === claims.issuedAt + receiptLifetimeSeconds)
+
+export type InferenceUsageReceiptClaims = Readonly<z.infer<typeof receiptClaimsSchema>>
 
 /** Derive the receipt-only key and sign an exact serialized token prefix. */
 const signReceiptInput = (signingInput: string, secret: string): Buffer => {
@@ -68,8 +58,7 @@ export const issueInferenceUsageReceipt = (input: IssueReceiptInput): string => 
     version: 1,
     eventId: input.eventId,
     userId: input.userId,
-    provider: 'tinfoil',
-    model: 'glm-5-2',
+    ...managedGlmIdentity,
     inputNanoUsdPerToken: input.price.inputNanoUsdPerToken.toString(),
     outputNanoUsdPerToken: input.price.outputNanoUsdPerToken.toString(),
     issuedAt: input.nowSeconds,

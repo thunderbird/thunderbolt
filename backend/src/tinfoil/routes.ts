@@ -20,7 +20,7 @@ import { capStream } from '@/proxy/streaming'
 import { filterHeaders } from '@/utils/request'
 import { elapsedMs } from '@/utils/timing'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
-import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { inferenceUsageReceiptHeader, managedGlmIdentity } from '@shared/inference-usage'
 import { Elysia, type AnyElysia } from 'elysia'
 import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
@@ -229,7 +229,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     if (isManagedGlmChat) {
       const admission = await checkManagedInferenceAdmission(
         database,
-        { provider: 'tinfoil', model: 'glm-5-2' },
+        managedGlmIdentity,
         distinctId,
         getInferenceQuotaLimits(settings, isAnonymous),
       )
@@ -248,7 +248,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         token: issueInferenceUsageReceipt({
           eventId,
           userId: distinctId,
-          price: { ...price, provider: 'tinfoil', model: 'glm-5-2' },
+          price: { ...price, ...managedGlmIdentity },
           secret: settings.betterAuthSecret,
           nowSeconds: Math.floor(Date.now() / 1_000),
         }),
@@ -312,8 +312,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
           usageLogger,
           {
             event: 'inference_usage_receipt_issued',
-            provider: 'tinfoil',
-            model: 'glm-5-2',
+            ...managedGlmIdentity,
             eventId: receipt.eventId,
             route,
           },

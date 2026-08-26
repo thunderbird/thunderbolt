@@ -106,6 +106,27 @@ describe('Inference Routes', () => {
       temperature: 0.7,
     }
 
+    /** Configure a direct-route policy rejection before client construction. */
+    const arrangePolicyRejection = async (rejection: 'missing-price' | 'quota') => {
+      if (rejection === 'missing-price') {
+        await database
+          .delete(inferencePrices)
+          .where(sql`${inferencePrices.provider} = 'tinfoil' and ${inferencePrices.model} = 'deepseek-v4-flash'`)
+        return
+      }
+
+      await database.insert(inferenceUsage).values({
+        id: 'telemetry-quota-usage',
+        userId: 'test-user',
+        provider: 'tinfoil',
+        model: 'deepseek-v4-flash',
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        costNanoUsd: 15_000_000_000n,
+      })
+    }
+
     beforeEach(() => {
       // Reset all mocks before each test
       mockCreateCompletion.mockClear()
@@ -423,6 +444,91 @@ describe('Inference Routes', () => {
 
       expect(response.status).toBe(429)
       expect(await response.json()).toEqual({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } })
+      expect(getInferenceClientMock).not.toHaveBeenCalled()
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['missing-price', 503],
+      ['quota', 429],
+    ] as const)('records latency telemetry for a %s rejection', async (rejection, status) => {
+      await arrangePolicyRejection(rejection)
+      const entries: Array<{ context: InferenceProxyLatencyLog; message: string }> = []
+      const timestamps = [100, 120, 170]
+      const telemetryApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          database,
+          getClient: getInferenceClientMock,
+          logger: {
+            info: (context, message) => entries.push({ context: context as InferenceProxyLatencyLog, message }),
+          },
+          nowFn: () => timestamps.shift() ?? 0,
+        }),
+      )
+
+      const response = await telemetryApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(status)
+      if (rejection === 'quota') {
+        expect(await response.json()).toEqual({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } })
+      }
+      expect(response.headers.get('x-proxy-timing')).toBeNull()
+      expect(response.headers.get('server-timing')).toBeNull()
+      expect(entries).toEqual([
+        {
+          context: {
+            event: 'inference_proxy_latency',
+            route: '/chat/completions',
+            provider: 'tinfoil',
+            model: 'deepseek-v4-flash',
+            status,
+            preMs: 20,
+            upstreamMs: null,
+            totalMs: 70,
+            attempts: 0,
+          },
+          message: 'Inference proxy latency',
+        },
+      ])
+      expect(getInferenceClientMock).not.toHaveBeenCalled()
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['missing-price', 503, { error: { code: 'INFERENCE_PRICE_UNAVAILABLE' } }],
+      ['quota', 429, { error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } }],
+    ] as const)('preserves the %s rejection when latency logging throws', async (rejection, status, body) => {
+      await arrangePolicyRejection(rejection)
+      const throwingLoggerApp = new Elysia().use(
+        createInferenceRoutes({
+          auth: mockAuth,
+          database,
+          getClient: getInferenceClientMock,
+          logger: {
+            info: () => {
+              throw new Error('Telemetry unavailable')
+            },
+          },
+        }),
+      )
+
+      const response = await throwingLoggerApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(status)
+      expect(await response.json()).toEqual(body)
       expect(getInferenceClientMock).not.toHaveBeenCalled()
       expect(mockCreateCompletion).not.toHaveBeenCalled()
     })

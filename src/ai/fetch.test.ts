@@ -101,6 +101,16 @@ const pumpClockUntil = async (predicate: () => boolean): Promise<void> => {
   throw new Error('Timed out while draining the AI response')
 }
 
+const pumpShortClockUntil = async (predicate: () => boolean): Promise<void> => {
+  for (let elapsedMs = 0; elapsedMs < 250; elapsedMs++) {
+    await getClock().tickAsync(1)
+    if (predicate()) {
+      return
+    }
+  }
+  throw new Error('Timed out before the short test deadline')
+}
+
 const serializeConsoleCalls = ({ log, info, error, warn }: ConsoleSpies): string =>
   JSON.stringify([...log.mock.calls, ...info.mock.calls, ...error.mock.calls, ...warn.mock.calls])
 
@@ -634,7 +644,7 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
         responseState.settled = true
       })
 
-      await pumpClockUntil(() => requests.length === 1)
+      await pumpShortClockUntil(() => requests.length === 1)
 
       expect(responseState.settled).toBeFalse()
       expect(requests[0].url).toBe('https://app.example.com/v1/inference-usage/receipts')
@@ -689,7 +699,7 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
     }
   })
 
-  it('settles each tool-loop receipt before starting the next upstream step', async () => {
+  it('waits for a hanging tool-loop receipt timeout before starting the next upstream step', async () => {
     const upstreamRequests: string[] = []
     const systemClient = {
       getBaseURL: () => 'https://enclave.example.com/v1',
@@ -759,14 +769,18 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
     }
     const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
     const receiptRequests: Request[] = []
-    let resolveFirstReceipt: ((response: Response) => void) | undefined
-    const firstReceiptResponse = new Promise<Response>((resolve) => {
-      resolveFirstReceipt = resolve
-    })
+    let firstReceiptSignal: AbortSignal | undefined
     const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
       fetch: async (input) => {
-        receiptRequests.push(input as Request)
-        return receiptRequests.length === 1 ? firstReceiptResponse : new Response(null, { status: 204 })
+        const request = input as Request
+        receiptRequests.push(request)
+        if (receiptRequests.length !== 1) {
+          return new Response(null, { status: 204 })
+        }
+        firstReceiptSignal = request.signal
+        return new Promise<Response>((_resolve, reject) => {
+          request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true })
+        })
       },
     })
 
@@ -782,12 +796,16 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
         responseState.settled = true
       })
 
-      await pumpClockUntil(() => receiptRequests.length === 1)
+      await pumpShortClockUntil(() => receiptRequests.length === 1)
 
       expect(upstreamRequests).toHaveLength(1)
       expect(responseState.settled).toBeFalse()
+      expect(firstReceiptSignal?.aborted).toBeFalse()
 
-      resolveFirstReceipt?.(new Response(null, { status: 204 }))
+      await getClock().tickAsync(2_998)
+      expect(upstreamRequests).toHaveLength(1)
+      expect(firstReceiptSignal?.aborted).toBeFalse()
+      await getClock().tickAsync(2)
       await pumpClockUntil(() => upstreamRequests.length === 2)
       await pumpClockUntil(() => receiptRequests.length === 2 && responseState.settled)
 
@@ -807,6 +825,7 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
       ])
       expect(upstreamRequests).toHaveLength(2)
       expect(receiptRequests).toHaveLength(2)
+      expect(firstReceiptSignal?.aborted).toBeTrue()
       expect(await responseBody).toContain('finish')
     } finally {
       getSystemClient.mockRestore()

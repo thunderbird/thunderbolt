@@ -6,7 +6,11 @@ import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createTestDb } from '@/test-utils/db'
 import { createMockAuth, createThrowingAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
-import type { InferenceUsageReceiptRequest } from '@shared/inference-usage'
+import {
+  inferenceUsageReceiptPath,
+  managedGlmIdentity,
+  type InferenceUsageReceiptRequest,
+} from '@shared/inference-usage'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { and, eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -44,8 +48,7 @@ const secret = 'receipt-route-secret'
 const nowSeconds = 1_787_616_000
 const keyDomain = 'thunderbolt/inference-usage-receipt/key/v1'
 const glmPrice: GlmPrice = {
-  provider: 'tinfoil',
-  model: 'glm-5-2',
+  ...managedGlmIdentity,
   inputNanoUsdPerToken: 1_500n,
   outputNanoUsdPerToken: 5_250n,
 }
@@ -86,7 +89,7 @@ const signTestClaims = (claims: TestSignedClaims): string => {
 
 const postJson = (app: TestApp, body: TestReceiptBody) =>
   app.handle(
-    new Request('http://localhost/inference-usage/receipts', {
+    new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -95,7 +98,7 @@ const postJson = (app: TestApp, body: TestReceiptBody) =>
 
 const postRaw = (app: TestApp, body: string) =>
   app.handle(
-    new Request('http://localhost/inference-usage/receipts', {
+    new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
@@ -191,7 +194,7 @@ describe('inference usage receipt routes', () => {
     )
 
     const response = await prefixedApp.handle(
-      new Request('http://localhost/v1/inference-usage/receipts', {
+      new Request(`http://localhost/v1/${inferenceUsageReceiptPath}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ receipt: issueReceipt({ eventId }), ...defaultCounts }),
@@ -268,6 +271,24 @@ describe('inference usage receipt routes', () => {
       403,
     )
     expect(await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, eventId))).toHaveLength(0)
+  })
+
+  it('rejects an authenticated JSON body larger than 4 KiB before receipt verification', async () => {
+    const oversizedReceipt = signTestClaims({
+      purpose: 'inference-usage-receipt',
+      version: 1,
+      eventId: crypto.randomUUID(),
+      userId: 'u'.repeat(4_096),
+      ...managedGlmIdentity,
+      inputNanoUsdPerToken: '1500',
+      outputNanoUsdPerToken: '5250',
+      issuedAt: nowSeconds,
+      expiresAt: nowSeconds + 7_200,
+    })
+    const body = JSON.stringify({ receipt: oversizedReceipt, ...defaultCounts })
+    expect(new TextEncoder().encode(body).byteLength).toBeGreaterThan(4_096)
+
+    await expectEmptyResponse(await postRaw(app, body), 400)
   })
 
   it.each([
@@ -455,7 +476,7 @@ describe('inference usage receipt routes', () => {
           event: 'inference_usage_callback_failed',
           provider: 'tinfoil',
           model: 'glm-5-2',
-          route: '/inference-usage/receipts',
+          route: `/${inferenceUsageReceiptPath}`,
         },
         message: 'Inference usage callback failed',
       },

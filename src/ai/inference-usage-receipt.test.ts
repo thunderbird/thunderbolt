@@ -4,14 +4,13 @@
 
 import { describe, expect, it } from 'bun:test'
 import { createAuthenticatedClient } from '@/lib/http'
+import { getClock } from '@/testing-library'
 import type { Model } from '@/types'
+import { managedGlmIdentity } from '@shared/inference-usage'
 import { submitGlmStepUsageReceipt, type ReceiptStep } from './inference-usage-receipt'
 
 const receipt = 'iu1.canonicalPayload.canonicalSignature'
-const systemGlm = { provider: 'tinfoil', model: 'glm-5-2', isSystem: 1 } satisfies Pick<
-  Model,
-  'provider' | 'model' | 'isSystem'
->
+const systemGlm = { ...managedGlmIdentity, isSystem: 1 } satisfies Pick<Model, 'provider' | 'model' | 'isSystem'>
 
 const createStep = ({
   headers = { 'x-inference-usage-receipt': receipt },
@@ -21,12 +20,15 @@ const createStep = ({
   usage?: ReceiptStep['usage']
 } = {}): ReceiptStep => ({ response: { headers }, usage })
 
-const createCapturingClient = (respond: () => Promise<Response> = async () => new Response(null, { status: 204 })) => {
+const createCapturingClient = (
+  respond: (request: Request) => Promise<Response> = async () => new Response(null, { status: 204 }),
+) => {
   const requests: Request[] = []
   const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
     fetch: async (input) => {
-      requests.push(input as Request)
-      return respond()
+      const request = input as Request
+      requests.push(request)
+      return respond(request)
     },
   })
   return { httpClient, requests }
@@ -147,6 +149,33 @@ describe('submitGlmStepUsageReceipt', () => {
     expect(settled).toBeFalse()
     resolveResponse?.(new Response(null, { status: 204 }))
     await expect(submission).resolves.toBeUndefined()
+  })
+
+  it('aborts a hanging receipt POST after three seconds', async () => {
+    let receiptSignal: AbortSignal | undefined
+    const { httpClient } = createCapturingClient(
+      async (request) =>
+        new Promise<Response>((_resolve, reject) => {
+          receiptSignal = request.signal
+          request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true })
+        }),
+    )
+
+    const submission = submitGlmStepUsageReceipt({ model: systemGlm, step: createStep(), httpClient })
+    let rejectionName: string | undefined
+    const handledSubmission = submission.catch((error: Error) => {
+      rejectionName = error.name
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(receiptSignal?.aborted).toBeFalse()
+    await getClock().tickAsync(2_999)
+    expect(receiptSignal?.aborted).toBeFalse()
+    await getClock().tickAsync(1)
+    expect(receiptSignal?.aborted).toBeTrue()
+    await handledSubmission
+    expect(rejectionName).toBe('TimeoutError')
   })
 
   it('surfaces an HTTP status failure for the onStepFinish boundary to isolate', async () => {

@@ -7,10 +7,13 @@ import type { Model } from '@/types'
 import {
   inferenceUsageReceiptHeader,
   inferenceUsageReceiptPath,
+  managedGlmIdentity,
   type InferenceUsageReceiptRequest,
 } from '@shared/inference-usage'
 
 type ReceiptModel = Pick<Model, 'provider' | 'model' | 'isSystem'>
+// Receipt storage is a same-backend write; bound automatic step delay without coupling it to chat cancellation.
+const receiptPostTimeoutMs = 3_000
 
 export type ReceiptStep = Readonly<{
   response: { headers?: Record<string, string | undefined> }
@@ -19,7 +22,7 @@ export type ReceiptStep = Readonly<{
 
 /** Match the one frontend model allowed to redeem managed GLM usage receipts. */
 export const isSystemGlmModel = (model: ReceiptModel): boolean =>
-  model.provider === 'tinfoil' && model.model === 'glm-5-2' && model.isSystem === 1
+  model.provider === managedGlmIdentity.provider && model.model === managedGlmIdentity.model && model.isSystem === 1
 
 /** Check whether an optional token count is a nonnegative JavaScript safe integer. */
 const isNonnegativeSafeInteger = (value: number | undefined): value is number =>
@@ -56,5 +59,5 @@ export const submitGlmStepUsageReceipt = async ({
     completionTokens: outputTokens,
     totalTokens,
   }
-  await httpClient.post(inferenceUsageReceiptPath, { json: body })
+  await httpClient.post(inferenceUsageReceiptPath, { json: body, timeout: receiptPostTimeoutMs })
 }

@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { Auth } from '@/auth/elysia-plugin'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createTestDb } from '@/test-utils/db'
-import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
+import { createMockAuth, createThrowingAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import type { InferenceUsageReceiptRequest } from '@shared/inference-usage'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { and, eq, sql } from 'drizzle-orm'
@@ -51,24 +50,6 @@ const glmPrice: GlmPrice = {
   outputNanoUsdPerToken: 5_250n,
 }
 const defaultCounts = { promptTokens: 10, completionTokens: 20, totalTokens: 30 }
-
-const createMockAuth = (id: string): Auth => {
-  const api: typeof mockAuth.api = Object.create(mockAuth.api)
-  Object.defineProperty(api, 'getSession', {
-    value: () => Promise.resolve({ user: { id }, session: {} }),
-  })
-  const auth: Auth = Object.create(mockAuth)
-  Object.defineProperty(auth, 'api', { value: api })
-  return auth
-}
-
-const createThrowingAuth = (error: Error): Auth => {
-  const api: typeof mockAuth.api = Object.create(mockAuth.api)
-  Object.defineProperty(api, 'getSession', { value: () => Promise.reject(error) })
-  const auth: Auth = Object.create(mockAuth)
-  Object.defineProperty(auth, 'api', { value: api })
-  return auth
-}
 
 const insertUser = async (database: TestDatabase, id: string) => {
   await database.insert(user).values({

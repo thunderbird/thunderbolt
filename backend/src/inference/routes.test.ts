@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { Auth } from '@/auth/elysia-plugin'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestDb } from '@/test-utils/db'
-import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
+import { createMockAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -19,16 +18,6 @@ import { defaultModels } from '@shared/defaults/models'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 type InferenceLogContext = Parameters<InferenceLogger['info']>[0]
-
-const createMockAuth = (id: string, isAnonymous: boolean): Auth => {
-  const api: typeof mockAuth.api = Object.create(mockAuth.api)
-  Object.defineProperty(api, 'getSession', {
-    value: () => Promise.resolve({ user: { id, isAnonymous }, session: {} }),
-  })
-  const auth: Auth = Object.create(mockAuth)
-  Object.defineProperty(auth, 'api', { value: api })
-  return auth
-}
 
 const insertUser = async (database: TestDatabase, id: string, isAnonymous = false) => {
   await database.insert(user).values({

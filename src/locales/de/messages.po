@@ -524,6 +524,7 @@ msgstr "Abbrechen"
 msgid "Cannot change agent during reply"
 msgstr "Der Agent kann während einer Antwort nicht gewechselt werden"
 
+#: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Celsius"
 msgstr "Celsius"
@@ -1599,6 +1600,7 @@ msgstr "Daten exportieren"
 msgid "Exporting…"
 msgstr "Wird exportiert…"
 
+#: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
 msgstr "Fahrenheit"
@@ -1822,6 +1824,10 @@ msgstr "Wenn Sie Zugriff haben, haben wir einen 8-stelligen Code an <0>{email}</
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "Wenn Sie einen Code zum Anmelden erhalten haben, geben Sie ihn hier ein:"
+
+#: src/i18n/unit-labels.ts
+msgid "Imperial"
+msgstr "Imperial"
 
 #: src/settings/preferences.tsx
 msgid "Import"
@@ -2091,6 +2097,10 @@ msgstr "Nachrichtensimulator"
 #: src/search/palette/entity-meta.ts
 msgid "Messages"
 msgstr "Nachrichten"
+
+#: src/i18n/unit-labels.ts
+msgid "Metric"
+msgstr "Metrisch"
 
 #: src/components/window-controls.tsx
 msgid "Minimize"

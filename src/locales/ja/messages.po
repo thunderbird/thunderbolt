@@ -512,6 +512,7 @@ msgstr "キャンセル"
 msgid "Cannot change agent during reply"
 msgstr "応答中はエージェントを変更できません"
 
+#: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Celsius"
 msgstr "摂氏"
@@ -1587,6 +1588,7 @@ msgstr "データをエクスポート"
 msgid "Exporting…"
 msgstr "エクスポートしています…"
 
+#: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
 msgstr "華氏"
@@ -1810,6 +1812,10 @@ msgstr "アクセス権がある場合は、<0>{email}</0> に 8 桁のコード
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "ログイン用のコードを受け取っている場合は、ここに入力してください:"
+
+#: src/i18n/unit-labels.ts
+msgid "Imperial"
+msgstr "ヤード・ポンド法"
 
 #: src/settings/preferences.tsx
 msgid "Import"
@@ -2079,6 +2085,10 @@ msgstr "メッセージシミュレーター"
 #: src/search/palette/entity-meta.ts
 msgid "Messages"
 msgstr "メッセージ"
+
+#: src/i18n/unit-labels.ts
+msgid "Metric"
+msgstr "メートル法"
 
 #: src/components/window-controls.tsx
 msgid "Minimize"

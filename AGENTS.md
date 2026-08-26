@@ -200,6 +200,29 @@ Do **not** pass `t` into a helper to work around this. The extractor only recogn
 
 Resolving eagerly in an async event handler — `i18n._(getOtpErrorMessage(...))` before storing the result in state — is fine and deliberate: the snapshot is taken while the user is looking at the screen. Use the `i18n` singleton there rather than `useLingui()`, which would imply a reactivity the stored string doesn't have.
 
+### Formatting dates, numbers, and durations
+
+Every rendered date, relative time, number, and duration goes through `src/i18n/format.ts`. Components call `useFormatters()`; non-React callers call `getFormatters(getActiveLocale())`.
+
+```tsx
+const formatters = useFormatters()
+formatters.relativeTime(device.lastSeen)   // "2 hours ago" / "vor 2 Stunden" / "2 時間前"
+formatters.compactNumber(usedTokens)       // "256K" / "256.000" / "25.6万"
+formatters.duration(reasoningTime)         // "1.5s" / "1,5s" / "1.5秒"
+```
+
+**Never format inline.** A bare `Intl.NumberFormat('en', …)` pins English; a bare `value.toLocaleString()` silently uses the *host* locale rather than the app's. Both bugs shipped before THU-809.
+
+**The hook is not optional.** Lingui's `I18nProvider` re-renders only components that read its context, so a component formatting off a module-level `getActiveLocale()` keeps rendering the outgoing locale after a language switch. `useFormatters()` subscribes via `useActiveLocale()`; `getFormatters` is memoized per locale, so its result is referentially stable and safe in a dependency array.
+
+**Parse through `toDate`, never `new Date(str)`.** `new Date('2026-08-26')` is UTC midnight, so a bare `YYYY-MM-DD` renders as the previous day anywhere west of Greenwich. `toDate` gives date-only strings an explicit local midnight.
+
+**No date library.** `Intl` carries full CLDR, so a new locale needs no code. Pattern-based formatters (dayjs, date-fns) can't replace it: the pattern is ours and encodes English word order — `format('dddd, MMM D')` yields "Mittwoch, Aug. 26" in German, where CLDR gives "Mittwoch, 26. Aug.".
+
+Two things the layer deliberately does **not** read: `date_format` and `time_format` (stored patterns that render nothing today — `Intl` takes options, not patterns; D4/THU-810 owns their fate), and `temperature_unit`, which is a unit conversion rather than a format and stays with the weather widget.
+
+Expect output to vary more than English suggests: German and Japanese don't abbreviate thousands, so `256K` becomes `256.000` and `25.6万`. Assertions on formatted output should pin the locale — `getFormatters('en')` — rather than rely on negotiation. `bun test` runs in UTC, so hardcoded day-of-month expectations are stable there but not in the browser.
+
 ### Constraints
 
 - **No `select` / `selectOrdinal`.** The `po-gettext` catalog format cannot express them (see the rationale in `lingui.config.ts`). Plurals use `<Plural>` / `plural()`, which map to native gettext plural forms.

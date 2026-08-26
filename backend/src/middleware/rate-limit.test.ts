@@ -137,14 +137,18 @@ describe('Rate Limiting', () => {
   })
 
   describe('inference receipt rate limiting', () => {
-    it('returns 429 after the authenticated receipt limit is exhausted', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceReceiptRateLimit, 'receipt-user-1')
+    it('allows full receipt and pro throughput independently before rate limiting each bucket', async () => {
+      const userId = 'receipt-pro-shared-user'
+      const receiptApp = createTestApp(database, enabledSettings, createInferenceReceiptRateLimit, userId)
+      const proApp = createTestApp(database, enabledSettings, createProRateLimit, userId)
 
-      for (let i = 0; i < 60; i++) {
-        expect((await app.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
+      for (let i = 0; i < 100; i++) {
+        expect((await receiptApp.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
+        expect((await proApp.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
       }
 
-      expect((await app.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
+      expect((await receiptApp.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
+      expect((await proApp.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
     })
 
     it('does not consume the inference request bucket', async () => {
@@ -155,7 +159,7 @@ describe('Rate Limiting', () => {
       const receiptResponse = await receiptApp.handle(new Request('http://localhost/v1/test'))
       const inferenceResponse = await inferenceApp.handle(new Request('http://localhost/v1/test'))
 
-      expect(receiptResponse.headers.get('ratelimit-remaining')).toBe('59')
+      expect(receiptResponse.headers.get('ratelimit-remaining')).toBe('99')
       expect(inferenceResponse.headers.get('ratelimit-remaining')).toBe('59')
     })
 
@@ -177,7 +181,7 @@ describe('Rate Limiting', () => {
           body: '{}',
         })
 
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 100; i++) {
         expect((await app.handle(createReceiptRequest())).status).toBe(400)
       }
 

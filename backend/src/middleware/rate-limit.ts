@@ -31,7 +31,7 @@ export type IpRateLimitSettings = RateLimitSettings & {
 /** Hardcoded per-tier limits. */
 const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
   inference: { max: 60, durationSecs: 60 },
-  receipt: { max: 60, durationSecs: 60 },
+  receipt: { max: 100, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
 }

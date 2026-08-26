@@ -464,6 +464,10 @@ msgstr "応答中はエージェントを変更できません"
 msgid "Celsius"
 msgstr "摂氏"
 
+#: src/settings/preferences.tsx
+msgid "Change Language?"
+msgstr "言語を変更しますか？"
+
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "変更は保存されましたが、再接続に失敗しました。もう一度お試しください。"
@@ -1788,6 +1792,10 @@ msgid "Just synced"
 msgstr "同期しました"
 
 #: src/settings/preferences.tsx
+msgid "Keep {activeLanguageLabel}"
+msgstr "{activeLanguageLabel} のままにする"
+
+#: src/settings/preferences.tsx
 msgid "Keep Current Units"
 msgstr "現在の単位を維持"
 
@@ -1815,6 +1823,7 @@ msgstr "すべてのデバイスでデータを同期します。すべてエン
 msgid "Keep your data synced across devices."
 msgstr "デバイス間でデータを同期しましょう。"
 
+#: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
 msgid "Language"
 msgstr "言語"
@@ -3098,6 +3107,10 @@ msgstr "モデルから応答を取得できました。"
 msgid "Suggested"
 msgstr "おすすめ"
 
+#: src/settings/preferences.tsx
+msgid "Switch to {suggestedLanguageLabel}"
+msgstr "{suggestedLanguageLabel} に切り替える"
+
 #: src/projects/emoji-catalog.ts
 msgid "Symbols"
 msgstr "記号"
@@ -3418,6 +3431,10 @@ msgstr "Thunderbolt が {providerName} メールへの接続を求めていま�
 #: src/widgets/connect-integration/widget.tsx
 msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
 msgstr "Thunderbolt が {providerName} メールとカレンダーへの接続を求めています"
+
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "Thunderbolt will use it across the app. You can change it later in Preferences."
+msgstr "Thunderbolt はアプリ全体でこの言語を使用します。後で環境設定から変更できます。"
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Thunderstorm"
@@ -3783,6 +3800,10 @@ msgstr "このスキルを使う場面…"
 msgid "Where are you located?"
 msgstr "どちらにお住まいですか？"
 
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "Which language do you prefer?"
+msgstr "どの言語をご希望ですか？"
+
 #: src/components/window-controls.tsx
 msgid "Window controls"
 msgstr "ウィンドウの操作"
@@ -3909,6 +3930,10 @@ msgstr "メッセージがモデルのコンテキストウィンドウ（{forma
 #: src/settings/preferences.tsx
 msgid "Your name"
 msgstr "お名前"
+
+#: src/settings/preferences.tsx
+msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
+msgstr "新しい所在地では主に {suggestedLanguageLabel} が話されています。Thunderbolt を {suggestedLanguageLabel} で使用しますか？"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"

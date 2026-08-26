@@ -476,6 +476,10 @@ msgstr "Impossible de changer d'agent pendant une réponse"
 msgid "Celsius"
 msgstr "Celsius"
 
+#: src/settings/preferences.tsx
+msgid "Change Language?"
+msgstr "Changer de langue ?"
+
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Les modifications ont été enregistrées, mais la reconnexion a échoué. Veuillez réessayer."
@@ -1800,6 +1804,10 @@ msgid "Just synced"
 msgstr "Synchronisé à l'instant"
 
 #: src/settings/preferences.tsx
+msgid "Keep {activeLanguageLabel}"
+msgstr "Conserver {activeLanguageLabel}"
+
+#: src/settings/preferences.tsx
 msgid "Keep Current Units"
 msgstr "Conserver les unités actuelles"
 
@@ -1827,6 +1835,7 @@ msgstr "Gardez vos données synchronisées sur tous vos appareils. Tout est chif
 msgid "Keep your data synced across devices."
 msgstr "Gardez vos données synchronisées entre vos appareils."
 
+#: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
 msgid "Language"
 msgstr "Langue"
@@ -3110,6 +3119,10 @@ msgstr "Réponse du modèle obtenue avec succès."
 msgid "Suggested"
 msgstr "Suggestions"
 
+#: src/settings/preferences.tsx
+msgid "Switch to {suggestedLanguageLabel}"
+msgstr "Passer à {suggestedLanguageLabel}"
+
 #: src/projects/emoji-catalog.ts
 msgid "Symbols"
 msgstr "Symboles"
@@ -3430,6 +3443,10 @@ msgstr "Thunderbolt souhaite se connecter à {providerName} E-mail"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
 msgstr "Thunderbolt souhaite se connecter à {providerName} E-mail et Agenda"
+
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "Thunderbolt will use it across the app. You can change it later in Preferences."
+msgstr "Thunderbolt l'utilisera dans toute l'application. Vous pourrez la modifier plus tard dans les Préférences."
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Thunderstorm"
@@ -3795,6 +3812,10 @@ msgstr "Quand utiliser cette compétence…"
 msgid "Where are you located?"
 msgstr "Où vous situez-vous ?"
 
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "Which language do you prefer?"
+msgstr "Quelle langue préférez-vous ?"
+
 #: src/components/window-controls.tsx
 msgid "Window controls"
 msgstr "Commandes de fenêtre"
@@ -3921,6 +3942,10 @@ msgstr "Votre message dépasserait la fenêtre de contexte du modèle, de {forma
 #: src/settings/preferences.tsx
 msgid "Your name"
 msgstr "Votre nom"
+
+#: src/settings/preferences.tsx
+msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
+msgstr "Dans votre nouveau lieu, on parle principalement {suggestedLanguageLabel}. Souhaitez-vous utiliser Thunderbolt en {suggestedLanguageLabel} ?"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"

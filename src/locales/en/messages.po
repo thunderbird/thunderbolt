@@ -470,6 +470,10 @@ msgstr "Cannot change agent during reply"
 msgid "Celsius"
 msgstr "Celsius"
 
+#: src/settings/preferences.tsx
+msgid "Change Language?"
+msgstr "Change Language?"
+
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Changes were saved, but reconnecting failed. Please retry."
@@ -1794,6 +1798,10 @@ msgid "Just synced"
 msgstr "Just synced"
 
 #: src/settings/preferences.tsx
+msgid "Keep {activeLanguageLabel}"
+msgstr "Keep {activeLanguageLabel}"
+
+#: src/settings/preferences.tsx
 msgid "Keep Current Units"
 msgstr "Keep Current Units"
 
@@ -1821,6 +1829,7 @@ msgstr "Keep your data in sync across all your devices. Everything is encrypted 
 msgid "Keep your data synced across devices."
 msgstr "Keep your data synced across devices."
 
+#: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
 msgid "Language"
 msgstr "Language"
@@ -3104,6 +3113,10 @@ msgstr "Successfully got a response from the model."
 msgid "Suggested"
 msgstr "Suggested"
 
+#: src/settings/preferences.tsx
+msgid "Switch to {suggestedLanguageLabel}"
+msgstr "Switch to {suggestedLanguageLabel}"
+
 #: src/projects/emoji-catalog.ts
 msgid "Symbols"
 msgstr "Symbols"
@@ -3424,6 +3437,10 @@ msgstr "Thunderbolt wants to connect to {providerName} Email"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
 msgstr "Thunderbolt wants to connect to {providerName} Email and Calendar"
+
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "Thunderbolt will use it across the app. You can change it later in Preferences."
+msgstr "Thunderbolt will use it across the app. You can change it later in Preferences."
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Thunderstorm"
@@ -3789,6 +3806,10 @@ msgstr "When to use this skill…"
 msgid "Where are you located?"
 msgstr "Where are you located?"
 
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "Which language do you prefer?"
+msgstr "Which language do you prefer?"
+
 #: src/components/window-controls.tsx
 msgid "Window controls"
 msgstr "Window controls"
@@ -3915,6 +3936,10 @@ msgstr "Your message would exceed the model's {formattedMaxTokens}-token context
 #: src/settings/preferences.tsx
 msgid "Your name"
 msgstr "Your name"
+
+#: src/settings/preferences.tsx
+msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
+msgstr "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"

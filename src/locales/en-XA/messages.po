@@ -470,6 +470,10 @@ msgstr ""
 msgid "Celsius"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Change Language?"
+msgstr ""
+
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr ""
@@ -1794,6 +1798,10 @@ msgid "Just synced"
 msgstr ""
 
 #: src/settings/preferences.tsx
+msgid "Keep {activeLanguageLabel}"
+msgstr ""
+
+#: src/settings/preferences.tsx
 msgid "Keep Current Units"
 msgstr ""
 
@@ -1821,6 +1829,7 @@ msgstr ""
 msgid "Keep your data synced across devices."
 msgstr ""
 
+#: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
 msgid "Language"
 msgstr ""
@@ -3104,6 +3113,10 @@ msgstr ""
 msgid "Suggested"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Switch to {suggestedLanguageLabel}"
+msgstr ""
+
 #: src/projects/emoji-catalog.ts
 msgid "Symbols"
 msgstr ""
@@ -3423,6 +3436,10 @@ msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
+msgstr ""
+
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "Thunderbolt will use it across the app. You can change it later in Preferences."
 msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
@@ -3789,6 +3806,10 @@ msgstr ""
 msgid "Where are you located?"
 msgstr ""
 
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "Which language do you prefer?"
+msgstr ""
+
 #: src/components/window-controls.tsx
 msgid "Window controls"
 msgstr ""
@@ -3914,6 +3935,10 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Your name"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx

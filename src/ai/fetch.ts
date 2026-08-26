@@ -814,8 +814,8 @@ export const aiFetchStreamingResponse = async ({
             // Receipt submission failures must not interrupt the chat stream.
           }
         },
-        onError: () => {
-          console.error('streamText error')
+        onError: ({ error }) => {
+          console.error('streamText error', { kind: classifyErrorKind(error) ?? 'unknown' })
         },
 
         // Handle malformed tool calls from models with weaker tool-calling capabilities

@@ -908,13 +908,19 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
     }
   })
 
-  it('does not write raw stream errors to console callbacks', async () => {
-    const privateError = 'PRIVATE_STREAM_ERROR_MESSAGE'
+  it.each([
+    { status: 500, expectedKind: 'provider' },
+    { status: 418, expectedKind: 'unknown' },
+  ] as const)('logs only a stable error kind for managed stream failures', async ({ status, expectedKind }) => {
+    const privateMessage = 'PRIVATE_STREAM_ERROR_MESSAGE'
+    const privateCause = 'PRIVATE_STREAM_ERROR_CAUSE'
+    const privateBody = 'PRIVATE_STREAM_ERROR_BODY'
     const systemClient = {
       getBaseURL: () => 'https://enclave.example.com/v1',
       fetch: async () =>
-        new Response(`data: ${JSON.stringify({ error: { message: privateError } })}\n\ndata: [DONE]\n\n`, {
-          headers: { 'Content-Type': 'text/event-stream' },
+        new Response(JSON.stringify({ error: { message: privateMessage, cause: privateCause, body: privateBody } }), {
+          status,
+          headers: { 'Content-Type': 'application/json' },
         }),
     }
     const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
@@ -937,8 +943,11 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
 
       await pumpClockUntil(() => responseState.settled)
 
-      expect(consoleSpies.error).toHaveBeenCalledWith('streamText error')
-      expect(serializeConsoleCalls(consoleSpies)).not.toContain(privateError)
+      expect(consoleSpies.error.mock.calls).toEqual([['streamText error', { kind: expectedKind }]])
+      const serializedConsoleCalls = serializeConsoleCalls(consoleSpies)
+      expect(serializedConsoleCalls).not.toContain(privateMessage)
+      expect(serializedConsoleCalls).not.toContain(privateCause)
+      expect(serializedConsoleCalls).not.toContain(privateBody)
     } finally {
       consoleSpies.restore()
       getSystemClient.mockRestore()

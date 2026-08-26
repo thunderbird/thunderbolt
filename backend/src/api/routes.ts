@@ -14,6 +14,13 @@ export type LocationResult = {
   name: string
   region: string
   country: string
+  /**
+   * ISO 3166-1 alpha-2, or empty when the provider has none for this result.
+   * Returned independently of the `language` parameter, so clients can key off
+   * it instead of reverse-matching `country`, which is a display name and will
+   * localize.
+   */
+  countryCode: string
   lat: number
   lon: number
 }
@@ -105,6 +112,7 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
               name?: string
               admin1?: string
               country?: string
+              country_code?: string
               latitude?: number
               longitude?: number
             }>
@@ -117,6 +125,7 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
               name: location.name || '',
               region: location.admin1!,
               country: location.country || '',
+              countryCode: location.country_code || '',
               lat: location.latitude || 0,
               lon: location.longitude || 0,
             }))

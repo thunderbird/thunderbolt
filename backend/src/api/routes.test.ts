@@ -19,7 +19,16 @@ describe('Main Routes', () => {
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            results: [{ name: 'London', admin1: 'England', country: 'UK', latitude: 51.5, longitude: -0.12 }],
+            results: [
+              {
+                name: 'London',
+                admin1: 'England',
+                country: 'UK',
+                country_code: 'GB',
+                latitude: 51.5,
+                longitude: -0.12,
+              },
+            ],
           }),
           {
             status: 200,
@@ -86,7 +95,30 @@ describe('Main Routes', () => {
     expect(response.status).toBe(200)
 
     const data = await response.json()
-    expect(Array.isArray(data)).toBe(true)
+    expect(data).toEqual([
+      { name: 'London', region: 'England', country: 'UK', countryCode: 'GB', lat: 51.5, lon: -0.12 },
+    ])
+  })
+
+  it('should return an empty country code when the provider omits one', async () => {
+    const mockFetchWithoutCode = mock((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : input.toString()
+      if (new URL(url).hostname === 'geocoding-api.open-meteo.com') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ results: [{ name: 'Atlantis', admin1: 'Unknown', latitude: 0, longitude: 0 }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        )
+      }
+      return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+
+    const testApp = createMainRoutes(mockAuth, mockFetchWithoutCode as unknown as typeof fetch)
+    const response = await testApp.handle(new Request('http://localhost/locations?query=Atlantis'))
+
+    const data = await response.json()
+    expect(data[0].countryCode).toBe('')
   })
 
   it('should filter out country-level results without admin1', async () => {
@@ -98,9 +130,23 @@ describe('Main Routes', () => {
           new Response(
             JSON.stringify({
               results: [
-                { name: 'Canada', country: 'Canada', latitude: 60.1, longitude: -113.6 },
-                { name: 'Canada', admin1: 'Kentucky', country: 'United States', latitude: 37.6, longitude: -82.3 },
-                { name: 'Cañada', admin1: 'Valencia', country: 'Spain', latitude: 38.7, longitude: -0.8 },
+                { name: 'Canada', country: 'Canada', country_code: 'CA', latitude: 60.1, longitude: -113.6 },
+                {
+                  name: 'Canada',
+                  admin1: 'Kentucky',
+                  country: 'United States',
+                  country_code: 'US',
+                  latitude: 37.6,
+                  longitude: -82.3,
+                },
+                {
+                  name: 'Cañada',
+                  admin1: 'Valencia',
+                  country: 'Spain',
+                  country_code: 'ES',
+                  latitude: 38.7,
+                  longitude: -0.8,
+                },
               ],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -120,8 +166,8 @@ describe('Main Routes', () => {
     expect(data).toHaveLength(2)
     expect(data.every((loc: { region: string }) => loc.region !== '')).toBe(true)
     expect(data).toEqual([
-      { name: 'Canada', region: 'Kentucky', country: 'United States', lat: 37.6, lon: -82.3 },
-      { name: 'Cañada', region: 'Valencia', country: 'Spain', lat: 38.7, lon: -0.8 },
+      { name: 'Canada', region: 'Kentucky', country: 'United States', countryCode: 'US', lat: 37.6, lon: -82.3 },
+      { name: 'Cañada', region: 'Valencia', country: 'Spain', countryCode: 'ES', lat: 38.7, lon: -0.8 },
     ])
   })
 

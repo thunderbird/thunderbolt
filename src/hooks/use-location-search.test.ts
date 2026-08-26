@@ -28,6 +28,7 @@ const mockLocationResponse = [
     name: 'San Francisco',
     region: 'California',
     country: 'United States',
+    countryCode: 'US',
     lat: 37.7749,
     lon: -122.4194,
   },
@@ -35,6 +36,7 @@ const mockLocationResponse = [
     name: 'New York',
     region: 'New York',
     country: 'United States',
+    countryCode: 'US',
     lat: 40.7128,
     lon: -74.006,
   },
@@ -155,6 +157,7 @@ describe('useLocationSearch', () => {
         {
           name: 'San Francisco, California, United States',
           city: 'San Francisco',
+          countryCode: 'US',
           coordinates: {
             lat: 37.7749,
             lng: -122.4194,
@@ -163,6 +166,7 @@ describe('useLocationSearch', () => {
         {
           name: 'New York, New York, United States',
           city: 'New York',
+          countryCode: 'US',
           coordinates: {
             lat: 40.7128,
             lng: -74.006,

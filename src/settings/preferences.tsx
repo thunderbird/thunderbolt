@@ -51,33 +51,14 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePostHogClient } from '@/lib/posthog'
 import { localeForCountry } from '@/i18n/country-language'
-import { pseudoLocale, type AppLocale } from '@/i18n/locales'
-import { getBrowserLanguages, negotiableLocales, resolveLocale } from '@/i18n/resolve-locale'
+import { languageLabel, languageOptions } from '@/i18n/language-options'
+import type { AppLocale } from '@/i18n/locales'
+import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { SettingsPageShell } from '@/components/settings/settings-list'
 
 type PendingImport = { payload: unknown } & ExportSummary
-
-/**
- * Options for the language selector, labelled as endonyms (each language
- * named in itself, via `Intl.DisplayNames`) so the list reads naturally
- * whatever the active UI language is. The `en-XA` pseudo-locale is offered
- * in dev builds only.
- */
-const languageOptions: ReadonlyArray<{ value: string; label: string }> = [
-  ...negotiableLocales.map((locale) => {
-    const endonym = new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale
-    return {
-      value: locale as string,
-      label: endonym.charAt(0).toLocaleUpperCase(locale) + endonym.slice(1),
-    }
-  }),
-  ...(import.meta.env.DEV ? [{ value: pseudoLocale as string, label: 'Pseudo-locale (en-XA)' }] : []),
-]
-
-const languageLabel = (locale: string): string =>
-  languageOptions.find((option) => option.value === locale)?.label ?? locale
 
 type PreferencesState = {
   isResetting: boolean

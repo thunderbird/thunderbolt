@@ -10,11 +10,12 @@ import { deleteIntegrationCredentials } from '@/dal'
 import type { OAuthProvider } from '@/lib/auth'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '@/hooks/use-settings'
-import { useOnboardingState } from '@/hooks/use-onboarding-state'
+import { onboardingStepCount, useOnboardingState } from '@/hooks/use-onboarding-state'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
 import { OnboardingAuthStep } from './onboarding-auth-step'
 import { OnboardingNameStep } from './onboarding-name-step'
 import { OnboardingLocationStep } from './onboarding-location-step'
+import { OnboardingLanguageStep } from './onboarding-language-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
@@ -66,7 +67,7 @@ export const OnboardingDialog = () => {
 
   // Unified action handlers
   const handleContinue = async () => {
-    if (state.currentStep === 5) {
+    if (state.currentStep === onboardingStepCount) {
       // Special handling for celebration step
       handleCelebrationComplete()
     } else if (state.currentStep === 2) {
@@ -88,6 +89,8 @@ export const OnboardingDialog = () => {
       actions.nextStep()
     }
   }
+
+  const isCelebration = state.currentStep === onboardingStepCount
 
   const handleBackAction = () => {
     if (state.canGoBack) {
@@ -116,7 +119,7 @@ export const OnboardingDialog = () => {
           style={isMobile ? { paddingBottom: 'var(--kb, 0px)' } : undefined}
         >
           <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
-            <StepIndicators currentStep={state.currentStep} totalSteps={5} />
+            <StepIndicators currentStep={state.currentStep} totalSteps={onboardingStepCount} />
           </div>
           <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
@@ -134,15 +137,16 @@ export const OnboardingDialog = () => {
             {state.currentStep === 4 && (
               <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
-            {state.currentStep === 5 && <OnboardingCelebrationStep />}
+            {state.currentStep === 5 && <OnboardingLanguageStep />}
+            {state.currentStep === 6 && <OnboardingCelebrationStep />}
           </div>
           <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons
-              onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
-              onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}
+              onBack={isCelebration ? undefined : state.canGoBack ? handleBackAction : undefined}
+              onSkip={isCelebration ? undefined : state.canSkip ? handleSkipAction : undefined}
               onContinue={handleContinue}
-              showBack={state.currentStep === 5 ? false : state.canGoBack}
-              showSkip={state.currentStep === 5 ? false : state.canSkip}
+              showBack={isCelebration ? false : state.canGoBack}
+              showSkip={isCelebration ? false : state.canSkip}
               skipDisabled={
                 (state.currentStep === 2 && state.isProviderConnected) ||
                 (state.currentStep === 3 && state.isNameValid) ||
@@ -157,13 +161,9 @@ export const OnboardingDialog = () => {
                       ? !state.isNameValid
                       : state.currentStep === 4
                         ? !state.isLocationValid
-                        : state.currentStep === 5
-                          ? isCompleting
-                          : true
+                        : isCelebration && isCompleting
               }
-              continueText={
-                state.currentStep === 5 ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'
-              }
+              continueText={isCelebration ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'}
             />
           </div>
         </div>

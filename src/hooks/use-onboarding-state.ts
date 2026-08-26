@@ -8,7 +8,10 @@ import { useCountryUnits } from './use-country-units'
 import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5
+type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6
+
+/** Total wizard steps; the last one is the celebration, which ends the wizard. */
+export const onboardingStepCount = 6
 
 type OnboardingState = {
   currentStep: OnboardingStep
@@ -73,8 +76,8 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
         ...state,
         currentStep: action.payload,
         canGoBack: action.payload > 1,
-        canGoNext: action.payload < 5,
-        canSkip: action.payload > 1 && action.payload < 5,
+        canGoNext: action.payload < onboardingStepCount,
+        canSkip: action.payload > 1 && action.payload < onboardingStepCount,
       }
 
     case 'SET_PRIVACY_AGREED':
@@ -154,13 +157,13 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
       }
 
     case 'NEXT_STEP': {
-      const nextStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+      const nextStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
       return {
         ...state,
         currentStep: nextStep,
         canGoBack: nextStep > 1,
-        canGoNext: nextStep < 5,
-        canSkip: nextStep > 1 && nextStep < 5,
+        canGoNext: nextStep < onboardingStepCount,
+        canSkip: nextStep > 1 && nextStep < onboardingStepCount,
       }
     }
 
@@ -170,19 +173,19 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
         ...state,
         currentStep: prevStep,
         canGoBack: prevStep > 1,
-        canGoNext: prevStep < 5,
-        canSkip: prevStep > 1 && prevStep < 5,
+        canGoNext: prevStep < onboardingStepCount,
+        canSkip: prevStep > 1 && prevStep < onboardingStepCount,
       }
     }
 
     case 'SKIP_STEP': {
-      const skipStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+      const skipStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
       return {
         ...state,
         currentStep: skipStep,
         canGoBack: skipStep > 1,
-        canGoNext: skipStep < 5,
-        canSkip: skipStep > 1 && skipStep < 5,
+        canGoNext: skipStep < onboardingStepCount,
+        canSkip: skipStep > 1 && skipStep < onboardingStepCount,
       }
     }
 
@@ -230,7 +233,7 @@ export const useOnboardingState = () => {
   // Sync with saved step on mount
   useEffect(() => {
     const savedStep = parseInt(onboardingCurrentStep.value || '1', 10)
-    if (savedStep >= 1 && savedStep <= 5) {
+    if (savedStep >= 1 && savedStep <= onboardingStepCount) {
       dispatch({ type: 'SET_CURRENT_STEP', payload: savedStep as OnboardingStep })
     }
   }, [onboardingCurrentStep.value])
@@ -305,7 +308,7 @@ export const useOnboardingState = () => {
     },
 
     nextStep: async () => {
-      const newStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+      const newStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
       dispatch({ type: 'NEXT_STEP' })
       await onboardingCurrentStep.setValue(String(newStep))
     },
@@ -315,7 +318,7 @@ export const useOnboardingState = () => {
       await onboardingCurrentStep.setValue(String(newStep))
     },
     skipStep: async () => {
-      const newStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+      const newStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
 
       if (state.currentStep === 3) {
         try {

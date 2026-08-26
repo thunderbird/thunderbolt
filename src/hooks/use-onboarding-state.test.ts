@@ -6,7 +6,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { useOnboardingState } from './use-onboarding-state'
+import { onboardingStepCount, useOnboardingState } from './use-onboarding-state'
 
 const mockCountryUnitsResponse = {
   unit: 'metric',
@@ -218,14 +218,13 @@ describe('useOnboardingState', () => {
       expect(result.current.state.canSkip).toBe(true)
     })
 
-    it('should not go beyond step 5', () => {
+    it('should not go beyond the last step', () => {
       const { result } = renderHook(() => useOnboardingState(), {
         wrapper: createTestProvider({ mockResponse: mockCountryUnitsResponse }),
       })
 
-      // Set to step 5
       act(() => {
-        result.current.actions.setCurrentStep(5)
+        result.current.actions.setCurrentStep(onboardingStepCount)
       })
 
       // Try to go next
@@ -233,7 +232,7 @@ describe('useOnboardingState', () => {
         result.current.actions.nextStep()
       })
 
-      expect(result.current.state.currentStep).toBe(5)
+      expect(result.current.state.currentStep).toBe(onboardingStepCount)
       expect(result.current.state.canGoNext).toBe(false)
     })
 
@@ -471,9 +470,9 @@ describe('useOnboardingState', () => {
       expect(result.current.state.canGoNext).toBe(true)
       expect(result.current.state.canSkip).toBe(false)
 
-      // Test step 5 boundaries
+      // Test last step boundaries
       act(() => {
-        result.current.actions.setCurrentStep(5)
+        result.current.actions.setCurrentStep(onboardingStepCount)
       })
       expect(result.current.state.canGoBack).toBe(true)
       expect(result.current.state.canGoNext).toBe(false)

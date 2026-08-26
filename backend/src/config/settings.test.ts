@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import {
   clearSettingsCache,
   getWaitlistAutoApproveDomains,
@@ -107,6 +108,14 @@ describe('Config Settings', () => {
       expect(settings.corsExposeHeaders.split(',')).toContain('Server-Timing')
       expect(settings.corsExposeHeaders.split(',')).toContain('X-Inference-Usage-Receipt')
       expect(settings.corsExposeHeaders.split(',')).not.toContain('Timing-Allow-Origin')
+    })
+
+    it('should keep the manual CORS expose headers override in sync with runtime defaults', () => {
+      delete process.env.CORS_EXPOSE_HEADERS
+      const envExample = readFileSync(new URL('../../.env.example', import.meta.url), 'utf8')
+      const documentedValue = envExample.match(/^# CORS_EXPOSE_HEADERS=(.+)$/m)?.[1]
+
+      expect(documentedValue?.split(',')).toEqual(getSettings().corsExposeHeaders.split(','))
     })
 
     it('should not match non-Tauri origins by default', () => {

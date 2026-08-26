@@ -27,6 +27,9 @@ const createLocationFormSchema = (i18n: I18n) =>
       locationName: z.string().min(1, { message: i18n._(locationRequired) }),
       locationLat: z.number().optional(),
       locationLng: z.number().optional(),
+      // Not user-editable and never rendered: the combobox writes it so the
+      // submit handler has the region without re-parsing `locationName`.
+      locationCountryCode: z.string(),
     })
     .refine(
       (data) => {
@@ -49,7 +52,12 @@ type OnboardingLocationStepProps = {
     setLocationValue: (value: string) => void
     setLocationValid: (valid: boolean) => void
     setSubmittingLocation: (submitting: boolean) => void
-    submitLocation: (locationData: { locationName: string; locationLat: number; locationLng: number }) => Promise<void>
+    submitLocation: (locationData: {
+      locationName: string
+      locationLat: number
+      locationLng: number
+      locationCountryCode: string
+    }) => Promise<void>
     nextStep: () => Promise<void>
     prevStep: () => Promise<void>
     skipStep: () => Promise<void>
@@ -68,6 +76,7 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
       locationName: '',
       locationLat: undefined,
       locationLng: undefined,
+      locationCountryCode: '',
     },
   })
 
@@ -75,6 +84,7 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     form.setValue('locationName', location.name, { shouldDirty: true })
     form.setValue('locationLat', location.coordinates.lat, { shouldDirty: true })
     form.setValue('locationLng', location.coordinates.lng, { shouldDirty: true })
+    form.setValue('locationCountryCode', location.countryCode, { shouldDirty: true })
     form.trigger()
 
     try {
@@ -82,6 +92,7 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
         locationName: location.name,
         locationLat: location.coordinates.lat,
         locationLng: location.coordinates.lng,
+        locationCountryCode: location.countryCode,
       })
     } catch (error) {
       console.error('Failed to save location:', error)
@@ -130,6 +141,7 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
         locationName: values.locationName,
         locationLat: values.locationLat!,
         locationLng: values.locationLng!,
+        locationCountryCode: values.locationCountryCode,
       })
       actions.nextStep()
     } catch (error) {

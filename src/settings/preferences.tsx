@@ -228,6 +228,7 @@ export default function PreferencesSettingsPage() {
     locationName,
     locationLat,
     locationLng,
+    locationCountryCode,
     dataCollection,
     experimentalFeatureTasks,
     experimentalFeatureVoice,
@@ -240,6 +241,7 @@ export default function PreferencesSettingsPage() {
     location_name: '',
     location_lat: '',
     location_lng: '',
+    location_country_code: '',
     data_collection: false,
     experimental_feature_tasks: false,
     experimental_feature_voice: false,
@@ -347,6 +349,7 @@ export default function PreferencesSettingsPage() {
       locationName.setValue(location.name),
       locationLat.setValue(String(location.coordinates.lat)),
       locationLng.setValue(String(location.coordinates.lng)),
+      locationCountryCode.setValue(location.countryCode),
     ])
 
     trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set')

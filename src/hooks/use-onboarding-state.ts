@@ -205,17 +205,27 @@ export const useOnboardingState = () => {
     onboarding_current_step: '1',
   })
 
-  const { preferredName, locationName, locationLat, locationLng, distanceUnit, temperatureUnit, timeFormat, currency } =
-    useSettings({
-      preferred_name: '',
-      location_name: '',
-      location_lat: '',
-      location_lng: '',
-      distance_unit: 'imperial',
-      temperature_unit: 'f',
-      time_format: '12h',
-      currency: 'USD',
-    })
+  const {
+    preferredName,
+    locationName,
+    locationLat,
+    locationLng,
+    locationCountryCode,
+    distanceUnit,
+    temperatureUnit,
+    timeFormat,
+    currency,
+  } = useSettings({
+    preferred_name: '',
+    location_name: '',
+    location_lat: '',
+    location_lng: '',
+    location_country_code: '',
+    distance_unit: 'imperial',
+    temperature_unit: 'f',
+    time_format: '12h',
+    currency: 'USD',
+  })
   const { data: integrationStatusData } = useIntegrationStatus()
 
   const { fetchCountryUnits } = useCountryUnits()
@@ -267,7 +277,12 @@ export const useOnboardingState = () => {
       }
     },
 
-    submitLocation: async (locationData: { locationName: string; locationLat: number; locationLng: number }) => {
+    submitLocation: async (locationData: {
+      locationName: string
+      locationLat: number
+      locationLng: number
+      locationCountryCode: string
+    }) => {
       dispatch({ type: 'SUBMIT_LOCATION', payload: locationData })
 
       try {
@@ -276,6 +291,7 @@ export const useOnboardingState = () => {
         await locationName.setValue(locationData.locationName)
         await locationLat.setValue(String(locationData.locationLat))
         await locationLng.setValue(String(locationData.locationLng))
+        await locationCountryCode.setValue(locationData.locationCountryCode)
 
         const country = extractCountryFromLocation(locationData.locationName)
         if (country) {

@@ -57,6 +57,8 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
+  InvalidToolInputError,
+  NoSuchToolError,
   smoothStream,
   stepCountIs,
   streamText,
@@ -819,7 +821,18 @@ export const aiFetchStreamingResponse = async ({
         },
 
         // Handle malformed tool calls from models with weaker tool-calling capabilities
-        experimental_repairToolCall: async () => {
+        experimental_repairToolCall: async ({ error }) => {
+          if (NoSuchToolError.isInstance(error)) {
+            telemetry?.recordToolCallValidationFailure('no_such_tool')
+            console.warn('Tool call references unknown tool, skipping')
+            return null
+          }
+          if (InvalidToolInputError.isInstance(error)) {
+            telemetry?.recordToolCallValidationFailure('invalid_tool_input')
+            console.warn('Tool call has invalid input, skipping')
+            return null
+          }
+          telemetry?.recordToolCallValidationFailure('other')
           console.warn('Tool call failed validation, skipping')
           return null
         },

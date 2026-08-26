@@ -4,6 +4,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
+import { createTurnTelemetry } from '@/ai/turn-telemetry'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { defaultModelGlm52 } from '@shared/defaults/models'
 import { fetch as baseFetch } from '@/lib/fetch'
@@ -954,9 +955,24 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
     }
   })
 
-  it('does not write provider-controlled tool names, arguments, or validation messages to console callbacks', async () => {
-    const privateToolName = 'PRIVATE_TOOL_NAME_FROM_PROMPT'
-    const privateToolArguments = 'PRIVATE_TOOL_ARGUMENTS'
+  const toolCallValidationCases = [
+    {
+      toolName: 'PRIVATE_TOOL_NAME_FROM_PROMPT_PRIVATE_VALIDATION_MESSAGE',
+      toolArguments: '{"secret":"PRIVATE_TOOL_ARGUMENTS"}',
+      expectedWarning: 'Tool call references unknown tool, skipping',
+      expectedKind: 'no_such_tool',
+    },
+    {
+      toolName: 'skill',
+      toolArguments: 'PRIVATE_TOOL_ARGUMENTS_PRIVATE_VALIDATION_MESSAGE',
+      expectedWarning: 'Tool call has invalid input, skipping',
+      expectedKind: 'invalid_tool_input',
+    },
+  ]
+
+  it.each(toolCallValidationCases)('classifies $expectedKind without leaking tool call content', async (testCase) => {
+    const { toolName, toolArguments, expectedWarning, expectedKind } = testCase
+    const privateErrorMessage = 'PRIVATE_VALIDATION_MESSAGE'
     const upstreamState = { requests: 0 }
     const systemClient = {
       getBaseURL: () => 'https://enclave.example.com/v1',
@@ -976,7 +992,7 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
                       {
                         index: 0,
                         id: 'invalid-skill-call',
-                        function: { name: privateToolName, arguments: privateToolArguments },
+                        function: { name: toolName, arguments: toolArguments },
                       },
                     ],
                   },
@@ -998,6 +1014,7 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
     }
     const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
     const consoleSpies = setupConsoleSpy()
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
     const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
       fetch: async () => new Response(null, { status: 204 }),
     })
@@ -1008,6 +1025,7 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
         modelId: defaultModelGlm52.id,
         httpClient,
         getProxyFetch: () => stubProxyFetch,
+        telemetry,
       })
       const responseState = { settled: false }
       response.text().finally(() => {
@@ -1016,10 +1034,17 @@ describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
 
       await pumpClockUntil(() => responseState.settled)
 
-      expect(consoleSpies.warn).toHaveBeenCalledWith('Tool call failed validation, skipping')
+      expect(consoleSpies.warn).toHaveBeenCalledWith(expectedWarning)
+      expect(telemetry.buildPayload('success')).toMatchObject({
+        tool_call_validation_failure_count: 1,
+        tool_call_validation_failure_kinds: [expectedKind],
+      })
       const serializedConsoleCalls = serializeConsoleCalls(consoleSpies)
-      expect(serializedConsoleCalls).not.toContain(privateToolName)
-      expect(serializedConsoleCalls).not.toContain(privateToolArguments)
+      const serializedTelemetry = JSON.stringify(telemetry.buildPayload('success'))
+      for (const privateValue of [toolName, toolArguments, privateErrorMessage]) {
+        expect(serializedConsoleCalls).not.toContain(privateValue)
+        expect(serializedTelemetry).not.toContain(privateValue)
+      }
     } finally {
       consoleSpies.restore()
       getSystemClient.mockRestore()

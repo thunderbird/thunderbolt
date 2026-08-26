@@ -7,6 +7,7 @@ import { v7 as uuidv7 } from 'uuid'
 export type TurnEngine = 'pi' | 'legacy'
 export type TurnOutcome = 'success' | 'error' | 'abort'
 export type TurnRetryLayer = 'auto_retry' | 'empty_response' | 'turn_budget'
+export type ToolCallValidationFailureKind = 'no_such_tool' | 'invalid_tool_input' | 'other'
 export type TurnPhase =
   | 'persist_user_message'
   | 'adapter_connect'
@@ -35,6 +36,7 @@ export type TurnTelemetry = {
   recordRetry: (retry: { layer: TurnRetryLayer; reason: string; attempt: number }) => void
   recordStep: () => void
   recordTool: (toolName: string, durationMs: number) => void
+  recordToolCallValidationFailure: (kind: ToolCallValidationFailureKind) => void
   recordError: (errorClass: string) => void
   buildPayload: (outcome: TurnOutcome) => TurnTelemetryPayload
 }
@@ -45,6 +47,11 @@ type CreateTurnTelemetryOptions = {
 }
 
 const roundDuration = (durationMs: number): number => Math.max(0, Math.round(durationMs))
+const toolCallValidationFailureKindOrder: readonly ToolCallValidationFailureKind[] = [
+  'no_such_tool',
+  'invalid_tool_input',
+  'other',
+]
 
 /** Create a privacy-safe recorder for one logical built-in agent turn. */
 export const createTurnTelemetry = ({
@@ -57,6 +64,7 @@ export const createTurnTelemetry = ({
   const phaseDurations = new Map<TurnPhase, number>()
   const retryLayers = new Set<TurnRetryLayer>()
   const retryReasons = new Set<string>()
+  const toolCallValidationFailureKinds = new Set<ToolCallValidationFailureKind>()
   const tools: TurnToolTiming[] = []
   const dimensions: {
     engine?: TurnEngine
@@ -69,6 +77,7 @@ export const createTurnTelemetry = ({
   let attempts = 1
   let stepCount = 0
   let toolCount = 0
+  let toolCallValidationFailureCount = 0
 
   const recordPhase = (name: TurnPhase, durationMs: number) => {
     phaseDurations.set(name, (phaseDurations.get(name) ?? 0) + roundDuration(durationMs))
@@ -109,6 +118,10 @@ export const createTurnTelemetry = ({
         tools.push({ name, duration_ms: roundDuration(durationMs) })
       }
     },
+    recordToolCallValidationFailure: (kind) => {
+      toolCallValidationFailureCount++
+      toolCallValidationFailureKinds.add(kind)
+    },
     recordError: (nextErrorClass) => {
       errorClass = nextErrorClass
     },
@@ -132,6 +145,12 @@ export const createTurnTelemetry = ({
         step_count: stepCount,
         tool_count: toolCount,
         tools,
+        tool_call_validation_failure_count:
+          toolCallValidationFailureCount === 0 ? undefined : toolCallValidationFailureCount,
+        tool_call_validation_failure_kinds:
+          toolCallValidationFailureCount === 0
+            ? undefined
+            : toolCallValidationFailureKindOrder.filter((kind) => toolCallValidationFailureKinds.has(kind)),
         total_ms: roundDuration(now() - startedAt),
       }
       return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined))

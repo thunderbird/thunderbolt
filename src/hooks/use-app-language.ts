@@ -3,14 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { sourceLocale } from '@/i18n/locales'
-import { resolveLocale } from '@/i18n/resolve-locale'
+import { getBrowserLanguages, resolveLocale } from '@/i18n/resolve-locale'
 import { usePostHogClient } from '@/lib/posthog'
 import { useEffect, useEffectEvent } from 'react'
 import { useSettings } from './use-settings'
-
-/** Browser language preferences, most preferred first. */
-const getBrowserLanguages = (): readonly string[] =>
-  navigator.languages?.length ? navigator.languages : [navigator.language]
 
 /**
  * Owns the synced `language` setting's runtime side effects:

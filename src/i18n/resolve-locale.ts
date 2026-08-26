@@ -12,11 +12,12 @@ const isAppLocale = (value: string): value is AppLocale => (appLocales as readon
 const baseOf = (tag: string): string => tag.toLowerCase().split('-')[0]
 
 /**
- * Match a single BCP-47 tag against the negotiable locale set.
- * Tries an exact (case-insensitive) match first, then falls back to the
- * base language: `pt-PT` → `pt-BR`, `de-AT` → `de`, `en-GB` → `en`.
+ * Match a single BCP-47 tag against the negotiable locale set, or `null` when
+ * the app ships no catalog for it. Tries an exact (case-insensitive) match
+ * first, then falls back to the base language: `pt-PT` → `pt-BR`, `de-AT` →
+ * `de`, `en-GB` → `en`.
  */
-const matchBrowserLanguage = (tag: string): AppLocale | null => {
+export const matchLocale = (tag: string): AppLocale | null => {
   const lowered = tag.toLowerCase()
   const exact = negotiableLocales.find((locale) => locale.toLowerCase() === lowered)
   if (exact) {
@@ -39,10 +40,14 @@ export const resolveLocale = (setting: string | null, browserLanguages: readonly
     return setting
   }
   for (const tag of browserLanguages) {
-    const match = matchBrowserLanguage(tag)
+    const match = matchLocale(tag)
     if (match) {
       return match
     }
   }
   return sourceLocale
 }
+
+/** Browser language preferences, most preferred first. */
+export const getBrowserLanguages = (): readonly string[] =>
+  navigator.languages?.length ? navigator.languages : [navigator.language]

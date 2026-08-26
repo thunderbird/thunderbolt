@@ -17,7 +17,7 @@ import { type ReactNode } from 'react'
 
 import { SignInModalProvider } from '@/contexts'
 import type { AuthClient } from '@/contexts'
-import PreferencesSettingsPage from './preferences'
+import PreferencesSettingsPage, { initialPreferencesState, preferencesReducer } from './preferences'
 
 const anonSession = {
   user: { id: 'anon-1', email: '', name: '', isAnonymous: true },
@@ -100,5 +100,72 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     renderPage(authClient)
 
     expect(screen.getByText('Delete My Account')).toBeInTheDocument()
+  })
+})
+
+describe('PreferencesSettingsPage — Localization layout', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('orders the Localization section Location → Language → Distance', () => {
+    renderPage(createMockAuthClient({ session: authedSession }))
+
+    const [location, language, distance] = ['Location', 'Language', 'Distance'].map((label) => screen.getByText(label))
+
+    expect(location.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(language.compareDocumentPosition(distance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('preferencesReducer — location-driven suggestions', () => {
+  const countryUnits = {
+    unit: 'metric',
+    temperature: 'c',
+    timeFormat: '24h',
+    dateFormatExample: 'DD/MM/YYYY',
+    currency: { code: 'EUR', name: 'Euro', symbol: '€' },
+  }
+
+  it('defers the language prompt until the units prompt is answered', () => {
+    const suggested = preferencesReducer(initialPreferencesState, {
+      type: 'SUGGEST_LOCATION_DEFAULTS',
+      payload: { countryUnits, language: 'de' },
+    })
+
+    expect(suggested.localizationDialogOpen).toBe(true)
+    expect(suggested.languageDialogOpen).toBe(false)
+
+    const afterUnits = preferencesReducer(suggested, { type: 'CLOSE_LOCALIZATION_DIALOG' })
+
+    expect(afterUnits.localizationDialogOpen).toBe(false)
+    expect(afterUnits.languageDialogOpen).toBe(true)
+    expect(afterUnits.pendingLanguage).toBe('de')
+  })
+
+  it('prompts for the language immediately when there are no units to suggest', () => {
+    const suggested = preferencesReducer(initialPreferencesState, {
+      type: 'SUGGEST_LOCATION_DEFAULTS',
+      payload: { countryUnits: null, language: 'ja' },
+    })
+
+    expect(suggested.languageDialogOpen).toBe(true)
+  })
+
+  it('does not chain a language prompt when the location suggests none', () => {
+    const suggested = preferencesReducer(initialPreferencesState, {
+      type: 'SUGGEST_LOCATION_DEFAULTS',
+      payload: { countryUnits, language: null },
+    })
+
+    expect(preferencesReducer(suggested, { type: 'CLOSE_LOCALIZATION_DIALOG' }).languageDialogOpen).toBe(false)
   })
 })

@@ -50,8 +50,9 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePostHogClient } from '@/lib/posthog'
-import { pseudoLocale } from '@/i18n/locales'
-import { negotiableLocales } from '@/i18n/resolve-locale'
+import { localeForCountry } from '@/i18n/country-language'
+import { pseudoLocale, type AppLocale } from '@/i18n/locales'
+import { getBrowserLanguages, negotiableLocales, resolveLocale } from '@/i18n/resolve-locale'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { SettingsPageShell } from '@/components/settings/settings-list'
@@ -75,6 +76,9 @@ const languageOptions: ReadonlyArray<{ value: string; label: string }> = [
   ...(import.meta.env.DEV ? [{ value: pseudoLocale as string, label: 'Pseudo-locale (en-XA)' }] : []),
 ]
 
+const languageLabel = (locale: string): string =>
+  languageOptions.find((option) => option.value === locale)?.label ?? locale
+
 type PreferencesState = {
   isResetting: boolean
   isDeletingAccount: boolean
@@ -88,6 +92,8 @@ type PreferencesState = {
   deleteAccountDialogOpen: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
+  languageDialogOpen: boolean
+  pendingLanguage: AppLocale | null
 }
 
 type PreferencesAction =
@@ -103,10 +109,14 @@ type PreferencesAction =
   | { type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN'; payload: boolean }
   | { type: 'CLEAR_IMPORT_FEEDBACK' }
   | { type: 'RESET_STATE' }
-  | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
+  | {
+      type: 'SUGGEST_LOCATION_DEFAULTS'
+      payload: { countryUnits: CountryUnitsData | null; language: AppLocale | null }
+    }
   | { type: 'CLOSE_LOCALIZATION_DIALOG' }
+  | { type: 'CLOSE_LANGUAGE_DIALOG' }
 
-const initialState: PreferencesState = {
+export const initialPreferencesState: PreferencesState = {
   isResetting: false,
   isDeletingAccount: false,
   isExporting: false,
@@ -119,9 +129,11 @@ const initialState: PreferencesState = {
   deleteAccountDialogOpen: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
+  languageDialogOpen: false,
+  pendingLanguage: null,
 }
 
-const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
+export const preferencesReducer = (state: PreferencesState, action: PreferencesAction): PreferencesState => {
   switch (action.type) {
     case 'SET_IS_RESETTING':
       return { ...state, isResetting: action.payload }
@@ -146,18 +158,36 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
     case 'CLEAR_IMPORT_FEEDBACK':
       return { ...state, importError: null, importSuccess: null }
     case 'RESET_STATE':
-      return initialState
-    case 'OPEN_LOCALIZATION_DIALOG':
-      return { ...state, localizationDialogOpen: true, pendingCountryUnits: action.payload }
+      return initialPreferencesState
+    case 'SUGGEST_LOCATION_DEFAULTS':
+      // A location change can suggest both new units and a new language. The
+      // two prompts are sequenced rather than stacked: the language ask opens
+      // once the units ask is answered.
+      return {
+        ...state,
+        localizationDialogOpen: !!action.payload.countryUnits,
+        pendingCountryUnits: action.payload.countryUnits,
+        languageDialogOpen: !action.payload.countryUnits && !!action.payload.language,
+        pendingLanguage: action.payload.language,
+      }
     case 'CLOSE_LOCALIZATION_DIALOG':
-      return { ...state, localizationDialogOpen: false, pendingCountryUnits: null }
+      return {
+        ...state,
+        localizationDialogOpen: false,
+        pendingCountryUnits: null,
+        languageDialogOpen: !!state.pendingLanguage,
+      }
+    case 'CLOSE_LANGUAGE_DIALOG':
+      // `pendingLanguage` outlives the close so the dialog keeps its copy while
+      // it animates out; every suggestion overwrites it, so it can't go stale.
+      return { ...state, languageDialogOpen: false }
     default:
       return state
   }
 }
 
 export default function PreferencesSettingsPage() {
-  const [state, dispatch] = useReducer(preferencesReducer, initialState)
+  const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
     isResetting,
     isDeletingAccount,
@@ -171,6 +201,8 @@ export default function PreferencesSettingsPage() {
     deleteAccountDialogOpen,
     localizationDialogOpen,
     pendingCountryUnits,
+    languageDialogOpen,
+    pendingLanguage,
   } = state
   const authClient = useAuth()
   const db = useDatabase()
@@ -242,6 +274,9 @@ export default function PreferencesSettingsPage() {
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
   const [nameInput, setNameInput] = useState('')
   const prevPreferredNameRef = useRef(preferredName.value)
+
+  /** What the UI actually renders in — the setting only pins it once seeded or chosen. */
+  const activeLanguage = resolveLocale(language.value, getBrowserLanguages())
 
   // Get units options and country units for localization
   const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
@@ -330,13 +365,20 @@ export default function PreferencesSettingsPage() {
 
     trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set')
 
-    // If country changed, ask user if they want to update localization settings
-    if (newCountry && currentCountry !== newCountry) {
-      const countryUnitsData = await fetchCountryUnits(newCountry)
-      if (countryUnitsData) {
-        dispatch({ type: 'OPEN_LOCALIZATION_DIALOG', payload: countryUnitsData })
-      }
+    if (!newCountry || currentCountry === newCountry) {
+      return
     }
+
+    // The new country may imply different units and a different UI language.
+    // Both are suggestions, never applied without confirmation.
+    const suggestedLanguage = localeForCountry(newCountry)
+    dispatch({
+      type: 'SUGGEST_LOCATION_DEFAULTS',
+      payload: {
+        countryUnits: await fetchCountryUnits(newCountry),
+        language: suggestedLanguage && suggestedLanguage !== activeLanguage ? suggestedLanguage : null,
+      },
+    })
   }
 
   const handleApplyLocalizationSettings = async () => {
@@ -359,6 +401,22 @@ export default function PreferencesSettingsPage() {
 
   const handleDeclineLocalizationSettings = () => {
     dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
+  }
+
+  const handleApplyLanguage = async () => {
+    if (!pendingLanguage) {
+      return
+    }
+    // Plain `setValue`, unlike the unit defaults above: this has to land as a
+    // user edit so `useAppLanguage` stops re-seeding from `navigator.languages`
+    // — otherwise confirming a switch to English would be undone on next boot.
+    await language.setValue(pendingLanguage)
+    dispatch({ type: 'CLOSE_LANGUAGE_DIALOG' })
+    trackEvent('settings_localization_update')
+  }
+
+  const handleDeclineLanguage = () => {
+    dispatch({ type: 'CLOSE_LANGUAGE_DIALOG' })
   }
 
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
@@ -615,6 +673,27 @@ export default function PreferencesSettingsPage() {
 
       <SectionCard title="Localization">
         <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <ModificationIndicator
+              as="label"
+              id="localization-location-label"
+              className="text-sm font-medium"
+              hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
+              onReset={handleResetLocation}
+            >
+              Location
+            </ModificationIndicator>
+            <LocationSearchCombobox
+              value={locationName.value}
+              onSelect={handleSelectLocation}
+              id="localization-location-trigger"
+              aria-labelledby="localization-location-label localization-location-trigger"
+            />
+            <p className="text-sm text-muted-foreground">Enables location-based responses</p>
+          </div>
+
+          <div className="h-px bg-border -mx-6" />
+
           {/* Language */}
           <div className="flex flex-row items-center gap-4">
             <div className="flex-1">
@@ -649,29 +728,6 @@ export default function PreferencesSettingsPage() {
               </SelectContent>
             </Select>
           </div>
-
-          <div className="h-px bg-border -mx-6" />
-
-          <div className="flex flex-col gap-2">
-            <ModificationIndicator
-              as="label"
-              id="localization-location-label"
-              className="text-sm font-medium"
-              hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
-              onReset={handleResetLocation}
-            >
-              Location
-            </ModificationIndicator>
-            <LocationSearchCombobox
-              value={locationName.value}
-              onSelect={handleSelectLocation}
-              id="localization-location-trigger"
-              aria-labelledby="localization-location-label localization-location-trigger"
-            />
-            <p className="text-sm text-muted-foreground">Enables location-based responses</p>
-          </div>
-
-          <div className="h-px bg-border -mx-6" />
 
           {/* Distance */}
           <div className="flex flex-row items-center gap-4">
@@ -1197,6 +1253,26 @@ export default function PreferencesSettingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {pendingLanguage && (
+        <AlertDialog open={languageDialogOpen} onOpenChange={(open) => !open && handleDeclineLanguage()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Change Language?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Your new location mostly speaks {languageLabel(pendingLanguage)}. Would you like to use Thunderbolt in{' '}
+                {languageLabel(pendingLanguage)}?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep {languageLabel(activeLanguage)}</AlertDialogCancel>
+              <AlertDialogAction autoFocus onClick={handleApplyLanguage}>
+                Switch to {languageLabel(pendingLanguage)}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </SettingsPageShell>
   )
 }

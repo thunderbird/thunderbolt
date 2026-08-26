@@ -5,7 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Skeleton } from '@/components/ui/skeleton'
-import dayjs from 'dayjs'
+import { useFormatters } from '@/i18n/use-formatters'
 import { useState } from 'react'
 import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from './lib'
 
@@ -16,6 +16,7 @@ const temperatureUnitItemClass =
 
 export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecastProps) => {
   const { t, i18n } = useLingui()
+  const formatters = useFormatters()
   const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>(temperature_unit)
   const today = days[0]
   const forecastDays = days.slice(1)
@@ -33,7 +34,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
         <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 md:w-auto md:min-w-[280px] md:gap-4">
           <div className="flex flex-col py-3 md:gap-1">
             <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-              {dayjs(today.date).format('dddd, MMM D')}
+              {formatters.weekdayDate(today.date)}
             </p>
             <div className="hidden items-start md:flex">
               <span className="text-[40px] font-medium leading-none tracking-tight">
@@ -65,7 +66,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
             return (
               <div key={day.date} className="flex flex-1 flex-col items-center gap-0.5 rounded-lg bg-card px-1.5 py-2">
                 <p className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">
-                  {dayjs(day.date).format('ddd')}
+                  {formatters.weekday(day.date)}
                 </p>
                 <img className="size-10" src={meta.icon} alt={i18n._(meta.description)} />
                 <p className="text-[length:var(--font-size-body)] font-medium leading-none tracking-tight">

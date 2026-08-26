@@ -4,8 +4,9 @@
 
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
-import dayjs from 'dayjs'
 import { z } from 'zod'
+
+import { toDate } from '@/i18n/format'
 
 const WeatherDaySchema = z.object({
   date: z.string(),
@@ -29,14 +30,10 @@ export type WeatherMetadata = {
   icon: string
 }
 
+/** A bare `YYYY-MM-DD` day carries no time, so treat the forecast as daytime. */
 const isDayTime = (dateString: string): boolean => {
-  try {
-    const date = dayjs(dateString)
-    const hour = dateString.includes('T') ? date.hour() : 12
-    return hour >= 6 && hour < 18
-  } catch {
-    return true
-  }
+  const hour = dateString.includes('T') ? toDate(dateString).getHours() : 12
+  return hour >= 6 && hour < 18
 }
 
 export const getWeatherMetadata = (code: number, dateString: string): WeatherMetadata => {

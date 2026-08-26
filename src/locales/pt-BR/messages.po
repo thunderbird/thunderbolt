@@ -75,9 +75,57 @@ msgstr[2] "# habilidades"
 msgid "{label} — already in this project"
 msgstr "{label} — já está neste projeto"
 
+#. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
+#: src/settings/preferences.tsx
+#~ msgid "This file contains # row exported by {importSourceEmail} on {importExportedAt}."
+#~ msgid_plural "This file contains # rows exported by {importSourceEmail} on {importExportedAt}."
+#~ msgstr[0] "Este arquivo contém # linha exportada por {importSourceEmail} em {importExportedAt}."
+#~ msgstr[1] "Este arquivo contém # linhas exportadas por {importSourceEmail} em {importExportedAt}."
+#~ msgstr[2] "Este arquivo contém # linhas exportadas por {importSourceEmail} em {importExportedAt}."
+
+#. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D.%7D%7D&pluralize_on=rows
+#: src/settings/preferences.tsx
+#~ msgid "This file contains # row exported by {importSourceEmail}."
+#~ msgid_plural "This file contains # rows exported by {importSourceEmail}."
+#~ msgstr[0] "Este arquivo contém # linha exportada por {importSourceEmail}."
+#~ msgstr[1] "Este arquivo contém # linhas exportadas por {importSourceEmail}."
+#~ msgstr[2] "Este arquivo contém # linhas exportadas por {importSourceEmail}."
+
+#. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
+#: src/settings/preferences.tsx
+#~ msgid "This file contains # row on {importExportedAt}."
+#~ msgid_plural "This file contains # rows on {importExportedAt}."
+#~ msgstr[0] "Este arquivo contém # linha de {importExportedAt}."
+#~ msgstr[1] "Este arquivo contém # linhas de {importExportedAt}."
+#~ msgstr[2] "Este arquivo contém # linhas de {importExportedAt}."
+
+#. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row.%7D+other+%7BThis+file+contains+%23+rows.%7D%7D&pluralize_on=rows
+#: src/settings/preferences.tsx
+#~ msgid "This file contains # row."
+#~ msgid_plural "This file contains # rows."
+#~ msgstr[0] "Este arquivo contém # linha."
+#~ msgstr[1] "Este arquivo contém # linhas."
+#~ msgstr[2] "Este arquivo contém # linhas."
+
+#. js-lingui:icu=%7BstepCount%2C+plural%2C+one+%7BCompleted+%23+step+in+%7Bduration%7D%7D+other+%7BCompleted+%23+steps+in+%7Bduration%7D%7D%7D&pluralize_on=stepCount
+#: src/components/chat/reasoning-group-title.tsx
+msgid "Completed # step in {duration}"
+msgid_plural "Completed # steps in {duration}"
+msgstr[0] "# etapa concluída em {duration}"
+msgstr[1] "# etapas concluídas em {duration}"
+msgstr[2] "# etapas concluídas em {duration}"
+
 #: src/components/chat/artifact-message-part.tsx
 msgid "{title} — shown in side panel"
 msgstr "{title} — exibido no painel lateral"
+
+#. js-lingui:icu=%7Btotal%2C+plural%2C+one+%7BImported+%23+row.+The+app+may+take+a+moment+to+reflect+new+chats.%7D+other+%7BImported+%23+rows.+The+app+may+take+a+moment+to+reflect+new+chats.%7D%7D&pluralize_on=total
+#: src/settings/preferences.tsx
+#~ msgid "Imported # row. The app may take a moment to reflect new chats."
+#~ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
+#~ msgstr[0] "# linha importada. O app pode levar um momento para refletir as novas conversas."
+#~ msgstr[1] "# linhas importadas. O app pode levar um momento para refletir as novas conversas."
+#~ msgstr[2] "# linhas importadas. O app pode levar um momento para refletir as novas conversas."
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -553,10 +601,6 @@ msgstr "Verificando a solicitação de login…"
 msgid "Checking your session."
 msgstr "Verificando sua sessão."
 
-#: src/settings/app-version-section.tsx
-#~ msgid "Checking..."
-#~ msgstr "Verificando..."
-
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/upgrade-required.tsx
 #: src/settings/app-version-section.tsx
@@ -787,12 +831,6 @@ msgstr "Conectado!"
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Connecting to {agentName}…"
 msgstr "Conectando a {agentName}…"
-
-#: src/components/connect-provider-button.tsx
-#: src/components/sidebar-footer.tsx
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "Connecting..."
-#~ msgstr "Conectando..."
 
 #: src/components/connect-provider-button.tsx
 #: src/components/sidebar-footer.tsx
@@ -1207,12 +1245,6 @@ msgstr "Excluir sua conta"
 #: src/settings/preferences.tsx
 msgid "Delete your account?"
 msgstr "Excluir sua conta?"
-
-#: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
-#: src/settings/preferences.tsx
-#~ msgid "Deleting..."
-#~ msgstr "Excluindo..."
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
@@ -1832,8 +1864,8 @@ msgid "Import your data from previously exported JSON."
 msgstr "Importe seus dados de um JSON exportado anteriormente."
 
 #: src/settings/preferences.tsx
-#~ msgid "Importing..."
-#~ msgstr "Importando..."
+msgid "Imported {importedRowCount} rows. The app may take a moment to reflect new chats."
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/preferences.tsx
@@ -2013,12 +2045,6 @@ msgstr "Carregando a prévia…"
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
 msgstr "Carregando a identidade de emparelhamento deste app…"
-
-#: src/components/sidebar-footer.tsx
-#: src/settings/preferences.tsx
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "Loading..."
-#~ msgstr "Carregando..."
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
@@ -2987,11 +3013,6 @@ msgstr "Enviar mensagem"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
-#~ msgid "Sending..."
-#~ msgstr "Enviando..."
-
-#: src/components/sign-in/sign-in-email-step.tsx
-#: src/components/ui/action-feedback-button.tsx
 #: src/lib/tool-metadata.ts
 #: src/waitlist/waitlist-page.tsx
 msgid "Sending…"
@@ -3451,19 +3472,19 @@ msgstr "Este dispositivo ainda não foi aprovado. Aprove-o primeiro em um dispos
 
 #: src/settings/preferences.tsx
 msgid "This file contains {importRowCount} rows exported by {importSourceEmail} on {importExportedAt}."
-msgstr "Este arquivo contém {importRowCount} linhas exportadas por {importSourceEmail} em {importExportedAt}."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This file contains {importRowCount} rows exported by {importSourceEmail}."
-msgstr "Este arquivo contém {importRowCount} linhas exportadas por {importSourceEmail}."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This file contains {importRowCount} rows on {importExportedAt}."
-msgstr "Este arquivo contém {importRowCount} linhas de {importExportedAt}."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This file contains {importRowCount} rows."
-msgstr "Este arquivo contém {importRowCount} linhas."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
@@ -3556,6 +3577,10 @@ msgstr "Isso excluirá permanentemente sua conta e todos os seus dados nos nosso
 #: src/components/approve-device-dialog.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
 msgstr "Isso compartilhará sua chave de criptografia com o dispositivo, permitindo que ele descriptografe e sincronize seus dados."
+
+#: src/components/chat/reasoning-group-title.tsx
+msgid "Thought for {duration}"
+msgstr "Pensou por {duration}"
 
 #: src/settings/voice.tsx
 msgid "Thunderbolt (hosted, private)"

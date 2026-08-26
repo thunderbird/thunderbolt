@@ -8,7 +8,7 @@ import type { I18n } from '@lingui/core'
 import { type ReasoningGroupItem, type ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { formatDuration } from '@/lib/utils'
+import { useFormatters } from '@/i18n/use-formatters'
 import type { UIMessageMetadata } from '@/types'
 import { getToolName, type ReasoningUIPart } from 'ai'
 import { Brain, DotIcon, Loader2, type LucideIcon } from 'lucide-react'
@@ -83,6 +83,7 @@ const getItemData = (
 
 export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning, mcpTools }: ReasoningItemProps) => {
   const { i18n } = useLingui()
+  const formatters = useFormatters()
   const itemData = getItemData(part, isGroupReasoning, i18n, mcpTools)
 
   if (!itemData) {
@@ -114,7 +115,7 @@ export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning, 
         </span>
       </div>
       <span className="text-xs text-muted-foreground flex-shrink-0">
-        {reasoningTime ? formatDuration(reasoningTime) : isLoading ? '...' : '-'}
+        {reasoningTime ? formatters.duration(reasoningTime) : isLoading ? '...' : '-'}
       </span>
     </button>
   )

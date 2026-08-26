@@ -90,7 +90,7 @@ export const ProjectDetailPanel = ({
   onOpenChat,
   onNewChat,
 }: ProjectDetailPanelProps) => {
-  const { i18n, t } = useLingui()
+  const { i18n } = useLingui()
   const formatters = useFormatters()
 
   return (

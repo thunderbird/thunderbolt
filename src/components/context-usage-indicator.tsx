@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { cn, formatNumber } from '@/lib/utils'
+import { useFormatters } from '@/i18n/use-formatters'
+import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
 type ContextUsageIndicatorProps = {
@@ -16,10 +17,11 @@ type ContextUsageIndicatorProps = {
  * Context usage indicator component showing token usage as a progress ring
  */
 export const ContextUsageIndicator = ({ usedTokens = 0, maxTokens, className }: ContextUsageIndicatorProps) => {
+  const formatters = useFormatters()
   const percentage = Math.min((usedTokens / maxTokens) * 100, 100)
   const roundedPercentage = Math.round(percentage)
-  const usedTokensLabel = formatNumber(usedTokens)
-  const maxTokensLabel = formatNumber(maxTokens)
+  const usedTokensLabel = formatters.compactNumber(usedTokens)
+  const maxTokensLabel = formatters.compactNumber(maxTokens)
 
   const strokeColor = 'rgb(107 114 128)' // gray-500 - consistent darker gray
 

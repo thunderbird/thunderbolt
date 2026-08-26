@@ -63,9 +63,45 @@ msgstr[0] "# 個のスキル"
 msgid "{label} — already in this project"
 msgstr "{label} — すでにこのプロジェクトにあります"
 
+#. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
+#: src/settings/preferences.tsx
+#~ msgid "This file contains # row exported by {importSourceEmail} on {importExportedAt}."
+#~ msgid_plural "This file contains # rows exported by {importSourceEmail} on {importExportedAt}."
+#~ msgstr[0] "このファイルには、{importSourceEmail} が {importExportedAt} にエクスポートした # 行が含まれています。"
+
+#. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D.%7D%7D&pluralize_on=rows
+#: src/settings/preferences.tsx
+#~ msgid "This file contains # row exported by {importSourceEmail}."
+#~ msgid_plural "This file contains # rows exported by {importSourceEmail}."
+#~ msgstr[0] "このファイルには、{importSourceEmail} がエクスポートした # 行が含まれています。"
+
+#. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
+#: src/settings/preferences.tsx
+#~ msgid "This file contains # row on {importExportedAt}."
+#~ msgid_plural "This file contains # rows on {importExportedAt}."
+#~ msgstr[0] "このファイルには、{importExportedAt} 時点の # 行が含まれています。"
+
+#. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row.%7D+other+%7BThis+file+contains+%23+rows.%7D%7D&pluralize_on=rows
+#: src/settings/preferences.tsx
+#~ msgid "This file contains # row."
+#~ msgid_plural "This file contains # rows."
+#~ msgstr[0] "このファイルには # 行が含まれています。"
+
+#. js-lingui:icu=%7BstepCount%2C+plural%2C+one+%7BCompleted+%23+step+in+%7Bduration%7D%7D+other+%7BCompleted+%23+steps+in+%7Bduration%7D%7D%7D&pluralize_on=stepCount
+#: src/components/chat/reasoning-group-title.tsx
+msgid "Completed # step in {duration}"
+msgid_plural "Completed # steps in {duration}"
+msgstr[0] "{duration}で# ステップ完了"
+
 #: src/components/chat/artifact-message-part.tsx
 msgid "{title} — shown in side panel"
 msgstr "{title} — サイドパネルに表示中"
+
+#. js-lingui:icu=%7Btotal%2C+plural%2C+one+%7BImported+%23+row.+The+app+may+take+a+moment+to+reflect+new+chats.%7D+other+%7BImported+%23+rows.+The+app+may+take+a+moment+to+reflect+new+chats.%7D%7D&pluralize_on=total
+#: src/settings/preferences.tsx
+#~ msgid "Imported # row. The app may take a moment to reflect new chats."
+#~ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
+#~ msgstr[0] "# 行をインポートしました。新しいチャットが反映されるまで少し時間がかかる場合があります。"
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -541,10 +577,6 @@ msgstr "サインインリクエストを確認しています…"
 msgid "Checking your session."
 msgstr "セッションを確認しています。"
 
-#: src/settings/app-version-section.tsx
-#~ msgid "Checking..."
-#~ msgstr "確認中..."
-
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/upgrade-required.tsx
 #: src/settings/app-version-section.tsx
@@ -775,12 +807,6 @@ msgstr "接続しました"
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Connecting to {agentName}…"
 msgstr "{agentName} に接続しています…"
-
-#: src/components/connect-provider-button.tsx
-#: src/components/sidebar-footer.tsx
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "Connecting..."
-#~ msgstr "接続しています..."
 
 #: src/components/connect-provider-button.tsx
 #: src/components/sidebar-footer.tsx
@@ -1195,12 +1221,6 @@ msgstr "アカウントの削除"
 #: src/settings/preferences.tsx
 msgid "Delete your account?"
 msgstr "アカウントを削除しますか？"
-
-#: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
-#: src/settings/preferences.tsx
-#~ msgid "Deleting..."
-#~ msgstr "削除しています..."
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
@@ -1820,8 +1840,8 @@ msgid "Import your data from previously exported JSON."
 msgstr "以前にエクスポートした JSON からデータをインポートします。"
 
 #: src/settings/preferences.tsx
-#~ msgid "Importing..."
-#~ msgstr "インポートしています..."
+msgid "Imported {importedRowCount} rows. The app may take a moment to reflect new chats."
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/preferences.tsx
@@ -2001,12 +2021,6 @@ msgstr "プレビューを読み込んでいます…"
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
 msgstr "このアプリのペアリング ID を読み込んでいます…"
-
-#: src/components/sidebar-footer.tsx
-#: src/settings/preferences.tsx
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "Loading..."
-#~ msgstr "読み込んでいます..."
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
@@ -2975,11 +2989,6 @@ msgstr "メッセージを送信"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
-#~ msgid "Sending..."
-#~ msgstr "送信しています..."
-
-#: src/components/sign-in/sign-in-email-step.tsx
-#: src/components/ui/action-feedback-button.tsx
 #: src/lib/tool-metadata.ts
 #: src/waitlist/waitlist-page.tsx
 msgid "Sending…"
@@ -3439,19 +3448,19 @@ msgstr "このデバイスはまだ承認されていません。先に信頼済
 
 #: src/settings/preferences.tsx
 msgid "This file contains {importRowCount} rows exported by {importSourceEmail} on {importExportedAt}."
-msgstr "このファイルには、{importSourceEmail} が {importExportedAt} にエクスポートした {importRowCount} 行が含まれています。"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This file contains {importRowCount} rows exported by {importSourceEmail}."
-msgstr "このファイルには、{importSourceEmail} がエクスポートした {importRowCount} 行が含まれています。"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This file contains {importRowCount} rows on {importExportedAt}."
-msgstr "このファイルには、{importExportedAt} 時点の {importRowCount} 行が含まれています。"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This file contains {importRowCount} rows."
-msgstr "このファイルには {importRowCount} 行が含まれています。"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
@@ -3544,6 +3553,10 @@ msgstr "設定、チャット履歴、キャッシュされた情報を含む、
 #: src/components/approve-device-dialog.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
 msgstr "暗号化キーをこのデバイスと共有し、データの復号と同期を許可します。"
+
+#: src/components/chat/reasoning-group-title.tsx
+msgid "Thought for {duration}"
+msgstr "{duration}思考しました"
 
 #: src/settings/voice.tsx
 msgid "Thunderbolt (hosted, private)"

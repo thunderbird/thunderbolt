@@ -55,6 +55,7 @@ import { useLanguageSetting } from '@/hooks/use-language-setting'
 import { localeForCountry } from '@/i18n/country-language'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
 import type { AppLocale } from '@shared/i18n/locales'
+import { useFormatters } from '@/i18n/use-formatters'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
@@ -171,6 +172,7 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
 
 export default function PreferencesSettingsPage() {
   const { t } = useLingui()
+  const formatters = useFormatters()
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
     isResetting,
@@ -458,9 +460,11 @@ export default function PreferencesSettingsPage() {
     try {
       const result = await importUserData(db, pendingImport.payload, { id: userId })
       const total = Object.values(result.tables).reduce((sum, t) => sum + (t?.upserted ?? 0), 0)
+      // Bound so the catalog placeholder is named rather than positional.
+      const importedRowCount = formatters.number(total)
       dispatch({
         type: 'SET_IMPORT_SUCCESS',
-        payload: `Imported ${total.toLocaleString()} rows. The app may take a moment to reflect new chats.`,
+        payload: t`Imported ${importedRowCount} rows. The app may take a moment to reflect new chats.`,
       })
       trackEvent('settings_data_import')
       dispatch({ type: 'SET_PENDING_IMPORT', payload: null })
@@ -592,7 +596,7 @@ export default function PreferencesSettingsPage() {
   }, [unitsOptionsData?.currencies, currency.value])
 
   // Bound so the catalog placeholders are named rather than positional.
-  const importRowCount = pendingImport?.totalRows.toLocaleString() ?? ''
+  const importRowCount = pendingImport ? formatters.number(pendingImport.totalRows) : ''
   const importSourceEmail = pendingImport?.sourceEmail ?? ''
   const importExportedAt = pendingImport?.exportedAtLabel ?? ''
 

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { formatNumber } from '@/lib/utils'
+import { useFormatters } from '@/i18n/use-formatters'
 import { AlertTriangle } from 'lucide-react'
 import {
   AlertDialog,
@@ -28,7 +28,8 @@ type ContextOverflowModalProps = {
  */
 export const ContextOverflowModal = ({ isOpen, onClose, onNewChat, maxTokens }: ContextOverflowModalProps) => {
   const { t } = useLingui()
-  const formattedMaxTokens = maxTokens ? formatNumber(maxTokens) : t`unknown`
+  const formatters = useFormatters()
+  const formattedMaxTokens = maxTokens ? formatters.compactNumber(maxTokens) : t`unknown`
 
   return (
     <AlertDialog open={isOpen} onOpenChange={() => onClose()}>

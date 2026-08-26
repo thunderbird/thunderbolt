@@ -4,7 +4,7 @@
 
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
-import { ImportFormatError, exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
+import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useCountryUnits } from '@/hooks/use-country-units'
@@ -428,19 +428,18 @@ export default function PreferencesSettingsPage() {
       const payload = await readJsonFile(file)
       const summary = summarizeExportEnvelope(payload, session?.user?.email ?? null)
       if (!summary) {
-        throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
+        dispatch({ type: 'SET_IMPORT_ERROR', payload: t`This file doesn't look like a Thunderbolt export.` })
+        return
       }
       dispatch({ type: 'SET_PENDING_IMPORT', payload: { payload, ...summary } })
     } catch (error) {
       console.error('Failed to read import file:', error)
+      // `readJsonFile` reports the specific problem (an oversized file names its
+      // own size and the limit), so surface its message rather than replacing it
+      // with generic copy.
       dispatch({
         type: 'SET_IMPORT_ERROR',
-        payload:
-          error instanceof ImportFormatError
-            ? t`This file doesn't look like a Thunderbolt export.`
-            : error instanceof Error
-              ? error.message
-              : t`Could not read the import file.`,
+        payload: error instanceof Error ? error.message : t`Could not read the import file.`,
       })
     }
   }

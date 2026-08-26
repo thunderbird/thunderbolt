@@ -3676,7 +3676,7 @@ msgid "User Experience"
 msgstr "Experiencia de usuario"
 
 #: src/components/context-usage-indicator.tsx
-msgid "Using {usedTokensLabel} of {maxTokensLabel} context window"
+msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "{usedTokensLabel} de {maxTokensLabel} de la ventana de contexto en uso"
 
 #: src/components/magic-link-verify.tsx

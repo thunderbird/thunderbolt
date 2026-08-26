@@ -68,7 +68,7 @@ export const ContextUsageIndicator = ({ usedTokens = 0, maxTokens, className }: 
           <TooltipContent>
             <p>
               <Trans>
-                Using {usedTokensLabel} of {maxTokensLabel} context window
+                Using {usedTokensLabel} of {maxTokensLabel} Context Window
               </Trans>
             </p>
           </TooltipContent>

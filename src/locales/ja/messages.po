@@ -3664,7 +3664,7 @@ msgid "User Experience"
 msgstr "ユーザー体験"
 
 #: src/components/context-usage-indicator.tsx
-msgid "Using {usedTokensLabel} of {maxTokensLabel} context window"
+msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "コンテキストウィンドウ {maxTokensLabel} のうち {usedTokensLabel} を使用中"
 
 #: src/components/magic-link-verify.tsx

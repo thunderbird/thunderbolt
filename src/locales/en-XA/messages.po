@@ -3670,7 +3670,7 @@ msgid "User Experience"
 msgstr ""
 
 #: src/components/context-usage-indicator.tsx
-msgid "Using {usedTokensLabel} of {maxTokensLabel} context window"
+msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr ""
 
 #: src/components/magic-link-verify.tsx

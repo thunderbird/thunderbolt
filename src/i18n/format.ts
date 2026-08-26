@@ -83,6 +83,15 @@ export type Formatters = {
   weekday: (value: DateInput) => string
   /** "2 hours ago", "yesterday", "in 3 days". Past is negative, i.e. before `now`. */
   relativeTime: (value: DateInput, now?: Date) => string
+  /**
+   * A clock time: "1:30 PM", "13:30", "午後1:30".
+   *
+   * `hour12` is required rather than defaulted, because the choice is the
+   * user's `time_format` setting and not the locale's convention — the two are
+   * independent, and an en-US user preferring 24-hour is the whole point of
+   * having the setting.
+   */
+  time: (value: DateInput, options: { hour12: boolean }) => string
   /** Abbreviated for tight spaces: "256K", "256.000", "25.6万" — German and
    *  Japanese do not abbreviate thousands, so expect this to get wider. */
   compactNumber: (value: number) => string
@@ -100,6 +109,10 @@ const createFormatters = (locale: AppLocale): Formatters => {
   // `numeric: 'auto'` is what buys "yesterday" and "last month" over the
   // literal "1 day ago" — CLDR carries those phrasings per locale.
   const relativeFormat = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  const timeFormats = {
+    true: new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit', hour12: true }),
+    false: new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit', hour12: false }),
+  }
   const compactFormat = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 })
   const numberFormat = new Intl.NumberFormat(locale)
   // The number is localized; the unit is the SI symbol, appended by us. This is
@@ -132,6 +145,7 @@ const createFormatters = (locale: AppLocale): Formatters => {
       const { value: amount, unit } = selectRelativeUnit(toDate(value).getTime() - now.getTime())
       return relativeFormat.format(amount, unit)
     },
+    time: (value, { hour12 }) => timeFormats[hour12 ? 'true' : 'false'].format(toDate(value)),
     compactNumber: (value) => compactFormat.format(value),
     number: (value) => numberFormat.format(value),
     // Rounded before the branch is chosen, for the same reason `selectRelativeUnit`

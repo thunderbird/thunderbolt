@@ -6,6 +6,7 @@ import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import type { AppLocale } from '@shared/i18n/locales'
 import { i18n } from '@/i18n'
+import { getFormatters } from './format'
 import type { DistanceUnit, TemperatureUnit, TimeFormat } from './region-units'
 
 /**
@@ -61,10 +62,7 @@ export type UnitLabels = {
 
 const createUnitLabels = (locale: AppLocale): UnitLabels => {
   const currencyNames = new Intl.DisplayNames([locale], { type: 'currency' })
-  const timeFormats: Record<TimeFormat, Intl.DateTimeFormat> = {
-    '12h': new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit', hour12: true }),
-    '24h': new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit', hour12: false }),
-  }
+  const { time } = getFormatters(locale)
 
   return {
     distance: (value) => `${i18n._(distanceNames[value])} (${unitSymbol(locale, distanceUnits[value])})`,
@@ -78,7 +76,7 @@ const createUnitLabels = (locale: AppLocale): UnitLabels => {
         .find((part) => part.type === 'currency')?.value
       return `${currencyNames.of(code)} (${symbol ?? code})`
     },
-    timeFormat: (value) => timeFormats[value].format(timeExample),
+    timeFormat: (value) => time(timeExample, { hour12: value === '12h' }),
   }
 }
 

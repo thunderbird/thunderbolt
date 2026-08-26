@@ -142,6 +142,33 @@ describe('dates', () => {
   })
 })
 
+describe('time', () => {
+  // Built from local parts, and formatted without a `timeZone`, so the
+  // rendered clock matches the constructor arguments in any zone.
+  const halfPastOne = new Date(2000, 0, 1, 13, 30)
+
+  test('honors the requested hour cycle over the locale convention', () => {
+    expect(getFormatters('en').time(halfPastOne, { hour12: true })).toBe('1:30 PM')
+    expect(getFormatters('en').time(halfPastOne, { hour12: false })).toBe('13:30')
+    // German defaults to 24-hour; the setting still wins.
+    expect(getFormatters('de').time(halfPastOne, { hour12: true })).toBe('1:30 PM')
+    expect(getFormatters('de').time(halfPastOne, { hour12: false })).toBe('13:30')
+  })
+
+  test('localizes the day period', () => {
+    expect(getFormatters('ja').time(halfPastOne, { hour12: true })).toBe('午後1:30')
+  })
+
+  test('renders midnight and noon unambiguously', () => {
+    const midnight = new Date(2000, 0, 1, 0, 5)
+    const noon = new Date(2000, 0, 1, 12, 5)
+    expect(getFormatters('en').time(midnight, { hour12: true })).toBe('12:05 AM')
+    expect(getFormatters('en').time(midnight, { hour12: false })).toBe('00:05')
+    expect(getFormatters('en').time(noon, { hour12: true })).toBe('12:05 PM')
+    expect(getFormatters('en').time(noon, { hour12: false })).toBe('12:05')
+  })
+})
+
 describe('getFormatters', () => {
   test('returns a stable object per locale so it is safe as a React dependency', () => {
     expect(getFormatters('fr')).toBe(getFormatters('fr'))

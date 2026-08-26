@@ -215,6 +215,10 @@ msgstr "詳細設定（JSON）"
 msgid "Agents"
 msgstr "エージェント"
 
+#: src/components/chat/error-message.tsx
+msgid "AI usage limit reached"
+msgstr "AI 利用上限に達しました"
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 msgid "All agents"
@@ -3897,6 +3901,14 @@ msgstr "このモデルをカスタマイズしています。"
 #: src/components/modification-indicator.tsx
 msgid "You've customized this setting."
 msgstr "この設定をカスタマイズしています。"
+
+#: src/components/chat/error-message.tsx
+msgid "You've reached your AI usage limit for the current 5-hour window. Try again later."
+msgstr "現在の 5 時間枠の AI 利用上限に達しました。しばらくしてから再試行してください。"
+
+#: src/components/chat/error-message.tsx
+msgid "You've reached your AI usage limit for the current 7-day window. Try again later."
+msgstr "現在の 7 日間枠の AI 利用上限に達しました。しばらくしてから再試行してください。"
 
 #: src/components/account-deleted.tsx
 msgid "Your account has been deleted and local data has been cleared."

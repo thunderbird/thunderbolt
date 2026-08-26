@@ -227,6 +227,10 @@ msgstr "Avancé (JSON)"
 msgid "Agents"
 msgstr "Agents"
 
+#: src/components/chat/error-message.tsx
+msgid "AI usage limit reached"
+msgstr "Limite d'utilisation de l'IA atteinte"
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 msgid "All agents"
@@ -3909,6 +3913,14 @@ msgstr "Vous avez personnalisé ce modèle."
 #: src/components/modification-indicator.tsx
 msgid "You've customized this setting."
 msgstr "Vous avez personnalisé ce réglage."
+
+#: src/components/chat/error-message.tsx
+msgid "You've reached your AI usage limit for the current 5-hour window. Try again later."
+msgstr "Vous avez atteint votre limite d'utilisation de l'IA pour la fenêtre de 5 heures en cours. Réessayez plus tard."
+
+#: src/components/chat/error-message.tsx
+msgid "You've reached your AI usage limit for the current 7-day window. Try again later."
+msgstr "Vous avez atteint votre limite d'utilisation de l'IA pour la fenêtre de 7 jours en cours. Réessayez plus tard."
 
 #: src/components/account-deleted.tsx
 msgid "Your account has been deleted and local data has been cleared."

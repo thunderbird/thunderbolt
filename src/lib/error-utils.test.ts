@@ -11,6 +11,7 @@ import {
   getErrorName,
   getErrorRetryable,
   getErrorStatusCode,
+  getInferenceQuotaWindow,
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
@@ -168,6 +169,48 @@ describe('getErrorName', () => {
   it('returns undefined when no string name exists', () => {
     expect(getErrorName({ name: 42 })).toBeUndefined()
     expect(getErrorName(null)).toBeUndefined()
+  })
+})
+
+describe('getInferenceQuotaWindow', () => {
+  it('extracts the 5-hour window from a direct pi-ai flattened quota error', () => {
+    const error = new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}')
+
+    expect(getInferenceQuotaWindow(error)).toBe('5h')
+  })
+
+  it('extracts the 7-day window from a serialized SecureClient quota error', () => {
+    const error = new Error(
+      JSON.stringify({
+        error: JSON.stringify({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '7d' } }),
+        status: 429,
+        isRetryable: true,
+        kind: 'rate-limit',
+      }),
+    )
+
+    expect(getInferenceQuotaWindow(error)).toBe('7d')
+  })
+
+  it('rejects values that are not known quota errors with valid windows', () => {
+    const errors = [
+      new Error('429 {"code":"RATE_LIMITED","window":"5h"}'),
+      new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"30d"}'),
+      new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED"}'),
+      new Error('429 {invalid json}'),
+      new Error(JSON.stringify({ error: 'Rate limited', status: 429 })),
+      new Error(
+        JSON.stringify({
+          error: JSON.stringify({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } }),
+          status: 500,
+        }),
+      ),
+      new Error('Error 429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'),
+    ]
+
+    for (const error of errors) {
+      expect(getInferenceQuotaWindow(error)).toBeUndefined()
+    }
   })
 })
 

@@ -4,9 +4,18 @@
 
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
+import { z } from 'zod'
 
 const chatErrorKinds = ['attestation', 'timeout', 'rate-limit', 'provider', 'network', 'connection-lost'] as const
 export type ChatErrorKind = (typeof chatErrorKinds)[number]
+const inferenceQuotaWindowSchema = z.enum(['5h', '7d'])
+export type InferenceQuotaWindow = z.infer<typeof inferenceQuotaWindowSchema>
+const inferenceQuotaErrorSchema = z.object({
+  code: z.literal('INFERENCE_QUOTA_EXCEEDED'),
+  window: inferenceQuotaWindowSchema,
+})
+const inferenceQuotaResponseSchema = z.object({ error: inferenceQuotaErrorSchema })
+const serializedErrorSchema = z.object({ error: z.string() })
 
 const isChatErrorKind = (value: unknown): value is ChatErrorKind => chatErrorKinds.includes(value as ChatErrorKind)
 
@@ -158,6 +167,27 @@ export const getErrorStatusCode = (error?: Error | null): number | undefined => 
   }
   const parsed = parseJson(error.message)
   return firstNumber(parsed?.status, parsed?.statusCode) ?? getPiErrorStatusCode(error.message)
+}
+
+/** Extract the window from a known managed-inference quota rejection. */
+export const getInferenceQuotaWindow = (error?: Error | null): InferenceQuotaWindow | undefined => {
+  if (!error?.message || getErrorStatusCode(error) !== 429) {
+    return undefined
+  }
+
+  const serializedError = parseJson(error.message)
+  const directBodyMatch = error.message.match(/^429\s+(\{[\s\S]*)$/)
+  const directBody = directBodyMatch ? parseJson(directBodyMatch[1]) : undefined
+  const directQuotaError = inferenceQuotaErrorSchema.safeParse(directBody)
+
+  if (directQuotaError.success) {
+    return directQuotaError.data.window
+  }
+
+  const serializedQuotaError = serializedErrorSchema.safeParse(serializedError)
+  const responseBody = serializedQuotaError.success ? parseJson(serializedQuotaError.data.error) : undefined
+  const nestedQuotaError = inferenceQuotaResponseSchema.safeParse(responseBody)
+  return nestedQuotaError.success ? nestedQuotaError.data.error.window : undefined
 }
 
 /**

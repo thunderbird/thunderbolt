@@ -12,7 +12,8 @@ import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { RemoveBridgeDialog } from '@/components/remove-bridge-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import dayjs from 'dayjs'
+import type { Formatters } from '@/i18n/format'
+import { useFormatters } from '@/i18n/use-formatters'
 import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -49,15 +50,11 @@ const DeviceBadge = ({ children }: { children: ReactNode }) => (
 const isMutatingDevice = (mutation: { isPending: boolean; variables: string | undefined }, deviceId: string) =>
   mutation.isPending && mutation.variables === deviceId
 
-const formatLastSeen = (ts: string | null): string => {
-  if (ts == null) {
-    return '—'
-  }
-  const date = dayjs(ts)
-  const now = dayjs()
-  const diffMs = date.diff(now)
-  return dayjs.duration(diffMs, 'millisecond').humanize(true)
-}
+/** A revoked device lingers in the list for a day so the revocation is visible. */
+const revokedDeviceVisibilityMs = 24 * 60 * 60 * 1000
+
+const formatLastSeen = (formatters: Formatters, ts: string | null): string =>
+  ts == null ? '—' : formatters.relativeTime(ts)
 
 type PendingDeviceRowProps = {
   device: Device
@@ -148,8 +145,9 @@ const TrustedDeviceRow = ({
   onOpenPairingDialog,
 }: TrustedDeviceRowProps) => {
   const { t } = useLingui()
+  const formatters = useFormatters()
   const deviceName = device.name
-  const lastSeen = formatLastSeen(device.lastSeen)
+  const lastSeen = formatLastSeen(formatters, device.lastSeen)
   const isRevoked = device.revokedAt != null
   const isBridge = device.deviceType === 'bridge'
   const pairingPanelId = `device-pairing-${device.id}`
@@ -277,7 +275,7 @@ export default function DevicesSettingsPage() {
 
   const visibleDevices = devices.filter((d) => {
     if (d.revokedAt != null) {
-      return dayjs().diff(dayjs(d.revokedAt), 'hour') < 24
+      return Date.now() - new Date(d.revokedAt).getTime() < revokedDeviceVisibilityMs
     }
     return !!d.trusted
   })

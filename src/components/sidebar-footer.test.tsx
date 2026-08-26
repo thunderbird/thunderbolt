@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { i18n } from '@/i18n'
+import { getFormatters } from '@/i18n/format'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -275,26 +276,34 @@ describe('sync retry flow', () => {
 })
 
 describe('syncStatusText', () => {
+  // Pinned rather than negotiated so the relative-time assertions below don't
+  // depend on the host's locale.
+  const formatters = getFormatters('en')
+
   it('pitches sync when it is off', () => {
-    expect(syncStatusText(i18n, false, 'disconnected', false, null)).toBe('Keep your data synced across devices.')
+    expect(syncStatusText(i18n, formatters, false, 'disconnected', false, null)).toBe(
+      'Keep your data synced across devices.',
+    )
   })
 
   it('reports connecting and offline states', () => {
-    expect(syncStatusText(i18n, true, 'connecting', false, null)).toBe('Connecting…')
-    expect(syncStatusText(i18n, true, 'disconnected', false, null)).toBe('Offline. Changes will sync when back online.')
+    expect(syncStatusText(i18n, formatters, true, 'connecting', false, null)).toBe('Connecting…')
+    expect(syncStatusText(i18n, formatters, true, 'disconnected', false, null)).toBe(
+      'Offline. Changes will sync when back online.',
+    )
   })
 
   it('reports a fresh sync as "Just synced"', () => {
-    expect(syncStatusText(i18n, true, 'connected', true, new Date(Date.now() - 5_000))).toBe('Just synced')
+    expect(syncStatusText(i18n, formatters, true, 'connected', true, new Date(Date.now() - 5_000))).toBe('Just synced')
   })
 
   it('reports an older sync as relative time', () => {
-    expect(syncStatusText(i18n, true, 'connected', true, new Date(Date.now() - 10 * 60_000))).toBe(
+    expect(syncStatusText(i18n, formatters, true, 'connected', true, new Date(Date.now() - 10 * 60_000))).toBe(
       'Synced 10 minutes ago',
     )
   })
 
   it('falls back to Connected before the first sync lands', () => {
-    expect(syncStatusText(i18n, true, 'connected', false, null)).toBe('Connected')
+    expect(syncStatusText(i18n, formatters, true, 'connected', false, null)).toBe('Connected')
   })
 })

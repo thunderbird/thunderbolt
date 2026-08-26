@@ -20,11 +20,10 @@ import { chatTitleLabel } from '@/lib/title-generator'
 
 import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
-import dayjs from 'dayjs'
-import '@/lib/dayjs'
 import { LayoutTemplate, MessageCircle, MessageCirclePlus } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { useFormatters } from '@/i18n/use-formatters'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { Button } from '@/components/ui/button'
 import { DetailActionsMenu, DetailEditDeleteMenuItems } from '@/components/settings/detail-actions-menu'
@@ -91,7 +90,8 @@ export const ProjectDetailPanel = ({
   onOpenChat,
   onNewChat,
 }: ProjectDetailPanelProps) => {
-  const { i18n } = useLingui()
+  const { i18n, t } = useLingui()
+  const formatters = useFormatters()
 
   return (
     <DetailPanel
@@ -160,7 +160,7 @@ export const ProjectDetailPanel = ({
               <li key={artifact.id}>
                 <OpenChatRow
                   label={artifact.title}
-                  meta={dayjs(artifact.createdAt).fromNow()}
+                  meta={formatters.relativeTime(artifact.createdAt)}
                   icon={
                     <LayoutTemplate
                       className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground"

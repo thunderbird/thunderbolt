@@ -19,9 +19,6 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useState, useTransition } from 'react'
 
-import dayjs from 'dayjs'
-import '@/lib/dayjs'
-
 import type { User } from '@shared/types/auth'
 
 import { LogoutModal } from '@/components/logout-modal'
@@ -37,6 +34,8 @@ import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useHaptics } from '@/hooks/use-haptics'
+import type { Formatters } from '@/i18n/format'
+import { useFormatters } from '@/i18n/use-formatters'
 import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
@@ -132,12 +131,14 @@ export const SyncStateIcon = ({
 /**
  * Human status line for the account menu's Cloud Sync section. Exported for tests.
  *
- * Takes `i18n` rather than resolving through the global: the copy has to follow
- * the active catalog, and one branch interpolates a runtime value, so the
- * descriptors can't all live at module scope.
+ * Takes `i18n` and the formatters rather than resolving either through the
+ * global: the copy has to follow the active catalog, and one branch
+ * interpolates a runtime value, so the descriptors can't all live at module
+ * scope.
  */
 export const syncStatusText = (
   i18n: I18n,
+  formatters: Formatters,
   syncEnabled: boolean,
   connectionStatus: PowerSyncConnectionStatus,
   hasSynced: boolean,
@@ -157,7 +158,7 @@ export const syncStatusText = (
     if (secondsAgo < 60) {
       return i18n._(msg`Just synced`)
     }
-    const relative = dayjs(lastSyncedAt).fromNow()
+    const relative = formatters.relativeTime(lastSyncedAt)
     return i18n._(msg`Synced ${relative}`)
   }
   return i18n._(msg`Connected`)
@@ -165,6 +166,7 @@ export const syncStatusText = (
 
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { i18n, t } = useLingui()
+  const formatters = useFormatters()
   const authClient = useAuth()
   const { isMobile, setOpenMobile, state } = useSidebar()
   const { openSignInModal } = useSignInModal()
@@ -410,7 +412,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
             </div>
             <div className="flex items-center justify-between gap-2">
               <p className={cn('text-xs text-muted-foreground', syncNeedsAttention && 'text-warning')}>
-                {syncStatusText(i18n, syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
+                {syncStatusText(i18n, formatters, syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
               </p>
               {syncNeedsAttention && (
                 <Button

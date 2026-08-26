@@ -5,13 +5,12 @@
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
-import dayjs from 'dayjs'
 import { Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 
-import '@/lib/dayjs'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
+import { useFormatters } from '@/i18n/use-formatters'
 import { iconForAgent } from '@/components/agent-icon'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { IconTile } from '@/components/settings/icon-tile'
@@ -425,7 +424,8 @@ const CustomBody = ({
 
 /** The Status line's dot + label, derived from the last explicit test run. */
 const TestStatus = ({ result }: { result: TestState }) => {
-  const relative = typeof result === 'object' ? dayjs(result.testedAt).fromNow() : ''
+  const formatters = useFormatters()
+  const relative = typeof result === 'object' ? formatters.relativeTime(result.testedAt) : ''
   if (result === 'testing') {
     return (
       <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">

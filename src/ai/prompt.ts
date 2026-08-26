@@ -17,7 +17,6 @@ export type PromptParams = {
   localization: {
     distanceUnit: string
     temperatureUnit: string
-    dateFormat: string
     timeFormat: string
     currency: string
   }
@@ -97,7 +96,7 @@ export const createPromptParts = (
     location.name
       ? `User location: ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}`
       : 'User location: Unknown (ask before using location-based features)',
-    `User preferences: ${localization.distanceUnit}, ${localization.temperatureUnit}, ${localization.dateFormat}, ${localization.timeFormat}, ${localization.currency}`,
+    `User preferences: ${localization.distanceUnit}, ${localization.temperatureUnit}, ${localization.timeFormat}, ${localization.currency}`,
     `Integration status: ${integrationStatus}`,
   ]
     .filter(Boolean)

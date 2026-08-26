@@ -205,27 +205,17 @@ export const useOnboardingState = () => {
     onboarding_current_step: '1',
   })
 
-  const {
-    preferredName,
-    locationName,
-    locationLat,
-    locationLng,
-    distanceUnit,
-    temperatureUnit,
-    dateFormat,
-    timeFormat,
-    currency,
-  } = useSettings({
-    preferred_name: '',
-    location_name: '',
-    location_lat: '',
-    location_lng: '',
-    distance_unit: 'imperial',
-    temperature_unit: 'f',
-    date_format: 'MM/DD/YYYY',
-    time_format: '12h',
-    currency: 'USD',
-  })
+  const { preferredName, locationName, locationLat, locationLng, distanceUnit, temperatureUnit, timeFormat, currency } =
+    useSettings({
+      preferred_name: '',
+      location_name: '',
+      location_lat: '',
+      location_lng: '',
+      distance_unit: 'imperial',
+      temperature_unit: 'f',
+      time_format: '12h',
+      currency: 'USD',
+    })
   const { data: integrationStatusData } = useIntegrationStatus()
 
   const { fetchCountryUnits } = useCountryUnits()
@@ -293,7 +283,6 @@ export const useOnboardingState = () => {
           if (countryUnitsData) {
             await distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true })
             await temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true })
-            await dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true })
             await timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true })
             await currency.setValue(countryUnitsData.currency.code, { recomputeHash: true })
           }

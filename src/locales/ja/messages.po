@@ -1110,14 +1110,6 @@ msgstr "データ"
 msgid "Data is stored securely on your device."
 msgstr "データはお使いのデバイスに安全に保存されます。"
 
-#: src/settings/preferences.tsx
-msgid "Date format"
-msgstr "日付形式"
-
-#: src/settings/preferences.tsx
-msgid "Date Format"
-msgstr "日付形式"
-
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
 msgstr "既定の設定"

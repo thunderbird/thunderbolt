@@ -233,7 +233,6 @@ export default function PreferencesSettingsPage() {
     experimentalFeatureVoice,
     distanceUnit,
     temperatureUnit,
-    dateFormat,
     timeFormat,
     currency,
   } = useSettings({
@@ -246,7 +245,6 @@ export default function PreferencesSettingsPage() {
     experimental_feature_voice: false,
     distance_unit: 'imperial',
     temperature_unit: 'f',
-    date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
   })
@@ -293,19 +291,17 @@ export default function PreferencesSettingsPage() {
   // Auto-populate localization settings from country data if not set
   useEffect(() => {
     if (countryUnitsData && !countryUnitsLoading) {
-      const hasLocalizationSettings =
-        distanceUnit.value || temperatureUnit.value || dateFormat.value || timeFormat.value || currency.value
+      const hasLocalizationSettings = distanceUnit.value || temperatureUnit.value || timeFormat.value || currency.value
 
       if (!hasLocalizationSettings) {
         // Auto-set from country data and establish these as the baseline for future modifications
         distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true })
         temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true })
-        dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true })
         timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true })
         currency.setValue(countryUnitsData.currency.code, { recomputeHash: true })
       }
     }
-  }, [countryUnitsData, countryUnitsLoading, distanceUnit, temperatureUnit, dateFormat, timeFormat, currency])
+  }, [countryUnitsData, countryUnitsLoading, distanceUnit, temperatureUnit, timeFormat, currency])
 
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
@@ -380,7 +376,6 @@ export default function PreferencesSettingsPage() {
     await Promise.all([
       distanceUnit.setValue(pendingCountryUnits.unit, { recomputeHash: true }),
       temperatureUnit.setValue(pendingCountryUnits.temperature, { recomputeHash: true }),
-      dateFormat.setValue(pendingCountryUnits.dateFormatExample, { recomputeHash: true }),
       timeFormat.setValue(pendingCountryUnits.timeFormat, { recomputeHash: true }),
       currency.setValue(pendingCountryUnits.currency.code, { recomputeHash: true }),
     ])
@@ -543,13 +538,10 @@ export default function PreferencesSettingsPage() {
     await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset()])
   }
 
-  const handleResetLocalizationSetting = async (
-    settingType: 'distance' | 'temperature' | 'date' | 'time' | 'currency',
-  ) => {
+  const handleResetLocalizationSetting = async (settingType: 'distance' | 'temperature' | 'time' | 'currency') => {
     const settingMap = {
       distance: { hook: distanceUnit, dataKey: 'unit' as const },
       temperature: { hook: temperatureUnit, dataKey: 'temperature' as const },
-      date: { hook: dateFormat, dataKey: 'dateFormatExample' as const },
       time: { hook: timeFormat, dataKey: 'timeFormat' as const },
       currency: { hook: currency, dataKey: 'currency.code' as const },
     }
@@ -830,39 +822,6 @@ export default function PreferencesSettingsPage() {
                 {(unitsOptionsData?.temperature ?? []).map((t) => (
                   <SelectItem key={t.symbol} value={t.symbol}>
                     {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Date Format */}
-          <div className="flex flex-row items-center gap-4">
-            <div className="flex-1">
-              <ModificationIndicator
-                as="label"
-                className="text-sm font-medium"
-                hasModifications={dateFormat.isModified}
-                onReset={() => handleResetLocalizationSetting('date')}
-              >
-                <Trans>Date Format</Trans>
-              </ModificationIndicator>
-            </div>
-            <Select
-              value={dateFormat.value}
-              onValueChange={async (v) => {
-                await dateFormat.setValue(v)
-                trackEvent('settings_localization_update')
-              }}
-              disabled={unitsOptionsLoading}
-            >
-              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Date format`}>
-                <SelectValue placeholder={t`Loading…`} />
-              </SelectTrigger>
-              <SelectContent>
-                {(unitsOptionsData?.dateFormats ?? []).map((f) => (
-                  <SelectItem key={f.format} value={f.format}>
-                    {f.example}
                   </SelectItem>
                 ))}
               </SelectContent>

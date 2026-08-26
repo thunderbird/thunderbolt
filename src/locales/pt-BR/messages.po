@@ -1134,14 +1134,6 @@ msgstr "Dados"
 msgid "Data is stored securely on your device."
 msgstr "Os dados são armazenados com segurança no seu dispositivo."
 
-#: src/settings/preferences.tsx
-msgid "Date format"
-msgstr "Formato de data"
-
-#: src/settings/preferences.tsx
-msgid "Date Format"
-msgstr "Formato de data"
-
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
 msgstr "Configuração padrão"

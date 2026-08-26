@@ -241,19 +241,3 @@ export type AuthProviderBackendConfig = {
 
 // Re-export types from schemas to maintain backward compatibility
 export type { CountryUnitsData, Currency, DateFormat, TemperatureUnit, UnitsOptionsData } from './schemas/api'
-
-export type PreferencesSettings = {
-  locationName: string
-  locationLat: string
-  locationLng: string
-  preferredName: string
-  dataCollection: boolean
-  experimentalFeatureTasks: boolean
-  experimentalFeatureVoice: boolean
-  distanceUnit: string
-  temperatureUnit: string
-  dateFormat: string
-  timeFormat: string
-  currency: string
-  countryName: string | null
-}

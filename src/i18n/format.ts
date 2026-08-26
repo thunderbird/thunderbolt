@@ -14,8 +14,8 @@ const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/
  *
  * Bare `YYYY-MM-DD` gets an explicit midnight so it parses as *local* time:
  * `new Date('2026-08-26')` is UTC midnight, which renders as the 25th anywhere
- * west of Greenwich. Date-only strings reach us from the weather widget, and the
- * dayjs implementation this replaces parsed them as local.
+ * west of Greenwich. Date-only strings reach us from the weather widget, whose
+ * snapshots pin the expected day.
  */
 export const toDate = (value: DateInput): Date => {
   if (value instanceof Date) {

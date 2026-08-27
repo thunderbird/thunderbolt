@@ -44,6 +44,17 @@ export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit, isLoadi
             }`}
             autoFocus
             disabled={isLoading}
+            // The phrase is BIP-39 English whatever the UI language is, and
+            // `useAppLanguage` now points `<html lang>` at the active locale — so
+            // without these the browser applies German or Japanese autocorrect
+            // (and, on mobile, autocapitalisation) to it. One mangled word costs
+            // the user access to their encrypted data permanently, so nothing here
+            // is allowed to be helpful.
+            lang="en"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>{wordCount}/24 words</span>

@@ -55,6 +55,30 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    # `no-store`, not `no-cache`, and that distinction is load-bearing behind a CDN.
+    # Cloudflare's default configuration caches by file extension (`.js` is on that
+    # list) and rewrites the browser-facing `Cache-Control` to its own Browser Cache
+    # TTL, 4 hours on the free plan. Measured against a `no-cache` origin:
+    # `cf-cache-status: HIT`, `cache-control: max-age=14400`. Since a browser
+    # bypasses only its OWN cache when re-checking a worker script
+    # (`updateViaCache` defaults to `'imports'`), an edge HIT still returns a stale
+    # worker and delays every client update by up to the edge TTL.
+    location = /sw.js {
+        include /etc/nginx/snippets/security-headers.conf;
+        # nosemgrep: generic.nginx.security.header-redefinition.header-redefinition
+        add_header Cache-Control "no-store" always;
+    }
+
+    # nginx's bundled mime.types has no `.webmanifest` entry, so this would
+    # otherwise be served as application/octet-stream. Chrome tolerates that; the
+    # spec wants application/manifest+json, and iOS is where installability matters.
+    location = /manifest.webmanifest {
+        include /etc/nginx/snippets/security-headers.conf;
+        types { } default_type application/manifest+json;
+        # nosemgrep: generic.nginx.security.header-redefinition.header-redefinition
+        add_header Cache-Control "no-cache" always;
+    }
+
     # Block source maps (they are uploaded to PostHog for error tracking, not served publicly)
     location ~* \.map$ {
         return 404;

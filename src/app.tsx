@@ -179,7 +179,6 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   return (
     <BrowserRouter>
       <AppRoutes initData={initData} />
-      <UpdateNotification />
       <PendingDeviceModal />
     </BrowserRouter>
   )
@@ -364,6 +363,12 @@ export const App = () => {
         {renderAppContent()}
         <WindowControls />
         <RevokedDeviceModal open={revokedDeviceOpen} />
+        {/* Outside `renderAppContent` on purpose. This is the only surface that
+            can replace a broken client build, so it must survive the states
+            where the app itself cannot render: sign-in, the init-error screen,
+            and the forced-upgrade screen. It also puts service-worker
+            registration on the boot path rather than behind authentication. */}
+        <UpdateNotification />
       </LazyMotion>
     </ThemeProvider>
   )

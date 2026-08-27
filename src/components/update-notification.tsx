@@ -6,8 +6,10 @@ import { Download, RefreshCw, X, CheckCircle, AlertCircle, Loader2 } from 'lucid
 import { useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { useDesktopUpdate, type UpdateStatus } from '@/hooks/use-desktop-update'
+import { useWebAppUpdate } from '@/hooks/use-web-app-update'
 import { Button } from '@/components/ui/button'
 import { isDesktop } from '@/lib/platform'
+import { isServiceWorkerSupported } from '@/lib/service-worker'
 
 const statusConfig: Record<UpdateStatus, { icon: typeof Download; message: string; showActions: boolean }> = {
   initial: { icon: CheckCircle, message: '', showActions: false },
@@ -19,14 +21,9 @@ const statusConfig: Record<UpdateStatus, { icon: typeof Download; message: strin
   error: { icon: AlertCircle, message: 'Update failed', showActions: true },
 }
 
-export const UpdateNotification = () => {
+const DesktopUpdateNotification = () => {
   const { status, update, error, downloadAndInstall, restartApp, checkForUpdates } = useDesktopUpdate()
   const [dismissed, setDismissed] = useState(false)
-
-  // Only show on desktop platforms
-  if (!isDesktop()) {
-    return null
-  }
 
   const isVisible = !dismissed && status !== 'initial' && status !== 'idle' && status !== 'checking'
   const config = statusConfig[status]
@@ -105,4 +102,87 @@ export const UpdateNotification = () => {
       )}
     </AnimatePresence>
   )
+}
+
+/**
+ * Web/PWA update prompt.
+ *
+ * A browser tab has no equivalent of the desktop updater: the new build is
+ * already downloaded by the service worker and simply waiting, so there is no
+ * download step and no progress — just "reload onto it". Reloading is the user's
+ * call rather than automatic, because it discards whatever is on screen.
+ */
+const WebUpdateNotification = () => {
+  const { updateAvailable, dismissed, applyUpdate, dismiss } = useWebAppUpdate()
+  const [reloading, setReloading] = useState(false)
+
+  const handleReload = () => {
+    setReloading(true)
+    applyUpdate()
+  }
+
+  return (
+    <AnimatePresence>
+      {updateAvailable && !dismissed && (
+        <m.div
+          key="web-update-notification"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          // `bottom-*` uses the safe-area inset so the card clears the iOS home
+          // indicator when running as an installed app.
+          className="fixed right-4 z-50 max-w-sm"
+          style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+        >
+          <div className="bg-card border border-border rounded-xl shadow-lg p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <RefreshCw className={`size-5 text-primary ${reloading ? 'animate-spin' : ''}`} />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">A new version of Thunderbolt is available.</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {reloading ? 'Reloading...' : 'Reload to get the latest features and fixes.'}
+                </p>
+
+                <div className="flex gap-2 mt-3">
+                  <Button size="sm" onClick={handleReload} disabled={reloading}>
+                    Reload
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={dismiss} disabled={reloading}>
+                    Later
+                  </Button>
+                </div>
+              </div>
+
+              <button
+                onClick={dismiss}
+                disabled={reloading}
+                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                aria-label="Dismiss"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+        </m.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/**
+ * Update prompt for whichever update channel this build actually has: Tauri's
+ * updater on desktop, the service worker on the web. Mobile Tauri builds update
+ * through the app stores and get neither.
+ */
+export const UpdateNotification = () => {
+  if (isDesktop()) {
+    return <DesktopUpdateNotification />
+  }
+  if (isServiceWorkerSupported()) {
+    return <WebUpdateNotification />
+  }
+  return null
 }

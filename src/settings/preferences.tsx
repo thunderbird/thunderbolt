@@ -529,8 +529,14 @@ export default function PreferencesSettingsPage() {
     }
   }
 
+  /**
+   * The country code resets with the rest of the location, or a cleared
+   * location would leave a ghost region behind — `regionForUnitDefaults` reads
+   * it first, so resetting a unit afterwards would re-seed from the country the
+   * user just removed instead of falling through to the browser.
+   */
   const handleResetLocation = async () => {
-    await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset()])
+    await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset(), locationCountryCode.reset()])
   }
 
   /**
@@ -691,7 +697,12 @@ export default function PreferencesSettingsPage() {
               as="label"
               id="localization-location-label"
               className="text-sm font-medium"
-              hasModifications={locationName.isModified || locationLat.isModified || locationLng.isModified}
+              hasModifications={
+                locationName.isModified ||
+                locationLat.isModified ||
+                locationLng.isModified ||
+                locationCountryCode.isModified
+              }
               onReset={handleResetLocation}
             >
               <Trans>Location</Trans>

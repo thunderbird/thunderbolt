@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { unitDefaultsForRegion } from '@/i18n/region-units'
-import { updateSettings } from '@/dal'
+import { getSettingsRecords, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
@@ -11,7 +11,7 @@ import { getClock } from '@/testing-library'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { type ReactNode } from 'react'
 
@@ -149,6 +149,35 @@ describe('PreferencesSettingsPage — Localization layout', () => {
     expect(screen.getByLabelText('Distance unit')).toHaveTextContent('')
     expect(screen.getByLabelText('Temperature unit')).toHaveTextContent('')
     expect(screen.getByLabelText('Time format')).toHaveTextContent('')
+  })
+
+  it('clears every stored location key on reset, country code included', async () => {
+    // Guards the whole group rather than the three original keys: the country
+    // code is what `regionForUnitDefaults` reads first, so a survivor here
+    // re-seeds units from a location the user just cleared. Any future location
+    // key added to `handleSelectLocation` should be added below too.
+    const locationKeys = ['location_name', 'location_lat', 'location_lng', 'location_country_code']
+    await updateSettings(getDb(), {
+      location_name: 'Berlin, Berlin, Germany',
+      location_lat: '52.52',
+      location_lng: '13.405',
+      location_country_code: 'DE',
+    })
+
+    renderPage(createMockAuthClient({ session: authedSession }))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // Reset lives behind the modified-underline popover, so open it first.
+    fireEvent.click(screen.getByText('Location'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('Reset to Default'))
+      await getClock().runAllAsync()
+    })
+
+    const stored = await getSettingsRecords(getDb(), locationKeys)
+    expect(stored.map((setting) => setting.value)).toEqual([null, null, null, null])
   })
 
   it('offers no Date Format row', () => {

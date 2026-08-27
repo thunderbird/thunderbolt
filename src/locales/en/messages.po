@@ -115,6 +115,10 @@ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "Imported # row. The app may take a moment to reflect new chats."
 msgstr[1] "Imported # rows. The app may take a moment to reflect new chats."
 
+#: src/lib/tool-metadata.ts
+msgid "{verbPhrase}…"
+msgstr "{verbPhrase}…"
+
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "{wordCount}/24 words"
 msgstr "{wordCount}/24 words"
@@ -304,6 +308,10 @@ msgstr "Always allow all Run command actions"
 msgid "Always allow everything from this agent"
 msgstr "Always allow everything from this agent"
 
+#: src/lib/tool-metadata.ts
+msgid "Analyzing…"
+msgstr "Analyzing…"
+
 #: src/projects/emoji-catalog.ts
 msgid "Animals & nature"
 msgstr "Animals & nature"
@@ -410,6 +418,10 @@ msgstr "Authorization failed. Please try again."
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Authorization required"
 msgstr "Authorization required"
+
+#: src/lib/mcp-auth/callback-validation.ts
+msgid "Authorization server omitted the required issuer (iss)."
+msgstr "Authorization server omitted the required issuer (iss)."
 
 #: src/hooks/use-mcp-server-oauth.ts
 msgid "Authorization was cancelled."
@@ -1051,6 +1063,7 @@ msgstr "Create your first project"
 msgid "Create your first skill"
 msgstr "Create your first skill"
 
+#: src/lib/tool-metadata.ts
 #: src/projects/project-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Creating…"
@@ -1460,6 +1473,14 @@ msgstr "Edit skill"
 msgid "Edit Skill"
 msgstr "Edit Skill"
 
+#: src/lib/tool-metadata.ts
+msgid "Editing {fileName}…"
+msgstr "Editing {fileName}…"
+
+#: src/lib/tool-metadata.ts
+msgid "Editing…"
+msgstr "Editing…"
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -1694,6 +1715,14 @@ msgstr "Get started by adding your first AI model."
 #: src/components/download-app-banner-mobile.tsx
 msgid "Get Thunderbolt free app"
 msgstr "Get Thunderbolt free app"
+
+#: src/lib/tool-metadata.ts
+msgid "Getting weather for {location}…"
+msgstr "Getting weather for {location}…"
+
+#: src/lib/tool-metadata.ts
+msgid "Getting weather…"
+msgstr "Getting weather…"
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Gmail & Calendar"
@@ -2067,6 +2096,10 @@ msgstr "Messages"
 msgid "Minimize"
 msgstr "Minimize"
 
+#: src/lib/mcp-auth/callback-validation.ts
+msgid "Missing CSRF state — restart the authorization."
+msgstr "Missing CSRF state — restart the authorization."
+
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -2169,6 +2202,7 @@ msgstr "New chat"
 #: src/components/context-overflow-modal.tsx
 #: src/components/sidebar-footer.tsx
 #: src/layout/sidebar/chat-sidebar.tsx
+#: src/lib/title-generator.ts
 msgid "New Chat"
 msgstr "New Chat"
 
@@ -2329,6 +2363,14 @@ msgstr "Not now"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
 msgstr "Not tested"
+
+#: src/lib/mcp-auth/callback-validation.ts
+msgid "OAuth issuer mismatch — authorization rejected."
+msgstr "OAuth issuer mismatch — authorization rejected."
+
+#: src/lib/mcp-auth/callback-validation.ts
+msgid "OAuth state mismatch — possible CSRF, authorization rejected."
+msgstr "OAuth state mismatch — possible CSRF, authorization rejected."
 
 #: src/hooks/use-oauth-connect.ts
 msgid "OAuth validation failed"
@@ -2550,6 +2592,10 @@ msgstr "Privacy"
 msgid "Private"
 msgstr "Private"
 
+#: src/lib/tool-metadata.ts
+msgid "Processing…"
+msgstr "Processing…"
+
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/projects/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -2588,6 +2634,10 @@ msgstr "Read your emails and compose drafts."
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Read, compose, and organize your emails."
 msgstr "Read, compose, and organize your emails."
+
+#: src/lib/tool-metadata.ts
+msgid "Reading {fileName}…"
+msgstr "Reading {fileName}…"
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
@@ -2654,6 +2704,7 @@ msgid "Remove this bridge?"
 msgstr "Remove this bridge?"
 
 #: src/components/remove-bridge-dialog.tsx
+#: src/lib/tool-metadata.ts
 #: src/settings/devices.tsx
 msgid "Removing…"
 msgstr "Removing…"
@@ -2726,6 +2777,10 @@ msgstr "Restart Now"
 #: src/components/upgrade-required.tsx
 msgid "Restart to update"
 msgstr "Restart to update"
+
+#: src/lib/tool-metadata.ts
+msgid "Retrieving data…"
+msgstr "Retrieving data…"
 
 #: src/components/chat/error-message.tsx
 #: src/components/sidebar-footer.tsx
@@ -2890,6 +2945,14 @@ msgstr "Search tasks…"
 msgid "Search…"
 msgstr "Search…"
 
+#: src/lib/tool-metadata.ts
+msgid "Searching for \"{query}\"…"
+msgstr "Searching for \"{query}\"…"
+
+#: src/lib/tool-metadata.ts
+msgid "Searching…"
+msgstr "Searching…"
+
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr "See the document on screen."
@@ -2934,6 +2997,7 @@ msgstr "Send message"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
+#: src/lib/tool-metadata.ts
 #: src/waitlist/waitlist-page.tsx
 msgid "Sending…"
 msgstr "Sending…"
@@ -3653,8 +3717,7 @@ msgstr "Unpin"
 msgid "Unreachable {relative}"
 msgstr "Unreachable {relative}"
 
-#: src/layout/sidebar/chat-sidebar.tsx
-#: src/projects/project-detail-panel.tsx
+#: src/lib/title-generator.ts
 msgid "Untitled chat"
 msgstr "Untitled chat"
 

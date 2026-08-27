@@ -53,6 +53,19 @@ describe('relativeTime', () => {
     expect(en.relativeTime(offsetBy(90 * minute), now)).toBe('in 2 hours')
   })
 
+  // Rounding used to overflow the band it was chosen in, so a delta just short
+  // of the next unit printed "60 minutes ago" instead of "an hour ago".
+  test('steps up when rounding fills the next unit', () => {
+    // `numeric: 'auto'` only carries idiomatic phrasing from `day` upward, so
+    // the win here is "1 hour ago" over "60 minutes ago", not "an hour ago".
+    expect(en.relativeTime(offsetBy(-59.5 * minute), now)).toBe('1 hour ago')
+    expect(en.relativeTime(offsetBy(-23.6 * hour), now)).toBe('yesterday')
+    expect(en.relativeTime(offsetBy(23.6 * hour), now)).toBe('tomorrow')
+    expect(en.relativeTime(offsetBy(-6.6 * day), now)).toBe('last week')
+    expect(en.relativeTime(offsetBy(-3.6 * 7 * day), now)).toBe('last month')
+    expect(en.relativeTime(offsetBy(-364 * day), now)).toBe('last year')
+  })
+
   test('uses CLDR phrasing rather than a literal count', () => {
     expect(en.relativeTime(offsetBy(-26 * hour), now)).toBe('yesterday')
     expect(en.relativeTime(offsetBy(26 * hour), now)).toBe('tomorrow')
@@ -97,9 +110,13 @@ describe('duration', () => {
     expect(getFormatters('en').duration(2500)).toBe('2.5s')
   })
 
-  test('localizes the decimal separator and the unit', () => {
+  // Only the number is localized. The unit is our own SI symbol precisely so
+  // this assertion is stable: CLDR's narrow second differs between ICU builds,
+  // so pinning it here passed locally and failed in CI on the same Bun version.
+  test('localizes the decimal separator but not the unit', () => {
     expect(getFormatters('de').duration(1500)).toBe('1,5s')
-    expect(getFormatters('ja').duration(1500)).toBe('1.5秒')
+    expect(getFormatters('ja').duration(1500)).toBe('1.5s')
+    expect(getFormatters('de').duration(800)).toBe('800ms')
   })
 })
 

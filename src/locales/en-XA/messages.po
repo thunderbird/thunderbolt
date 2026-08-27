@@ -115,6 +115,10 @@ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] ""
 msgstr[1] ""
 
+#: src/lib/tool-metadata.ts
+msgid "{verbPhrase}…"
+msgstr ""
+
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "{wordCount}/24 words"
 msgstr ""
@@ -304,6 +308,10 @@ msgstr ""
 msgid "Always allow everything from this agent"
 msgstr ""
 
+#: src/lib/tool-metadata.ts
+msgid "Analyzing…"
+msgstr ""
+
 #: src/projects/emoji-catalog.ts
 msgid "Animals & nature"
 msgstr ""
@@ -409,6 +417,10 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Authorization required"
+msgstr ""
+
+#: src/lib/mcp-auth/callback-validation.ts
+msgid "Authorization server omitted the required issuer (iss)."
 msgstr ""
 
 #: src/hooks/use-mcp-server-oauth.ts
@@ -1051,6 +1063,7 @@ msgstr ""
 msgid "Create your first skill"
 msgstr ""
 
+#: src/lib/tool-metadata.ts
 #: src/projects/project-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Creating…"
@@ -1460,6 +1473,14 @@ msgstr ""
 msgid "Edit Skill"
 msgstr ""
 
+#: src/lib/tool-metadata.ts
+msgid "Editing {fileName}…"
+msgstr ""
+
+#: src/lib/tool-metadata.ts
+msgid "Editing…"
+msgstr ""
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -1693,6 +1714,14 @@ msgstr ""
 #: src/components/download-app-banner-desktop.tsx
 #: src/components/download-app-banner-mobile.tsx
 msgid "Get Thunderbolt free app"
+msgstr ""
+
+#: src/lib/tool-metadata.ts
+msgid "Getting weather for {location}…"
+msgstr ""
+
+#: src/lib/tool-metadata.ts
+msgid "Getting weather…"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
@@ -2067,6 +2096,10 @@ msgstr ""
 msgid "Minimize"
 msgstr ""
 
+#: src/lib/mcp-auth/callback-validation.ts
+msgid "Missing CSRF state — restart the authorization."
+msgstr ""
+
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -2169,6 +2202,7 @@ msgstr ""
 #: src/components/context-overflow-modal.tsx
 #: src/components/sidebar-footer.tsx
 #: src/layout/sidebar/chat-sidebar.tsx
+#: src/lib/title-generator.ts
 msgid "New Chat"
 msgstr ""
 
@@ -2328,6 +2362,14 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
+msgstr ""
+
+#: src/lib/mcp-auth/callback-validation.ts
+msgid "OAuth issuer mismatch — authorization rejected."
+msgstr ""
+
+#: src/lib/mcp-auth/callback-validation.ts
+msgid "OAuth state mismatch — possible CSRF, authorization rejected."
 msgstr ""
 
 #: src/hooks/use-oauth-connect.ts
@@ -2550,6 +2592,10 @@ msgstr ""
 msgid "Private"
 msgstr ""
 
+#: src/lib/tool-metadata.ts
+msgid "Processing…"
+msgstr ""
+
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/projects/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -2587,6 +2633,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Read, compose, and organize your emails."
+msgstr ""
+
+#: src/lib/tool-metadata.ts
+msgid "Reading {fileName}…"
 msgstr ""
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
@@ -2654,6 +2704,7 @@ msgid "Remove this bridge?"
 msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
+#: src/lib/tool-metadata.ts
 #: src/settings/devices.tsx
 msgid "Removing…"
 msgstr ""
@@ -2725,6 +2776,10 @@ msgstr ""
 
 #: src/components/upgrade-required.tsx
 msgid "Restart to update"
+msgstr ""
+
+#: src/lib/tool-metadata.ts
+msgid "Retrieving data…"
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -2890,6 +2945,14 @@ msgstr ""
 msgid "Search…"
 msgstr ""
 
+#: src/lib/tool-metadata.ts
+msgid "Searching for \"{query}\"…"
+msgstr ""
+
+#: src/lib/tool-metadata.ts
+msgid "Searching…"
+msgstr ""
+
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr ""
@@ -2934,6 +2997,7 @@ msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
+#: src/lib/tool-metadata.ts
 #: src/waitlist/waitlist-page.tsx
 msgid "Sending…"
 msgstr ""
@@ -3653,8 +3717,7 @@ msgstr ""
 msgid "Unreachable {relative}"
 msgstr ""
 
-#: src/layout/sidebar/chat-sidebar.tsx
-#: src/projects/project-detail-panel.tsx
+#: src/lib/title-generator.ts
 msgid "Untitled chat"
 msgstr ""
 

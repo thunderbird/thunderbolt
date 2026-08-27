@@ -50,9 +50,23 @@ const relativeUnits: ReadonlyArray<readonly [Intl.RelativeTimeFormatUnit, number
   ['second', second],
 ]
 
+/** How many of `relativeUnits[index]` fill the next unit up — 60 minutes to an
+ *  hour, 12 months to a year. Derived rather than tabulated so it stays true if
+ *  a unit is added. */
+const fillsNextUnit = (index: number): number => Math.round(relativeUnits[index - 1][1] / relativeUnits[index][1])
+
 const selectRelativeUnit = (deltaMs: number): { value: number; unit: Intl.RelativeTimeFormatUnit } => {
   const magnitude = Math.abs(deltaMs)
-  const [unit, unitMs] = relativeUnits.find(([, ms]) => magnitude >= ms) ?? relativeUnits[relativeUnits.length - 1]
+  const found = relativeUnits.findIndex(([, ms]) => magnitude >= ms)
+  const index = found === -1 ? relativeUnits.length - 1 : found
+  // The unit is chosen on the raw magnitude but the count is rounded, so a
+  // magnitude just under a boundary overflows its own band: 59.5 minutes picks
+  // `minute` and then rounds to 60, printing "60 minutes ago" where the whole
+  // point of `numeric: 'auto'` is "an hour ago". Step up when the rounded count
+  // fills the next unit. Comparing counts rather than milliseconds matters at
+  // the top: 12 rounded months is a year even though 12 × 30 days is not 365.
+  const overflows = index > 0 && Math.round(magnitude / relativeUnits[index][1]) >= fillsNextUnit(index)
+  const [unit, unitMs] = relativeUnits[overflows ? index - 1 : index]
   // Rounded on the magnitude and re-signed, not rounded on the signed delta:
   // `Math.round` breaks .5 ties toward positive infinity, so the signed form
   // reads 90 minutes ago as "1 hour ago" while reading 90 minutes ahead as
@@ -61,7 +75,7 @@ const selectRelativeUnit = (deltaMs: number): { value: number; unit: Intl.Relati
 }
 
 export type Formatters = {
-  /** An unambiguous absolute date: "Aug 26, 2026", "26. Aug. 2026", "2026年8月26日". */
+  /** An unambiguous absolute date: "Aug 26, 2026", "26.08.2026", "2026/08/26". */
   date: (value: DateInput) => string
   /** Weekday and day of month: "Wednesday, Aug 26". */
   weekdayDate: (value: DateInput) => string
@@ -69,11 +83,13 @@ export type Formatters = {
   weekday: (value: DateInput) => string
   /** "2 hours ago", "yesterday", "in 3 days". Past is negative, i.e. before `now`. */
   relativeTime: (value: DateInput, now?: Date) => string
-  /** Abbreviated for tight spaces: "256K", "25,6 Mio.", "25.6万". */
+  /** Abbreviated for tight spaces: "256K", "256.000", "25.6万" — German and
+   *  Japanese do not abbreviate thousands, so expect this to get wider. */
   compactNumber: (value: number) => string
   /** Grouped in full: "1,234" / "1.234". */
   number: (value: number) => string
-  /** An elapsed span, sub-second in milliseconds: "800ms", "1.5s", "1,5 s". */
+  /** An elapsed span, sub-second in milliseconds: "800ms", "1.5s", "1,5s" —
+   *  only the number is localized, the unit is the SI symbol. */
   duration: (ms: number) => string
 }
 
@@ -86,19 +102,20 @@ const createFormatters = (locale: AppLocale): Formatters => {
   const relativeFormat = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
   const compactFormat = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 })
   const numberFormat = new Intl.NumberFormat(locale)
+  // The number is localized; the unit is the SI symbol, appended by us. This is
+  // the one place the layer does not let CLDR name a unit, and it is deliberate:
+  // `unitDisplay: 'narrow'` for seconds is not stable across ICU builds, so the
+  // same code renders German as "1,5s" on ICU 74 and "1,5 Sek." on ICU 78, and
+  // Japanese loses 秒 going the other way. That variance reaches users through
+  // whatever ICU their browser ships, and it made a hardcoded test assertion
+  // pass locally while failing in CI on the same pinned Bun version. `s` and
+  // `ms` are SI symbols rather than English words, and this is a latency
+  // readout in a tight space, so a fixed suffix is both stabler and narrower.
   const secondsFormat = new Intl.NumberFormat(locale, {
-    style: 'unit',
-    unit: 'second',
-    unitDisplay: 'narrow',
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })
-  const millisecondsFormat = new Intl.NumberFormat(locale, {
-    style: 'unit',
-    unit: 'millisecond',
-    unitDisplay: 'narrow',
-    maximumFractionDigits: 0,
-  })
+  const millisecondsFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
 
   return {
     date: (value) => dateFormat.format(toDate(value)),
@@ -110,7 +127,7 @@ const createFormatters = (locale: AppLocale): Formatters => {
     },
     compactNumber: (value) => compactFormat.format(value),
     number: (value) => numberFormat.format(value),
-    duration: (ms) => (ms < second ? millisecondsFormat.format(ms) : secondsFormat.format(ms / second)),
+    duration: (ms) => (ms < second ? `${millisecondsFormat.format(ms)}ms` : `${secondsFormat.format(ms / second)}s`),
   }
 }
 

@@ -191,7 +191,7 @@ Pick by position: `<Trans>` for anything rendered as JSX (it handles inline elem
 
 ### Module scope freezes the locale
 
-`` t`…` `` resolves against the catalog active *where it is evaluated*. At module scope that is import time, so the string pins to the boot locale and never follows a language change. One rule covers every case: **module scope declares `` msg`…` `` descriptors; the point of use resolves them with `i18n._(descriptor)`.**
+`` t`…` `` resolves against the catalog active _where it is evaluated_. At module scope that is import time, so the string pins to the boot locale and never follows a language change. One rule covers every case: **module scope declares `` msg`…` `` descriptors; the point of use resolves them with `i18n._(descriptor)`.**
 
 - **Constant tables** (error copy, option labels) hold descriptors and the render site resolves them. See `src/lib/otp-error-messages.ts`.
 - **Zod schemas and other builders** become factories taking `i18n: I18n`, called during render. See `src/components/onboarding/onboarding-name-step.tsx`. Don't reach for `useMemo` — `i18n` is a stable singleton, so the only usable dependency is `i18n.locale`, which `exhaustive-deps` rejects as redundant.
@@ -206,12 +206,18 @@ Every rendered date, relative time, number, and duration goes through `src/i18n/
 
 ```tsx
 const formatters = useFormatters()
-formatters.relativeTime(device.lastSeen)   // "2 hours ago" / "vor 2 Stunden" / "2 時間前"
-formatters.compactNumber(usedTokens)       // "256K" / "256.000" / "25.6万"
-formatters.duration(reasoningTime)         // "1.5s" / "1,5s" / "1.5秒"
+formatters.relativeTime(device.lastSeen) // "2 hours ago" / "vor 2 Stunden" / "2 時間前"
+formatters.compactNumber(usedTokens) // "256K" / "256.000" / "25.6万"
+formatters.duration(reasoningTime) // "1.5s" / "1,5s" / "1.5s"
 ```
 
-**Never format inline.** A bare `Intl.NumberFormat('en', …)` pins English; a bare `value.toLocaleString()` silently uses the *host* locale rather than the app's. Both bugs shipped before THU-809.
+`duration` is the one place the layer does not let CLDR name the unit. `unitDisplay: 'narrow'` for
+seconds is not stable across ICU builds — the same code renders German as `1,5s` on ICU 74 and
+`1,5 Sek.` on ICU 78 — so only the number is localized and `s`/`ms` are appended as SI symbols.
+Never pin CLDR-derived output in a doc, a JSDoc example, or an assertion; assert the behaviour
+under test (the decimal separator here) instead of the suffix.
+
+**Never format inline.** A bare `Intl.NumberFormat('en', …)` pins English; a bare `value.toLocaleString()` silently uses the _host_ locale rather than the app's. Both bugs shipped before THU-809.
 
 **The hook is not optional.** Lingui's `I18nProvider` re-renders only components that read its context, so a component formatting off a module-level `getActiveLocale()` keeps rendering the outgoing locale after a language switch. `useFormatters()` subscribes via `useActiveLocale()`; `getFormatters` is memoized per locale, so its result is referentially stable and safe in a dependency array.
 
@@ -226,7 +232,7 @@ Expect output to vary more than English suggests: German and Japanese don't abbr
 ### Constraints
 
 - **No `select` / `selectOrdinal`.** The `po-gettext` catalog format cannot express them (see the rationale in `lingui.config.ts`). Plurals use `<Plural>` / `plural()`, which map to native gettext plural forms.
-- **Don't reword while extracting.** The English source *is* the id, so a copy edit orphans its translations — and 30 Playwright selectors in `e2e/` match on English text. Copy changes belong in their own commit.
+- **Don't reword while extracting.** The English source _is_ the id, so a copy edit orphans its translations — and 30 Playwright selectors in `e2e/` match on English text. Copy changes belong in their own commit.
 - **Thrown Errors stay English; the display boundary translates.** Localizing internal control flow buys nothing. Code-mapped user copy (`otp-error-messages.ts`) is display, not control flow, and is translated.
 - **Model-facing text stays English**: widget contracts in `src/widgets/*/instructions.ts`, skill instructions, system prompts, and the citation/widget schema messages. One language means no translation drift in behaviour-critical prompts.
 - **Dev-only surfaces are excluded** in `lingui.config.ts` (`src/devtools/**`, `src/settings/dev-settings.tsx`).

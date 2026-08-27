@@ -506,6 +506,7 @@ msgstr "Conversations"
 msgid "Chats in a project inherit its instructions."
 msgstr "Les conversations d'un projet héritent de ses instructions."
 
+#: src/components/upgrade-required.tsx
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
 msgstr "Rechercher des mises à jour"
@@ -545,6 +546,7 @@ msgid "Checking..."
 msgstr "Vérification..."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
+#: src/components/upgrade-required.tsx
 msgid "Checking…"
 msgstr "Vérification…"
 
@@ -1323,6 +1325,10 @@ msgstr "Télécharger l'application"
 msgid "Download HTML"
 msgstr "Télécharger le HTML"
 
+#: src/components/upgrade-required.tsx
+msgid "Download update"
+msgstr "Télécharger la mise à jour"
+
 #: src/components/update-notification.tsx
 msgid "Downloading update..."
 msgstr "Téléchargement de la mise à jour..."
@@ -1330,6 +1336,10 @@ msgstr "Téléchargement de la mise à jour..."
 #: src/settings/app-version-section.tsx
 msgid "Downloading update... {downloadProgress}%"
 msgstr "Téléchargement de la mise à jour... {downloadProgress} %"
+
+#: src/components/upgrade-required.tsx
+msgid "Downloading…"
+msgstr "Téléchargement…"
 
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "Drop"
@@ -2551,6 +2561,7 @@ msgid "Registering this device and detecting your account status."
 msgstr "Enregistrement de cet appareil et détection de l'état de votre compte."
 
 #: src/components/storage-unavailable-screen.tsx
+#: src/components/upgrade-required.tsx
 msgid "Reload"
 msgstr "Recharger"
 
@@ -2651,9 +2662,14 @@ msgstr "Réinitialisation..."
 msgid "Restart Now"
 msgstr "Redémarrer maintenant"
 
+#: src/components/upgrade-required.tsx
+msgid "Restart to update"
+msgstr "Redémarrer pour mettre à jour"
+
 #: src/components/chat/error-message.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
+#: src/components/upgrade-required.tsx
 msgid "Retry"
 msgstr "Réessayer"
 

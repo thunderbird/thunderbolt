@@ -494,6 +494,7 @@ msgstr "チャット"
 msgid "Chats in a project inherit its instructions."
 msgstr "プロジェクト内のチャットは、そのプロジェクトの指示を継承します。"
 
+#: src/components/upgrade-required.tsx
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
 msgstr "更新を確認"
@@ -533,6 +534,7 @@ msgid "Checking..."
 msgstr "確認中..."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
+#: src/components/upgrade-required.tsx
 msgid "Checking…"
 msgstr "確認中…"
 
@@ -1311,6 +1313,10 @@ msgstr "アプリをダウンロード"
 msgid "Download HTML"
 msgstr "HTML をダウンロード"
 
+#: src/components/upgrade-required.tsx
+msgid "Download update"
+msgstr "更新をダウンロード"
+
 #: src/components/update-notification.tsx
 msgid "Downloading update..."
 msgstr "更新をダウンロードしています..."
@@ -1318,6 +1324,10 @@ msgstr "更新をダウンロードしています..."
 #: src/settings/app-version-section.tsx
 msgid "Downloading update... {downloadProgress}%"
 msgstr "更新をダウンロードしています... {downloadProgress}%"
+
+#: src/components/upgrade-required.tsx
+msgid "Downloading…"
+msgstr "ダウンロード中…"
 
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "Drop"
@@ -2539,6 +2549,7 @@ msgid "Registering this device and detecting your account status."
 msgstr "このデバイスを登録し、アカウントの状態を確認しています。"
 
 #: src/components/storage-unavailable-screen.tsx
+#: src/components/upgrade-required.tsx
 msgid "Reload"
 msgstr "再読み込み"
 
@@ -2639,9 +2650,14 @@ msgstr "リセットしています..."
 msgid "Restart Now"
 msgstr "今すぐ再起動"
 
+#: src/components/upgrade-required.tsx
+msgid "Restart to update"
+msgstr "再起動して更新"
+
 #: src/components/chat/error-message.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
+#: src/components/upgrade-required.tsx
 msgid "Retry"
 msgstr "再試行"
 

@@ -37,6 +37,7 @@ import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
+import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import type { AppDeps } from '@/types'
 import { Elysia } from 'elysia'
@@ -175,6 +176,7 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createPowerSyncRoutes(auth, settings, database))
+      .use(createMiniAppRoutes(auth, settings))
       .use(createEncryptionRoutes(auth, database))
       .use(createAccountRoutes(auth, database))
       .use(createAgentsRoutes(auth))

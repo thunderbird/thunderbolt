@@ -24,6 +24,8 @@ const signToken = (token: string): string => {
 }
 
 const powersyncSettings: Settings = {
+  miniAppAudiences: '',
+  miniAppTokenExpirySeconds: 300,
   fireworksApiKey: '',
   mistralApiKey: '',
   anthropicApiKey: '',

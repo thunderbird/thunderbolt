@@ -94,6 +94,28 @@ const settingsSchema = z
     powersyncJwtSecret: z.string().default(''),
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
 
+    /**
+     * Mini App audiences, as JSON: `{ "<appId>": { "origin": "...", "secret": "..." } }`.
+     *
+     * The backend deliberately owns only the security-relevant half of the Mini
+     * App registry. `origin` becomes the `aud` of the identity token we mint, so
+     * it has to be operator-declared — a client that could name its own audience
+     * could mint a token for any app. Presentation (name, icon, description)
+     * stays in the frontend registry, because signing doesn't need an icon.
+     *
+     * Secrets are per app rather than one shared key: with a single symmetric
+     * secret, any Mini App could forge a token for any other. Asymmetric keys
+     * plus a JWKS endpoint are the upgrade once apps are built by third parties
+     * and secret distribution stops being a deploy-time detail.
+     */
+    miniAppAudiences: z.string().default(''),
+    /**
+     * Lifetime of a Mini App identity token. Short by intent — the guest asks
+     * for a new one as it nears expiry, so the blast radius of a leaked token is
+     * minutes rather than the length of a session.
+     */
+    miniAppTokenExpirySeconds: z.coerce.number().int().positive().default(300),
+
     // CORS settings — comma-separated list of exact origins.
     // `corsAllowHeaders` is no longer consumed by any production mount: both
     // the main backend and the PostHog proxy use `cors({ allowedHeaders: true })`,
@@ -171,6 +193,42 @@ const settingsSchema = z
 
 export type Settings = z.infer<typeof settingsSchema>
 
+/** One Mini App the host may mint identity tokens for. */
+export type MiniAppAudience = {
+  /** Exact origin of the app; becomes the token's `aud`. */
+  origin: string
+  /** HS256 signing secret, unique to this app. */
+  secret: string
+}
+
+/**
+ * Parse `miniAppAudiences`, dropping anything malformed rather than throwing.
+ *
+ * A typo in one app's entry shouldn't take down token minting for the others,
+ * and a dropped entry fails closed: that app simply can't get a token, which
+ * surfaces as a clear 404 rather than a token signed with `undefined`.
+ */
+export const getMiniAppAudiences = (settings: Pick<Settings, 'miniAppAudiences'>): Record<string, MiniAppAudience> => {
+  if (!settings.miniAppAudiences) {
+    return {}
+  }
+  // `JSON.parse` throws on malformed input, so it can't go straight into
+  // `safeParse` — a stray comma in an env var would take the process down.
+  const parsed = z
+    .string()
+    .transform((raw, ctx) => {
+      try {
+        return JSON.parse(raw) as unknown
+      } catch {
+        ctx.addIssue({ code: 'custom', message: 'miniAppAudiences is not valid JSON' })
+        return z.NEVER
+      }
+    })
+    .pipe(z.record(z.string(), z.object({ origin: z.string().url(), secret: z.string().min(16) })))
+    .safeParse(settings.miniAppAudiences)
+  return parsed.success ? parsed.data : {}
+}
+
 /**
  * Parse and validate environment variables into settings
  */
@@ -214,6 +272,15 @@ const parseSettings = (): Settings => {
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
     powersyncUrl: process.env.POWERSYNC_URL || (isDevelopment ? 'http://localhost:8080' : ''),
+    miniAppAudiences:
+      process.env.MINI_APP_AUDIENCES ||
+      (isDevelopment
+        ? JSON.stringify({
+            'finance-model': { origin: 'http://localhost:5174', secret: 'finance-model-dev-secret-change-me' },
+            'patient-journeys': { origin: 'http://localhost:5180', secret: 'patient-journeys-dev-secret-change' },
+          })
+        : ''),
+    miniAppTokenExpirySeconds: Number(process.env.MINI_APP_TOKEN_EXPIRY_SECONDS) || 300,
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),

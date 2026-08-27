@@ -82,6 +82,14 @@ export const miniAppGuestMethods = {
   chatOpen: 'ui/open-chat',
   /** The user selected (or deselected) text inside the app. */
   selectionChanged: 'ui/notifications/selection-changed',
+  /**
+   * "My identity token is about to expire; give me another."
+   *
+   * Guest-initiated rather than pushed on a timer: only the app knows whether
+   * it still needs one, and a host pushing tokens into a frame that stopped
+   * caring is just a token with a longer life and a wider blast radius.
+   */
+  requestAuthToken: 'ui/request-auth-token',
 } as const
 
 /** Methods Thunderbolt sends to the guest app. */
@@ -124,6 +132,12 @@ export const miniAppGuestCapabilitiesSchema = z
      * an app that never sends selections shouldn't have the host waiting for them.
      */
     selection: z.boolean().optional(),
+    /**
+     * The app wants to know who the user is. Declared rather than assumed so an
+     * app that needs no identity never causes a token to be minted — the cheapest
+     * secret is the one that was never issued.
+     */
+    auth: z.boolean().optional(),
   })
   .default({})
 
@@ -133,6 +147,12 @@ export type MiniAppHostCapabilities = {
   context: boolean
   /** The host honours `ui/open-chat`. */
   chat: boolean
+  /**
+   * The host can mint identity tokens for this app. False when the deployment
+   * has no audience configured for it, so a guest can tell "not set up" apart
+   * from "request failed" and say something useful instead of retrying.
+   */
+  auth: boolean
 }
 
 /**
@@ -237,7 +257,15 @@ export type MiniAppSelectionChanged = z.infer<typeof selectionChangedNotificatio
  * Every message the host accepts from a guest. A discriminated union on `method`
  * so an unknown method fails parsing here rather than deeper in the bridge.
  */
+/** `ui/request-auth-token` — guest → host request. No params. */
+export const requestAuthTokenSchema = envelopeSchema.extend({
+  id: z.number(),
+  method: z.literal(miniAppGuestMethods.requestAuthToken),
+  params: z.object({}).default({}),
+})
+
 export const miniAppGuestMessageSchema = z.discriminatedUnion('method', [
+  requestAuthTokenSchema,
   initializeRequestSchema,
   contextUpdateNotificationSchema,
   chatOpenRequestSchema,
@@ -248,6 +276,7 @@ export type MiniAppGuestMessage = z.infer<typeof miniAppGuestMessageSchema>
 export type MiniAppInitializeRequest = z.infer<typeof initializeRequestSchema>
 export type MiniAppContextUpdate = z.infer<typeof contextUpdateNotificationSchema>
 export type MiniAppChatOpenRequest = z.infer<typeof chatOpenRequestSchema>
+export type MiniAppRequestAuthToken = z.infer<typeof requestAuthTokenSchema>
 
 /** Successful reply to a guest request. */
 export type MiniAppHostResult = {
@@ -439,12 +468,29 @@ export const parseGuestResult = (data: unknown): { id: string | number; result: 
   return parsed.success ? { id: parsed.data.id, result: parsed.data.result } : null
 }
 
+/**
+ * A Thunderbolt-issued identity token, scoped to one app.
+ *
+ * The app validates `iss`, `aud`, signature and expiry, and MUST check `aud`
+ * matches its own origin — a token minted for a different app is signed with a
+ * different secret and should fail verification anyway, but checking the claim
+ * is what makes that a deliberate property rather than a lucky one.
+ */
+export type MiniAppAuthToken = {
+  /** Compact JWS. */
+  token: string
+  /** ISO 8601. Absolute rather than a duration, so no clock drift on the wire. */
+  expiresAt: string
+}
+
 /** Result of a successful `initialize`. */
 export type MiniAppInitializeResult = {
   protocolVersion: number
   hostName: string
   capabilities: MiniAppHostCapabilities
   hostContext: MiniAppHostContext
+  /** Present when the guest declared the `auth` capability and minting worked. */
+  auth?: MiniAppAuthToken
 }
 
 /** The host's current appearance, so the guest can match it. */
@@ -488,6 +534,12 @@ export const miniAppRpcErrors = {
   methodNotFound: -32601,
   /** Guest asked for a wire version this host cannot speak. */
   unsupportedProtocolVersion: -32000,
+  /**
+   * No identity token could be issued — this deployment has no audience for the
+   * app, or minting failed. Distinct from a transport error so a guest can stop
+   * asking rather than retrying a request that will never succeed.
+   */
+  authUnavailable: -32001,
 } as const
 
 /**

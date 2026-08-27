@@ -38,6 +38,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { fetchMiniAppToken } from './mini-app-auth'
 import { useMiniAppStore } from './mini-app-store'
 import type { MiniAppDefinition } from './registry'
 
@@ -123,6 +125,7 @@ export type UseMiniAppBridgeOptions = {
 
 export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) => {
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
   const [status, setStatus] = useState<MiniAppBridgeStatus>('connecting')
   // Selection is host UI state, not model context — it drives the floating
   // control and is only promoted into the conversation when the user acts on it.
@@ -165,7 +168,10 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * an external system (the embedded frame).
    */
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
+    // Async because two branches mint tokens over the network. `addEventListener`
+    // ignores the returned promise, which is fine — nothing awaits the handler,
+    // and each branch posts its own reply when it resolves.
+    const handleMessage = async (event: MessageEvent) => {
       const trust = { expectedWindow: frameRef.current?.contentWindow ?? null, expectedOrigin: app.origin }
 
       // A reply to something we asked. Checked first: results carry no `method`,
@@ -199,15 +205,21 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           return
         }
         guestCapabilitiesRef.current = message.params.capabilities
+
+        // Only minted when the guest declared the capability — an app that never
+        // asked shouldn't cause a credential to exist.
+        const auth = message.params.capabilities.auth ? await fetchMiniAppToken(cloudUrl, app.id) : null
+
         const result: MiniAppInitializeResult = {
           protocolVersion: miniAppProtocolVersion,
           hostName: 'Thunderbolt',
-          capabilities: { context: true, chat: true },
+          capabilities: { context: true, chat: true, auth: auth !== null },
           hostContext: {
             theme: resolveTheme(theme),
             locale: navigator.language,
             platform: resolveHostPlatform(),
           },
+          ...(auth ? { auth } : {}),
         }
         post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result })
         setStatus('ready')
@@ -221,6 +233,21 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
 
       if (message.method === miniAppGuestMethods.selectionChanged) {
         setSelection(message.params.selection)
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.requestAuthToken) {
+        const refreshed = await fetchMiniAppToken(cloudUrl, app.id)
+        post(
+          refreshed
+            ? { jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: refreshed }
+            : {
+                jsonrpc: '2.0',
+                protocol: miniAppProtocolMarker,
+                id: message.id,
+                error: { code: miniAppRpcErrors.authUnavailable, message: 'no identity token available' },
+              },
+        )
         return
       }
 
@@ -241,7 +268,10 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       }
       pending.clear()
     }
-  }, [app.origin, post, setContext, theme])
+    // `cloudUrl` and `app.id` are dependencies, not incidental reads: minting a
+    // token against a stale backend URL is the kind of bug that only shows up
+    // once settings load a beat after first render. Re-subscribing is cheap.
+  }, [app.id, app.origin, cloudUrl, post, setContext, theme])
 
   /**
    * Fail visibly when the guest never handshakes — an app that isn't running

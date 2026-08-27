@@ -28,6 +28,25 @@ const contextUpdate = {
 }
 
 describe('parseGuestMessage', () => {
+  it('accepts ui/request-auth-token, defaulting its empty params', () => {
+    const parsed = parseGuestMessage({
+      jsonrpc: '2.0',
+      protocol: 'thunderbolt-miniapp',
+      id: 7,
+      method: 'ui/request-auth-token',
+    })
+    expect(parsed?.method).toBe('ui/request-auth-token')
+  })
+
+  it('rejects a token request without an id, which would have nowhere to reply', () => {
+    const parsed = parseGuestMessage({
+      jsonrpc: '2.0',
+      protocol: 'thunderbolt-miniapp',
+      method: 'ui/request-auth-token',
+    })
+    expect(parsed).toBeNull()
+  })
+
   it('accepts a well-formed initialize request', () => {
     const parsed = parseGuestMessage(initialize)
     expect(parsed?.method).toBe('ui/initialize')

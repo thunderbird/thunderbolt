@@ -228,10 +228,14 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     void revalidateSilently()
   }
 
-  const modelItems = useMemo((): ComboboxItem[] => {
+  // Not memoized: `i18n` is a stable singleton, so a memo keyed on it would
+  // never invalidate and the localized "Custom" entry would keep the outgoing
+  // locale after a language switch. See the Localization section in AGENTS.md.
+  const buildModelItems = (): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
     return provider === 'thunderbolt' ? items : [...items, customModelItem(i18n)]
-  }, [catalog.models, provider, i18n])
+  }
+  const modelItems = buildModelItems()
   const supportsTools =
     !selectedModelId ||
     selectedModelId === 'custom' ||

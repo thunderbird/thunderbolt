@@ -20,7 +20,7 @@ import { needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 
 export type ModelSelectorProps = {
   models: Model[]
@@ -122,7 +122,12 @@ export const ModelSelector = ({
   variant = 'pill',
 }: ModelSelectorProps) => {
   const { t, i18n } = useLingui()
-  const groupedItems = useMemo(() => categorizeModels(models, chatThread, i18n), [models, chatThread, i18n])
+  // Computed during render rather than memoized: `useLingui` returns the same
+  // `i18n` singleton across a language switch, so an `i18n` dependency never
+  // invalidates and the disabled-group labels would stay in the outgoing
+  // locale until `models`/`chatThread` happened to change. Partitioning the
+  // model list is cheap; see the Localization section in AGENTS.md.
+  const groupedItems = categorizeModels(models, chatThread, i18n)
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div

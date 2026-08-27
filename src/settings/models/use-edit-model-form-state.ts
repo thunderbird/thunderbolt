@@ -79,13 +79,17 @@ export const useEditModelFormState = (model: Model) => {
   const isAutoFetchArmed = apiKeyEdit.kind === 'replace' || (!model.apiKey && watchedUrl !== (model.url ?? ''))
 
   useAutoCatalogFetch({ armed: isAutoFetchArmed, request: catalogRequest, catalog })
-  const modelItems = useMemo((): ComboboxItem[] => {
+  // Not memoized: `i18n` is a stable singleton, so a memo keyed on it would
+  // never invalidate and the localized "Custom" entry would keep the outgoing
+  // locale after a language switch. See the Localization section in AGENTS.md.
+  const buildModelItems = (): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
     if (!catalog.models.some((available) => available.id === model.model)) {
       items.unshift({ id: model.model, label: model.model })
     }
     return [...items, customModelItem(i18n)]
-  }, [model.model, catalog.models, i18n])
+  }
+  const modelItems = buildModelItems()
   const connection = useModelConnectionTest({
     provider: model.provider,
     model: watchedModel,

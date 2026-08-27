@@ -3,18 +3,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { unitDefaultsForRegion } from '@/i18n/region-units'
+import { updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { getClock } from '@/testing-library'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { type ReactNode } from 'react'
 
 // Per docs/development/testing.md: do NOT mock shared modules. All app-internal hooks
-// (useSettings, useCountryUnits, useUnitsOptions, useSyncEnabledToggle, etc.) use their
-// real implementations and run against the test DB / mock HTTP client provided by
-// createTestProvider. `posthog-js` is already globally mocked by src/testing-library.ts.
+// (useSettings, useSyncEnabledToggle, etc.) use their real implementations and run
+// against the test DB / mock HTTP client provided by createTestProvider.
+// `posthog-js` is already globally mocked by src/testing-library.ts.
 
 import { SignInModalProvider } from '@/contexts'
 import type { AuthClient } from '@/contexts'
@@ -124,6 +127,29 @@ describe('PreferencesSettingsPage — Localization layout', () => {
 
     expect(location.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(language.compareDocumentPosition(distance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('offers no Date Format row', () => {
+    renderPage(createMockAuthClient({ session: authedSession }))
+
+    expect(screen.queryByText('Date Format')).toBeNull()
+  })
+
+  it('labels the stored units through Intl rather than a fetched catalogue', async () => {
+    // These strings used to arrive as English from a backend JSON, so they never
+    // passed through a catalogue at all. Names come from the catalogue now and
+    // symbols from CLDR.
+    await updateSettings(getDb(), { distance_unit: 'metric', temperature_unit: 'c', time_format: '24h' })
+
+    renderPage(createMockAuthClient({ session: authedSession }))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByLabelText('Distance unit')).toHaveTextContent('Metric (km)')
+    expect(screen.getByLabelText('Temperature unit')).toHaveTextContent('Celsius (°C)')
+    // A rendered example, not the stored '24h' token.
+    expect(screen.getByLabelText('Time format')).toHaveTextContent('13:30')
   })
 })
 

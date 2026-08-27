@@ -2030,7 +2030,6 @@ msgstr "Loading this app's pairing identity…"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
-#: src/settings/preferences.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "Loading…"
@@ -2902,6 +2901,10 @@ msgstr "Search chats, models, skills, agents…"
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr "Search connections"
+
+#: src/settings/preferences.tsx
+#~ msgid "Search currencies..."
+#~ msgstr "Search currencies..."
 
 #: src/settings/preferences.tsx
 msgid "Search currencies…"

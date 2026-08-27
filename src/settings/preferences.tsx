@@ -12,7 +12,6 @@ import type { LocationData } from '@/hooks/use-location-search'
 import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { clearLocalData } from '@/lib/cleanup'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
@@ -51,7 +50,8 @@ import { usePostHogClient } from '@/lib/posthog'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import { useLanguageSetting } from '@/hooks/use-language-setting'
 import { localeForRegion } from '@/i18n/country-language'
-import { unitDefaultsForRegion, type RegionUnitDefaults } from '@/i18n/region-units'
+import { activeCurrencyCodes, unitDefaultsForRegion, type RegionUnitDefaults } from '@/i18n/region-units'
+import { useUnitLabels } from '@/i18n/use-unit-labels'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
 import type { AppLocale } from '@shared/i18n/locales'
 import { plural } from '@lingui/core/macro'
@@ -169,6 +169,12 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
   }
 }
 
+/** Every option each unit setting offers. Two-element unions, so they are
+ *  literals rather than anything that has to be fetched. */
+const distanceUnitOptions = ['metric', 'imperial'] as const
+const temperatureUnitOptions = ['c', 'f'] as const
+const timeFormatOptions = ['12h', '24h'] as const
+
 export default function PreferencesSettingsPage() {
   const { t } = useLingui()
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
@@ -265,7 +271,7 @@ export default function PreferencesSettingsPage() {
   const activeLanguageLabel = languageLabel(activeLanguage)
   const suggestedLanguageLabel = pendingLanguage ? languageLabel(pendingLanguage) : ''
 
-  const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
+  const unitLabels = useUnitLabels()
 
   const handleEnableTelemetry = async (featureName?: string | null) => {
     await dataCollection.setValue(true)
@@ -542,18 +548,22 @@ export default function PreferencesSettingsPage() {
 
   const currencyItems = useMemo(
     () =>
-      (unitsOptionsData?.currencies ?? []).map((c) => ({
-        id: c.code,
-        label: `${c.name} (${c.symbol})`,
-        filterValue: `${c.code} ${c.symbol} ${c.name}`,
+      activeCurrencyCodes.map((code) => ({
+        id: code,
+        label: unitLabels.currency(code),
+        // Searchable by code as well as by name, since plenty of people know
+        // their currency as "SEK" rather than by its spelled-out name.
+        filterValue: `${code} ${unitLabels.currency(code)}`,
       })),
-    [unitsOptionsData?.currencies],
+    [unitLabels],
   )
 
-  const currencyDisplayValue = useMemo(() => {
-    const c = unitsOptionsData?.currencies?.find((c) => c.code === currency.value)
-    return c ? `${c.name} (${c.symbol})` : ''
-  }, [unitsOptionsData?.currencies, currency.value])
+  /**
+   * Rendered from the stored code rather than looked up in `currencyItems`, so
+   * a currency that has dropped off the region table still displays. Bulgaria
+   * moved to the euro, but anyone who picked BGN before still holds it.
+   */
+  const currencyDisplayValue = currency.value ? unitLabels.currency(currency.value) : ''
 
   // Bound so the catalog placeholders are named rather than positional.
   const importSourceEmail = pendingImport?.sourceEmail ?? ''
@@ -748,15 +758,14 @@ export default function PreferencesSettingsPage() {
                 await distanceUnit.setValue(v)
                 trackEvent('settings_localization_update')
               }}
-              disabled={unitsOptionsLoading}
             >
               <SelectTrigger className="w-auto rounded-lg" aria-label={t`Distance unit`}>
-                <SelectValue placeholder={t`Loading…`} />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(unitsOptionsData?.units ?? []).map((u) => (
-                  <SelectItem key={u} value={u}>
-                    {u.charAt(0).toUpperCase() + u.slice(1)}
+                {distanceUnitOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {unitLabels.distance(option)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -781,15 +790,14 @@ export default function PreferencesSettingsPage() {
                 await temperatureUnit.setValue(v)
                 trackEvent('settings_localization_update')
               }}
-              disabled={unitsOptionsLoading}
             >
               <SelectTrigger className="w-auto rounded-lg" aria-label={t`Temperature unit`}>
-                <SelectValue placeholder={t`Loading…`} />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(unitsOptionsData?.temperature ?? []).map((t) => (
-                  <SelectItem key={t.symbol} value={t.symbol}>
-                    {t.name}
+                {temperatureUnitOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {unitLabels.temperature(option)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -814,15 +822,14 @@ export default function PreferencesSettingsPage() {
                 await timeFormat.setValue(v)
                 trackEvent('settings_localization_update')
               }}
-              disabled={unitsOptionsLoading}
             >
               <SelectTrigger className="w-auto rounded-lg" aria-label={t`Time format`}>
-                <SelectValue placeholder={t`Loading…`} />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(unitsOptionsData?.timeFormat ?? []).map((f) => (
-                  <SelectItem key={f} value={f}>
-                    {f}
+                {timeFormatOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {unitLabels.timeFormat(option)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -852,13 +859,10 @@ export default function PreferencesSettingsPage() {
               displayValue={currencyDisplayValue || undefined}
               id="localization-currency-trigger"
               aria-labelledby="localization-currency-label localization-currency-trigger"
-              placeholder={t`Loading…`}
               searchPlaceholder={t`Search currencies…`}
-              loading={unitsOptionsLoading}
               className="w-auto"
               contentClassName="w-[300px]"
               align="end"
-              disabled={unitsOptionsLoading}
             />
           </div>
         </div>

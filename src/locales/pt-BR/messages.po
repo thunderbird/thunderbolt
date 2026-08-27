@@ -2042,7 +2042,6 @@ msgstr "Carregando a identidade de emparelhamento deste app…"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
-#: src/settings/preferences.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "Carregando…"
@@ -2914,6 +2913,10 @@ msgstr "Buscar conversas, modelos, habilidades, agentes…"
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr "Buscar conexões"
+
+#: src/settings/preferences.tsx
+#~ msgid "Search currencies..."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Search currencies…"

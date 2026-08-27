@@ -248,10 +248,14 @@ export default function PreferencesSettingsPage() {
     data_collection: false,
     experimental_feature_tasks: false,
     experimental_feature_voice: false,
-    distance_unit: 'imperial',
-    temperature_unit: 'f',
-    time_format: '12h',
-    currency: 'USD',
+    // Empty, not a US default. `useUnitDefaults` seeds these asynchronously, so
+    // an existing user who skipped the location step can reach this page before
+    // the write lands — and a confidently wrong "Imperial (mi)" is worse than a
+    // control that is briefly blank.
+    distance_unit: '',
+    temperature_unit: '',
+    time_format: '',
+    currency: '',
   })
 
   const { language, setLanguage, resetLanguage } = useLanguageSetting()

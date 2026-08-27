@@ -6,6 +6,7 @@ import { unitDefaultsForRegion } from '@/i18n/region-units'
 import { updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { getClock } from '@/testing-library'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -116,6 +117,13 @@ describe('PreferencesSettingsPage — Localization layout', () => {
     await teardownTestDatabase()
   })
 
+  // Reconciled defaults, fresh per test: one test below writes unit settings,
+  // and the next asserts they are unset.
+  beforeEach(async () => {
+    await resetTestDatabase()
+    await reconcileDefaults(getDb())
+  })
+
   afterEach(() => {
     cleanup()
   })
@@ -127,6 +135,20 @@ describe('PreferencesSettingsPage — Localization layout', () => {
 
     expect(location.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(language.compareDocumentPosition(distance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('shows no unit until one is seeded, rather than a US default', async () => {
+    // `useUnitDefaults` seeds asynchronously and is not mounted here, so this is
+    // the state an existing user with unset units sees while the write lands.
+    // Blank is honest; "Imperial (mi)" to a German user is not.
+    renderPage(createMockAuthClient({ session: authedSession }))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByLabelText('Distance unit')).toHaveTextContent('')
+    expect(screen.getByLabelText('Temperature unit')).toHaveTextContent('')
+    expect(screen.getByLabelText('Time format')).toHaveTextContent('')
   })
 
   it('offers no Date Format row', () => {

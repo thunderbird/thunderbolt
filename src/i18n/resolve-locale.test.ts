@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { negotiableLocales, resolveLocale } from './resolve-locale'
+import { negotiableLocales, resolveLocale, settableLocales } from './resolve-locale'
 
 describe('resolveLocale', () => {
   test('explicit supported setting wins over browser languages', () => {
@@ -14,8 +14,12 @@ describe('resolveLocale', () => {
     expect(resolveLocale('pt-BR', ['en'])).toBe('pt-BR')
   })
 
-  test('honors the en-XA pseudo-locale as an explicit setting', () => {
-    expect(resolveLocale('en-XA', ['de'])).toBe('en-XA')
+  // `language` is synced, so a dev-build selection would otherwise land on that
+  // developer's production devices and render the whole UI as pseudo-text. Tests
+  // run with `import.meta.env.DEV` unset, i.e. against the production contract.
+  test('refuses the en-XA pseudo-locale outside dev builds', () => {
+    expect(settableLocales).not.toContain('en-XA')
+    expect(resolveLocale('en-XA', ['de'])).toBe('de')
   })
 
   test('unsupported setting falls through to browser negotiation', () => {

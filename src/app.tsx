@@ -51,6 +51,9 @@ import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupported-listener'
 import { useCredentialEvents } from './hooks/use-credential-events'
+import { useMigrationRecoveryKey } from './hooks/use-migration-recovery-key'
+import { RecoveryKeyDialog } from './components/recovery-key-dialog'
+import { UnsavedRecoveryPhrasePrompt } from './components/unsaved-recovery-phrase-prompt'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
 import { MCPProvider } from './lib/mcp-provider'
@@ -290,6 +293,7 @@ export const App = () => {
   useState(markAppMounted)
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
   const { revokedDeviceOpen } = useCredentialEvents()
+  const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
   useAppVersionUnsupportedListener()
 
   // Show the Tauri window after React mounts and CSS is applied.
@@ -355,6 +359,13 @@ export const App = () => {
                             <ContentViewProvider>
                               <ExternalLinkDialogProvider>
                                 <AppContent initData={initData} />
+                                {/* Catches every phrase that was minted but never
+                                    confirmed — reload, crash, or a dialog that
+                                    never got the chance to render. Must live
+                                    INSIDE HttpClientProvider: it rotates the key
+                                    through the http client, and `useHttpClient`
+                                    throws outside its provider. */}
+                                <UnsavedRecoveryPhrasePrompt />
                               </ExternalLinkDialogProvider>
                             </ContentViewProvider>
                           </HapticsProvider>
@@ -379,6 +390,17 @@ export const App = () => {
         {/* The upgrade blocker replaces the whole app, so it must win over the
             revoked-device modal that renders outside renderAppContent. */}
         <RevokedDeviceModal open={revokedDeviceOpen && !upgradeRequired} />
+        {/* Seamless v1→v2 migration completed at init — show the new recovery
+            phrase once. Blocked while the upgrade screen owns the viewport; the
+            phrase is not lost in that case, because the mint marked it pending
+            and `UnsavedRecoveryPhrasePrompt` picks it up once the app is usable. */}
+        <RecoveryKeyDialog
+          open={migrationRecoveryKey != null && !upgradeRequired}
+          recoveryKey={migrationRecoveryKey ?? ''}
+          title="Save your new recovery phrase"
+          description="Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
+          onDone={clearMigrationRecoveryKey}
+        />
       </LazyMotion>
     </ThemeProvider>
   )

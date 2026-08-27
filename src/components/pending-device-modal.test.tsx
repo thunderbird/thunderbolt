@@ -33,11 +33,20 @@ mock.module('@/db/powersync/sync-state', () => ({
 }))
 
 // These tests verify E2EE pending device behavior — encryption must be enabled.
-const realEncryption = await import('@/db/encryption')
+// Spread into a fresh object: mocking the '@/db/encryption' barrel mutates the
+// re-exported '@/db/encryption/config' live bindings in place, so capture a
+// value-copy of both and restore them in afterAll — otherwise isEncryptionEnabled
+// leaks into config-dependent files. See testing.md §65.
+const realEncryption = { ...(await import('@/db/encryption')) }
+const realEncryptionConfig = { ...(await import('@/db/encryption/config')) }
 mock.module('@/db/encryption', () => ({
   ...realEncryption,
   isEncryptionEnabled: () => true,
 }))
+afterAll(() => {
+  mock.module('@/db/encryption', () => realEncryption)
+  mock.module('@/db/encryption/config', () => realEncryptionConfig)
+})
 
 mock.module('@/hooks/use-approve-device', () => ({
   useApproveDevice: () => ({ mutate: mock(), isPending: false }),

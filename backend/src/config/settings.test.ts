@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { createECDH } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import {
   clearSettingsCache,
@@ -510,6 +511,86 @@ describe('Config Settings', () => {
     it('rejects malformed numeric values like "0,2,0"', () => {
       process.env.MIN_APP_VERSION = '0,2,0'
       expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+  })
+
+  describe('org escrow settings', () => {
+    const savedEnv: Record<string, string | undefined> = {}
+    const envKeys = ['ORG_ESCROW_ENABLED', 'ORG_ESCROW_PUBLIC_KEY']
+
+    /** A real, on-curve uncompressed P-256 point — generated so no key is hardcoded here. */
+    const validPublicKey = (): string => {
+      const ecdh = createECDH('prime256v1')
+      ecdh.generateKeys()
+      return ecdh.getPublicKey().toString('base64')
+    }
+
+    beforeEach(() => {
+      clearSettingsCache()
+      for (const key of envKeys) {
+        savedEnv[key] = process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of envKeys) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('defaults to disabled with an empty key', () => {
+      delete process.env.ORG_ESCROW_ENABLED
+      delete process.env.ORG_ESCROW_PUBLIC_KEY
+      const settings = getSettings()
+      expect(settings.orgEscrowEnabled).toBe(false)
+      expect(settings.orgEscrowPublicKey).toBe('')
+    })
+
+    it('accepts a valid uncompressed P-256 point when enabled', () => {
+      const publicKey = validPublicKey()
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      process.env.ORG_ESCROW_PUBLIC_KEY = publicKey
+      const settings = getSettings()
+      expect(settings.orgEscrowEnabled).toBe(true)
+      expect(settings.orgEscrowPublicKey).toBe(publicKey)
+    })
+
+    it('rejects enabling escrow without a key', () => {
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      delete process.env.ORG_ESCROW_PUBLIC_KEY
+      expect(() => getSettings()).toThrow(/ORG_ESCROW_PUBLIC_KEY is not set/)
+    })
+
+    it('rejects a key of the wrong length', () => {
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      process.env.ORG_ESCROW_PUBLIC_KEY = Buffer.from('too short').toString('base64')
+      expect(() => getSettings()).toThrow(/65-byte raw uncompressed P-256 point/)
+    })
+
+    it('rejects a compressed point', () => {
+      const compressed = Buffer.concat([Buffer.from([0x02]), Buffer.alloc(64, 1)])
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      process.env.ORG_ESCROW_PUBLIC_KEY = compressed.toString('base64')
+      expect(() => getSettings()).toThrow(/UNCOMPRESSED P-256 point/)
+    })
+
+    it('rejects a correctly shaped point that is not on the curve', () => {
+      const offCurve = Buffer.from(validPublicKey(), 'base64')
+      offCurve[64] ^= 0xff
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      process.env.ORG_ESCROW_PUBLIC_KEY = offCurve.toString('base64')
+      expect(() => getSettings()).toThrow(/not on the curve/)
+    })
+
+    it('ignores a malformed key while escrow is disabled', () => {
+      process.env.ORG_ESCROW_ENABLED = 'false'
+      process.env.ORG_ESCROW_PUBLIC_KEY = 'not-a-key'
+      expect(getSettings().orgEscrowEnabled).toBe(false)
     })
   })
 

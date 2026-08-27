@@ -15,6 +15,8 @@ export {
   deleteRevokedBridgeDevice,
   setDeviceNodeId,
   getTrustedNodeIds,
+  listEnvelopeCapableDeviceIds,
+  listEnvelopeCapableDevices,
   countActiveDevices,
 } from './devices'
 
@@ -44,6 +46,19 @@ export {
   hasEnvelopesForUser,
   upsertEnvelope,
   deleteEnvelope,
+  getOrgEnvelope,
+  upsertOrgEnvelope,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
+  replaceEncryptionMetadata,
+  flipSchemeToV2,
+  bumpKeyVersion,
+  setPrimaryKeyId,
+  getWrappedKey,
+  listWrappedKeys,
+  insertWrappedKey,
+  updateWrappedKey,
+  issueChallengeNonce,
+  consumeChallengeNonce,
+  deleteExpiredOrConsumedNonces,
 } from './encryption'

@@ -20,6 +20,7 @@ import { Elysia } from 'elysia'
 export const createConfigRoutes = (settings: Settings) =>
   new Elysia({ prefix: '/config' }).onError(safeErrorHandler).get('/', () => ({
     e2eeEnabled: settings.e2eeEnabled,
+    orgEscrowEnabled: settings.orgEscrowEnabled,
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,

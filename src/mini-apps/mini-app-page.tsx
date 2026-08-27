@@ -17,6 +17,7 @@ import type { MiniAppSelectionItem } from '@shared/mini-app-protocol'
 import { MarqueeOverlay } from './marquee-overlay'
 import { MiniAppFrame } from './mini-app-frame'
 import { SelectionPopover } from './selection-popover'
+import { toSelectionPassages } from './selection-passage'
 import { ToolApprovalBar } from './tool-approval-bar'
 import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
@@ -119,7 +120,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     if (!picked || picked.length === 0) {
       return
     }
-    attachToComposer(picked.map((item) => `${item.label}\n${item.text}`))
+    attachToComposer(toSelectionPassages(picked))
     exitSelectMode()
   }, [picked, attachToComposer, exitSelectMode])
 

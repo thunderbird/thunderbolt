@@ -763,7 +763,7 @@ export default function PreferencesSettingsPage() {
                 trackEvent('settings_localization_update')
               }}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Distance unit`}>
+              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Distance unit`} data-testid="distance-unit">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -795,7 +795,11 @@ export default function PreferencesSettingsPage() {
                 trackEvent('settings_localization_update')
               }}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Temperature unit`}>
+              <SelectTrigger
+                className="w-auto rounded-lg"
+                aria-label={t`Temperature unit`}
+                data-testid="temperature-unit"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -827,7 +831,7 @@ export default function PreferencesSettingsPage() {
                 trackEvent('settings_localization_update')
               }}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Time format`}>
+              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Time format`} data-testid="time-format">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -862,6 +866,7 @@ export default function PreferencesSettingsPage() {
               }}
               displayValue={currencyDisplayValue || undefined}
               id="localization-currency-trigger"
+              data-testid="currency"
               aria-labelledby="localization-currency-label localization-currency-trigger"
               searchPlaceholder={t`Search currencies…`}
               className="w-auto"

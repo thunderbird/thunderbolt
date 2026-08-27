@@ -6,8 +6,8 @@ Shared Docker images used by all deployment targets (docker-compose, k8s, Fargat
 
 | Dockerfile | Base | Purpose |
 |-----------|------|---------|
-| `backend.Dockerfile` | `oven/bun:latest` | Bun API server with Drizzle migration entrypoint |
-| `frontend.Dockerfile` | `oven/bun` → `nginx:alpine` | Vite SPA build, served by nginx with COEP/COOP headers |
+| `backend.Dockerfile` | `oven/bun:1.3.14` | Bun API server with Drizzle migration entrypoint |
+| `frontend.Dockerfile` | `oven/bun` → `nginxinc/nginx-unprivileged:alpine` | Vite SPA build, served by nginx with COEP/COOP headers |
 | `postgres.Dockerfile` | `postgres:18-alpine` | PostgreSQL with PowerSync replication role init |
 | `keycloak.Dockerfile` | `keycloak:26.0` | Keycloak with enterprise realm auto-import |
 | `powersync.Dockerfile` | `journeyapps/powersync-service` | PowerSync with sync rules config |

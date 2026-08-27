@@ -534,6 +534,31 @@ describe('createChatInstance — retry policy', () => {
     }
   })
 
+  it('never auto-regenerates a pi-ai flattened JSON 429', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate, trackEvent } = createRetryHarness()
+
+    try {
+      await finishWithError(new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'))
+      await getClock().runAllAsync()
+
+      const session = useChatStore.getState().sessions.get(sessionId)!
+      expect(session.retryCount).toBe(0)
+      expect(session.retriesExhausted).toBe(true)
+      expect(regenerate).not.toHaveBeenCalled()
+      expect(trackEvent).toHaveBeenCalledWith(
+        'chat_turn_error',
+        expect.objectContaining({ kind: 'rate-limit', status: 429 }),
+      )
+      expect(trackEvent).toHaveBeenCalledWith(
+        'chat_retries_exhausted',
+        expect.objectContaining({ reason: 'rate-limit', attempts: 1 }),
+      )
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
   it('manual regenerate resets the turn budget', async () => {
     const { getTurnBudget, instance, regenerate, wakeAdapterReconnect } = createRetryHarness()
     const exhaustedBudget = exhaustTurnBudget(getTurnBudget())

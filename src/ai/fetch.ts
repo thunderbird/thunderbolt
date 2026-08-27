@@ -11,6 +11,7 @@ import { buildMiniAppToolsPromptSection, createMiniAppTools } from '@/mini-apps/
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
+import { isSystemGlmModel, submitGlmStepUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import {
@@ -58,10 +59,10 @@ import {
   APICallError,
   convertToModelMessages,
   createUIMessageStream,
-  InvalidToolInputError,
-  NoSuchToolError,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
+  InvalidToolInputError,
+  NoSuchToolError,
   smoothStream,
   stepCountIs,
   streamText,
@@ -465,6 +466,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
           baseURL: client.getBaseURL()!,
           apiKey: 'thunderbolt-managed',
           fetch: wrappedFetch,
+          ...(isSystemGlmModel(modelConfig) && { includeUsage: true }),
         })
         return tinfoil(modelConfig.model)
       }
@@ -848,49 +850,32 @@ export const aiFetchStreamingResponse = async ({
         },
 
         abortSignal,
-        onStepFinish: (step) => {
+        onStepFinish: async (step) => {
           telemetry?.recordStep()
-          console.info('step', {
-            text: step.text,
-            finishReason: step.finishReason,
-            toolCallCount: step.toolCalls?.length || 0,
-          })
-
-          // When a step includes tool calls, log their names and arguments for easier debugging
-          step.toolCalls?.forEach((call, idx) => {
-            console.groupCollapsed(`Tool call #${idx + 1}: ${call.toolName}`)
-            console.log('Arguments:', call)
-            console.groupEnd()
-          })
+          try {
+            await submitGlmStepUsageReceipt({ model, step, httpClient })
+          } catch {
+            // Receipt submission failures must not interrupt the chat stream.
+          }
         },
-        onFinish: (finish) => {
-          console.info('finish', {
-            text: finish.text,
-            finishReason: finish.finishReason,
-            toolCallCount: finish.toolCalls?.length || 0,
-            usage: finish.totalUsage,
-          })
-        },
-        onError: (error) => {
-          console.error('streamText error', error)
+        onError: ({ error }) => {
+          console.error('streamText error', { kind: classifyErrorKind(error) ?? 'unknown' })
         },
 
         // Handle malformed tool calls from models with weaker tool-calling capabilities
-        experimental_repairToolCall: async ({ toolCall, error }) => {
-          // Don't attempt to repair calls to non-existent tools
+        experimental_repairToolCall: async ({ error }) => {
           if (NoSuchToolError.isInstance(error)) {
-            console.warn(`Tool "${toolCall.toolName}" does not exist, skipping`)
+            telemetry?.recordToolCallValidationFailure('no_such_tool')
+            console.warn('Tool call references unknown tool, skipping')
             return null
           }
-
-          // Log invalid tool arguments and skip the call
           if (InvalidToolInputError.isInstance(error)) {
-            console.warn(`Invalid arguments for tool "${toolCall.toolName}": ${error.message}`)
+            telemetry?.recordToolCallValidationFailure('invalid_tool_input')
+            console.warn('Tool call has invalid input, skipping')
             return null
           }
-
-          // For other errors, skip the tool call
-          console.warn('Tool call error for "%s":', toolCall.toolName, error)
+          telemetry?.recordToolCallValidationFailure('other')
+          console.warn('Tool call failed validation, skipping')
           return null
         },
       })

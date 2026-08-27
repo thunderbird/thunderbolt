@@ -35,8 +35,8 @@ Behind the scenes, the compose file boots:
 
 | Dockerfile                    | Base                               | Purpose                                                               |
 | ----------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
-| `docker/frontend.Dockerfile`  | `oven/bun` → `nginx:alpine`        | Vite SPA with COEP/COOP headers                                       |
-| `docker/backend.Dockerfile`   | `oven/bun:latest`                  | Elysia API; entrypoint runs `bun drizzle-kit migrate` before starting |
+| `docker/frontend.Dockerfile`  | `oven/bun` → `nginxinc/nginx-unprivileged:alpine` | Vite SPA with COEP/COOP headers                                       |
+| `docker/backend.Dockerfile`   | `oven/bun:1.3.14`                  | Elysia API; entrypoint runs `bun drizzle-kit migrate` before starting |
 | `docker/postgres.Dockerfile`  | `postgres:18-alpine`               | PostgreSQL with PowerSync replication role (`deploy/docker/postgres-init/01-powersync.sh`) |
 | `docker/keycloak.Dockerfile`  | `keycloak:26.0`                    | OIDC/SAML with the `thunderbolt` realm pre-imported                   |
 | `docker/powersync.Dockerfile` | `journeyapps/powersync-service`    | PowerSync service with the synced-table rules; also stores its bucket data in Postgres (`powersync_storage` DB) |

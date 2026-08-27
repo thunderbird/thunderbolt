@@ -13,7 +13,7 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-type RateLimitTier = 'inference' | 'pro' | 'auth'
+type RateLimitTier = 'inference' | 'receipt' | 'pro' | 'auth'
 
 type RateLimitTierConfig = {
   max: number
@@ -31,6 +31,7 @@ export type IpRateLimitSettings = RateLimitSettings & {
 /** Hardcoded per-tier limits. */
 const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
   inference: { max: 60, durationSecs: 60 },
+  receipt: { max: 100, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
 }
@@ -137,6 +138,15 @@ export const createInferenceRateLimit = (database: typeof DbType, settings: Rate
     return new Elysia()
   }
   const limiter = createLimiter(database, 'inference')
+  return createUserRateLimitMiddleware(limiter)
+}
+
+/** Create rate limit middleware for inference receipt routes (keyed by user). */
+export const createInferenceReceiptRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  const limiter = createLimiter(database, 'receipt')
   return createUserRateLimitMiddleware(limiter)
 }
 

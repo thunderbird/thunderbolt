@@ -3,7 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { maxRetries } from '@/chats/chat-instance'
-import { type ChatErrorKind, getChatErrorKind, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
+import {
+  type ChatErrorKind,
+  getChatErrorKind,
+  getInferenceQuotaWindow,
+  type InferenceQuotaWindow,
+  isContextOverflowError,
+  isRateLimitError,
+} from '@/lib/error-utils'
 import { Loader2 } from 'lucide-react'
 import { memo } from 'react'
 
@@ -16,6 +23,10 @@ const causeSpecificErrorMessages: Partial<Record<ChatErrorKind, string>> = {
   'connection-lost':
     'The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed.',
 }
+const inferenceQuotaMessages = {
+  '5h': "You've reached your AI usage limit for the current 5-hour window. Try again later.",
+  '7d': "You've reached your AI usage limit for the current 7-day window. Try again later.",
+} satisfies Record<InferenceQuotaWindow, string>
 
 /** Resolve final chat error copy after automatic retries stop. */
 const getFinalChatErrorMessage = (error?: Error | null): string => {
@@ -36,14 +47,24 @@ type ErrorMessageProps = {
 export const ErrorMessage = memo(
   ({ retryCount, retriesExhausted, error, onRetry, deliveryExhausted }: ErrorMessageProps) => {
     const rateLimited = isRateLimitError(error)
+    const inferenceQuotaWindow = getInferenceQuotaWindow(error)
 
     // Show rate limit message immediately — don't auto-retry since the server told us to slow down
     if (rateLimited) {
       return (
         <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
-          <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
-            Too many requests. Please try again in a moment.
-          </p>
+          {inferenceQuotaWindow ? (
+            <div className="space-y-1">
+              <p className="font-medium text-foreground text-[length:var(--font-size-body)]">AI usage limit reached</p>
+              <p className="text-foreground text-[length:var(--font-size-body)]">
+                {inferenceQuotaMessages[inferenceQuotaWindow]}
+              </p>
+            </div>
+          ) : (
+            <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
+              Too many requests. Please try again in a moment.
+            </p>
+          )}
         </div>
       )
     }

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import {
   clearSettingsCache,
   getWaitlistAutoApproveDomains,
@@ -99,13 +100,22 @@ describe('Config Settings', () => {
       expect(isOriginAllowed('http://localhost:1420', settings)).toBe(true)
     })
 
-    it('should expose proxy and server timing to cross-origin clients by default', () => {
+    it('should expose proxy timing, server timing, and inference receipts to cross-origin clients by default', () => {
       delete process.env.CORS_EXPOSE_HEADERS
       const settings = getSettings()
 
       expect(settings.corsExposeHeaders.split(',')).toContain('X-Proxy-Timing')
       expect(settings.corsExposeHeaders.split(',')).toContain('Server-Timing')
+      expect(settings.corsExposeHeaders.split(',')).toContain('X-Inference-Usage-Receipt')
       expect(settings.corsExposeHeaders.split(',')).not.toContain('Timing-Allow-Origin')
+    })
+
+    it('should keep the manual CORS expose headers override in sync with runtime defaults', () => {
+      delete process.env.CORS_EXPOSE_HEADERS
+      const envExample = readFileSync(new URL('../../.env.example', import.meta.url), 'utf8')
+      const documentedValue = envExample.match(/^# CORS_EXPOSE_HEADERS=(.+)$/m)?.[1]
+
+      expect(documentedValue?.split(',')).toEqual(getSettings().corsExposeHeaders.split(','))
     })
 
     it('should not match non-Tauri origins by default', () => {
@@ -567,6 +577,73 @@ describe('Config Settings', () => {
       process.env.API_KEY_DEFAULT_EXPIRES_IN = 'never'
       expect(() => getSettings()).toThrow()
     })
+  })
+
+  describe('inference quota settings', () => {
+    const quotaEnvKeys = [
+      'INFERENCE_QUOTA_ANONYMOUS_5H_CENTS',
+      'INFERENCE_QUOTA_ANONYMOUS_7D_CENTS',
+      'INFERENCE_QUOTA_REGISTERED_5H_CENTS',
+      'INFERENCE_QUOTA_REGISTERED_7D_CENTS',
+    ] as const
+
+    let savedEnv: Partial<Record<(typeof quotaEnvKeys)[number], string>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of quotaEnvKeys) {
+        if (process.env[key] !== undefined) {
+          savedEnv[key] = process.env[key]
+        }
+        delete process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of quotaEnvKeys) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('uses the documented anonymous and registered defaults', () => {
+      const settings = getSettings()
+
+      expect(settings.inferenceQuotaAnonymousFiveHourCents).toBe(10)
+      expect(settings.inferenceQuotaAnonymousSevenDayCents).toBe(60)
+      expect(settings.inferenceQuotaRegisteredFiveHourCents).toBe(1_500)
+      expect(settings.inferenceQuotaRegisteredSevenDayCents).toBe(7_500)
+    })
+
+    it('coerces positive integer-cent overrides', () => {
+      process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS = '11'
+      process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS = '61'
+      process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS = '1501'
+      process.env.INFERENCE_QUOTA_REGISTERED_7D_CENTS = '7501'
+
+      const settings = getSettings()
+
+      expect(settings.inferenceQuotaAnonymousFiveHourCents).toBe(11)
+      expect(settings.inferenceQuotaAnonymousSevenDayCents).toBe(61)
+      expect(settings.inferenceQuotaRegisteredFiveHourCents).toBe(1_501)
+      expect(settings.inferenceQuotaRegisteredSevenDayCents).toBe(7_501)
+    })
+
+    it.each(quotaEnvKeys.map((key) => [key] as const))(
+      'rejects zero, negative, fractional, and nonnumeric %s',
+      (key) => {
+        for (const invalid of ['0', '-1', '1.5', 'invalid']) {
+          process.env[key] = invalid
+          clearSettingsCache()
+          expect(() => getSettings()).toThrow()
+        }
+      },
+    )
   })
 
   describe('PowerSync settings', () => {

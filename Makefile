@@ -12,9 +12,11 @@ COMPOSE ?= $(shell command -v podman-compose > /dev/null 2>&1 && podman info > /
 # Isolate Docker volumes/networks per clone so sibling working trees (e.g. ~/code/thunderbolt
 # and ~/code/some-test-dir/thunderbolt) don't share Postgres data. Defaults to "<parent>-<repo>";
 # override with `COMPOSE_PROJECT_NAME=foo make up` if you want a fixed name.
-# Sanitize each segment so paths with spaces or other special characters (e.g. "~/My Projects/thunderbolt")
-# produce a valid Docker Compose project name.
-COMPOSE_PROJECT_NAME ?= $(shell basename "$$(cd .. && pwd)" | sed 's/[^a-zA-Z0-9._-]/-/g')-$(shell basename "$$(pwd)" | sed 's/[^a-zA-Z0-9._-]/-/g')
+# Sanitize each segment so paths with spaces, uppercase letters, or other special
+# characters (e.g. "~/My Projects/Thunderbolt") produce a valid Docker Compose
+# project name. Lowercase first so the sed step can assert a-z only, instead of
+# allowing A-Z through and relying on tr to have already run.
+COMPOSE_PROJECT_NAME ?= $(shell basename "$$(cd .. && pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')-$(shell basename "$$(pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
 export COMPOSE_PROJECT_NAME
 
 # Default target
@@ -163,12 +165,23 @@ run:
 	@# Kill any existing processes on the ports first
 	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@-lsof -ti:1420 | xargs kill -9 2>/dev/null || true
-	@# Start backend in background and frontend in foreground
+	@# Start backend in background and frontend in foreground.
+	@# Ctrl+C signals the whole process group, so every server gets SIGINT at once
+	@# and make waits for this shell before returning the terminal. The INT trap
+	@# keeps this shell alive past the interrupt (without it the shell dies with
+	@# the signal), and the port poll waits for the backend's ENTIRE process tree:
+	@# $$BACKEND_PID is the `bun run dev` script wrapper, which exits before the
+	@# `bun --watch src/index.ts` server beneath it has printed its graceful
+	@# shutdown, so a bare `wait` returns too early and that line lands on top of
+	@# the next shell prompt — looking like a hang that needs an extra Enter.
 	cd backend && bun run dev & \
 	BACKEND_PID=$$!; \
+	trap 'kill $$BACKEND_PID 2>/dev/null' INT TERM; \
 	echo "$(GREEN)✓ Backend started (PID: $$BACKEND_PID)$(NC)"; \
 	sleep 2; \
-	bun run dev || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+	bun run dev; \
+	kill $$BACKEND_PID 2>/dev/null; wait; \
+	for i in $$(seq 1 50); do lsof -ti:8000 >/dev/null 2>&1 || break; sleep 0.1; done
 
 # Alias for run
 dev: run

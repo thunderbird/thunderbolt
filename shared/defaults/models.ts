@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { hashValues } from '../lib/hash'
+import { managedGlmIdentity } from '../inference-usage'
 
 /**
  * Shape of a shipped model default. Structurally a subset of the frontend
@@ -140,8 +141,7 @@ export const defaultModelGlm52: SharedModel = {
   name: 'GLM 5.2',
   // `provider` is the internal transport. The UI presents system-managed
   // Tinfoil models as Thunderbolt so infrastructure does not leak into branding.
-  provider: 'tinfoil',
-  model: 'glm-5-2',
+  ...managedGlmIdentity,
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,

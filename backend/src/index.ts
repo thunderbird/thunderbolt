@@ -13,9 +13,15 @@ import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
+import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
+import {
+  createAuthIpRateLimit,
+  createInferenceRateLimit,
+  createInferenceReceiptRateLimit,
+  createProRateLimit,
+} from '@/middleware/rate-limit'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
@@ -119,7 +125,25 @@ export const createApp = async (deps?: AppDeps) => {
           dnsLookup: deps?.dnsLookup,
         }),
       )
-      .use(createTinfoilRoutes({ auth, fetchFn, logger: appLogger, rateLimit: proRateLimit }))
+      .use(
+        createTinfoilRoutes({
+          auth,
+          database,
+          fetchFn,
+          logger: appLogger,
+          usageLogger: appLogger,
+          rateLimit: proRateLimit,
+        }),
+      )
+      .use(
+        createInferenceUsageReceiptRoutes({
+          auth,
+          database,
+          secret: settings.betterAuthSecret,
+          logger: appLogger,
+          rateLimit: createInferenceReceiptRateLimit(database, rateLimitSettings),
+        }),
+      )
       .use(
         createUniversalProxyWsRoutes({
           auth,
@@ -133,6 +157,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(
         createInferenceRoutes({
           auth,
+          database,
           fetchFn: deps?.fetchFn,
           logger: appLogger,
           rateLimit: createInferenceRateLimit(database, rateLimitSettings),

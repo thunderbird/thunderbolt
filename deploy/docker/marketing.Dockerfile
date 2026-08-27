@@ -18,11 +18,14 @@ WORKDIR /app/web
 RUN bun run build
 
 # Stage 2: Serve with nginx
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 
 COPY deploy/config/marketing-nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/web/dist /usr/share/nginx/html
 
-EXPOSE 80
+# Keep the final-stage user explicit for Semgrep's container check.
+USER nginx
+
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

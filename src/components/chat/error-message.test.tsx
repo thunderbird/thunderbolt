@@ -49,11 +49,12 @@ describe('ErrorMessage', () => {
   })
 
   describe('rate limit errors', () => {
-    it('should show rate limit message for JSON 429 status', () => {
+    it('keeps the generic rate-limit copy for an unrelated JSON 429', () => {
       const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))
       render(<ErrorMessage retryCount={0} retriesExhausted={false} error={error} />)
 
       expect(screen.getByText('Too many requests. Please try again in a moment.')).toBeTruthy()
+      expect(screen.queryByText('AI usage limit reached')).toBeNull()
     })
 
     it('should show rate limit message for JSON 429 statusCode', () => {
@@ -69,6 +70,47 @@ describe('ErrorMessage', () => {
 
       expect(screen.getByText('Too many requests. Please try again in a moment.')).toBeTruthy()
     })
+
+    const quotaCases = [
+      {
+        label: 'direct pi-ai 5-hour quota error',
+        error: new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'),
+        message: "You've reached your AI usage limit for the current 5-hour window. Try again later.",
+      },
+      {
+        label: 'serialized SecureClient 7-day quota error',
+        error: new Error(
+          JSON.stringify({
+            error: JSON.stringify({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '7d' } }),
+            status: 429,
+            isRetryable: true,
+            kind: 'rate-limit',
+          }),
+        ),
+        message: "You've reached your AI usage limit for the current 7-day window. Try again later.",
+      },
+    ]
+
+    for (const { label, error, message } of quotaCases) {
+      it(`shows personalized copy without retry controls for a ${label}`, () => {
+        const onRetry = mock(() => {})
+        render(<ErrorMessage retryCount={1} retriesExhausted={false} error={error} onRetry={onRetry} />)
+
+        const title = screen.getByText('AI usage limit reached')
+        const body = screen.getByText(message)
+
+        for (const element of [title, body]) {
+          expect(element).toHaveClass('text-foreground')
+          expect(element).not.toHaveClass('text-warning-foreground')
+          expect(element).not.toHaveClass('text-amber-500/90')
+          expect(element).not.toHaveClass('text-amber-500/80')
+        }
+        expect(screen.queryByText('Too many requests. Please try again in a moment.')).toBeNull()
+        expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()
+        expect(screen.queryByText('Retry')).toBeNull()
+        expect(screen.queryByText(/Retrying/)).toBeNull()
+      })
+    }
 
     it('should not show retry button or spinner for rate limit errors', () => {
       const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))

@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { z } from 'zod'
+import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
-const defaultCorsExposeHeaders =
-  'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing'
+const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,${inferenceUsageReceiptHeader}`
 
 /**
  * Settings schema for environment variables validation
@@ -126,6 +126,12 @@ const settingsSchema = z
     // Rate limiting
     rateLimitEnabled: z.boolean().default(true),
 
+    // Managed inference rolling quotas (integer cents)
+    inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
+    inferenceQuotaAnonymousSevenDayCents: z.coerce.number().int().positive().default(60),
+    inferenceQuotaRegisteredFiveHourCents: z.coerce.number().int().positive().default(1500),
+    inferenceQuotaRegisteredSevenDayCents: z.coerce.number().int().positive().default(7500),
+
     // Trusted proxy (controls which proxy headers are trusted for IP extraction)
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
     // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
@@ -221,6 +227,10 @@ const parseSettings = (): Settings => {
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+    inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
+    inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
+    inferenceQuotaRegisteredFiveHourCents: process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS,
+    inferenceQuotaRegisteredSevenDayCents: process.env.INFERENCE_QUOTA_REGISTERED_7D_CENTS,
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
     enabledAgents: process.env.ENABLED_AGENTS || '',
     allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',

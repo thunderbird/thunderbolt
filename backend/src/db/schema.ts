@@ -19,3 +19,6 @@ export * from './encryption-schema'
 
 // Re-export OTP challenge schema (session binding for OTP verification)
 export * from './otp-challenge-schema'
+
+// Re-export inference accounting tables (server-only, not synced via PowerSync)
+export * from './inference-usage-schema'

@@ -5,11 +5,15 @@
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
+import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { mockAuth } from '@/test-utils/mock-auth'
+import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
   createInferenceRateLimit,
+  createInferenceReceiptRateLimit,
   createProRateLimit,
   type IpRateLimitSettings,
   type RateLimitSettings,
@@ -129,6 +133,62 @@ describe('Rate Limiting', () => {
       // User B should still be allowed
       const allowedResponse = await appB.handle(new Request('http://localhost/v1/test'))
       expect(allowedResponse.status).toBe(200)
+    })
+  })
+
+  describe('inference receipt rate limiting', () => {
+    it('allows full receipt and pro throughput independently before rate limiting each bucket', async () => {
+      const userId = 'receipt-pro-shared-user'
+      const receiptApp = createTestApp(database, enabledSettings, createInferenceReceiptRateLimit, userId)
+      const proApp = createTestApp(database, enabledSettings, createProRateLimit, userId)
+
+      for (let i = 0; i < 100; i++) {
+        expect((await receiptApp.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
+        expect((await proApp.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
+      }
+
+      expect((await receiptApp.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
+      expect((await proApp.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
+    })
+
+    it('does not consume the inference request bucket', async () => {
+      const userId = 'receipt-inference-shared-user'
+      const receiptApp = createTestApp(database, enabledSettings, createInferenceReceiptRateLimit, userId)
+      const inferenceApp = createTestApp(database, enabledSettings, createInferenceRateLimit, userId)
+
+      const receiptResponse = await receiptApp.handle(new Request('http://localhost/v1/test'))
+      const inferenceResponse = await inferenceApp.handle(new Request('http://localhost/v1/test'))
+
+      expect(receiptResponse.headers.get('ratelimit-remaining')).toBe('99')
+      expect(inferenceResponse.headers.get('ratelimit-remaining')).toBe('59')
+    })
+
+    it('enforces the authenticated receipt route without rate-limiting a sibling route', async () => {
+      const app = new Elysia()
+        .use(
+          createInferenceUsageReceiptRoutes({
+            auth: mockAuth,
+            database,
+            secret: 'rate-limit-test-secret',
+            rateLimit: createInferenceReceiptRateLimit(database, enabledSettings),
+          }),
+        )
+        .get('/unrelated', () => 'ok')
+      const createReceiptRequest = () =>
+        new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+
+      for (let i = 0; i < 100; i++) {
+        expect((await app.handle(createReceiptRequest())).status).toBe(400)
+      }
+
+      expect((await app.handle(createReceiptRequest())).status).toBe(429)
+      const unrelatedResponse = await app.handle(new Request('http://localhost/unrelated'))
+      expect(unrelatedResponse.status).toBe(200)
+      expect(unrelatedResponse.headers.get('ratelimit-limit')).toBeNull()
     })
   })
 

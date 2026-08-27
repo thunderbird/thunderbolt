@@ -52,7 +52,7 @@ All deployment paths use the same Docker images:
 
 | Service        | Image                         | Purpose                                                                                                        | Port |
 | -------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------- | ---- |
-| **Frontend**   | `docker/frontend.Dockerfile`  | Vite SPA served by nginx with COEP/COOP headers for PowerSync WASM                                             | 80   |
+| **Frontend**   | `docker/frontend.Dockerfile`  | Vite SPA served by nginx with COEP/COOP headers for PowerSync WASM                                             | 8080 |
 | **Backend**    | `docker/backend.Dockerfile`   | Bun + Elysia API server with auto-migrations on startup                                                        | 8000 |
 | **PostgreSQL** | `docker/postgres.Dockerfile`  | Database with WAL logical replication for PowerSync; hosts both app data and the `powersync_storage` bucket DB | 5432 |
 | **Keycloak**   | `docker/keycloak.Dockerfile`  | OIDC identity provider with pre-configured realm                                                               | 8080 |

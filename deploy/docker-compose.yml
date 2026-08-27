@@ -7,7 +7,7 @@ services:
         VITE_THUNDERBOLT_CLOUD_URL: "/v1"
         VITE_AUTH_MODE: "sso"
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-3000}:8080"
     depends_on:
       - backend
 

@@ -27,6 +27,14 @@ mock.module('@lingui/core/macro', () => ({
   defineMessage: linguiMacros.defineMessage,
 }))
 
+// `src/i18n/index.ts` imports the compiled source catalog statically so first
+// paint has real English text. Vite compiles `.po` through @lingui/vite-plugin;
+// bun has no such loader, so the import fails to resolve and every test file
+// that reaches `@/i18n` dies with "Export named 'messages' not found". An empty
+// catalog is the honest stand-in: the identity macros above mean no test reads
+// a catalog anyway, so there is nothing here for a real one to make truer.
+mock.module('@/locales/en/messages.po', () => ({ messages: {} }))
+
 /** Global spy for web-haptics' `trigger` — assert on it to verify haptic
  *  calls (see surface-haptics.test.tsx). Cleared automatically in beforeEach. */
 export const webHapticsTriggerMock = mock(() => Promise.resolve())

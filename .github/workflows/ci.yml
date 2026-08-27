@@ -223,6 +223,13 @@ jobs:
 
       - name: Guard against untransformed Lingui macros in the bundle
         run: |
+          # `grep -r` exits 2 when the directory is missing, and `if` reads any
+          # non-zero as "no match" — so without this check a moved `outDir` would
+          # turn the tripwire into a permanent silent pass.
+          if [ ! -d dist/assets ]; then
+            echo "::error::dist/assets not found — the macro tripwire inspected nothing. Did the build output move?"
+            exit 1
+          fi
           if grep -rl "outside the context of compilation" dist/assets; then
             echo "::error::Untransformed Lingui macro found in the bundle — the Babel macro transform did not run. Check the @rolldown/plugin-babel + linguiTransformerBabelPreset wiring in vite.config.ts."
             exit 1

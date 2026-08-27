@@ -80,7 +80,10 @@ export default defineConfig({
     babelPlugin({ presets: [linguiTransformerBabelPreset()] }),
     // Compiles src/locales/*/messages.po into JS message catalogs on import
     // (the en-XA pseudo-locale is generated from the English source here).
-    lingui(),
+    // `failOnCompileError` is not the default: without it the plugin only warns
+    // on a malformed catalog, so the build stays green and ships the broken
+    // locale — which is what CI's `localization` job claims to prevent.
+    lingui({ failOnCompileError: true }),
     // Include the bundle analyzer plugin only when explicitly requested.
     ...(shouldAnalyze
       ? [

@@ -240,4 +240,3 @@ export type AuthProviderBackendConfig = {
 }
 
 // Re-export types from schemas to maintain backward compatibility
-export type { CountryUnitsData, Currency, DateFormat, TemperatureUnit, UnitsOptionsData } from './schemas/api'

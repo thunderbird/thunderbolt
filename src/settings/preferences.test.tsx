@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { unitDefaultsForRegion } from '@/i18n/region-units'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -127,13 +128,7 @@ describe('PreferencesSettingsPage — Localization layout', () => {
 })
 
 describe('preferencesReducer — location-driven suggestions', () => {
-  const countryUnits = {
-    unit: 'metric',
-    temperature: 'c',
-    timeFormat: '24h',
-    dateFormatExample: 'DD/MM/YYYY',
-    currency: { code: 'EUR', name: 'Euro', symbol: '€' },
-  }
+  const countryUnits = unitDefaultsForRegion('DE')
 
   it('defers the language prompt until the units prompt is answered', () => {
     const suggested = preferencesReducer(initialPreferencesState, {

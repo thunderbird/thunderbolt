@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useDatabase } from '@/contexts'
+import { updateSettings } from '@/dal'
 import { getBrowserLanguages } from '@/i18n'
 import { unitDefaultsForRegion } from '@/i18n/region-units'
 import { useActiveLocale } from '@/i18n/use-active-locale'
+import type { Setting } from '@/types'
 import type { AppLocale } from '@shared/i18n/locales'
 import { useEffect, useEffectEvent } from 'react'
 import { useSettings } from './use-settings'
@@ -49,6 +52,7 @@ export const regionForUnitDefaults = (
  */
 export const useUnitDefaults = () => {
   const locale = useActiveLocale()
+  const db = useDatabase()
   const { locationCountryCode, distanceUnit, temperatureUnit, timeFormat, currency } = useSettings({
     location_country_code: '',
     distance_unit: '',
@@ -57,30 +61,44 @@ export const useUnitDefaults = () => {
     currency: '',
   })
 
-  const settings = [distanceUnit, temperatureUnit, timeFormat, currency]
+  /**
+   * Unset *and* untouched. Judged per setting rather than across the group: a
+   * user who picks a currency by hand should still get the other three seeded.
+   */
+  const isUnseeded = (setting: { rawSetting: Setting | null; isModified: boolean }) =>
+    setting.rawSetting?.value == null && !setting.isModified
+
+  const units = [
+    ['distance_unit', distanceUnit] as const,
+    ['temperature_unit', temperatureUnit] as const,
+    ['time_format', timeFormat] as const,
+    ['currency', currency] as const,
+  ]
+
   const canSeed =
     !locationCountryCode.isLoading &&
-    settings.every((setting) => !setting.isLoading && !setting.isSaving && !setting.isModified) &&
-    settings.some((setting) => setting.rawSetting?.value == null)
+    units.every(([, setting]) => !setting.isLoading && !setting.isSaving) &&
+    units.some(([, setting]) => isUnseeded(setting))
 
   const seedFromRegion = useEffectEvent(() => {
     const region = regionForUnitDefaults(locationCountryCode.rawSetting?.value ?? null, getBrowserLanguages(), locale)
     const defaults = unitDefaultsForRegion(region)
-    const writes: Array<[(typeof settings)[number], string]> = [
-      [distanceUnit, defaults.distanceUnit],
-      [temperatureUnit, defaults.temperatureUnit],
-      [timeFormat, defaults.timeFormat],
-      [currency, defaults.currency],
-    ]
-    // Sequential, not `Promise.all`: each `setValue` wraps itself in a
-    // transaction, and SQLite rejects a second `begin` while one is open.
-    void (async () => {
-      for (const [setting, value] of writes) {
-        if (setting.rawSetting?.value == null) {
-          await setting.setValue(value, { recomputeHash: true })
-        }
-      }
-    })()
+    const valueFor = {
+      distance_unit: defaults.distanceUnit,
+      temperature_unit: defaults.temperatureUnit,
+      time_format: defaults.timeFormat,
+      currency: defaults.currency,
+    }
+
+    // `updateSettings` takes the whole record and wraps it in one transaction.
+    // Writing them one at a time would both fail (SQLite rejects a `begin`
+    // inside an open transaction, so `Promise.all` loses all but the first) and
+    // risk leaving half a region's conventions behind.
+    void updateSettings(
+      db,
+      Object.fromEntries(units.filter(([, setting]) => isUnseeded(setting)).map(([key]) => [key, valueFor[key]])),
+      { recomputeHash: true },
+    )
   })
 
   useEffect(() => {

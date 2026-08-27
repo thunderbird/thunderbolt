@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { extractCountryFromLocation } from '@/lib/country-utils'
+import { useDatabase } from '@/contexts'
+import { updateSettings } from '@/dal'
+import { unitDefaultsForRegion } from '@/i18n/region-units'
 import { useEffect, useReducer } from 'react'
-import { useCountryUnits } from './use-country-units'
 import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
 
@@ -205,30 +206,11 @@ export const useOnboardingState = () => {
     onboarding_current_step: '1',
   })
 
-  const {
-    preferredName,
-    locationName,
-    locationLat,
-    locationLng,
-    locationCountryCode,
-    distanceUnit,
-    temperatureUnit,
-    timeFormat,
-    currency,
-  } = useSettings({
-    preferred_name: '',
-    location_name: '',
-    location_lat: '',
-    location_lng: '',
-    location_country_code: '',
-    distance_unit: 'imperial',
-    temperature_unit: 'f',
-    time_format: '12h',
-    currency: 'USD',
-  })
+  const db = useDatabase()
+  // Only `preferred_name` is read back here; everything else onboarding touches
+  // is write-only and goes through `setValues`.
+  const { preferredName } = useSettings({ preferred_name: '' })
   const { data: integrationStatusData } = useIntegrationStatus()
-
-  const { fetchCountryUnits } = useCountryUnits()
 
   // Sync with saved step on mount
   useEffect(() => {
@@ -286,22 +268,29 @@ export const useOnboardingState = () => {
       dispatch({ type: 'SUBMIT_LOCATION', payload: locationData })
 
       try {
-        // Run sequentially to avoid "cannot start a transaction within a transaction"
-        // (each setValue uses updateSettings which wraps in db.transaction)
-        await locationName.setValue(locationData.locationName)
-        await locationLat.setValue(String(locationData.locationLat))
-        await locationLng.setValue(String(locationData.locationLng))
-        await locationCountryCode.setValue(locationData.locationCountryCode)
+        await updateSettings(db, {
+          location_name: locationData.locationName,
+          location_lat: String(locationData.locationLat),
+          location_lng: String(locationData.locationLng),
+          location_country_code: locationData.locationCountryCode,
+        })
 
-        const country = extractCountryFromLocation(locationData.locationName)
-        if (country) {
-          const countryUnitsData = await fetchCountryUnits(country)
-          if (countryUnitsData) {
-            await distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true })
-            await temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true })
-            await timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true })
-            await currency.setValue(countryUnitsData.currency.code, { recomputeHash: true })
-          }
+        // Applied without a prompt, unlike the same change in preferences: the
+        // user is setting the app up, and their location is a better signal than
+        // whatever `useUnitDefaults` seeded from the browser. `recomputeHash`
+        // keeps them seeded defaults rather than user edits.
+        if (locationData.locationCountryCode) {
+          const units = unitDefaultsForRegion(locationData.locationCountryCode)
+          await updateSettings(
+            db,
+            {
+              distance_unit: units.distanceUnit,
+              temperature_unit: units.temperatureUnit,
+              time_format: units.timeFormat,
+              currency: units.currency,
+            },
+            { recomputeHash: true },
+          )
         }
 
         dispatch({ type: 'SET_SUBMITTING_LOCATION', payload: false })

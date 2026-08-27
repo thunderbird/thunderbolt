@@ -7,19 +7,17 @@ import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
-import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import type { LocationData } from '@/hooks/use-location-search'
+import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
-import { extractCountryFromLocation } from '@/lib/country-utils'
 import { clearLocalData } from '@/lib/cleanup'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
-import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
 import { useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
@@ -52,7 +50,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePostHogClient } from '@/lib/posthog'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import { useLanguageSetting } from '@/hooks/use-language-setting'
-import { localeForCountry } from '@/i18n/country-language'
+import { localeForRegion } from '@/i18n/country-language'
+import { unitDefaultsForRegion, type RegionUnitDefaults } from '@/i18n/region-units'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
 import type { AppLocale } from '@shared/i18n/locales'
 import { plural } from '@lingui/core/macro'
@@ -75,7 +74,7 @@ type PreferencesState = {
   resetDialogOpen: boolean
   deleteAccountDialogOpen: boolean
   localizationDialogOpen: boolean
-  pendingCountryUnits: CountryUnitsData | null
+  pendingCountryUnits: RegionUnitDefaults | null
   languageDialogOpen: boolean
   pendingLanguage: AppLocale | null
 }
@@ -95,7 +94,7 @@ type PreferencesAction =
   | { type: 'RESET_STATE' }
   | {
       type: 'SUGGEST_LOCATION_DEFAULTS'
-      payload: { countryUnits: CountryUnitsData | null; language: AppLocale | null }
+      payload: { countryUnits: RegionUnitDefaults | null; language: AppLocale | null }
     }
   | { type: 'CLOSE_LOCALIZATION_DIALOG' }
   | { type: 'CLOSE_LANGUAGE_DIALOG' }
@@ -207,8 +206,6 @@ export default function PreferencesSettingsPage() {
     ? t`Proxying is required in the web app to bypass browser CORS restrictions.`
     : t`Sign in to enable cloud proxy.`
   const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
-
-  const { fetchCountryUnits } = useCountryUnits()
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
@@ -323,31 +320,28 @@ export default function PreferencesSettingsPage() {
 
   const handleSelectLocation = async (location: LocationData) => {
     const wasSet = !!locationName.value
+    const previousRegion = locationCountryCode.value
 
-    // Get current country to compare
-    const currentCountry = extractCountryFromLocation(locationName.value || '')
-    const newCountry = extractCountryFromLocation(location.name)
-
-    await Promise.all([
-      locationName.setValue(location.name),
-      locationLat.setValue(String(location.coordinates.lat)),
-      locationLng.setValue(String(location.coordinates.lng)),
-      locationCountryCode.setValue(location.countryCode),
-    ])
+    await updateSettings(db, {
+      location_name: location.name,
+      location_lat: String(location.coordinates.lat),
+      location_lng: String(location.coordinates.lng),
+      location_country_code: location.countryCode,
+    })
 
     trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set')
 
-    if (!newCountry || currentCountry === newCountry) {
+    if (!location.countryCode || previousRegion === location.countryCode) {
       return
     }
 
-    // The new country may imply different units and a different UI language.
+    // The new region may imply different units and a different UI language.
     // Both are suggestions, never applied without confirmation.
-    const suggestedLanguage = localeForCountry(newCountry)
+    const suggestedLanguage = localeForRegion(location.countryCode)
     dispatch({
       type: 'SUGGEST_LOCATION_DEFAULTS',
       payload: {
-        countryUnits: await fetchCountryUnits(newCountry),
+        countryUnits: unitDefaultsForRegion(location.countryCode),
         language: suggestedLanguage && suggestedLanguage !== activeLanguage ? suggestedLanguage : null,
       },
     })
@@ -358,13 +352,18 @@ export default function PreferencesSettingsPage() {
       return
     }
 
-    // Apply all localization settings with recomputeHash to establish new baselines
-    await Promise.all([
-      distanceUnit.setValue(pendingCountryUnits.unit, { recomputeHash: true }),
-      temperatureUnit.setValue(pendingCountryUnits.temperature, { recomputeHash: true }),
-      timeFormat.setValue(pendingCountryUnits.timeFormat, { recomputeHash: true }),
-      currency.setValue(pendingCountryUnits.currency.code, { recomputeHash: true }),
-    ])
+    // `recomputeHash` establishes the new values as seeded defaults rather than
+    // user edits, so a later reset still means "back to auto".
+    await updateSettings(
+      db,
+      {
+        distance_unit: pendingCountryUnits.distanceUnit,
+        temperature_unit: pendingCountryUnits.temperatureUnit,
+        time_format: pendingCountryUnits.timeFormat,
+        currency: pendingCountryUnits.currency,
+      },
+      { recomputeHash: true },
+    )
 
     dispatch({ type: 'CLOSE_LOCALIZATION_DIALOG' })
     trackEvent('settings_localization_update')
@@ -524,40 +523,23 @@ export default function PreferencesSettingsPage() {
     await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset()])
   }
 
+  /**
+   * Back to auto, exactly like the language row: clearing the value re-arms
+   * `useUnitDefaults`, which re-seeds from the stored location region, then the
+   * browser, then the app locale. The previous version only ever consulted the
+   * location, so a user with no location got nothing back.
+   */
   const handleResetLocalizationSetting = async (settingType: 'distance' | 'temperature' | 'time' | 'currency') => {
-    const settingMap = {
-      distance: { hook: distanceUnit, dataKey: 'unit' as const },
-      temperature: { hook: temperatureUnit, dataKey: 'temperature' as const },
-      time: { hook: timeFormat, dataKey: 'timeFormat' as const },
-      currency: { hook: currency, dataKey: 'currency.code' as const },
+    const hooks = {
+      distance: distanceUnit,
+      temperature: temperatureUnit,
+      time: timeFormat,
+      currency: currency,
     }
-
-    const { hook, dataKey } = settingMap[settingType]
-
-    // If user has a location set, reset to that country's defaults
-    if (locationName.value) {
-      const country = extractCountryFromLocation(locationName.value)
-      if (!country) {
-        return
-      }
-
-      const countryUnitsData = await fetchCountryUnits(country)
-      if (!countryUnitsData) {
-        return
-      }
-
-      // Get the value from countryUnitsData using the dataKey
-      const value = dataKey === 'currency.code' ? countryUnitsData.currency.code : countryUnitsData[dataKey]
-      await hook.setValue(value, { recomputeHash: true })
-    } else {
-      // No location set, fall back to system defaults
-      await hook.reset()
-    }
-
+    await hooks[settingType].reset()
     trackEvent('settings_localization_reset')
   }
 
-  // Currency items and display value (memoized for referential stability)
   const currencyItems = useMemo(
     () =>
       (unitsOptionsData?.currencies ?? []).map((c) => ({

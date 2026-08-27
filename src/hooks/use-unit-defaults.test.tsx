@@ -4,6 +4,7 @@
 
 import { updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { getDb } from '@/db/database'
 import { setActiveLocale } from '@/i18n/active-locale'
 import { settingsTable } from '@/db/tables'
@@ -12,7 +13,7 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { eq } from 'drizzle-orm'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { regionForUnitDefaults, useUnitDefaults } from './use-unit-defaults'
 
 let restoreBrowserLanguages: (() => void) | null = null
@@ -60,8 +61,18 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-afterEach(async () => {
+/**
+ * Every test starts from reconciled defaults. `resetTestDatabase` deliberately
+ * skips reconciliation, and the difference is not cosmetic: an unreconciled row
+ * has no `defaultHash`, which makes `isSettingModified` report false for a value
+ * the user did set. Seeding decisions would then depend on test order.
+ */
+beforeEach(async () => {
   await resetTestDatabase()
+  await reconcileDefaults(getDb())
+})
+
+afterEach(() => {
   restoreBrowserLanguages?.()
   restoreBrowserLanguages = null
   setActiveLocale('en')
@@ -131,7 +142,10 @@ describe('useUnitDefaults', () => {
     expect(await readValue('time_format')).toBe('24h')
   })
 
-  it('leaves a value the user already chose', async () => {
+  it('leaves a value the user already chose and still seeds its siblings', async () => {
+    // The gate is per setting, not across the group: an all-or-nothing check
+    // would let one hand-picked currency block distance, temperature and time
+    // from ever being seeded.
     stubBrowserLanguages(['de-DE'])
     await updateSettings(getDb(), { currency: 'USD' })
 
@@ -139,8 +153,9 @@ describe('useUnitDefaults', () => {
     await flush()
 
     expect(await readValue('currency')).toBe('USD')
-    // The untouched siblings still seed.
     expect(await readValue('distance_unit')).toBe('metric')
+    expect(await readValue('temperature_unit')).toBe('c')
+    expect(await readValue('time_format')).toBe('24h')
   })
 
   it('seeds as a default rather than a user edit', async () => {

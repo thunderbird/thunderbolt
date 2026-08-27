@@ -21,6 +21,7 @@ import { ToolApprovalBar } from './tool-approval-bar'
 import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useMiniAppBridge } from './use-mini-app-bridge'
 
 /** Default split when the chat opens: roughly two-thirds app, one-third chat. */
@@ -37,6 +38,7 @@ type ChatSession = { id: string; key: string }
 
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const [chatSession, setChatSession] = useState<ChatSession | null>(null)
+  const { isMobile } = useIsMobile()
   const { toggleSidebar } = useSidebar()
   const openApp = useMiniAppStore((s) => s.openApp)
   const closeApp = useMiniAppStore((s) => s.closeApp)
@@ -129,6 +131,27 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     clearSelection()
   }, [selection, attachToComposer, clearSelection])
 
+  /*
+   * One chat pane, two placements. Side-by-side has nowhere to go on a phone,
+   * so mobile overlays it on the app instead — the frame stays mounted
+   * underneath, which matters more than it looks: unmounting it would tear down
+   * the bridge and drop the context the user is asking about.
+   */
+  const chatPane = chatSession && (
+    <ChatHydrateHandler
+      key={chatSession.key}
+      existingId={null}
+      projectId={null}
+      newChatId={chatSession.id}
+      // Staying on this route is the whole point: navigating to /chats/<id> on
+      // first send would unmount the app, tear down the bridge, and clear the
+      // very context the model was asked about.
+      navigateOnCreate={false}
+    >
+      <ChatUI />
+    </ChatHydrateHandler>
+  )
+
   return (
     <div className="flex flex-col h-full w-full">
       {/* This page is chromeless (`isChromelessRoute` in main-layout), so it owns
@@ -142,7 +165,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       </header>
 
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={chatSession ? appPanelSize : '100%'} minSize="30%">
+        <ResizablePanel defaultSize={chatSession && !isMobile ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
             <MiniAppFrame app={app} frameRef={frameRef} status={status} />
             {status === 'ready' && selection?.rect && !isSelecting && !picked && (
@@ -206,26 +229,31 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 )}
               </Button>
             )}
+            {isMobile && chatPane && (
+              <div className="absolute inset-0 z-40 flex flex-col bg-background">
+                <header className="flex items-center gap-2 px-2 h-[var(--touch-height-default)] border-b shrink-0">
+                  <MessageSquare className="size-[var(--icon-size-sm)] shrink-0" />
+                  <span className="truncate text-[length:var(--font-size-body)] font-medium">{app.name}</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="ml-auto"
+                    aria-label="Close chat"
+                    onClick={() => setChatSession(null)}
+                  >
+                    <X className="size-[var(--icon-size-default)]" />
+                  </Button>
+                </header>
+                <div className="flex-1 min-h-0">{chatPane}</div>
+              </div>
+            )}
           </div>
         </ResizablePanel>
-        {chatSession && (
+        {chatSession && !isMobile && (
           <>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={chatPanelSize} minSize="20%">
-              {/* Keyed on the session so "Close chat" then "Chat about this"
-                  starts a genuinely new thread rather than rehydrating the last. */}
-              <ChatHydrateHandler
-                key={chatSession.key}
-                existingId={null}
-                projectId={null}
-                newChatId={chatSession.id}
-                // Staying on this route is the whole point: navigating to
-                // /chats/<id> on first send would unmount the app, tear down the
-                // bridge, and clear the very context the model was asked about.
-                navigateOnCreate={false}
-              >
-                <ChatUI />
-              </ChatHydrateHandler>
+              {chatPane}
             </ResizablePanel>
           </>
         )}

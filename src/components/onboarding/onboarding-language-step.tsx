@@ -6,8 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useSettings } from '@/hooks/use-settings'
 import { languageOptions } from '@/i18n/language-options'
 import { sourceLocale } from '@shared/i18n/locales'
-import { applyLanguageSetting, getBrowserLanguages } from '@/i18n'
-import { resolveLocale } from '@/i18n/resolve-locale'
+import { applyLanguageSetting } from '@/i18n'
+import { useActiveLocale } from '@/i18n/use-active-locale'
 import { Languages } from 'lucide-react'
 import { OnboardingStepHeader } from './onboarding-step-header'
 
@@ -18,7 +18,9 @@ import { OnboardingStepHeader } from './onboarding-step-header'
  */
 export const OnboardingLanguageStep = () => {
   const { language } = useSettings({ language: sourceLocale as string })
-  const activeLanguage = resolveLocale(language.value, getBrowserLanguages())
+  // The store, not a local re-derivation: `language.value` is the schema-defaulted
+  // `en`, which makes "unset" indistinguishable from an explicit English choice.
+  const activeLanguage = useActiveLocale()
 
   return (
     <div className="flex w-full flex-1 flex-col justify-center">

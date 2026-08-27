@@ -50,11 +50,11 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePostHogClient } from '@/lib/posthog'
-import { applyLanguageSetting, getBrowserLanguages } from '@/i18n'
+import { applyLanguageSetting } from '@/i18n'
+import { useActiveLocale } from '@/i18n/use-active-locale'
 import { localeForCountry } from '@/i18n/country-language'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
 import type { AppLocale } from '@shared/i18n/locales'
-import { resolveLocale } from '@/i18n/resolve-locale'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { SettingsPageShell } from '@/components/settings/settings-list'
@@ -257,8 +257,10 @@ export default function PreferencesSettingsPage() {
   const [nameInput, setNameInput] = useState('')
   const prevPreferredNameRef = useRef(preferredName.value)
 
-  /** What the UI actually renders in — the setting only pins it once seeded or chosen. */
-  const activeLanguage = resolveLocale(language.value, getBrowserLanguages())
+  /** What the UI actually renders in — the setting only pins it once seeded or chosen.
+   *  Read from the store rather than re-derived from `language.value`, which is the
+   *  schema-defaulted `en` and so cannot tell "unset" from an explicit English choice. */
+  const activeLanguage = useActiveLocale()
 
   // Get units options and country units for localization
   const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
@@ -697,7 +699,7 @@ export default function PreferencesSettingsPage() {
               </ModificationIndicator>
             </div>
             <Select
-              value={language.value}
+              value={activeLanguage}
               onValueChange={async (v) => {
                 void applyLanguageSetting(v)
                 await language.setValue(v)

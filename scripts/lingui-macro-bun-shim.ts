@@ -34,5 +34,15 @@ Bun.plugin({
       exports: { t: macros.t, plural: macros.plural, msg: macros.msg, defineMessage: macros.defineMessage },
       loader: 'object',
     }))
+
+    // `src/i18n/index.ts` statically imports the compiled source catalog, which
+    // only @lingui/vite-plugin knows how to produce. Same reasoning as the macros
+    // above: plain Bun has no such loader, so without this the eval CLIs die at
+    // import with "Export named 'messages' not found". They render no UI, so an
+    // empty catalog costs them nothing.
+    build.onLoad({ filter: /\.po$/ }, () => ({
+      exports: { messages: {} },
+      loader: 'object',
+    }))
   },
 })

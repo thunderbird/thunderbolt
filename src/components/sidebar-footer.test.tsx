@@ -4,11 +4,12 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Cloud, CloudAlert, CloudOff, Loader2 } from 'lucide-react'
 import { type ReactElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
+import { useConfigStore } from '@/api/config-store'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -216,6 +217,26 @@ describe('SyncStateIcon', () => {
   })
 })
 
+// `pending-device-modal.test.tsx` and `use-pending-device-notification.test.tsx`
+// register `mock.module('@/db/encryption', { isEncryptionEnabled: () => true })`.
+// Bun's module mocks are worker-global and permanent — they also rewrite the
+// binding `needsSyncSetupWizard` calls inside `./config`, so resetting the config
+// store is not enough to switch encryption back off. Re-provide both modules with
+// the real store-backed implementation, the same defense `db/encryption/config.test.ts`
+// uses. Without it, a shuffle that runs either of those files first sends the sync
+// retry tests into key storage and fails them on the missing `indexedDB` global.
+const realEncryptionConfig = await import('@/db/encryption/config')
+mock.module('@/db/encryption/config', () => ({
+  ...realEncryptionConfig,
+  isEncryptionEnabled: () => useConfigStore.getState().config.e2eeEnabled === true,
+}))
+
+const realEncryption = await import('@/db/encryption')
+mock.module('@/db/encryption', () => ({
+  ...realEncryption,
+  isEncryptionEnabled: () => useConfigStore.getState().config.e2eeEnabled === true,
+}))
+
 describe('sync retry flow', () => {
   const loggedInAuthClient = () =>
     createMockAuthClient({
@@ -225,7 +246,15 @@ describe('sync retry flow', () => {
   // The test database is bun-sqlite (no PowerSync instance), so usePowerSyncStatus
   // reports 'not-configured' — with sync enabled that is exactly the
   // "needs attention" state that surfaces the Retry button.
+  //
+  // Enabling sync also puts the encryption config on the render path: with E2EE
+  // on, `useSyncEnabledToggle` reads the Content Key out of IndexedDB — absent in
+  // happy-dom, where key storage reads the bare global and throws
+  // `ReferenceError: indexedDB is not defined`. Keeping E2EE off keeps that path
+  // (and IndexedDB with it) out of the render entirely, which is what the two
+  // guards above the block and the store reset below exist to guarantee.
   beforeEach(() => {
+    useConfigStore.setState({ config: {} })
     useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
   })
 

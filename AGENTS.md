@@ -209,6 +209,7 @@ const formatters = useFormatters()
 formatters.relativeTime(device.lastSeen) // "2 hours ago" / "vor 2 Stunden" / "2 時間前"
 formatters.compactNumber(usedTokens) // "256K" / "256.000" / "25.6万"
 formatters.duration(reasoningTime) // "1.5s" / "1,5s" / "1.5s"
+formatters.time(start, { hour12 }) // "1:30 PM" / "13:30" / "午後1:30"
 ```
 
 `duration` is the one place the layer does not let CLDR name the unit. `unitDisplay: 'narrow'` for
@@ -225,9 +226,34 @@ under test (the decimal separator here) instead of the suffix.
 
 **No date library.** `Intl` carries full CLDR, so a new locale needs no code. Pattern-based formatters (dayjs, date-fns) can't replace it: the pattern is ours and encodes English word order — `format('dddd, MMM D')` yields "Mittwoch, Aug. 26" in German, where CLDR gives "Mittwoch, 26. Aug.".
 
-Two things the layer deliberately does **not** read: `date_format` and `time_format` (stored patterns that render nothing today — `Intl` takes options, not patterns; D4/THU-810 owns their fate), and `temperature_unit`, which is a unit conversion rather than a format and stays with the weather widget.
+`time` takes `hour12` explicitly rather than defaulting to the locale's convention, because the choice is the user's `time_format` setting — an en-US user preferring 24-hour is the whole point of having it. Everything else the layer renders is locale-derived, so nothing else takes an override. `temperature_unit` is a unit _conversion_ rather than a format and stays with the weather widget.
 
 Expect output to vary more than English suggests: German and Japanese don't abbreviate thousands, so `256K` becomes `256.000` and `25.6万`. Assertions on formatted output should pin the locale — `getFormatters('en')` — rather than rely on negotiation. `bun test` runs in UTC, so hardcoded day-of-month expectations are stable there but not in the browser.
+
+### Units and their defaults
+
+Four synced settings describe how the user wants quantities shown: `distance_unit`, `temperature_unit`, `time_format`, `currency`. Their values are derived from CLDR, keyed on an ISO 3166-1 alpha-2 region.
+
+```ts
+unitDefaultsForRegion('GB')
+// { distanceUnit: 'imperial', temperatureUnit: 'c', timeFormat: '24h', currency: 'GBP' }
+```
+
+**Distance and temperature are separate CLDR categories.** `measurementSystem` puts US and LR on `US` and GB and MM on `UK`; `measurementSystem-category-temperature` is a different list — US, BS, BZ, KY, PR, PW — and explicitly overrides LR and MM back to metric. Britain is imperial for road distance and Celsius for weather, and modelling the two as one field is what made the retired `units-by-country.json` wrong on eight regions. `src/i18n/region-units.ts` transcribes both lists plus a region→currency map from `cldr-json`; refresh them from upstream when a country changes currency.
+
+**Hour cycle is computed, never stored — but the tag must carry no script subtag.** ICU keys its hour-cycle data on `language-REGION`, so a maximized tag falls off the lookup path and silently resolves to the root default: `en-GB` is `h23` while `en-Latn-GB` is `h12`, and `es-MX` is `h12` while `es-Latn-MX` is `h23`. `tagForRegion` drops the script for this reason and has a regression test on GB and MX.
+
+**Defaults are seeded, not fetched.** `useUnitDefaults` (mounted beside `useAppLanguage` in `app.tsx`) writes each unset setting with `recomputeHash`, exactly as the `language` setting is seeded — so reconcile's `wouldOverwriteUserValue` guard preserves it, a reset means "back to auto", and two devices cannot ping-pong the synced rows. The region comes from `location_country_code`, then the first `navigator.languages` tag carrying a region, then the app locale. The middle step matters: the app ships one `en` catalog for every English-speaking region, so a British user resolved through the locale alone would maximize to `US`.
+
+Judge seedability **per setting**, not across the group — a user who picks a currency by hand should still get distance, temperature and time seeded.
+
+**Write groups of settings with `updateSettings(db, { … })`, not several `setValue` calls.** Each `setValue` opens its own transaction and SQLite rejects a `begin` while one is open, so `Promise.all` over four of them fails three. Sequential awaits work but leave the group non-atomic.
+
+**Option labels come from `useUnitLabels()`**, never from the stored token. Names that `Intl` has no API for — "Metric", "Imperial", "Celsius", "Fahrenheit" — are `msg` descriptors; symbols come from `Intl.NumberFormat` with `unitDisplay: 'short'`. Not `narrow`: English narrows Fahrenheit to a bare `°`, and Japanese and Portuguese spell "mile" out in full. Currency names use `Intl.DisplayNames` and symbols come from `formatToParts`, which is locale-dependent (pt-BR writes USD as `US$`).
+
+**Never resolve a region from a country name.** `location_country_code` is written from the geocoding provider's own `country_code`, which it returns independently of the request language. The display name in `location_name` localizes; the code does not.
+
+**`date_format` is retired** (THU-810). CLDR already knows each locale's date pattern, and the three patterns the setting offered were a strictly worse subset. Existing rows are left in place, unmanaged.
 
 ### Constraints
 

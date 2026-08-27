@@ -2059,6 +2059,10 @@ msgstr "連携を管理"
 msgid "Managed by your deployment — always available, no setup needed."
 msgstr "デプロイ側で管理されています — 常に利用可能で、設定は不要です。"
 
+#: src/widgets/map/widget.tsx
+msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
+msgstr "このブラウザでは WebGL が無効か利用できないため、地図を表示できません。"
+
 #: src/components/window-controls.tsx
 msgid "Maximize"
 msgstr "最大化"
@@ -3389,6 +3393,10 @@ msgstr "AI プロバイダーの応答に時間がかかりすぎました。も
 msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
 msgstr "デバイスはサインアウトされ、次回の同期時にローカルデータが消去されます。同期を利用するには、このデバイスで再度サインインする必要があります。"
 
+#: src/widgets/map/widget.tsx
+msgid "The map couldn’t be loaded."
+msgstr "地図を読み込めませんでした。"
+
 #: src/components/device-approval.tsx
 msgid "The request was denied. You can safely close this page."
 msgstr "リクエストは拒否されました。このページは閉じても問題ありません。"
@@ -4116,3 +4124,11 @@ msgstr "ログなし"
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Zero Training"
 msgstr "学習なし"
+
+#: src/widgets/map/widget.tsx
+msgid "Zoom in"
+msgstr "拡大"
+
+#: src/widgets/map/widget.tsx
+msgid "Zoom out"
+msgstr "縮小"

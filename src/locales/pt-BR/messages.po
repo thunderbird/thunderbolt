@@ -2083,6 +2083,10 @@ msgstr "Gerenciar integrações"
 msgid "Managed by your deployment — always available, no setup needed."
 msgstr "Gerenciado pela sua implantação — sempre disponível, sem configuração."
 
+#: src/widgets/map/widget.tsx
+msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
+msgstr "Não é possível exibir mapas aqui — o WebGL está desativado ou indisponível neste navegador."
+
 #: src/components/window-controls.tsx
 msgid "Maximize"
 msgstr "Maximizar"
@@ -3413,6 +3417,10 @@ msgstr "O provedor de IA demorou demais para responder. Tente novamente."
 msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
 msgstr "A sessão do dispositivo será encerrada e os dados locais dele serão apagados na próxima sincronização. Este dispositivo precisará entrar novamente para usar a sincronização."
 
+#: src/widgets/map/widget.tsx
+msgid "The map couldn’t be loaded."
+msgstr "Não foi possível carregar o mapa."
+
 #: src/components/device-approval.tsx
 msgid "The request was denied. You can safely close this page."
 msgstr "A solicitação foi recusada. Você pode fechar esta página com segurança."
@@ -4140,3 +4148,11 @@ msgstr "Zero logs"
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Zero Training"
 msgstr "Zero treinamento"
+
+#: src/widgets/map/widget.tsx
+msgid "Zoom in"
+msgstr "Ampliar"
+
+#: src/widgets/map/widget.tsx
+msgid "Zoom out"
+msgstr "Reduzir"

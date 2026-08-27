@@ -21,7 +21,9 @@ type WeatherForecastWidgetProps = {
  * Fetches 6 days of weather data (today + 5 forecast days)
  */
 export const WeatherForecastWidget = ({ location, region, country, messageId }: WeatherForecastWidgetProps) => {
-  const { temperatureUnit } = useSettings({ temperature_unit: 'f' })
+  // Celsius, not Fahrenheit, for the window before `useUnitDefaults` seeds the
+  // setting: CLDR puts six regions on Fahrenheit and the other 249 on Celsius.
+  const { temperatureUnit } = useSettings({ temperature_unit: 'c' })
   const { data, error } = useMessageCache<WeatherForecastData>({
     messageId,
     cacheKey: ['weatherForecast', location, region, country, temperatureUnit.value],

@@ -34,6 +34,7 @@ import {
 } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useAppLanguage } from '@/hooks/use-app-language'
+import { useUnitDefaults } from '@/hooks/use-unit-defaults'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
@@ -177,6 +178,7 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useBootstrapSystemAgents()
   useAppLanguage()
+  useUnitDefaults()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()

@@ -21,7 +21,7 @@ import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
-import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
+import { useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
@@ -268,9 +268,7 @@ export default function PreferencesSettingsPage() {
   const activeLanguageLabel = languageLabel(activeLanguage)
   const suggestedLanguageLabel = pendingLanguage ? languageLabel(pendingLanguage) : ''
 
-  // Get units options and country units for localization
   const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
-  const { data: countryUnitsData, isLoading: countryUnitsLoading } = useCountryUnits()
 
   const handleEnableTelemetry = async (featureName?: string | null) => {
     await dataCollection.setValue(true)
@@ -289,21 +287,6 @@ export default function PreferencesSettingsPage() {
     prevPreferredNameRef.current = preferredName.value
     setNameInput(preferredName.value || '')
   }
-
-  // Auto-populate localization settings from country data if not set
-  useEffect(() => {
-    if (countryUnitsData && !countryUnitsLoading) {
-      const hasLocalizationSettings = distanceUnit.value || temperatureUnit.value || timeFormat.value || currency.value
-
-      if (!hasLocalizationSettings) {
-        // Auto-set from country data and establish these as the baseline for future modifications
-        distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true })
-        temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true })
-        timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true })
-        currency.setValue(countryUnitsData.currency.code, { recomputeHash: true })
-      }
-    }
-  }, [countryUnitsData, countryUnitsLoading, distanceUnit, temperatureUnit, timeFormat, currency])
 
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first

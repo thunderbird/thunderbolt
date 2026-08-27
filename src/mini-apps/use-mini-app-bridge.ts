@@ -14,6 +14,7 @@
 
 import {
   isSupportedProtocolVersion,
+  type MiniAppPlatform,
   miniAppGuestMethods,
   miniAppHostMethods,
   miniAppProtocolMarker,
@@ -36,6 +37,7 @@ import {
 } from '@shared/mini-app-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTheme } from '@/lib/theme-provider'
+import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
 import { useMiniAppStore } from './mini-app-store'
 import type { MiniAppDefinition } from './registry'
 
@@ -89,6 +91,21 @@ export const acceptGuestMessage = (
   event: Pick<MessageEvent, 'source' | 'origin' | 'data'>,
   options: AcceptOptions,
 ): MiniAppGuestMessage | null => (isFromGuest(event, options) ? parseGuestMessage(event.data) : null)
+
+/**
+ * Which surface the frame is running in. Derived from the existing platform
+ * helpers rather than sniffed again, so a Mini App and the rest of the app can
+ * never disagree about where they are.
+ */
+const resolveHostPlatform = (): MiniAppPlatform => {
+  if (isIosPlatform()) {
+    return 'ios'
+  }
+  if (getPlatform() === 'android') {
+    return 'android'
+  }
+  return isTauri() ? 'desktop' : 'web'
+}
 
 /** Resolve the app's theme setting to the concrete appearance the guest needs. */
 const resolveTheme = (theme: string): MiniAppTheme => {
@@ -186,7 +203,11 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           protocolVersion: miniAppProtocolVersion,
           hostName: 'Thunderbolt',
           capabilities: { context: true, chat: true },
-          theme: resolveTheme(theme),
+          hostContext: {
+            theme: resolveTheme(theme),
+            locale: navigator.language,
+            platform: resolveHostPlatform(),
+          },
         }
         post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result })
         setStatus('ready')
@@ -243,7 +264,8 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     post({
       jsonrpc: '2.0',
       protocol: miniAppProtocolMarker,
-      method: miniAppHostMethods.themeChanged,
+      method: miniAppHostMethods.hostContextChanged,
+      // Partial by design — only the key that moved.
       params: { theme: resolveTheme(theme) },
     })
   }, [theme, status, post])

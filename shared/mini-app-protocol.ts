@@ -86,8 +86,13 @@ export const miniAppGuestMethods = {
 
 /** Methods Thunderbolt sends to the guest app. */
 export const miniAppHostMethods = {
-  /** Host theme changed; the app should restyle so it still reads as native. */
-  themeChanged: 'ui/notifications/theme-changed',
+  /**
+   * Some part of the host's ambient state changed — theme, locale, the surface
+   * it's running on. Carries a *partial* {@link MiniAppHostContext}: only the
+   * keys that moved, so adding a field later doesn't force every guest to
+   * re-read the whole object.
+   */
+  hostContextChanged: 'ui/notifications/host-context-changed',
   /**
    * "What is inside this rectangle?" — sent when the user finishes dragging a
    * marquee over the app. The *interaction* is entirely the host's (it draws the
@@ -264,7 +269,7 @@ export type MiniAppHostError = {
 export type MiniAppHostNotification = {
   jsonrpc: '2.0'
   protocol: typeof miniAppProtocolMarker
-  method: typeof miniAppHostMethods.themeChanged
+  method: typeof miniAppHostMethods.hostContextChanged
   params: unknown
 }
 
@@ -439,11 +444,40 @@ export type MiniAppInitializeResult = {
   protocolVersion: number
   hostName: string
   capabilities: MiniAppHostCapabilities
-  theme: MiniAppTheme
+  hostContext: MiniAppHostContext
 }
 
 /** The host's current appearance, so the guest can match it. */
 export type MiniAppTheme = 'light' | 'dark'
+
+/**
+ * Surface the frame is embedded in.
+ *
+ * An app that knows it's on a phone can drop to one column without guessing
+ * from a viewport width, which is the difference between a layout that adapts
+ * and one that merely shrinks.
+ */
+export type MiniAppPlatform = 'web' | 'desktop' | 'ios' | 'android'
+
+/**
+ * Ambient host state, handed over at `ui/initialize` and re-sent (partially)
+ * whenever any of it changes.
+ *
+ * Grouped into one object rather than a notification per property because the
+ * v1 shape — a theme-only message — was already the wrong shape the first time
+ * a second property came along. `locale` is the immediate case: Patient
+ * Journeys ships an EN/DE toggle it currently has to render itself, when the
+ * host already knows the answer.
+ */
+export type MiniAppHostContext = {
+  theme: MiniAppTheme
+  /**
+   * BCP 47 tag, e.g. `de-DE`. Sourced from the browser today; move this to the
+   * account's language setting once the i18n layer lands (THU-812).
+   */
+  locale: string
+  platform: MiniAppPlatform
+}
 
 /**
  * JSON-RPC error codes used by the bridge. Values match the JSON-RPC 2.0 spec's

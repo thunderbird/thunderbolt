@@ -15,7 +15,7 @@ const origin = 'http://localhost:5174'
 const message = {
   jsonrpc: '2.0',
   protocol: miniAppProtocolMarker,
-  method: 'context/update',
+  method: 'ui/update-model-context',
   params: { context: { title: 'Q3', summary: 'Revenue model.' } },
 }
 
@@ -29,7 +29,7 @@ const event = (overrides: Partial<{ source: Window | null; origin: string; data:
 describe('acceptGuestMessage', () => {
   it('accepts a message from the right window and origin', () => {
     const accepted = acceptGuestMessage(event(), { expectedWindow: frameWindow, expectedOrigin: origin })
-    expect(accepted?.method).toBe('context/update')
+    expect(accepted?.method).toBe('ui/update-model-context')
   })
 
   // Source and origin are independent gates. Origin alone would trust a

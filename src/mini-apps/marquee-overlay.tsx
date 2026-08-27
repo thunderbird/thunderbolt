@@ -34,7 +34,7 @@ type MarqueeOverlayProps = {
  * Sits above the iframe and takes the pointer, so the embedded app receives no
  * events while selecting — which is what lets the *host* own this interaction
  * entirely. The app is never asked to track a drag; it only answers
- * `selection/query` once, at the end.
+ * `ui/selection-query` once, at the end.
  *
  * The dim is drawn as a huge spread `box-shadow` on the marquee element rather
  * than four surrounding divs: one element, no seams between panels, and the

@@ -10,7 +10,7 @@
  * React tree and cannot read a hook. `useChatStore` and `useLocalSettingsStore`
  * solve the same problem the same way.
  *
- * The context here is a cache of the last `context/update` the guest pushed —
+ * The context here is a cache of the last `ui/update-model-context` the guest pushed —
  * the protocol has no pull. That is the contract: an app must publish on every
  * meaningful change, and in exchange the host never blocks a tool call on a
  * round-trip to the frame.

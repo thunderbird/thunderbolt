@@ -16,36 +16,36 @@ const initialize = {
   jsonrpc: '2.0',
   protocol: miniAppProtocolMarker,
   id: 1,
-  method: 'initialize',
+  method: 'ui/initialize',
   params: { protocolVersion: 1, appName: 'Finance Model', capabilities: {} },
 }
 
 const contextUpdate = {
   jsonrpc: '2.0',
   protocol: miniAppProtocolMarker,
-  method: 'context/update',
+  method: 'ui/update-model-context',
   params: { context: { title: 'Q3', summary: 'Revenue model for Q3.' } },
 }
 
 describe('parseGuestMessage', () => {
   it('accepts a well-formed initialize request', () => {
     const parsed = parseGuestMessage(initialize)
-    expect(parsed?.method).toBe('initialize')
+    expect(parsed?.method).toBe('ui/initialize')
   })
 
-  it('accepts a context/update notification without an id', () => {
+  it('accepts a ui/update-model-context notification without an id', () => {
     const parsed = parseGuestMessage(contextUpdate)
-    expect(parsed?.method).toBe('context/update')
+    expect(parsed?.method).toBe('ui/update-model-context')
   })
 
-  it('accepts chat/open with no params, defaulting them', () => {
+  it('accepts ui/open-chat with no params, defaulting them', () => {
     const parsed = parseGuestMessage({
       jsonrpc: '2.0',
       protocol: miniAppProtocolMarker,
       id: 'a',
-      method: 'chat/open',
+      method: 'ui/open-chat',
     })
-    expect(parsed?.method).toBe('chat/open')
+    expect(parsed?.method).toBe('ui/open-chat')
   })
 
   it('carries optional data and selection through untouched', () => {
@@ -56,8 +56,8 @@ describe('parseGuestMessage', () => {
       params: { context: { title: 'Q3', summary: 's', data, selection } },
     })
     expect(parsed).not.toBeNull()
-    if (parsed?.method !== 'context/update') {
-      throw new Error('expected a context/update')
+    if (parsed?.method !== 'ui/update-model-context') {
+      throw new Error('expected a ui/update-model-context')
     }
     expect(parsed.params.context.selection).toEqual(selection)
     expect(parsed.params.context.data).toEqual(data)
@@ -68,7 +68,7 @@ describe('parseGuestMessage', () => {
   it.each([
     ['a non-object', 'hello'],
     ['null', null],
-    ['a message with no protocol marker', { jsonrpc: '2.0', method: 'initialize', id: 1, params: {} }],
+    ['a message with no protocol marker', { jsonrpc: '2.0', method: 'ui/initialize', id: 1, params: {} }],
     ['a foreign protocol marker', { ...initialize, protocol: 'some-other-bridge' }],
   ])('rejects %s', (_label, payload) => {
     expect(parseGuestMessage(payload)).toBeNull()
@@ -78,7 +78,7 @@ describe('parseGuestMessage', () => {
     expect(parseGuestMessage({ ...initialize, method: 'app/deleteEverything' })).toBeNull()
   })
 
-  it('rejects a context/update whose context is missing required fields', () => {
+  it('rejects a ui/update-model-context whose context is missing required fields', () => {
     expect(parseGuestMessage({ ...contextUpdate, params: { context: { title: 'Q3' } } })).toBeNull()
   })
 
@@ -92,11 +92,11 @@ describe('parseGuestMessage', () => {
   })
 })
 
-describe('selection/changed', () => {
+describe('ui/notifications/selection-changed', () => {
   const selectionMessage = (selection: unknown) => ({
     jsonrpc: '2.0',
     protocol: miniAppProtocolMarker,
-    method: 'selection/changed',
+    method: 'ui/notifications/selection-changed',
     params: { selection },
   })
 
@@ -104,7 +104,7 @@ describe('selection/changed', () => {
     const parsed = parseGuestMessage(
       selectionMessage({ text: 'gross profit', rect: { x: 1, y: 2, width: 3, height: 4 } }),
     )
-    expect(parsed?.method).toBe('selection/changed')
+    expect(parsed?.method).toBe('ui/notifications/selection-changed')
   })
 
   it('accepts a selection without geometry, for apps that cannot report it', () => {
@@ -116,8 +116,8 @@ describe('selection/changed', () => {
   it('accepts an explicit null selection', () => {
     const parsed = parseGuestMessage(selectionMessage(null))
     expect(parsed).not.toBeNull()
-    if (parsed?.method !== 'selection/changed') {
-      throw new Error('expected a selection/changed')
+    if (parsed?.method !== 'ui/notifications/selection-changed') {
+      throw new Error('expected a ui/notifications/selection-changed')
     }
     expect(parsed.params.selection).toBeNull()
   })

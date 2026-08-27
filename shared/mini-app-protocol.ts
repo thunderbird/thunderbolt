@@ -39,32 +39,62 @@ export const miniAppProtocolMarker = 'thunderbolt-miniapp'
 /**
  * Wire version. Bump only for a breaking envelope change; adding a method or an
  * optional capability is backwards compatible and must not bump it.
+ *
+ * v2 renamed every method to the `ui/` namespace — see the note below.
  */
-export const miniAppProtocolVersion = 1
+export const miniAppProtocolVersion = 2
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  METHOD NAMING
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Names follow **MCP Apps** (the first official MCP extension, spec 2026-01-26)
+ * wherever the semantics genuinely match: `ui/initialize`,
+ * `ui/update-model-context`, and MCP's own `tools/list` / `tools/call`. A
+ * `ui/notifications/` prefix marks a fire-and-forget message in either direction,
+ * which is their convention too.
+ *
+ * We do not implement MCP Apps itself, and the divergence is deliberate rather
+ * than incidental — it delivers UI as an HTML string over a `ui://` resource,
+ * rendered inside a sandbox proxy, which leaves the app with no origin of its
+ * own. No origin means no cookies, no same-origin calls to its own backend and
+ * nowhere for an OIDC redirect to land, and its lifecycle is a widget attached
+ * to one tool result rather than an application the user navigates. A Mini App
+ * is a cooperative app deployed at a real URL, so it keeps all of that.
+ *
+ * Where they have no equivalent we stay in the same namespace and pick our own
+ * name rather than bending theirs to fit: `ui/open-chat` (their `ui/message`
+ * *sends* a message; ours opens the panel and seeds the composer) and the
+ * `ui/…selection…` pair, which has no counterpart at all.
+ *
+ * Adopting the vocabulary now is cheap and gets expensive later: today there are
+ * two guest apps and both are ours.
+ */
 
 /** Methods the guest app sends to Thunderbolt. */
 export const miniAppGuestMethods = {
   /** Handshake. Must be the guest's first message. */
-  initialize: 'initialize',
+  initialize: 'ui/initialize',
   /** "Here is what the user is looking at now." Fire-and-forget. */
-  contextUpdate: 'context/update',
+  contextUpdate: 'ui/update-model-context',
   /** Ask the host to open the chat panel, optionally seeded with a prompt. */
-  chatOpen: 'chat/open',
+  chatOpen: 'ui/open-chat',
   /** The user selected (or deselected) text inside the app. */
-  selectionChanged: 'selection/changed',
+  selectionChanged: 'ui/notifications/selection-changed',
 } as const
 
 /** Methods Thunderbolt sends to the guest app. */
 export const miniAppHostMethods = {
   /** Host theme changed; the app should restyle so it still reads as native. */
-  themeChanged: 'theme/changed',
+  themeChanged: 'ui/notifications/theme-changed',
   /**
    * "What is inside this rectangle?" — sent when the user finishes dragging a
    * marquee over the app. The *interaction* is entirely the host's (it draws the
    * dim layer and the box over the frame); the guest only resolves geometry to
    * content, because only it can see its own DOM.
    */
-  selectionQuery: 'selection/query',
+  selectionQuery: 'ui/selection-query',
   /** Discover the tools the app exposes to the model. Sent once, after handshake. */
   toolsList: 'tools/list',
   /** Invoke one of them. */
@@ -84,7 +114,7 @@ export const miniAppGuestCapabilitiesSchema = z
      */
     tools: z.boolean().optional(),
     /**
-     * The app reports text selections via `selection/changed`, so the host can
+     * The app reports text selections via `ui/notifications/selection-changed`, so the host can
      * float a "Chat" control over highlighted text. Declared rather than assumed:
      * an app that never sends selections shouldn't have the host waiting for them.
      */
@@ -94,9 +124,9 @@ export const miniAppGuestCapabilitiesSchema = z
 
 /** What the host offers the guest, returned from `initialize`. */
 export type MiniAppHostCapabilities = {
-  /** The host will surface `context/update` payloads to the model. */
+  /** The host will surface `ui/update-model-context` payloads to the model. */
   context: boolean
-  /** The host honours `chat/open`. */
+  /** The host honours `ui/open-chat`. */
   chat: boolean
 }
 
@@ -142,13 +172,13 @@ export const initializeRequestSchema = envelopeSchema.extend({
   }),
 })
 
-/** `context/update` — guest → host notification (no id, no reply). */
+/** `ui/update-model-context` — guest → host notification (no id, no reply). */
 export const contextUpdateNotificationSchema = envelopeSchema.extend({
   method: z.literal(miniAppGuestMethods.contextUpdate),
   params: z.object({ context: miniAppContextSchema }),
 })
 
-/** `chat/open` — guest → host request. */
+/** `ui/open-chat` — guest → host request. */
 export const chatOpenRequestSchema = envelopeSchema.extend({
   id: jsonRpcIdSchema,
   method: z.literal(miniAppGuestMethods.chatOpen),
@@ -190,7 +220,7 @@ export const miniAppSelectionSchema = z.object({
 
 export type MiniAppSelection = z.infer<typeof miniAppSelectionSchema>
 
-/** `selection/changed` — guest → host notification. Null clears the selection. */
+/** `ui/notifications/selection-changed` — guest → host notification. Null clears the selection. */
 export const selectionChangedNotificationSchema = envelopeSchema.extend({
   method: z.literal(miniAppGuestMethods.selectionChanged),
   params: z.object({ selection: miniAppSelectionSchema.nullable() }),
@@ -281,7 +311,7 @@ export const miniAppSelectionItemSchema = z.object({
 export type MiniAppSelectionItem = z.infer<typeof miniAppSelectionItemSchema>
 
 /**
- * Guest's answer to `selection/query`. Capped so a pathological app (or a drag
+ * Guest's answer to `ui/selection-query`. Capped so a pathological app (or a drag
  * across the whole page) can't flood the composer with chips.
  */
 export const selectionQueryResultSchema = z.object({

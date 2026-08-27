@@ -100,7 +100,7 @@ const resolveTheme = (theme: string): MiniAppTheme => {
 
 export type UseMiniAppBridgeOptions = {
   app: MiniAppDefinition
-  /** Called when the guest sends `chat/open`. */
+  /** Called when the guest sends `ui/open-chat`. */
   onChatOpen: (prompt: string | undefined) => void
 }
 
@@ -122,7 +122,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const onChatOpenRef = useRef(onChatOpen)
   onChatOpenRef.current = onChatOpen
 
-  // In-flight host→guest requests, keyed by JSON-RPC id. Only `selection/query`
+  // In-flight host→guest requests, keyed by JSON-RPC id. Only `ui/selection-query`
   // uses this today; it exists because resolving a marquee to content is the one
   // thing the host genuinely cannot do itself.
   // What the guest declared at handshake. A ref, not state: it's read inside the
@@ -203,7 +203,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         return
       }
 
-      // chat/open — acknowledge before acting so a slow panel animation can't
+      // ui/open-chat — acknowledge before acting so a slow panel animation can't
       // look like a dropped request to the guest.
       post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: { opened: true } })
       onChatOpenRef.current(message.params.prompt)

@@ -95,7 +95,18 @@ const settingsSchema = z
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
 
     /**
-     * Mini App audiences, as JSON: `{ "<appId>": { "origin": "...", "secret": "..." } }`.
+     * The Mini App registry, as JSON, keyed by app id:
+     *
+     * ```
+     * { "patient-journeys": { "name": "Patient Journeys", "description": "…",
+     *   "icon": "route", "url": "https://…", "origin": "https://…", "secret": "…" } }
+     * ```
+     *
+     * One config, not two. An earlier cut kept presentation in a hardcoded
+     * frontend array and only the audience here, which meant two lists of the
+     * same apps that could disagree — and the failure was silent: an app the
+     * backend didn't know about rendered fine and then couldn't authenticate.
+     * The frontend now reads this over `GET /mini-apps`, minus the secret.
      *
      * The backend deliberately owns only the security-relevant half of the Mini
      * App registry. `origin` becomes the `aud` of the identity token we mint, so
@@ -108,7 +119,7 @@ const settingsSchema = z
      * plus a JWKS endpoint are the upgrade once apps are built by third parties
      * and secret distribution stops being a deploy-time detail.
      */
-    miniAppAudiences: z.string().default(''),
+    miniApps: z.string().default(''),
     /**
      * Lifetime of a Mini App identity token. Short by intent — the guest asks
      * for a new one as it nears expiry, so the blast radius of a leaked token is
@@ -193,23 +204,36 @@ const settingsSchema = z
 
 export type Settings = z.infer<typeof settingsSchema>
 
-/** One Mini App the host may mint identity tokens for. */
-export type MiniAppAudience = {
-  /** Exact origin of the app; becomes the token's `aud`. */
+/** One registered Mini App, as the backend holds it. */
+export type MiniAppConfig = {
+  name: string
+  description: string
+  /** Icon key the frontend maps to a component; unknown keys fall back. */
+  icon: string
+  /**
+   * Exact origin the frame posts from, and the token's `aud`. Separate from
+   * `url` on purpose: a redirect can move `url`, and the value we validate
+   * against must be the one an operator declared.
+   */
   origin: string
-  /** HS256 signing secret, unique to this app. */
+  /** Full URL loaded into the frame. Defaults to `origin`. */
+  url: string
+  /** HS256 signing secret, unique to this app. Never leaves the backend. */
   secret: string
 }
 
+/** What the frontend is allowed to see — everything but the secret. */
+export type PublicMiniApp = Omit<MiniAppConfig, 'secret'> & { id: string }
+
 /**
- * Parse `miniAppAudiences`, dropping anything malformed rather than throwing.
+ * Parse `miniApps`, dropping anything malformed rather than throwing.
  *
  * A typo in one app's entry shouldn't take down token minting for the others,
  * and a dropped entry fails closed: that app simply can't get a token, which
  * surfaces as a clear 404 rather than a token signed with `undefined`.
  */
-export const getMiniAppAudiences = (settings: Pick<Settings, 'miniAppAudiences'>): Record<string, MiniAppAudience> => {
-  if (!settings.miniAppAudiences) {
+export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Record<string, MiniAppConfig> => {
+  if (!settings.miniApps) {
     return {}
   }
   // `JSON.parse` throws on malformed input, so it can't go straight into
@@ -224,10 +248,30 @@ export const getMiniAppAudiences = (settings: Pick<Settings, 'miniAppAudiences'>
         return z.NEVER
       }
     })
-    .pipe(z.record(z.string(), z.object({ origin: z.string().url(), secret: z.string().min(16) })))
-    .safeParse(settings.miniAppAudiences)
+    .pipe(
+      z.record(
+        z.string(),
+        z
+          .object({
+            name: z.string().min(1),
+            description: z.string().default(''),
+            icon: z.string().default(''),
+            origin: z.string().url(),
+            url: z.string().url().optional(),
+            secret: z.string().min(16),
+          })
+          // `url` is almost always the origin; making operators repeat it is a
+          // second place for the two to disagree.
+          .transform((app) => ({ ...app, url: app.url ?? app.origin })),
+      ),
+    )
+    .safeParse(settings.miniApps)
   return parsed.success ? parsed.data : {}
 }
+
+/** The registry as the frontend receives it, with secrets stripped. */
+export const getPublicMiniApps = (settings: Pick<Settings, 'miniApps'>): PublicMiniApp[] =>
+  Object.entries(getMiniApps(settings)).map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
 
 /**
  * Parse and validate environment variables into settings
@@ -272,12 +316,24 @@ const parseSettings = (): Settings => {
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
     powersyncUrl: process.env.POWERSYNC_URL || (isDevelopment ? 'http://localhost:8080' : ''),
-    miniAppAudiences:
-      process.env.MINI_APP_AUDIENCES ||
+    miniApps:
+      process.env.MINI_APPS ||
       (isDevelopment
         ? JSON.stringify({
-            'finance-model': { origin: 'http://localhost:5174', secret: 'finance-model-dev-secret-change-me' },
-            'patient-journeys': { origin: 'http://localhost:5180', secret: 'patient-journeys-dev-secret-change' },
+            'finance-model': {
+              name: 'Finance Model',
+              description: 'Quarterly revenue and headcount model with editable assumptions.',
+              icon: 'line-chart',
+              origin: 'http://localhost:5174',
+              secret: 'finance-model-dev-secret-change-me',
+            },
+            'patient-journeys': {
+              name: 'Patient Journeys',
+              description: 'Disease-by-disease maps of how patients reach diagnosis and treatment.',
+              icon: 'route',
+              origin: 'http://localhost:5180',
+              secret: 'patient-journeys-dev-secret-change',
+            },
           })
         : ''),
     miniAppTokenExpirySeconds: Number(process.env.MINI_APP_TOKEN_EXPIRY_SECONDS) || 300,

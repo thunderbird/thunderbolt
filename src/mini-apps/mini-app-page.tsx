@@ -20,6 +20,7 @@ import { SelectionPopover } from './selection-popover'
 import { ToolApprovalBar } from './tool-approval-bar'
 import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
+import { useMiniApps } from './use-mini-apps'
 import { useMiniAppBridge } from './use-mini-app-bridge'
 
 /** Default split when the chat opens: roughly two-thirds app, one-third chat. */
@@ -240,7 +241,15 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
  */
 export default function MiniAppPage() {
   const { appId } = useParams()
-  const app = findMiniApp(appId)
+  const { apps, loading } = useMiniApps()
+  const app = findMiniApp(apps, appId)
+
+  // The registry arrives over the network, so "no such app" isn't knowable until
+  // it lands. Redirecting early would bounce a perfectly valid deep link to
+  // Not Found whenever someone opened one on a cold load.
+  if (loading) {
+    return null
+  }
 
   if (!app) {
     return <Navigate to="/not-found" replace />

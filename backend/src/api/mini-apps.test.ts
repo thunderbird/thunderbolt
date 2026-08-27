@@ -5,20 +5,27 @@
 import { describe, expect, it } from 'bun:test'
 import { jwtVerify } from 'jose'
 import type { Auth } from '@/auth/elysia-plugin'
-import { getMiniAppAudiences } from '@/config/settings'
+import { getMiniApps, getPublicMiniApps } from '@/config/settings'
 import { createTestSettings } from '@/test-utils/settings'
 import { createMiniAppRoutes } from './mini-apps'
 
 const financeSecret = 'finance-model-test-secret-32-chars'
 const journeysSecret = 'patient-journeys-test-secret-32ch'
 
-const audiences = JSON.stringify({
-  'finance-model': { origin: 'http://localhost:5174', secret: financeSecret },
-  'patient-journeys': { origin: 'http://localhost:5180', secret: journeysSecret },
+const registry = JSON.stringify({
+  'finance-model': { name: 'Finance Model', origin: 'http://localhost:5174', secret: financeSecret },
+  'patient-journeys': {
+    name: 'Patient Journeys',
+    description: 'Disease-by-disease maps.',
+    icon: 'route',
+    origin: 'http://localhost:5180',
+    url: 'http://localhost:5180/dashboard',
+    secret: journeysSecret,
+  },
 })
 
 const settings = createTestSettings({
-  miniAppAudiences: audiences,
+  miniApps: registry,
   appUrl: 'http://localhost:1420',
   corsOrigins: 'http://localhost:1420',
 })
@@ -34,21 +41,35 @@ const post = (auth: Auth, appId: string, origin = 'http://localhost:1420') =>
     new Request(`http://localhost/mini-apps/${appId}/token`, { method: 'POST', headers: { origin } }),
   )
 
-describe('getMiniAppAudiences', () => {
+describe('getMiniApps', () => {
   it('parses configured apps', () => {
-    expect(Object.keys(getMiniAppAudiences({ miniAppAudiences: audiences }))).toEqual([
-      'finance-model',
-      'patient-journeys',
-    ])
+    expect(Object.keys(getMiniApps({ miniApps: registry }))).toEqual(['finance-model', 'patient-journeys'])
+  })
+
+  it('defaults url to origin, so operators need not repeat it', () => {
+    expect(getMiniApps({ miniApps: registry })['finance-model']?.url).toBe('http://localhost:5174')
   })
 
   it('returns nothing for malformed JSON rather than throwing', () => {
-    expect(getMiniAppAudiences({ miniAppAudiences: '{ not json' })).toEqual({})
+    expect(getMiniApps({ miniApps: '{ not json' })).toEqual({})
   })
 
   it('drops entries with a short secret, so a weak key cannot sign', () => {
-    const weak = JSON.stringify({ app: { origin: 'https://a.test', secret: 'tooshort' } })
-    expect(getMiniAppAudiences({ miniAppAudiences: weak })).toEqual({})
+    const weak = JSON.stringify({ app: { name: 'A', origin: 'https://a.test', secret: 'tooshort' } })
+    expect(getMiniApps({ miniApps: weak })).toEqual({})
+  })
+})
+
+describe('getPublicMiniApps', () => {
+  it('never includes the signing secret', () => {
+    const published = JSON.stringify(getPublicMiniApps({ miniApps: registry }))
+    expect(published).not.toContain(financeSecret)
+    expect(published).not.toContain('secret')
+  })
+
+  it('carries the id alongside the presentation fields', () => {
+    const [first] = getPublicMiniApps({ miniApps: registry })
+    expect(first).toMatchObject({ id: 'finance-model', name: 'Finance Model', origin: 'http://localhost:5174' })
   })
 })
 
@@ -96,7 +117,7 @@ describe('POST /mini-apps/:appId/token', () => {
   })
 
   it('mounts nothing when no apps are configured', async () => {
-    const routes = createMiniAppRoutes(authWithUser(realUser), createTestSettings({ miniAppAudiences: '' }))
+    const routes = createMiniAppRoutes(authWithUser(realUser), createTestSettings({ miniApps: '' }))
     const response = await routes.handle(
       new Request('http://localhost/mini-apps/finance-model/token', { method: 'POST' }),
     )

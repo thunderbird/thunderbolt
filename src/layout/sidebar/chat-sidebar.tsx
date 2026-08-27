@@ -31,7 +31,7 @@ import {
 } from '@dnd-kit/core'
 import { MessageCircle } from 'lucide-react'
 import { useState } from 'react'
-import { miniAppRegistry } from '@/mini-apps/registry'
+import { useMiniApps } from '@/mini-apps/use-mini-apps'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
 import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
@@ -90,25 +90,28 @@ const ProjectsMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => (
 
 /**
  * One entry per registered Mini App. Rendered straight from the registry so
- * onboarding a customer app is an array entry, not a sidebar change.
+ * onboarding a customer app is a config entry, not a sidebar change.
  */
-const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (appId: string) => void }) => (
-  <>
-    {miniAppRegistry.map((app) => (
-      <SidebarMenuItem key={app.id}>
-        <SidebarMenuButton
-          onClick={() => onClick(app.id)}
-          tooltip={app.description}
-          className="cursor-pointer"
-          isActive={pathname === `/apps/${app.id}`}
-        >
-          <app.icon className="size-[var(--icon-size-default)]" />
-          <span>{app.name}</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    ))}
-  </>
-)
+const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (appId: string) => void }) => {
+  const { apps } = useMiniApps()
+  return (
+    <>
+      {apps.map((app) => (
+        <SidebarMenuItem key={app.id}>
+          <SidebarMenuButton
+            onClick={() => onClick(app.id)}
+            tooltip={app.description}
+            className="cursor-pointer"
+            isActive={pathname === `/apps/${app.id}`}
+          >
+            <app.icon className="size-[var(--icon-size-default)]" />
+            <span>{app.name}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+    </>
+  )
+}
 
 export const ChatSidebarContent = ({
   isMobile,

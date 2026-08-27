@@ -29,7 +29,7 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { getMiniAppAudiences, isOriginAllowed } from '@/config/settings'
+import { getMiniApps, getPublicMiniApps, isOriginAllowed } from '@/config/settings'
 import type { User } from '@shared/types/auth'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { SignJWT } from 'jose'
@@ -61,66 +61,80 @@ const validateOrigin = (request: Request, settings: Settings): boolean => {
  * the distinction would only leak which app ids exist.
  */
 export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
-  const audiences = getMiniAppAudiences(settings)
+  const apps = getMiniApps(settings)
 
-  if (Object.keys(audiences).length === 0) {
-    console.warn('No Mini App audiences configured, skipping Mini App routes')
+  if (Object.keys(apps).length === 0) {
+    console.warn('No Mini Apps configured, skipping Mini App routes')
     return new Elysia({ prefix: '/mini-apps' })
   }
 
-  return new Elysia({ prefix: '/mini-apps' })
-    .onError(safeErrorHandler)
-    .derive(async ({ request }) => {
-      const session = await auth.api.getSession({ headers: request.headers })
-      return { user: (session?.user as User | undefined) ?? null }
-    })
-    .post(
-      '/:appId/token',
-      async ({ params, request, set, user }) => {
-        if (!validateOrigin(request, settings)) {
-          set.status = 403
-          return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
-        }
-
+  return (
+    new Elysia({ prefix: '/mini-apps' })
+      .onError(safeErrorHandler)
+      .derive(async ({ request }) => {
+        const session = await auth.api.getSession({ headers: request.headers })
+        return { user: (session?.user as User | undefined) ?? null }
+      })
+      /**
+       * The registry the frontend renders from — same config as the token route
+       * reads, minus the secrets. Session-gated: which apps a deployment runs is
+       * not a secret exactly, but it isn't for anonymous callers either.
+       */
+      .get('/', async ({ set, user }) => {
         if (!user) {
           set.status = 401
           return { error: 'Unauthorized' }
         }
+        return { apps: getPublicMiniApps(settings) }
+      })
+      .post(
+        '/:appId/token',
+        async ({ params, request, set, user }) => {
+          if (!validateOrigin(request, settings)) {
+            set.status = 403
+            return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
+          }
 
-        // An anonymous user has no identity worth asserting to an app, and an
-        // app that trusts `sub` would be trusting a value that changes.
-        if (user.isAnonymous) {
-          set.status = 403
-          return { error: 'Forbidden', code: 'ANONYMOUS_MINI_APP_FORBIDDEN' }
-        }
+          if (!user) {
+            set.status = 401
+            return { error: 'Unauthorized' }
+          }
 
-        const audience = audiences[params.appId]
-        if (!audience) {
-          set.status = 404
-          return { error: 'Unknown Mini App' }
-        }
+          // An anonymous user has no identity worth asserting to an app, and an
+          // app that trusts `sub` would be trusting a value that changes.
+          if (user.isAnonymous) {
+            set.status = 403
+            return { error: 'Forbidden', code: 'ANONYMOUS_MINI_APP_FORBIDDEN' }
+          }
 
-        // Signed with `jose` directly rather than the Elysia JWT plugin: the
-        // plugin binds one secret per instance, and every app here signs with
-        // its own. Registering a plugin per app to work around that would leave
-        // route setup dependent on config, for no gain — this is one call.
-        const expiresAt = new Date(Date.now() + settings.miniAppTokenExpirySeconds * 1000)
-        const token = await new SignJWT({ email: user.email, name: user.name })
-          .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-          .setSubject(user.id)
-          .setIssuer(settings.appUrl)
-          .setAudience(audience.origin)
-          .setIssuedAt()
-          .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
-          .sign(new TextEncoder().encode(audience.secret))
+          const app = apps[params.appId]
+          if (!app) {
+            set.status = 404
+            return { error: 'Unknown Mini App' }
+          }
 
-        return {
-          token,
-          // Absolute, not a duration — the guest schedules its refresh against
-          // this, and a duration would drift by however long the response took.
-          expiresAt: expiresAt.toISOString(),
-        }
-      },
-      { params: t.Object({ appId: t.String() }) },
-    )
+          // Signed with `jose` directly rather than the Elysia JWT plugin: the
+          // plugin binds one secret per instance, and every app here signs with
+          // its own. Registering a plugin per app to work around that would leave
+          // route setup dependent on config, for no gain — this is one call.
+          const expiresAt = new Date(Date.now() + settings.miniAppTokenExpirySeconds * 1000)
+          const token = await new SignJWT({ email: user.email, name: user.name })
+            .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+            .setSubject(user.id)
+            .setIssuer(settings.appUrl)
+            .setAudience(app.origin)
+            .setIssuedAt()
+            .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
+            .sign(new TextEncoder().encode(app.secret))
+
+          return {
+            token,
+            // Absolute, not a duration — the guest schedules its refresh against
+            // this, and a duration would drift by however long the response took.
+            expiresAt: expiresAt.toISOString(),
+          }
+        },
+        { params: t.Object({ appId: t.String() }) },
+      )
+  )
 }

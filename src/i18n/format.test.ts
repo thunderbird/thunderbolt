@@ -105,6 +105,15 @@ describe('duration', () => {
     expect(getFormatters('en').duration(999)).toBe('999ms')
   })
 
+  // A duration is a stopwatch reading, not a quantity — the old `formatDuration`
+  // never grouped, and 999.6ms must promote rather than print "1000ms".
+  test('never groups digits, and promotes at the rounding boundary', () => {
+    expect(getFormatters('en').duration(3_600_000)).toBe('3600.0s')
+    expect(getFormatters('de').duration(3_600_000)).toBe('3600,0s')
+    expect(getFormatters('en').duration(999.6)).toBe('1.0s')
+    expect(getFormatters('en').duration(999)).toBe('999ms')
+  })
+
   test('switches to seconds at a second', () => {
     expect(getFormatters('en').duration(1000)).toBe('1.0s')
     expect(getFormatters('en').duration(2500)).toBe('2.5s')

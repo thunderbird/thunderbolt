@@ -111,11 +111,18 @@ const createFormatters = (locale: AppLocale): Formatters => {
   // pass locally while failing in CI on the same pinned Bun version. `s` and
   // `ms` are SI symbols rather than English words, and this is a latency
   // readout in a tight space, so a fixed suffix is both stabler and narrower.
+  // `useGrouping: false` because a duration is a stopwatch reading, not a
+  // quantity: the old `formatDuration` produced `3600.0s`, and grouping would
+  // silently turn that into `3,600.0s`.
   const secondsFormat = new Intl.NumberFormat(locale, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
+    useGrouping: false,
   })
-  const millisecondsFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
+  const millisecondsFormat = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 0,
+    useGrouping: false,
+  })
 
   return {
     date: (value) => dateFormat.format(toDate(value)),
@@ -127,7 +134,10 @@ const createFormatters = (locale: AppLocale): Formatters => {
     },
     compactNumber: (value) => compactFormat.format(value),
     number: (value) => numberFormat.format(value),
-    duration: (ms) => (ms < second ? `${millisecondsFormat.format(ms)}ms` : `${secondsFormat.format(ms / second)}s`),
+    // Rounded before the branch is chosen, for the same reason `selectRelativeUnit`
+    // promotes: 999.6ms rounds to 1000 and would otherwise print `1000ms`, not `1.0s`.
+    duration: (ms) =>
+      Math.round(ms) < second ? `${millisecondsFormat.format(ms)}ms` : `${secondsFormat.format(ms / second)}s`,
   }
 }
 

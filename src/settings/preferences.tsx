@@ -1241,8 +1241,7 @@ export default function PreferencesSettingsPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Change Language?</AlertDialogTitle>
               <AlertDialogDescription>
-                Your new location mostly speaks {languageLabel(pendingLanguage)}. Would you like to use Thunderbolt in{' '}
-                {languageLabel(pendingLanguage)}?
+                Would you like to change the language to {languageLabel(pendingLanguage)}?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

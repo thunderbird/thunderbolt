@@ -50,8 +50,8 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePostHogClient } from '@/lib/posthog'
-import { applyLanguageSetting } from '@/i18n'
 import { useActiveLocale } from '@/i18n/use-active-locale'
+import { useLanguageSetting } from '@/hooks/use-language-setting'
 import { localeForCountry } from '@/i18n/country-language'
 import { languageLabel, languageOptions } from '@/i18n/language-options'
 import type { AppLocale } from '@shared/i18n/locales'
@@ -233,7 +233,6 @@ export default function PreferencesSettingsPage() {
     dateFormat,
     timeFormat,
     currency,
-    language,
   } = useSettings({
     preferred_name: '',
     location_name: '',
@@ -247,8 +246,9 @@ export default function PreferencesSettingsPage() {
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
-    language: 'en',
   })
+
+  const { language, setLanguage, resetLanguage } = useLanguageSetting()
 
   const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
@@ -391,11 +391,10 @@ export default function PreferencesSettingsPage() {
     if (!pendingLanguage) {
       return
     }
-    // Plain `setValue`, unlike the unit defaults above: this has to land as a
-    // user edit so `useAppLanguage` stops re-seeding from `navigator.languages`
-    // — otherwise confirming a switch to English would be undone on next boot.
-    void applyLanguageSetting(pendingLanguage)
-    await language.setValue(pendingLanguage)
+    // A user edit, unlike the unit defaults above: `useAppLanguage` stops
+    // re-seeding from `navigator.languages` once the setting is explicit —
+    // otherwise confirming a switch to English would be undone on next boot.
+    await setLanguage(pendingLanguage)
     dispatch({ type: 'CLOSE_LANGUAGE_DIALOG' })
     trackEvent('settings_localization_update')
   }
@@ -687,11 +686,7 @@ export default function PreferencesSettingsPage() {
                 className="text-sm font-medium"
                 hasModifications={language.isModified}
                 onReset={async () => {
-                  // Publish before the write, not from an effect afterwards — see
-                  // applyLanguageSetting. Resetting returns the setting to "auto",
-                  // so the target is whatever the browser negotiates.
-                  void applyLanguageSetting(null)
-                  await language.reset()
+                  await resetLanguage()
                   trackEvent('settings_localization_reset')
                 }}
               >
@@ -701,8 +696,7 @@ export default function PreferencesSettingsPage() {
             <Select
               value={activeLanguage}
               onValueChange={async (v) => {
-                void applyLanguageSetting(v)
-                await language.setValue(v)
+                await setLanguage(v)
                 trackEvent('settings_localization_update')
               }}
             >

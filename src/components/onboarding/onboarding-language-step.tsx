@@ -3,10 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useSettings } from '@/hooks/use-settings'
+import { useLanguageSetting } from '@/hooks/use-language-setting'
 import { languageOptions } from '@/i18n/language-options'
-import { sourceLocale } from '@shared/i18n/locales'
-import { applyLanguageSetting } from '@/i18n'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import { Languages } from 'lucide-react'
 import { OnboardingStepHeader } from './onboarding-step-header'
@@ -17,9 +15,9 @@ import { OnboardingStepHeader } from './onboarding-step-header'
  * living abroad doesn't quietly change the UI language.
  */
 export const OnboardingLanguageStep = () => {
-  const { language } = useSettings({ language: sourceLocale as string })
-  // The store, not a local re-derivation: `language.value` is the schema-defaulted
-  // `en`, which makes "unset" indistinguishable from an explicit English choice.
+  const { setLanguage } = useLanguageSetting()
+  // The store, not the raw setting: an unset `language` reads back as the
+  // schema-defaulted `en`, which is indistinguishable from an explicit choice.
   const activeLanguage = useActiveLocale()
 
   return (
@@ -31,15 +29,7 @@ export const OnboardingLanguageStep = () => {
       />
 
       <div className="mt-10">
-        <Select
-          value={activeLanguage}
-          onValueChange={async (value) => {
-            // Publish before the write, not from an effect afterwards — see
-            // applyLanguageSetting.
-            void applyLanguageSetting(value)
-            await language.setValue(value)
-          }}
-        >
+        <Select value={activeLanguage} onValueChange={setLanguage}>
           <SelectTrigger className="w-full" aria-label="Language">
             <SelectValue />
           </SelectTrigger>

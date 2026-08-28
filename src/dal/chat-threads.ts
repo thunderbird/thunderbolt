@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultChatTitle } from '@/lib/constants'
+
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
@@ -128,7 +130,7 @@ export const getOrCreateChatThread = async (
     db,
     {
       id,
-      title: 'New Chat',
+      title: defaultChatTitle,
       contextSize: null,
       triggeredBy: null,
       wasTriggeredByAutomation: 0,

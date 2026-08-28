@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { chatTitleLabel } from '@/lib/title-generator'
+
 /**
  * Read-only slide-in for one project, mirroring `SkillDetail`: selecting a row
  * shows what the project *has* without any editable controls, and the ⋯ menu is
@@ -89,7 +91,7 @@ export const ProjectDetailPanel = ({
   onOpenChat,
   onNewChat,
 }: ProjectDetailPanelProps) => {
-  const { t } = useLingui()
+  const { i18n } = useLingui()
 
   return (
     <DetailPanel
@@ -127,7 +129,7 @@ export const ProjectDetailPanel = ({
             {chats.map((chat) => (
               <li key={chat.id}>
                 <OpenChatRow
-                  label={chat.title ?? t`Untitled chat`}
+                  label={chatTitleLabel(i18n, chat.title)}
                   icon={
                     <MessageCircle
                       className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground"

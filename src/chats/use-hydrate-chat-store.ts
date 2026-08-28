@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultChatTitle } from '@/lib/constants'
+
 import { useDatabase, useHttpClient } from '@/contexts'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
@@ -123,7 +125,7 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
     await saveMessagesWithContextUpdate(db, id, messages)
 
     // Generate title in background if needed
-    if (thread?.title === 'New Chat') {
+    if (thread?.title === defaultChatTitle) {
       updateThreadTitle(messages, id)
     }
 

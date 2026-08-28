@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+
 /**
  * Pure validation of the OAuth authorization-response parameters returned to the
  * MCP OAuth callback, run BEFORE the token exchange. Two checks, both
@@ -28,7 +31,7 @@ export type McpOAuthCallbackInput = {
   issParameterSupported: boolean
 }
 
-export type McpOAuthCallbackValidation = { ok: true } | { ok: false; reason: string }
+export type McpOAuthCallbackValidation = { ok: true } | { ok: false; reason: MessageDescriptor }
 
 /**
  * Validates the returned `state`/`iss` against the recorded handshake. Returns a
@@ -39,17 +42,17 @@ export const validateMcpOAuthCallback = (input: McpOAuthCallbackInput): McpOAuth
   const { returnedState, returnedIss, storedNonce, storedIssuer, issParameterSupported } = input
 
   if (!storedNonce) {
-    return { ok: false, reason: 'Missing CSRF state — restart the authorization.' }
+    return { ok: false, reason: msg`Missing CSRF state — restart the authorization.` }
   }
   if (returnedState !== storedNonce) {
-    return { ok: false, reason: 'OAuth state mismatch — possible CSRF, authorization rejected.' }
+    return { ok: false, reason: msg`OAuth state mismatch — possible CSRF, authorization rejected.` }
   }
 
   if (issParameterSupported && !returnedIss) {
-    return { ok: false, reason: 'Authorization server omitted the required issuer (iss).' }
+    return { ok: false, reason: msg`Authorization server omitted the required issuer (iss).` }
   }
   if (returnedIss && returnedIss !== storedIssuer) {
-    return { ok: false, reason: 'OAuth issuer mismatch — authorization rejected.' }
+    return { ok: false, reason: msg`OAuth issuer mismatch — authorization rejected.` }
   }
 
   return { ok: true }

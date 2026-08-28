@@ -4,6 +4,8 @@
 
 import { type ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
+import type { I18n } from '@lingui/core'
+import { useLingui } from '@lingui/react/macro'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatDuration } from '@/lib/utils'
 import type { UIMessageMetadata } from '@/types'
@@ -22,19 +24,26 @@ type ReasoningGroupTitleProps = {
  * `<server> · <tool>` (no curated loading verb); built-ins use their metadata
  * loading message.
  */
-const activeToolLabel = (tool: ToolOrDynamicToolUIPart, mcpTools?: UIMessageMetadata['mcpTools']): string => {
+// `i18n` is injected rather than reached for: the descriptor has to resolve at
+// render so the label follows a language change (see AGENTS.md).
+const activeToolLabel = (
+  i18n: I18n,
+  tool: ToolOrDynamicToolUIPart,
+  mcpTools?: UIMessageMetadata['mcpTools'],
+): string => {
   const toolName = getToolName(tool)
   if (tool.type === 'dynamic-tool') {
     const { displayName, serverName } = getMcpToolDisplay(toolName, mcpTools, tool.title)
     return serverName ? `${serverName} · ${displayName}` : displayName
   }
-  return getToolMetadataSync(toolName, tool.input).loadingMessage
+  return i18n._(getToolMetadataSync(toolName, tool.input).loadingMessage)
 }
 
 export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mcpTools }: ReasoningGroupTitleProps) => {
+  const { i18n } = useLingui()
   const activeIndex = tools.length - 1
   const activeTool = tools[activeIndex]
-  const loadingLabel = activeTool ? activeToolLabel(activeTool, mcpTools) : null
+  const loadingLabel = activeTool ? activeToolLabel(i18n, activeTool, mcpTools) : null
 
   return (
     <div className="relative">

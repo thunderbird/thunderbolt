@@ -80,9 +80,19 @@ describe('unitDefaultsForRegion', () => {
 
 describe('activeCurrencyCodes', () => {
   test('lists every circulating currency, sorted and deduplicated', () => {
-    expect(activeCurrencyCodes.length).toBe(148)
+    // A deliberate "did you mean to change the list?" gate, like `defaultSettingsVersion`.
+    expect(activeCurrencyCodes.length).toBe(153)
     expect([...activeCurrencyCodes].sort()).toEqual([...activeCurrencyCodes])
     expect(new Set(activeCurrencyCodes).size).toBe(activeCurrencyCodes.length)
+  })
+
+  // A region whose CLDR entry lists two current tenders defaults to the one in
+  // everyday use, but the other must still be selectable — otherwise a user in
+  // Bhutan or Namibia cannot reach their own currency at all.
+  test('offers the co-official tender of two-currency regions', () => {
+    for (const code of ['BTN', 'HTG', 'NAD', 'PAB', 'ZWG']) {
+      expect(activeCurrencyCodes).toContain(code)
+    }
   })
 
   test('holds ISO 4217 codes only', () => {

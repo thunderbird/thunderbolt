@@ -15,11 +15,19 @@ import { matchLocale } from './resolve-locale'
  *
  * Takes a code rather than a country name: the geocoding provider returns one
  * directly, and a display name would have to be reverse-matched against CLDR in
- * whatever language it arrived in. Callers pass that provider code straight
- * through, so the only non-region input to handle is the empty string.
+ * whatever language it arrived in.
+ *
+ * The shape is checked rather than assumed. Callers pass the provider's
+ * `country_code` straight through and nothing between the API boundary and here
+ * types it as anything but `string`, so an alpha-3 code or a display name would
+ * otherwise reach `Intl.Locale`, which throws `RangeError` on a malformed tag —
+ * inside an async handler, where the throw surfaces as a dialog that silently
+ * never opens.
  */
+const alpha2Pattern = /^[A-Za-z]{2}$/
+
 export const localeForRegion = (region: string): AppLocale | null => {
-  if (!region) {
+  if (!alpha2Pattern.test(region)) {
     return null
   }
   const { language } = new Intl.Locale(`und-${region}`).maximize()

@@ -12,6 +12,16 @@ import type { AppLocale } from '@shared/i18n/locales'
 import { useEffect, useEffectEvent } from 'react'
 import { useSettings } from './use-settings'
 
+/** The region subtag of a BCP-47 tag, or `null` if the tag is malformed. */
+const regionOfTag = (tag: string, { maximize = false } = {}): string | null => {
+  try {
+    const locale = new Intl.Locale(tag)
+    return (maximize ? locale.maximize().region : locale.region) ?? null
+  } catch {
+    return null
+  }
+}
+
 /**
  * The region whose conventions the unit defaults follow.
  *
@@ -28,8 +38,12 @@ export const regionForUnitDefaults = (
   if (countryCode) {
     return countryCode
   }
-  const tagged = browserLanguages.find((tag) => new Intl.Locale(tag).region)
-  return (tagged && new Intl.Locale(tagged).region) || new Intl.Locale(locale).maximize().region || 'US'
+  // `Intl.Locale` throws `RangeError` on a malformed tag, and `navigator.languages`
+  // is not guaranteed well-formed (underscore and `#Hans` variants show up in the
+  // wild). A throw here escapes the seeding effect and takes down the tree, for a
+  // value that has a fallback two lines down — so parse defensively and skip.
+  const fromBrowser = browserLanguages.map((tag) => regionOfTag(tag)).find(Boolean)
+  return fromBrowser || regionOfTag(locale, { maximize: true }) || 'US'
 }
 
 /**

@@ -33,12 +33,14 @@ const imperialRegions = new Set(['US', 'LR', 'GB', 'MM'])
 const fahrenheitRegions = new Set(['US', 'BS', 'BZ', 'KY', 'PR', 'PW'])
 
 /**
- * Region → ISO 4217 code, transcribed from CLDR
- * `supplemental/currencyData.json` (`region`, keeping only the entry with no
- * `_to` end date and no `_tender: false`). Doubles as the currency picker's
- * option list: these 148 codes are the currencies actually in circulation,
- * where `Intl.supportedValuesOf('currency')` returns 307 including long-dead
- * ones like `ADP` and `AOK`.
+ * Region → the ISO 4217 code to *default* to, transcribed from CLDR
+ * `supplemental/currencyData.json` (`region`, keeping only entries with no
+ * `_to` end date and no `_tender: false`).
+ *
+ * Where CLDR lists two current tenders for a region this picks the one in
+ * everyday use — Panama and Zimbabwe transact in USD, Namibia in ZAR, Bhutan in
+ * INR — so the other is absent here. That is why the picker's option list is not
+ * derived from these values alone: see `additionalTenders`.
  */
 const currencyByRegion: Record<string, string> = {
   AC: 'SHP',
@@ -317,8 +319,18 @@ const timeFormatForRegion = (region: string): TimeFormat => {
   return hourCycle === 'h11' || hourCycle === 'h12' ? '12h' : '24h'
 }
 
+/**
+ * Legal tender somewhere, but not the default for any region above. Without
+ * these the picker cannot offer a Bhutanese user the ngultrum or a Namibian the
+ * Namibian dollar — their own currency would be missing from the list entirely,
+ * with no way to correct the default.
+ */
+const additionalTenders = ['BTN', 'HTG', 'NAD', 'PAB', 'ZWG']
+
 /** Every currency in circulation, for the currency picker. */
-export const activeCurrencyCodes: readonly string[] = [...new Set(Object.values(currencyByRegion))].sort()
+export const activeCurrencyCodes: readonly string[] = [
+  ...new Set([...Object.values(currencyByRegion), ...additionalTenders]),
+].sort()
 
 /**
  * The unit conventions of an ISO 3166-1 alpha-2 region. Unknown regions fall

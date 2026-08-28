@@ -79,6 +79,13 @@ afterEach(() => {
 })
 
 describe('regionForUnitDefaults', () => {
+  // `navigator.languages` is not guaranteed well-formed; a throw here would escape
+  // the seeding effect and take down the tree rather than fall back.
+  it('skips malformed browser tags instead of throwing', () => {
+    expect(regionForUnitDefaults(null, ['en_US', 'zh-CN-#Hans', 'fr-FR'], 'en')).toBe('FR')
+    expect(regionForUnitDefaults(null, ['en_US'], 'en')).toBe('US')
+  })
+
   it('prefers the stored country code', () => {
     expect(regionForUnitDefaults('BR', ['de-DE'], 'de')).toBe('BR')
   })

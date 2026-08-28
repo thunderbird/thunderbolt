@@ -3981,6 +3981,10 @@ msgid "word1 word2 word3 ..."
 msgstr "palavra1 palavra2 palavra3 ..."
 
 #: src/settings/preferences.tsx
+msgid "Would you like to change the language to {suggestedLanguageLabel}?"
+msgstr "Você quer mudar o idioma para {suggestedLanguageLabel}?"
+
+#: src/settings/preferences.tsx
 msgid "Would you like to update your units based on the new location?"
 msgstr "Quer atualizar suas unidades com base no novo local?"
 
@@ -4108,8 +4112,8 @@ msgid "Your name"
 msgstr "Seu nome"
 
 #: src/settings/preferences.tsx
-msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
-msgstr "No seu novo local, fala-se principalmente {suggestedLanguageLabel}. Você quer usar o Thunderbolt em {suggestedLanguageLabel}?"
+#~ msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
+#~ msgstr "No seu novo local, fala-se principalmente {suggestedLanguageLabel}. Você quer usar o Thunderbolt em {suggestedLanguageLabel}?"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"

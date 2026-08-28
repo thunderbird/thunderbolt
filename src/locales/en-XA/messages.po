@@ -570,7 +570,23 @@ msgid "Choose one"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "Choose your email provider {displayReason}"
+#~ msgid "Choose your email provider {displayReason}"
+#~ msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider {reason}"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your calendar"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your email"
+msgstr ""
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your email and calendar"
 msgstr ""
 
 #: src/layout/sidebar/chat-actions.tsx
@@ -904,11 +920,27 @@ msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unav
 msgstr ""
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't check for updates"
+#~ msgid "Couldn't check for updates"
+#~ msgstr ""
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't check for updates: {error}"
 msgstr ""
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't download the update"
+msgid "Couldn't check for updates."
+msgstr ""
+
+#: src/settings/app-version-section.tsx
+#~ msgid "Couldn't download the update"
+#~ msgstr ""
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't download the update: {error}"
+msgstr ""
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't download the update."
 msgstr ""
 
 #: src/projects/emoji-picker.tsx
@@ -924,7 +956,15 @@ msgid "Couldn't pin {name}."
 msgstr ""
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't restart to apply the update"
+#~ msgid "Couldn't restart to apply the update"
+#~ msgstr ""
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't restart to apply the update: {error}"
+msgstr ""
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't restart to apply the update."
 msgstr ""
 
 #: src/components/settings/agents/editable-field.tsx
@@ -3508,16 +3548,16 @@ msgid "Time Format"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your calendar"
-msgstr ""
+#~ msgid "to access your calendar"
+#~ msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your email"
-msgstr ""
+#~ msgid "to access your email"
+#~ msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your email and calendar"
-msgstr ""
+#~ msgid "to access your email and calendar"
+#~ msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
@@ -3586,6 +3626,10 @@ msgstr ""
 msgid "Unable to load weather forecast: {errorMessage}"
 msgstr ""
 
+#: src/widgets/weather-forecast/widget.tsx
+msgid "Unable to load weather forecast."
+msgstr ""
+
 #: src/components/app-error-screen.tsx
 msgid "Unfortunately, the local database encountered an error while being migrated to the latest version of this app. Deleting your local data will resolve the issue but you will permanently lose your settings and chat history. This action cannot be undone."
 msgstr ""
@@ -3599,8 +3643,8 @@ msgid "Unknown (code {code})"
 msgstr ""
 
 #: src/widgets/weather-forecast/widget.tsx
-msgid "Unknown error"
-msgstr ""
+#~ msgid "Unknown error"
+#~ msgstr ""
 
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"

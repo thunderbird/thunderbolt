@@ -576,8 +576,24 @@ msgid "Choose one"
 msgstr "Elige una"
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "Choose your email provider {displayReason}"
-msgstr "Elige tu proveedor de correo {displayReason}"
+#~ msgid "Choose your email provider {displayReason}"
+#~ msgstr "Elige tu proveedor de correo {displayReason}"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider {reason}"
+msgstr "Elige tu proveedor de correo {reason}"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your calendar"
+msgstr "Elige tu proveedor de correo para acceder a tu calendario"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your email"
+msgstr "Elige tu proveedor de correo para acceder a tu correo"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your email and calendar"
+msgstr "Elige tu proveedor de correo para acceder a tu correo y tu calendario"
 
 #: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/chat-list.tsx
@@ -910,12 +926,28 @@ msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unav
 msgstr "No se pudo adjuntar «{filename}»: el almacenamiento de tu navegador está lleno o no está disponible."
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't check for updates"
-msgstr "No se pudo buscar actualizaciones"
+#~ msgid "Couldn't check for updates"
+#~ msgstr "No se pudo buscar actualizaciones"
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't download the update"
-msgstr "No se pudo descargar la actualización"
+msgid "Couldn't check for updates: {error}"
+msgstr "No se pudo buscar actualizaciones: {error}"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't check for updates."
+msgstr "No se pudo buscar actualizaciones."
+
+#: src/settings/app-version-section.tsx
+#~ msgid "Couldn't download the update"
+#~ msgstr "No se pudo descargar la actualización"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't download the update: {error}"
+msgstr "No se pudo descargar la actualización: {error}"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't download the update."
+msgstr "No se pudo descargar la actualización."
 
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
@@ -930,8 +962,16 @@ msgid "Couldn't pin {name}."
 msgstr "No se pudo fijar {name}."
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't restart to apply the update"
-msgstr "No se pudo reiniciar para aplicar la actualización"
+#~ msgid "Couldn't restart to apply the update"
+#~ msgstr "No se pudo reiniciar para aplicar la actualización"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't restart to apply the update: {error}"
+msgstr "No se pudo reiniciar para aplicar la actualización: {error}"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't restart to apply the update."
+msgstr "No se pudo reiniciar para aplicar la actualización."
 
 #: src/components/settings/agents/editable-field.tsx
 msgid "Couldn't save the {fieldName}. Please try again."
@@ -3514,16 +3554,16 @@ msgid "Time Format"
 msgstr "Formato de hora"
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your calendar"
-msgstr "para acceder a tu calendario"
+#~ msgid "to access your calendar"
+#~ msgstr "para acceder a tu calendario"
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your email"
-msgstr "para acceder a tu correo"
+#~ msgid "to access your email"
+#~ msgstr "para acceder a tu correo"
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your email and calendar"
-msgstr "para acceder a tu correo y tu calendario"
+#~ msgid "to access your email and calendar"
+#~ msgstr "para acceder a tu correo y tu calendario"
 
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
@@ -3592,6 +3632,10 @@ msgstr "No se pudo conectar con el proveedor de identidad. Revisa tu conexión d
 msgid "Unable to load weather forecast: {errorMessage}"
 msgstr "No se pudo cargar la previsión del tiempo: {errorMessage}"
 
+#: src/widgets/weather-forecast/widget.tsx
+msgid "Unable to load weather forecast."
+msgstr "No se pudo cargar la previsión del tiempo."
+
 #: src/components/app-error-screen.tsx
 msgid "Unfortunately, the local database encountered an error while being migrated to the latest version of this app. Deleting your local data will resolve the issue but you will permanently lose your settings and chat history. This action cannot be undone."
 msgstr "Por desgracia, la base de datos local tuvo un error al migrarse a la última versión de esta app. Eliminar tus datos locales resolverá el problema, pero perderás de forma permanente tus ajustes y tu historial de chats. Esta acción no se puede deshacer."
@@ -3605,8 +3649,8 @@ msgid "Unknown (code {code})"
 msgstr "Desconocido (código {code})"
 
 #: src/widgets/weather-forecast/widget.tsx
-msgid "Unknown error"
-msgstr "Error desconocido"
+#~ msgid "Unknown error"
+#~ msgstr "Error desconocido"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"

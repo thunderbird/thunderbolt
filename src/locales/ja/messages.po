@@ -564,8 +564,24 @@ msgid "Choose one"
 msgstr "1 つ選択"
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "Choose your email provider {displayReason}"
-msgstr "メールプロバイダーを選択してください {displayReason}"
+#~ msgid "Choose your email provider {displayReason}"
+#~ msgstr "メールプロバイダーを選択してください {displayReason}"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider {reason}"
+msgstr "メールプロバイダーを選択してください {reason}"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your calendar"
+msgstr "カレンダーにアクセスするためにメールプロバイダーを選択してください"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your email"
+msgstr "メールにアクセスするためにメールプロバイダーを選択してください"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Choose your email provider to access your email and calendar"
+msgstr "メールとカレンダーにアクセスするためにメールプロバイダーを選択してください"
 
 #: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/chat-list.tsx
@@ -898,12 +914,28 @@ msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unav
 msgstr "「{filename}」を添付できませんでした — ブラウザーのストレージが満杯か利用できません。"
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't check for updates"
-msgstr "更新を確認できませんでした"
+#~ msgid "Couldn't check for updates"
+#~ msgstr "更新を確認できませんでした"
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't download the update"
-msgstr "更新をダウンロードできませんでした"
+msgid "Couldn't check for updates: {error}"
+msgstr "更新を確認できませんでした: {error}"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't check for updates."
+msgstr "更新を確認できませんでした。"
+
+#: src/settings/app-version-section.tsx
+#~ msgid "Couldn't download the update"
+#~ msgstr "更新をダウンロードできませんでした"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't download the update: {error}"
+msgstr "更新をダウンロードできませんでした: {error}"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't download the update."
+msgstr "更新をダウンロードできませんでした。"
 
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
@@ -918,8 +950,16 @@ msgid "Couldn't pin {name}."
 msgstr "{name} をピン留めできませんでした。"
 
 #: src/settings/app-version-section.tsx
-msgid "Couldn't restart to apply the update"
-msgstr "更新を適用するための再起動ができませんでした"
+#~ msgid "Couldn't restart to apply the update"
+#~ msgstr "更新を適用するための再起動ができませんでした"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't restart to apply the update: {error}"
+msgstr "更新を適用するための再起動ができませんでした: {error}"
+
+#: src/settings/app-version-section.tsx
+msgid "Couldn't restart to apply the update."
+msgstr "更新を適用するための再起動ができませんでした。"
 
 #: src/components/settings/agents/editable-field.tsx
 msgid "Couldn't save the {fieldName}. Please try again."
@@ -3502,16 +3542,16 @@ msgid "Time Format"
 msgstr "時刻形式"
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your calendar"
-msgstr "カレンダーにアクセスするため"
+#~ msgid "to access your calendar"
+#~ msgstr "カレンダーにアクセスするため"
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your email"
-msgstr "メールにアクセスするため"
+#~ msgid "to access your email"
+#~ msgstr "メールにアクセスするため"
 
 #: src/widgets/connect-integration/widget.tsx
-msgid "to access your email and calendar"
-msgstr "メールとカレンダーにアクセスするため"
+#~ msgid "to access your email and calendar"
+#~ msgstr "メールとカレンダーにアクセスするため"
 
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
@@ -3580,6 +3620,10 @@ msgstr "ID プロバイダーに接続できません。ネットワーク接続
 msgid "Unable to load weather forecast: {errorMessage}"
 msgstr "天気予報を読み込めませんでした: {errorMessage}"
 
+#: src/widgets/weather-forecast/widget.tsx
+msgid "Unable to load weather forecast."
+msgstr "天気予報を読み込めませんでした。"
+
 #: src/components/app-error-screen.tsx
 msgid "Unfortunately, the local database encountered an error while being migrated to the latest version of this app. Deleting your local data will resolve the issue but you will permanently lose your settings and chat history. This action cannot be undone."
 msgstr "残念ながら、ローカルデータベースをこのアプリの最新バージョンへ移行する際にエラーが発生しました。ローカルデータを削除すると問題は解決しますが、設定とチャット履歴が完全に失われます。この操作は取り消せません。"
@@ -3593,8 +3637,8 @@ msgid "Unknown (code {code})"
 msgstr "不明（コード {code}）"
 
 #: src/widgets/weather-forecast/widget.tsx
-msgid "Unknown error"
-msgstr "不明なエラー"
+#~ msgid "Unknown error"
+#~ msgstr "不明なエラー"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"

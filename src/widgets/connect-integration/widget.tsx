@@ -43,13 +43,15 @@ const getProviderName = (provider: OAuthProvider): string => {
   return provider === 'google' ? 'Google' : 'Microsoft'
 }
 
-// A whole message per service rather than the service name lowercased and
-// dropped into "to access your …": the fragment is translatable copy, and
-// `toLowerCase` is locale-naive (German nouns capitalise, Turkish has dotted i).
-const defaultReasons: Record<'email' | 'calendar' | 'both', MessageDescriptor> = {
-  email: msg`to access your email`,
-  calendar: msg`to access your calendar`,
-  both: msg`to access your email and calendar`,
+// A whole sentence per service, not a translated clause dropped into a
+// translated frame. The placeholder hid the clause from the translator, who saw
+// only "Choose your email provider {reason}" and could not know a purpose clause
+// was coming — German needs a comma before it and Japanese needs it ahead of the
+// verb, and neither is reachable from either half alone.
+const providerPrompts: Record<'email' | 'calendar' | 'both', MessageDescriptor> = {
+  email: msg`Choose your email provider to access your email`,
+  calendar: msg`Choose your email provider to access your calendar`,
+  both: msg`Choose your email provider to access your email and calendar`,
 }
 
 const getIconComponent = (provider: OAuthProvider, service: 'email' | 'calendar' | 'both') => {
@@ -87,7 +89,6 @@ export const ConnectIntegrationWidget = memo(
     const [state, dispatch] = useConnectIntegrationWidgetState(provider)
     const { data: integrationStatus, isLoading: isLoadingIntegrationStatus } = useIntegrationStatus()
     const queryClient = useQueryClient()
-    const displayReason = reason === '' ? i18n._(defaultReasons[service]) : reason
 
     // Use widget-specific connecting key (messageId is unique per widget instance)
     const connectingKey = `widget_${messageId}`
@@ -238,7 +239,13 @@ export const ConnectIntegrationWidget = memo(
             <div className="flex flex-col items-center space-y-4 flex-1">
               <div className="text-center space-y-2">
                 <h3 className="text-lg font-semibold">
-                  <Trans>Choose your email provider {displayReason}</Trans>
+                  {/* A caller-supplied `reason` is model output, i.e. a value — safe in a
+                      placeholder in a way a translated clause is not. */}
+                  {reason === '' ? (
+                    i18n._(providerPrompts[service])
+                  ) : (
+                    <Trans>Choose your email provider {reason}</Trans>
+                  )}
                 </h3>
               </div>
 

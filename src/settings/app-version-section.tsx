@@ -12,15 +12,21 @@ import { useDesktopUpdate, type UpdateErrorPhase, type UpdateStatus } from '@/ho
 import { downloadLinks } from '@/lib/download-links'
 import { getPlatform, isDesktop, isMobile, isTauri } from '@/lib/platform'
 
-const errorPrefix = (phase: UpdateErrorPhase | null): string => {
+// A whole sentence per phase and per shape, rather than a translated prefix glued
+// to the raw error with a hardcoded `: ` and `.`. The separator and the full stop
+// are punctuation only a translator can place — French puts a space before the
+// colon, Japanese ends on 。 — and neither is reachable from a fragment.
+const errorText = (phase: UpdateErrorPhase | null, error: string | null): string => {
   switch (phase) {
     case 'download':
-      return i18n._(msg`Couldn't download the update`)
+      return error ? i18n._(msg`Couldn't download the update: ${error}`) : i18n._(msg`Couldn't download the update.`)
     case 'restart':
-      return i18n._(msg`Couldn't restart to apply the update`)
+      return error
+        ? i18n._(msg`Couldn't restart to apply the update: ${error}`)
+        : i18n._(msg`Couldn't restart to apply the update.`)
     case 'check':
     case null:
-      return i18n._(msg`Couldn't check for updates`)
+      return error ? i18n._(msg`Couldn't check for updates: ${error}`) : i18n._(msg`Couldn't check for updates.`)
   }
 }
 
@@ -46,10 +52,8 @@ const desktopStatusText = (
       return i18n._(msg`Downloading update… ${downloadProgress}%`)
     case 'ready':
       return i18n._(msg`Update ready. Restart to apply.`)
-    case 'error': {
-      const prefix = errorPrefix(errorPhase)
-      return error ? `${prefix}: ${error}` : `${prefix}.`
-    }
+    case 'error':
+      return errorText(errorPhase, error)
   }
 }
 

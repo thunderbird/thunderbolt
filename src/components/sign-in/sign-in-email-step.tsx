@@ -128,7 +128,7 @@ export const SignInEmailStep = ({
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              <Trans>Sending...</Trans>
+              <Trans>Sending…</Trans>
             </>
           ) : variant === 'modal' ? (
             <Trans>Send Magic Link</Trans>

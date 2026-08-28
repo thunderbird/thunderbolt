@@ -155,8 +155,8 @@ msgid "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 msgstr "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 
 #: src/tasks/index.tsx
-msgid "Add a new task..."
-msgstr "Add a new task..."
+msgid "Add a new task…"
+msgstr "Add a new task…"
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
@@ -346,8 +346,8 @@ msgid "Artifacts"
 msgstr "Artifacts"
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "Ask me anything..."
-msgstr "Ask me anything..."
+msgid "Ask me anything…"
+msgstr "Ask me anything…"
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
@@ -524,8 +524,8 @@ msgstr "Checking automatically…"
 
 #: src/components/update-notification.tsx
 #: src/settings/app-version-section.tsx
-msgid "Checking for updates..."
-msgstr "Checking for updates..."
+msgid "Checking for updates…"
+msgstr "Checking for updates…"
 
 #: src/components/device-approval.tsx
 msgid "Checking sign-in request…"
@@ -536,11 +536,12 @@ msgid "Checking your session."
 msgstr "Checking your session."
 
 #: src/settings/app-version-section.tsx
-msgid "Checking..."
-msgstr "Checking..."
+#~ msgid "Checking..."
+#~ msgstr "Checking..."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/upgrade-required.tsx
+#: src/settings/app-version-section.tsx
 msgid "Checking…"
 msgstr "Checking…"
 
@@ -607,8 +608,8 @@ msgid "Clear sky"
 msgstr "Clear sky"
 
 #: src/components/app-error-screen.tsx
-msgid "Clearing Database..."
-msgstr "Clearing Database..."
+msgid "Clearing Database…"
+msgstr "Clearing Database…"
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
@@ -674,8 +675,8 @@ msgid "Complete the setup process to get started with Thunderbolt"
 msgstr "Complete the setup process to get started with Thunderbolt"
 
 #: src/components/onboarding/onboarding-dialog.tsx
-msgid "Completing..."
-msgstr "Completing..."
+msgid "Completing…"
+msgstr "Completing…"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -750,16 +751,19 @@ msgid "Connected!"
 msgstr "Connected!"
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "Connecting to {agentName}..."
-msgstr "Connecting to {agentName}..."
+msgid "Connecting to {agentName}…"
+msgstr "Connecting to {agentName}…"
 
 #: src/components/connect-provider-button.tsx
 #: src/components/sidebar-footer.tsx
 #: src/widgets/connect-integration/widget.tsx
-msgid "Connecting..."
-msgstr "Connecting..."
+#~ msgid "Connecting..."
+#~ msgstr "Connecting..."
 
+#: src/components/connect-provider-button.tsx
+#: src/components/sidebar-footer.tsx
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/widgets/connect-integration/widget.tsx
 msgid "Connecting…"
 msgstr "Connecting…"
 
@@ -1148,11 +1152,14 @@ msgstr "Delete your account?"
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
 #: src/settings/preferences.tsx
-msgid "Deleting..."
-msgstr "Deleting..."
+#~ msgid "Deleting..."
+#~ msgstr "Deleting..."
 
+#: src/components/logout-modal.tsx
+#: src/components/revoked-device-modal.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
+#: src/settings/preferences.tsx
 msgid "Deleting…"
 msgstr "Deleting…"
 
@@ -1324,12 +1331,12 @@ msgid "Download update"
 msgstr "Download update"
 
 #: src/components/update-notification.tsx
-msgid "Downloading update..."
-msgstr "Downloading update..."
+msgid "Downloading update…"
+msgstr "Downloading update…"
 
 #: src/settings/app-version-section.tsx
-msgid "Downloading update... {downloadProgress}%"
-msgstr "Downloading update... {downloadProgress}%"
+msgid "Downloading update… {downloadProgress}%"
+msgstr "Downloading update… {downloadProgress}%"
 
 #: src/components/upgrade-required.tsx
 msgid "Downloading…"
@@ -1502,8 +1509,8 @@ msgid "Export Your Data"
 msgstr "Export Your Data"
 
 #: src/settings/preferences.tsx
-msgid "Exporting..."
-msgstr "Exporting..."
+msgid "Exporting…"
+msgstr "Exporting…"
 
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -1750,10 +1757,11 @@ msgid "Import your data from previously exported JSON."
 msgstr "Import your data from previously exported JSON."
 
 #: src/settings/preferences.tsx
-msgid "Importing..."
-msgstr "Importing..."
+#~ msgid "Importing..."
+#~ msgstr "Importing..."
 
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/preferences.tsx
 msgid "Importing…"
 msgstr "Importing…"
 
@@ -1924,8 +1932,8 @@ msgid "Loading emoji…"
 msgstr "Loading emoji…"
 
 #: src/content-view/sidebar-webview.tsx
-msgid "Loading preview..."
-msgstr "Loading preview..."
+msgid "Loading preview…"
+msgstr "Loading preview…"
 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
@@ -1934,10 +1942,13 @@ msgstr "Loading this app's pairing identity…"
 #: src/components/sidebar-footer.tsx
 #: src/settings/preferences.tsx
 #: src/widgets/connect-integration/widget.tsx
-msgid "Loading..."
-msgstr "Loading..."
+#~ msgid "Loading..."
+#~ msgstr "Loading..."
 
 #: src/components/device-approval.tsx
+#: src/components/sidebar-footer.tsx
+#: src/settings/preferences.tsx
+#: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "Loading…"
 
@@ -1963,8 +1974,8 @@ msgid "Log out"
 msgstr "Log out"
 
 #: src/components/logout-modal.tsx
-msgid "Logging out..."
-msgstr "Logging out..."
+msgid "Logging out…"
+msgstr "Logging out…"
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
@@ -2649,8 +2660,8 @@ msgid "Reset to Default"
 msgstr "Reset to Default"
 
 #: src/settings/preferences.tsx
-msgid "Resetting..."
-msgstr "Resetting..."
+msgid "Resetting…"
+msgstr "Resetting…"
 
 #: src/components/update-notification.tsx
 msgid "Restart Now"
@@ -2741,8 +2752,8 @@ msgid "Saving…"
 msgstr "Saving…"
 
 #: src/components/ui/prompt-input.tsx
-msgid "Say something..."
-msgstr "Say something..."
+msgid "Say something…"
+msgstr "Say something…"
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Scan from image"
@@ -2780,20 +2791,20 @@ msgid "Search connections"
 msgstr "Search connections"
 
 #: src/settings/preferences.tsx
-msgid "Search currencies..."
-msgstr "Search currencies..."
+msgid "Search currencies…"
+msgstr "Search currencies…"
 
 #: src/projects/emoji-picker.tsx
 msgid "Search emoji"
 msgstr "Search emoji"
 
 #: src/components/ui/command.tsx
-msgid "Search for a command to run..."
-msgstr "Search for a command to run..."
+msgid "Search for a command to run…"
+msgstr "Search for a command to run…"
 
 #: src/components/location-search-combobox.tsx
-msgid "Search locations..."
-msgstr "Search locations..."
+msgid "Search locations…"
+msgstr "Search locations…"
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Search Models"
@@ -2815,13 +2826,13 @@ msgid "Search skills"
 msgstr "Search skills"
 
 #: src/tasks/index.tsx
-msgid "Search tasks..."
-msgstr "Search tasks..."
+msgid "Search tasks…"
+msgstr "Search tasks…"
 
 #: src/components/ui/combobox.tsx
 #: src/components/ui/searchable-menu/searchable-menu.tsx
-msgid "Search..."
-msgstr "Search..."
+msgid "Search…"
+msgstr "Search…"
 
 #: src/voice/speakable.ts
 msgid "See the document on screen."
@@ -2836,8 +2847,8 @@ msgid "Select all that apply"
 msgstr "Select all that apply"
 
 #: src/components/location-search-combobox.tsx
-msgid "Select location..."
-msgstr "Select location..."
+msgid "Select location…"
+msgstr "Select location…"
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Select model"
@@ -2854,8 +2865,8 @@ msgstr "Select provider"
 
 #: src/components/ui/combobox.tsx
 #: src/components/ui/searchable-menu/searchable-menu.tsx
-msgid "Select..."
-msgstr "Select..."
+msgid "Select…"
+msgstr "Select…"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Send Magic Link"
@@ -2867,9 +2878,11 @@ msgstr "Send message"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
-msgid "Sending..."
-msgstr "Sending..."
+#~ msgid "Sending..."
+#~ msgstr "Sending..."
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/components/ui/action-feedback-button.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Sending…"
 msgstr "Sending…"
@@ -3015,12 +3028,12 @@ msgid "Signed Out"
 msgstr "Signed Out"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Signing out..."
-msgstr "Signing out..."
+msgid "Signing out…"
+msgstr "Signing out…"
 
 #: src/components/magic-link-verify.tsx
-msgid "Signing you in..."
-msgstr "Signing you in..."
+msgid "Signing you in…"
+msgstr "Signing you in…"
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Simple"
@@ -3089,8 +3102,8 @@ msgid "Something went wrong. Please try again."
 msgstr "Something went wrong. Please try again."
 
 #: src/components/chat/error-message.tsx
-msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})..."
-msgstr "Something went wrong. Retrying ({retryCount}/{maxRetries})..."
+msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
+msgstr "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"

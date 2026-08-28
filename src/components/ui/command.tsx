@@ -46,7 +46,7 @@ const CommandDialog = ({
   const { t } = useLingui()
   const { isMobile } = useIsMobile()
   const dialogTitle = title ?? t`Command Palette`
-  const dialogDescription = description ?? t`Search for a command to run...`
+  const dialogDescription = description ?? t`Search for a command to run…`
 
   const command = (
     <Command

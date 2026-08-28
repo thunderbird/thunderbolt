@@ -54,7 +54,7 @@ export const ConnectProviderButton = ({
 }: ConnectProviderButtonProps) => {
   const { t } = useLingui()
   const [isHovered, setIsHovered] = useState(false)
-  const connectingLabel = connectingLabelProp ?? t`Connecting...`
+  const connectingLabel = connectingLabelProp ?? t`Connecting…`
   const connectedLabel = connectedLabelProp ?? t`Connected!`
 
   // Use injected hook for testing, or real implementation in production

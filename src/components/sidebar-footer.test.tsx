@@ -161,7 +161,7 @@ describe('SidebarFooter', () => {
     it('shows the loading indicator', () => {
       const authClient = createMockAuthClient({ session: null, isPending: true })
       renderWithProviders(authClient)
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.getByText('Loading…')).toBeInTheDocument()
     })
   })
 })
@@ -280,7 +280,7 @@ describe('syncStatusText', () => {
   })
 
   it('reports connecting and offline states', () => {
-    expect(syncStatusText(i18n, true, 'connecting', false, null)).toBe('Connecting...')
+    expect(syncStatusText(i18n, true, 'connecting', false, null)).toBe('Connecting…')
     expect(syncStatusText(i18n, true, 'disconnected', false, null)).toBe('Offline. Changes will sync when back online.')
   })
 

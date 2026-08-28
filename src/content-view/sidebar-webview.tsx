@@ -111,7 +111,7 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
         {!isInitialized && (
           <div className="absolute inset-0 flex items-center justify-center">
             <p className="text-muted-foreground text-sm">
-              <Trans>Loading preview...</Trans>
+              <Trans>Loading preview…</Trans>
             </p>
           </div>
         )}

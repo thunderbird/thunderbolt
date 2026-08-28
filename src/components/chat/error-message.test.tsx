@@ -134,13 +134,13 @@ describe('ErrorMessage', () => {
     it('should show retry spinner when retryCount > 0 and retries not exhausted', () => {
       render(<ErrorMessage retryCount={1} retriesExhausted={false} />)
 
-      expect(screen.getByText(`Something went wrong. Retrying (1/${maxRetries})...`)).toBeTruthy()
+      expect(screen.getByText(`Something went wrong. Retrying (1/${maxRetries})…`)).toBeTruthy()
     })
 
     it('should update retry count display', () => {
       render(<ErrorMessage retryCount={2} retriesExhausted={false} />)
 
-      expect(screen.getByText(`Something went wrong. Retrying (2/${maxRetries})...`)).toBeTruthy()
+      expect(screen.getByText(`Something went wrong. Retrying (2/${maxRetries})…`)).toBeTruthy()
     })
 
     it('should not show retry spinner when retries are exhausted', () => {
@@ -233,7 +233,7 @@ describe('ErrorMessage', () => {
       const error = new Error('Network timeout')
       render(<ErrorMessage retryCount={1} retriesExhausted={false} error={error} />)
 
-      expect(screen.getByText(`Something went wrong. Retrying (1/${maxRetries})...`)).toBeTruthy()
+      expect(screen.getByText(`Something went wrong. Retrying (1/${maxRetries})…`)).toBeTruthy()
     })
   })
 })

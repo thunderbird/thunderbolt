@@ -99,7 +99,7 @@ export const ErrorMessage = memo(
             <Loader2 className="size-[var(--icon-size-sm)] text-amber-500 animate-spin" />
             <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
               <Trans>
-                Something went wrong. Retrying ({retryCount}/{maxRetries})...
+                Something went wrong. Retrying ({retryCount}/{maxRetries})…
               </Trans>
             </p>
           </div>

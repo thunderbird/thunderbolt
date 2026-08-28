@@ -147,7 +147,7 @@ export const syncStatusText = (
     return i18n._(msg`Keep your data synced across devices.`)
   }
   if (connectionStatus === 'connecting') {
-    return i18n._(msg`Connecting...`)
+    return i18n._(msg`Connecting…`)
   }
   if (connectionStatus !== 'connected') {
     return i18n._(msg`Offline. Changes will sync when back online.`)
@@ -264,7 +264,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         <div className={cn(pillClassName(true), 'cursor-default hover:bg-transparent')}>
           <Loader2 className={cn(iconSize, 'shrink-0 animate-spin text-muted-foreground')} />
           <span className="truncate text-muted-foreground">
-            <Trans>Loading...</Trans>
+            <Trans>Loading…</Trans>
           </span>
         </div>
       )

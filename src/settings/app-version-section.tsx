@@ -37,13 +37,13 @@ const desktopStatusText = (
     case 'idle':
       return i18n._(msg`You're on the latest version.`)
     case 'checking':
-      return i18n._(msg`Checking for updates...`)
+      return i18n._(msg`Checking for updates…`)
     case 'available':
       return updateVersion
         ? i18n._(msg`Version ${updateVersion} is available. See the update prompt to install.`)
         : i18n._(msg`A new version is available. See the update prompt to install.`)
     case 'downloading':
-      return i18n._(msg`Downloading update... ${downloadProgress}%`)
+      return i18n._(msg`Downloading update… ${downloadProgress}%`)
     case 'ready':
       return i18n._(msg`Update ready. Restart to apply.`)
     case 'error': {
@@ -102,7 +102,7 @@ export const AppVersionSection = () => {
                 disabled={checkDisabled}
                 onClick={desktop ? handleDesktopCheck : handleMobileCheck}
               >
-                {desktop && status === 'checking' ? <Trans>Checking...</Trans> : <Trans>Check for updates</Trans>}
+                {desktop && status === 'checking' ? <Trans>Checking…</Trans> : <Trans>Check for updates</Trans>}
               </Button>
             </div>
           </>

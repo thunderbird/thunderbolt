@@ -619,7 +619,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           >
             <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" />
             <span>
-              <Trans>Connecting to {agentName}...</Trans>
+              <Trans>Connecting to {agentName}…</Trans>
             </span>
           </div>
         ) : isConnectionError ? (
@@ -822,7 +822,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               }
               setInput(value)
             }}
-            placeholder={t`Ask me anything...`}
+            placeholder={t`Ask me anything…`}
             showSubmitButton
             onSubmit={handleSubmit}
             // Allow sending an attachment even with no typed text (matches the Enter behavior).

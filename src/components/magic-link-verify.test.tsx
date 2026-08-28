@@ -144,7 +144,7 @@ describe('MagicLinkVerify', () => {
 
       renderComponent('user@example.com', '123456')
 
-      expect(screen.getByText('Signing you in...')).toBeInTheDocument()
+      expect(screen.getByText('Signing you in…')).toBeInTheDocument()
     })
   })
 

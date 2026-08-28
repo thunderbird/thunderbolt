@@ -162,7 +162,7 @@ describe('LogoutModal', () => {
         await getClock().tickAsync(0)
       })
 
-      expect(screen.getByText('Logging out...')).toBeInTheDocument()
+      expect(screen.getByText('Logging out…')).toBeInTheDocument()
 
       // Clean up
       resolveSignOut!()
@@ -209,7 +209,7 @@ describe('LogoutModal', () => {
         await getClock().tickAsync(0)
       })
 
-      expect(screen.getByText('Deleting...')).toBeInTheDocument()
+      expect(screen.getByText('Deleting…')).toBeInTheDocument()
 
       // Clean up
       resolveSignOut!()

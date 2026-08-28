@@ -18,9 +18,9 @@ const statusConfig: Record<
 > = {
   initial: { icon: CheckCircle, message: null, showActions: false },
   idle: { icon: CheckCircle, message: null, showActions: false },
-  checking: { icon: Loader2, message: msg`Checking for updates...`, showActions: false },
+  checking: { icon: Loader2, message: msg`Checking for updates…`, showActions: false },
   available: { icon: Download, message: msg`A new version is available!`, showActions: true },
-  downloading: { icon: Loader2, message: msg`Downloading update...`, showActions: false },
+  downloading: { icon: Loader2, message: msg`Downloading update…`, showActions: false },
   ready: { icon: RefreshCw, message: msg`Update ready! Restart to apply.`, showActions: true },
   error: { icon: AlertCircle, message: msg`Update failed`, showActions: true },
 }

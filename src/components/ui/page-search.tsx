@@ -43,7 +43,7 @@ type PageSearchProps = {
  * Usage:
  *   <PageSearch onSearch={handleSearch}>
  *     <PageSearch.Button />
- *     <PageSearch.Input placeholder="Search..." />
+ *     <PageSearch.Input placeholder="Search…" />
  *   </PageSearch>
  */
 export const PageSearch = ({ onSearch, children }: PageSearchProps) => {

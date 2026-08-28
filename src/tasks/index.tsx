@@ -300,7 +300,7 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
           onChange={(e) => setValue(e.target.value)}
           onBlur={handleSubmit}
           onKeyDown={handleKeyDown}
-          placeholder={t`Add a new task...`}
+          placeholder={t`Add a new task…`}
           className="w-full bg-transparent text-sm leading-5 p-0 m-0 focus:outline-none"
           style={{ height: '20px' }}
         />
@@ -685,7 +685,7 @@ const TasksPage = () => {
               )}
             </PageHeader>
 
-            <PageSearch.Input placeholder={t`Search tasks...`} onSearch={handleSearch} />
+            <PageSearch.Input placeholder={t`Search tasks…`} onSearch={handleSearch} />
           </PageSearch>
 
           {showEmptyState ? (

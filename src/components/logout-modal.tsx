@@ -110,7 +110,7 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
           {isLoggingOut ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {selectedOption === 'delete' ? <Trans>Deleting...</Trans> : <Trans>Logging out...</Trans>}
+              {selectedOption === 'delete' ? <Trans>Deleting…</Trans> : <Trans>Logging out…</Trans>}
             </>
           ) : (
             <Trans>Log out</Trans>

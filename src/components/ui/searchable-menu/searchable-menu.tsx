@@ -146,7 +146,7 @@ const DefaultTrigger = <T,>({
       )}
     >
       {selected?.icon}
-      <span className="font-medium">{selected?.label ?? placeholder ?? t`Select...`}</span>
+      <span className="font-medium">{selected?.label ?? placeholder ?? t`Select…`}</span>
       <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>
   )
@@ -174,7 +174,7 @@ export const SearchableMenu = <T,>({
 }: SearchableMenuProps<T>) => {
   const { t } = useLingui()
   const [internalOpen, setInternalOpen] = useState(false)
-  const searchPlaceholder = searchPlaceholderProp ?? t`Search...`
+  const searchPlaceholder = searchPlaceholderProp ?? t`Search…`
   const emptyMessage = emptyMessageProp ?? t`No items found`
   const mobileTitle = mobileTitleProp ?? t`Choose an option`
   const [searchQuery, setSearchQuery] = useState('')

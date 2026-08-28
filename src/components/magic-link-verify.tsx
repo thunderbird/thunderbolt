@@ -132,7 +132,7 @@ export const MagicLinkVerify = () => {
                 <Loader2 className="h-6 w-6 animate-spin text-white" />
               </div>
               <DialogTitle className="text-center text-xl">
-                <Trans>Signing you in...</Trans>
+                <Trans>Signing you in…</Trans>
               </DialogTitle>
               <DialogDescription className="text-center">
                 <Trans>Please wait while we verify your link.</Trans>

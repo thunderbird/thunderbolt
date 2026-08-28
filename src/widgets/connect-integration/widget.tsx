@@ -204,7 +204,7 @@ export const ConnectIntegrationWidget = memo(
           <CardContent className="p-6">
             <div className="flex items-center justify-center">
               <p className="text-sm text-muted-foreground">
-                <Trans>Loading...</Trans>
+                <Trans>Loading…</Trans>
               </p>
             </div>
           </CardContent>
@@ -393,7 +393,7 @@ export const ConnectIntegrationWidget = memo(
                 className="w-full"
                 size="lg"
               >
-                {isConnecting ? <Trans>Connecting...</Trans> : <Trans>Connect {providerName}</Trans>}
+                {isConnecting ? <Trans>Connecting…</Trans> : <Trans>Connect {providerName}</Trans>}
               </Button>
             </div>
           </div>

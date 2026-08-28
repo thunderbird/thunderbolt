@@ -149,8 +149,8 @@ msgid "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 msgstr "<0>~/.local/bin</0> を PATH に追加し、シェルを再起動してください:"
 
 #: src/tasks/index.tsx
-msgid "Add a new task..."
-msgstr "新しいタスクを追加..."
+msgid "Add a new task…"
+msgstr "新しいタスクを追加…"
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
@@ -340,8 +340,8 @@ msgid "Artifacts"
 msgstr "アーティファクト"
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "Ask me anything..."
-msgstr "何でも質問してください..."
+msgid "Ask me anything…"
+msgstr "何でも質問してください…"
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
@@ -518,8 +518,8 @@ msgstr "自動で確認しています…"
 
 #: src/components/update-notification.tsx
 #: src/settings/app-version-section.tsx
-msgid "Checking for updates..."
-msgstr "更新を確認しています..."
+msgid "Checking for updates…"
+msgstr "更新を確認しています…"
 
 #: src/components/device-approval.tsx
 msgid "Checking sign-in request…"
@@ -530,11 +530,12 @@ msgid "Checking your session."
 msgstr "セッションを確認しています。"
 
 #: src/settings/app-version-section.tsx
-msgid "Checking..."
-msgstr "確認中..."
+#~ msgid "Checking..."
+#~ msgstr "確認中..."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/upgrade-required.tsx
+#: src/settings/app-version-section.tsx
 msgid "Checking…"
 msgstr "確認中…"
 
@@ -601,8 +602,8 @@ msgid "Clear sky"
 msgstr "晴れ"
 
 #: src/components/app-error-screen.tsx
-msgid "Clearing Database..."
-msgstr "データベースを消去しています..."
+msgid "Clearing Database…"
+msgstr "データベースを消去しています…"
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
@@ -668,8 +669,8 @@ msgid "Complete the setup process to get started with Thunderbolt"
 msgstr "セットアップを完了して Thunderbolt を使い始めましょう"
 
 #: src/components/onboarding/onboarding-dialog.tsx
-msgid "Completing..."
-msgstr "完了しています..."
+msgid "Completing…"
+msgstr "完了しています…"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -744,16 +745,19 @@ msgid "Connected!"
 msgstr "接続しました"
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "Connecting to {agentName}..."
-msgstr "{agentName} に接続しています..."
+msgid "Connecting to {agentName}…"
+msgstr "{agentName} に接続しています…"
 
 #: src/components/connect-provider-button.tsx
 #: src/components/sidebar-footer.tsx
 #: src/widgets/connect-integration/widget.tsx
-msgid "Connecting..."
-msgstr "接続しています..."
+#~ msgid "Connecting..."
+#~ msgstr "接続しています..."
 
+#: src/components/connect-provider-button.tsx
+#: src/components/sidebar-footer.tsx
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/widgets/connect-integration/widget.tsx
 msgid "Connecting…"
 msgstr "接続しています…"
 
@@ -1142,11 +1146,14 @@ msgstr "アカウントを削除しますか？"
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
 #: src/settings/preferences.tsx
-msgid "Deleting..."
-msgstr "削除しています..."
+#~ msgid "Deleting..."
+#~ msgstr "削除しています..."
 
+#: src/components/logout-modal.tsx
+#: src/components/revoked-device-modal.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
+#: src/settings/preferences.tsx
 msgid "Deleting…"
 msgstr "削除しています…"
 
@@ -1318,12 +1325,12 @@ msgid "Download update"
 msgstr "更新をダウンロード"
 
 #: src/components/update-notification.tsx
-msgid "Downloading update..."
-msgstr "更新をダウンロードしています..."
+msgid "Downloading update…"
+msgstr "更新をダウンロードしています…"
 
 #: src/settings/app-version-section.tsx
-msgid "Downloading update... {downloadProgress}%"
-msgstr "更新をダウンロードしています... {downloadProgress}%"
+msgid "Downloading update… {downloadProgress}%"
+msgstr "更新をダウンロードしています… {downloadProgress}%"
 
 #: src/components/upgrade-required.tsx
 msgid "Downloading…"
@@ -1496,8 +1503,8 @@ msgid "Export Your Data"
 msgstr "データをエクスポート"
 
 #: src/settings/preferences.tsx
-msgid "Exporting..."
-msgstr "エクスポートしています..."
+msgid "Exporting…"
+msgstr "エクスポートしています…"
 
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -1744,10 +1751,11 @@ msgid "Import your data from previously exported JSON."
 msgstr "以前にエクスポートした JSON からデータをインポートします。"
 
 #: src/settings/preferences.tsx
-msgid "Importing..."
-msgstr "インポートしています..."
+#~ msgid "Importing..."
+#~ msgstr "インポートしています..."
 
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/preferences.tsx
 msgid "Importing…"
 msgstr "インポート中…"
 
@@ -1918,8 +1926,8 @@ msgid "Loading emoji…"
 msgstr "絵文字を読み込んでいます…"
 
 #: src/content-view/sidebar-webview.tsx
-msgid "Loading preview..."
-msgstr "プレビューを読み込んでいます..."
+msgid "Loading preview…"
+msgstr "プレビューを読み込んでいます…"
 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
@@ -1928,10 +1936,13 @@ msgstr "このアプリのペアリング ID を読み込んでいます…"
 #: src/components/sidebar-footer.tsx
 #: src/settings/preferences.tsx
 #: src/widgets/connect-integration/widget.tsx
-msgid "Loading..."
-msgstr "読み込んでいます..."
+#~ msgid "Loading..."
+#~ msgstr "読み込んでいます..."
 
 #: src/components/device-approval.tsx
+#: src/components/sidebar-footer.tsx
+#: src/settings/preferences.tsx
+#: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "読み込んでいます…"
 
@@ -1957,8 +1968,8 @@ msgid "Log out"
 msgstr "ログアウト"
 
 #: src/components/logout-modal.tsx
-msgid "Logging out..."
-msgstr "ログアウトしています..."
+msgid "Logging out…"
+msgstr "ログアウトしています…"
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
@@ -2643,8 +2654,8 @@ msgid "Reset to Default"
 msgstr "既定値に戻す"
 
 #: src/settings/preferences.tsx
-msgid "Resetting..."
-msgstr "リセットしています..."
+msgid "Resetting…"
+msgstr "リセットしています…"
 
 #: src/components/update-notification.tsx
 msgid "Restart Now"
@@ -2735,8 +2746,8 @@ msgid "Saving…"
 msgstr "保存しています…"
 
 #: src/components/ui/prompt-input.tsx
-msgid "Say something..."
-msgstr "何か話しかけてください..."
+msgid "Say something…"
+msgstr "何か話しかけてください…"
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Scan from image"
@@ -2774,20 +2785,20 @@ msgid "Search connections"
 msgstr "接続を検索"
 
 #: src/settings/preferences.tsx
-msgid "Search currencies..."
-msgstr "通貨を検索..."
+msgid "Search currencies…"
+msgstr "通貨を検索…"
 
 #: src/projects/emoji-picker.tsx
 msgid "Search emoji"
 msgstr "絵文字を検索"
 
 #: src/components/ui/command.tsx
-msgid "Search for a command to run..."
-msgstr "実行するコマンドを検索..."
+msgid "Search for a command to run…"
+msgstr "実行するコマンドを検索…"
 
 #: src/components/location-search-combobox.tsx
-msgid "Search locations..."
-msgstr "場所を検索..."
+msgid "Search locations…"
+msgstr "場所を検索…"
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Search Models"
@@ -2809,13 +2820,13 @@ msgid "Search skills"
 msgstr "スキルを検索"
 
 #: src/tasks/index.tsx
-msgid "Search tasks..."
-msgstr "タスクを検索..."
+msgid "Search tasks…"
+msgstr "タスクを検索…"
 
 #: src/components/ui/combobox.tsx
 #: src/components/ui/searchable-menu/searchable-menu.tsx
-msgid "Search..."
-msgstr "検索..."
+msgid "Search…"
+msgstr "検索…"
 
 #: src/voice/speakable.ts
 msgid "See the document on screen."
@@ -2830,8 +2841,8 @@ msgid "Select all that apply"
 msgstr "該当するものをすべて選択"
 
 #: src/components/location-search-combobox.tsx
-msgid "Select location..."
-msgstr "場所を選択..."
+msgid "Select location…"
+msgstr "場所を選択…"
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Select model"
@@ -2848,8 +2859,8 @@ msgstr "プロバイダーを選択"
 
 #: src/components/ui/combobox.tsx
 #: src/components/ui/searchable-menu/searchable-menu.tsx
-msgid "Select..."
-msgstr "選択..."
+msgid "Select…"
+msgstr "選択…"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Send Magic Link"
@@ -2861,9 +2872,11 @@ msgstr "メッセージを送信"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
-msgid "Sending..."
-msgstr "送信しています..."
+#~ msgid "Sending..."
+#~ msgstr "送信しています..."
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/components/ui/action-feedback-button.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Sending…"
 msgstr "送信しています…"
@@ -3009,12 +3022,12 @@ msgid "Signed Out"
 msgstr "サインアウトしました"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Signing out..."
-msgstr "サインアウトしています..."
+msgid "Signing out…"
+msgstr "サインアウトしています…"
 
 #: src/components/magic-link-verify.tsx
-msgid "Signing you in..."
-msgstr "サインインしています..."
+msgid "Signing you in…"
+msgstr "サインインしています…"
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Simple"
@@ -3083,8 +3096,8 @@ msgid "Something went wrong. Please try again."
 msgstr "問題が発生しました。もう一度お試しください。"
 
 #: src/components/chat/error-message.tsx
-msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})..."
-msgstr "問題が発生しました。再試行しています（{retryCount}/{maxRetries}）..."
+msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
+msgstr "問題が発生しました。再試行しています（{retryCount}/{maxRetries}）…"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"

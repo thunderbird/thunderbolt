@@ -33,7 +33,7 @@ describe('SearchableMenu', () => {
     it('filters items based on search query', () => {
       render(<SearchableMenu items={mockFlatItems} onValueChange={() => {}} open={true} onOpenChange={() => {}} />)
 
-      const searchInput = screen.getByPlaceholderText('Search...')
+      const searchInput = screen.getByPlaceholderText('Search…')
       fireEvent.change(searchInput, { target: { value: 'Option 1' } })
 
       expect(screen.getByText('Option 1')).toBeInTheDocument()
@@ -43,7 +43,7 @@ describe('SearchableMenu', () => {
     it('filters items by description', () => {
       render(<SearchableMenu items={mockFlatItems} onValueChange={() => {}} open={true} onOpenChange={() => {}} />)
 
-      const searchInput = screen.getByPlaceholderText('Search...')
+      const searchInput = screen.getByPlaceholderText('Search…')
       fireEvent.change(searchInput, { target: { value: 'Second' } })
 
       expect(screen.getByText('Option 2')).toBeInTheDocument()

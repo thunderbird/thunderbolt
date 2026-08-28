@@ -66,8 +66,8 @@ export const Combobox = ({
   const [internalOpen, setInternalOpen] = useState(false)
   // Defaults resolved in the body, not the signature: a parameter default is
   // evaluated at module scope where `t` would freeze at the boot locale.
-  const placeholder = placeholderProp ?? t`Select...`
-  const searchPlaceholder = searchPlaceholderProp ?? t`Search...`
+  const placeholder = placeholderProp ?? t`Select…`
+  const searchPlaceholder = searchPlaceholderProp ?? t`Search…`
   const emptyMessage = emptyMessageProp ?? t`No items found.`
   const [internalSearch, setInternalSearch] = useState('')
 

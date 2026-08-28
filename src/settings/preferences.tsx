@@ -756,7 +756,7 @@ export default function PreferencesSettingsPage() {
               disabled={unitsOptionsLoading}
             >
               <SelectTrigger className="w-auto rounded-lg" aria-label={t`Distance unit`}>
-                <SelectValue placeholder={t`Loading...`} />
+                <SelectValue placeholder={t`Loading…`} />
               </SelectTrigger>
               <SelectContent>
                 {(unitsOptionsData?.units ?? []).map((u) => (
@@ -789,7 +789,7 @@ export default function PreferencesSettingsPage() {
               disabled={unitsOptionsLoading}
             >
               <SelectTrigger className="w-auto rounded-lg" aria-label={t`Temperature unit`}>
-                <SelectValue placeholder={t`Loading...`} />
+                <SelectValue placeholder={t`Loading…`} />
               </SelectTrigger>
               <SelectContent>
                 {(unitsOptionsData?.temperature ?? []).map((t) => (
@@ -822,7 +822,7 @@ export default function PreferencesSettingsPage() {
               disabled={unitsOptionsLoading}
             >
               <SelectTrigger className="w-auto rounded-lg" aria-label={t`Date format`}>
-                <SelectValue placeholder={t`Loading...`} />
+                <SelectValue placeholder={t`Loading…`} />
               </SelectTrigger>
               <SelectContent>
                 {(unitsOptionsData?.dateFormats ?? []).map((f) => (
@@ -855,7 +855,7 @@ export default function PreferencesSettingsPage() {
               disabled={unitsOptionsLoading}
             >
               <SelectTrigger className="w-auto rounded-lg" aria-label={t`Time format`}>
-                <SelectValue placeholder={t`Loading...`} />
+                <SelectValue placeholder={t`Loading…`} />
               </SelectTrigger>
               <SelectContent>
                 {(unitsOptionsData?.timeFormat ?? []).map((f) => (
@@ -890,8 +890,8 @@ export default function PreferencesSettingsPage() {
               displayValue={currencyDisplayValue || undefined}
               id="localization-currency-trigger"
               aria-labelledby="localization-currency-label localization-currency-trigger"
-              placeholder={t`Loading...`}
-              searchPlaceholder={t`Search currencies...`}
+              placeholder={t`Loading…`}
+              searchPlaceholder={t`Search currencies…`}
               loading={unitsOptionsLoading}
               className="w-auto"
               contentClassName="w-[300px]"
@@ -1084,7 +1084,7 @@ export default function PreferencesSettingsPage() {
                   aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
                   onClick={handleExportData}
                 >
-                  {isExporting ? t`Exporting...` : t`Export My Data`}
+                  {isExporting ? t`Exporting…` : t`Export My Data`}
                 </Button>
               </div>
 
@@ -1128,7 +1128,7 @@ export default function PreferencesSettingsPage() {
                   }
                   onClick={handleImportClick}
                 >
-                  {isImporting ? t`Importing...` : t`Import Data`}
+                  {isImporting ? t`Importing…` : t`Import Data`}
                 </Button>
               </div>
             </>
@@ -1147,7 +1147,7 @@ export default function PreferencesSettingsPage() {
                   disabled={isResetting}
                   onClick={() => dispatch({ type: 'SET_RESET_DIALOG_OPEN', payload: true })}
                 >
-                  {isResetting ? t`Resetting...` : t`Reset Database`}
+                  {isResetting ? t`Resetting…` : t`Reset Database`}
                 </Button>
                 <ConfirmActionDialog
                   open={resetDialogOpen}
@@ -1188,7 +1188,7 @@ export default function PreferencesSettingsPage() {
                   disabled={isDeletingAccount}
                   onClick={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: true })}
                 >
-                  {isDeletingAccount ? t`Deleting...` : t`Delete My Account`}
+                  {isDeletingAccount ? t`Deleting…` : t`Delete My Account`}
                 </Button>
                 <ConfirmActionDialog
                   open={deleteAccountDialogOpen}
@@ -1276,7 +1276,7 @@ export default function PreferencesSettingsPage() {
               aria-busy={isImporting}
               variant="destructive"
             >
-              {isImporting ? t`Importing...` : t`Import`}
+              {isImporting ? t`Importing…` : t`Import`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

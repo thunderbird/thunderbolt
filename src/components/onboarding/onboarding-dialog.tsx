@@ -169,7 +169,7 @@ export const OnboardingDialog = () => {
               continueText={
                 isCelebration ? (
                   isCompleting ? (
-                    <Trans>Completing...</Trans>
+                    <Trans>Completing…</Trans>
                   ) : (
                     <Trans>Start Using Thunderbolt</Trans>
                   )

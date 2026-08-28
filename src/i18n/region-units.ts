@@ -324,8 +324,15 @@ const timeFormatForRegion = (region: string): TimeFormat => {
  * these the picker cannot offer a Bhutanese user the ngultrum or a Namibian the
  * Namibian dollar — their own currency would be missing from the list entirely,
  * with no way to correct the default.
+ *
+ * Filtered by what the runtime can actually name. ZWG (Zimbabwe Gold, introduced
+ * 2024) is absent from older ICU builds, where `Intl.DisplayNames` echoes the raw
+ * code back — an option reading "ZWG · ZWG" is worse than no option. Every region
+ * default above predates that cutoff, so only the extras need the guard.
  */
-const additionalTenders = ['BTN', 'HTG', 'NAD', 'PAB', 'ZWG']
+const supportedCurrencies = new Set(Intl.supportedValuesOf('currency'))
+
+const additionalTenders = ['BTN', 'HTG', 'NAD', 'PAB', 'ZWG'].filter((code) => supportedCurrencies.has(code))
 
 /** Every currency in circulation, for the currency picker. */
 export const activeCurrencyCodes: readonly string[] = [

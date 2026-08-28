@@ -78,10 +78,15 @@ describe('unitDefaultsForRegion', () => {
   })
 })
 
+const coOfficialTenders = ['BTN', 'HTG', 'NAD', 'PAB', 'ZWG']
+
 describe('activeCurrencyCodes', () => {
   test('lists every circulating currency, sorted and deduplicated', () => {
     // A deliberate "did you mean to change the list?" gate, like `defaultSettingsVersion`.
-    expect(activeCurrencyCodes.length).toBe(153)
+    // 148 region defaults, plus whichever co-official tenders this engine can name —
+    // ZWG is missing from older ICU builds, so the total is deliberately not fixed.
+    const nameable = coOfficialTenders.filter((code) => new Set(Intl.supportedValuesOf('currency')).has(code))
+    expect(activeCurrencyCodes.length).toBe(148 + nameable.length)
     expect([...activeCurrencyCodes].sort()).toEqual([...activeCurrencyCodes])
     expect(new Set(activeCurrencyCodes).size).toBe(activeCurrencyCodes.length)
   })
@@ -90,7 +95,8 @@ describe('activeCurrencyCodes', () => {
   // everyday use, but the other must still be selectable — otherwise a user in
   // Bhutan or Namibia cannot reach their own currency at all.
   test('offers the co-official tender of two-currency regions', () => {
-    for (const code of ['BTN', 'HTG', 'NAD', 'PAB', 'ZWG']) {
+    const supported = new Set(Intl.supportedValuesOf('currency'))
+    for (const code of coOfficialTenders.filter((c) => supported.has(c))) {
       expect(activeCurrencyCodes).toContain(code)
     }
   })

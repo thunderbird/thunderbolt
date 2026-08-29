@@ -10,6 +10,7 @@ import { PowerSyncContext } from '@powersync/react'
 import { i18n } from '@/i18n'
 
 import ChatDetailPage from '@/chats/detail'
+import AuthError from '@/components/auth-error'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
@@ -231,6 +232,9 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
         <Route path="/device" element={<DeviceApproval />} />
+        {/* Better Auth's `onAPIError.errorURL` target — unguarded so a failed
+            sign-in ends here instead of re-entering the flow it just failed. */}
+        <Route path="/auth-error" element={<AuthError />} />
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}

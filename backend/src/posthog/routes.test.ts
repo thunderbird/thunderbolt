@@ -40,6 +40,27 @@ describe('PostHog Proxy Routes', () => {
     consoleSpies.error.mockClear()
   })
 
+  it('does not forward the browser Referer upstream', async () => {
+    // A same-origin analytics request carries the full page URL here, so
+    // forwarding it would leak query strings that before_send already scrubbed
+    // out of the event body.
+    await app.handle(
+      new Request('http://localhost/posthog/e/', {
+        method: 'POST',
+        headers: {
+          referer: 'https://app.test/auth-error?error_description=Client+not+registered',
+          'content-type': 'application/json',
+        },
+        body: '{}',
+      }),
+    )
+
+    const forwarded = new Headers((mockFetch.mock.calls[0][1] as RequestInit).headers as HeadersInit)
+    // Positive control: the rest of the request headers still go through.
+    expect(forwarded.get('content-type')).toBe('application/json')
+    expect(forwarded.has('referer')).toBe(false)
+  })
+
   it('adds security headers to prevent XSS via proxied content', async () => {
     mockFetch.mockImplementation(() =>
       Promise.resolve(

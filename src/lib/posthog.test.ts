@@ -15,6 +15,7 @@ type PosthogOptions = {
 type PosthogEvent = {
   event: string
   properties: Record<string, unknown>
+  $set_once?: Record<string, unknown>
 }
 
 const mockPosthogInit = mock()
@@ -148,6 +149,33 @@ describe('analytics before_send sanitization', () => {
     const result = capturedOptions!.before_send(event)
     expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.$referrer).toBe('https://referrer.test/chats/:chatThreadId')
+  })
+
+  it('sanitizes the session-entry properties that ride along on every later event', async () => {
+    // posthog-js derives these from the URL the session started on, so a session
+    // that began on /auth-error would otherwise carry the identity provider's
+    // error text into every subsequent event.
+    const mockHttpClient = createMockHttpClient('test-key')
+    await initPosthog(mockHttpClient)
+    expect(capturedOptions).toBeTruthy()
+
+    const event: PosthogEvent = {
+      event: 'chat_send_prompt',
+      properties: {
+        $session_entry_url: 'https://app/auth-error?error=invalid_request&error_description=Client+not+registered',
+        $session_entry_pathname: '/chats/123',
+        $session_entry_referrer: 'https://idp.test/authorize?client_id=secret',
+      },
+      $set_once: {
+        $current_url: 'https://app/auth-error?error_description=Client+not+registered',
+      },
+    }
+
+    const result = capturedOptions!.before_send(event)
+    expect(result.properties.$session_entry_url).toBe('https://app/auth-error')
+    expect(result.properties.$session_entry_pathname).toBe('/chats/:chatThreadId')
+    expect(result.properties.$session_entry_referrer).toBe('https://idp.test/authorize')
+    expect(result.$set_once?.$current_url).toBe('https://app/auth-error')
   })
 
   it('ignores non-string URL-like properties', async () => {

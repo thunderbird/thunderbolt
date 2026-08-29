@@ -126,6 +126,18 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 | `SWAGGER_ENABLED`  | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
 | `MONITORING_TOKEN` | —                       | Shared secret for authenticated `/health` checks                     |
 
+### Serving the app and API on separate hostnames
+
+The simplest deployments put the frontend and the backend behind one origin (Compose, the ALB, a k8s ingress). If you split them, `APP_URL` and `BETTER_AUTH_URL` must stay **same-site**: the same scheme (SameSite is schemeful, so don't mix `http` and `https`) and two hostnames under one registrable domain, such as `https://app.example.com` and `https://api.example.com`. Different ports or subdomains of a shared parent are fine.
+
+Same-site hostnames are necessary but not sufficient. A split deployment also needs `CORS_ORIGINS` and `TRUSTED_ORIGINS` to include the app origin (in SSO mode `TRUSTED_ORIGINS` also needs the IdP origin), and `VITE_THUNDERBOLT_CLOUD_URL` set to the API's absolute URL such as `https://api.example.com/v1` — the `/v1` default only works when one origin proxies both.
+
+Hostnames on different registrable domains break sign-in. The auth cookies are `SameSite=Lax`, so a cross-site deployment loses both the OAuth `state` cookie (after a successful IdP login the callback redirects to `APP_URL/auth-error?error=state_mismatch`, and the backend logs `state_security_mismatch`) and the session cookie (`/get-session` then answers `null` with a 200, so the app looks permanently signed out). Watch out for PaaS hostnames that look like subdomains but are not: `up.railway.app`, `vercel.app`, and similar are on the [Public Suffix List](https://publicsuffix.org/list/), which makes `web.up.railway.app` and `api.up.railway.app` cross-site. Attach custom domains under one apex instead.
+
+Failed sign-ins redirect to `APP_URL/auth-error`, which shows the provider's error code and a retry button.
+
+One gap to know about under `AUTH_MODE=saml`: `@better-auth/sso` never consults that redirect target on its assertion-consumer path. A rejected assertion (bad signature, clock skew, malformed XML) redirects to `BETTER_AUTH_URL`'s origin instead, which serves no page. Check the backend logs for `SAML response validation failed` when a SAML sign-in dead-ends on the API hostname.
+
 ## Frontend Build Args
 
 The web/desktop bundle accepts two Vite env vars, passed as Dockerfile build args in `deploy/docker/frontend.Dockerfile`:

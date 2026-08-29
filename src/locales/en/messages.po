@@ -308,6 +308,10 @@ msgstr "Always allow all Run command actions"
 msgid "Always allow everything from this agent"
 msgstr "Always allow everything from this agent"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Always ask"
+msgstr "Always ask"
+
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr "Analyzing…"
@@ -395,6 +399,10 @@ msgstr "Artifact"
 msgid "Artifacts"
 msgstr "Artifacts"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Ask"
+msgstr "Ask"
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "Ask me anything…"
@@ -476,6 +484,10 @@ msgstr "Bridge"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Bridge target"
 msgstr "Bridge target"
+
+#: src/components/external-link-toggle-group.tsx
+msgid "Browser"
+msgstr "Browser"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
@@ -939,6 +951,10 @@ msgstr "Could not connect to this server. Check the URL and that the server is r
 #: src/projects/project-form.tsx
 msgid "Could not create the project."
 msgstr "Could not create the project."
+
+#: src/hooks/use-external-link-dialog.ts
+msgid "Could not open link. Please try again or copy the URL."
+msgstr "Could not open link. Please try again or copy the URL."
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Could not read QR code"
@@ -1592,6 +1608,10 @@ msgstr "Export Your Data"
 msgid "Exporting…"
 msgstr "Exporting…"
 
+#: src/settings/preferences.tsx
+msgid "External Links"
+msgstr "External Links"
+
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -2236,6 +2256,10 @@ msgstr "New project"
 msgid "New Skill"
 msgstr "New Skill"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "New tab"
+msgstr "New tab"
+
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr "New Task"
@@ -2426,6 +2450,7 @@ msgstr "Open {title}"
 msgid "Open External Link"
 msgstr "Open External Link"
 
+#: src/components/external-link-toggle-group.tsx
 #: src/content-view/sidebar-webview.tsx
 msgid "Open in browser"
 msgstr "Open in browser"
@@ -2434,9 +2459,17 @@ msgstr "Open in browser"
 msgid "Open in Browser"
 msgstr "Open in Browser"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Open in new tab"
+msgstr "Open in new tab"
+
 #: src/components/chat/inline-artifact-card.tsx
 msgid "Open in side panel"
 msgstr "Open in side panel"
+
+#: src/components/external-link-toggle-group.tsx
+msgid "Open in sidebar"
+msgstr "Open in sidebar"
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open in Sidebar"
@@ -3102,6 +3135,10 @@ msgstr "Show QR code for {deviceName}"
 msgid "Showing 50 of {totalCount} tasks"
 msgstr "Showing 50 of {totalCount} tasks"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Sidebar"
+msgstr "Sidebar"
+
 #: src/layout/sidebar/nav-toggle.tsx
 msgid "Sidebar sections"
 msgstr "Sidebar sections"
@@ -3486,6 +3523,10 @@ msgstr "This link has expired. Please request a new one."
 #: src/lib/otp-error-messages.ts
 msgid "This link is invalid. Please request a new one."
 msgstr "This link is invalid. Please request a new one."
+
+#: src/hooks/use-external-link-dialog.ts
+msgid "This link uses an address the app cannot open."
+msgstr "This link uses an address the app cannot open."
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -3973,6 +4014,10 @@ msgstr "When to use this skill…"
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Where are you located?"
 msgstr "Where are you located?"
+
+#: src/settings/preferences.tsx
+msgid "Where links in chats open"
+msgstr "Where links in chats open"
 
 #: src/components/onboarding/onboarding-language-step.tsx
 msgid "Which language do you prefer?"

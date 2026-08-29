@@ -296,6 +296,10 @@ msgstr "すべてのコマンド実行操作を常に許可"
 msgid "Always allow everything from this agent"
 msgstr "このエージェントからのすべてを常に許可"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Always ask"
+msgstr "常に確認する"
+
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr "分析中…"
@@ -383,6 +387,10 @@ msgstr "アーティファクト"
 msgid "Artifacts"
 msgstr "アーティファクト"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Ask"
+msgstr "確認"
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "何でも質問してください…"
@@ -464,6 +472,10 @@ msgstr "ブリッジ"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Bridge target"
 msgstr "ブリッジのターゲット"
+
+#: src/components/external-link-toggle-group.tsx
+msgid "Browser"
+msgstr "ブラウザー"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
@@ -927,6 +939,10 @@ msgstr "このサーバーに接続できませんでした。URL とサーバ�
 #: src/projects/project-form.tsx
 msgid "Could not create the project."
 msgstr "プロジェクトを作成できませんでした。"
+
+#: src/hooks/use-external-link-dialog.ts
+msgid "Could not open link. Please try again or copy the URL."
+msgstr "リンクを開けませんでした。もう一度お試しいただくか、URL をコピーしてください。"
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Could not read QR code"
@@ -1580,6 +1596,10 @@ msgstr "データをエクスポート"
 msgid "Exporting…"
 msgstr "エクスポートしています…"
 
+#: src/settings/preferences.tsx
+msgid "External Links"
+msgstr "外部リンク"
+
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -2224,6 +2244,10 @@ msgstr "新しいプロジェクト"
 msgid "New Skill"
 msgstr "新しいスキル"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "New tab"
+msgstr "新しいタブ"
+
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr "新しいタスク"
@@ -2414,6 +2438,7 @@ msgstr "{title} を開く"
 msgid "Open External Link"
 msgstr "外部リンクを開く"
 
+#: src/components/external-link-toggle-group.tsx
 #: src/content-view/sidebar-webview.tsx
 msgid "Open in browser"
 msgstr "ブラウザーで開く"
@@ -2422,9 +2447,17 @@ msgstr "ブラウザーで開く"
 msgid "Open in Browser"
 msgstr "ブラウザーで開く"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Open in new tab"
+msgstr "新しいタブで開く"
+
 #: src/components/chat/inline-artifact-card.tsx
 msgid "Open in side panel"
 msgstr "サイドパネルで開く"
+
+#: src/components/external-link-toggle-group.tsx
+msgid "Open in sidebar"
+msgstr "サイドバーで開く"
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open in Sidebar"
@@ -3090,6 +3123,10 @@ msgstr "{deviceName} の QR コードを表示"
 msgid "Showing 50 of {totalCount} tasks"
 msgstr "{totalCount} 件のタスクのうち 50 件を表示中"
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Sidebar"
+msgstr "サイドバー"
+
 #: src/layout/sidebar/nav-toggle.tsx
 msgid "Sidebar sections"
 msgstr "サイドバーのセクション"
@@ -3474,6 +3511,10 @@ msgstr "このリンクは有効期限が切れています。新しいリンク
 #: src/lib/otp-error-messages.ts
 msgid "This link is invalid. Please request a new one."
 msgstr "このリンクは無効です。新しいリンクをリクエストしてください。"
+
+#: src/hooks/use-external-link-dialog.ts
+msgid "This link uses an address the app cannot open."
+msgstr "このリンクのアドレスはアプリで開けません。"
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -3961,6 +4002,10 @@ msgstr "このスキルを使う場面…"
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Where are you located?"
 msgstr "どちらにお住まいですか？"
+
+#: src/settings/preferences.tsx
+msgid "Where links in chats open"
+msgstr "チャット内のリンクを開く場所"
 
 #: src/components/onboarding/onboarding-language-step.tsx
 msgid "Which language do you prefer?"

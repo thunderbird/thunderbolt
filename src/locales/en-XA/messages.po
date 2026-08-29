@@ -308,6 +308,10 @@ msgstr ""
 msgid "Always allow everything from this agent"
 msgstr ""
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Always ask"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr ""
@@ -395,6 +399,10 @@ msgstr ""
 msgid "Artifacts"
 msgstr ""
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Ask"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr ""
@@ -475,6 +483,10 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Bridge target"
+msgstr ""
+
+#: src/components/external-link-toggle-group.tsx
+msgid "Browser"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -938,6 +950,10 @@ msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Could not create the project."
+msgstr ""
+
+#: src/hooks/use-external-link-dialog.ts
+msgid "Could not open link. Please try again or copy the URL."
 msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
@@ -1592,6 +1608,10 @@ msgstr ""
 msgid "Exporting…"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "External Links"
+msgstr ""
+
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -2236,6 +2256,10 @@ msgstr ""
 msgid "New Skill"
 msgstr ""
 
+#: src/components/external-link-toggle-group.tsx
+msgid "New tab"
+msgstr ""
+
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr ""
@@ -2426,6 +2450,7 @@ msgstr ""
 msgid "Open External Link"
 msgstr ""
 
+#: src/components/external-link-toggle-group.tsx
 #: src/content-view/sidebar-webview.tsx
 msgid "Open in browser"
 msgstr ""
@@ -2434,8 +2459,16 @@ msgstr ""
 msgid "Open in Browser"
 msgstr ""
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Open in new tab"
+msgstr ""
+
 #: src/components/chat/inline-artifact-card.tsx
 msgid "Open in side panel"
+msgstr ""
+
+#: src/components/external-link-toggle-group.tsx
+msgid "Open in sidebar"
 msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
@@ -3102,6 +3135,10 @@ msgstr ""
 msgid "Showing 50 of {totalCount} tasks"
 msgstr ""
 
+#: src/components/external-link-toggle-group.tsx
+msgid "Sidebar"
+msgstr ""
+
 #: src/layout/sidebar/nav-toggle.tsx
 msgid "Sidebar sections"
 msgstr ""
@@ -3485,6 +3522,10 @@ msgstr ""
 
 #: src/lib/otp-error-messages.ts
 msgid "This link is invalid. Please request a new one."
+msgstr ""
+
+#: src/hooks/use-external-link-dialog.ts
+msgid "This link uses an address the app cannot open."
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -3972,6 +4013,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Where are you located?"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Where links in chats open"
 msgstr ""
 
 #: src/components/onboarding/onboarding-language-step.tsx

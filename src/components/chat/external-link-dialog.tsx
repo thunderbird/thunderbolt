@@ -11,7 +11,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Trans } from '@lingui/react/macro'
+import type { MessageDescriptor } from '@lingui/core'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ExternalLink, PanelRight, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 
@@ -23,7 +24,8 @@ type ExternalLinkDialogProps = {
   /** Called when onConfirm() rejects (e.g. unhandled throw). Use to show error in dialog. */
   onOpenError?: (error: unknown) => void
   onOpenInApp?: () => void
-  openError?: string | null
+  /** A descriptor, not a string, so it renders in the locale active now rather than when the open failed. */
+  openError?: MessageDescriptor | null
   isOpening?: boolean
 }
 
@@ -38,6 +40,8 @@ export const ExternalLinkDialog = memo(
     openError = null,
     isOpening = false,
   }: ExternalLinkDialogProps) => {
+    const { i18n } = useLingui()
+
     const handleConfirmClick = useCallback(async () => {
       try {
         await onConfirm()
@@ -75,7 +79,7 @@ export const ExternalLinkDialog = memo(
             {url}
           </div>
 
-          {openError && <p className="text-sm text-destructive">{openError}</p>}
+          {openError && <p className="text-sm text-destructive">{i18n._(openError)}</p>}
 
           <AlertDialogFooter>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>

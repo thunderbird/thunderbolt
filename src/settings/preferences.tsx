@@ -22,6 +22,7 @@ import { useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
+import { ExternalLinkToggleGroup } from '@/components/external-link-toggle-group'
 import { ThemeToggleGroup } from '@/components/theme-toggle-group'
 import { TelemetryRequiredModal, type TelemetryRequiredModalRef } from '@/components/telemetry-required-modal'
 import { TelemetryWarningModal, type TelemetryWarningModalRef } from '@/components/telemetry-warning-modal'
@@ -261,6 +262,7 @@ export default function PreferencesSettingsPage() {
   const { language, setLanguage, resetLanguage } = useLanguageSetting()
 
   const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
+  const externalLinkBehavior = useLocalSettingsStore((s) => s.externalLinkBehavior)
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
@@ -622,6 +624,23 @@ export default function PreferencesSettingsPage() {
               <Trans>Theme</Trans>
             </label>
             <ThemeToggleGroup />
+          </div>
+
+          <div className="h-px bg-border -mx-6" />
+
+          <div className="flex flex-col gap-2">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={externalLinkBehavior !== initialLocalSettings.externalLinkBehavior}
+              onReset={() => setLocalSetting('externalLinkBehavior', initialLocalSettings.externalLinkBehavior)}
+            >
+              <Trans>External Links</Trans>
+            </ModificationIndicator>
+            <ExternalLinkToggleGroup />
+            <p className="text-sm text-muted-foreground">
+              <Trans>Where links in chats open</Trans>
+            </p>
           </div>
 
           <div className="h-px bg-border -mx-6" />

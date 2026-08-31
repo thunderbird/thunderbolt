@@ -20,6 +20,7 @@ import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model } from '@/types'
 import {
   createBuiltInAdapter,
+  composeAppHarnessSystemPrompt,
   harnessSignature,
   isPiModelCandidate,
   resolvePiModel,
@@ -28,6 +29,7 @@ import {
 } from './built-in-adapter'
 import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { createPromptParts, type PromptParams } from '@/ai/prompt'
 import type { AgentHarness, AgentTool } from '@earendil-works/pi-agent-core'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
@@ -63,6 +65,56 @@ describe('isPiModelCandidate', () => {
     ).toEqual([true, true, true, true, true])
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(false)
     expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
+  })
+})
+
+/** Real prompt parts, so these tests break if the `# Language` section moves out of the
+ *  stable half or stops reaching this engine. */
+const languagePromptParts = (appLanguage: PromptParams['appLanguage']) =>
+  createPromptParts(
+    {
+      modelName: 'Test Model',
+      profile: null,
+      preferredName: '',
+      location: {},
+      localization: { distanceUnit: 'metric', temperatureUnit: 'c', timeFormat: '24h', currency: 'EUR' },
+      integrationStatus: 'READY',
+      hasWebTools: false,
+      appLanguage,
+    },
+    new Date('2026-07-10T12:00:00Z'),
+  )
+
+describe('reply-language directive delivery', () => {
+  it('carries the language directive and its named fallback into the harness prompt', () => {
+    const { stablePrompt, volatilePrompt } = languagePromptParts('ja')
+    const composed = composeAppHarnessSystemPrompt({
+      stableSystemPrompt: stablePrompt,
+      volatileSystemPrompt: volatilePrompt,
+    })
+
+    expect(composed).toContain('# Language')
+    expect(composed).toContain('Reply in the language of the conversation.')
+    expect(composed).toContain('or use Japanese if the conversation has none yet')
+  })
+
+  it('keeps the directive cacheable — in the stable half, ahead of the timestamp', () => {
+    const { stablePrompt, volatilePrompt } = languagePromptParts('ja')
+    const composed = composeAppHarnessSystemPrompt({
+      stableSystemPrompt: stablePrompt,
+      volatileSystemPrompt: volatilePrompt,
+    })
+
+    expect(stablePrompt).toContain('# Language')
+    expect(volatilePrompt).not.toContain('# Language')
+    expect(composed.indexOf('# Language')).toBeLessThan(composed.indexOf('Current date/time'))
+  })
+
+  it('rebuilds the harness when the app language changes mid-thread', () => {
+    // Otherwise a live harness would keep instructing the previous fallback language.
+    expect(harnessSignature(anthropic(), languagePromptParts('ja').stablePrompt)).not.toBe(
+      harnessSignature(anthropic(), languagePromptParts('pt-BR').stablePrompt),
+    )
   })
 })
 

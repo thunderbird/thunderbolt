@@ -22,6 +22,7 @@ import {
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
 import { getMessage } from '@/dal/chat-messages'
 import { isWidgetSkillId } from '@/defaults/skills'
+import { getActiveLocale } from '@/i18n/active-locale'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { createSkillTool, selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { isVoiceModeActive, voiceModeSystemNote } from '@/voice/voice-mode'
@@ -673,6 +674,10 @@ export const prepareAiRequestConfig = async ({
     mcpServersSummary: merged.summary,
     skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
     supportsTools,
+    // The resolved locale rather than a `language` settings read: it is synchronous, so
+    // it cannot lag behind the watched-query hydration, and it already folds in browser
+    // negotiation the same way `X-App-Language` does.
+    appLanguage: getActiveLocale(),
   })
 
   return {

@@ -297,6 +297,50 @@ describe('createPrompt', () => {
     expect(first.fullPrompt).toBe(`${first.stablePrompt}\n\n${first.volatilePrompt}`)
   })
 
+  test('names the app language as the fallback reply language', () => {
+    expect(createPrompt(baseParams)).toContain('or use English if the conversation has none yet')
+    expect(createPrompt({ ...baseParams, appLanguage: 'ja' })).toContain(
+      'or use Japanese if the conversation has none yet',
+    )
+    // CLDR words this one as either "Brazilian Portuguese" or "Portuguese (Brazil)"
+    // depending on the ICU build, so match the language rather than the phrasing.
+    expect(createPrompt({ ...baseParams, appLanguage: 'pt-BR' })).toMatch(/or use [^\n]*Portuguese[^\n]*if the/)
+  })
+
+  test('makes the reply language sticky against foreign-language content in the thread', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result).toContain('Reply in the language of the conversation.')
+    expect(result).toContain('a search result in another language does not change it')
+    expect(result).toContain('Summarize tool and search results in the reply language')
+    expect(result).toContain('Switch only on a clear signal')
+  })
+
+  test('places the language directive with the other output rules', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result.indexOf('# Output Format')).toBeLessThan(result.indexOf('# Language'))
+    expect(result.indexOf('# Language')).toBeLessThan(result.indexOf('# Conversation Style'))
+  })
+
+  test('carries the language directive into the legacy engine assembly', () => {
+    const { stablePrompt, volatilePrompt } = createPromptParts({ ...baseParams, appLanguage: 'ja' })
+    const { system } = assembleBuiltInModelInput(stablePrompt, [], [volatilePrompt])
+
+    expect(system).toContain('# Language')
+    expect(system).toContain('or use Japanese if the conversation has none yet')
+    expect(system.indexOf('# Language')).toBeLessThan(system.indexOf('Current date/time'))
+  })
+
+  test('keeps the injected date in the source locale whatever the app language', () => {
+    const sent = new Date('2026-07-10T12:00:00Z')
+    const english = createPromptParts(baseParams, sent)
+    const japanese = createPromptParts({ ...baseParams, appLanguage: 'ja' }, sent)
+
+    expect(english.volatilePrompt).toContain('July 10, 2026')
+    expect(japanese.volatilePrompt).toBe(english.volatilePrompt)
+  })
+
   test('does not include the Pi app harness environment', () => {
     const result = createPromptParts(baseParams)
 

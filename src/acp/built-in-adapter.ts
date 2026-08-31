@@ -314,7 +314,8 @@ export const harnessSignature = (
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
 // Unlike assembleBuiltInModelInput, ACP harness deliberately keeps Pi's single-string system prompt shape.
-const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string =>
+// Exported so tests can assert the real stable prompt survives into this engine's shape.
+export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string =>
   `${config.stableSystemPrompt}\n\n${appHarnessEnvironmentPrompt}\n\n${config.volatileSystemPrompt}`
 
 /** Build a thread's harness from the lazily-loaded engine and bind it to the

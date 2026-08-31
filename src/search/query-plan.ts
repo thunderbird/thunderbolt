@@ -114,17 +114,29 @@ export type SearchQueryPlan = {
 export const toLikePattern = (term: string): string => `%${term.replace(/[\\%_]/g, '\\$&')}%`
 
 /**
- * Plans a raw user query. Whitespace-split, then each token routed by script:
- * segmented and matched as substrings where `unicode61` cannot tokenize it,
- * quoted into a prefix MATCH otherwise. `sao 天気` becomes
+ * The terms a query actually matches on: whitespace-split, then any token in an
+ * unsegmented script split into words.
+ *
+ * Exported because highlighting has to agree with matching. `HighlightMatch`
+ * marks these same terms, so a particle-omitted query like `東京天気` — which
+ * matches a row containing `東京の天気` — highlights `東京` and `天気` rather
+ * than hunting for a literal `東京天気` that isn't there.
+ */
+export const planQueryTerms = (raw: string): string[] =>
+  raw
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
+    .flatMap((token) => (unsegmentedScript.test(token) ? segment(token) : [token]))
+
+/**
+ * Plans a raw user query: each term from {@link planQueryTerms} routed by
+ * script — matched as a substring where `unicode61` cannot tokenize it, quoted
+ * into a prefix MATCH otherwise. `sao 天気` becomes
  * `{ match: '"sao"*', substrings: ['天気'] }`, and the two are ANDed at the
  * SQL site.
  */
 export const planSearchQuery = (raw: string): SearchQueryPlan => {
-  const terms = raw
-    .split(/\s+/)
-    .filter((token) => token.length > 0)
-    .flatMap((token) => (unsegmentedScript.test(token) ? segment(token) : [token]))
+  const terms = planQueryTerms(raw)
   const matchTokens = terms.filter((term) => !unsegmentedScript.test(term)).map(quoteForMatch)
   return {
     match: matchTokens.length > 0 ? matchTokens.join(' ') : null,

@@ -4,6 +4,7 @@
 
 import { Fragment, type ReactNode } from 'react'
 import { foldForMatch } from './fold'
+import { planQueryTerms } from './query-plan'
 
 /** A matched range of the original text, as `[start, end)`. */
 type Span = { start: number; end: number }
@@ -12,14 +13,17 @@ type Span = { start: number; end: number }
 type Segment = { value: string; marked: boolean }
 
 /**
- * Splits `query` into folded tokens — whitespace-separated, empties dropped,
- * folded the same way the index folds so `sao` can match `São`.
+ * The terms to mark: exactly the terms the query matched on, folded the same
+ * way the index folds them.
+ *
+ * Both halves have to come from the search layer or highlighting drifts out of
+ * agreement with matching. {@link planQueryTerms} because a re-segmented query
+ * (`東京天気` matching a row that reads `東京の天気`) has no literal form to
+ * find; {@link foldForMatch} because the index matches `sao` against `São`.
  */
 const tokenize = (query: string): string[] =>
-  query
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((token) => foldForMatch(token).folded)
+  planQueryTerms(query)
+    .map((term) => foldForMatch(term).folded)
     .filter(Boolean)
 
 /** Every start index of `needle` in `haystack`, non-overlapping. */
@@ -77,10 +81,10 @@ const toSegments = (text: string, spans: Span[]): Segment[] => {
 /**
  * Renders `text` with every occurrence of a `query` token wrapped in `<mark>`.
  *
- * Matching mirrors the search layer (whitespace split, case- and
- * diacritic-folded substring) so highlights line up with what actually
- * matched. Purely presentational and safe: it builds React nodes rather than
- * injecting HTML, which is why the SQL `snippet()` markers are empty strings.
+ * Marks the terms the search layer matched on, not the raw query — see
+ * {@link tokenize} — so highlights line up with what actually matched.
+ * Purely presentational and safe: it builds React nodes rather than injecting
+ * HTML, which is why the SQL `snippet()` markers are empty strings.
  */
 export const HighlightMatch = ({ text, query }: { text: string; query: string }): ReactNode => {
   const tokens = tokenize(query)

@@ -87,6 +87,21 @@ describe('HighlightMatch folding', () => {
     expect(getByTestId('host').textContent).toBe('東京の天気はどうですか')
   })
 
+  it('marks a re-segmented query that has no literal form in the text', () => {
+    // `東京天気` matches a row reading `東京の天気` because the planner splits it
+    // into 東京 AND 天気. Highlighting has to split it the same way or the row
+    // renders with nothing marked.
+    const { container, getByTestId } = renderHighlight('東京の天気はどうですか', '東京天気')
+    expect(marks(container)).toEqual(['東京', '天気'])
+    expect(getByTestId('host').textContent).toBe('東京の天気はどうですか')
+  })
+
+  it('does not mark a particle the index never matched on', () => {
+    // The planner drops the single-character `の`, so it must not be marked.
+    const { container } = renderHighlight('東京の天気はどうですか', '東京の天気')
+    expect(marks(container)).toEqual(['東京', '天気'])
+  })
+
   it('merges overlapping token matches instead of nesting them', () => {
     const { container, getByTestId } = renderHighlight('banana', 'ban anan')
     expect(marks(container)).toEqual(['banan'])

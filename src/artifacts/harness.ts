@@ -19,6 +19,15 @@ export type HarnessMessage =
   /** Reply to a {@link HarnessRequest}, correlated by `id`. */
   | { artifactNonce: string; type: 'artifact-reply'; id: number; result: unknown }
   /**
+   * What the artifact currently shows, in prose the model can read.
+   *
+   * Derived by the harness rather than authored, because the page is written by
+   * the model and has no idea our APIs exist — asking it to opt in would make
+   * this work for new artifacts and never for the ones already in a transcript.
+   * A page that wants to do better can set `window.__artifactContext`.
+   */
+  | { artifactNonce: string; type: 'artifact-context'; context: ArtifactContext }
+  /**
    * The user highlighted (or cleared) text inside the artifact.
    *
    * Reported by the guest because a host cannot read the selection inside a
@@ -39,6 +48,9 @@ export type HarnessMessage =
  * `postMessage` on a specific `contentWindow` still reaches only that frame, and
  * the nonce remains the thing that proves which render answered.
  */
+/** A short description of what the artifact is showing right now. */
+export type ArtifactContext = { title: string; summary: string }
+
 /** Highlighted text plus where it sits in the artifact's own viewport. */
 export type ArtifactTextSelection = {
   text: string
@@ -254,10 +266,55 @@ const harnessScript = (nonce: string): string => `<script>
   document.addEventListener('selectionchange', onSelectionChange);
   window.addEventListener('scroll', onSelectionChange, { passive: true, capture: true });
 
+  // ---- context ----------------------------------------------------------
+  // A digest of what the page currently shows, so asking "what does this chart
+  // say?" doesn't require the model to re-read HTML it may no longer hold.
+  // Derived, not authored: the page's author is the model, which has never
+  // heard of this API. A page may override by setting window.__artifactContext.
+  var MAX_SUMMARY = 1500;
+
+  function deriveContext() {
+    var override = window.__artifactContext;
+    if (override && override.summary) {
+      return { title: String(override.title || document.title || 'Artifact'), summary: String(override.summary).slice(0, MAX_SUMMARY) };
+    }
+    var h1 = document.querySelector('h1');
+    var title = (document.title || (h1 && h1.textContent) || 'Artifact').trim();
+    // Headings first: they're the page's own outline, and they survive
+    // truncation better than a wall of body text would.
+    var heads = Array.prototype.slice.call(document.querySelectorAll('h1, h2, h3'))
+      .map(function (h) { return (h.textContent || '').trim(); })
+      .filter(Boolean);
+    var body = document.body ? (document.body.innerText || document.body.textContent || '') : '';
+    var summary = (heads.length ? heads.join(' · ') + '\\n' : '') + body.replace(/\\s+/g, ' ').trim();
+    return { title: title, summary: summary.slice(0, MAX_SUMMARY) };
+  }
+
+  var lastContext = '';
+  function reportContext() {
+    var ctx = deriveContext();
+    var key = ctx.title + '\\u0000' + ctx.summary;
+    if (key === lastContext) { return; }
+    lastContext = key;
+    send({ type: 'artifact-context', context: ctx });
+  }
+
+  var ctxTimer;
+  function scheduleContext() {
+    clearTimeout(ctxTimer);
+    // Debounced: an interactive artifact can mutate on every animation frame,
+    // and the host only needs to know where it settled.
+    ctxTimer = setTimeout(reportContext, 250);
+  }
+
   window.addEventListener('load', function () {
     setTimeout(function () {
       send({ type: 'artifact-ready' });
       measureAndSend();
+      reportContext();
+      if (typeof MutationObserver !== 'undefined' && document.body) {
+        new MutationObserver(scheduleContext).observe(document.body, { subtree: true, childList: true, characterData: true });
+      }
       if (typeof ResizeObserver !== 'undefined' && document.documentElement) {
         new ResizeObserver(reportHeight).observe(document.documentElement);
       }

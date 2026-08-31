@@ -7,7 +7,8 @@ import { ArtifactErrorStrip } from '@/components/artifact/artifact-error-strip'
 import { SelectableArtifact } from '@/components/artifact/selectable-artifact'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { useParams } from 'react-router'
-import { useRef, useState } from 'react'
+import { useArtifactContextStore } from '@/artifacts/artifact-context-store'
+import { useEffect, useRef, useState } from 'react'
 import { type ArtifactViewData } from './context'
 import { ContentViewHeader } from './header'
 
@@ -28,6 +29,21 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
   // quotes belong on that thread's composer — no session to mint, unlike a Mini
   // App, which may be opened with no chat in play at all.
   const { chatThreadId } = useParams()
+
+  /*
+   * Register the open artifact so `get_app_context` can describe it.
+   *
+   * An effect because it's a subscription to something outside React that must
+   * be torn down: a context outliving its panel would have the model describing
+   * a surface the user already closed.
+   */
+  const openArtifact = useArtifactContextStore((state) => state.openArtifact)
+  const closeArtifact = useArtifactContextStore((state) => state.closeArtifact)
+  const setArtifactContext = useArtifactContextStore((state) => state.setContext)
+  useEffect(() => {
+    openArtifact(data.title)
+    return closeArtifact
+  }, [data.title, openArtifact, closeArtifact])
   const askAbout = (passages: string[]) => {
     if (!chatThreadId) {
       return
@@ -58,7 +74,13 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
       />
       {runtimeError && <ArtifactErrorStrip message={runtimeError} />}
       <div className="min-h-0 flex-1 bg-white">
-        <SelectableArtifact html={data.html} title={data.title} onError={setRuntimeError} onAsk={askAbout} />
+        <SelectableArtifact
+          html={data.html}
+          title={data.title}
+          onError={setRuntimeError}
+          onAsk={askAbout}
+          onContextChange={setArtifactContext}
+        />
       </div>
     </div>
   )

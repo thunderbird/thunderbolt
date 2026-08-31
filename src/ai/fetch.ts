@@ -4,6 +4,8 @@
 
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
+import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
+import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
 import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
 import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
 import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
@@ -617,6 +619,10 @@ export const prepareAiRequestConfig = async ({
   const miniApp = miniAppSnapshot.app
   if (supportsTools && miniApp) {
     appToolset.get_app_context = createMiniAppContextTool({ getSnapshot: getMiniAppSnapshot })
+  } else if (supportsTools && getArtifactContextSnapshot().title) {
+    // Same tool name on purpose — to the user both are "the thing on my screen",
+    // and only one embedded surface is open at a time, so they never collide.
+    appToolset.get_app_context = createArtifactContextTool({ getSnapshot: getArtifactContextSnapshot })
   }
   // Tools the app declares over the bridge. Merged the same way MCP tools are
   // (prefixed, conflicts skipped) since both are externally-defined toolsets we

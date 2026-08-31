@@ -9,6 +9,7 @@ import {
   parseHarnessMessage,
   wrapArtifactHtml,
   wrapArtifactPreviewHtml,
+  type ArtifactContext,
   type ArtifactSelectionItem,
   type ArtifactTextSelection,
 } from '@/artifacts/harness'
@@ -68,6 +69,12 @@ export type SandboxedHtmlFrameProps = {
    * the one question.
    */
   onQueryReady?: (query: (rect: SurfaceRect) => Promise<ArtifactSelectionItem[]>) => void
+  /**
+   * What the page currently shows, derived by the harness and re-sent when the
+   * page changes — so an artifact the user has interacted with reports what it
+   * looks like now, not what it looked like at load.
+   */
+  onContextChange?: (context: ArtifactContext) => void
 }
 
 /**
@@ -88,6 +95,7 @@ export const SandboxedHtmlFrame = ({
   onError,
   onSelectionChange,
   onQueryReady,
+  onContextChange,
 }: SandboxedHtmlFrameProps) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   // One nonce per mounted frame; correlates the harness's messages with this iframe. useState (not
@@ -119,6 +127,8 @@ export const SandboxedHtmlFrame = ({
   onErrorRef.current = onError
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
+  const onContextChangeRef = useRef(onContextChange)
+  onContextChangeRef.current = onContextChange
 
   /**
    * Hand the caller a marquee resolver, once per document.
@@ -161,6 +171,9 @@ export const SandboxedHtmlFrame = ({
       }
       if (data.type === 'artifact-selection') {
         onSelectionChangeRef.current?.(data.selection)
+      }
+      if (data.type === 'artifact-context') {
+        onContextChangeRef.current?.(data.context)
       }
       if (data.type === 'artifact-reply') {
         pending.settle(data.id, data.result)

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ArtifactSelectionItem, ArtifactTextSelection } from '@/artifacts/harness'
+import type { ArtifactContext, ArtifactSelectionItem, ArtifactTextSelection } from '@/artifacts/harness'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { MarqueeOverlay } from '@/components/embedded/marquee-overlay'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
@@ -60,6 +60,7 @@ export type SelectableArtifactProps = {
   onError?: (error: string) => void
   /** Attach the chosen passages to the composer as quote chips. */
   onAsk: (passages: string[]) => void
+  onContextChange?: (context: ArtifactContext) => void
 }
 
 export const SelectableArtifact = ({
@@ -69,6 +70,7 @@ export const SelectableArtifact = ({
   allowScripts,
   onError,
   onAsk,
+  onContextChange,
 }: SelectableArtifactProps) => {
   const [mode, dispatch] = useReducer(modeReducer, { kind: 'idle' })
   const [selection, setSelection] = useState<ArtifactTextSelection | null>(null)
@@ -106,6 +108,7 @@ export const SelectableArtifact = ({
         onError={onError}
         onSelectionChange={setSelection}
         onQueryReady={handleQueryReady}
+        onContextChange={onContextChange}
       />
 
       {mode.kind === 'idle' && selection?.rect && <SelectionPopover rect={selection.rect} onAsk={askAboutSelection} />}

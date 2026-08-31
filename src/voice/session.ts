@@ -224,6 +224,13 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
   const start = async () => {
     stopped = false
     const gate = createVadGate({ onSpeechStart, onUtterance, onLevel })
+    // Born muted, because racing the two halves means the mic can go live while the
+    // engine is still loading. The gate pumps frames to the endpointer the instant
+    // `gate.start()` resolves, so an eager user speaking during attestation would
+    // commit an utterance against an engine that can't transcribe yet — and the
+    // `setState('listening')` below would then stomp that in-flight turn and chime
+    // the invitation over it. `setState('listening')` unmutes once both are ready.
+    gate.setListening(false)
     // Concurrently, because they have nothing to do with each other: loading the
     // engine is a network round trip (the hosted engine primes Tinfoil enclave
     // attestation), and opening the mic is a permission prompt. Run in sequence

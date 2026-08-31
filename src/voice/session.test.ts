@@ -18,6 +18,8 @@ let gateDestroyCalls = 0
 let vadHandlers: VadHandlers | null = null
 /** Set by a test to hold `gate.start()` open, standing in for a pending permission prompt. */
 let pendingGateStart: Promise<void> | null = null
+/** Every `setListening` value the session pushed, in order. */
+let listeningLog: boolean[] = []
 
 const resetVad = () => {
   vadGateCalls = 0
@@ -25,6 +27,7 @@ const resetVad = () => {
   gateDestroyCalls = 0
   vadHandlers = null
   pendingGateStart = null
+  listeningLog = []
 }
 
 mock.module('@/voice/audio/vad', () => ({
@@ -40,7 +43,9 @@ mock.module('@/voice/audio/vad', () => ({
       destroy: async () => {
         gateDestroyCalls++
       },
-      setListening: () => {},
+      setListening: (value: boolean) => {
+        listeningLog.push(value)
+      },
     }
   },
 }))
@@ -366,6 +371,31 @@ describe('createVoiceSession', () => {
 
       releaseLoad()
       await starting
+    })
+
+    test('keeps the mic muted until the engine has finished loading', async () => {
+      let finishLoad = () => {}
+      const engine = makeEngine('hi', {
+        load: () =>
+          new Promise<void>((resolve) => {
+            finishLoad = resolve
+          }),
+      })
+      const session = createVoiceSession({ earcons: makeEarcons().earcons, engine, reply: makeReply(['ok']) })
+
+      const starting = session.start()
+      await drainMicrotasks()
+
+      // The mic is open but attestation is still in flight. Frames must not reach
+      // the endpointer yet: an utterance committed here would hit an engine that
+      // can't transcribe, and start()'s tail would then stomp that in-flight turn.
+      expect(gateStartCalls).toBe(1)
+      expect(listeningLog).toEqual([false])
+
+      finishLoad()
+      await starting
+
+      expect(listeningLog).toEqual([false, true])
     })
 
     test('releases the mic when the engine fails after it opened', async () => {

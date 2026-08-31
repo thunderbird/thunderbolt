@@ -229,14 +229,17 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
     // attestation), and opening the mic is a permission prompt. Run in sequence
     // the user waits for the sum of the two, and on a first run doesn't even see
     // the prompt until attestation comes back.
-    try {
-      await Promise.all([engine.load(), gate.start()])
-    } catch (error) {
-      // Racing means either half can fail with the other already succeeded, so a
-      // rejection here can leave a live mic that nothing else holds a reference
-      // to — the orphan the `stopped` guard below exists to prevent.
+    // Settled rather than `all`: racing means either half can fail with the other
+    // still in flight, and tearing down mid-flight destroys a gate that hasn't
+    // acquired the mic yet — a no-op. The pending `getUserMedia` then resolves
+    // into a live mic nothing holds a reference to, because `vadGate` is never
+    // assigned and the caller's `stop()` only destroys that. Waiting for both to
+    // settle means destroy always runs against the gate's final state.
+    const outcomes = await Promise.allSettled([engine.load(), gate.start()])
+    const failure = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected')
+    if (failure) {
       await gate.destroy()
-      throw error
+      throw failure.reason
     }
     if (stopped) {
       await gate.destroy()

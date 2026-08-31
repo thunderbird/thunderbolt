@@ -16,12 +16,15 @@ let vadGateCalls = 0
 let gateStartCalls = 0
 let gateDestroyCalls = 0
 let vadHandlers: VadHandlers | null = null
+/** Set by a test to hold `gate.start()` open, standing in for a pending permission prompt. */
+let pendingGateStart: Promise<void> | null = null
 
 const resetVad = () => {
   vadGateCalls = 0
   gateStartCalls = 0
   gateDestroyCalls = 0
   vadHandlers = null
+  pendingGateStart = null
 }
 
 mock.module('@/voice/audio/vad', () => ({
@@ -31,6 +34,7 @@ mock.module('@/voice/audio/vad', () => ({
     return {
       start: async () => {
         gateStartCalls++
+        await pendingGateStart
       },
       pause: async () => {},
       destroy: async () => {
@@ -87,6 +91,16 @@ const makeEarcons = () => {
     captured: () => played.push('captured'),
   }
   return { earcons, played }
+}
+
+/**
+ * Lets every already-scheduled promise continuation run. The global preload installs
+ * @sinonjs fake timers, so a `setTimeout(0)` round trip would never fire.
+ */
+const drainMicrotasks = async () => {
+  for (const _ of Array.from({ length: 20 })) {
+    await Promise.resolve()
+  }
 }
 
 const makeReply = (tokens: string[]): ReplyFn =>
@@ -364,9 +378,32 @@ describe('createVoiceSession', () => {
 
       // Racing the two means a live mic can outlive a failed start, and nothing
       // else holds a reference to it — the caller's stop() sees vadGate as null.
-      expect(session.start()).rejects.toThrow('attestation failed')
-      await Promise.resolve()
-      await Promise.resolve()
+      await expect(session.start()).rejects.toThrow('attestation failed')
+
+      expect(gateDestroyCalls).toBe(1)
+    })
+
+    test('releases the mic when the engine fails while the permission prompt is still open', async () => {
+      let allowMic = () => {}
+      pendingGateStart = new Promise<void>((resolve) => {
+        allowMic = resolve
+      })
+      const engine = makeEngine('hi', {
+        load: async () => {
+          throw new Error('attestation failed')
+        },
+      })
+      const session = createVoiceSession({ earcons: makeEarcons().earcons, engine, reply: makeReply(['ok']) })
+
+      // Attestation fails fast while the user is still deciding whether to click
+      // Allow. Tearing down now would destroy a gate that hasn't acquired the mic
+      // yet, and the stream getUserMedia hands over afterwards would be orphaned.
+      const starting = session.start()
+      await drainMicrotasks()
+      expect(gateDestroyCalls).toBe(0)
+
+      allowMic()
+      await expect(starting).rejects.toThrow('attestation failed')
 
       expect(gateDestroyCalls).toBe(1)
     })

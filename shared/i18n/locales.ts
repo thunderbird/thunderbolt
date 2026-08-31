@@ -19,3 +19,20 @@ export type AppLocale = (typeof appLocales)[number]
 export const sourceLocale: AppLocale = 'en'
 
 export const pseudoLocale: AppLocale = 'en-XA'
+
+/**
+ * A locale's language named in English — "German", "Brazilian Portuguese".
+ *
+ * For model-facing prompt text, so it asks CLDR in `en` rather than in the locale
+ * itself (contrast `endonym` in `src/i18n/language-options.ts`, which names each
+ * language in itself for the picker). CLDR's exact wording is ICU-version dependent
+ * — "Brazilian Portuguese" on one build, "Portuguese (Brazil)" on another — which is
+ * fine here and would not be in the UI: the reader is a model, and both name the same
+ * language. Don't pin the phrasing in an assertion.
+ *
+ * The pseudo-locale is named as plain English: CLDR calls it "English
+ * (Pseudo-Accents)", which describes the glyph mangling rather than a language to
+ * answer in.
+ */
+export const englishLanguageName = (locale: AppLocale): string =>
+  new Intl.DisplayNames(['en'], { type: 'language' }).of(locale === pseudoLocale ? sourceLocale : locale) ?? locale

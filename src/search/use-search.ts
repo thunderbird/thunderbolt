@@ -5,6 +5,7 @@
 import { useQuery } from '@powersync/tanstack-react-query'
 import { planSearchQuery, toLikePattern, type SearchQueryPlan } from './query-plan'
 import { searchEntities } from './registry'
+import { bm25Sql, bodyColumnIndex } from './search-sql'
 import type { SearchEntityType, SearchResult, UseSearch } from './types'
 
 /** Entity type → its registry config, for O(1) route/display lookup per hit. */
@@ -21,15 +22,8 @@ type SearchRow = {
 
 const resultLimit = 50
 
-/**
- * bm25 weights title 10x over body. Weights are positional over every column,
- * so the three leading UNINDEXED columns (id, entity_type, parent_id) take a
- * no-op 1.0 before title's 10x boost.
- */
-const bm25 = 'bm25(search_index, 1.0, 1.0, 1.0, 10.0, 1.0)'
-
-/** `snippet(…, 4, …)` excerpts the body column (index 4), 15 tokens wide. */
-const matchSnippetSql = `snippet(search_index, 4, '', '', '…', 15)`
+/** Excerpt from the body column, 15 tokens wide. */
+const matchSnippetSql = `snippet(search_index, ${bodyColumnIndex}, '', '', '…', 15)`
 
 /** Body characters kept before, and in total around, a substring hit. */
 const snippetLead = 16
@@ -44,11 +38,15 @@ const snippetStart = `max(1, instr(body, ?) - ${snippetLead})`
  * PowerSync binds positionally, so there is no named-parameter alternative.
  * A title-only hit yields `instr(body, …) = 0` and so an empty snippet, which
  * is correct: the title is already selected alongside it.
+ *
+ * Both guards test for a character the window does not reach: `substr` starting
+ * at S covers S…S+length-1, so a tail exists at S+length, and the head is cut
+ * once S moves past 1 (offset > lead + 1).
  */
 const substringSnippetSql =
   `(CASE WHEN instr(body, ?) > ${snippetLead + 1} THEN '…' ELSE '' END) || ` +
   `substr(body, ${snippetStart}, ${snippetLength}) || ` +
-  `(CASE WHEN length(body) > ${snippetStart} + ${snippetLength} THEN '…' ELSE '' END)`
+  `(CASE WHEN length(body) >= ${snippetStart} + ${snippetLength} THEN '…' ELSE '' END)`
 
 /**
  * One substring term against both indexed columns. `ESCAPE '\'` pairs with the
@@ -83,7 +81,7 @@ export const buildSearchStatement = (plan: SearchQueryPlan): SearchStatement => 
       sql:
         `SELECT id, entity_type, parent_id, title, ${matchSnippetSql} AS snippet ` +
         `FROM search_index WHERE search_index MATCH ?${likeSql ? ` AND ${likeSql}` : ''} ` +
-        `ORDER BY ${bm25}, id LIMIT ${resultLimit}`,
+        `ORDER BY ${bm25Sql}, id LIMIT ${resultLimit}`,
       parameters: [plan.match ?? '', ...likeParameters],
     }
   }

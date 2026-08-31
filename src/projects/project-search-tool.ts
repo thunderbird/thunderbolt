@@ -29,6 +29,7 @@ import { z } from 'zod'
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { planSearchQuery, toLikePattern } from '@/search/query-plan'
+import { bm25Sql, bodyColumnIndex } from '@/search/search-sql'
 
 /** One hit: which chat it came from, and the matching excerpt. */
 export type ProjectChatHit = {
@@ -92,7 +93,7 @@ export const searchProjectChats = async (
   // newest-first (see `uuidv7ToDate` in `src/lib/utils.ts`).
   const excerpt =
     plan.match !== null
-      ? sql`snippet(search_index, 4, '', '', '…', 30)`
+      ? sql.raw(`snippet(search_index, ${bodyColumnIndex}, '', '', '…', 30)`)
       : sql`substr(body, max(1, instr(body, ${plan.substrings[0]}) - ${excerptLead}), ${excerptLength})`
   const rows = (await db.all(sql`
     SELECT parent_id, ${excerpt} AS snippet
@@ -100,7 +101,7 @@ export const searchProjectChats = async (
     WHERE ${filter}
       AND entity_type = 'message'
       AND parent_id IN (${threadList})
-    ORDER BY ${plan.match !== null ? sql`bm25(search_index, 1.0, 1.0, 1.0, 10.0, 1.0)` : sql`id DESC`}
+    ORDER BY ${plan.match !== null ? sql.raw(bm25Sql) : sql`id DESC`}
     LIMIT ${maxHits}
   `)) as SearchRow[]
   return rows.flatMap(([parentId, snippet]) =>

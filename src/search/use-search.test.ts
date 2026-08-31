@@ -127,6 +127,22 @@ describe('search statements end-to-end against real SQLite', () => {
     db.close()
   })
 
+  it('shows the trailing ellipsis even when a single character is cut', () => {
+    // `substr(body, S, 80)` covers S…S+79, so a body of exactly S+80 has one
+    // unshown character and must still be marked truncated.
+    const db = new Database(':memory:')
+    db.run(buildCreateSql())
+    const insert = db.prepare('INSERT INTO search_index(id, entity_type, parent_id, title, body) VALUES (?,?,?,?,?)')
+    // Hit at position 1, so S = 1 and the window covers 1…80.
+    insert.run(idAt('08'), 'message', 't4', '', `天${'あ'.repeat(79)}`) // exactly 80 — nothing cut
+    insert.run(idAt('09'), 'message', 't4', '', `天${'あ'.repeat(80)}`) // exactly 81 — one char cut
+
+    const byId = new Map(search(db, '天').map((row) => [row.id.slice(-2), row.snippet]))
+    expect(byId.get('08')?.endsWith('…')).toBe(false)
+    expect(byId.get('09')?.endsWith('…')).toBe(true)
+    db.close()
+  })
+
   it('leaves the snippet empty for a title-only substring hit', () => {
     const db = new Database(':memory:')
     db.run(buildCreateSql())

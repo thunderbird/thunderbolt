@@ -2,7 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { formatHarnessError, parseHarnessMessage, wrapArtifactHtml, wrapArtifactPreviewHtml } from '@/artifacts/harness'
+import {
+  artifactSelectionQueryMethod,
+  formatHarnessError,
+  parseHarnessMessage,
+  requestFromArtifact,
+  wrapArtifactHtml,
+  wrapArtifactPreviewHtml,
+  type ArtifactSelectionItem,
+  type ArtifactTextSelection,
+} from '@/artifacts/harness'
+import type { SurfaceRect } from '@/components/embedded/types'
 import { cn } from '@/lib/utils'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -11,6 +21,14 @@ const defaultAutoHeightPx = 400
 const minAutoHeightPx = 60
 // Ceiling so a page (which knows its own nonce) can't report a huge height and blow out the transcript.
 const maxAutoHeightPx = 20_000
+/**
+ * How long to wait for an artifact to resolve a marquee.
+ *
+ * Generous, because the page is doing DOM work on a drag the user just
+ * finished; short enough that a page which threw before registering its handler
+ * doesn't leave the confirm bar hanging.
+ */
+const selectionQueryTimeoutMs = 2_000
 
 export type SandboxedHtmlFrameProps = {
   /** Complete, self-contained HTML document to render. */
@@ -34,6 +52,21 @@ export type SandboxedHtmlFrameProps = {
   onReady?: () => void
   /** Fired if the page reports a runtime error (including after load, during use). */
   onError?: (error: string) => void
+  /**
+   * Fired when the user highlights text inside the artifact, and again with null
+   * when they clear it. Reported by the page because the host cannot read a
+   * selection inside a frame it shares no origin with.
+   */
+  onSelectionChange?: (selection: ArtifactTextSelection | null) => void
+  /**
+   * Receives a resolver for marquee selection: hand it a rect in the artifact's
+   * own viewport coordinates and it answers with what that rect covers.
+   *
+   * Passed out rather than exposed on a ref because the nonce and the frame
+   * element are both private to this component, and the caller only ever needs
+   * the one question.
+   */
+  onQueryReady?: (query: (rect: SurfaceRect) => Promise<ArtifactSelectionItem[]>) => void
 }
 
 /**
@@ -52,6 +85,8 @@ export const SandboxedHtmlFrame = ({
   autoHeight = false,
   onReady,
   onError,
+  onSelectionChange,
+  onQueryReady,
 }: SandboxedHtmlFrameProps) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   // One nonce per mounted frame; correlates the harness's messages with this iframe. useState (not
@@ -81,6 +116,31 @@ export const SandboxedHtmlFrame = ({
   onReadyRef.current = onReady
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
+
+  /**
+   * Hand the caller a marquee resolver, once per document.
+   *
+   * Bound to this render's nonce so a resolver captured before a reload can't
+   * be answered by the new document — a stale query resolves empty instead of
+   * returning the previous artifact's rows.
+   */
+  const onQueryReadyRef = useRef(onQueryReady)
+  onQueryReadyRef.current = onQueryReady
+  useEffect(() => {
+    onQueryReadyRef.current?.(async (rect) => {
+      const result = await requestFromArtifact(
+        iframeRef.current?.contentWindow ?? null,
+        nonce,
+        artifactSelectionQueryMethod,
+        { rect },
+        selectionQueryTimeoutMs,
+      )
+      const items = (result as { items?: ArtifactSelectionItem[] } | null)?.items
+      return Array.isArray(items) ? items : []
+    })
+  }, [nonce])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -93,6 +153,9 @@ export const SandboxedHtmlFrame = ({
       }
       if (data.type === 'artifact-error') {
         onErrorRef.current?.(formatHarnessError(data))
+      }
+      if (data.type === 'artifact-selection') {
+        onSelectionChangeRef.current?.(data.selection)
       }
       if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
         const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { MiniAppRect } from '@shared/mini-app-protocol'
+import type { SurfaceRect } from './types'
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 /** A drag smaller than this in either axis is treated as a click, not a marquee. */
@@ -11,7 +11,7 @@ const minimumDragPx = 8
 type Point = { x: number; y: number }
 
 /** Normalize a drag into a positive-area rect, whichever way it was dragged. */
-export const rectFromDrag = (start: Point, end: Point): MiniAppRect => ({
+export const rectFromDrag = (start: Point, end: Point): SurfaceRect => ({
   x: Math.min(start.x, end.x),
   y: Math.min(start.y, end.y),
   width: Math.abs(end.x - start.x),
@@ -19,12 +19,12 @@ export const rectFromDrag = (start: Point, end: Point): MiniAppRect => ({
 })
 
 /** Whether a drag is deliberate enough to query, rather than a stray click. */
-export const isMeaningfulDrag = (rect: MiniAppRect): boolean =>
+export const isMeaningfulDrag = (rect: SurfaceRect): boolean =>
   rect.width >= minimumDragPx && rect.height >= minimumDragPx
 
 type MarqueeOverlayProps = {
   /** Called with the drawn rect, in overlay-local (== guest viewport) coordinates. */
-  onSelect: (rect: MiniAppRect) => void
+  onSelect: (rect: SurfaceRect) => void
   onCancel: () => void
 }
 
@@ -43,7 +43,7 @@ type MarqueeOverlayProps = {
 export const MarqueeOverlay = ({ onSelect, onCancel }: MarqueeOverlayProps) => {
   const layerRef = useRef<HTMLDivElement>(null)
   const startRef = useRef<Point | null>(null)
-  const [rect, setRect] = useState<MiniAppRect | null>(null)
+  const [rect, setRect] = useState<SurfaceRect | null>(null)
 
   /** Pointer position relative to the overlay, which is flush with the iframe. */
   const toLocal = useCallback((event: { clientX: number; clientY: number }): Point => {

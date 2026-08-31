@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
-import type { MiniAppRect } from '@shared/mini-app-protocol'
+import type { SurfaceRect } from './types'
 import { MessageSquareQuote } from 'lucide-react'
 
 /** Gap between the selection and the control, in px. */
@@ -30,7 +30,7 @@ export type SelectionPopoverPlacement = {
  * Exported separately from the component so the geometry can be tested without
  * a DOM.
  */
-export const placeSelectionPopover = (rect: MiniAppRect): SelectionPopoverPlacement => {
+export const placeSelectionPopover = (rect: SurfaceRect): SelectionPopoverPlacement => {
   const flipped = rect.y < flipThreshold
   return {
     left: rect.x + rect.width / 2,
@@ -40,7 +40,7 @@ export const placeSelectionPopover = (rect: MiniAppRect): SelectionPopoverPlacem
 }
 
 type SelectionPopoverProps = {
-  rect: MiniAppRect
+  rect: SurfaceRect
   onAsk: () => void
 }
 

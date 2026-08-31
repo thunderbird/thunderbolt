@@ -4,7 +4,9 @@
 
 import { ArtifactActions } from '@/components/artifact/artifact-actions'
 import { ArtifactErrorStrip } from '@/components/artifact/artifact-error-strip'
-import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
+import { SelectableArtifact } from '@/components/artifact/selectable-artifact'
+import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
+import { useParams } from 'react-router'
 import { useRef, useState } from 'react'
 import { type ArtifactViewData } from './context'
 import { ContentViewHeader } from './header'
@@ -22,6 +24,19 @@ type ArtifactSidebarContentProps = {
  */
 export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContentProps) => {
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
+  // The artifact was produced by the chat this panel is open beside, so its
+  // quotes belong on that thread's composer — no session to mint, unlike a Mini
+  // App, which may be opened with no chat in play at all.
+  const { chatThreadId } = useParams()
+  const askAbout = (passages: string[]) => {
+    if (!chatThreadId) {
+      return
+    }
+    const { addQuote } = usePendingQuotesStore.getState()
+    for (const text of passages) {
+      addQuote(chatThreadId, { text })
+    }
+  }
   // Clear a stale error only at a reload boundary (a new document). Clearing on `ready` instead
   // would wipe an error the harness reports during initial load — it fires before `ready`, so the
   // user would never see it. Adjusting state during render is the React-blessed reset-on-prop-change.
@@ -43,7 +58,7 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
       />
       {runtimeError && <ArtifactErrorStrip message={runtimeError} />}
       <div className="min-h-0 flex-1 bg-white">
-        <SandboxedHtmlFrame html={data.html} title={data.title} onError={setRuntimeError} />
+        <SelectableArtifact html={data.html} title={data.title} onError={setRuntimeError} onAsk={askAbout} />
       </div>
     </div>
   )

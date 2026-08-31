@@ -47,6 +47,7 @@ const acceptedVerdict = {
   searchOffer: null,
   premiseRebuttal: null,
   verificationDisclaimer: null,
+  replyLanguageMatches: null,
   explanation: 'The year is correct.',
 }
 
@@ -104,6 +105,7 @@ This is the final result.`
           searchOffer: null,
           premiseRebuttal: null,
           verificationDisclaimer: null,
+          replyLanguageMatches: null,
           explanation: 'ok',
           pass: true,
         }),
@@ -165,6 +167,7 @@ describe('judge-backed criteria', () => {
       searchOffer: null,
       premiseRebuttal: null,
       verificationDisclaimer: null,
+      replyLanguageMatches: null,
       explanation: 'The response gave the wrong year.',
     })
 
@@ -179,6 +182,7 @@ describe('judge-backed criteria', () => {
         searchOffer: null,
         premiseRebuttal: null,
         verificationDisclaimer: null,
+        replyLanguageMatches: null,
         explanation: 'No verdict.',
       }),
     ).toThrow('Judge omitted declared assertion: correct')
@@ -321,6 +325,45 @@ describe('judge-backed criteria', () => {
       'verificationDisclaimer: Judge only whether the response explicitly admitted it could not verify the answer',
     )
     expect(prompt).not.toContain('Unsupported claims')
+  })
+
+  test('names the expected language and excludes quoted content from the reply-language check', () => {
+    const prompt = buildJudgePrompt(
+      { ...scenario, criteria: { mustProduceOutput: true, expectReplyLanguage: 'pt-BR' } },
+      'Esse erro acontece porque a chave "amount" nao existe no dicionario.',
+    )
+
+    expect(prompt).toContain('replyLanguageMatches: Answer true or false')
+    // The name comes from CLDR, so match the language rather than the phrasing.
+    expect(prompt).toMatch(/prose is written in [^.]*Portuguese/)
+    expect(prompt).toContain('Quoted source text, error messages, log output, code')
+    expect(prompt).not.toContain('Unsupported claims')
+  })
+
+  test('asks for the reply-language field and grades it independently', () => {
+    const languageScenario: EvalScenario = {
+      ...scenario,
+      criteria: { mustProduceOutput: true, expectReplyLanguage: 'pt-BR' },
+    }
+    const languageResult: EvalResult = { ...result, scenario: languageScenario }
+
+    expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('Return only JSON with exactly:')
+    expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('replyLanguageMatches, explanation.')
+    // The field name used to read as a value slot, so judges returned "English"
+    // instead of a boolean and broke every scenario that does not declare it.
+    expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('boolean or null — never a string')
+    expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('Answer true or false — never a language name')
+    expect(requiresJudge(languageScenario.criteria)).toBe(true)
+    expect(
+      applyJudgeVerdict(languageResult, {
+        correct: null,
+        searchOffer: null,
+        premiseRebuttal: null,
+        verificationDisclaimer: null,
+        replyLanguageMatches: false,
+        explanation: 'The reply is in English.',
+      }).failures,
+    ).toContain('Judge rejected reply language: The reply is in English.')
   })
 
   test('uses the final follow-up as the prompt for a judged response', () => {

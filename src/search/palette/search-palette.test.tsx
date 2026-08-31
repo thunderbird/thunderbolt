@@ -280,8 +280,41 @@ describe('SearchPalette commands', () => {
     expect(screen.getByTestId('location')).toHaveAttribute('data-state', 'null')
   })
 
+  it('matches a localized command title typed without its diacritics', async () => {
+    // Commands never enter FTS — their titles are resolved in the active locale
+    // at render time — but they fold like the index does, so an ASCII keyboard
+    // still reaches them.
+    buildCommands = () => [
+      { id: 'nav-prefs', title: 'Paramètres', icon: Bot, section: 'navigation', to: '/settings/preferences' },
+      { id: 'nav-devices', title: 'Geräte', icon: Bot, section: 'navigation', to: '/settings/devices' },
+    ]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'parametres' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    expect(screen.getByRole('option', { name: /Paramètres/ })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Geräte/ })).not.toBeInTheDocument()
+  })
+
+  it('matches a command title in an unsegmented script', async () => {
+    buildCommands = () => [
+      { id: 'nav-prefs', title: '設定', icon: Bot, section: 'navigation', to: '/settings/preferences' },
+    ]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: '設定' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    expect(screen.getByRole('option', { name: /設定/ })).toBeInTheDocument()
+  })
+
   it('keeps FTS result rows that cmdk fuzzy filtering would hide', async () => {
-    // "GPT model" is a valid FTS hit for "models" (stemmed/plural), but the raw
+    // "GPT model" is a valid FTS hit for "model" (prefix match), but the raw
     // query is not a subsequence of the row text — cmdk's built-in filter would
     // drop it. shouldFilter={false} must keep it visible.
     searchResults = [{ id: 'gpt', entityType: 'model', title: 'GPT model', snippet: '', to: '/settings/models' }]

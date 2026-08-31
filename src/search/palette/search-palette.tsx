@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router'
 import { buildActionNav } from '../actions/entity-actions'
 import type { PaletteCommand } from '../commands/types'
 import { useCommands as useCommandsImpl } from '../commands/use-commands'
+import { foldForMatch } from '../fold'
 import { searchEntities } from '../registry'
 import type { SearchEntityType, SearchResult } from '../types'
 import { useSearch as useSearchImpl } from '../use-search'
@@ -40,15 +41,18 @@ const groupByEntity = (results: SearchResult[]) =>
 
 /**
  * Matches a static command against the query: every whitespace token must
- * appear (case-insensitive) in the command's title or keywords. cmdk's built-in
- * filter is disabled on the palette (it would also re-filter — and wrongly hide
- * — the already-FTS-filtered result rows), so we filter the command list here.
+ * appear in the command's title or keywords. cmdk's built-in filter is disabled
+ * on the palette (it would also re-filter — and wrongly hide — the
+ * already-FTS-filtered result rows), so we filter the command list here.
+ *
+ * Commands never enter the FTS index — their titles are locale-resolved at
+ * render time — but they are folded with the same {@link foldForMatch} the index
+ * uses, so `parametres` finds `Paramètres` and `gerate` finds `Geräte`.
  */
 const commandMatchesQuery = (command: PaletteCommand, query: string): boolean => {
-  const haystack = `${command.title} ${command.keywords?.join(' ') ?? ''}`.toLowerCase()
-  return query
-    .toLowerCase()
-    .split(/\s+/)
+  const haystack = foldForMatch(`${command.title} ${command.keywords?.join(' ') ?? ''}`).folded
+  return foldForMatch(query)
+    .folded.split(/\s+/)
     .filter((token) => token.length > 0)
     .every((token) => haystack.includes(token))
 }
@@ -214,7 +218,7 @@ export const SearchPalette = ({
         description={t`Search across chats, models, skills, agents, and more`}
         className="rounded-2xl"
         // FTS already filters result rows and we filter commands manually; cmdk's
-        // fuzzy filter would otherwise hide valid stemmed/prefixed FTS matches.
+        // fuzzy filter would otherwise hide valid prefix and substring FTS matches.
         shouldFilter={false}
       >
         <CommandInput placeholder={t`Search chats, models, skills, agents…`} value={query} onValueChange={setQuery} />

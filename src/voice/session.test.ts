@@ -183,7 +183,7 @@ describe('createVoiceSession', () => {
 
   test('stop() during startup does not open an orphaned mic (stopped guard)', async () => {
     // Hold engine.load() open to land stop() squarely in the startup window,
-    // before start() has created/assigned the VAD gate.
+    // before start() has assigned the VAD gate.
     let resolveLoad: () => void = () => {}
     const engine = makeEngine('hi', { load: () => new Promise<void>((resolve) => (resolveLoad = resolve)) })
     const session = createVoiceSession({ earcons: makeEarcons().earcons, engine, reply: makeReply(['hi']) })
@@ -193,10 +193,14 @@ describe('createVoiceSession', () => {
     resolveLoad()
     await startPromise
 
-    // With the guard, start() bails after load() resolves — the gate is never
-    // even created, so no mic is opened and no gate is left running.
-    expect(vadGateCalls).toBe(0)
-    expect(gateStartCalls).toBe(0)
+    // The mic now opens alongside engine.load() rather than after it, so a stop()
+    // in this window lands on a gate that is already live. What matters is
+    // unchanged and is the whole point of the guard: nothing is left holding the
+    // mic. start() resumes, sees `stopped`, and tears down the gate it never
+    // published — `stop()` itself couldn't, since `vadGate` was still null.
+    expect(vadGateCalls).toBe(1)
+    expect(gateStartCalls).toBe(1)
+    expect(gateDestroyCalls).toBe(1)
     expect(session.state).toBe('idle')
   })
 
@@ -319,6 +323,66 @@ describe('createVoiceSession', () => {
       await turn
 
       expect(played.filter((cue) => cue === 'listening')).toHaveLength(1)
+    })
+  })
+
+  describe('startup', () => {
+    test('opens the mic without waiting for the engine to load', async () => {
+      const order: string[] = []
+      let releaseLoad = () => {}
+      const engine = makeEngine('hi', {
+        load: async () => {
+          order.push('load:start')
+          await new Promise<void>((resolve) => {
+            releaseLoad = resolve
+          })
+          order.push('load:end')
+        },
+      })
+      const session = createVoiceSession({ earcons: makeEarcons().earcons, engine, reply: makeReply(['ok']) })
+
+      const starting = session.start()
+      await Promise.resolve()
+
+      // The mic is requested while the engine is still loading; serialised, the
+      // user would wait for the sum of a network round trip and a permission
+      // prompt instead of the slower of the two.
+      expect(gateStartCalls).toBe(1)
+      expect(order).toEqual(['load:start'])
+
+      releaseLoad()
+      await starting
+    })
+
+    test('releases the mic when the engine fails after it opened', async () => {
+      const engine = makeEngine('hi', {
+        load: async () => {
+          throw new Error('attestation failed')
+        },
+      })
+      const session = createVoiceSession({ earcons: makeEarcons().earcons, engine, reply: makeReply(['ok']) })
+
+      // Racing the two means a live mic can outlive a failed start, and nothing
+      // else holds a reference to it — the caller's stop() sees vadGate as null.
+      expect(session.start()).rejects.toThrow('attestation failed')
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(gateDestroyCalls).toBe(1)
+    })
+
+    test('does not announce readiness when startup fails', async () => {
+      const { earcons, played } = makeEarcons()
+      const engine = makeEngine('hi', {
+        load: async () => {
+          throw new Error('attestation failed')
+        },
+      })
+      const session = createVoiceSession({ earcons, engine, reply: makeReply(['ok']) })
+
+      await session.start().catch(() => {})
+
+      expect(played).toEqual([])
     })
   })
 })

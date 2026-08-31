@@ -223,22 +223,26 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
 
   const start = async () => {
     stopped = false
-    await engine.load()
-    if (stopped) {
-      return
+    const gate = createVadGate({ onSpeechStart, onUtterance, onLevel })
+    // Concurrently, because they have nothing to do with each other: loading the
+    // engine is a network round trip (the hosted engine primes Tinfoil enclave
+    // attestation), and opening the mic is a permission prompt. Run in sequence
+    // the user waits for the sum of the two, and on a first run doesn't even see
+    // the prompt until attestation comes back.
+    try {
+      await Promise.all([engine.load(), gate.start()])
+    } catch (error) {
+      // Racing means either half can fail with the other already succeeded, so a
+      // rejection here can leave a live mic that nothing else holds a reference
+      // to — the orphan the `stopped` guard below exists to prevent.
+      await gate.destroy()
+      throw error
     }
-    const gate = await createVadGate({ onSpeechStart, onUtterance, onLevel })
     if (stopped) {
       await gate.destroy()
       return
     }
     vadGate = gate
-    await vadGate.start()
-    if (stopped) {
-      await vadGate.destroy()
-      vadGate = null
-      return
-    }
     setState('listening')
     // The one transition the user cannot anticipate. Every other route back to
     // 'listening' follows something they can already perceive — the assistant's

@@ -18,6 +18,14 @@ export type HarnessMessage =
     }
   /** Reply to a {@link HarnessRequest}, correlated by `id`. */
   | { artifactNonce: string; type: 'artifact-reply'; id: number; result: unknown }
+  /**
+   * The user highlighted (or cleared) text inside the artifact.
+   *
+   * Reported by the guest because a host cannot read the selection inside a
+   * frame it doesn't share an origin with — that isolation is the point, so the
+   * page volunteers it. `null` means the selection was cleared.
+   */
+  | { artifactNonce: string; type: 'artifact-selection'; selection: ArtifactTextSelection | null }
 
 /**
  * A question the host asks the artifact.
@@ -31,6 +39,18 @@ export type HarnessMessage =
  * `postMessage` on a specific `contentWindow` still reaches only that frame, and
  * the nonce remains the thing that proves which render answered.
  */
+/** Highlighted text plus where it sits in the artifact's own viewport. */
+export type ArtifactTextSelection = {
+  text: string
+  rect?: { x: number; y: number; width: number; height: number }
+}
+
+/** One thing a marquee covered, ready to become a composer chip. */
+export type ArtifactSelectionItem = { id: string; label: string; text: string }
+
+/** Method name the host uses to resolve a marquee to content. */
+export const artifactSelectionQueryMethod = 'selection/query'
+
 export type HarnessRequest = {
   artifactNonce: string
   type: 'artifact-request'
@@ -148,6 +168,94 @@ const harnessScript = (nonce: string): string => `<script>
       Promise.resolve(handler(d.params)).then(reply, function () { reply(null); });
     } catch (err) { reply(null); }
   });
+
+  // ---- selection --------------------------------------------------------
+  // Ported from the mini-app SDK's hit-test so both surfaces answer a marquee
+  // the same way. Defined AFTER the error listeners above, deliberately: the
+  // listeners must win the race against agent code, this need not.
+  var CONTAINMENT = 0.6;
+  var CANDIDATES = '[data-tb-select], tr, li, blockquote, figure, p, h1, h2, h3, h4, h5, h6';
+  var MAX_ITEMS = 50;
+
+  function ratio(el, box) {
+    var r = el.getBoundingClientRect();
+    var a = r.width * r.height;
+    if (a <= 0) { return 0; }
+    var w = Math.min(r.x + r.width, box.x + box.width) - Math.max(r.x, box.x);
+    var h = Math.min(r.y + r.height, box.y + box.height) - Math.max(r.y, box.y);
+    return w > 0 && h > 0 ? (w * h) / a : 0;
+  }
+
+  function labelFor(el, i) {
+    var explicit = el.getAttribute('data-tb-label');
+    if (explicit) { return explicit; }
+    var cell = el.querySelector('td, th');
+    var cellText = cell && cell.textContent ? cell.textContent.trim() : '';
+    if (cellText) { return cellText; }
+    var t = (el.textContent || '').trim();
+    return t ? t.slice(0, 40) + (t.length > 40 ? '…' : '') : 'Item ' + (i + 1);
+  }
+
+  // Read a table row as "Header: value" pairs so a bare number reaches the model
+  // attached to the column it came from.
+  function describeRow(el) {
+    var cells = Array.prototype.slice.call(el.querySelectorAll('td'));
+    if (!cells.length) { return null; }
+    var table = el.closest ? el.closest('table') : null;
+    var heads = table ? Array.prototype.slice.call(table.querySelectorAll('thead th')) : [];
+    if (heads.length !== cells.length) {
+      return cells.map(function (c) { return (c.textContent || '').trim(); }).join(' | ');
+    }
+    return cells.map(function (c, i) { return (heads[i].textContent || '').trim() + ': ' + (c.textContent || '').trim(); }).join(', ');
+  }
+
+  window.__artifactHandlers = window.__artifactHandlers || {};
+  window.__artifactHandlers['selection/query'] = function (params) {
+    var box = params && params.rect;
+    if (!box) { return { items: [] }; }
+    var hits = Array.prototype.slice.call(document.querySelectorAll(CANDIDATES)).filter(function (el) {
+      return ratio(el, box) >= CONTAINMENT;
+    });
+    // Collapse nested matches to their outermost ancestor, so a box over a table
+    // row yields the row and not the row plus each of its cells.
+    var outer = hits.filter(function (el) {
+      return !hits.some(function (other) { return other !== el && other.contains(el); });
+    });
+    var items = [];
+    outer.slice(0, MAX_ITEMS).forEach(function (el, i) {
+      var text = describeRow(el) || (el.textContent || '').trim();
+      if (text) { items.push({ id: i + '-' + labelFor(el, i), label: labelFor(el, i), text: text }); }
+    });
+    return { items: items };
+  };
+
+  // Report highlights so the host can float its "Ask about this" control. Debounced
+  // because selectionchange fires per character while dragging, and re-sent on
+  // scroll so a placed control doesn't strand itself.
+  var selTimer;
+  var lastSel = null;
+  function readSelection() {
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) { return null; }
+    var text = sel.toString().trim();
+    if (!text) { return null; }
+    var b = sel.getRangeAt(0).getBoundingClientRect();
+    var rect = b.width > 0 || b.height > 0 ? { x: b.x, y: b.y, width: b.width, height: b.height } : undefined;
+    return { text: text, rect: rect };
+  }
+  function reportSelection() {
+    var cur = readSelection();
+    var key = cur ? cur.text + '@' + (cur.rect ? cur.rect.x + ',' + cur.rect.y : 'n') : null;
+    if (key === lastSel) { return; }
+    lastSel = key;
+    send({ type: 'artifact-selection', selection: cur });
+  }
+  function onSelectionChange() {
+    clearTimeout(selTimer);
+    selTimer = setTimeout(reportSelection, 180);
+  }
+  document.addEventListener('selectionchange', onSelectionChange);
+  window.addEventListener('scroll', onSelectionChange, { passive: true, capture: true });
 
   window.addEventListener('load', function () {
     setTimeout(function () {

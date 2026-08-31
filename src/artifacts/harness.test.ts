@@ -2,8 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getClock } from '@/testing-library'
 import { describe, expect, it } from 'bun:test'
-import { artifactCsp, parseHarnessMessage, wrapArtifactHtml, wrapArtifactPreviewHtml } from './harness'
+import {
+  artifactCsp,
+  parseHarnessMessage,
+  requestFromArtifact,
+  wrapArtifactHtml,
+  wrapArtifactPreviewHtml,
+} from './harness'
 
 describe('wrapArtifactHtml', () => {
   it('injects the harness at the start of an existing <head>, before agent content', () => {
@@ -74,5 +81,84 @@ describe('parseHarnessMessage', () => {
 
   it('rejects a non-harness message', () => {
     expect(parseHarnessMessage({ source: win, data: undefined } as MessageEvent, win, nonce)).toBeNull()
+  })
+})
+
+/**
+ * The host half of the new two-way channel. A real iframe isn't available here,
+ * so the guest is stubbed: `postMessage` on the fake window is what the harness
+ * script would call, and replies are dispatched back through a real `message`
+ * event so the listener under test does the same nonce and source matching it
+ * would in a browser.
+ */
+describe('requestFromArtifact', () => {
+  const nonce = 'nonce-1'
+
+  /** A stand-in guest that answers with `reply(params)`, or never answers when null. */
+  const fakeFrame = (reply: ((params: unknown) => unknown) | null) => {
+    const sent: { method: string; params: unknown }[] = []
+    const frame = {
+      postMessage: (message: unknown) => {
+        const request = message as { id: number; method: string; params: unknown; type: string }
+        sent.push({ method: request.method, params: request.params })
+        if (!reply) {
+          return
+        }
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            source: frame as unknown as Window,
+            data: { artifactNonce: nonce, type: 'artifact-reply', id: request.id, result: reply(request.params) },
+          }),
+        )
+      },
+    }
+    return { frame: frame as unknown as Window, sent }
+  }
+
+  it('sends the method and params, and resolves with the reply', async () => {
+    const { frame, sent } = fakeFrame((params) => ({ echoed: params }))
+
+    const result = await requestFromArtifact(frame, nonce, 'selection/query', { rect: 1 }, 1_000)
+
+    expect(sent).toEqual([{ method: 'selection/query', params: { rect: 1 } }])
+    expect(result).toEqual({ echoed: { rect: 1 } })
+  })
+
+  it('resolves null when the page never answers, rather than hanging', async () => {
+    const { frame } = fakeFrame(null)
+    // The suite runs on a fake clock, so the timeout has to be advanced by hand.
+    const pending = requestFromArtifact(frame, nonce, 'anything', {}, 10)
+    await getClock().runAllAsync()
+    expect(await pending).toBeNull()
+  })
+
+  it('resolves null with no frame at all', async () => {
+    expect(await requestFromArtifact(null, nonce, 'anything', {}, 10)).toBeNull()
+  })
+
+  /** Two renders of the same artifact must not read each other's replies. */
+  it("ignores a reply carrying another render's nonce", async () => {
+    const { frame } = fakeFrame(() => 'wrong-render')
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        source: frame,
+        data: { artifactNonce: 'someone-else', type: 'artifact-reply', id: 1, result: 'leaked' },
+      }),
+    )
+    const pending = requestFromArtifact(frame, 'a-different-nonce', 'x', {}, 10)
+    await getClock().runAllAsync()
+    expect(await pending).toBeNull()
+  })
+
+  it('pairs concurrent requests with their own replies', async () => {
+    const { frame } = fakeFrame((params) => params)
+
+    const [first, second] = await Promise.all([
+      requestFromArtifact(frame, nonce, 'a', 'first', 1_000),
+      requestFromArtifact(frame, nonce, 'b', 'second', 1_000),
+    ])
+
+    expect(first).toBe('first')
+    expect(second).toBe('second')
   })
 })

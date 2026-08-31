@@ -16,6 +16,28 @@ export type HarnessMessage =
       reason: 'exception' | 'unhandled-rejection'
       detail: string
     }
+  /** Reply to a {@link HarnessRequest}, correlated by `id`. */
+  | { artifactNonce: string; type: 'artifact-reply'; id: number; result: unknown }
+
+/**
+ * A question the host asks the artifact.
+ *
+ * Artifacts were one-way until now — the page reported its height and its errors
+ * and nothing was ever sent back down. Asking "what's inside this rectangle?"
+ * needs an answer, so the channel gains ids and replies.
+ *
+ * Targeted with `'*'` rather than a real origin: the frame is sandboxed without
+ * `allow-same-origin`, so its origin is opaque and there is no value to pin.
+ * `postMessage` on a specific `contentWindow` still reaches only that frame, and
+ * the nonce remains the thing that proves which render answered.
+ */
+export type HarnessRequest = {
+  artifactNonce: string
+  type: 'artifact-request'
+  id: number
+  method: string
+  params: unknown
+}
 
 /**
  * Content-Security-Policy applied to every rendered artifact via an injected
@@ -33,6 +55,9 @@ export type HarnessMessage =
  */
 export const artifactCsp =
   "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; media-src data: blob:; worker-src blob:; base-uri 'none'; form-action 'none'"
+
+/** Monotonic across all frames; only ever compared against replies from one. */
+let nextRequestId = 1
 
 const cspMetaTag = (): string => `<meta http-equiv="Content-Security-Policy" content="${artifactCsp}">`
 
@@ -109,6 +134,21 @@ const harnessScript = (nonce: string): string => `<script>
     rafPending = true;
     requestAnimationFrame(function () { rafPending = false; measureAndSend(); });
   }
+  // Host-to-guest requests. Handlers are registered by the artifact channel
+  // module on window.__artifactHandlers; an unknown method replies null rather
+  // than going silent, so the host resolves instead of waiting out its timeout.
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || d.artifactNonce !== NONCE || d.type !== 'artifact-request') { return; }
+    var handlers = window.__artifactHandlers || {};
+    var handler = handlers[d.method];
+    var reply = function (result) { send({ type: 'artifact-reply', id: d.id, result: result }); };
+    if (!handler) { reply(null); return; }
+    try {
+      Promise.resolve(handler(d.params)).then(reply, function () { reply(null); });
+    } catch (err) { reply(null); }
+  });
+
   window.addEventListener('load', function () {
     setTimeout(function () {
       send({ type: 'artifact-ready' });
@@ -120,6 +160,58 @@ const harnessScript = (nonce: string): string => `<script>
   });
 })();
 </script>`
+
+/**
+ * Send a request into an artifact frame and wait for its reply.
+ *
+ * Resolves `null` on timeout rather than rejecting: the caller is host UI
+ * reacting to a gesture, and "the page didn't answer" is a normal outcome for
+ * model-written HTML that may have thrown before registering a handler. A
+ * rejection here would turn that into an unhandled error on a pointer event.
+ *
+ * Target origin is `'*'` because a sandboxed frame without `allow-same-origin`
+ * has an opaque origin — there is nothing to pin. The message still reaches only
+ * this frame, and the nonce proves which render replied.
+ */
+export const requestFromArtifact = (
+  contentWindow: Window | null,
+  nonce: string,
+  method: string,
+  params: unknown,
+  timeoutMs: number,
+): Promise<unknown> =>
+  new Promise((resolve) => {
+    if (!contentWindow) {
+      resolve(null)
+      return
+    }
+
+    const id = nextRequestId++
+    let settled = false
+
+    const settle = (value: unknown) => {
+      if (settled) {
+        return
+      }
+      settled = true
+      clearTimeout(timer)
+      window.removeEventListener('message', onMessage)
+      resolve(value)
+    }
+
+    const onMessage = (event: MessageEvent) => {
+      const reply = parseHarnessMessage(event, contentWindow, nonce)
+      if (reply?.type === 'artifact-reply' && reply.id === id) {
+        settle(reply.result)
+      }
+    }
+
+    const timer = setTimeout(() => settle(null), timeoutMs)
+    window.addEventListener('message', onMessage)
+
+    const request: HarnessRequest = { artifactNonce: nonce, type: 'artifact-request', id, method, params }
+    contentWindow.postMessage(request, '*')
+  })
 
 /** Splice `injected` markup into the document `<head>` (creating one if absent), before any agent content. */
 const injectIntoHead = (html: string, injected: string): string => {

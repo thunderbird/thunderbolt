@@ -14,7 +14,7 @@ import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Bot, LogOut, Plus } from 'lucide-react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { type ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import type { PaletteCommand, UseCommandsOptions } from '../commands/types'
 import type { SearchResult } from '../types'
@@ -105,6 +105,44 @@ describe('SearchPalette commands', () => {
 
     expect(mockTrackEvent).toHaveBeenCalledWith('search_command_run', { commandId: 'nav-agents' })
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/agents')
+  })
+
+  it('closes after a navigation command runs', async () => {
+    buildCommands = () => [
+      { id: 'nav-preferences', title: 'Preferences', icon: Bot, section: 'navigation', to: '/settings/preferences' },
+    ]
+    const TestProvider = createTestProvider()
+    const ControlledPalette = () => {
+      const [open, setOpen] = useState(true)
+      return (
+        <SearchPalette
+          open={open}
+          onOpenChange={setOpen}
+          useCommands={(opts) => buildCommands(opts)}
+          useSearch={() => ({ results: searchResults, isLoading: false })}
+          trackEvent={mockTrackEvent}
+        />
+      )
+    }
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={['/']}>
+        <TestProvider>
+          <SidebarProvider>
+            {children}
+            <LocationProbe />
+          </SidebarProvider>
+        </TestProvider>
+      </MemoryRouter>
+    )
+    render(<ControlledPalette />, { wrapper: Wrapper })
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /Preferences/ }))
+    })
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/preferences')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('invokes run and tracks the run event for a "run" command', () => {

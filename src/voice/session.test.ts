@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { Earcons } from '@/voice/audio/earcon'
 import type { PlaybackQueue } from '@/voice/audio/playback'
 import type { VadGate, VadHandlers } from '@/voice/audio/vad'
 import type { AudioChunk, PcmFrame, Transcript, VoiceEngine } from '@/voice/engine/types'
@@ -74,6 +75,20 @@ const makeEngine = (transcript: string, overrides: Partial<VoiceEngine> = {}): V
   ...overrides,
 })
 
+/**
+ * Records which cues played. Injected everywhere rather than defaulted, because
+ * the real ones need an AudioContext the mocked playback queue doesn't have —
+ * and because when a cue fires is behaviour worth asserting, not a side effect.
+ */
+const makeEarcons = () => {
+  const played: string[] = []
+  const earcons: Earcons = {
+    listening: () => played.push('listening'),
+    captured: () => played.push('captured'),
+  }
+  return { earcons, played }
+}
+
 const makeReply = (tokens: string[]): ReplyFn =>
   async function* (_userText, signal) {
     for (const token of tokens) {
@@ -94,6 +109,7 @@ describe('createVoiceSession', () => {
     const states: SessionState[] = []
     const transcripts: Array<[string, string]> = []
     const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
       engine: makeEngine('hello world'),
       reply: makeReply(['Hi', ' there.']),
       onState: (s) => states.push(s),
@@ -114,6 +130,7 @@ describe('createVoiceSession', () => {
     const states: SessionState[] = []
     const transcripts: Array<[string, string]> = []
     const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
       engine: makeEngine('thanks for watching'),
       reply: makeReply(['should not run']),
       onState: (s) => states.push(s),
@@ -146,6 +163,7 @@ describe('createVoiceSession', () => {
       },
     }
     const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
       engine,
       reply: makeReply(['done.']),
       onTranscript: (text, role) => transcripts.push([role, text]),
@@ -168,7 +186,7 @@ describe('createVoiceSession', () => {
     // before start() has created/assigned the VAD gate.
     let resolveLoad: () => void = () => {}
     const engine = makeEngine('hi', { load: () => new Promise<void>((resolve) => (resolveLoad = resolve)) })
-    const session = createVoiceSession({ engine, reply: makeReply(['hi']) })
+    const session = createVoiceSession({ earcons: makeEarcons().earcons, engine, reply: makeReply(['hi']) })
 
     const startPromise = session.start()
     await session.stop()
@@ -183,7 +201,11 @@ describe('createVoiceSession', () => {
   })
 
   test('stop() after the gate is running tears it down', async () => {
-    const session = createVoiceSession({ engine: makeEngine('hi'), reply: makeReply(['hi']) })
+    const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
+      engine: makeEngine('hi'),
+      reply: makeReply(['hi']),
+    })
     await session.start()
     expect(gateStartCalls).toBe(1)
     await session.stop()
@@ -194,6 +216,7 @@ describe('createVoiceSession', () => {
   test('barge-in: onSpeechStart while speaking aborts the turn and returns to listening', async () => {
     const transcripts: Array<[string, string]> = []
     const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
       engine: makeEngine('user turn'),
       reply: makeReply(['Hello, ', 'this is a long-winded reply.']),
       onTranscript: (text, role) => transcripts.push([role, text]),
@@ -219,10 +242,83 @@ describe('createVoiceSession', () => {
   })
 
   test('onSpeechStart is a no-op when not thinking or speaking', async () => {
-    const session = createVoiceSession({ engine: makeEngine('hi'), reply: makeReply(['hi']) })
+    const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
+      engine: makeEngine('hi'),
+      reply: makeReply(['hi']),
+    })
     await session.start()
     expect(session.state).toBe('listening')
     vadHandlers!.onSpeechStart!() // nothing to interrupt
     expect(session.state).toBe('listening')
+  })
+
+  describe('earcons (THU-856)', () => {
+    test('announces the mic opening, which is the moment nothing on screen marks', async () => {
+      const { earcons, played } = makeEarcons()
+      const session = createVoiceSession({ earcons, engine: makeEngine('hi'), reply: makeReply(['ok']) })
+
+      await session.start()
+
+      expect(played).toEqual(['listening'])
+    })
+
+    test('does not announce again when a finished turn hands the mic back', async () => {
+      const { earcons, played } = makeEarcons()
+      const session = createVoiceSession({ earcons, engine: makeEngine('hi'), reply: makeReply(['ok']) })
+
+      await session.start()
+      await vadHandlers!.onUtterance(new Float32Array(16000))
+
+      // The assistant's own voice stopping is already the cue; repeating the
+      // invitation every turn would be noise.
+      expect(played.filter((cue) => cue === 'listening')).toHaveLength(1)
+    })
+
+    test('acknowledges each committed utterance', async () => {
+      const { earcons, played } = makeEarcons()
+      const session = createVoiceSession({ earcons, engine: makeEngine('hi'), reply: makeReply(['ok']) })
+
+      await session.start()
+      await vadHandlers!.onUtterance(new Float32Array(16000))
+      await vadHandlers!.onUtterance(new Float32Array(16000))
+
+      expect(played.filter((cue) => cue === 'captured')).toHaveLength(2)
+    })
+
+    test('acknowledges before transcription, not after it', async () => {
+      const { earcons, played } = makeEarcons()
+      const engine = makeEngine('hi', {
+        transcribe: async function* () {
+          // Whatever the cue order is, it is already decided by the time the
+          // engine is reached — a cue that waits on this arrives too late.
+          expect(played).toContain('captured')
+          yield { text: 'hi', isFinal: true }
+        },
+      })
+      const session = createVoiceSession({ earcons, engine, reply: makeReply(['ok']) })
+
+      await session.start()
+      await vadHandlers!.onUtterance(new Float32Array(16000))
+
+      expect(played).toContain('captured')
+    })
+
+    test('barge-in does not re-invite the user who is already talking', async () => {
+      const { earcons, played } = makeEarcons()
+      const session = createVoiceSession({
+        earcons,
+        engine: makeEngine('user turn'),
+        reply: makeReply(['a long-winded reply.']),
+      })
+
+      await session.start()
+      const turn = vadHandlers!.onUtterance(new Float32Array(16000))
+      await Promise.resolve()
+      vadHandlers!.onSpeechStart?.()
+      await turn
+
+      expect(played.filter((cue) => cue === 'listening')).toHaveLength(1)
+    })
   })
 })

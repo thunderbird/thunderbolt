@@ -23,6 +23,7 @@
  */
 import { type ContentPartsState, parseContentPartsIncremental } from '@/ai/widget-parser'
 import { SentenceAggregator } from '@/voice/aggregator'
+import { type Earcons, createEarcons } from '@/voice/audio/earcon'
 import { createPlaybackQueue } from '@/voice/audio/playback'
 import { createVadGate } from '@/voice/audio/vad'
 import type { VoiceEngine } from '@/voice/engine/types'
@@ -42,6 +43,11 @@ export type VoiceSessionOptions = {
   onError?: (error: unknown) => void
   /** Live mic level [0,1] per frame while listening — for the reactive waveform. */
   onLevel?: (level: number) => void
+  /**
+   * Audible cues for "mic is open" and "heard you" (THU-856). Defaults to real
+   * tones on the playback context; injected in tests, which have no AudioContext.
+   */
+  earcons?: Earcons
 }
 
 export type VoiceSession = {
@@ -61,6 +67,7 @@ const tick = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession => {
   const { engine, reply, onState, onTranscript, onError, onLevel } = options
   const playback = createPlaybackQueue()
+  const earcons = options.earcons ?? createEarcons(playback.audioContext)
   let state: SessionState = 'idle'
   let turn: AbortController | null = null
   let vadGate: Awaited<ReturnType<typeof createVadGate>> | null = null
@@ -99,6 +106,13 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
     turn?.abort() // supersede any in-flight turn
     const ac = new AbortController()
     turn = ac
+    // Acknowledge here rather than after transcription: the endpointer only
+    // commits sustained speech, so this is already past the blip filter, and a
+    // cue that waits on the STT round trip arrives too late to read as a
+    // response to what the user just did. The cost is chiming for the rare
+    // noise burst that survives endpointing and is then dropped as a Whisper
+    // hallucination below — a wrong "heard you" beats a second of silence.
+    earcons.captured()
     try {
       setState('thinking')
 
@@ -226,6 +240,11 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
       return
     }
     setState('listening')
+    // The one transition the user cannot anticipate. Every other route back to
+    // 'listening' follows something they can already perceive — the assistant's
+    // own voice stopping, or their own barge-in — so re-announcing those would
+    // be noise on every single turn.
+    earcons.listening()
   }
 
   const stop = async () => {

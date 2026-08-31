@@ -18,6 +18,7 @@ import { useChat as useChat_default } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { AnimatePresence, m } from 'framer-motion'
 import { RenameChatDialog } from './rename-chat-dialog'
+import { MiniAppChatBadge } from '@/mini-apps/mini-app-chat-badge'
 
 /** `useChat` is injectable so tests exercise the real component without a global
  *  `mock.module('@ai-sdk/react')` (which leaks across files under `--randomize`). */
@@ -255,6 +256,7 @@ export const ChatListItem = memo(
             {showSpinner && (
               <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin text-muted-foreground" />
             )}
+            {thread.miniAppId && <MiniAppChatBadge appId={thread.miniAppId} />}
             <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
           </div>
         </SidebarMenuButton>
@@ -335,6 +337,7 @@ export const ChatListItem = memo(
                         </m.div>
                       )}
                     </AnimatePresence>
+                    {thread.miniAppId && <MiniAppChatBadge appId={thread.miniAppId} />}
                     <span className="truncate flex-1 min-w-0">{displayTitle}</span>
                   </div>
                   <DropdownMenuTrigger asChild>

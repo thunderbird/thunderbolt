@@ -160,6 +160,7 @@ describe('chat-store', () => {
               retriesExhausted: false,
               selectedModel: null as unknown as Model,
               projectId: null,
+              miniAppId: null,
               triggerData: null,
             },
           ],

@@ -18,6 +18,8 @@ export type ChatThread = {
   /** Owning project, or null. Needed so a drag knows whether "Remove from
    *  project" applies to this chat. */
   projectId: string | null
+  /** Mini App the chat came from, or null. Drives the row's app icon. */
+  miniAppId: string | null
 }
 
 export type DeleteChatMutationType = UseMutationResult<void, Error, { id: string }, unknown>

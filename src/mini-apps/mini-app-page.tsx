@@ -10,7 +10,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { MessageSquare, MousePointerSquareDashed, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate, useParams } from 'react-router'
+import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import type { MiniAppSelectionItem } from '@shared/mini-app-protocol'
@@ -24,6 +24,8 @@ import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useMiniAppBridge } from './use-mini-app-bridge'
+import { useMiniAppChats } from '@/dal/mini-app-chats'
+import { MiniAppChatHistory } from './mini-app-chat-history'
 
 /** Default split when the chat opens: roughly two-thirds app, one-third chat. */
 const appPanelSize = '66%'
@@ -34,11 +36,19 @@ const seedComposerDraft = (chatThreadId: string, prompt: string) => {
   localStorage.setItem(`draft:${chatThreadId}`, prompt)
 }
 
-/** An open chat beside the app. `key` forces a fresh session when reopened. */
-type ChatSession = { id: string; key: string }
-
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
-  const [chatSession, setChatSession] = useState<ChatSession | null>(null)
+  /*
+   * Two sources, because they are genuinely two states. A persisted thread is
+   * addressable, so it lives in `?chat=` and survives a reload or a shared link.
+   * A chat the user just opened has no row yet — putting its id in the URL would
+   * promise a thread that reloading couldn't find, and hydration would bounce to
+   * Not Found. It stays local until a first message makes it real, after which
+   * the history menu is how it comes back.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [draftChatId, setDraftChatId] = useState<string | null>(null)
+  const openChatId = draftChatId ?? searchParams.get('chat')
+  const chats = useMiniAppChats(app.id)
   const { isMobile } = useIsMobile()
   const { toggleSidebar } = useSidebar()
   const openApp = useMiniAppStore((s) => s.openApp)
@@ -60,13 +70,49 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     return () => closeApp()
   }, [app, openApp, closeApp])
 
-  const handleChatOpen = useCallback((prompt: string | undefined) => {
-    const id = uuidv7()
-    if (prompt) {
-      seedComposerDraft(id, prompt)
-    }
-    setChatSession({ id, key: id })
-  }, [])
+  /** Edit only `chat`, leaving any other query the route grows later alone. */
+  const setOpenChatParam = useCallback(
+    (chatThreadId: string | null) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          if (chatThreadId) {
+            next.set('chat', chatThreadId)
+          } else {
+            next.delete('chat')
+          }
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  const handleChatOpen = useCallback(
+    (prompt: string | undefined) => {
+      const id = uuidv7()
+      if (prompt) {
+        seedComposerDraft(id, prompt)
+      }
+      setDraftChatId(id)
+      setOpenChatParam(null)
+    },
+    [setOpenChatParam],
+  )
+
+  const handleOpenExistingChat = useCallback(
+    (chatThreadId: string) => {
+      setDraftChatId(null)
+      setOpenChatParam(chatThreadId)
+    },
+    [setOpenChatParam],
+  )
+
+  const handleCloseChat = useCallback(() => {
+    setDraftChatId(null)
+    setOpenChatParam(null)
+  }, [setOpenChatParam])
 
   const { frameRef, status, selection, clearSelection, querySelection } = useMiniAppBridge({
     app,
@@ -104,16 +150,16 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    */
   const attachToComposer = useCallback(
     (passages: string[]) => {
-      const threadId = chatSession?.id ?? uuidv7()
-      if (!chatSession) {
-        setChatSession({ id: threadId, key: threadId })
+      const threadId = openChatId ?? uuidv7()
+      if (!openChatId) {
+        setDraftChatId(threadId)
       }
       const { addQuote } = usePendingQuotesStore.getState()
       for (const text of passages) {
         addQuote(threadId, { text })
       }
     },
-    [chatSession],
+    [openChatId],
   )
 
   const handleAskAboutPicked = useCallback(() => {
@@ -138,12 +184,16 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * underneath, which matters more than it looks: unmounting it would tear down
    * the bridge and drop the context the user is asking about.
    */
-  const chatPane = chatSession && (
+  const chatPane = openChatId && (
     <ChatHydrateHandler
-      key={chatSession.key}
-      existingId={null}
+      // Remounts — and so re-hydrates — when the user switches between chats.
+      key={openChatId}
+      existingId={draftChatId ? null : openChatId}
       projectId={null}
-      newChatId={chatSession.id}
+      // Stamped on the row when the first message persists, so reopening the
+      // chat later can say — and show — where it came from.
+      miniAppId={app.id}
+      newChatId={openChatId}
       // Staying on this route is the whole point: navigating to /chats/<id> on
       // first send would unmount the app, tear down the bridge, and clear the
       // very context the model was asked about.
@@ -163,10 +213,13 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
         </Button>
         <app.icon className="size-[var(--icon-size-sm)] shrink-0" />
         <span className="truncate text-[length:var(--font-size-body)] font-medium">{app.name}</span>
+        <div className="ml-auto">
+          <MiniAppChatHistory chats={chats} onOpenChat={handleOpenExistingChat} />
+        </div>
       </header>
 
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={chatSession && !isMobile ? appPanelSize : '100%'} minSize="30%">
+        <ResizablePanel defaultSize={openChatId && !isMobile ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
             <MiniAppFrame app={app} frameRef={frameRef} status={status} />
             {status === 'ready' && selection?.rect && !isSelecting && !picked && (
@@ -213,11 +266,11 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             )}
             {status === 'ready' && !isSelecting && !picked && (
               <Button
-                onClick={() => (chatSession ? setChatSession(null) : handleChatOpen(undefined))}
+                onClick={() => (openChatId ? handleCloseChat() : handleChatOpen(undefined))}
                 className="absolute bottom-4 right-4 z-10 shadow-lg rounded-full"
                 size="lg"
               >
-                {chatSession ? (
+                {openChatId ? (
                   <>
                     <X className="size-[var(--icon-size-sm)]" />
                     Close chat
@@ -240,7 +293,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                     variant="ghost"
                     className="ml-auto"
                     aria-label="Close chat"
-                    onClick={() => setChatSession(null)}
+                    onClick={handleCloseChat}
                   >
                     <X className="size-[var(--icon-size-default)]" />
                   </Button>
@@ -250,7 +303,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             )}
           </div>
         </ResizablePanel>
-        {chatSession && !isMobile && (
+        {openChatId && !isMobile && (
           <>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={chatPanelSize} minSize="20%">

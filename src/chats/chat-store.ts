@@ -60,6 +60,11 @@ export type ChatSession = {
    * the row would be written with `project_id` null.
    */
   projectId: string | null
+  /**
+   * Mini App this chat was started from, or null. Rides the session for the
+   * same reason `projectId` does — the row is written lazily on first save.
+   */
+  miniAppId: string | null
   triggerData: AutomationRun | null
 }
 

@@ -11,6 +11,24 @@ import { getModel } from './models'
 import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
+ * Where a chat came from.
+ *
+ * Both are set at creation and never by the chat itself. A chat belongs to at
+ * most one of them in practice, but they aren't modelled as a union: a chat
+ * started from a Mini App while a project is open legitimately has both, and
+ * collapsing them would force the UI to pick a winner at write time.
+ */
+export type ChatThreadOrigin = {
+  /** Owning project, when the chat was started from one. */
+  projectId?: string | null
+  /**
+   * Mini App the chat was started from. Kept even after the app is
+   * deregistered — see the column comment in `src/db/tables.ts`.
+   */
+  miniAppId?: string | null
+}
+
+/**
  * Checks if a chat thread ID exists as a soft-deleted record.
  * Used to detect when a user visits a URL for a deleted chat.
  */
@@ -58,11 +76,8 @@ export const getChatThread = async (db: AnyDrizzleDatabase, id: string): Promise
  */
 export const createChatThread = async (
   db: AnyDrizzleDatabase,
-  data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'> & {
-    agentId?: string | null
-    /** Owning project, when the chat was started from one. */
-    projectId?: string | null
-  },
+  data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'> &
+    ChatThreadOrigin & { agentId?: string | null },
   model: Model,
 ): Promise<void> => {
   await db.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
@@ -105,13 +120,16 @@ export const clearAcpSessionIdsForAgent = async (db: AnyDrizzleDatabase, agentId
  * Pass `agentId` so the thread row stores the user's currently-selected agent
  * on creation. Existing threads are returned untouched — caller is responsible
  * for any subsequent updates via `updateChatThread`.
+ *
+ * Origin fields are grouped rather than trailing positionally: they are all
+ * optional and all nullable, so `(db, id, model, null, projectId)` gave no
+ * clue at the call site which null was which.
  */
 export const getOrCreateChatThread = async (
   db: AnyDrizzleDatabase,
   id: string,
   modelId: string,
-  agentId: string | null = null,
-  projectId: string | null = null,
+  { agentId = null, projectId = null, miniAppId = null }: ChatThreadOrigin & { agentId?: string | null } = {},
 ): Promise<ChatThread> => {
   const thread = await getChatThread(db, id)
 
@@ -134,6 +152,7 @@ export const getOrCreateChatThread = async (
       wasTriggeredByAutomation: 0,
       agentId,
       projectId,
+      miniAppId,
     },
     model,
   )

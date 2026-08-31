@@ -96,6 +96,7 @@ const hydrateSessionWith = (
     selectedAgent: agent,
     selectedModel: mockModel,
     projectId,
+    miniAppId: null,
     triggerData: null,
   }
   useChatStore.setState({

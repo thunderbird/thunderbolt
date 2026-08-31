@@ -41,6 +41,10 @@ type UseHydrateChatStoreParams = {
    *  Passed in rather than read from `window.location` so the value is part of
    *  this hook's inputs and can be tested. */
   projectId?: string | null
+  /** Mini App a brand-new chat starts from. Same lazy-write reasoning as
+   *  `projectId`: the app is known when the panel opens, but nothing is
+   *  persisted until the first message. */
+  miniAppId?: string | null
   /**
    * Whether the first save should navigate to `/chats/<id>`.
    *
@@ -81,6 +85,7 @@ export const useHydrateChatStore = ({
   id,
   isNew,
   projectId: newChatProjectId = null,
+  miniAppId: newChatMiniAppId = null,
   navigateOnCreate = true,
 }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
@@ -124,15 +129,13 @@ export const useHydrateChatStore = ({
     // Pass `selectedAgent.id` so a brand-new thread is created with the user's
     // currently-selected agent — otherwise the row would default to `null`
     // and a reload would silently fall back to the built-in agent.
-    const thread = await getOrCreateChatThread(
-      db,
-      id,
-      session.selectedModel.id,
-      session.selectedAgent.id,
-      // Stamped here rather than at navigation time: the row is created lazily on
-      // this first save, so the project must ride the session to reach it.
-      session.projectId,
-    )
+    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, {
+      agentId: session.selectedAgent.id,
+      // Stamped here rather than at navigation time: the row is created lazily
+      // on this first save, so both must ride the session to reach it.
+      projectId: session.projectId,
+      miniAppId: session.miniAppId,
+    })
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(db, id, messages)
@@ -265,6 +268,7 @@ export const useHydrateChatStore = ({
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only
     // moment that intent exists — nothing has been written yet.
     const projectId = chatThread?.projectId ?? (isNew ? newChatProjectId : null)
+    const miniAppId = chatThread?.miniAppId ?? (isNew ? newChatMiniAppId : null)
 
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {
@@ -292,6 +296,7 @@ export const useHydrateChatStore = ({
       selectedAgent,
       selectedModel: defaultModel,
       projectId,
+      miniAppId,
       triggerData,
     })
 

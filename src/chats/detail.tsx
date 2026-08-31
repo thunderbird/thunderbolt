@@ -11,12 +11,16 @@ import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
 import { PageFallback } from '@/loading'
+import { MiniAppChatBanner } from '@/mini-apps/mini-app-chat-banner'
+import { useCurrentChatSession } from './chat-store'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   /** The thread from the route, or null for a chat that doesn't exist yet. */
   existingId: string | null
   /** Project this chat starts in, from `?projectId=`. New chats only. */
   projectId: string | null
+  /** Mini App this chat starts from. New chats only; set by the app page. */
+  miniAppId?: string | null
   /**
    * Pre-minted id for a new chat, when the caller needs to know the thread id
    * *before* the chat mounts — e.g. to seed the composer draft, which is stored
@@ -42,6 +46,7 @@ export const ChatHydrateHandler = ({
   children,
   existingId,
   projectId,
+  miniAppId = null,
   newChatId,
   navigateOnCreate = true,
 }: ChatHydrateHandlerProps) => {
@@ -57,6 +62,7 @@ export const ChatHydrateHandler = ({
     id,
     isNew,
     projectId,
+    miniAppId,
     navigateOnCreate,
   })
 
@@ -80,6 +86,29 @@ export const ChatHydrateHandler = ({
     <SavePartialAssistantMessagesHandler saveStreamingMessage={saveStreamingMessage}>
       {children}
     </SavePartialAssistantMessagesHandler>
+  )
+}
+
+/**
+ * The chat, plus a note about where it came from.
+ *
+ * Inside the handler because the origin lives on the hydrated session, and only
+ * on this route: beside the app itself the provenance is the screen.
+ */
+const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
+  const { miniAppId } = useCurrentChatSession()
+
+  if (!miniAppId) {
+    return <ChatUI />
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <MiniAppChatBanner appId={miniAppId} chatThreadId={chatThreadId} />
+      <div className="min-h-0 flex-1">
+        <ChatUI />
+      </div>
+    </div>
   )
 }
 
@@ -119,7 +148,7 @@ export default function ChatDetailPage() {
       existingId={isNew ? null : chatThreadId}
       projectId={projectId}
     >
-      <ChatUI />
+      <ChatWithOrigin chatThreadId={chatThreadId} />
     </ChatHydrateHandler>
   )
 }

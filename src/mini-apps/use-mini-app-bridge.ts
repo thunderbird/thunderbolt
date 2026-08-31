@@ -38,6 +38,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
+import { createPendingRequests } from '@/components/embedded/pending-requests'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { fetchMiniAppToken } from './mini-app-auth'
 import { useMiniAppStore } from './mini-app-store'
@@ -149,8 +150,9 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   // message handler and by the discovery effect, and re-rendering on it would
   // only churn the listener.
   const guestCapabilitiesRef = useRef<{ tools?: boolean; selection?: boolean }>({})
-  const pendingRef = useRef(new Map<number, (result: unknown) => void>())
-  const nextRequestIdRef = useRef(1)
+  // Correlation, timeouts and always-settling are shared with artifacts — see
+  // `pending-requests.ts`. Only the envelope and the trust check differ.
+  const [pending] = useState(() => createPendingRequests())
 
   const post = useCallback(
     (message: MiniAppHostMessage) => {
@@ -178,11 +180,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       // so they'd fail method dispatch.
       const reply = isFromGuest(event, trust) ? parseGuestResult(event.data) : null
       if (reply && typeof reply.id === 'number') {
-        const resolve = pendingRef.current.get(reply.id)
-        if (resolve) {
-          pendingRef.current.delete(reply.id)
-          resolve(reply.result)
-        }
+        pending.settle(reply.id, reply.result)
         return
       }
 
@@ -258,20 +256,16 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     }
 
     window.addEventListener('message', handleMessage)
-    const pending = pendingRef.current
     return () => {
       window.removeEventListener('message', handleMessage)
       // Resolve rather than leak: a caller awaiting a query when the user
       // navigates away should get an empty answer, not a promise that never settles.
-      for (const resolve of pending.values()) {
-        resolve(null)
-      }
-      pending.clear()
+      pending.abortAll()
     }
     // `cloudUrl` and `app.id` are dependencies, not incidental reads: minting a
     // token against a stale backend URL is the kind of bug that only shows up
     // once settings load a beat after first render. Re-subscribing is cheap.
-  }, [app.id, app.origin, cloudUrl, post, setContext, theme])
+  }, [app.id, app.origin, cloudUrl, pending, post, setContext, theme])
 
   /**
    * Fail visibly when the guest never handshakes — an app that isn't running
@@ -313,19 +307,8 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    */
   const request = useCallback(
     (method: MiniAppHostRequest['method'], params: unknown, timeoutMs: number): Promise<unknown> =>
-      new Promise((resolve) => {
-        const id = nextRequestIdRef.current++
-        const pending = pendingRef.current
-        const settle = (result: unknown) => {
-          clearTimeout(timer)
-          pending.delete(id)
-          resolve(result)
-        }
-        const timer = setTimeout(() => settle(null), timeoutMs)
-        pending.set(id, settle)
-        post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id, method, params })
-      }),
-    [post],
+      pending.issue((id) => post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id, method, params }), timeoutMs),
+    [post, pending],
   )
 
   /** Invoke a tool inside the frame, normalising failures into a tool-visible error. */

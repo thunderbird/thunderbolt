@@ -3,15 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import {
+  artifactRequest,
   artifactSelectionQueryMethod,
   formatHarnessError,
   parseHarnessMessage,
-  requestFromArtifact,
   wrapArtifactHtml,
   wrapArtifactPreviewHtml,
   type ArtifactSelectionItem,
   type ArtifactTextSelection,
 } from '@/artifacts/harness'
+import { createPendingRequests } from '@/components/embedded/pending-requests'
 import type { SurfaceRect } from '@/components/embedded/types'
 import { cn } from '@/lib/utils'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -128,19 +129,23 @@ export const SandboxedHtmlFrame = ({
    */
   const onQueryReadyRef = useRef(onQueryReady)
   onQueryReadyRef.current = onQueryReady
+  // One registry per frame, shared with the message handler below so replies
+  // route through a single listener rather than one per request.
+  const [pending] = useState(() => createPendingRequests())
   useEffect(() => {
     onQueryReadyRef.current?.(async (rect) => {
-      const result = await requestFromArtifact(
-        iframeRef.current?.contentWindow ?? null,
-        nonce,
-        artifactSelectionQueryMethod,
-        { rect },
+      const frame = iframeRef.current?.contentWindow
+      if (!frame) {
+        return []
+      }
+      const result = await pending.issue(
+        (id) => frame.postMessage(artifactRequest(nonce, id, artifactSelectionQueryMethod, { rect }), '*'),
         selectionQueryTimeoutMs,
       )
       const items = (result as { items?: ArtifactSelectionItem[] } | null)?.items
       return Array.isArray(items) ? items : []
     })
-  }, [nonce])
+  }, [nonce, pending])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -157,6 +162,9 @@ export const SandboxedHtmlFrame = ({
       if (data.type === 'artifact-selection') {
         onSelectionChangeRef.current?.(data.selection)
       }
+      if (data.type === 'artifact-reply') {
+        pending.settle(data.id, data.result)
+      }
       if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
         const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
         // Ignore sub-pixel jitter so a self-measuring page can't oscillate.
@@ -164,8 +172,13 @@ export const SandboxedHtmlFrame = ({
       }
     }
     window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [nonce])
+    return () => {
+      window.removeEventListener('message', handleMessage)
+      // A caller awaiting an answer when the document reloads gets an empty one
+      // rather than a promise that never settles.
+      pending.abortAll()
+    }
+  }, [nonce, pending])
 
   return (
     <iframe

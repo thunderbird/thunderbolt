@@ -36,6 +36,8 @@ const authWithUser = (user: unknown): Auth =>
 
 const realUser = { id: 'user-1', email: 'demo@example.com', name: 'Demo User', isAnonymous: false }
 
+const get = (auth: Auth) => createMiniAppRoutes(auth, settings).handle(new Request('http://localhost/mini-apps'))
+
 const post = (auth: Auth, appId: string, origin = 'http://localhost:1420') =>
   createMiniAppRoutes(auth, settings).handle(
     new Request(`http://localhost/mini-apps/${appId}/token`, { method: 'POST', headers: { origin } }),
@@ -57,6 +59,44 @@ describe('getMiniApps', () => {
   it('drops entries with a short secret, so a weak key cannot sign', () => {
     const weak = JSON.stringify({ app: { name: 'A', origin: 'https://a.test', secret: 'tooshort' } })
     expect(getMiniApps({ miniApps: weak })).toEqual({})
+  })
+
+  /** An origin reaches `<iframe src>`, where a `javascript:` URL executes in
+   *  our page rather than in a frame. */
+  it('refuses a javascript: origin', () => {
+    const hostile = JSON.stringify({ app: { name: 'A', origin: 'javascript:alert(1)', secret: financeSecret } })
+    expect(getMiniApps({ miniApps: hostile })).toEqual({})
+  })
+
+  it('refuses a javascript: url even behind a good origin', () => {
+    const hostile = JSON.stringify({
+      app: { name: 'A', origin: 'https://a.test', url: 'javascript:alert(1)', secret: financeSecret },
+    })
+    expect(getMiniApps({ miniApps: hostile })).toEqual({})
+  })
+
+  /**
+   * `event.origin` never carries a path or trailing slash, and the bridge
+   * compares the two with `===` — so an unnormalised trailing slash produced an
+   * app that loaded and then ignored every message it sent.
+   */
+  it('normalises an origin to what the browser will actually report', () => {
+    const trailing = JSON.stringify({ app: { name: 'A', origin: 'https://a.test/', secret: financeSecret } })
+    expect(getMiniApps({ miniApps: trailing }).app?.origin).toBe('https://a.test')
+  })
+
+  /** The whole record used to be parsed at once, so one typo emptied the
+   *  registry and every app disappeared together. */
+  it('keeps the good apps when one entry is malformed', () => {
+    const mixed = JSON.stringify({
+      good: { name: 'Good', origin: 'https://good.test', secret: financeSecret },
+      broken: { name: 'Broken', origin: 'https://broken.test', secret: 'tooshort' },
+    })
+    expect(Object.keys(getMiniApps({ miniApps: mixed }))).toEqual(['good'])
+  })
+
+  it('registers nothing when the payload is not an object of apps', () => {
+    expect(getMiniApps({ miniApps: '[]' })).toEqual({})
   })
 })
 
@@ -122,5 +162,36 @@ describe('POST /mini-apps/:appId/token', () => {
       new Request('http://localhost/mini-apps/finance-model/token', { method: 'POST' }),
     )
     expect(response.status).toBe(404)
+  })
+})
+
+describe('GET /mini-apps', () => {
+  it('lists the configured apps for a signed-in user', async () => {
+    const response = await get(authWithUser(realUser))
+    const body = (await response.json()) as { apps: { id: string }[] }
+
+    expect(response.status).toBe(200)
+    expect(body.apps.map((app) => app.id)).toEqual(['finance-model', 'patient-journeys'])
+  })
+
+  it('never puts a signing secret on the wire', async () => {
+    const response = await get(authWithUser(realUser))
+
+    expect(await response.text()).not.toContain(financeSecret)
+  })
+
+  it('rejects an unauthenticated caller', async () => {
+    expect((await get(authWithUser(null))).status).toBe(401)
+  })
+
+  /**
+   * An anonymous session is still a session, so a `!user` check alone let it
+   * through — which this route's own comment said it should not. Which apps a
+   * deployment runs is not quite a secret, but it isn't public either.
+   */
+  it('refuses anonymous users, matching the token route', async () => {
+    const anonymous = { ...realUser, isAnonymous: true }
+
+    expect((await get(authWithUser(anonymous))).status).toBe(403)
   })
 })

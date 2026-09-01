@@ -226,11 +226,58 @@ export type MiniAppConfig = {
 export type PublicMiniApp = Omit<MiniAppConfig, 'secret'> & { id: string }
 
 /**
+ * http(s) only. An app's `origin` ends up in `<iframe src>`, and `z.string().url()`
+ * happily accepts `javascript:` — which would execute in our page rather than a
+ * frame. Anything that isn't a real web URL is rejected outright.
+ */
+const httpUrlField = z.string().refine(
+  (value) => {
+    try {
+      const { protocol } = new URL(value)
+      return protocol === 'http:' || protocol === 'https:'
+    } catch {
+      return false
+    }
+  },
+  { message: 'must be an http(s) URL' },
+)
+
+/**
+ * Normalised to a serialized origin, because that is what the browser reports
+ * in `event.origin` — never with a path, never with a trailing slash. The
+ * bridge compares the two with `===`, so an operator writing
+ * `https://app.example.com/` used to produce an app that loaded and then
+ * silently ignored every message it sent.
+ */
+const originField = httpUrlField.transform((value) => new URL(value).origin)
+
+const miniAppEntrySchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().default(''),
+    icon: z.string().default(''),
+    origin: originField,
+    url: httpUrlField.optional(),
+    // Matches the 32-character floor the rest of the codebase holds signing
+    // secrets to; this one signs identity tokens apps trust.
+    secret: z.string().min(32),
+  })
+  // `url` is almost always the origin; making operators repeat it is a
+  // second place for the two to disagree.
+  .transform((app) => ({ ...app, url: app.url ?? app.origin }))
+
+/**
  * Parse `miniApps`, dropping anything malformed rather than throwing.
  *
- * A typo in one app's entry shouldn't take down token minting for the others,
- * and a dropped entry fails closed: that app simply can't get a token, which
- * surfaces as a clear 404 rather than a token signed with `undefined`.
+ * Validated per entry, which is what the promise below actually requires: a
+ * typo in one app shouldn't take down token minting for the others. Parsing the
+ * whole record in one go meant exactly that — a single bad entry produced an
+ * empty registry and every app vanished at once.
+ *
+ * A dropped entry fails closed: that app simply can't get a token, which
+ * surfaces as a clear 404 rather than a token signed with `undefined`. Each one
+ * is logged, because an app quietly missing from the sidebar is otherwise a
+ * long afternoon.
  */
 export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Record<string, MiniAppConfig> => {
   if (!settings.miniApps) {
@@ -238,35 +285,28 @@ export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Record<string
   }
   // `JSON.parse` throws on malformed input, so it can't go straight into
   // `safeParse` — a stray comma in an env var would take the process down.
-  const parsed = z
-    .string()
-    .transform((raw, ctx) => {
-      try {
-        return JSON.parse(raw) as unknown
-      } catch {
-        ctx.addIssue({ code: 'custom', message: 'miniAppAudiences is not valid JSON' })
-        return z.NEVER
-      }
-    })
-    .pipe(
-      z.record(
-        z.string(),
-        z
-          .object({
-            name: z.string().min(1),
-            description: z.string().default(''),
-            icon: z.string().default(''),
-            origin: z.string().url(),
-            url: z.string().url().optional(),
-            secret: z.string().min(16),
-          })
-          // `url` is almost always the origin; making operators repeat it is a
-          // second place for the two to disagree.
-          .transform((app) => ({ ...app, url: app.url ?? app.origin })),
-      ),
-    )
-    .safeParse(settings.miniApps)
-  return parsed.success ? parsed.data : {}
+  let container: unknown
+  try {
+    container = JSON.parse(settings.miniApps)
+  } catch {
+    console.error('[mini-apps] MINI_APPS is not valid JSON; no apps registered')
+    return {}
+  }
+  if (typeof container !== 'object' || container === null || Array.isArray(container)) {
+    console.error('[mini-apps] MINI_APPS must be an object keyed by app id; no apps registered')
+    return {}
+  }
+
+  const entries = Object.entries(container).flatMap(([id, raw]) => {
+    const app = miniAppEntrySchema.safeParse(raw)
+    if (!app.success) {
+      const why = app.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; ')
+      console.error(`[mini-apps] Dropping "${id}" — ${why}`)
+      return []
+    }
+    return [[id, app.data] as const]
+  })
+  return Object.fromEntries(entries)
 }
 
 /** The registry as the frontend receives it, with secrets stripped. */

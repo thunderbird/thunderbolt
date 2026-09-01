@@ -85,6 +85,13 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
           set.status = 401
           return { error: 'Unauthorized' }
         }
+        // Anonymous sessions are real sessions, so `!user` alone let them
+        // through — which the comment above already said it shouldn't. Matches
+        // the token route, which has always checked this.
+        if (user.isAnonymous) {
+          set.status = 403
+          return { error: 'Forbidden' }
+        }
         return { apps: getPublicMiniApps(settings) }
       })
       .post(

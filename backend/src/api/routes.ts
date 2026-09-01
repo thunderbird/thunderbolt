@@ -5,9 +5,17 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { baseLanguage } from '@shared/i18n/base-language'
 import { Elysia, t } from 'elysia'
 
 export type LocationResult = {
+  /**
+   * Open-Meteo's (GeoNames') id — the only language-independent handle on a
+   * place. `name`/`region`/`country` all localize, so this is what callers
+   * persist and re-resolve against when they need the same place in another
+   * language.
+   */
+  id: number
   name: string
   region: string
   country: string
@@ -21,6 +29,28 @@ export type LocationResult = {
   lat: number
   lon: number
 }
+
+type GeocodingPlace = {
+  id?: number
+  name?: string
+  admin1?: string
+  country?: string
+  country_code?: string
+  latitude?: number
+  longitude?: number
+}
+
+const geocodingBaseUrl = 'https://geocoding-api.open-meteo.com/v1'
+
+const toLocationResult = (place: GeocodingPlace): LocationResult => ({
+  id: place.id ?? 0,
+  name: place.name || '',
+  region: place.admin1 || '',
+  country: place.country || '',
+  countryCode: place.country_code || '',
+  lat: place.latitude || 0,
+  lon: place.longitude || 0,
+})
 
 /**
  * Create main API routes
@@ -45,10 +75,14 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
         }
 
         try {
-          const url = new URL('https://geocoding-api.open-meteo.com/v1/search')
+          // `language` narrows what Open-Meteo *matches*, not just what it
+          // renders: `Munique` finds Munich under `pt` and only Muñique, Spain
+          // under `en`. Searching in the caller's language is what lets someone
+          // find a city by the name they know it as.
+          const url = new URL(`${geocodingBaseUrl}/search`)
           url.searchParams.set('name', queryParam)
           url.searchParams.set('count', '10')
-          url.searchParams.set('language', 'en')
+          url.searchParams.set('language', baseLanguage(query.language ?? 'en'))
           url.searchParams.set('format', 'json')
 
           const response = await fetchFn(url.toString())
@@ -63,28 +97,10 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
             }
           }
 
-          const data = (await response.json()) as {
-            results?: Array<{
-              name?: string
-              admin1?: string
-              country?: string
-              country_code?: string
-              latitude?: number
-              longitude?: number
-            }>
-          }
+          const data = (await response.json()) as { results?: GeocodingPlace[] }
 
           // Filter out country-level results (no admin1) - we only support cities
-          return (data.results || [])
-            .filter((location) => location.admin1)
-            .map((location) => ({
-              name: location.name || '',
-              region: location.admin1!,
-              country: location.country || '',
-              countryCode: location.country_code || '',
-              lat: location.latitude || 0,
-              lon: location.longitude || 0,
-            }))
+          return (data.results || []).filter((location) => location.admin1).map(toLocationResult)
         } catch (error) {
           if (error instanceof Error) {
             throw error // Re-throw with original message and status
@@ -97,6 +113,53 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
         auth: true,
         query: t.Object({
           query: t.String(),
+          /**
+           * BCP-47 tag; normalized to its base subtag before it reaches
+           * Open-Meteo. Defaults to English so an older client keeps its
+           * current behaviour.
+           */
+          language: t.Optional(t.String()),
+        }),
+      },
+    )
+
+    .get(
+      '/locations/:id',
+      async (ctx): Promise<LocationResult> => {
+        const { params, query, set } = ctx
+
+        try {
+          const url = new URL(`${geocodingBaseUrl}/get`)
+          url.searchParams.set('id', String(params.id))
+          url.searchParams.set('language', baseLanguage(query.language ?? 'en'))
+
+          const response = await fetchFn(url.toString())
+
+          if (!response.ok) {
+            if (response.status === 400 || response.status === 404) {
+              set.status = 404
+              throw new Error('Location not found')
+            }
+            set.status = 503
+            throw new Error('Geocoding service unavailable')
+          }
+
+          return toLocationResult((await response.json()) as GeocodingPlace)
+        } catch (error) {
+          if (error instanceof Error) {
+            throw error // Re-throw with original message and status
+          }
+          set.status = 503
+          throw new Error('Geocoding service unavailable', { cause: error })
+        }
+      },
+      {
+        auth: true,
+        params: t.Object({
+          id: t.Number(),
+        }),
+        query: t.Object({
+          language: t.Optional(t.String()),
         }),
       },
     )

@@ -504,6 +504,23 @@ export const parseGuestResult = (
   if ((data as { protocol?: unknown }).protocol !== miniAppProtocolMarker) {
     return null
   }
+  const record = data as Record<string, unknown>
+  /*
+   * A reply carries exactly one of `result` or `error`, and never `method`.
+   * Both halves are load-bearing.
+   *
+   * `result` had been required, which discriminated replies from requests by
+   * accident. Making it optional so a reported failure could be read (the
+   * `error` form above) removed that accident, and a guest *request* with a
+   * numeric id — `ui/request-auth-token`, `ui/open-chat` — began parsing as a
+   * reply to a request the host never sent. The bridge checks for a reply
+   * first, so those requests were swallowed and never dispatched: token refresh
+   * silently stopped working, and a frame outliving its token had no way back.
+   */
+  if ('method' in record || (!('result' in record) && !('error' in record))) {
+    return null
+  }
+
   const parsed = guestReplySchema.safeParse(data)
   if (!parsed.success) {
     return null

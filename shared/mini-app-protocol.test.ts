@@ -202,6 +202,25 @@ describe('parseGuestResult', () => {
     expect(parseGuestResult(reply)).toEqual({ id: 7, result: { items: [] } })
   })
 
+  /**
+   * The regression that broke the handshake. `result` had been required, which
+   * discriminated replies from requests by accident; making it optional so a
+   * reported failure could be read turned this into a wildcard, and the bridge
+   * checks for a reply *first* — so `ui/initialize` itself was swallowed and no
+   * app could ever connect.
+   */
+  it('is not fooled by a guest request that happens to carry a numeric id', () => {
+    for (const method of ['ui/initialize', 'ui/open-chat', 'ui/request-auth-token']) {
+      const request = { jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: 1, method, params: {} }
+
+      expect(parseGuestResult(request)).toBeNull()
+    }
+  })
+
+  it('ignores a bare id with neither result nor error', () => {
+    expect(parseGuestResult({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: 1 })).toBeNull()
+  })
+
   it('ignores a reply without the protocol marker', () => {
     expect(parseGuestResult({ jsonrpc: '2.0', id: 7, result: {} })).toBeNull()
   })

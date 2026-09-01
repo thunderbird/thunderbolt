@@ -4031,6 +4031,10 @@ msgstr "Voice mode: {status}"
 msgid "Waiting for approval"
 msgstr "Waiting for approval"
 
+#: src/mini-apps/mini-app-page.tsx
+msgid "Waiting for your approval in the app"
+msgstr "Waiting for your approval in the app"
+
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
 msgstr "Want early access?"

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useEffect, useId, useRef } from 'react'
 import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { ChevronRight, ShieldAlert } from 'lucide-react'
@@ -70,13 +71,37 @@ export const ToolApprovalBar = ({ pending, appName, onDecide }: ToolApprovalBarP
   const { tool, args } = pending
   const action = tool.annotations?.title ?? tool.name
   const entries = toArgEntries(args)
+  const headingId = useId()
+  const denyRef = useRef<HTMLButtonElement>(null)
+
+  /*
+   * Move focus in when the prompt appears, and land it on Deny.
+   *
+   * Two reasons this is not optional. The bar renders *after* the iframe in DOM
+   * order, so without it a keyboard user tabs through every focusable element in
+   * the customer's app before reaching a decision they are being blocked on. And
+   * Deny rather than Approve because focus lands where a stray Enter is
+   * harmless — the model can always ask again; an unwanted write cannot be
+   * taken back.
+   */
+  useEffect(() => {
+    denyRef.current?.focus()
+  }, [pending])
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur px-4 py-3" role="dialog">
+    <div
+      className="absolute inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur px-4 py-3"
+      role="dialog"
+      data-approval-bar=""
+      aria-modal="true"
+      aria-labelledby={headingId}
+    >
       <div className="flex items-start gap-3">
         <ShieldAlert className="size-[var(--icon-size-sm)] text-amber-500 mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0 space-y-1.5">
-          <p className="text-[length:var(--font-size-body)] font-medium">{action}</p>
+          <p id={headingId} className="text-[length:var(--font-size-body)] font-medium">
+            {action}
+          </p>
 
           {entries && (
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
@@ -91,7 +116,7 @@ export const ToolApprovalBar = ({ pending, appName, onDecide }: ToolApprovalBarP
 
           <details className="group">
             <summary className="inline-flex cursor-pointer items-center gap-1 text-[length:var(--font-size-xs)] text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-              <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
+              <ChevronRight className="size-[var(--icon-size-sm)] transition-transform group-open:rotate-90" />
               <Trans>Requested by {appName}</Trans>
             </summary>
             <div className="mt-1.5 space-y-1.5 text-[length:var(--font-size-xs)] text-muted-foreground">
@@ -110,7 +135,7 @@ export const ToolApprovalBar = ({ pending, appName, onDecide }: ToolApprovalBarP
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" variant="outline" onClick={() => onDecide(false)}>
+          <Button ref={denyRef} size="sm" variant="outline" onClick={() => onDecide(false)}>
             <Trans>Deny</Trans>
           </Button>
           <Button size="sm" onClick={() => onDecide(true)}>

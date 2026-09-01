@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { useSidebar } from '@/components/ui/sidebar'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
-import { MessageSquare, MousePointerSquareDashed, X } from 'lucide-react'
+import { MessageSquare, MousePointerSquareDashed, ShieldAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
@@ -167,6 +167,12 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    *  marquee owns the surface. */
   const showFloatingControls = status === 'ready' && mode.kind === 'idle'
 
+  /** Move focus to the prompt. The bar autofocuses when it appears, but the user
+   *  may have clicked back into the chat since. */
+  const focusApprovalBar = useCallback(() => {
+    document.querySelector<HTMLElement>('[data-approval-bar] button')?.focus()
+  }, [])
+
   const chatPane = openChatId && (
     <ChatHydrateHandler
       // Remounts — and so re-hydrates — when the user switches between chats.
@@ -267,6 +273,19 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
           <>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={chatPanelSize} minSize="20%">
+              {/* The approval prompt renders over the app, in the other panel —
+                  but the user is watching the reply stream here, so without this
+                  the turn just stops with a spinner and no reason. */}
+              {pendingApproval && (
+                <button
+                  type="button"
+                  onClick={focusApprovalBar}
+                  className="flex w-full items-center gap-2 border-b bg-amber-500/10 px-4 py-2 text-left text-[length:var(--font-size-sm)] text-amber-700 dark:text-amber-400"
+                >
+                  <ShieldAlert className="size-[var(--icon-size-sm)] shrink-0" />
+                  <Trans>Waiting for your approval in the app</Trans>
+                </button>
+              )}
               {chatPane}
             </ResizablePanel>
           </>

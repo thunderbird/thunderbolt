@@ -4019,6 +4019,10 @@ msgstr "音声モード: {status}"
 msgid "Waiting for approval"
 msgstr "承認を待っています"
 
+#: src/mini-apps/mini-app-page.tsx
+msgid "Waiting for your approval in the app"
+msgstr ""
+
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
 msgstr "早期アクセスをご希望ですか？"

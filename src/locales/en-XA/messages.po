@@ -4031,6 +4031,10 @@ msgstr ""
 msgid "Waiting for approval"
 msgstr ""
 
+#: src/mini-apps/mini-app-page.tsx
+msgid "Waiting for your approval in the app"
+msgstr ""
+
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
 msgstr ""

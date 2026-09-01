@@ -78,4 +78,31 @@ describe('ToolApprovalBar', () => {
     renderBar(pending({}, { filter: { status: 'open' } }))
     expect(screen.getByText('{"status":"open"}')).toBeTruthy()
   })
+
+  /*
+   * The bar renders after the iframe in DOM order, so a keyboard user would
+   * otherwise tab through the whole customer app to reach a decision they are
+   * being blocked on.
+   */
+  it('takes focus when it appears, landing on Deny', () => {
+    renderBar(pending())
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Deny' }))
+  })
+
+  /** Deny, not Approve: a stray Enter should be the harmless one. The model can
+   *  ask again; an unwanted write cannot be taken back. */
+  it('does not put focus on Approve', () => {
+    renderBar(pending())
+
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Approve' }))
+  })
+
+  it('names itself for a screen reader instead of announcing a bare dialog', () => {
+    renderBar(pending({ annotations: { readOnlyHint: false, title: 'Change an order status' } }))
+    const dialog = screen.getByRole('dialog')
+
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveAccessibleName('Change an order status')
+  })
 })

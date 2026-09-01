@@ -62,6 +62,15 @@ type MiniAppActions = {
   resolveApproval: (approved: boolean) => void
 }
 
+/**
+ * How long an unanswered approval prompt waits before denying itself.
+ *
+ * Two minutes: long enough to read the prompt, look at the app and think, short
+ * enough that a turn nobody is coming back to eventually ends instead of
+ * spinning forever.
+ */
+const approvalTimeoutMs = 120_000
+
 const emptyAppState = { activeApp: null, context: null, tools: [], invokeTool: null, pendingApproval: null }
 
 export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) => ({
@@ -84,11 +93,27 @@ export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) 
       // Supersede rather than queue: a second prompt behind the first would be
       // invisible, and the model shouldn't have two writes in flight anyway.
       get().pendingApproval?.decide(false)
+
+      /*
+       * Deny on a deadline.
+       *
+       * This promise is holding the model's streaming request open, so a prompt
+       * the user walks away from doesn't just sit there — it wedges the turn,
+       * with a spinner and no explanation. Denying is the safe default and the
+       * model is told why, so it can say something useful instead of stalling.
+       *
+       * The window is deliberately long: a decision about someone's data is
+       * worth reading properly, and the cost of being slightly too patient is
+       * much lower than the cost of approving something by timeout.
+       */
+      const timer = setTimeout(() => get().pendingApproval?.decide(false), approvalTimeoutMs)
+
       set({
         pendingApproval: {
           tool,
           args,
           decide: (approved) => {
+            clearTimeout(timer)
             set({ pendingApproval: null })
             resolve(approved)
           },

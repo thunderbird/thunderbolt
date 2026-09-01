@@ -105,6 +105,23 @@ export const defaultSettingLocationCountryCode: Setting = {
   userId: null,
 }
 
+/**
+ * Open-Meteo (GeoNames) place id for the location above, stored so the display
+ * name can be re-resolved in whatever language is active rather than frozen at
+ * the language it was picked in. `location_name` stays English because it is
+ * model-facing (it reaches the prompt, and the weather widget geocodes the
+ * model's arguments in English); this is the handle that makes both possible
+ * from one stored place. Null for rows written before THU-847 — those fall
+ * back to displaying `location_name`.
+ */
+export const defaultSettingLocationId: Setting = {
+  key: 'location_id',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 export const defaultSettingDistanceUnit: Setting = {
   key: 'distance_unit',
   value: null,
@@ -199,6 +216,7 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingLocationLat,
   defaultSettingLocationLng,
   defaultSettingLocationCountryCode,
+  defaultSettingLocationId,
   defaultSettingDistanceUnit,
   defaultSettingTemperatureUnit,
   defaultSettingTimeFormat,
@@ -221,4 +239,4 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 4
+export const defaultSettingsVersion = 5

@@ -8,6 +8,7 @@ import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSum
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useLocalStorage } from '@/hooks/use-local-storage'
+import { useLocalizedLocationName } from '@/hooks/use-localized-location-name'
 import { fetchEnglishLocationName, type LocationData } from '@/lib/locations'
 import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
@@ -260,6 +261,8 @@ export default function PreferencesSettingsPage() {
     time_format: '',
     currency: '',
   })
+
+  const localizedLocationName = useLocalizedLocationName(locationId.value, locationName.value)
 
   const { language, setLanguage, resetLanguage } = useLanguageSetting()
 
@@ -737,7 +740,7 @@ export default function PreferencesSettingsPage() {
               <Trans>Location</Trans>
             </ModificationIndicator>
             <LocationSearchCombobox
-              value={locationName.value}
+              value={localizedLocationName}
               onSelect={handleSelectLocation}
               id="localization-location-trigger"
               aria-labelledby="localization-location-label localization-location-trigger"

@@ -8,7 +8,7 @@ import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSum
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useLocalStorage } from '@/hooks/use-local-storage'
-import type { LocationData } from '@/lib/locations'
+import { fetchEnglishLocationName, type LocationData } from '@/lib/locations'
 import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -233,6 +233,7 @@ export default function PreferencesSettingsPage() {
     locationLat,
     locationLng,
     locationCountryCode,
+    locationId,
     dataCollection,
     experimentalFeatureTasks,
     experimentalFeatureVoice,
@@ -246,6 +247,7 @@ export default function PreferencesSettingsPage() {
     location_lat: '',
     location_lng: '',
     location_country_code: '',
+    location_id: '',
     data_collection: false,
     experimental_feature_tasks: false,
     experimental_feature_voice: false,
@@ -335,10 +337,11 @@ export default function PreferencesSettingsPage() {
     const previousRegion = locationCountryCode.value
 
     await updateSettings(db, {
-      location_name: location.name,
+      location_name: await fetchEnglishLocationName(httpClient, location.id, location.name, activeLanguage),
       location_lat: String(location.coordinates.lat),
       location_lng: String(location.coordinates.lng),
       location_country_code: location.countryCode,
+      location_id: String(location.id),
     })
 
     trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set')
@@ -538,7 +541,13 @@ export default function PreferencesSettingsPage() {
    * user just removed instead of falling through to the browser.
    */
   const handleResetLocation = async () => {
-    await Promise.all([locationName.reset(), locationLat.reset(), locationLng.reset(), locationCountryCode.reset()])
+    await Promise.all([
+      locationName.reset(),
+      locationLat.reset(),
+      locationLng.reset(),
+      locationCountryCode.reset(),
+      locationId.reset(),
+    ])
   }
 
   /**
@@ -720,7 +729,8 @@ export default function PreferencesSettingsPage() {
                 locationName.isModified ||
                 locationLat.isModified ||
                 locationLng.isModified ||
-                locationCountryCode.isModified
+                locationCountryCode.isModified ||
+                locationId.isModified
               }
               onReset={handleResetLocation}
             >

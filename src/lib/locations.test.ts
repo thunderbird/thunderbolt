@@ -4,7 +4,7 @@
 
 import type { HttpClient, RequestOptions, ResponsePromise } from '@/lib/http'
 import { describe, expect, it } from 'bun:test'
-import { fetchLocationById, fetchLocations } from './locations'
+import { fetchEnglishLocationName, fetchLocationById, fetchLocations } from './locations'
 
 type RecordedRequest = { url: string; searchParams: Record<string, unknown> }
 
@@ -73,5 +73,31 @@ describe('fetchLocationById', () => {
     expect(result.id).toBe(2867714)
     expect(recorded[0].url).toBe('locations/2867714')
     expect(recorded[0].searchParams).toEqual({ language: 'de' })
+  })
+})
+
+describe('fetchEnglishLocationName', () => {
+  /**
+   * `location_name` is model-facing, so it has to come back in English even
+   * though the picker searched — and displayed — in the user's language.
+   */
+  it('re-resolves the place in English when the picker was not English', async () => {
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(munich, recorded)
+
+    const name = await fetchEnglishLocationName(httpClient, 2867714, 'Munique, Baviera, Alemanha', 'pt-BR')
+
+    expect(name).toBe('Munich, Bavaria, Germany')
+    expect(recorded[0].searchParams).toEqual({ language: 'en' })
+  })
+
+  it('skips the round trip when the picker was already English', async () => {
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(munich, recorded)
+
+    const name = await fetchEnglishLocationName(httpClient, 2867714, 'Munich, Bavaria, Germany', 'en')
+
+    expect(name).toBe('Munich, Bavaria, Germany')
+    expect(recorded).toHaveLength(0)
   })
 })

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { HttpClient } from '@/lib/http'
+import { baseLanguage } from '@shared/i18n/base-language'
 
 /** Shape the backend's `/locations` routes return. */
 type LocationResult = {
@@ -76,3 +77,27 @@ export const fetchLocationById = async (
   const result = await httpClient.get(`locations/${id}`, { searchParams: { language } }).json<LocationResult>()
   return toLocationData(result)
 }
+
+/**
+ * A picked place's canonical English name, for the value that gets stored as
+ * `location_name`.
+ *
+ * That setting is model-facing: it lands in the system prompt, and the weather
+ * widget geocodes the model's arguments in English so `disambiguateLocation`
+ * compares like with like. The picker searches in the user's language, so the
+ * row they clicked is localized — this re-resolves it by id to get the English
+ * form back, and skips the round trip when they were already searching in
+ * English.
+ *
+ * @param httpClient - Authenticated backend client.
+ * @param id - Open-Meteo place id of the row the user picked.
+ * @param localizedName - That row's name as shown, used as-is under English.
+ * @param locale - The language the picker searched in.
+ */
+export const fetchEnglishLocationName = async (
+  httpClient: HttpClient,
+  id: number,
+  localizedName: string,
+  locale: string,
+): Promise<string> =>
+  baseLanguage(locale) === 'en' ? localizedName : (await fetchLocationById(httpClient, id, 'en')).name

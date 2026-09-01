@@ -296,6 +296,7 @@ describe('useOnboardingState', () => {
 
       const locationData = {
         locationName: 'Paris, France',
+        locationId: 2988507,
         locationLat: 48.8566,
         locationLng: 2.3522,
         locationCountryCode: 'FR',
@@ -322,6 +323,7 @@ describe('useOnboardingState', () => {
 
       const locationData = {
         locationName: 'Unknown', // This won't extract a country (no commas)
+        locationId: 2988507,
         locationLat: 0,
         locationLng: 0,
         locationCountryCode: '',
@@ -345,6 +347,7 @@ describe('useOnboardingState', () => {
 
       const locationData = {
         locationName: 'Test Location',
+        locationId: 2988507,
         locationLat: 0,
         locationLng: 0,
         locationCountryCode: '',
@@ -436,6 +439,7 @@ describe('useOnboardingState', () => {
 
       const locationData = {
         locationName: '',
+        locationId: 2988507,
         locationLat: 0,
         locationLng: 0,
         locationCountryCode: '',
@@ -456,6 +460,7 @@ describe('useOnboardingState', () => {
 
       const locationData = {
         locationName: 'Paris, France',
+        locationId: 2988507,
         locationLat: 48.8566,
         locationLng: 2.3522,
         locationCountryCode: 'FR',

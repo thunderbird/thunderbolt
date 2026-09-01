@@ -128,6 +128,13 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     setPicked(null)
   }, [])
 
+  /** Back to drawing a box. Clearing `picked` is the point: leaving the previous
+   *  empty result up would stack the result bar under the new marquee overlay. */
+  const retrySelect = useCallback(() => {
+    setPicked(null)
+    setIsSelecting(true)
+  }, [])
+
   const handleMarquee = useCallback(
     async (rect: Parameters<typeof querySelection>[0]) => {
       setIsSelecting(false)
@@ -240,11 +247,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                     Ask about {picked.length === 1 ? 'it' : 'them'}
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={picked.length === 0 ? () => setIsSelecting(true) : exitSelectMode}
-                >
+                <Button size="sm" variant="ghost" onClick={picked.length === 0 ? retrySelect : exitSelectMode}>
                   {picked.length === 0 ? 'Try again' : 'Cancel'}
                 </Button>
               </div>

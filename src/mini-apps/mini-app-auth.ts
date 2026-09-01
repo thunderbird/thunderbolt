@@ -10,7 +10,7 @@
  * auth headers and cloud URLs to do postMessage plumbing.
  */
 
-import { getAuthenticatedHeaders } from '@/lib/auth-token'
+import type { HttpClient } from '@/lib/http'
 import type { MiniAppAuthToken } from '@shared/mini-app-protocol'
 
 /**
@@ -22,21 +22,18 @@ import type { MiniAppAuthToken } from '@shared/mini-app-protocol'
  * something honest instead of retrying into a wall.
  */
 export const fetchMiniAppToken = async (
-  cloudUrl: string,
+  httpClient: HttpClient,
   appId: string,
   signal?: AbortSignal,
 ): Promise<MiniAppAuthToken | null> => {
-  const response = await fetch(`${cloudUrl}/mini-apps/${encodeURIComponent(appId)}/token`, {
-    method: 'POST',
-    headers: getAuthenticatedHeaders(),
-    credentials: 'include',
-    signal,
-  }).catch(() => null)
+  // The app's client rather than a bare `fetch`: it carries the bearer token and
+  // device identity headers, and refreshes on a 401. Building the request by
+  // hand skipped all of that, so a token minted just after the session rolled
+  // over failed with no way to recover.
+  const body = await httpClient
+    .post(`mini-apps/${encodeURIComponent(appId)}/token`, { signal })
+    .json<MiniAppAuthToken>()
+    .catch(() => null)
 
-  if (!response?.ok) {
-    return null
-  }
-
-  const body = (await response.json().catch(() => null)) as MiniAppAuthToken | null
   return body?.token && body?.expiresAt ? body : null
 }

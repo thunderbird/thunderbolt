@@ -2,45 +2,52 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
+import { createAuthenticatedClient } from '@/lib/http'
 import { fetchMiniAppToken } from './mini-app-auth'
 
-const realFetch = globalThis.fetch
-
-const stubFetch = (handler: (url: string, init?: RequestInit) => Response | Promise<Response>) => {
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
-    Promise.resolve(handler(String(input), init))) as typeof fetch
-}
-
-afterEach(() => {
-  globalThis.fetch = realFetch
-})
+/** The real client with its fetch injected, so the auth and 401 handling this
+ *  function now relies on are exercised rather than stubbed away. */
+const clientWith = (handler: (request: Request) => Response | Promise<Response>) =>
+  createAuthenticatedClient('http://localhost:8000', () => 'session-token', {
+    fetch: ((input: Request) => Promise.resolve(handler(input))) as typeof fetch,
+  })
 
 const valid = { token: 'header.payload.signature', expiresAt: new Date(Date.now() + 300_000).toISOString() }
 
 describe('fetchMiniAppToken', () => {
   it('posts to the app-scoped endpoint and returns the token', async () => {
-    let seenUrl = ''
-    let seenMethod = ''
-    stubFetch((url, init) => {
-      seenUrl = url
-      seenMethod = init?.method ?? ''
+    let seen: Request | null = null
+    const client = clientWith((request) => {
+      seen = request
       return Response.json(valid)
     })
 
-    expect(await fetchMiniAppToken('http://localhost:8000', 'patient-journeys')).toEqual(valid)
-    expect(seenUrl).toBe('http://localhost:8000/mini-apps/patient-journeys/token')
-    expect(seenMethod).toBe('POST')
+    expect(await fetchMiniAppToken(client, 'patient-journeys')).toEqual(valid)
+    expect(seen!.url).toBe('http://localhost:8000/mini-apps/patient-journeys/token')
+    expect(seen!.method).toBe('POST')
+  })
+
+  /** The whole reason this moved off a bare `fetch`. */
+  it('carries the session bearer token', async () => {
+    let seen: Request | null = null
+    const client = clientWith((request) => {
+      seen = request
+      return Response.json(valid)
+    })
+
+    await fetchMiniAppToken(client, 'patient-journeys')
+    expect(seen!.headers.get('Authorization')).toBe('Bearer session-token')
   })
 
   it('encodes the app id rather than trusting it in a URL', async () => {
     let seenUrl = ''
-    stubFetch((url) => {
-      seenUrl = url
+    const client = clientWith((request) => {
+      seenUrl = request.url
       return Response.json(valid)
     })
 
-    await fetchMiniAppToken('http://localhost:8000', '../powersync')
+    await fetchMiniAppToken(client, '../powersync')
     expect(seenUrl).toBe('http://localhost:8000/mini-apps/..%2Fpowersync/token')
   })
 
@@ -49,22 +56,26 @@ describe('fetchMiniAppToken', () => {
    * still loads and the bridge still works, so none of these may throw.
    */
   it('returns null when the host declines to issue one', async () => {
-    stubFetch(() => new Response('nope', { status: 404 }))
-    expect(await fetchMiniAppToken('http://localhost:8000', 'unknown')).toBeNull()
+    expect(
+      await fetchMiniAppToken(
+        clientWith(() => new Response('nope', { status: 404 })),
+        'unknown',
+      ),
+    ).toBeNull()
   })
 
   it('returns null when the request fails outright', async () => {
-    globalThis.fetch = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch
-    expect(await fetchMiniAppToken('http://localhost:8000', 'patient-journeys')).toBeNull()
+    const client = clientWith(() => Promise.reject(new Error('offline')))
+    expect(await fetchMiniAppToken(client, 'patient-journeys')).toBeNull()
   })
 
   it('returns null on a 200 whose body is not a token', async () => {
-    stubFetch(() => Response.json({ token: 'only-half-a-payload' }))
-    expect(await fetchMiniAppToken('http://localhost:8000', 'patient-journeys')).toBeNull()
+    const client = clientWith(() => Response.json({ token: 'only-half-a-payload' }))
+    expect(await fetchMiniAppToken(client, 'patient-journeys')).toBeNull()
   })
 
   it('returns null when the body is not JSON at all', async () => {
-    stubFetch(() => new Response('<html>gateway</html>', { status: 200 }))
-    expect(await fetchMiniAppToken('http://localhost:8000', 'patient-journeys')).toBeNull()
+    const client = clientWith(() => new Response('<html>gateway</html>', { status: 200 }))
+    expect(await fetchMiniAppToken(client, 'patient-journeys')).toBeNull()
   })
 })

@@ -39,7 +39,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
 import { createPendingRequests } from '@/components/embedded/pending-requests'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useHttpClient } from '@/contexts'
 import { fetchMiniAppToken } from './mini-app-auth'
 import { useMiniAppStore } from './mini-app-store'
 import type { MiniAppDefinition } from './registry'
@@ -126,7 +126,7 @@ export type UseMiniAppBridgeOptions = {
 
 export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) => {
   const frameRef = useRef<HTMLIFrameElement>(null)
-  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+  const httpClient = useHttpClient()
   const [status, setStatus] = useState<MiniAppBridgeStatus>('connecting')
   // Selection is host UI state, not model context — it drives the floating
   // control and is only promoted into the conversation when the user acts on it.
@@ -142,6 +142,16 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   // messages and, worse, re-run the handshake timeout).
   const onChatOpenRef = useRef(onChatOpen)
   onChatOpenRef.current = onChatOpen
+  /*
+   * Read through a ref, not a dependency. The handler needs the *current* theme
+   * when it answers `initialize`, but listing `theme` as a dependency tore the
+   * listener down and rebuilt it on every appearance change — and the cleanup
+   * calls `pending.abortAll()`, so switching to dark mode cancelled whatever
+   * tool call was in flight. Changes still reach the guest: the effect below
+   * pushes them as a host-context patch.
+   */
+  const themeRef = useRef(theme)
+  themeRef.current = theme
 
   // In-flight host→guest requests, keyed by JSON-RPC id. Only `ui/selection-query`
   // uses this today; it exists because resolving a marquee to content is the one
@@ -212,14 +222,14 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
 
         // Only minted when the guest declared the capability — an app that never
         // asked shouldn't cause a credential to exist.
-        const auth = message.params.capabilities.auth ? await fetchMiniAppToken(cloudUrl, app.id) : null
+        const auth = message.params.capabilities.auth ? await fetchMiniAppToken(httpClient, app.id) : null
 
         const result: MiniAppInitializeResult = {
           protocolVersion: miniAppProtocolVersion,
           hostName: 'Thunderbolt',
           capabilities: { context: true, chat: true, auth: auth !== null },
           hostContext: {
-            theme: resolveTheme(theme),
+            theme: resolveTheme(themeRef.current),
             locale: navigator.language,
             platform: resolveHostPlatform(),
           },
@@ -241,7 +251,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       }
 
       if (message.method === miniAppGuestMethods.requestAuthToken) {
-        const refreshed = await fetchMiniAppToken(cloudUrl, app.id)
+        const refreshed = await fetchMiniAppToken(httpClient, app.id)
         post(
           refreshed
             ? { jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: refreshed }
@@ -268,10 +278,12 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       // navigates away should get an empty answer, not a promise that never settles.
       pending.abortAll()
     }
-    // `cloudUrl` and `app.id` are dependencies, not incidental reads: minting a
-    // token against a stale backend URL is the kind of bug that only shows up
-    // once settings load a beat after first render. Re-subscribing is cheap.
-  }, [app.id, app.origin, cloudUrl, pending, post, setContext, theme])
+    // `httpClient` and `app.id` are dependencies, not incidental reads: minting
+    // a token against a stale client is the kind of bug that only shows up once
+    // settings load a beat after first render. Re-subscribing is cheap — but
+    // only for things that genuinely change identity, which is why `theme` is a
+    // ref above rather than listed here.
+  }, [app.id, app.origin, httpClient, pending, post, setContext])
 
   /**
    * Fail visibly when the guest never handshakes — an app that isn't running

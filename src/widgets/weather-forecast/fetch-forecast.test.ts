@@ -2,18 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { setActiveLocale } from '@/i18n/active-locale'
 import type { HttpClient, RequestOptions, ResponsePromise } from '@/lib/http'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { fetchWeatherForecast } from './fetch-forecast'
 
 type RecordedRequest = { url: string; searchParams: Record<string, string | number | boolean | undefined> }
 
-type FakeRoutes = { geocoding: unknown; forecast: unknown }
+type FakeRoutes = { geocoding: unknown; forecast: unknown; localizedPlace?: unknown }
 
 /**
  * Build a fake HttpClient that records every requested URL/searchParams and returns canned JSON,
- * routing by hostname (geocoding vs forecast). Only `.get(...).json()` is exercised by the module.
+ * routing by endpoint (geocoding search vs by-id lookup vs forecast). Only `.get(...).json()` is
+ * exercised by the module. A `localizedPlace` of `undefined` stands in for the by-id lookup failing.
  */
 const createFakeHttpClient = (routes: FakeRoutes, recorded: RecordedRequest[]): HttpClient => {
   const respond = (data: unknown): ResponsePromise => {
@@ -23,9 +23,19 @@ const createFakeHttpClient = (routes: FakeRoutes, recorded: RecordedRequest[]): 
     return promise
   }
 
+  const routeFor = (url: string): unknown => {
+    if (url.includes('/v1/get')) {
+      if (!routes.localizedPlace) {
+        throw new Error('by-id lookup unavailable')
+      }
+      return routes.localizedPlace
+    }
+    return url.includes('geocoding') ? routes.geocoding : routes.forecast
+  }
+
   const get = (url: string, options?: RequestOptions): ResponsePromise => {
     recorded.push({ url, searchParams: (options?.searchParams ?? {}) as RecordedRequest['searchParams'] })
-    return respond(url.includes('geocoding') ? routes.geocoding : routes.forecast)
+    return respond(routeFor(url))
   }
 
   const unsupported = (): ResponsePromise => {
@@ -43,13 +53,6 @@ const buildForecast = (count: number) => ({
   },
 })
 
-// The module-level locale and its mirror leak across test files — bun test shares
-// one module registry and one happy-dom localStorage for the whole run.
-afterEach(() => {
-  setActiveLocale('en')
-  localStorage.removeItem('thunderbolt_locale')
-})
-
 describe('fetchWeatherForecast', () => {
   it('geocodes then fetches the forecast and returns the mapped shape', async () => {
     const recorded: RecordedRequest[] = []
@@ -64,7 +67,7 @@ describe('fetchWeatherForecast', () => {
     )
 
     const result = await fetchWeatherForecast(
-      { location: 'London', region: '', country: '', days: 3, temperatureUnit: 'f' },
+      { location: 'London', region: '', country: '', days: 3, temperatureUnit: 'f', locale: 'en' },
       httpClient,
     )
 
@@ -92,15 +95,18 @@ describe('fetchWeatherForecast', () => {
    * returning the wrong city's forecast.
    */
   it('geocodes in English even when the UI is in another language', async () => {
-    setActiveLocale('pt-BR')
     const recorded: RecordedRequest[] = []
     const httpClient = createFakeHttpClient(
-      { geocoding: { results: [{ name: 'Recife', latitude: -8.05, longitude: -34.9 }] }, forecast: buildForecast(1) },
+      {
+        geocoding: { results: [{ id: 3390760, name: 'Recife', latitude: -8.05, longitude: -34.9 }] },
+        forecast: buildForecast(1),
+        localizedPlace: { id: 3390760, name: 'Recife', admin1: 'Pernambuco', country: 'Brasil' },
+      },
       recorded,
     )
 
     await fetchWeatherForecast(
-      { location: 'Recife', region: '', country: '', days: 1, temperatureUnit: 'c' },
+      { location: 'Recife', region: '', country: '', days: 1, temperatureUnit: 'c', locale: 'pt-BR' },
       httpClient,
     )
 
@@ -108,16 +114,81 @@ describe('fetchWeatherForecast', () => {
   })
 
   // The disambiguation above must hold regardless of UI language — the test that
-  // exercises it runs under the default locale, so this pins the non-English case.
+  // exercises it runs in English, so this pins the non-English case.
   it('still disambiguates by region and country when the UI is in another language', async () => {
-    setActiveLocale('fr')
     const recorded: RecordedRequest[] = []
     const httpClient = createFakeHttpClient(
       {
         geocoding: {
           results: [
-            { name: 'Paris', admin1: 'Île-de-France', country: 'France', latitude: 48.85, longitude: 2.35 },
-            { name: 'Paris', admin1: 'Texas', country: 'United States', latitude: 33.66, longitude: -95.55 },
+            {
+              id: 2988507,
+              name: 'Paris',
+              admin1: 'Île-de-France',
+              country: 'France',
+              latitude: 48.85,
+              longitude: 2.35,
+            },
+            {
+              id: 4717560,
+              name: 'Paris',
+              admin1: 'Texas',
+              country: 'United States',
+              latitude: 33.66,
+              longitude: -95.55,
+            },
+          ],
+        },
+        forecast: buildForecast(1),
+        localizedPlace: { id: 4717560, name: 'Paris', admin1: 'Texas', country: 'États-Unis' },
+      },
+      recorded,
+    )
+
+    const result = await fetchWeatherForecast(
+      { location: 'Paris', region: 'Texas', country: 'United States', days: 1, temperatureUnit: 'c', locale: 'fr' },
+      httpClient,
+    )
+
+    expect(result.location).toBe('Paris, Texas, États-Unis')
+    expect(recorded[1].searchParams.latitude).toBe(33.66)
+  })
+
+  // The by-id lookup keys off the disambiguated winner, so it cannot re-open the
+  // Paris-Texas question — but it does have to ask for the base subtag, since
+  // Open-Meteo answers `pt-BR` in English.
+  it('localizes the displayed name by id, using the base language subtag', async () => {
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(
+      {
+        geocoding: {
+          results: [
+            { id: 2867714, name: 'Munich', admin1: 'Bavaria', country: 'Germany', latitude: 48.1, longitude: 11.6 },
+          ],
+        },
+        forecast: buildForecast(1),
+        localizedPlace: { id: 2867714, name: 'Munique', admin1: 'Baviera', country: 'Alemanha' },
+      },
+      recorded,
+    )
+
+    const result = await fetchWeatherForecast(
+      { location: 'Munich', region: '', country: '', days: 1, temperatureUnit: 'c', locale: 'pt-BR' },
+      httpClient,
+    )
+
+    expect(result.location).toBe('Munique, Baviera, Alemanha')
+    const byId = recorded.find((request) => request.url.includes('/v1/get'))
+    expect(byId?.searchParams).toMatchObject({ id: 2867714, language: 'pt' })
+  })
+
+  it('falls back to the English name when the by-id lookup fails', async () => {
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(
+      {
+        geocoding: {
+          results: [
+            { id: 2867714, name: 'Munich', admin1: 'Bavaria', country: 'Germany', latitude: 48.1, longitude: 11.6 },
           ],
         },
         forecast: buildForecast(1),
@@ -126,12 +197,33 @@ describe('fetchWeatherForecast', () => {
     )
 
     const result = await fetchWeatherForecast(
-      { location: 'Paris', region: 'Texas', country: 'United States', days: 1, temperatureUnit: 'c' },
+      { location: 'Munich', region: '', country: '', days: 1, temperatureUnit: 'c', locale: 'ja' },
       httpClient,
     )
 
-    expect(result.location).toBe('Paris, Texas, United States')
-    expect(recorded[1].searchParams.latitude).toBe(33.66)
+    expect(result.location).toBe('Munich, Bavaria, Germany')
+  })
+
+  it('skips the by-id lookup entirely under English', async () => {
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(
+      {
+        geocoding: {
+          results: [
+            { id: 2867714, name: 'Munich', admin1: 'Bavaria', country: 'Germany', latitude: 48.1, longitude: 11.6 },
+          ],
+        },
+        forecast: buildForecast(1),
+      },
+      recorded,
+    )
+
+    await fetchWeatherForecast(
+      { location: 'Munich', region: '', country: '', days: 1, temperatureUnit: 'c', locale: 'en' },
+      httpClient,
+    )
+
+    expect(recorded).toHaveLength(2)
   })
 
   it('disambiguates by region and country, selecting the matching result', async () => {
@@ -150,7 +242,7 @@ describe('fetchWeatherForecast', () => {
     )
 
     const result = await fetchWeatherForecast(
-      { location: 'Paris', region: 'Texas', country: 'United States', days: 3, temperatureUnit: 'c' },
+      { location: 'Paris', region: 'Texas', country: 'United States', days: 3, temperatureUnit: 'c', locale: 'en' },
       httpClient,
     )
 
@@ -164,7 +256,10 @@ describe('fetchWeatherForecast', () => {
     const httpClient = createFakeHttpClient({ geocoding: { results: [] }, forecast: buildForecast(3) }, recorded)
 
     await expect(
-      fetchWeatherForecast({ location: 'Nowhere', region: '', country: '', days: 3, temperatureUnit: 'c' }, httpClient),
+      fetchWeatherForecast(
+        { location: 'Nowhere', region: '', country: '', days: 3, temperatureUnit: 'c', locale: 'en' },
+        httpClient,
+      ),
     ).rejects.toThrow("Could not find coordinates for location 'Nowhere'")
 
     expect(recorded).toHaveLength(1)
@@ -183,7 +278,7 @@ describe('fetchWeatherForecast', () => {
     )
 
     const result = await fetchWeatherForecast(
-      { location: 'Berlin', region: '', country: '', days: 3, temperatureUnit: 'c' },
+      { location: 'Berlin', region: '', country: '', days: 3, temperatureUnit: 'c', locale: 'en' },
       httpClient,
     )
 
@@ -204,7 +299,7 @@ describe('fetchWeatherForecast', () => {
 
     await expect(
       fetchWeatherForecast(
-        { location: 'Reykjavik', region: '', country: '', days: 3, temperatureUnit: 'c' },
+        { location: 'Reykjavik', region: '', country: '', days: 3, temperatureUnit: 'c', locale: 'en' },
         httpClient,
       ),
     ).rejects.toThrow()

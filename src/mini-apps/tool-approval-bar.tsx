@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { ChevronRight, ShieldAlert } from 'lucide-react'
 import type { PendingToolApproval } from './mini-app-store'
@@ -73,7 +74,7 @@ export const ToolApprovalBar = ({ pending, appName, onDecide }: ToolApprovalBarP
   return (
     <div className="absolute inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur px-4 py-3" role="dialog">
       <div className="flex items-start gap-3">
-        <ShieldAlert className="size-4 text-amber-500 mt-0.5 shrink-0" />
+        <ShieldAlert className="size-[var(--icon-size-sm)] text-amber-500 mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0 space-y-1.5">
           <p className="text-[length:var(--font-size-body)] font-medium">{action}</p>
 
@@ -91,7 +92,7 @@ export const ToolApprovalBar = ({ pending, appName, onDecide }: ToolApprovalBarP
           <details className="group">
             <summary className="inline-flex cursor-pointer items-center gap-1 text-[length:var(--font-size-xs)] text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
               <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
-              Requested by {appName}
+              <Trans>Requested by {appName}</Trans>
             </summary>
             <div className="mt-1.5 space-y-1.5 text-[length:var(--font-size-xs)] text-muted-foreground">
               <p>
@@ -110,10 +111,10 @@ export const ToolApprovalBar = ({ pending, appName, onDecide }: ToolApprovalBarP
 
         <div className="flex items-center gap-2 shrink-0">
           <Button size="sm" variant="outline" onClick={() => onDecide(false)}>
-            Deny
+            <Trans>Deny</Trans>
           </Button>
           <Button size="sm" onClick={() => onDecide(true)}>
-            Approve
+            <Trans>Approve</Trans>
           </Button>
         </div>
       </div>

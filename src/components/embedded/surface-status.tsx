@@ -16,6 +16,7 @@
  * artifact names the script error.
  */
 
+import { Trans } from '@lingui/react/macro'
 import { AlertTriangle } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -41,11 +42,15 @@ export const EmbeddedSurfaceStatus = ({ name, failed = false, detail }: Embedded
   <div className="absolute inset-0 flex items-center justify-center bg-background p-6 text-center">
     {failed ? (
       <div className="max-w-sm space-y-2">
-        <p className="text-[length:var(--font-size-body)] font-medium">Couldn&apos;t load {name}</p>
+        <p className="text-[length:var(--font-size-body)] font-medium">
+          <Trans>Couldn&apos;t load {name}</Trans>
+        </p>
         {detail && <div className="text-muted-foreground text-[length:var(--font-size-sm)]">{detail}</div>}
       </div>
     ) : (
-      <p className="text-muted-foreground text-[length:var(--font-size-sm)]">Loading {name}…</p>
+      <p className="text-muted-foreground text-[length:var(--font-size-sm)]">
+        <Trans>Loading {name}…</Trans>
+      </p>
     )}
   </div>
 )

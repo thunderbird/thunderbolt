@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import type { SurfaceRect } from './types'
 import { MessageSquareQuote } from 'lucide-react'
@@ -64,7 +65,7 @@ export const SelectionPopover = ({ rect, onAsk }: SelectionPopoverProps) => {
     >
       <Button size="sm" onClick={onAsk} className="pointer-events-auto shadow-lg rounded-full">
         <MessageSquareQuote className="size-[var(--icon-size-sm)]" />
-        Ask about this
+        <Trans>Ask about this</Trans>
       </Button>
     </div>
   )

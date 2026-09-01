@@ -944,13 +944,13 @@ export default function PreferencesSettingsPage() {
                   hasModifications={experimentalFeatureMiniApps.isModified}
                   onReset={experimentalFeatureMiniApps.reset}
                 >
-                  Mini Apps
+                  <Trans>Mini Apps</Trans>
                 </ModificationIndicator>
               </div>
               <Switch
                 checked={experimentalFeatureMiniApps.value}
                 onCheckedChange={(value) => experimentalFeatureMiniApps.setValue(value)}
-                aria-label="Mini Apps"
+                aria-label={t`Mini Apps`}
               />
             </div>
 

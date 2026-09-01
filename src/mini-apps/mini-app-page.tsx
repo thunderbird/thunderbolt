@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ const seedComposerDraft = (chatThreadId: string, prompt: string) => {
 }
 
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
+  const { t } = useLingui()
   /*
    * Two sources, because they are genuinely two states. A persisted thread is
    * addressable, so it lives in `?chat=` and survives a reload or a shared link.
@@ -191,6 +193,10 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * underneath, which matters more than it looks: unmounting it would tear down
    * the bridge and drop the context the user is asking about.
    */
+  /** Nothing floats over the app while it is still connecting, or while the
+   *  marquee owns the surface. */
+  const showFloatingControls = status === 'ready' && !isSelecting && !picked
+
   const chatPane = openChatId && (
     <ChatHydrateHandler
       // Remounts — and so re-hydrates — when the user switches between chats.
@@ -215,7 +221,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       {/* This page is chromeless (`isChromelessRoute` in main-layout), so it owns
           the sidebar toggle the app header would otherwise provide. */}
       <header className="flex items-center gap-2 px-2 h-[var(--touch-height-default)] border-b shrink-0">
-        <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Toggle Sidebar">
+        <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label={t`Toggle Sidebar`}>
           <PanelLeftRounded className="size-[var(--icon-size-default)]" />
         </Button>
         <app.icon className="size-[var(--icon-size-sm)] shrink-0" />
@@ -235,7 +241,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             {runtimeError && (
               <EmbeddedErrorStrip message={runtimeError} className="absolute inset-x-0 top-0 z-20 border-b-0" />
             )}
-            {status === 'ready' && selection?.rect && !isSelecting && !picked && (
+            {showFloatingControls && selection?.rect && (
               <SelectionPopover rect={selection.rect} onAsk={handleAskAboutSelection} />
             )}
             {isSelecting && <MarqueeOverlay onSelect={handleMarquee} onCancel={exitSelectMode} />}
@@ -245,52 +251,57 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             {picked && (
               <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-3 border-t bg-background/95 backdrop-blur px-4 py-3">
                 <span className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  {picked.length === 0
-                    ? 'Nothing selectable in that area'
-                    : `${picked.length} item${picked.length === 1 ? '' : 's'} selected`}
+                  {picked.length === 0 ? (
+                    <Trans>Nothing to ask about there. Try covering some content.</Trans>
+                  ) : (
+                    <Plural value={picked.length} one="# item selected" other="# items selected" />
+                  )}
                 </span>
                 {picked.length > 0 && (
                   <Button size="sm" onClick={handleAskAboutPicked}>
-                    Ask about {picked.length === 1 ? 'it' : 'them'}
+                    <Plural value={picked.length} one="Ask about it" other="Ask about them" />
                   </Button>
                 )}
                 <Button size="sm" variant="ghost" onClick={picked.length === 0 ? retrySelect : exitSelectMode}>
-                  {picked.length === 0 ? 'Try again' : 'Cancel'}
+                  {picked.length === 0 ? <Trans>Try again</Trans> : <Trans>Cancel</Trans>}
                 </Button>
               </div>
             )}
-            {/* Thunderbolt's own affordance, floating over the app rather than
+            {/* Thunderbolt's own affordances, floating over the app rather than
                 living inside it — the assistant belongs to the host, so a customer
-                app shouldn't have to render (or style) a button to reach it. */}
-            {status === 'ready' && !isSelecting && !picked && (
-              <Button
-                onClick={() => setIsSelecting(true)}
-                variant="secondary"
-                size="lg"
-                className="absolute bottom-4 right-40 z-10 shadow-lg rounded-full"
-              >
-                <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
-                Select
-              </Button>
-            )}
-            {status === 'ready' && !isSelecting && !picked && (
-              <Button
-                onClick={() => (openChatId ? handleCloseChat() : handleChatOpen(undefined))}
-                className="absolute bottom-4 right-4 z-10 shadow-lg rounded-full"
-                size="lg"
-              >
-                {openChatId ? (
-                  <>
-                    <X className="size-[var(--icon-size-sm)]" />
-                    Close chat
-                  </>
-                ) : (
-                  <>
-                    <MessageSquare className="size-[var(--icon-size-sm)]" />
-                    Chat
-                  </>
-                )}
-              </Button>
+                app shouldn't have to render (or style) a button to reach it.
+                Laid out as a row rather than positioned individually: the Select
+                button used to sit at a hardcoded `right-40` measured against the
+                English width of the button beside it, which any translation moves. */}
+            {showFloatingControls && (
+              <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2">
+                <Button
+                  onClick={() => setIsSelecting(true)}
+                  variant="secondary"
+                  size="lg"
+                  className="shadow-lg rounded-full"
+                >
+                  <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
+                  <Trans>Select</Trans>
+                </Button>
+                <Button
+                  onClick={() => (openChatId ? handleCloseChat() : handleChatOpen(undefined))}
+                  className="shadow-lg rounded-full"
+                  size="lg"
+                >
+                  {openChatId ? (
+                    <>
+                      <X className="size-[var(--icon-size-sm)]" />
+                      <Trans>Close chat</Trans>
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="size-[var(--icon-size-sm)]" />
+                      <Trans>Chat</Trans>
+                    </>
+                  )}
+                </Button>
+              </div>
             )}
           </div>
         </ResizablePanel>
@@ -314,7 +325,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
  */
 export default function MiniAppPage() {
   const { appId } = useParams()
-  const { apps, loading } = useMiniApps()
+  const { apps, loading, failed } = useMiniApps()
   const { isMobile } = useIsMobile()
   const app = findMiniApp(apps, appId)
 
@@ -333,7 +344,7 @@ export default function MiniAppPage() {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <p className="max-w-sm text-center text-[length:var(--font-size-sm)] text-muted-foreground">
-          Apps need a larger screen. Open this on a desktop or a wider window.
+          <Trans>Mini Apps need a wider window. Your chats from this app are still in the sidebar.</Trans>
         </p>
       </div>
     )
@@ -344,6 +355,19 @@ export default function MiniAppPage() {
   // Not Found whenever someone opened one on a cold load.
   if (loading) {
     return null
+  }
+
+  // A failed registry fetch is not an unknown app. Bouncing a valid bookmark to
+  // Not Found because the network blipped is both wrong and unrecoverable —
+  // this states what happened and leaves the URL intact so a reload retries.
+  if (failed) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <p className="max-w-sm text-center text-[length:var(--font-size-sm)] text-muted-foreground">
+          <Trans>Couldn&apos;t load your apps. Check your connection and reload.</Trans>
+        </p>
+      </div>
+    )
   }
 
   if (!app) {

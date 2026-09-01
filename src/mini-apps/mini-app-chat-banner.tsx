@@ -14,6 +14,7 @@
  * the user can't find, with no explanation of why.
  */
 
+import { Trans } from '@lingui/react/macro'
 import { Link } from 'react-router'
 
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -37,18 +38,22 @@ export const MiniAppOriginNotice = ({ app, chatThreadId, canOpen }: MiniAppOrigi
     {app ? (
       <>
         <app.icon className="size-[var(--icon-size-sm)] shrink-0" aria-hidden="true" />
-        <span className="truncate">Started from {app.name}</span>
+        <span className="truncate">
+          <Trans>Started from {app.name}</Trans>
+        </span>
         {canOpen && (
           <Link
             to={`/apps/${app.id}?chat=${chatThreadId}`}
             className="ml-auto shrink-0 underline underline-offset-2 hover:text-foreground"
           >
-            Open app
+            <Trans>Open app</Trans>
           </Link>
         )}
       </>
     ) : (
-      <span className="truncate">Started from an app that is no longer available</span>
+      <span className="truncate">
+        <Trans>Started from an app that is no longer available</Trans>
+      </span>
     )}
   </div>
 )
@@ -61,7 +66,7 @@ type MiniAppChatBannerProps = {
 export const MiniAppChatBanner = ({ appId, chatThreadId }: MiniAppChatBannerProps) => {
   const { experimentalFeatureMiniApps } = useSettings({ experimental_feature_mini_apps: false })
   const { isMobile } = useIsMobile()
-  const { apps, loading } = useMiniApps()
+  const { apps, loading, failed } = useMiniApps()
 
   // Chats sync; the feature flag doesn't. A chat started on a device with Mini
   // Apps on can land on one with them off, where `/apps/:appId` isn't even a
@@ -71,8 +76,9 @@ export const MiniAppChatBanner = ({ appId, chatThreadId }: MiniAppChatBannerProp
   }
 
   // The registry arrives over the network. Rendering "no longer available"
-  // while it's still in flight would accuse a healthy app of being gone.
-  if (loading) {
+  // while it's still in flight — or after the fetch simply failed — would
+  // accuse a healthy app of being gone on every chat that came from it.
+  if (loading || failed) {
     return null
   }
 

@@ -15,10 +15,13 @@
  * so there.
  */
 
+import { useLingui } from '@lingui/react/macro'
+
 import { findMiniApp } from './registry'
 import { useMiniApps } from './use-mini-apps'
 
 export const MiniAppChatBadge = ({ appId }: { appId: string }) => {
+  const { t } = useLingui()
   const { apps } = useMiniApps()
   const app = findMiniApp(apps, appId)
 
@@ -29,7 +32,7 @@ export const MiniAppChatBadge = ({ appId }: { appId: string }) => {
   return (
     <app.icon
       className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground"
-      aria-label={`From ${app.name}`}
+      aria-label={t`From ${app.name}`}
       role="img"
     />
   )

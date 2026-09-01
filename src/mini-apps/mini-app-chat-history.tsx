@@ -11,6 +11,7 @@
  * chat sidebar, so this is a shortcut, not the only route to them.
  */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { History } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -32,21 +33,24 @@ type MiniAppChatHistoryProps = {
 }
 
 export const MiniAppChatHistory = ({ chats, onOpenChat }: MiniAppChatHistoryProps) => {
+  const { t } = useLingui()
   const formatters = useFormatters()
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Chats from this app">
+        <Button variant="ghost" size="icon" aria-label={t`Chats from this app`}>
           <History className="size-[var(--icon-size-default)]" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel>Chats from this app</DropdownMenuLabel>
+        <DropdownMenuLabel>
+          <Trans>Chats from this app</Trans>
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {chats.length === 0 ? (
           <div className="px-2 py-3 text-[length:var(--font-size-sm)] text-muted-foreground">
-            No chats yet. Anything you ask beside this app shows up here.
+            <Trans>No chats yet. Anything you ask beside this app shows up here.</Trans>
           </div>
         ) : (
           chats.map((chat) => (

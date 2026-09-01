@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Plural, Trans } from '@lingui/react/macro'
 import type { ArtifactContext, ArtifactSelectionItem, ArtifactTextSelection } from '@/artifacts/harness'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { MarqueeOverlay } from '@/components/embedded/marquee-overlay'
@@ -120,13 +121,15 @@ export const SelectableArtifact = ({
       {mode.kind === 'reviewing' && (
         <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-3 border-t bg-background/95 px-4 py-3 backdrop-blur">
           <span className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            {mode.items.length === 0
-              ? 'Nothing selectable in that area'
-              : `${mode.items.length} item${mode.items.length === 1 ? '' : 's'} selected`}
+            {mode.items.length === 0 ? (
+              <Trans>Nothing to ask about there. Try covering some content.</Trans>
+            ) : (
+              <Plural value={mode.items.length} one="# item selected" other="# items selected" />
+            )}
           </span>
           {mode.items.length > 0 && (
             <Button size="sm" onClick={() => askAboutItems(mode.items)}>
-              Ask about {mode.items.length === 1 ? 'it' : 'them'}
+              <Plural value={mode.items.length} one="Ask about it" other="Ask about them" />
             </Button>
           )}
           <Button
@@ -134,7 +137,7 @@ export const SelectableArtifact = ({
             variant="ghost"
             onClick={() => dispatch(mode.items.length === 0 ? { type: 'marqueeStarted' } : { type: 'dismissed' })}
           >
-            {mode.items.length === 0 ? 'Try again' : 'Cancel'}
+            {mode.items.length === 0 ? <Trans>Try again</Trans> : <Trans>Cancel</Trans>}
           </Button>
         </div>
       )}
@@ -147,7 +150,7 @@ export const SelectableArtifact = ({
           className="absolute bottom-3 right-3 z-10 rounded-full shadow-lg"
         >
           <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
-          Select
+          <Trans>Select</Trans>
         </Button>
       )}
     </div>

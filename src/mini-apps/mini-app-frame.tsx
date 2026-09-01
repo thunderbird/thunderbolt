@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import type { RefObject } from 'react'
 
 import { EmbeddedSurfaceStatus } from '@/components/embedded/surface-status'
@@ -44,10 +45,10 @@ export const MiniAppFrame = ({ app, frameRef, status }: MiniAppFrameProps) => (
         name={app.name}
         failed={status !== 'connecting'}
         detail={
-          <>
+          <Trans>
             Nothing completed the handshake at {app.url}. Check the app is running and that it allows this origin in its{' '}
             <code>frame-ancestors</code>.
-          </>
+          </Trans>
         }
       />
     )}

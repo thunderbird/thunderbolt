@@ -21,6 +21,16 @@ msgstr ""
 msgid "\"{filename}\" isn't a supported file type."
 msgstr ""
 
+#. placeholder {0}: mode.items.length
+#. placeholder {0}: picked.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
+#: src/components/artifact/selectable-artifact.tsx
+#: src/mini-apps/mini-app-page.tsx
+msgid "# item selected"
+msgid_plural "# items selected"
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: mcpServers.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
 #: src/components/settings/agents/agent-detail.tsx
@@ -34,6 +44,16 @@ msgstr[1] ""
 #: src/components/available-tools.tsx
 msgid "# tool"
 msgid_plural "# tools"
+msgstr[0] ""
+msgstr[1] ""
+
+#. placeholder {0}: mode.items.length
+#. placeholder {0}: picked.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
+#: src/components/artifact/selectable-artifact.tsx
+#: src/mini-apps/mini-app-page.tsx
+msgid "Ask about it"
+msgid_plural "Ask about them"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -362,6 +382,7 @@ msgstr ""
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
+#: src/mini-apps/tool-approval-bar.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr ""
@@ -401,6 +422,10 @@ msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
+msgstr ""
+
+#: src/components/embedded/selection-popover.tsx
+msgid "Ask about this"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
@@ -512,6 +537,7 @@ msgstr ""
 
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
+#: src/components/artifact/selectable-artifact.tsx
 #: src/components/chat/external-link-dialog.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
@@ -525,6 +551,7 @@ msgstr ""
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/mini-apps/mini-app-page.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/index.tsx
@@ -550,6 +577,10 @@ msgstr ""
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr ""
 
+#: src/mini-apps/mini-app-page.tsx
+msgid "Chat"
+msgstr ""
+
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
 msgstr ""
@@ -562,6 +593,10 @@ msgstr ""
 #: src/projects/project-detail-panel.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
+msgstr ""
+
+#: src/mini-apps/mini-app-chat-history.tsx
+msgid "Chats from this app"
 msgstr ""
 
 #: src/projects/move-chat-to-project-dialog.tsx
@@ -704,6 +739,10 @@ msgstr ""
 #: src/components/ui/sheet.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Close chat"
 msgstr ""
 
 #: src/components/detail-panel.tsx
@@ -1005,12 +1044,20 @@ msgstr ""
 msgid "Couldn't download the update."
 msgstr ""
 
+#: src/components/embedded/surface-status.tsx
+msgid "Couldn't load {name}"
+msgstr ""
+
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr ""
 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Couldn't load this app's pairing identity: {error}"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Couldn't load your apps. Check your connection and reload."
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -1263,6 +1310,7 @@ msgstr ""
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
+#: src/mini-apps/tool-approval-bar.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr ""
@@ -1710,6 +1758,11 @@ msgstr ""
 msgid "Food & drink"
 msgstr ""
 
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-chat-badge.tsx
+msgid "From {0}"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Generating keys…"
 msgstr ""
@@ -2029,6 +2082,10 @@ msgstr ""
 msgid "Load models"
 msgstr ""
 
+#: src/components/embedded/surface-status.tsx
+msgid "Loading {name}…"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Loading code…"
 msgstr ""
@@ -2116,6 +2173,14 @@ msgstr ""
 
 #: src/i18n/unit-labels.ts
 msgid "Metric"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Mini Apps"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 msgstr ""
 
 #: src/components/window-controls.tsx
@@ -2281,6 +2346,10 @@ msgstr ""
 msgid "No chats yet."
 msgstr ""
 
+#: src/mini-apps/mini-app-chat-history.tsx
+msgid "No chats yet. Anything you ask beside this app shows up here."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
 msgstr ""
@@ -2394,6 +2463,16 @@ msgstr ""
 msgid "Not tested"
 msgstr ""
 
+#. placeholder {0}: app.url
+#: src/mini-apps/mini-app-frame.tsx
+msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
+msgstr ""
+
+#: src/components/artifact/selectable-artifact.tsx
+#: src/mini-apps/mini-app-page.tsx
+msgid "Nothing to ask about there. Try covering some content."
+msgstr ""
+
 #: src/lib/mcp-auth/callback-validation.ts
 msgid "OAuth issuer mismatch — authorization rejected."
 msgstr ""
@@ -2445,6 +2524,10 @@ msgstr ""
 
 #: src/settings/connections/connections-list.tsx
 msgid "Open {title}"
+msgstr ""
+
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Open app"
 msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
@@ -2781,6 +2864,10 @@ msgstr ""
 msgid "Request expired"
 msgstr ""
 
+#: src/mini-apps/tool-approval-bar.tsx
+msgid "Requested by {appName}"
+msgstr ""
+
 #: src/components/chat/file-card.tsx
 msgid "Resend as images"
 msgstr ""
@@ -3002,6 +3089,11 @@ msgstr ""
 
 #: src/voice/speakable.ts
 msgid "See the equation on screen."
+msgstr ""
+
+#: src/components/artifact/selectable-artifact.tsx
+#: src/mini-apps/mini-app-page.tsx
+msgid "Select"
 msgstr ""
 
 #: src/widgets/ask/display.tsx
@@ -3281,6 +3373,15 @@ msgstr ""
 
 #: src/voice/ui/voice-mode-button.tsx
 msgid "Start voice mode"
+msgstr ""
+
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from {0}"
+msgstr ""
+
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from an app that is no longer available"
 msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
@@ -3684,6 +3785,7 @@ msgstr ""
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
+#: src/mini-apps/mini-app-page.tsx
 msgid "Toggle Sidebar"
 msgstr ""
 
@@ -3719,8 +3821,10 @@ msgstr ""
 msgid "Trusted devices"
 msgstr ""
 
+#: src/components/artifact/selectable-artifact.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/mini-apps/mini-app-page.tsx
 msgid "Try again"
 msgstr ""
 

@@ -57,6 +57,7 @@ import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupp
 import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
+import { loadSearchPalette } from '@/search/palette/search-palette-loader'
 import { MCPProvider } from './lib/mcp-provider'
 import { ProxyFetchProvider } from './lib/proxy-fetch-context'
 import { TrayProvider } from './lib/tray'
@@ -297,6 +298,16 @@ export const App = () => {
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
   const { revokedDeviceOpen } = useCredentialEvents()
   useAppVersionUnsupportedListener()
+
+  // Start the palette's chunk during boot so it is in memory by the time
+  // `SearchPaletteProvider` mounts and asks for it — that provider sits behind
+  // the `sidebarState` gate in `Layout`, so fetching only from there leaves a
+  // window where Cmd+K has nothing to show. ~10KB, for the one surface
+  // reachable by keyboard from anywhere. Unlike `preloadAllRouteChunks` this
+  // runs on web too; that policy is about not warming *every* route.
+  useEffect(() => {
+    void loadSearchPalette()
+  }, [])
 
   // Show the Tauri window after React mounts and CSS is applied.
   // The window starts hidden (tauri.conf.json visible: false) to prevent

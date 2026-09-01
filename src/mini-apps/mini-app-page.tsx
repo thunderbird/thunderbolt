@@ -188,10 +188,8 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   }, [selection, attachToComposer, clearSelection])
 
   /*
-   * One chat pane, two placements. Side-by-side has nowhere to go on a phone,
-   * so mobile overlays it on the app instead — the frame stays mounted
-   * underneath, which matters more than it looks: unmounting it would tear down
-   * the bridge and drop the context the user is asking about.
+   * One placement. There was a mobile overlay here once; THU-830 replaced it
+   * with a size gate above, so the split is the only layout that ships.
    */
   /** Nothing floats over the app while it is still connecting, or while the
    *  marquee owns the surface. */

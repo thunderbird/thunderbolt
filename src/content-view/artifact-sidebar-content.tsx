@@ -33,9 +33,9 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
   /*
    * Register the open artifact so `get_app_context` can describe it.
    *
-   * An effect because it's a subscription to something outside React that must
-   * be torn down: a context outliving its panel would have the model describing
-   * a surface the user already closed.
+   * An effect because it writes to a store outside React and the write must be
+   * undone: a context outliving its panel would have the model describing a
+   * surface the user already closed. Not a subscription — nothing flows back.
    */
   const openArtifact = useArtifactContextStore((state) => state.openArtifact)
   const closeArtifact = useArtifactContextStore((state) => state.closeArtifact)

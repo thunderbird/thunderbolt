@@ -13,7 +13,7 @@
  *
  * Three things are deliberate:
  *
- * 1. **The audience is operator-declared.** It comes from `MINI_APP_AUDIENCES`
+ * 1. **The audience is operator-declared.** It comes from `MINI_APPS[id].origin`
  *    on this side, never from the caller. A client that could name its own `aud`
  *    could mint a token any app would accept.
  *
@@ -35,7 +35,14 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import { SignJWT } from 'jose'
 import { Elysia, t } from 'elysia'
 
-/** Claims a Mini App can rely on. Kept small: identity, not profile. */
+/**
+ * Claims a Mini App can rely on. Kept small: identity, not profile.
+ *
+ * The registered claims (`sub`, `iss`, `aud`, `iat`, `exp`) are set by `SignJWT`'s
+ * builders below, so this type can only enforce the custom half — which it now
+ * does via the `satisfies` on the payload. Before that it was documentation
+ * pretending to be a contract: renaming a field here changed nothing.
+ */
 export type MiniAppTokenClaims = {
   /** Thunderbolt user id. */
   sub: string
@@ -125,7 +132,10 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
           // its own. Registering a plugin per app to work around that would leave
           // route setup dependent on config, for no gain — this is one call.
           const expiresAt = new Date(Date.now() + settings.miniAppTokenExpirySeconds * 1000)
-          const token = await new SignJWT({ email: user.email, name: user.name })
+          const token = await new SignJWT({ email: user.email, name: user.name } satisfies Pick<
+            MiniAppTokenClaims,
+            'email' | 'name'
+          >)
             .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
             .setSubject(user.id)
             .setIssuer(settings.appUrl)

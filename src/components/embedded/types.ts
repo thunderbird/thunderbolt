@@ -15,6 +15,9 @@
 /** A rectangle in the guest frame's own viewport coordinates. */
 export type SurfaceRect = { x: number; y: number; width: number; height: number }
 
+/** Highlighted text plus where it sits in the guest frame's own viewport. */
+export type SurfaceTextSelection = { text: string; rect?: SurfaceRect }
+
 /** One thing a marquee covered, ready to become a composer chip. */
 export type SurfaceSelectionItem = {
   id: string

@@ -9,6 +9,8 @@
  */
 import { z } from 'zod'
 
+import type { SurfaceSelectionItem, SurfaceTextSelection } from '@/components/embedded/types'
+
 export type HarnessMessage =
   | { artifactNonce: string; type: 'artifact-ready' }
   | { artifactNonce: string; type: 'artifact-height'; height: number }
@@ -38,29 +40,21 @@ export type HarnessMessage =
    */
   | { artifactNonce: string; type: 'artifact-selection'; selection: ArtifactTextSelection | null }
 
-/**
- * A question the host asks the artifact.
- *
- * Artifacts were one-way until now — the page reported its height and its errors
- * and nothing was ever sent back down. Asking "what's inside this rectangle?"
- * needs an answer, so the channel gains ids and replies.
- *
- * Targeted with `'*'` rather than a real origin: the frame is sandboxed without
- * `allow-same-origin`, so its origin is opaque and there is no value to pin.
- * `postMessage` on a specific `contentWindow` still reaches only that frame, and
- * the nonce remains the thing that proves which render answered.
- */
 /** A short description of what the artifact is showing right now. */
 export type ArtifactContext = { title: string; summary: string }
 
 /** Highlighted text plus where it sits in the artifact's own viewport. */
-export type ArtifactTextSelection = {
-  text: string
-  rect?: { x: number; y: number; width: number; height: number }
-}
+/*
+ * Aliases, not copies. Both shapes existed here verbatim as well as in
+ * `components/embedded/types.ts` and (as zod schemas) in the Mini App protocol,
+ * type-checking across the boundary only because all three happened to be
+ * structurally identical — so a field added to one silently never reached the
+ * others. The shared module is the declaration; these names stay because the
+ * artifact code reads better with them.
+ */
+export type ArtifactTextSelection = SurfaceTextSelection
 
-/** One thing a marquee covered, ready to become a composer chip. */
-export type ArtifactSelectionItem = { id: string; label: string; text: string }
+export type ArtifactSelectionItem = SurfaceSelectionItem
 
 /** Method name the host uses to resolve a marquee to content. */
 export const artifactSelectionQueryMethod = 'selection/query'

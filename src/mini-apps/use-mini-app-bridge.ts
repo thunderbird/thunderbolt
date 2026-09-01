@@ -25,6 +25,7 @@ import {
   selectionQueryResultSchema,
   toolsCallResultSchema,
   toolsListResultSchema,
+  type MiniAppGuestCapabilities,
   type MiniAppGuestMessage,
   type MiniAppHostRequest,
   type MiniAppRect,
@@ -147,13 +148,13 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const themeRef = useRef(theme)
   themeRef.current = theme
 
-  // In-flight host→guest requests, keyed by JSON-RPC id. Only `ui/selection-query`
-  // uses this today; it exists because resolving a marquee to content is the one
-  // thing the host genuinely cannot do itself.
   // What the guest declared at handshake. A ref, not state: it's read inside the
   // message handler and by the discovery effect, and re-rendering on it would
   // only churn the listener.
-  const guestCapabilitiesRef = useRef<{ tools?: boolean; selection?: boolean }>({})
+  /* Typed from the schema rather than hand-listed: the previous inline shape had
+   * drifted to `{ tools, selection }` and omitted `auth`, which is exactly how a
+   * capability ends up declared but never consulted. */
+  const guestCapabilitiesRef = useRef<MiniAppGuestCapabilities>({})
   // Correlation, timeouts and always-settling are shared with artifacts — see
   // `pending-requests.ts`. Only the envelope and the trust check differ.
   const [pending] = useState(() => createPendingRequests())
@@ -245,11 +246,28 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       }
 
       if (message.method === miniAppGuestMethods.selectionChanged) {
-        setSelection(message.params.selection)
+        // Gated on the declaration, which is what makes it a capability rather
+        // than a comment: an app that said it doesn't report selections has no
+        // business floating our control over its content.
+        if (guestCapabilitiesRef.current.selection) {
+          setSelection(message.params.selection)
+        }
         return
       }
 
       if (message.method === miniAppGuestMethods.requestAuthToken) {
+        // Same gate as the handshake. Without it an app could decline `auth` at
+        // initialize — so no token was minted, exactly as documented — and then
+        // simply ask afterwards, which made "never issued" untrue.
+        if (!guestCapabilitiesRef.current.auth) {
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id: message.id,
+            error: { code: miniAppRpcErrors.authUnavailable, message: 'app did not declare the auth capability' },
+          })
+          return
+        }
         const refreshed = await fetchMiniAppToken(httpClient, app.id)
         post(
           refreshed
@@ -271,10 +289,32 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         return
       }
 
-      // ui/open-chat — acknowledge before acting so a slow panel animation can't
-      // look like a dropped request to the guest.
-      post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: { opened: true } })
-      onChatOpenRef.current(message.params.prompt)
+      if (message.method === miniAppGuestMethods.chatOpen) {
+        // Acknowledge before acting so a slow panel animation can't look like a
+        // dropped request to the guest.
+        post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: { opened: true } })
+        onChatOpenRef.current(message.params.prompt)
+        return
+      }
+
+      /*
+       * Explicit rather than a fallthrough. This used to be the `else` of every
+       * branch above, so adding a protocol method meant it silently opened the
+       * chat panel and replied `{ opened: true }` — the new method appearing to
+       * work while doing something else entirely.
+       *
+       * The `never` assertion makes that a compile error the next time a method
+       * is added, and the reply keeps a guest from waiting on a request the host
+       * has decided not to answer.
+       */
+      const unhandled: never = message
+      console.error('[mini-apps] Unhandled guest method', unhandled)
+      post({
+        jsonrpc: '2.0',
+        protocol: miniAppProtocolMarker,
+        id: (unhandled as { id?: string | number }).id ?? 0,
+        error: { code: miniAppRpcErrors.methodNotFound, message: 'unhandled method' },
+      })
     }
 
     window.addEventListener('message', handleMessage)

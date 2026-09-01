@@ -108,11 +108,9 @@ const settingsSchema = z
      * backend didn't know about rendered fine and then couldn't authenticate.
      * The frontend now reads this over `GET /mini-apps`, minus the secret.
      *
-     * The backend deliberately owns only the security-relevant half of the Mini
-     * App registry. `origin` becomes the `aud` of the identity token we mint, so
-     * it has to be operator-declared — a client that could name its own audience
-     * could mint a token for any app. Presentation (name, icon, description)
-     * stays in the frontend registry, because signing doesn't need an icon.
+     * `origin` becomes the `aud` of the identity token we mint, so it has to be
+     * operator-declared — a client that could name its own audience could mint a
+     * token for any app.
      *
      * Secrets are per app rather than one shared key: with a single symmetric
      * secret, any Mini App could forge a token for any other. Asymmetric keys

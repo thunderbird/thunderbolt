@@ -134,9 +134,13 @@ export const SandboxedHtmlFrame = ({
   /**
    * Hand the caller a marquee resolver, once per document.
    *
-   * Bound to this render's nonce so a resolver captured before a reload can't
-   * be answered by the new document — a stale query resolves empty instead of
-   * returning the previous artifact's rows.
+   * Re-issued at each document boundary, so a resolver captured before a reload
+   * cannot be answered by the new document — the outstanding query is aborted
+   * and resolves empty instead of returning the previous artifact's rows.
+   *
+   * The nonce alone could not do this: it comes from `useState` and is stable
+   * for the component's lifetime, while `srcDoc` recomputes when the HTML
+   * changes. The boundary is `srcDoc`.
    */
   const onQueryReadyRef = useRef(onQueryReady)
   onQueryReadyRef.current = onQueryReady
@@ -160,7 +164,7 @@ export const SandboxedHtmlFrame = ({
       const parsed = artifactSelectionItemsSchema.safeParse(result)
       return parsed.success ? parsed.data.items : []
     })
-  }, [nonce, pending])
+  }, [nonce, srcDoc, pending])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -193,10 +197,13 @@ export const SandboxedHtmlFrame = ({
     return () => {
       window.removeEventListener('message', handleMessage)
       // A caller awaiting an answer when the document reloads gets an empty one
-      // rather than a promise that never settles.
+      // rather than a promise that never settles. `srcDoc` is a dependency for
+      // exactly that reason: the nonce is stable for the component's lifetime, so
+      // keying only on it meant a reload never re-ran this and a query issued
+      // against the old document sat until its timeout.
       pending.abortAll()
     }
-  }, [nonce, pending])
+  }, [nonce, srcDoc, pending])
 
   return (
     <iframe

@@ -60,11 +60,18 @@ which no Mini App does.
 | --------------------- | ------ | ----------------------------------------------------------------------------------- |
 | Web (desktop browser) | iframe | —                                                                                   |
 | Tauri desktop         | iframe | `frame-src` is compiled into `tauri.conf.json`, so a new app origin needs a rebuild |
-| Tauri iOS / Android   | iframe | layout; unverified on device                                                        |
-| Mobile web            | iframe | iOS Safari's COEP/`credentialless` support is unconfirmed                           |
+| Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                  |
+| Mobile web            | —      | not offered — same gate                                                             |
 
-The mobile layout is handled: the chat overlays the app rather than sitting beside it, and the frame stays mounted
-underneath so the bridge survives. Marquee select already speaks pointer events, so touch works.
+**Mini Apps are web and desktop only** (THU-830). The gate is on *viewport*, not platform: the split view,
+highlight-to-ask and the marquee all need pointer input and room, and a 700px browser window is as unworkable as a
+phone. `useIsMobile` exempts the Tauri desktop app at any width, so narrowing the desktop window keeps the feature
+while narrowing a browser does not.
+
+Below the breakpoint the sidebar entry is hidden and the route renders a size notice rather than disappearing — a
+deep link out of a synced chat, or someone narrowing their window mid-session, is told what happened instead of
+hitting Not Found. An earlier cut overlaid the chat on the app for phones; that layout is gone, so nothing here
+depends on iOS Safari's COEP support being confirmed.
 
 **The Tauri `frame-src` problem is real and unsolved.** Everything else in the registry moved to runtime config
 (`MINI_APPS`), but Tauri compiles its CSP in at startup — a reload won't pick up a change, and a new customer

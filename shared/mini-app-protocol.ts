@@ -124,16 +124,17 @@ export const miniAppHostMethods = {
 } as const
 
 /**
- * What the guest declares it can do. Empty today — data-passing needs no
- * capabilities — but present from v1 of the wire so adding `tools` later is a
- * non-breaking change on both sides.
+ * What the guest declares it can do.
+ *
+ * Additive by design: an unknown key from a newer guest is stripped rather than
+ * rejected, so a capability can ship on one side before the other. Every field
+ * is consulted by the host — a declaration that changed nothing would be worse
+ * than no declaration, because it would read like a control.
  */
 export const miniAppGuestCapabilitiesSchema = z
   .object({
-    /**
-     * Reserved for v1: the app exposing callable tools to the model. Declared
-     * here so the host can branch on it the day it exists without a version bump.
-     */
+    /** The app exposes callable tools. The host only runs `tools/list` when this
+     *  is declared, so an app that has none is never asked. */
     tools: z.boolean().optional(),
     /**
      * The app reports text selections via `ui/notifications/selection-changed`, so the host can
@@ -149,6 +150,8 @@ export const miniAppGuestCapabilitiesSchema = z
     auth: z.boolean().optional(),
   })
   .default({})
+
+export type MiniAppGuestCapabilities = z.infer<typeof miniAppGuestCapabilitiesSchema>
 
 /** What the host offers the guest, returned from `initialize`. */
 export type MiniAppHostCapabilities = {

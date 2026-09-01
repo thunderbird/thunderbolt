@@ -33,6 +33,8 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
    * unmount the surface the chat is sitting in.
    */
   navigateOnCreate?: boolean
+  /** Called with the thread id once the first send persists it. */
+  onCreated?: (chatThreadId: string) => void
 }>
 
 /**
@@ -48,6 +50,7 @@ export const ChatHydrateHandler = ({
   newChatId,
   miniAppId = null,
   navigateOnCreate = true,
+  onCreated,
 }: ChatHydrateHandlerProps) => {
   const isNew = existingId === null
   // Held in `useState` rather than read from props each render: `useState`'s
@@ -62,6 +65,7 @@ export const ChatHydrateHandler = ({
     projectId,
     miniAppId,
     navigateOnCreate,
+    onCreated,
   })
 
   useHandleIntegrationCompletion({ saveMessages })

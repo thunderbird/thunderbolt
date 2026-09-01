@@ -15,6 +15,8 @@ type MiniAppFrameProps = {
   status: MiniAppBridgeStatus
   /** Re-arms the handshake when a new document commits in the frame. */
   onFrameLoad: () => void
+  /** Loads the app again after it failed to arrive. */
+  onRetry: () => void
 }
 
 /**
@@ -29,7 +31,7 @@ type MiniAppFrameProps = {
  * same-origin fetches. Removing it here would break every real app; the pairing is
  * deliberate.
  */
-export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad }: MiniAppFrameProps) => (
+export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad, onRetry }: MiniAppFrameProps) => (
   <div className="relative flex-1 w-full overflow-hidden">
     <iframe
       ref={frameRef}
@@ -47,6 +49,7 @@ export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad }: MiniAppFram
       <EmbeddedSurfaceStatus
         name={app.name}
         failed={status !== 'connecting'}
+        onRetry={onRetry}
         detail={
           <Trans>
             Nothing completed the handshake at {app.url}. Check the app is running and that it allows this origin in its{' '}

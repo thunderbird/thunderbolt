@@ -478,5 +478,23 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     setStatus('connecting')
   }, [resetGuest])
 
-  return { frameRef, status, selection, clearSelection, querySelection, runtimeError, handleFrameLoad }
+  /**
+   * Load the app again after it failed to arrive.
+   *
+   * Reassigning `src` rather than reaching for `contentWindow.location.reload()`,
+   * which is cross-origin and throws. The state reset isn't strictly required —
+   * `handleFrameLoad` would do it when the new document commits — but a button
+   * that visibly does nothing for a second reads as broken.
+   */
+  const reloadFrame = useCallback(() => {
+    hasHandshakedRef.current = false
+    resetGuest()
+    setRuntimeError(null)
+    setStatus('connecting')
+    if (frameRef.current) {
+      frameRef.current.src = app.url
+    }
+  }, [app.url, resetGuest])
+
+  return { frameRef, status, selection, clearSelection, querySelection, runtimeError, handleFrameLoad, reloadFrame }
 }

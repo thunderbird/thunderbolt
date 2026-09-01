@@ -57,6 +57,11 @@ type UseHydrateChatStoreParams = {
    * about to be asked about with it.
    */
   navigateOnCreate?: boolean
+  /**
+   * Called once, when the first save turns this into a real row. Lets a host
+   * that suppressed navigation record the id its own way.
+   */
+  onCreated?: (chatThreadId: string) => void
 }
 
 /**
@@ -89,6 +94,7 @@ export const useHydrateChatStore = ({
   projectId: newChatProjectId = null,
   miniAppId: newChatMiniAppId = null,
   navigateOnCreate = true,
+  onCreated,
 }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
@@ -149,6 +155,7 @@ export const useHydrateChatStore = ({
 
     if (!session.chatThread) {
       updateSession(id, { chatThread: thread })
+      onCreated?.(id)
       // Embedded chats stay put — see `navigateOnCreate`.
       if (navigateOnCreate) {
         navigate(`/chats/${id}`, { relative: 'path' })

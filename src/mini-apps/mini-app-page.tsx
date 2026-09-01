@@ -45,8 +45,8 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * addressable, so it lives in `?chat=` and survives a reload or a shared link.
    * A chat the user just opened has no row yet — putting its id in the URL would
    * promise a thread that reloading couldn't find, and hydration would bounce to
-   * Not Found. It stays local until a first message makes it real, after which
-   * the history menu is how it comes back.
+   * Not Found. It stays local only until the first message makes it real, at
+   * which point `onCreated` promotes it into `?chat=`.
    */
   const [searchParams, setSearchParams] = useSearchParams()
   const [draftChatId, setDraftChatId] = useState<string | null>(null)
@@ -116,7 +116,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     setOpenChatParam(null)
   }, [setOpenChatParam])
 
-  const { frameRef, status, selection, clearSelection, querySelection, runtimeError, handleFrameLoad } =
+  const { frameRef, status, selection, clearSelection, querySelection, runtimeError, handleFrameLoad, reloadFrame } =
     useMiniAppBridge({
       app,
       onChatOpen: handleChatOpen,
@@ -188,6 +188,10 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       // first send would unmount the app, tear down the bridge, and clear the
       // very context the model was asked about.
       navigateOnCreate={false}
+      // The moment the thread is real it becomes addressable, so it moves out of
+      // local state and into the URL. Without this a reload dropped the panel:
+      // the id only ever lived in `draftChatId`, which doesn't survive one.
+      onCreated={setOpenChatParam}
     >
       <ChatUI />
     </ChatHydrateHandler>
@@ -211,7 +215,13 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
-            <MiniAppFrame app={app} frameRef={frameRef} status={status} onFrameLoad={handleFrameLoad} />
+            <MiniAppFrame
+              app={app}
+              frameRef={frameRef}
+              status={status}
+              onFrameLoad={handleFrameLoad}
+              onRetry={reloadFrame}
+            />
             {/* Same strip an artifact shows for the same situation: the app is
                 still on screen and probably still useful, so this sits over it
                 rather than replacing it. */}

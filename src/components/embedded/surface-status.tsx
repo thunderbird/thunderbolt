@@ -20,6 +20,7 @@ import { Trans } from '@lingui/react/macro'
 import { AlertTriangle } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 type EmbeddedSurfaceStatusProps = {
@@ -29,29 +30,41 @@ type EmbeddedSurfaceStatusProps = {
   failed?: boolean
   /** Surface-specific detail, shown only when failed — what to actually check. */
   detail?: ReactNode
+  /** Offer another attempt. Omitted when the surface can't be retried. */
+  onRetry?: () => void
 }
 
 /**
- * The blocking state: covers the frame while a surface is loading, or instead of
- * it when the surface never arrived.
+ * The pre-ready state: the surface is coming, or it never came.
  *
- * Blocking is right for both, because in neither case is there anything behind
- * it to look at.
+ * A card over the surface rather than a cover of it. The tempting version is a
+ * full-bleed takeover — there's nothing to see yet, so why not — but that is
+ * only true of a frame that failed to *load*. A frame that loaded and then
+ * never handshook is very often showing the app's own sign-in screen, and a
+ * takeover hides the one thing the user needs to click. So the card floats, the
+ * container passes pointer events through, and only the card itself takes them.
  */
-export const EmbeddedSurfaceStatus = ({ name, failed = false, detail }: EmbeddedSurfaceStatusProps) => (
-  <div className="absolute inset-0 flex items-center justify-center bg-background p-6 text-center">
-    {failed ? (
-      <div className="max-w-sm space-y-2">
-        <p className="text-[length:var(--font-size-body)] font-medium">
-          <Trans>Couldn&apos;t load {name}</Trans>
+export const EmbeddedSurfaceStatus = ({ name, failed = false, detail, onRetry }: EmbeddedSurfaceStatusProps) => (
+  <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-4">
+    <div className="pointer-events-auto max-w-sm space-y-2 rounded-xl border border-border bg-background/95 px-4 py-3 text-center shadow-lg backdrop-blur">
+      {failed ? (
+        <>
+          <p className="text-[length:var(--font-size-body)] font-medium">
+            <Trans>Couldn&apos;t load {name}</Trans>
+          </p>
+          {detail && <div className="text-muted-foreground text-[length:var(--font-size-sm)]">{detail}</div>}
+          {onRetry && (
+            <Button variant="secondary" size="sm" onClick={onRetry}>
+              <Trans>Try again</Trans>
+            </Button>
+          )}
+        </>
+      ) : (
+        <p className="text-muted-foreground text-[length:var(--font-size-sm)]">
+          <Trans>Loading {name}…</Trans>
         </p>
-        {detail && <div className="text-muted-foreground text-[length:var(--font-size-sm)]">{detail}</div>}
-      </div>
-    ) : (
-      <p className="text-muted-foreground text-[length:var(--font-size-sm)]">
-        <Trans>Loading {name}…</Trans>
-      </p>
-    )}
+      )}
+    </div>
   </div>
 )
 

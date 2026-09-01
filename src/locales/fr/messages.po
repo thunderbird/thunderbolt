@@ -3828,6 +3828,7 @@ msgid "Trusted devices"
 msgstr "Appareils de confiance"
 
 #: src/components/embedded/surface-selection-bar.tsx
+#: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Try again"

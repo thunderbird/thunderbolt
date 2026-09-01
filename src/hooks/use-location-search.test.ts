@@ -25,6 +25,7 @@ afterAll(async () => {
 
 const mockLocationResponse = [
   {
+    id: 5391959,
     name: 'San Francisco',
     region: 'California',
     country: 'United States',
@@ -33,6 +34,7 @@ const mockLocationResponse = [
     lon: -122.4194,
   },
   {
+    id: 5128581,
     name: 'New York',
     region: 'New York',
     country: 'United States',
@@ -155,6 +157,7 @@ describe('useLocationSearch', () => {
 
       expect(result.current.locations).toEqual([
         {
+          id: 5391959,
           name: 'San Francisco, California, United States',
           city: 'San Francisco',
           countryCode: 'US',
@@ -164,6 +167,7 @@ describe('useLocationSearch', () => {
           },
         },
         {
+          id: 5128581,
           name: 'New York, New York, United States',
           city: 'New York',
           countryCode: 'US',

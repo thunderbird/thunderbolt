@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
-import type { LocationData } from '@/hooks/use-location-search'
+import type { LocationData } from '@/lib/locations'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { I18n } from '@lingui/core'

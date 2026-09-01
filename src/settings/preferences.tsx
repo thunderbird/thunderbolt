@@ -8,7 +8,7 @@ import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSum
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useLocalStorage } from '@/hooks/use-local-storage'
-import type { LocationData } from '@/hooks/use-location-search'
+import type { LocationData } from '@/lib/locations'
 import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'

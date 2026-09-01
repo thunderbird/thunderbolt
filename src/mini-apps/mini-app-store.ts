@@ -54,6 +54,14 @@ type MiniAppActions = {
   /** Publish the app's tool list and how to call them. */
   setTools: (tools: MiniAppTool[], invokeTool: MiniAppToolInvoker) => void
   /**
+   * Forget everything the guest told us, but keep the app open.
+   *
+   * For a re-handshake: the frame is still mounted on the same app, but the
+   * document behind it has been replaced (navigation, reload, redeploy). Its
+   * tools and context describe a page that no longer exists.
+   */
+  resetGuest: () => void
+  /**
    * Block on user approval for a write tool. Resolves false when no app is open,
    * so a call that races an unmount is denied rather than left hanging.
    */
@@ -84,6 +92,12 @@ export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) 
   },
   setContext: (context) => set({ context }),
   setTools: (tools, invokeTool) => set({ tools, invokeTool }),
+  resetGuest: () => {
+    // Same reasoning as `closeApp`: the document that would have serviced this
+    // approval is gone, so nothing can honour it.
+    get().pendingApproval?.decide(false)
+    set({ context: null, tools: [], invokeTool: null, pendingApproval: null })
+  },
   requestApproval: (tool, args) =>
     new Promise<boolean>((resolve) => {
       if (!get().activeApp) {

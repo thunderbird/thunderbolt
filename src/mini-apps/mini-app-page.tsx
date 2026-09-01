@@ -116,10 +116,11 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     setOpenChatParam(null)
   }, [setOpenChatParam])
 
-  const { frameRef, status, selection, clearSelection, querySelection, runtimeError } = useMiniAppBridge({
-    app,
-    onChatOpen: handleChatOpen,
-  })
+  const { frameRef, status, selection, clearSelection, querySelection, runtimeError, handleFrameLoad } =
+    useMiniAppBridge({
+      app,
+      onChatOpen: handleChatOpen,
+    })
 
   /**
    * Promote a highlighted passage into the composer as a quote chip.
@@ -210,7 +211,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
-            <MiniAppFrame app={app} frameRef={frameRef} status={status} />
+            <MiniAppFrame app={app} frameRef={frameRef} status={status} onFrameLoad={handleFrameLoad} />
             {/* Same strip an artifact shows for the same situation: the app is
                 still on screen and probably still useful, so this sits over it
                 rather than replacing it. */}

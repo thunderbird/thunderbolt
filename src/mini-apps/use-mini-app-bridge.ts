@@ -130,6 +130,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const theme = useResolvedTheme()
   const setContext = useMiniAppStore((s) => s.setContext)
   const setTools = useMiniAppStore((s) => s.setTools)
+  const resetGuest = useMiniAppStore((s) => s.resetGuest)
 
   // Held in a ref so a new callback identity from the parent doesn't tear down
   // and re-add the message listener mid-session (which would drop in-flight
@@ -155,6 +156,25 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * drifted to `{ tools, selection }` and omitted `auth`, which is exactly how a
    * capability ends up declared but never consulted. */
   const guestCapabilitiesRef = useRef<MiniAppGuestCapabilities>({})
+  /*
+   * Counts handshakes, not connections.
+   *
+   * A frame can re-initialize without unmounting — the app navigated, reloaded,
+   * or was redeployed under us. Everything keyed on the `connecting → ready`
+   * transition silently didn't re-run in that case, so the host kept serving the
+   * *previous* document's tool list and would post `tools/call` to a page that no
+   * longer implements them.
+   */
+  const [handshakeEpoch, setHandshakeEpoch] = useState(0)
+  /*
+   * Whether the document currently in the frame has introduced itself.
+   *
+   * A guest posts `initialize` from its script, which runs before the frame's
+   * `load` event reaches us — so by the time we see a load we already know
+   * whether the document that just committed handshaked, or whether we are
+   * looking at a fresh page that has said nothing.
+   */
+  const hasHandshakedRef = useRef(false)
   // Correlation, timeouts and always-settling are shared with artifacts — see
   // `pending-requests.ts`. Only the envelope and the trust check differ.
   const [pending] = useState(() => createPendingRequests())
@@ -219,6 +239,9 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         // an error strip pinned over a working app is worse than none. Artifacts
         // clear theirs on document change; this is the same moment.
         setRuntimeError(null)
+        resetGuest()
+        hasHandshakedRef.current = true
+        setHandshakeEpoch((epoch) => epoch + 1)
 
         // Only minted when the guest declared the capability — an app that never
         // asked shouldn't cause a credential to exist.
@@ -329,7 +352,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     // settings load a beat after first render. Re-subscribing is cheap — but
     // only for things that genuinely change identity, which is why `theme` is a
     // ref above rather than listed here.
-  }, [app.id, app.origin, httpClient, pending, post, setContext])
+  }, [app.id, app.origin, httpClient, pending, post, resetGuest, setContext])
 
   /**
    * Fail visibly when the guest never handshakes — an app that isn't running
@@ -431,7 +454,29 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     }
     // `callTool` and `request` are stable for the life of a connection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, request, setTools])
+  }, [status, handshakeEpoch, request, setTools])
 
-  return { frameRef, status, selection, clearSelection, querySelection, runtimeError }
+  /**
+   * A new document committed in the frame.
+   *
+   * Fires on the first load and on every navigation, reload and redeploy after
+   * it. Without this, a frame that reloads into a page which never handshakes
+   * stays `ready` forever: Select and Chat remain lit over a dead document, the
+   * handshake timeout never re-arms, and every tool call the model makes burns
+   * its full timeout against a page that will never answer.
+   *
+   * The already-handshaked branch consumes the flag rather than resetting
+   * anything — that document is live, and its tool list may have landed between
+   * its `initialize` and this event.
+   */
+  const handleFrameLoad = useCallback(() => {
+    if (hasHandshakedRef.current) {
+      hasHandshakedRef.current = false
+      return
+    }
+    resetGuest()
+    setStatus('connecting')
+  }, [resetGuest])
+
+  return { frameRef, status, selection, clearSelection, querySelection, runtimeError, handleFrameLoad }
 }

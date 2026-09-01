@@ -13,6 +13,8 @@ type MiniAppFrameProps = {
   app: MiniAppDefinition
   frameRef: RefObject<HTMLIFrameElement | null>
   status: MiniAppBridgeStatus
+  /** Re-arms the handshake when a new document commits in the frame. */
+  onFrameLoad: () => void
 }
 
 /**
@@ -27,11 +29,12 @@ type MiniAppFrameProps = {
  * same-origin fetches. Removing it here would break every real app; the pairing is
  * deliberate.
  */
-export const MiniAppFrame = ({ app, frameRef, status }: MiniAppFrameProps) => (
+export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad }: MiniAppFrameProps) => (
   <div className="relative flex-1 w-full overflow-hidden">
     <iframe
       ref={frameRef}
       src={app.url}
+      onLoad={onFrameLoad}
       title={app.name}
       className="w-full h-full border-0 bg-background"
       sandbox="allow-scripts allow-same-origin allow-forms allow-popups"

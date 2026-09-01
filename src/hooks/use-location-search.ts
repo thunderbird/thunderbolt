@@ -4,6 +4,7 @@
 
 import { useHttpClient } from '@/contexts'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useActiveLocale } from '@/i18n/use-active-locale'
 import { fetchLocations, type LocationData } from '@/lib/locations'
 import { useEffect, useReducer, useTransition } from 'react'
 
@@ -49,6 +50,7 @@ type UseLocationSearchOptions = {
  */
 export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) => {
   const httpClient = useHttpClient()
+  const locale = useActiveLocale()
   const [locationState, dispatch] = useReducer(locationReducer, createInitialState(autoOpen))
   const { open, searchQuery, locations } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -62,13 +64,13 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
 
     startTransition(async () => {
       try {
-        dispatch({ type: 'SET_LOCATIONS', payload: await fetchLocations(httpClient, debouncedSearchQuery, 'en') })
+        dispatch({ type: 'SET_LOCATIONS', payload: await fetchLocations(httpClient, debouncedSearchQuery, locale) })
       } catch (error) {
         console.error('Error searching locations:', error)
         dispatch({ type: 'SET_LOCATIONS', payload: [] })
       }
     })
-  }, [debouncedSearchQuery, httpClient])
+  }, [debouncedSearchQuery, httpClient, locale])
 
   const setOpen = (open: boolean) => dispatch({ type: 'SET_OPEN', payload: open })
   const setSearchQuery = (query: string) => dispatch({ type: 'SET_SEARCH_QUERY', payload: query })

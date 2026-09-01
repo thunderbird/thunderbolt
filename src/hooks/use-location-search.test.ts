@@ -3,12 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { setActiveLocale } from '@/i18n/active-locale'
+import type { HttpClient, RequestOptions, ResponsePromise } from '@/lib/http'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { useLocationSearch } from './use-location-search'
 
 let consoleSpies: ConsoleSpies
@@ -21,6 +23,13 @@ beforeAll(async () => {
 afterAll(async () => {
   consoleSpies.restore()
   await teardownTestDatabase()
+})
+
+// The module-level locale and its mirror leak across test files — bun test
+// shares one module registry and one happy-dom localStorage for the whole run.
+afterEach(() => {
+  setActiveLocale('en')
+  localStorage.removeItem('thunderbolt_locale')
 })
 
 const mockLocationResponse = [
@@ -177,6 +186,46 @@ describe('useLocationSearch', () => {
           },
         },
       ])
+    })
+
+    /**
+     * Open-Meteo's `language` narrows what it *matches*, not just what it
+     * renders: `Munique` finds Munich under `pt` and only Muñique, Spain under
+     * `en`. Someone searching in their own language has to be able to find
+     * their own city, so the active locale rides along with the query.
+     */
+    it('should search in the active locale', async () => {
+      const recorded: Array<Record<string, unknown>> = []
+      const recordingClient: HttpClient = {
+        get: (_url: string, options?: RequestOptions) => {
+          recorded.push((options?.searchParams ?? {}) as Record<string, unknown>)
+          const promise = Promise.resolve(new Response('[]')) as ResponsePromise
+          promise.json = async <T>() => [] as T
+          promise.text = async () => '[]'
+          return promise
+        },
+        post: () => {
+          throw new Error('not implemented')
+        },
+        delete: () => {
+          throw new Error('not implemented')
+        },
+      }
+
+      setActiveLocale('pt-BR')
+      const { result } = renderHook(() => useLocationSearch(), {
+        wrapper: createTestProvider({ httpClient: recordingClient }),
+      })
+
+      act(() => {
+        result.current.setSearchQuery('Munique')
+      })
+
+      await act(async () => {
+        await getClock().tickAsync(300)
+      })
+
+      expect(recorded[0]).toEqual({ query: 'Munique', language: 'pt-BR' })
     })
 
     it('should handle search errors gracefully', async () => {

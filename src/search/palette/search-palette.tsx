@@ -103,6 +103,20 @@ export const SearchPalette = ({
     return groupByEntity(visible)
   }, [hasQuery, results, experimentalFeatureTasks.value])
 
+  // Results and the command list share one scroll container, so a query change
+  // swaps the content underneath a scroll offset that belonged to the old set:
+  // clearing a scrolled-down result list used to land you partway down the
+  // commands. Reset from the keystroke rather than an effect — that is the cause,
+  // and 0 stays valid once the debounced content catches up, since the list is
+  // only ever replaced or shortened.
+  const listRef = useRef<HTMLDivElement>(null)
+  const handleQueryChange = useCallback((next: string) => {
+    setQuery(next)
+    if (listRef.current) {
+      listRef.current.scrollTop = 0
+    }
+  }, [])
+
   const [logoutOpen, setLogoutOpen] = useState(false)
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteAllChats = useDeleteAllChats()
@@ -217,8 +231,12 @@ export const SearchPalette = ({
         // fuzzy filter would otherwise hide valid stemmed/prefixed FTS matches.
         shouldFilter={false}
       >
-        <CommandInput placeholder={t`Search chats, models, skills, agents…`} value={query} onValueChange={setQuery} />
-        <CommandList>
+        <CommandInput
+          placeholder={t`Search chats, models, skills, agents…`}
+          value={query}
+          onValueChange={handleQueryChange}
+        />
+        <CommandList ref={listRef}>
           {!hasQuery ? (
             commandSections
           ) : (

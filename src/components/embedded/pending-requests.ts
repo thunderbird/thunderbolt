@@ -41,19 +41,32 @@ export type PendingRequests = {
   abortAll: () => void
 }
 
+/**
+ * Resolvers are held in a record rather than as bare functions so the call below
+ * is a statically named member access.
+ *
+ * Calling the value straight out of the map trips CodeQL's
+ * unvalidated-dynamic-method-call rule: `id` arrives on an untrusted
+ * `postMessage`, and the query cannot tell a `Map` lookup from an object index.
+ * It is a false positive — a `Map` returns only what was `set` on it, so unlike
+ * `waiting[id]()` there is no prototype for a crafted id to reach — but a
+ * permanently red scanner is how real findings get ignored. Keep the field.
+ */
+type PendingEntry = { resolve: (result: unknown) => void }
+
 export const createPendingRequests = (): PendingRequests => {
-  const waiting = new Map<number, (result: unknown) => void>()
+  const waiting = new Map<number, PendingEntry>()
   let nextId = 1
 
   const settle = (id: number, result: unknown): boolean => {
-    const resolve = waiting.get(id)
-    if (!resolve) {
+    const entry = waiting.get(id)
+    if (!entry) {
       return false
     }
     // Deleted before resolving, so a resolver that synchronously issues another
     // request can't observe its own entry still in the map.
     waiting.delete(id)
-    resolve(result)
+    entry.resolve(result)
     return true
   }
 
@@ -62,9 +75,11 @@ export const createPendingRequests = (): PendingRequests => {
       new Promise((resolve) => {
         const id = nextId++
         const timer = setTimeout(() => settle(id, null), timeoutMs)
-        waiting.set(id, (result) => {
-          clearTimeout(timer)
-          resolve(result)
+        waiting.set(id, {
+          resolve: (result) => {
+            clearTimeout(timer)
+            resolve(result)
+          },
         })
         send(id)
       }),

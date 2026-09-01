@@ -4,7 +4,7 @@
 
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { invoke } from '@tauri-apps/api/core'
-import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
+import { useSyncExternalStore, createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
 import { isMacDesktop, isTauri } from './platform'
 import { setAndroidBarColor } from './set-android-bar-color'
 
@@ -155,6 +155,38 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }
 
   return <ThemeProviderContext.Provider value={value}>{children}</ThemeProviderContext.Provider>
+}
+
+const darkQuery = () => window.matchMedia('(prefers-color-scheme: dark)')
+
+const subscribeToSystemTheme = (onChange: () => void) => {
+  const query = darkQuery()
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+/**
+ * The appearance actually on screen — `'light'` or `'dark'`, never `'system'`.
+ *
+ * `useTheme().theme` is the *setting*, so on `'system'` it never changes when
+ * the OS flips and anything deriving from it silently misses the switch. That
+ * bit the Mini App bridge, which pushed the resolved theme to the guest in an
+ * effect keyed on the setting: a user on `'system'` toggling dark mode watched
+ * Thunderbolt repaint while the embedded app stayed light for the session.
+ */
+export const useResolvedTheme = (): 'light' | 'dark' => {
+  const { theme } = useTheme()
+  const systemIsDark = useSyncExternalStore(
+    subscribeToSystemTheme,
+    () => darkQuery().matches,
+    // Server/prerender has no media query; light is the safer guess.
+    () => false,
+  )
+
+  if (theme === 'light' || theme === 'dark') {
+    return theme
+  }
+  return systemIsDark ? 'dark' : 'light'
 }
 
 export const useTheme = () => {

@@ -7,6 +7,8 @@
  * correlates the message with the render that produced it, so a page cannot
  * spoof another render's result.
  */
+import { z } from 'zod'
+
 export type HarnessMessage =
   | { artifactNonce: string; type: 'artifact-ready' }
   | { artifactNonce: string; type: 'artifact-height'; height: number }
@@ -102,6 +104,60 @@ export const formatHarnessError = (message: Extract<HarnessMessage, { type: 'art
  * the typed message, or `null` to ignore. Centralized so the source/nonce checks
  * can't drift between the verifier and the visible renderer.
  */
+const rectSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite(),
+  height: z.number().finite(),
+})
+
+/**
+ * Bounds on everything an artifact can say.
+ *
+ * The caps in the injected script are advisory only: the page owns its own
+ * document and knows its own nonce, so it can overwrite the harness handlers or
+ * simply post whatever it likes. Anything trusted has to be enforced up here.
+ *
+ * This surface had no schema at all, which is backwards — an artifact is the
+ * *less* trusted of the two embedded surfaces (its HTML is model-written, and
+ * often shaped by whatever the model just read), while the Mini App path bounds
+ * every field. The numbers mirror that path so the two agree.
+ */
+const harnessMessageSchema = z.discriminatedUnion('type', [
+  z.object({ artifactNonce: z.string(), type: z.literal('artifact-ready') }),
+  z.object({ artifactNonce: z.string(), type: z.literal('artifact-height'), height: z.number().finite() }),
+  z.object({
+    artifactNonce: z.string(),
+    type: z.literal('artifact-error'),
+    reason: z.enum(['exception', 'unhandled-rejection']),
+    detail: z.string().max(2_000),
+  }),
+  z.object({
+    artifactNonce: z.string(),
+    type: z.literal('artifact-reply'),
+    id: z.number().int(),
+    result: z.unknown(),
+  }),
+  z.object({
+    artifactNonce: z.string(),
+    type: z.literal('artifact-context'),
+    context: z.object({ title: z.string().max(200), summary: z.string().max(20_000) }),
+  }),
+  z.object({
+    artifactNonce: z.string(),
+    type: z.literal('artifact-selection'),
+    selection: z.object({ text: z.string().max(20_000), rect: rectSchema.optional() }).nullable(),
+  }),
+])
+
+/** Items a marquee resolved to. Validated separately: it rides `artifact-reply`'s
+ *  `unknown` result, which the caller narrows once it knows what it asked. */
+export const artifactSelectionItemsSchema = z.object({
+  items: z
+    .array(z.object({ id: z.string().max(200), label: z.string().max(500), text: z.string().max(5_000) }))
+    .max(50),
+})
+
 export const parseHarnessMessage = (
   event: MessageEvent,
   contentWindow: Window | null,
@@ -110,11 +166,11 @@ export const parseHarnessMessage = (
   if (event.source !== contentWindow) {
     return null
   }
-  const data = event.data as HarnessMessage | undefined
-  if (!data || data.artifactNonce !== nonce) {
+  const parsed = harnessMessageSchema.safeParse(event.data)
+  if (!parsed.success || parsed.data.artifactNonce !== nonce) {
     return null
   }
-  return data
+  return parsed.data
 }
 
 /**

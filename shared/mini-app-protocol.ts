@@ -427,7 +427,14 @@ export const miniAppToolSchema = z.object({
     .min(1)
     .max(128)
     .regex(/^[a-zA-Z0-9_.-]+$/),
-  description: z.string().min(1).max(4_000),
+  /*
+   * Bounded tightly because this string reaches the *system* prompt, once per
+   * tool, for the life of the turn's cached prefix. At 4 000 × 64 tools an app
+   * could contribute a quarter of a megabyte of instructions sitting above our
+   * own tool policy. A one-line description of what a tool does needs nothing
+   * like that; the full schema travels separately in the tool definition.
+   */
+  description: z.string().min(1).max(300),
   /** JSON Schema for the arguments. Absent means the tool takes none. */
   inputSchema: z.record(z.string(), z.unknown()).optional(),
   annotations: z

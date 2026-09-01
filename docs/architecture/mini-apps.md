@@ -135,8 +135,14 @@ may _visit_.
 What genuinely holds: Thunderbolt's server never talks to the app's server — the bridge is `postMessage` between
 two origins in the user's browser. Same-origin policy keeps a compromised app out of Thunderbolt's storage,
 cookies and DOM. Both sides pin origins on every message, with no wildcard `postMessage`. And write-tool approval
-is enforced host-side from the descriptor, so an app that lies about `readOnlyHint` can cause an extra prompt but
-never skip one.
+is enforced host-side rather than in the app, and the app never learns the outcome except by the tool's result.
+
+Be precise about what that buys, though. The decision reads `readOnlyHint`, which is the app's own word about its own
+tool — so **an app that declares a destructive tool read-only will skip the prompt.** The gate defends against a
+confused model, not a hostile app: it stops a prompt-injected model writing through a tool the app marked as a write,
+and it fails safe when the annotation is absent (absent means ask). It is not a boundary against the app, which can
+perform the same action directly without asking anyone. Making it one would mean the operator classifying each tool in
+`MINI_APPS` instead of trusting the descriptor — worth doing the day apps stop being first-party.
 
 ## Layout
 

@@ -4,6 +4,7 @@
 
 import {
   artifactRequest,
+  artifactSelectionItemsSchema,
   artifactSelectionQueryMethod,
   formatHarnessError,
   parseHarnessMessage,
@@ -152,8 +153,12 @@ export const SandboxedHtmlFrame = ({
         (id) => frame.postMessage(artifactRequest(nonce, id, artifactSelectionQueryMethod, { rect }), '*'),
         selectionQueryTimeoutMs,
       )
-      const items = (result as { items?: ArtifactSelectionItem[] } | null)?.items
-      return Array.isArray(items) ? items : []
+      // Parsed rather than cast: `Array.isArray` said nothing about the elements,
+      // so a page answering with `[{}]` rendered `undefined` into a composer chip.
+      // Anything unexpected resolves empty, which is this path's documented
+      // fallback everywhere else.
+      const parsed = artifactSelectionItemsSchema.safeParse(result)
+      return parsed.success ? parsed.data.items : []
     })
   }, [nonce, pending])
 

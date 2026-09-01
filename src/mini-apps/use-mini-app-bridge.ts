@@ -33,10 +33,9 @@ import {
   type MiniAppHostMessage,
   type MiniAppInitializeResult,
   type MiniAppSelection,
-  type MiniAppTheme,
 } from '@shared/mini-app-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useTheme } from '@/lib/theme-provider'
+import { useResolvedTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
 import { createPendingRequests } from '@/components/embedded/pending-requests'
 import { useHttpClient } from '@/contexts'
@@ -110,14 +109,6 @@ const resolveHostPlatform = (): MiniAppPlatform => {
   return isTauri() ? 'desktop' : 'web'
 }
 
-/** Resolve the app's theme setting to the concrete appearance the guest needs. */
-const resolveTheme = (theme: string): MiniAppTheme => {
-  if (theme === 'dark' || theme === 'light') {
-    return theme
-  }
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
 export type UseMiniAppBridgeOptions = {
   app: MiniAppDefinition
   /** Called when the guest sends `ui/open-chat`. */
@@ -135,7 +126,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const [selection, setSelection] = useState<MiniAppSelection | null>(null)
   /** Last error the app reported about itself; shown as a strip over the frame. */
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
-  const { theme } = useTheme()
+  const theme = useResolvedTheme()
   const setContext = useMiniAppStore((s) => s.setContext)
   const setTools = useMiniAppStore((s) => s.setTools)
 
@@ -145,12 +136,13 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const onChatOpenRef = useRef(onChatOpen)
   onChatOpenRef.current = onChatOpen
   /*
-   * Read through a ref, not a dependency. The handler needs the *current* theme
-   * when it answers `initialize`, but listing `theme` as a dependency tore the
-   * listener down and rebuilt it on every appearance change — and the cleanup
-   * calls `pending.abortAll()`, so switching to dark mode cancelled whatever
-   * tool call was in flight. Changes still reach the guest: the effect below
-   * pushes them as a host-context patch.
+   * Read through a ref, not a dependency. The handler needs the *current*
+   * appearance when it answers `initialize`, but listing it as a dependency tore
+   * the listener down and rebuilt it on every change — and the cleanup calls
+   * `pending.abortAll()`, so switching to dark mode cancelled whatever tool call
+   * was in flight. Changes still reach the guest: the effect below pushes them
+   * as a host-context patch, and it now keys on the *resolved* appearance, so a
+   * user on "system" flipping their OS theme is no longer missed.
    */
   const themeRef = useRef(theme)
   themeRef.current = theme
@@ -236,7 +228,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           hostName: 'Thunderbolt',
           capabilities: { context: true, chat: true, auth: auth !== null },
           hostContext: {
-            theme: resolveTheme(themeRef.current),
+            theme: themeRef.current,
             locale: navigator.language,
             platform: resolveHostPlatform(),
           },
@@ -322,7 +314,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       protocol: miniAppProtocolMarker,
       method: miniAppHostMethods.hostContextChanged,
       // Partial by design — only the key that moved.
-      params: { theme: resolveTheme(theme) },
+      params: { theme },
     })
   }, [theme, status, post])
 

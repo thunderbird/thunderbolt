@@ -9,6 +9,7 @@ import {
   miniAppProtocolVersion,
   parseGuestMessage,
   parseGuestResult,
+  toolsListResultSchema,
   selectionQueryResultSchema,
 } from './mini-app-protocol'
 
@@ -162,6 +163,30 @@ describe('isSupportedProtocolVersion', () => {
   it('rejects other versions in both directions', () => {
     expect(isSupportedProtocolVersion(miniAppProtocolVersion + 1)).toBe(false)
     expect(isSupportedProtocolVersion(0)).toBe(false)
+  })
+})
+
+describe('tool descriptor bounds', () => {
+  const toolsList = (description: string) => ({
+    jsonrpc: '2.0',
+    protocol: miniAppProtocolMarker,
+    id: 1,
+    result: { tools: [{ name: 'do_thing', description, inputSchema: { type: 'object' } }] },
+  })
+
+  /** The description reaches the cached system prompt once per tool, so a
+   *  generous cap let an app contribute a quarter-megabyte of prose above our
+   *  own tool policy. */
+  it('rejects a description long enough to crowd the system prompt', () => {
+    const parsed = toolsListResultSchema.safeParse(toolsList('x'.repeat(301)).result)
+
+    expect(parsed.success).toBe(false)
+  })
+
+  it('accepts a one-line description', () => {
+    const parsed = toolsListResultSchema.safeParse(toolsList('Change one assumption in the model.').result)
+
+    expect(parsed.success).toBe(true)
   })
 })
 

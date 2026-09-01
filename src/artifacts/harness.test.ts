@@ -75,6 +75,47 @@ describe('parseHarnessMessage', () => {
   it('rejects a non-harness message', () => {
     expect(parseHarnessMessage({ source: win, data: undefined } as MessageEvent, win, nonce)).toBeNull()
   })
+
+  /*
+   * The caps inside the injected script are advisory: the page owns its own
+   * document and knows its own nonce, so it can overwrite the harness handlers
+   * or post whatever it likes. Anything the host trusts is enforced here.
+   */
+  it('rejects a context summary past the cap', () => {
+    const oversized = {
+      artifactNonce: nonce,
+      type: 'artifact-context' as const,
+      context: { title: 'Q3', summary: 'x'.repeat(20_001) },
+    }
+
+    expect(parseHarnessMessage({ source: win, data: oversized } as MessageEvent, win, nonce)).toBeNull()
+  })
+
+  it('rejects a selection rect with a non-finite coordinate', () => {
+    const hostile = {
+      artifactNonce: nonce,
+      type: 'artifact-selection' as const,
+      selection: { text: 'hi', rect: { x: Number.POSITIVE_INFINITY, y: 0, width: 10, height: 10 } },
+    }
+
+    expect(parseHarnessMessage({ source: win, data: hostile } as MessageEvent, win, nonce)).toBeNull()
+  })
+
+  it('rejects an unknown message type rather than passing it through', () => {
+    const unknown = { artifactNonce: nonce, type: 'artifact-something-else' }
+
+    expect(parseHarnessMessage({ source: win, data: unknown } as MessageEvent, win, nonce)).toBeNull()
+  })
+
+  it('still accepts a well-formed selection', () => {
+    const selection = {
+      artifactNonce: nonce,
+      type: 'artifact-selection' as const,
+      selection: { text: 'Revenue 4.2M', rect: { x: 1, y: 2, width: 3, height: 4 } },
+    }
+
+    expect(parseHarnessMessage({ source: win, data: selection } as MessageEvent, win, nonce)).toEqual(selection)
+  })
 })
 
 /**

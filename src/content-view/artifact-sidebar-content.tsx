@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ArtifactActions } from '@/components/artifact/artifact-actions'
-import { ArtifactErrorStrip } from '@/components/artifact/artifact-error-strip'
+import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { SelectableArtifact } from '@/components/artifact/selectable-artifact'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { useParams } from 'react-router'
@@ -72,7 +72,7 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
         className="md:bg-card"
         actions={<ArtifactActions html={data.html} title={data.title} />}
       />
-      {runtimeError && <ArtifactErrorStrip message={runtimeError} />}
+      {runtimeError && <EmbeddedErrorStrip message={runtimeError} />}
       <div className="min-h-0 flex-1 bg-white">
         <SelectableArtifact
           html={data.html}

@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { RefObject } from 'react'
+
+import { EmbeddedSurfaceStatus } from '@/components/embedded/surface-status'
 import type { MiniAppBridgeStatus } from './use-mini-app-bridge'
 import type { MiniAppDefinition } from './registry'
 
@@ -38,19 +40,16 @@ export const MiniAppFrame = ({ app, frameRef, status }: MiniAppFrameProps) => (
       allow=""
     />
     {status !== 'ready' && (
-      <div className="absolute inset-0 flex items-center justify-center bg-background p-6 text-center">
-        {status === 'connecting' ? (
-          <p className="text-muted-foreground text-[length:var(--font-size-sm)]">Connecting to {app.name}…</p>
-        ) : (
-          <div className="max-w-sm space-y-2">
-            <p className="text-[length:var(--font-size-body)] font-medium">Couldn&apos;t reach {app.name}</p>
-            <p className="text-muted-foreground text-[length:var(--font-size-sm)]">
-              Nothing completed the handshake at {app.url}. Check the app is running and that it allows this origin in
-              its <code>frame-ancestors</code>.
-            </p>
-          </div>
-        )}
-      </div>
+      <EmbeddedSurfaceStatus
+        name={app.name}
+        failed={status !== 'connecting'}
+        detail={
+          <>
+            Nothing completed the handshake at {app.url}. Check the app is running and that it allows this origin in its{' '}
+            <code>frame-ancestors</code>.
+          </>
+        }
+      />
     )}
   </div>
 )

@@ -90,6 +90,15 @@ export const miniAppGuestMethods = {
    * caring is just a token with a longer life and a wider blast radius.
    */
   requestAuthToken: 'ui/request-auth-token',
+  /**
+   * "Something threw in here." Fire-and-forget.
+   *
+   * Artifacts already report runtime errors, so a broken artifact says so while
+   * a broken app just sits there looking fine — the host cannot see into a
+   * cross-origin frame and read `window.onerror` for itself (THU-852). An app
+   * that wants the same treatment forwards its own errors here.
+   */
+  runtimeError: 'ui/notifications/error',
 } as const
 
 /** Methods Thunderbolt sends to the guest app. */
@@ -203,6 +212,16 @@ export const contextUpdateNotificationSchema = envelopeSchema.extend({
   params: z.object({ context: miniAppContextSchema }),
 })
 
+/** `ui/notifications/error` — guest → host notification (no id, no reply). */
+export const runtimeErrorNotificationSchema = envelopeSchema.extend({
+  method: z.literal(miniAppGuestMethods.runtimeError),
+  params: z.object({
+    // Bounded because it lands in a one-line strip, and an untrusted frame
+    // should not be able to hand us an unbounded string to hold.
+    message: z.string().min(1).max(500),
+  }),
+})
+
 /** `ui/open-chat` — guest → host request. */
 export const chatOpenRequestSchema = envelopeSchema.extend({
   id: jsonRpcIdSchema,
@@ -270,6 +289,7 @@ export const miniAppGuestMessageSchema = z.discriminatedUnion('method', [
   contextUpdateNotificationSchema,
   chatOpenRequestSchema,
   selectionChangedNotificationSchema,
+  runtimeErrorNotificationSchema,
 ])
 
 export type MiniAppGuestMessage = z.infer<typeof miniAppGuestMessageSchema>
@@ -277,6 +297,7 @@ export type MiniAppInitializeRequest = z.infer<typeof initializeRequestSchema>
 export type MiniAppContextUpdate = z.infer<typeof contextUpdateNotificationSchema>
 export type MiniAppChatOpenRequest = z.infer<typeof chatOpenRequestSchema>
 export type MiniAppRequestAuthToken = z.infer<typeof requestAuthTokenSchema>
+export type MiniAppRuntimeError = z.infer<typeof runtimeErrorNotificationSchema>
 
 /** Successful reply to a guest request. */
 export type MiniAppHostResult = {

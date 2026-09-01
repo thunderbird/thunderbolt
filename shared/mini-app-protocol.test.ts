@@ -165,6 +165,36 @@ describe('isSupportedProtocolVersion', () => {
   })
 })
 
+describe('runtime error notification', () => {
+  const errorNotification = (params: unknown) => ({
+    jsonrpc: '2.0',
+    protocol: miniAppProtocolMarker,
+    method: 'ui/notifications/error',
+    params,
+  })
+
+  /**
+   * Artifacts already report runtime errors, so a broken artifact says so while
+   * a broken app just sat there looking fine — the host cannot read
+   * `window.onerror` inside a cross-origin frame (THU-852).
+   */
+  it('accepts an app reporting its own failure', () => {
+    const parsed = parseGuestMessage(errorNotification({ message: 'TypeError: x is not a function' }))
+
+    expect(parsed?.method).toBe('ui/notifications/error')
+  })
+
+  it('rejects an empty message, which would render as a blank strip', () => {
+    expect(parseGuestMessage(errorNotification({ message: '' }))).toBeNull()
+  })
+
+  /** It lands in a one-line strip, and an untrusted frame should not be able to
+   *  hand us an unbounded string to hold. */
+  it('rejects a message too long for the strip', () => {
+    expect(parseGuestMessage(errorNotification({ message: 'x'.repeat(501) }))).toBeNull()
+  })
+})
+
 describe('parseGuestResult', () => {
   const reply = { jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: 7, result: { items: [] } }
 

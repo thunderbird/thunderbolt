@@ -14,6 +14,7 @@ import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import type { MiniAppSelectionItem } from '@shared/mini-app-protocol'
+import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { MarqueeOverlay } from '@/components/embedded/marquee-overlay'
 import { MiniAppFrame } from './mini-app-frame'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
@@ -113,7 +114,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     setOpenChatParam(null)
   }, [setOpenChatParam])
 
-  const { frameRef, status, selection, clearSelection, querySelection } = useMiniAppBridge({
+  const { frameRef, status, selection, clearSelection, querySelection, runtimeError } = useMiniAppBridge({
     app,
     onChatOpen: handleChatOpen,
   })
@@ -228,6 +229,12 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
         <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
             <MiniAppFrame app={app} frameRef={frameRef} status={status} />
+            {/* Same strip an artifact shows for the same situation: the app is
+                still on screen and probably still useful, so this sits over it
+                rather than replacing it. */}
+            {runtimeError && (
+              <EmbeddedErrorStrip message={runtimeError} className="absolute inset-x-0 top-0 z-20 border-b-0" />
+            )}
             {status === 'ready' && selection?.rect && !isSelecting && !picked && (
               <SelectionPopover rect={selection.rect} onAsk={handleAskAboutSelection} />
             )}

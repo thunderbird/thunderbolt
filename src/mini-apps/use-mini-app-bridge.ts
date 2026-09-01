@@ -133,6 +133,8 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   // Keeping it out of `useMiniAppStore` means a stray highlight never reaches the
   // prompt or the `get_app_context` tool.
   const [selection, setSelection] = useState<MiniAppSelection | null>(null)
+  /** Last error the app reported about itself; shown as a strip over the frame. */
+  const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const { theme } = useTheme()
   const setContext = useMiniAppStore((s) => s.setContext)
   const setTools = useMiniAppStore((s) => s.setTools)
@@ -265,6 +267,13 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         return
       }
 
+      if (message.method === miniAppGuestMethods.runtimeError) {
+        // Latest wins rather than accumulating: a page throwing in a render loop
+        // would otherwise turn one broken component into an unbounded list.
+        setRuntimeError(message.params.message)
+        return
+      }
+
       // ui/open-chat — acknowledge before acting so a slow panel animation can't
       // look like a dropped request to the guest.
       post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: { opened: true } })
@@ -387,5 +396,5 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, request, setTools])
 
-  return { frameRef, status, selection, clearSelection, querySelection }
+  return { frameRef, status, selection, clearSelection, querySelection, runtimeError }
 }

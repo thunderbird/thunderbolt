@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Plural, Trans, useLingui } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
@@ -14,12 +14,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
-import type { MiniAppSelectionItem } from '@shared/mini-app-protocol'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { MarqueeOverlay } from '@/components/embedded/marquee-overlay'
+import { SurfaceSelectionBar } from '@/components/embedded/surface-selection-bar'
+import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
 import { MiniAppFrame } from './mini-app-frame'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
-import { toSelectionPassages } from './selection-passage'
 import { ToolApprovalBar } from './tool-approval-bar'
 import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
@@ -121,31 +121,6 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     onChatOpen: handleChatOpen,
   })
 
-  // Marquee mode is a small state machine: off → drawing → reviewing a result.
-  // `null` is off; an array (possibly empty) means the guest has answered.
-  const [isSelecting, setIsSelecting] = useState(false)
-  const [picked, setPicked] = useState<MiniAppSelectionItem[] | null>(null)
-
-  const exitSelectMode = useCallback(() => {
-    setIsSelecting(false)
-    setPicked(null)
-  }, [])
-
-  /** Back to drawing a box. Clearing `picked` is the point: leaving the previous
-   *  empty result up would stack the result bar under the new marquee overlay. */
-  const retrySelect = useCallback(() => {
-    setPicked(null)
-    setIsSelecting(true)
-  }, [])
-
-  const handleMarquee = useCallback(
-    async (rect: Parameters<typeof querySelection>[0]) => {
-      setIsSelecting(false)
-      setPicked(await querySelection(rect))
-    },
-    [querySelection],
-  )
-
   /**
    * Promote a highlighted passage into the composer as a quote chip.
    *
@@ -171,13 +146,10 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     [openChatId],
   )
 
-  const handleAskAboutPicked = useCallback(() => {
-    if (!picked || picked.length === 0) {
-      return
-    }
-    attachToComposer(toSelectionPassages(picked))
-    exitSelectMode()
-  }, [picked, attachToComposer, exitSelectMode])
+  const { mode, startMarquee, dismiss, resolveMarquee, askAboutItems } = useSurfaceSelection({
+    query: querySelection,
+    onAsk: attachToComposer,
+  })
 
   const handleAskAboutSelection = useCallback(() => {
     if (!selection) {
@@ -193,7 +165,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    */
   /** Nothing floats over the app while it is still connecting, or while the
    *  marquee owns the surface. */
-  const showFloatingControls = status === 'ready' && !isSelecting && !picked
+  const showFloatingControls = status === 'ready' && mode.kind === 'idle'
 
   const chatPane = openChatId && (
     <ChatHydrateHandler
@@ -242,28 +214,21 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             {showFloatingControls && selection?.rect && (
               <SelectionPopover rect={selection.rect} onAsk={handleAskAboutSelection} />
             )}
-            {isSelecting && <MarqueeOverlay onSelect={handleMarquee} onCancel={exitSelectMode} />}
+            {/* The dim stays up across `resolving`, so releasing the drag doesn't
+                flash the app back before the guest has answered. */}
+            {(mode.kind === 'drawing' || mode.kind === 'resolving') && (
+              <MarqueeOverlay onSelect={resolveMarquee} onCancel={dismiss} />
+            )}
             {pendingApproval && (
               <ToolApprovalBar pending={pendingApproval} appName={app.name} onDecide={resolveApproval} />
             )}
-            {picked && (
-              <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-3 border-t bg-background/95 backdrop-blur px-4 py-3">
-                <span className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  {picked.length === 0 ? (
-                    <Trans>Nothing to ask about there. Try covering some content.</Trans>
-                  ) : (
-                    <Plural value={picked.length} one="# item selected" other="# items selected" />
-                  )}
-                </span>
-                {picked.length > 0 && (
-                  <Button size="sm" onClick={handleAskAboutPicked}>
-                    <Plural value={picked.length} one="Ask about it" other="Ask about them" />
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" onClick={picked.length === 0 ? retrySelect : exitSelectMode}>
-                  {picked.length === 0 ? <Trans>Try again</Trans> : <Trans>Cancel</Trans>}
-                </Button>
-              </div>
+            {mode.kind === 'reviewing' && (
+              <SurfaceSelectionBar
+                items={mode.items}
+                onAsk={() => askAboutItems(mode.items)}
+                onRetry={startMarquee}
+                onCancel={dismiss}
+              />
             )}
             {/* Thunderbolt's own affordances, floating over the app rather than
                 living inside it — the assistant belongs to the host, so a customer
@@ -273,12 +238,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 English width of the button beside it, which any translation moves. */}
             {showFloatingControls && (
               <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2">
-                <Button
-                  onClick={() => setIsSelecting(true)}
-                  variant="secondary"
-                  size="lg"
-                  className="shadow-lg rounded-full"
-                >
+                <Button onClick={startMarquee} variant="secondary" size="lg" className="shadow-lg rounded-full">
                   <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
                   <Trans>Select</Trans>
                 </Button>

@@ -13,13 +13,17 @@
  *    exactly the same result as one that let the default hit-test scrape text.
  *    That made the better path pointless, which is the same as not having it.
  *
+ *    Shared with artifacts, which used to do the naive join this file was
+ *    written to replace — so a thirty-row artifact marquee buried the composer
+ *    in thirty chips while the same gesture in a Mini App produced one.
+ *
  * 2. **A wide drag doesn't bury the composer.** Selecting a dozen rows used to
  *    produce a dozen chips the user then had to read past to find their own
  *    prompt. Past a small threshold they collapse into one passage, which is
  *    also more honest — they were one gesture, not a dozen decisions.
  */
 
-import type { MiniAppSelectionItem } from '@shared/mini-app-protocol'
+import type { SurfaceSelectionItem } from './types'
 
 /**
  * Above this many items, collapse to a single passage.
@@ -32,7 +36,7 @@ export const collapseChipsAbove = 3
 /** Cap on serialised `data` per item, so one fat payload can't eat the context. */
 const maxDataChars = 2_000
 
-const renderItem = (item: MiniAppSelectionItem): string => {
+const renderItem = (item: SurfaceSelectionItem): string => {
   const body = `${item.label}\n${item.text}`
   if (item.data === undefined) {
     return body
@@ -60,7 +64,7 @@ const renderItem = (item: MiniAppSelectionItem): string => {
  * Returns one string per chip: either one per item, or a single combined
  * passage once there are enough of them to be noise.
  */
-export const toSelectionPassages = (items: MiniAppSelectionItem[]): string[] => {
+export const toSelectionPassages = (items: SurfaceSelectionItem[]): string[] => {
   if (items.length === 0) {
     return []
   }

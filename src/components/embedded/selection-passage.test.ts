@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import type { MiniAppSelectionItem } from '@shared/mini-app-protocol'
+import type { SurfaceSelectionItem } from './types'
 import { collapseChipsAbove, toSelectionPassages } from './selection-passage'
 
-const item = (n: number, data?: unknown): MiniAppSelectionItem => ({
+const item = (n: number, data?: unknown): SurfaceSelectionItem => ({
   id: `row-${n}`,
   label: `Row ${n}`,
   text: `Contents of row ${n}`,

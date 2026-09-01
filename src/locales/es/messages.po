@@ -21,11 +21,9 @@ msgstr "«{filename}» es demasiado grande (máx. {maxMegabytes} MB)."
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "«{filename}» no es un tipo de archivo compatible."
 
-#. placeholder {0}: mode.items.length
-#. placeholder {0}: picked.length
+#. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
-#: src/components/artifact/selectable-artifact.tsx
-#: src/mini-apps/mini-app-page.tsx
+#: src/components/embedded/surface-selection-bar.tsx
 msgid "# item selected"
 msgid_plural "# items selected"
 msgstr[0] ""
@@ -49,11 +47,9 @@ msgstr[0] "# herramienta"
 msgstr[1] "# herramientas"
 msgstr[2] "# herramientas"
 
-#. placeholder {0}: mode.items.length
-#. placeholder {0}: picked.length
+#. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
-#: src/components/artifact/selectable-artifact.tsx
-#: src/mini-apps/mini-app-page.tsx
+#: src/components/embedded/surface-selection-bar.tsx
 msgid "Ask about it"
 msgid_plural "Ask about them"
 msgstr[0] ""
@@ -549,8 +545,8 @@ msgstr "Calendario"
 
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
-#: src/components/artifact/selectable-artifact.tsx
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/embedded/surface-selection-bar.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
@@ -563,7 +559,6 @@ msgstr "Calendario"
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
-#: src/mini-apps/mini-app-page.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/index.tsx
@@ -2480,8 +2475,7 @@ msgstr "Sin probar"
 msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
 msgstr ""
 
-#: src/components/artifact/selectable-artifact.tsx
-#: src/mini-apps/mini-app-page.tsx
+#: src/components/embedded/surface-selection-bar.tsx
 msgid "Nothing to ask about there. Try covering some content."
 msgstr ""
 
@@ -3833,10 +3827,9 @@ msgstr "Viajes y lugares"
 msgid "Trusted devices"
 msgstr "Dispositivos de confianza"
 
-#: src/components/artifact/selectable-artifact.tsx
+#: src/components/embedded/surface-selection-bar.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
-#: src/mini-apps/mini-app-page.tsx
 msgid "Try again"
 msgstr "Inténtalo de nuevo"
 

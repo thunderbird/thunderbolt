@@ -180,7 +180,13 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       // so they'd fail method dispatch.
       const reply = isFromGuest(event, trust) ? parseGuestResult(event.data) : null
       if (reply && typeof reply.id === 'number') {
-        pending.settle(reply.id, reply.result)
+        // A reported failure settles as a tool-shaped error result, which is
+        // what both waiters already expect: `callTool` hands the message
+        // straight to the model, and `querySelection` fails its own parse and
+        // falls back to an empty selection. The alternative — dropping the
+        // reply — left the request hanging until its timeout, so an app that
+        // said "that threw" looked exactly like an app that said nothing.
+        pending.settle(reply.id, reply.error ? { content: reply.error.message, isError: true } : reply.result)
         return
       }
 

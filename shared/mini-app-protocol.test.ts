@@ -180,6 +180,33 @@ describe('parseGuestResult', () => {
   it('ignores a message with no id', () => {
     expect(parseGuestResult({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, result: {} })).toBeNull()
   })
+
+  /**
+   * JSON-RPC replies carry exactly one of `result` or `error`. Rejecting the
+   * error form left the request unsettled until its timeout, so an app that
+   * correctly reported a failure was indistinguishable from an app that had
+   * stopped answering — fifteen seconds later.
+   */
+  it('reads a reported failure rather than discarding the reply', () => {
+    const failure = {
+      jsonrpc: '2.0',
+      protocol: miniAppProtocolMarker,
+      id: 7,
+      error: { code: -32000, message: 'set_assumption threw' },
+    }
+
+    expect(parseGuestResult(failure)).toEqual({
+      id: 7,
+      result: undefined,
+      error: { code: -32000, message: 'set_assumption threw' },
+    })
+  })
+
+  it('rejects a malformed error object rather than trusting it', () => {
+    const bad = { jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: 7, error: { code: 'nope' } }
+
+    expect(parseGuestResult(bad)).toBeNull()
+  })
 })
 
 describe('selectionQueryResultSchema', () => {

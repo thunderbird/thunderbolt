@@ -443,29 +443,51 @@ export type MiniAppToolCallResult = z.infer<typeof toolsCallResultSchema>
 /** Whether a tool needs user approval before it runs. */
 export const requiresApproval = (tool: MiniAppTool): boolean => tool.annotations?.readOnlyHint !== true
 
-/** Envelope for a guest's reply to a host request. */
-const guestResultSchema = envelopeSchema.extend({
+/**
+ * Envelope for a guest's reply to a host request — success or failure.
+ *
+ * JSON-RPC replies carry exactly one of `result` or `error`. Accepting only
+ * `result` meant a guest that correctly reported a failure had its reply
+ * dropped as unparseable, so the request sat unsettled until its timeout: an
+ * app saying "that tool threw" was indistinguishable from an app saying
+ * nothing, fifteen seconds later.
+ */
+const guestReplySchema = envelopeSchema.extend({
   id: jsonRpcIdSchema,
-  result: z.unknown(),
+  result: z.unknown().optional(),
+  error: z
+    .object({
+      code: z.number().int(),
+      message: z.string().max(2_000),
+    })
+    .optional(),
 })
+
+/** A guest's reported failure, already shaped for the caller to surface. */
+export type MiniAppGuestError = { code: number; message: string }
 
 /**
  * Parse an untrusted payload as a *reply* to a host request.
  *
- * Separate from {@link parseGuestMessage} because a JSON-RPC result carries no
+ * Separate from {@link parseGuestMessage} because a JSON-RPC reply carries no
  * `method` to discriminate on. The caller still has to validate the `result`
- * against whatever it asked for — this only establishes "this is a reply, and to
- * which request".
+ * against whatever it asked for — this only establishes "this is a reply, to
+ * which request, and whether the guest is reporting a failure".
  */
-export const parseGuestResult = (data: unknown): { id: string | number; result: unknown } | null => {
+export const parseGuestResult = (
+  data: unknown,
+): { id: string | number; result: unknown; error?: MiniAppGuestError } | null => {
   if (typeof data !== 'object' || data === null) {
     return null
   }
   if ((data as { protocol?: unknown }).protocol !== miniAppProtocolMarker) {
     return null
   }
-  const parsed = guestResultSchema.safeParse(data)
-  return parsed.success ? { id: parsed.data.id, result: parsed.data.result } : null
+  const parsed = guestReplySchema.safeParse(data)
+  if (!parsed.success) {
+    return null
+  }
+  return { id: parsed.data.id, result: parsed.data.result, error: parsed.data.error }
 }
 
 /**

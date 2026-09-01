@@ -214,7 +214,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   const { experimentalFeatureTasks, experimentalFeatureVoice, experimentalFeatureMiniApps } = useSettings({
     experimental_feature_tasks: initData.experimentalFeatureTasks,
     experimental_feature_voice: initData.experimentalFeatureVoice,
-    experimental_feature_mini_apps: false,
+    experimental_feature_mini_apps: initData.experimentalFeatureMiniApps,
   })
 
   const ssoMode = isSsoMode()

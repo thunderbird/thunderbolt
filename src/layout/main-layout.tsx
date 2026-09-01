@@ -117,7 +117,13 @@ export default function Page() {
             re-derive that literal. */}
         <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
-            {!isChromelessRoute(pathname) && <FloatingHeader />}
+            {/* An app route hides the header because `MiniAppView` renders its own
+                sidebar toggle in the app's title bar. Below the breakpoint that
+                view never mounts — the route renders a size notice instead — so
+                suppressing the header there left no toggle, no header, and (with
+                a mouse, since the drawer's swipe is touch-only) no way back at
+                all. Chromeless is a desktop-layout concession, not a route one. */}
+            {(!isChromelessRoute(pathname) || isMobile) && <FloatingHeader />}
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />

@@ -12,17 +12,26 @@
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
-import { getAuthenticatedHeaders } from '@/lib/auth-token'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useHttpClient } from '@/contexts'
+import type { HttpClient } from '@/lib/http'
 import { toMiniAppDefinition, type MiniAppDefinition, type MiniAppResponse } from './registry'
 
 export type MiniAppsState = {
   apps: MiniAppDefinition[]
   /** True until the first fetch settles, so a route can wait instead of 404ing. */
   loading: boolean
+  /**
+   * The fetch failed, as distinct from succeeding with nothing configured.
+   *
+   * Callers need to tell those apart. An empty registry means "this deployment
+   * runs no apps"; a failed one means we don't know — and saying "that app is
+   * no longer available" about a perfectly healthy deployment, on every chat
+   * that came from it, is worse than saying nothing.
+   */
+  failed: boolean
 }
 
-const emptyState: MiniAppsState = { apps: [], loading: true }
+const emptyState: MiniAppsState = { apps: [], loading: true, failed: false }
 
 let state: MiniAppsState = emptyState
 let inFlight: Promise<void> | null = null
@@ -39,44 +48,39 @@ const subscribe = (listener: () => void) => {
 }
 
 /**
- * Load the registry, at most once.
+ * Load the registry.
  *
- * A failure resolves to an empty registry rather than retrying: the sidebar
- * simply shows no apps, which is the same thing a deployment with none
- * configured looks like, and is far better than a nav section that flickers.
+ * Deduped while in flight so the sidebar and the route share one request, but
+ * *not* cached across failures: holding `inFlight` after a rejection meant one
+ * transient 502 at startup left the tab with no apps for the rest of its life,
+ * and no way to recover short of a reload.
  */
-const loadMiniApps = (cloudUrl: string): Promise<void> => {
+const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
   inFlight ??= (async () => {
-    const response = await fetch(`${cloudUrl}/mini-apps`, {
-      headers: getAuthenticatedHeaders(),
-      credentials: 'include',
-    }).catch(() => null)
-
-    const body = response?.ok
-      ? ((await response.json().catch(() => null)) as { apps?: MiniAppResponse[] } | null)
-      : null
-    setState({ apps: (body?.apps ?? []).map(toMiniAppDefinition), loading: false })
+    try {
+      const body = await httpClient.get('mini-apps').json<{ apps?: MiniAppResponse[] }>()
+      setState({ apps: (body.apps ?? []).map(toMiniAppDefinition), loading: false, failed: false })
+    } catch (error) {
+      // Logged rather than swallowed: an empty sidebar is otherwise
+      // indistinguishable from a deployment that configures no apps, and the
+      // person debugging that has nothing to go on.
+      console.error('[mini-apps] Could not load the registry', error)
+      setState({ apps: [], loading: false, failed: true })
+      // Cleared so the next mount retries, rather than the session being stuck.
+      inFlight = null
+    }
   })()
   return inFlight
 }
 
-/** Drop the cached registry — used by tests, and by sign-out. */
-export const resetMiniApps = () => {
-  state = emptyState
-  inFlight = null
-  listeners.forEach((listener) => listener())
-}
-
 export const useMiniApps = (): MiniAppsState => {
-  const cloudUrl = useLocalSettingsStore((settings) => settings.cloudUrl)
+  const httpClient = useHttpClient()
   const snapshot = useSyncExternalStore(subscribe, () => state)
 
   // Fetching an external resource on mount — the one thing effects are for.
   useEffect(() => {
-    if (cloudUrl) {
-      void loadMiniApps(cloudUrl)
-    }
-  }, [cloudUrl])
+    void loadMiniApps(httpClient)
+  }, [httpClient])
 
   return snapshot
 }

@@ -9,7 +9,7 @@ import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
 import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
 import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
 import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
-import { buildMiniAppToolsPromptSection, createMiniAppTools } from '@/mini-apps/mini-app-tools'
+import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from '@/mini-apps/mini-app-tools'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
@@ -668,12 +668,17 @@ export const prepareAiRequestConfig = async ({
           requestApproval,
         })
       : {}
+  // Tracked, not just counted: a tool skipped for a name conflict is not
+  // callable, and advertising it in the prompt anyway had the model calling a
+  // name that was never registered.
+  const registeredMiniAppTools = new Set<string>()
   for (const [name, miniAppTool] of Object.entries(miniAppTools)) {
     if (appToolset[name]) {
       console.warn(`Mini App tool "${name}" conflicts with an existing tool and was skipped`)
       continue
     }
     appToolset[name] = miniAppTool
+    registeredMiniAppTools.add(name)
   }
   const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   telemetry?.startPhase('mcp_discovery')
@@ -695,11 +700,13 @@ export const prepareAiRequestConfig = async ({
       hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
     }),
     // Same rule: only describe the app when `get_app_context` actually exists,
-    // and only advertise actions that were actually registered above.
+    // and only advertise the actions that survived the merge above.
     miniAppSection: supportsTools
       ? [
           buildMiniAppPromptSection(miniApp),
-          buildMiniAppToolsPromptSection(Object.keys(miniAppTools).length > 0 ? miniAppSnapshot.tools : []),
+          buildMiniAppToolsPromptSection(
+            miniAppSnapshot.tools.filter((tool) => registeredMiniAppTools.has(toToolsetName(tool))),
+          ),
         ]
           .filter((section) => section !== null)
           .join('\n\n') || null

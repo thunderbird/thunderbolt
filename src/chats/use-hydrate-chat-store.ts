@@ -94,7 +94,7 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
       return
     }
 
-    const title = await generateTitle(textContent)
+    const title = generateTitle(textContent)
     await updateChatThread(db, threadId, { title })
   }
 

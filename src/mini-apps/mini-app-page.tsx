@@ -49,7 +49,6 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const [draftChatId, setDraftChatId] = useState<string | null>(null)
   const openChatId = draftChatId ?? searchParams.get('chat')
   const chats = useMiniAppChats(app.id)
-  const { isMobile } = useIsMobile()
   const { toggleSidebar } = useSidebar()
   const openApp = useMiniAppStore((s) => s.openApp)
   const closeApp = useMiniAppStore((s) => s.closeApp)
@@ -219,7 +218,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       </header>
 
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={openChatId && !isMobile ? appPanelSize : '100%'} minSize="30%">
+        <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
             <MiniAppFrame app={app} frameRef={frameRef} status={status} />
             {status === 'ready' && selection?.rect && !isSelecting && !picked && (
@@ -283,27 +282,9 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 )}
               </Button>
             )}
-            {isMobile && chatPane && (
-              <div className="absolute inset-0 z-40 flex flex-col bg-background">
-                <header className="flex items-center gap-2 px-2 h-[var(--touch-height-default)] border-b shrink-0">
-                  <MessageSquare className="size-[var(--icon-size-sm)] shrink-0" />
-                  <span className="truncate text-[length:var(--font-size-body)] font-medium">{app.name}</span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="ml-auto"
-                    aria-label="Close chat"
-                    onClick={handleCloseChat}
-                  >
-                    <X className="size-[var(--icon-size-default)]" />
-                  </Button>
-                </header>
-                <div className="flex-1 min-h-0">{chatPane}</div>
-              </div>
-            )}
           </div>
         </ResizablePanel>
-        {openChatId && !isMobile && (
+        {openChatId && (
           <>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={chatPanelSize} minSize="20%">
@@ -324,7 +305,29 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
 export default function MiniAppPage() {
   const { appId } = useParams()
   const { apps, loading } = useMiniApps()
+  const { isMobile } = useIsMobile()
   const app = findMiniApp(apps, appId)
+
+  /*
+   * Mini Apps are web and desktop only, gated on viewport rather than platform:
+   * the split view, highlight-to-ask and the marquee are all pointer-first and
+   * need the room, and a 700px browser window is as unworkable as a phone.
+   * `useIsMobile` exempts the Tauri desktop app at any width, so narrowing the
+   * desktop window keeps the feature.
+   *
+   * Rendered as a notice rather than dropped from the route table: a deep link
+   * from a synced chat, or someone simply narrowing their window mid-session,
+   * should be told what happened instead of hitting Not Found.
+   */
+  if (isMobile) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <p className="max-w-sm text-center text-[length:var(--font-size-sm)] text-muted-foreground">
+          Apps need a larger screen. Open this on a desktop or a wider window.
+        </p>
+      </div>
+    )
+  }
 
   // The registry arrives over the network, so "no such app" isn't knowable until
   // it lands. Redirecting early would bounce a perfectly valid deep link to

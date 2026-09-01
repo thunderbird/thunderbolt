@@ -150,7 +150,9 @@ export default function Sidebar() {
             deleteChatDialogRef={deleteChatDialogRef}
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
-            showMiniApps={experimentalFeatureMiniApps.value}
+            // Web and desktop only, gated on viewport to match `MiniAppPage`
+            // (which explains itself if a deep link lands here anyway).
+            showMiniApps={experimentalFeatureMiniApps.value && !isMobile}
             activeSection={activeSection}
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}

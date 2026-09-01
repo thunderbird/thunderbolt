@@ -16,6 +16,7 @@
 
 import { Link } from 'react-router'
 
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'
@@ -25,21 +26,26 @@ type MiniAppOriginNoticeProps = {
   app: MiniAppDefinition | null
   /** Carried into the app so "Open app" reopens this chat beside it. */
   chatThreadId: string
+  /** False at mobile widths, where the app route only renders a size notice —
+   *  the provenance is still worth saying, the link is not. */
+  canOpen: boolean
 }
 
 /** The banner itself, given an already-resolved app. Presentational. */
-export const MiniAppOriginNotice = ({ app, chatThreadId }: MiniAppOriginNoticeProps) => (
+export const MiniAppOriginNotice = ({ app, chatThreadId, canOpen }: MiniAppOriginNoticeProps) => (
   <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-[length:var(--font-size-sm)] text-muted-foreground">
     {app ? (
       <>
         <app.icon className="size-[var(--icon-size-sm)] shrink-0" aria-hidden="true" />
         <span className="truncate">Started from {app.name}</span>
-        <Link
-          to={`/apps/${app.id}?chat=${chatThreadId}`}
-          className="ml-auto shrink-0 underline underline-offset-2 hover:text-foreground"
-        >
-          Open app
-        </Link>
+        {canOpen && (
+          <Link
+            to={`/apps/${app.id}?chat=${chatThreadId}`}
+            className="ml-auto shrink-0 underline underline-offset-2 hover:text-foreground"
+          >
+            Open app
+          </Link>
+        )}
       </>
     ) : (
       <span className="truncate">Started from an app that is no longer available</span>
@@ -54,6 +60,7 @@ type MiniAppChatBannerProps = {
 
 export const MiniAppChatBanner = ({ appId, chatThreadId }: MiniAppChatBannerProps) => {
   const { experimentalFeatureMiniApps } = useSettings({ experimental_feature_mini_apps: false })
+  const { isMobile } = useIsMobile()
   const { apps, loading } = useMiniApps()
 
   // Chats sync; the feature flag doesn't. A chat started on a device with Mini
@@ -69,5 +76,5 @@ export const MiniAppChatBanner = ({ appId, chatThreadId }: MiniAppChatBannerProp
     return null
   }
 
-  return <MiniAppOriginNotice app={findMiniApp(apps, appId) ?? null} chatThreadId={chatThreadId} />
+  return <MiniAppOriginNotice app={findMiniApp(apps, appId) ?? null} chatThreadId={chatThreadId} canOpen={!isMobile} />
 }

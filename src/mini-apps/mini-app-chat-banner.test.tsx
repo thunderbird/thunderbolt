@@ -17,10 +17,10 @@ const app = {
   icon: () => null,
 } as unknown as MiniAppDefinition
 
-const renderNotice = (value: MiniAppDefinition | null) =>
+const renderNotice = (value: MiniAppDefinition | null, canOpen = true) =>
   render(
     <MemoryRouter>
-      <MiniAppOriginNotice app={value} chatThreadId="thread-1" />
+      <MiniAppOriginNotice app={value} chatThreadId="thread-1" canOpen={canOpen} />
     </MemoryRouter>,
   )
 
@@ -52,6 +52,15 @@ describe('MiniAppOriginNotice', () => {
 
   it('offers no way back to an app that is gone', () => {
     renderNotice(null)
+    expect(screen.queryByText('Open app')).toBeNull()
+  })
+
+  /** At mobile widths the app route only renders a size notice, so the link
+   *  would lead nowhere useful — but where the chat came from still matters. */
+  it('keeps the provenance but drops the link where the app cannot open', () => {
+    renderNotice(app, false)
+
+    expect(screen.getByText('Started from Patient Journeys')).toBeTruthy()
     expect(screen.queryByText('Open app')).toBeNull()
   })
 })
